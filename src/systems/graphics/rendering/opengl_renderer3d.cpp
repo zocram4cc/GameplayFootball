@@ -68,8 +68,6 @@ struct GLfunctions {
   };
 
   OpenGLRenderer3D::~OpenGLRenderer3D() {
-    DeleteSimpleVertexBuffer(overlayBuffer);
-    DeleteSimpleVertexBuffer(quadBuffer);
   };
 
   void OpenGLRenderer3D::SwapBuffers() {
@@ -540,6 +538,8 @@ struct GLfunctions {
     }
 
     currentShader = shaders.end();
+    DeleteSimpleVertexBuffer(overlayBuffer);
+    DeleteSimpleVertexBuffer(quadBuffer);
 
     // assert(views.size() == 0);
     // todo: make views erase-able, as for now a views vector index is used when requesting views, which prohibits erasion
