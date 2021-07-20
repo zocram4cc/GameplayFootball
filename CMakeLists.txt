@@ -48,6 +48,9 @@ include_directories(${Boost_INCLUDE_DIR})
 FIND_PACKAGE(OpenAL REQUIRED)
 include_directories(${OPENAL_INCLUDE_DIR})
 
+FIND_PACKAGE(SQLite3 REQUIRED)
+include_directories(${SQLite3_INCLUDE_DIRS})
+
 include_directories(${PROJECT_SOURCE_DIR}/src)
 
 # Include the sources
@@ -86,8 +89,7 @@ set(OWN_LIBRARIES $<TARGET_OBJECTS:baselib> $<TARGET_OBJECTS:systemscommonlib>
         $<TARGET_OBJECTS:utilslib> $<TARGET_OBJECTS:gui2lib>)
 
 # Join all created static libraries into the single static one.
-add_library(blunted2 ${BLUNTED_CORE_SOURCES} ${LIBS_SOURCES} ${BLUNTED_CORE_HEADERS}
-        ${ALL_LIBS_HEADERS} ${OWN_LIBRARIES})
+add_library(blunted2 ${BLUNTED_CORE_SOURCES} ${BLUNTED_CORE_HEADERS} ${OWN_LIBRARIES})
 
 add_library(leaguelib ${LEAGUE_SOURCES} ${LEAGUE_HEADERS})
 add_library(gamelib ${GAME_SOURCES} ${GAME_HEADERS})
@@ -96,7 +98,7 @@ add_library(menulib ${MENU_SOURCES} ${MENU_HEADERS})
 add_library(datalib ${DATA_SOURCES} ${DATA_HEADERS})
 
 set(LIBRARIES gamelib hidlib menulib datalib leaguelib blunted2
-   ${Boost_LIBRARIES}
+   Boost::filesystem Boost::system Boost::thread SQLite::SQLite3
    ${SDL2_IMAGE_LIBRARIES} ${SDL2_TTF_LIBRARIES} ${SDL2_GFX_LIBRARIES}
    ${SDL2_LIBRARIES} ${OPENAL_LIBRARY} dl m ${OPENGL_LIBRARIES})
 

@@ -16,7 +16,7 @@
 #include "base/properties.hpp"
 
 #include "utils/database.hpp"
-#include "misc/sqlite3.h"
+#include "sqlite3.h"
 
 enum e_DebugMode {
   e_DebugMode_Off,
