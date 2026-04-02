@@ -32,13 +32,13 @@ endif()
 
 # Find required libraries
 if(GAMEPLAYFOOTBALL_BUILD_GAME)
-  find_package(Boost REQUIRED COMPONENTS system)
+  find_package(Boost REQUIRED)
   find_package(OpenGL REQUIRED)
-  find_package(SDL2 REQUIRED)
-  find_package(SDL2_image REQUIRED)
-  find_package(SDL2_ttf REQUIRED)
+  find_package(SDL2 REQUIRED CONFIG)
+  find_package(SDL2_image REQUIRED CONFIG)
+  find_package(SDL2_ttf REQUIRED CONFIG)
   find_package(SDL2_gfx REQUIRED)
-  find_package(OpenAL REQUIRED)
+  find_package(OpenAL QUIET)
   find_package(SQLite3 REQUIRED)
 else()
   find_package(Boost REQUIRED)
@@ -57,9 +57,11 @@ function(gf_target_includes tgt)
     ${SDL2_TTF_DIRS}
     ${SDL2_GFX_DIRS}
     ${Boost_INCLUDE_DIR}
-    ${OPENAL_INCLUDE_DIR}
     ${SQLite3_INCLUDE_DIRS}
   )
+  if(OpenAL_FOUND)
+    target_include_directories(${tgt} PRIVATE ${OPENAL_INCLUDE_DIR})
+  endif()
 endfunction()
 
 add_library(gf_mathlib STATIC
@@ -80,6 +82,12 @@ target_include_directories(gf_ballphysicslib PUBLIC
 )
 
 if(GAMEPLAYFOOTBALL_BUILD_GAME)
+  if(OpenAL_FOUND)
+    add_compile_definitions(GF_USE_OPENAL=1)
+  else()
+    message(STATUS "OpenAL not found; building with NullAudioRenderer fallback")
+  endif()
+
   # Compile it as multiple OBJECT libraries (note: not compiling physics,
   # as not used by gameplayfootball)
 
@@ -154,9 +162,12 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   gf_target_includes(datalib)
 
   set(LIBRARIES gamelib hidlib menulib datalib leaguelib blunted2
-     Boost::system SQLite::SQLite3
-     ${SDL2_IMAGE_LIBRARIES} ${SDL2_TTF_LIBRARIES} ${SDL2_GFX_LIBRARIES}
-     ${SDL2_LIBRARIES} ${OPENAL_LIBRARY} dl m ${OPENGL_LIBRARIES})
+     SQLite::SQLite3
+     SDL2_image::SDL2_image-static SDL2_ttf::SDL2_ttf-static ${SDL2_GFX_LIBRARIES}
+     ${SDL2_LIBRARIES} dl m ${OPENGL_LIBRARIES})
+  if(OpenAL_FOUND)
+    list(APPEND LIBRARIES ${OPENAL_LIBRARY})
+  endif()
 
   add_executable(gameplayfootball WIN32 ${CORE_SOURCES} ${CORE_HEADERS})
   target_link_libraries(gameplayfootball PRIVATE ${LIBRARIES})
@@ -168,9 +179,11 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
     ${SDL2_TTF_DIRS}
     ${SDL2_GFX_DIRS}
     ${Boost_INCLUDE_DIR}
-    ${OPENAL_INCLUDE_DIR}
     ${SQLite3_INCLUDE_DIRS}
   )
+  if(OpenAL_FOUND)
+    target_include_directories(gameplayfootball PRIVATE ${OPENAL_INCLUDE_DIR})
+  endif()
 endif()
 
 if(BUILD_TESTING)

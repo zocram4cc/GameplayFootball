@@ -97,7 +97,7 @@ TeamData::TeamData(int teamDatabaseID) : databaseID(teamDatabaseID) {
       color2 = GetVectorFromString(result->data.at(0).at(c));
   }
 
-  if (shortName.compare("") == 0) {
+  if (shortName.empty()) {
     shortName = name;
     shortName.erase(remove_if(shortName.begin(), shortName.end(), isspace), shortName.end());
     shortName = shortName.substr(0, 3);
@@ -105,8 +105,14 @@ TeamData::TeamData(int teamDatabaseID) : databaseID(teamDatabaseID) {
   }
 
 
-  logo_url = "databases/default/" + logo_url;
-  kit_url = "databases/default/" + kit_url;
+  std::string saveDir = GetActiveSaveDirectory();
+  if (!saveDir.empty()) {
+    logo_url = "saves/" + saveDir + "/" + logo_url;
+    kit_url = "saves/" + saveDir + "/" + kit_url;
+  } else {
+    logo_url = "databases/default/" + logo_url;
+    kit_url = "databases/default/" + kit_url;
+  }
 
   // team formation
 
@@ -191,49 +197,49 @@ TeamData::TeamData(int teamDatabaseID) : databaseID(teamDatabaseID) {
     // printf("value name: %s, value: %f\n", (*iter).first.c_str(),
     // atof((*iter).second.value.c_str()));
 
-    if ((*iter).first.compare("position_offense_depth_factor") == 0) {
+    if ((*iter).first == "position_offense_depth_factor") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "attacking: team depth");
       tactics.descriptions.Set((*iter).first.c_str(),
                                "how much vertical space the team takes up, during possession");
-    } else if ((*iter).first.compare("position_defense_depth_factor") == 0) {
+    } else if ((*iter).first == "position_defense_depth_factor") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "defending: team depth");
       tactics.descriptions.Set((*iter).first.c_str(),
                                "how much vertical space the team takes up, while defending");
-    } else if ((*iter).first.compare("position_offense_width_factor") == 0) {
+    } else if ((*iter).first == "position_offense_width_factor") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "attacking: team width");
       tactics.descriptions.Set((*iter).first.c_str(), "horizontal team width during possession");
-    } else if ((*iter).first.compare("position_defense_width_factor") == 0) {
+    } else if ((*iter).first == "position_defense_width_factor") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "defending: team width");
       tactics.descriptions.Set((*iter).first.c_str(), "horizontal team width while defending");
-    } else if ((*iter).first.compare("position_offense_midfieldfocus") == 0) {
+    } else if ((*iter).first == "position_offense_midfieldfocus") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "attacking: midfield joins attack");
       tactics.descriptions.Set(
           (*iter).first.c_str(),
           "lower values: midfield stays back. higher values: midfield joins attack");
-    } else if ((*iter).first.compare("position_defense_midfieldfocus") == 0) {
+    } else if ((*iter).first == "position_defense_midfieldfocus") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "defending: midfield stays high up");
       tactics.descriptions.Set(
           (*iter).first.c_str(),
           "lower values: midfield stays back. higher values: midfield stays higher up");
-    } else if ((*iter).first.compare("position_offense_sidefocus_strength") == 0) {
+    } else if ((*iter).first == "position_offense_sidefocus_strength") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "attacking: forward drive");
       tactics.descriptions.Set((*iter).first.c_str(), "");
-    } else if ((*iter).first.compare("position_defense_sidefocus_strength") == 0) {
+    } else if ((*iter).first == "position_defense_sidefocus_strength") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "defending: backward drive");
       tactics.descriptions.Set((*iter).first.c_str(), "");
-    } else if ((*iter).first.compare("position_offense_microfocus_strength") == 0) {
+    } else if ((*iter).first == "position_offense_microfocus_strength") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "attacking: compactness around ball");
       tactics.descriptions.Set((*iter).first.c_str(), "");
-    } else if ((*iter).first.compare("position_defense_microfocus_strength") == 0) {
+    } else if ((*iter).first == "position_defense_microfocus_strength") {
       tactics.humanReadableNames.Set((*iter).first.c_str(), "defending: compactness around ball");
       tactics.descriptions.Set((*iter).first.c_str(), "");
-    } else if ((*iter).first.compare("dribble_offensiveness") == 0) {
+    } else if ((*iter).first == "dribble_offensiveness") {
       tactics.humanReadableNames.Set((*iter).first.c_str(),
                                      "CPU player on the ball: offensiveness");
       tactics.descriptions.Set(
           (*iter).first.c_str(),
           "higher values mean more forward drive for the CPU player in possession.");
-    } else if ((*iter).first.compare("dribble_centermagnet") == 0) {
+    } else if ((*iter).first == "dribble_centermagnet") {
       tactics.humanReadableNames.Set((*iter).first.c_str(),
                                      "CPU player on the ball: prefer center");
       tactics.descriptions.Set((*iter).first.c_str(),

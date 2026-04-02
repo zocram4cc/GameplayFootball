@@ -52,13 +52,13 @@ void GeometryData::DeleteTriangleMeshes() {
 }
 
 void GeometryData::SetTriangleMesh(Material material, float* vertices, int verticesDataSize,
-                                   std::vector<unsigned int> indices) {
+                                   const std::vector<unsigned int>& indices) {
   DeleteTriangleMeshes();
   AddTriangleMesh(material, vertices, verticesDataSize, indices);
 }
 
 void GeometryData::AddTriangleMesh(Material material, float* vertices, int verticesDataSize,
-                                   std::vector<unsigned int> indices) {
+                                   const std::vector<unsigned int>& indices) {
   assert(indices.size() % 3 == 0);
   MaterializedTriangleMesh mesh;
   mesh.material = material;

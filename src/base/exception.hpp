@@ -14,8 +14,8 @@ namespace blunted {
 
 class BluntedException : public std::exception {
 public:
-  BluntedException(const std::string classname, const std::string methodname,
-                   const std::string description);
+  BluntedException(const std::string& classname, const std::string& methodname,
+                   const std::string& description);
   ~BluntedException() throw() {}
 };
 

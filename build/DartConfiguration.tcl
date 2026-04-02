@@ -4,14 +4,14 @@
 
 
 # Configuration directories and files
-SourceDirectory: /home/runner/work/League-Soccer/League-Soccer
-BuildDirectory: /home/runner/work/League-Soccer/League-Soccer/build
+SourceDirectory: /home/allenw/Documents/Projects/League-Soccer
+BuildDirectory: /home/allenw/Documents/Projects/League-Soccer/build
 
 # Where to place the cost data store
 CostDataFile: 
 
 # Site is something like machine.domain, i.e. pragmatic.crd
-Site: runnervmrg6be
+Site: allen-latitude7320detachable
 
 # Build name is osname-revision-compiler, i.e. Linux-2.4.2-2smp-c++
 BuildName: Linux-c++
@@ -27,8 +27,8 @@ SubmitInactivityTimeout:
 NightlyStartTime: 00:00:00 EDT
 
 # Commands for the build/test/submit cycle
-ConfigureCommand: "/usr/local/bin/cmake" "/home/runner/work/League-Soccer/League-Soccer"
-MakeCommand: /usr/local/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
+ConfigureCommand: "/usr/bin/cmake" "/home/allenw/Documents/Projects/League-Soccer"
+MakeCommand: /usr/bin/cmake --build . --config "${CTEST_CONFIGURATION_TYPE}"
 DefaultCTestConfigurationType: Release
 
 # version control
@@ -64,7 +64,7 @@ UpdateType: git
 
 # Compiler info
 Compiler: /usr/bin/c++
-CompilerVersion: 13.3.0
+CompilerVersion: 15.2.0
 
 # Dynamic analysis (MemCheck)
 PurifyCommand: 

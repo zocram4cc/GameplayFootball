@@ -18,7 +18,7 @@ public:
   ImageLoader();
   virtual ~ImageLoader();
 
-  virtual void Load(std::string filename, boost::intrusive_ptr<Resource<Surface>> resource);
+  virtual void Load(const std::string& filename, boost::intrusive_ptr<Resource<Surface>> resource);
 
 protected:
 };

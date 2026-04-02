@@ -18,7 +18,7 @@ public:
   VertexBuffer();
   virtual ~VertexBuffer();
 
-  int CreateVertexBuffer(Renderer3D* renderer3D, std::vector<Triangle*> triangles);
+  int CreateVertexBuffer(Renderer3D* renderer3D, const std::vector<Triangle*>& triangles);
 
   void SetID(int value);
   int GetID();

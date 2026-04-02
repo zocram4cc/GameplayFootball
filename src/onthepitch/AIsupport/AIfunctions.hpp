@@ -27,7 +27,7 @@ struct TimeNeeded {
 };
 
 Vector3 AI_GetAdaptedInitialPos(Match* match, const Vector3& initialPosition,
-                                Vector3 focusPoint = Vector3(0, 0, -100.0),
+                                const Vector3& focusPoint = Vector3(0, 0, -100.0),
                                 float ballMagnetDistance = 50.0, float ballMagnetDistancePow = 1.5);
 Vector3 AI_GetAdaptedFormationPosition(Match* match, Player* player, float backXBound,
                                        float frontXBound, float lowYBound, float highYBound,

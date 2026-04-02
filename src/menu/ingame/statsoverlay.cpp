@@ -12,7 +12,7 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
 
   Gui2Image* bg = new Gui2Image(windowManager, "image_statsoverlay_bg", 0, 0, 96, 12);
   bg->LoadImage("media/menu/backgrounds/black.png");
-  bg->SetTransparency(0.5f);
+  bg->GetImage2D()->SetAlpha(0.5f);
   this->AddView(bg);
   bg->Show();
 

@@ -109,7 +109,7 @@ int Animation::GetFrameCount() const {
   return frameCount;
 }
 
-bool Animation::GetKeyFrame(std::string nodeName, int frame, Quaternion& orientation,
+bool Animation::GetKeyFrame(const std::string& nodeName, int frame, Quaternion& orientation,
                             Vector3& position, bool getOrientation, bool getPosition) const {
   int animSize = nodeAnimations.size();
   for (int i = 0; i < animSize; i++) {
@@ -122,12 +122,12 @@ bool Animation::GetKeyFrame(std::string nodeName, int frame, Quaternion& orienta
   return false;
 }
 
-void Animation::SetKeyFrame(std::string nodeName, int frame, const Quaternion& orientation,
-                            const Vector3& position) {
+void Animation::SetKeyFrame(const std::string& nodeName, int frame,
+                            const Quaternion& orientation, const Vector3& position) {
   if (frame >= frameCount)
     frameCount = frame + 1;
 
-  NodeAnimation* nodeAnimation = 0;
+  NodeAnimation* nodeAnimation = nullptr;
 
   // find node
   int animSize = nodeAnimations.size();
@@ -162,7 +162,7 @@ void Animation::SetKeyFrame(std::string nodeName, int frame, const Quaternion& o
   DirtyCache();
 }
 
-void Animation::DeleteKeyFrame(std::string nodeName, int frame) {
+void Animation::DeleteKeyFrame(const std::string& nodeName, int frame) {
   // iterate nodes
   int animSize = nodeAnimations.size();
   for (int i = 0; i < animSize; i++) {
@@ -314,7 +314,7 @@ void Animation::ConvertToStartFacingForwardIfIdle() {
 
   // rotate player pos
   std::map<int, KeyFrame>& player = nodeAnimations.at(0)->animation;
-  std::map<int, KeyFrame>::iterator animIter = player.begin();
+  auto animIter = player.begin();
   while (animIter != player.end()) {
     // animIter->second.position.Print();
     animIter->second.position.Rotate2D(-incomingBodyAngle);
@@ -363,14 +363,14 @@ void Animation::ConvertToStartFacingForwardIfIdle() {
 }
 
 void Animation::Invert() {
-  NodeAnimation* nodeAnimation = 0;
+  NodeAnimation* nodeAnimation = nullptr;
 
   // simple keyframe-to-keyframe version
   int animSize = nodeAnimations.size();
   for (int i = 0; i < animSize; i++) {
     nodeAnimation = nodeAnimations.at(i);
 
-    std::map<int, KeyFrame>::iterator keyIter = nodeAnimation->animation.begin();
+    auto keyIter = nodeAnimation->animation.begin();
     while (keyIter != nodeAnimation->animation.end()) {
       Quaternion& orient = (*keyIter).second.orientation;
 
@@ -396,7 +396,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
                       bool updateSpatial) {
   // simple keyframe-to-keyframe version
 
-  NodeAnimation* nodeAnimation = 0;
+  NodeAnimation* nodeAnimation = nullptr;
 
   // int futureFrameOffset = 1;
 
@@ -434,7 +434,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
 
     assert(nodeMap.find(nodeAnimation->nodeName) != nodeMap.end());
 
-    if (nodeAnimation->nodeName.compare("player") == 0) {
+    if (nodeAnimation->nodeName == "player") {
       if (noPos) {
         position.coords[0] = 0;
         position.coords[1] = 0;
@@ -442,7 +442,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
         position.Rotate2D(baseRot);
       }
     }
-    if (nodeAnimation->nodeName.compare("body") == 0) {
+    if (nodeAnimation->nodeName == "body") {
       Quaternion rotZ;
       rotZ.SetAngleAxis(baseRot, Vector3(0, 0, 1));
       orientation = rotZ * orientation;
@@ -470,10 +470,10 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
       // those and use that for rotation change limit calculations
 
       assert(movementHistory);
-      MovementHistoryEntry* movementHistoryEntry = 0;
+      MovementHistoryEntry* movementHistoryEntry = nullptr;
 
       for (unsigned int node = 0; node < movementHistory->size(); node++) {
-        if (movementHistory->at(node).nodeName.compare(nodeAnimation->nodeName) == 0) {
+        if (movementHistory->at(node).nodeName == nodeAnimation->nodeName) {
           movementHistoryEntry = &movementHistory->at(node);
         }
       }
@@ -490,7 +490,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
       float beginBias = pow(curve(1.0f - NormalizedClamp(frame, 0, 8), 1.0f), 0.5f);
       float currentBias = 0.0f + beginBias * smoothFactor * 0.5f;
 
-      if (nodeAnimation->nodeName.compare("player") != 0) {
+      if (nodeAnimation->nodeName != "player") {
         const Quaternion& previousOrientation = movementHistoryEntry->orientation;
         Quaternion currentOrientation =
             nodeMap.find(nodeAnimation->nodeName)->second->GetRotation();
@@ -531,7 +531,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
             radian angleDiff_per_ms =
                 2.0f * acos(clamp(currentToDesiredDot, -1.0f, 1.0f)) / (float)timeDiff_ms;
             radian maxDiff_per_ms = 5.0f * pi * 0.001f;
-            // if (nodeAnimation->nodeName.compare("body") == 0) maxDiff_per_ms = 3.0f * pi *
+            // if (nodeAnimation->nodeName == "body") maxDiff_per_ms = 3.0f * pi *
             // 0.001f;
             if (angleDiff_per_ms > maxDiff_per_ms) {
               // now make orientation into limited rotation * currentOrientation
@@ -582,8 +582,8 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
                much from the rotation from previous to current orientation float maxTimeDiff_ms
                = 30.0f; // higher == smoother. in this amount of time, we can change direction
                completely.
-                    //if ((nodeAnimation->nodeName.compare("body") == 0 ||
-               nodeAnimation->nodeName.compare("middle") == 0)) maxTimeDiff_ms = 60.0f; float
+                    //if ((nodeAnimation->nodeName == "body" ||
+               nodeAnimation->nodeName == "middle")) maxTimeDiff_ms = 60.0f; float
                movementInfluence = 1.0f - clamp(timeDiff_ms / maxTimeDiff_ms, 0.0f, 1.0f);
                     movementInfluence = pow(movementInfluence, 0.5f); // influence of old movement
                wears off in exponential fashion (source: laws of nature)
@@ -613,7 +613,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
             // braking is easier than accelerating
             // if (identity.MakeSameNeighborhood(desiredRotation_per_ms) >
             // identity.MakeSameNeighborhood(currentRotation_per_ms)) maxDiff_per_ms_per_s = 0.4f *
-            // pi; if (nodeAnimation->nodeName.compare("body") == 0) maxDiff_per_ms_per_s = 0.1f *
+            // pi; if (nodeAnimation->nodeName == "body") maxDiff_per_ms_per_s = 0.1f *
             // pi;
             if (angleDiff_per_ms_per_s > maxDiff_per_ms_per_s) {
               // now make desiredRotation_per_ms into limited rotation * currentRotation_per_ms
@@ -659,21 +659,21 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
             radian angle_per_second =
                 2.0f * acos(clamp(dot, -1.0f, 1.0f)) / ((float)timeDiff_ms * 0.001f);
             radian maxAngle_per_second = 7.5f * pi;  // 5.5f * pi;
-            // if (nodeAnimation->nodeName.compare("body") == 0) maxAngle_per_second *= 0.8f;
-            if (nodeAnimation->nodeName.compare("left_elbow") == 0)
+            // if (nodeAnimation->nodeName == "body") maxAngle_per_second *= 0.8f;
+            if (nodeAnimation->nodeName == "left_elbow")
               maxAngle_per_second *= 1.2f;
-            else if (nodeAnimation->nodeName.compare("right_elbow") == 0)
+            else if (nodeAnimation->nodeName == "right_elbow")
               maxAngle_per_second *= 1.2f;
-            else if (nodeAnimation->nodeName.compare("left_knee") == 0)
+            else if (nodeAnimation->nodeName == "left_knee")
               maxAngle_per_second *= 1.2f;
-            else if (nodeAnimation->nodeName.compare("right_knee") == 0)
+            else if (nodeAnimation->nodeName == "right_knee")
               maxAngle_per_second *= 1.2f;
-            else if (nodeAnimation->nodeName.compare("left_ankle") == 0)
+            else if (nodeAnimation->nodeName == "left_ankle")
               maxAngle_per_second *= 1.6f;
-            else if (nodeAnimation->nodeName.compare("right_ankle") == 0)
+            else if (nodeAnimation->nodeName == "right_ankle")
               maxAngle_per_second *= 1.6f;
             maxAngle_per_second = (0.3f + 0.7f * (1.0f - beginBias)) * maxAngle_per_second;
-            // if (nodeAnimation->nodeName.compare("body") == 0) maxAngle_per_second = 3.0f * pi;
+            // if (nodeAnimation->nodeName == "body") maxAngle_per_second = 3.0f * pi;
             if (angle_per_second > maxAngle_per_second) {
               float allowFraction = maxAngle_per_second / angle_per_second;
               Quaternion desiredRotation =
@@ -693,8 +693,8 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
           //radian diff = pi - acos(change) * 2.0f;
           radian diff = acos(dot);
           radian maxRadPerSec = 3.8f * pi;
-          if ((nodeAnimation->nodeName.compare("body") == 0 ||
-          nodeAnimation->nodeName.compare("middle") == 0)) maxRadPerSec = 3.2f * pi; maxRadPerSec
+          if ((nodeAnimation->nodeName == "body" ||
+          nodeAnimation->nodeName == "middle")) maxRadPerSec = 3.2f * pi; maxRadPerSec
           *= 1.0f - beginBias * smoothFactor; radian clampedDiff = clamp(diff, 0.0f, (timeDiff_ms *
           0.001f) * maxRadPerSec); float slerpBias = 1.0f - NormalizedClamp(clampedDiff + 0.00001f,
           0.0f, diff + 0.00001f); // convert from clampedDiff to slerp bias. 0 == diff, 1 == 0
@@ -703,7 +703,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
           //slerpBias = 0.0f;
           orientation = orientation.GetSlerped(slerpBias, oldOrientation);
           //if (GetVariable("type").compare("ballcontrol") == 0 &&
-          nodeAnimation->nodeName.compare("body") == 0) printf("%i ms, %f %f %f %f\n", timeDiff_ms,
+          nodeAnimation->nodeName == "body") printf("%i ms, %f %f %f %f\n", timeDiff_ms,
           dot, diff, clampedDiff, slerpBias);
 
           // tmp super low tek hax
@@ -725,7 +725,7 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
 
       }
 
-      else if (nodeAnimation->nodeName.compare("player") == 0) {
+      else if (nodeAnimation->nodeName == "player") {
         const Vector3& previousPosition = movementHistoryEntry->position;
         Vector3 currentPosition = nodeMap.find(nodeAnimation->nodeName)->second->GetPosition();
 
@@ -801,11 +801,11 @@ void Animation::Apply(const std::map<const std::string, boost::intrusive_ptr<Nod
 
     }  // smoothing
 
-    if (nodeAnimation->nodeName.compare("player") != 0) {
+    if (nodeAnimation->nodeName != "player") {
       Quaternion currentOrientation = nodeMap.find(nodeAnimation->nodeName)->second->GetRotation();
       orientation.MakeSameNeighborhood(currentOrientation);
       nodeMap.find(nodeAnimation->nodeName)->second->SetRotation(orientation, false);
-    } else if (nodeAnimation->nodeName.compare("player") == 0) {
+    } else if (nodeAnimation->nodeName == "player") {
       nodeMap.find(nodeAnimation->nodeName)->second->SetPosition(position + basePos, false);
     }
   }
@@ -821,7 +821,7 @@ void Animation::Shift(int fromFrame, int offset) {  // todo: offset does not yet
     int animSize = nodeAnimations.size();
     for (int i = 0; i < animSize; i++) {
       NodeAnimation* nodeAnimation = nodeAnimations.at(i);
-      std::map<int, KeyFrame>::iterator animIter = nodeAnimation->animation.begin();
+      auto animIter = nodeAnimation->animation.begin();
       std::map<int, KeyFrame> newAnimation;
       while (animIter != nodeAnimation->animation.end()) {
         // printf("%i, ", animIter->first);
@@ -848,7 +848,7 @@ void Animation::Shift(int fromFrame, int offset) {  // todo: offset does not yet
     int animSize = nodeAnimations.size();
     for (int i = 0; i < animSize; i++) {
       NodeAnimation* nodeAnimation = nodeAnimations.at(i);
-      std::map<int, KeyFrame>::iterator animIter = nodeAnimation->animation.begin();
+      auto animIter = nodeAnimation->animation.begin();
       std::map<int, KeyFrame> newAnimation;
       while (animIter != nodeAnimation->animation.end()) {
         // printf("%i, ", animIter->first);
@@ -1371,7 +1371,7 @@ void Animation::Mirror() {
       needle = needle.replace(0, 4, "right");
 
       for (unsigned int j = 0; j < nodeAnimations.size(); j++) {
-        if (nodeAnimations.at(j)->nodeName.compare(needle) == 0) {
+        if (nodeAnimations.at(j)->nodeName == needle) {
           // swap
           std::map<int, KeyFrame> tmp = nodeAnimations.at(i)->animation;
           nodeAnimations.at(i)->animation = nodeAnimations.at(j)->animation;
@@ -1404,7 +1404,7 @@ void Animation::Mirror() {
   }
 
   // variables
-  std::map<const char*, std::string>::iterator varIter = variableCache.begin();
+  auto varIter = variableCache.begin();
   while (varIter != variableCache.end()) {
     std::string& varData = varIter->second;
     if (varData.substr(0, 4) == "left") {

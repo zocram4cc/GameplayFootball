@@ -47,14 +47,14 @@ const s_treeentry* treeentry_find(const s_tree* tree, const std::string needle);
 const s_tree* tree_find(const s_tree* tree, const std::string needle);
 
 // string functions
-std::string stringchomp(std::string input, char chomp);
+std::string stringchomp(const std::string& input, char chomp);
 void tokenize(const std::string& str, std::vector<std::string>& tokens,
               const std::string& delimiters = " ");
 
 std::string StripString(const std::string& input);  // strips special chars
 
-std::string file_to_string(std::string filename);
-void file_to_vector(std::string filename, std::vector<std::string>& destination);
+std::string file_to_string(const std::string& filename);
+void file_to_vector(const std::string& filename, std::vector<std::string>& destination);
 
 std::string get_file_name(const std::string& filename);
 std::string get_file_extension(const std::string& filename);

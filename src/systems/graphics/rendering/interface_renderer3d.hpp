@@ -221,7 +221,7 @@ public:
 
   // vertex buffers
   virtual VertexBufferID CreateVertexBuffer(float* vertices, unsigned int verticesDataSize,
-                                            std::vector<unsigned int> indices,
+                                            const std::vector<unsigned int>& indices,
                                             e_VertexBufferUsage usage) = 0;
   virtual void UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
                                   unsigned int verticesDataSize) = 0;
@@ -267,7 +267,7 @@ public:
                                       int height) = 0;
 
   // render targets
-  virtual void SetRenderTargets(std::vector<e_TargetAttachment> targetAttachments) = 0;
+  virtual void SetRenderTargets(const std::vector<e_TargetAttachment>& targetAttachments) = 0;
 
   // utility
   virtual void SetFOV(float angle) = 0;

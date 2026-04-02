@@ -23,7 +23,7 @@ const real pi = 3.1415926535897932384626433832795028841972f;  // last decimal ro
 extern unsigned int fastrandseed;
 extern unsigned int max_uint;
 
-typedef real radian;
+using radian = real;
 
 void normalize(real v[3]);
 bool sign(real n);

@@ -18,7 +18,7 @@ namespace blunted {
 
 class Sound : public Object {
 public:
-  Sound(std::string name);
+  Sound(const std::string& name);
   virtual ~Sound();
 
   virtual void Exit();

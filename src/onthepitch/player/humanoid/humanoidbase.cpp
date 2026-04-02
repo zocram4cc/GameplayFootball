@@ -2342,19 +2342,19 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
 
   const std::string& animType = anim->GetAnimType();
 
-  if (animType.compare("ballcontrol") == 0) {
+  if (animType == "ballcontrol") {
     outgoingSwitchBias = 0.0f;
-  } else if (animType.compare("trap") == 0) {
+  } else if (animType == "trap") {
     outgoingSwitchBias = 0.0f;
-  } else if (animType.compare("interfere") == 0) {
+  } else if (animType == "interfere") {
     outgoingSwitchBias = 0.0f;
-  } else if (animType.compare("deflect") == 0) {
+  } else if (animType == "deflect") {
     outgoingSwitchBias = 1.0f;
-  } else if (animType.compare("sliding") == 0) {
+  } else if (animType == "sliding") {
     outgoingSwitchBias = 0.0f;
-  } else if (animType.compare("special") == 0) {
+  } else if (animType == "special") {
     outgoingSwitchBias = 1.0f;
-  } else if (animType.compare("trip") == 0) {
+  } else if (animType == "trip") {
     outgoingSwitchBias = 0.5f;  // direction partly predecided by collision function in match class
   } else if (touch) {
     outgoingSwitchBias = 1.0f;
@@ -2442,51 +2442,51 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
     maxAngleMod_overAnimAngle = 0;
     maxAngleMod_straightAnimAngle = 0.1f * pi * bonus;
   }
-  if (animType.compare("sliding") == 0) {
+  if (animType == "sliding") {
     maxAngleMod_underAnimAngle = 0.5f * pi;
     maxAngleMod_overAnimAngle = 0.5f * pi;
     maxAngleMod_straightAnimAngle = 0.5f * pi;
   }
 
-  if (animType.compare("movement") == 0) {
+  if (animType == "movement") {
     physicsBias *= 1.0f;
   }
 
-  if (animType.compare("ballcontrol") == 0) {
+  if (animType == "ballcontrol") {
     physicsBias *= 1.0f;
   }
-  if (animType.compare("trap") == 0) {
+  if (animType == "trap") {
     physicsBias *= 1.0f;
   }
 
-  if (animType.compare("shortpass") == 0) {
+  if (animType == "shortpass") {
     physicsBias *= 0.0f;
   }
-  if (animType.compare("highpass") == 0) {
+  if (animType == "highpass") {
     physicsBias *= 0.0f;
   }
-  if (animType.compare("shot") == 0) {
+  if (animType == "shot") {
     physicsBias *= 0.0f;
   }
 
-  if (animType.compare("interfere") == 0) {
+  if (animType == "interfere") {
     physicsBias *= 0.5f;
   }
-  if (animType.compare("deflect") == 0) {
+  if (animType == "deflect") {
     physicsBias *= 0.0f;
   }
 
-  if (animType.compare("sliding") == 0) {
+  if (animType == "sliding") {
     physicsBias *= 1.0f;
   }
-  if (animType.compare("trip") == 0) {
+  if (animType == "trip") {
     if (anim->GetVariable("triptype").compare("1") == 0)
       physicsBias *= 0.5f;
     else
       physicsBias *= 0.0f;
   }
 
-  if (animType.compare("special") == 0) {
+  if (animType == "special") {
     physicsBias *= 0.0f;
   }
   if (anim->GetVariable("incoming_special_state").compare("") != 0) {
@@ -2517,7 +2517,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
       desiredVector = desiredBodyDirectionRel.GetRotated2D(spatialState.angle);
     radian toDesiredAngle = desiredVector.GetAngle2D(animOutgoingVector);
     if (fabs(toDesiredAngle) <= 0.5f * pi ||
-        animType.compare("sliding") == 0) {  // if we want > x degrees, just skip it to next anim,
+        animType == "sliding") {  // if we want > x degrees, just skip it to next anim,
                                              // it'll only look weird otherwise
 
       radian animChange = animOutgoingVector.GetAngle2D(spatialState.directionVec);
@@ -2575,7 +2575,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
 
     float lagExp = 1.0f;
     if (mod_PointinessCurve && physicsBias > 0.0f &&
-        (animType.compare("ballcontrol") == 0 || animType.compare("movement") == 0)) {
+        (animType == "ballcontrol" || animType == "movement")) {
       lagExp = 1.4f - _cache_AgilityFactor * 0.8f;
       lagExp *= 1.2f - stat_agility * 0.4f;
       if (touch) {
@@ -2605,8 +2605,8 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
     // adapt sprint velocity to player's max velocity stat
 
     if (animVelo > walkSprintSwitch &&
-        (animType.compare("movement") == 0 || animType.compare("ballcontrol") == 0 ||
-         animType.compare("trap") == 0)) {
+        (animType == "movement" || animType == "ballcontrol" ||
+         animType == "trap")) {
       if (maxVelocity > animVelo) {  // only speed up, don't slow down. may be faster parts (jumps
                                      // and such) within anim, allow this
         adaptedAnimVelo = StretchSprintTo(animVelo, animSprintVelocity, maxVelocity);
@@ -2631,7 +2631,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
       maxFaster *= std::max(0.0f, adaptedAnimMovement.GetNormalizedMax(1.0f).GetDotProduct(
                                       adaptedDesiredMovement.GetNormalized(
                                           0)));  // only go faster if it's in the right direction
-    if (animType.compare("sliding") == 0)
+    if (animType == "sliding")
       maxFaster = 100;
     float desiredVelocity = adaptedDesiredMovement.GetLength();
     adaptedAnimVelo =
@@ -2760,16 +2760,16 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
 
     if (mod_MaxChange) {
       float maxChange = 0.03f;
-      if (animType.compare("trip") == 0)
+      if (animType == "trip")
         maxChange *= 0.7f;
-      if (animType.compare("sliding") == 0)
+      if (animType == "sliding")
         maxChange = 0.1f;
       // no power first few frames, so transitions are smoother
       // maxChange *= 0.3f + 0.7f * curve(NormalizedClamp(time_ms, 0.0f, 80.0f), 1.0f);
       float veloFactor =
           std::pow(NormalizedClamp(temporalMovement.GetLength(), 0, sprintVelocity), 1.5f);
       float firstStepFactor = veloFactor;
-      if (animType.compare("movement") == 0)
+      if (animType == "movement")
         firstStepFactor *= 0.4f;
       maxChange *= (1.0f - firstStepFactor) +
                    firstStepFactor * curve(NormalizedClamp(time_ms, 0.0f, 160.0f), 1.0f);
@@ -2799,7 +2799,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
 
     // air resistance
 
-    if (mod_AirResistance && animType.compare("sliding") != 0 && animType.compare("deflect") != 0) {
+    if (mod_AirResistance && animType != "sliding" && animType != "deflect") {
       float veloExp = 1.8f;
       float accelPower = 11.0f * accelerationMultiplier;
       float falloffStartVelo = idleDribbleSwitch;
@@ -2910,7 +2910,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
   }
 
   // body direction assist
-  if (mod_CheatBodyDirection && useDesiredBodyDirection && animType.compare("movement") == 0) {
+  if (mod_CheatBodyDirection && useDesiredBodyDirection && animType == "movement") {
     float angleFactor = 0.5f;
     radian maxAngle = 0.25f * pi;
 
@@ -2931,7 +2931,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
                 outgoingVelocityFactorInv * animLengthFactor * angleFactor * -maxAngle,
                 outgoingVelocityFactorInv * animLengthFactor * angleFactor * maxAngle);
 
-      // if (player->GetDebug() && animType.compare("movement") == 0) {
+      // if (player->GetDebug() && animType == "movement") {
       //   //printf("rotationOffset: %f radians\n", rotationOffset);
       //   SetYellowDebugPilon(spatialState.position + positions_ret.back() +
       //   resultingMovement.GetNormalized(0) * 3.0f); SetGreenDebugPilon(spatialState.position +
@@ -2942,7 +2942,7 @@ Vector3 HumanoidBase::CalculatePhysicsVector(Animation* anim, bool useDesiredMov
       // }
       rotationOffset_ret += maximizedRotationOffset;
 
-      // if (player->GetDebug() && animType.compare("movement") == 0) {
+      // if (player->GetDebug() && animType == "movement") {
       //   SetYellowDebugPilon(spatialState.position + Vector3(GetDirectionVec()) * 3.0f);
       //   SetGreenDebugPilon(spatialState.position +
       //   Vector3(GetDirectionVec().GetRotated2D(maximizedRotationOffset)) * 3.0f);

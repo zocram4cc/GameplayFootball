@@ -16,7 +16,7 @@ class Resource;
 template <typename T>
 class Loader {
 public:
-  virtual void Load(std::string filename, boost::intrusive_ptr<Resource<T>> resource) = 0;
+  virtual void Load(const std::string& filename, boost::intrusive_ptr<Resource<T>> resource) = 0;
 
 protected:
 };

@@ -10,32 +10,30 @@
 #include "managers/resourcemanager.hpp"
 #include "resources/audio_soundbuffer.hpp"
 #include "scene/iscene.hpp"
-#include "systems/audio/rendering/openal_renderer.hpp"
+#include "systems/audio/rendering/interface_audiorenderer.hpp"
 #include "systems/isystem.hpp"
 #include "systems/isystemscene.hpp"
 
 namespace blunted {
-
-class AudioRenderer;
 
 class AudioSystem : public ISystem {
 public:
   AudioSystem();
   virtual ~AudioSystem();
 
-  virtual void Initialize(const Properties& config);
-  virtual void Exit();
+  virtual void Initialize(const Properties& config) override;
+  virtual void Exit() override;
 
-  e_SystemType GetSystemType() const;
+  virtual e_SystemType GetSystemType() const override;
 
-  virtual ISystemScene* CreateSystemScene(std::shared_ptr<IScene> scene);
+  virtual ISystemScene* CreateSystemScene(std::shared_ptr<IScene> scene) override;
 
-  virtual ISystemTask* GetTask();
+  virtual ISystemTask* GetTask() override;
   virtual AudioRenderer* GetAudioRenderer();
 
   std::shared_ptr<ResourceManager<AudioSoundBuffer>> GetAudioSoundBufferResourceManager();
 
-  virtual std::string GetName() const { return "audio"; }
+  virtual std::string GetName() const override { return "audio"; }
 
 protected:
   const e_SystemType systemType;

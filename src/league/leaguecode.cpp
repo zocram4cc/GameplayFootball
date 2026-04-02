@@ -7,6 +7,9 @@
 
 #define BOOST_FILESYSTEM_VERSION 3
 
+#include <algorithm>
+#include <vector>
+
 #include "base/utils.hpp"
 #include "utils/database.hpp"
 #include "utils/xmlloader.hpp"
@@ -115,8 +118,7 @@ bool PrepareDatabaseForLeague() {
       "team1_id INTEGER, "
       "team2_id INTEGER, "
       "competition_id INTEGER, "
-      "tournament_id INTEGER, "
-      "timestamp DATETIME)");
+      "tournament_id INTEGER)");
 
   result = GetDB()->Query("ALTER TABLE players ADD COLUMN stats_temporal BLOB");
 
@@ -194,30 +196,94 @@ bool LoadLeague() {
   return true;
 }
 
-void GenerateSeasonCalendars() {
-  auto result = GetDB()->Query(
-      "SELECT strftime(\"%w\", timestamp) FROM settings LIMIT 1");  // day where season starts
-  int dayOfWeek = atoi(result->data.at(0).at(0).c_str());
+static void GenerateRoundRobinFixtures(int leagueID, int seasonYear,
+                                         const std::string& startDate) {
+  auto teamsResult = GetDB()->Query(
+      "SELECT id FROM teams WHERE league_id = " + int_to_str(leagueID) + " ORDER BY id");
+  if (teamsResult->data.empty()) return;
 
-  // we want to start on a saturday (day of week '6')
-  int offset = 6 - dayOfWeek;
-  int daysToSkip = 4;
-  int weekCounter = 0;
-  bool weekend = true;
-
-  bool ready = false;
-  while (!ready) {
-    offset += daysToSkip;
-    if (daysToSkip == 3) {
-      daysToSkip = 4;
-      weekend = true;
-      weekCounter++;
-    } else {
-      daysToSkip = 3;
-      weekend = false;
-    }
+  std::vector<int> teamIDs;
+  for (const auto& row : teamsResult->data) {
+    teamIDs.push_back(atoi(row.at(0).c_str()));
   }
 
-  // result = GetDB()->Query("UPDATE settings SET timestamp = date(timestamp, '+" +
-  // int_to_str(offset) + " day')"); delete result;
+  int n = static_cast<int>(teamIDs.size());
+  if (n < 2) return;
+
+  bool needsBye = (n % 2 != 0);
+  if (needsBye) teamIDs.push_back(-1);
+  int totalTeams = static_cast<int>(teamIDs.size());
+
+  struct Fixture {
+    int team1, team2;
+  };
+
+  auto generateHalf = [&](int roundOffset) {
+    std::vector<int> order = teamIDs;
+
+    int numRounds = totalTeams - 1;
+    for (int round = 0; round < numRounds; round++) {
+      std::vector<Fixture> roundMatches;
+
+      for (int i = 0; i < totalTeams / 2; i++) {
+        int t1 = order[i];
+        int t2 = order[totalTeams - 1 - i];
+        if (t1 != -1 && t2 != -1) {
+          if (roundOffset % 2 == 1) std::swap(t1, t2);
+          roundMatches.push_back({t1, t2});
+        }
+      }
+
+      int effectiveMatchDay = roundOffset * numRounds + round + 1;
+
+      for (const auto& m : roundMatches) {
+        GetDB()->Query(
+            "INSERT INTO calendar (timestamp, team1_id, team2_id, competition_id, tournament_id) "
+            "VALUES (date('" + startDate + "', '+" +
+            int_to_str((effectiveMatchDay - 1) * 7) + " day'), " +
+            int_to_str(m.team1) + ", " + int_to_str(m.team2) + ", " +
+            int_to_str(leagueID) + ", NULL)");
+      }
+
+      int last = order[totalTeams - 1];
+      for (int i = totalTeams - 1; i > 1; i--) {
+        order[i] = order[i - 1];
+      }
+      order[1] = last;
+    }
+  };
+
+  generateHalf(0);
+  generateHalf(1);
+}
+
+void GenerateSeasonCalendars() {
+  auto result = GetDB()->Query(
+      "SELECT timestamp, seasonyear FROM settings LIMIT 1");
+  if (result->data.empty() || result->data.at(0).size() < 2) return;
+
+  std::string startDate = result->data.at(0).at(0);
+
+  auto leaguesResult = GetDB()->Query("SELECT id FROM leagues ORDER BY id");
+  if (leaguesResult->data.empty()) return;
+
+  int seasonYear = atoi(result->data.at(0).at(1).c_str());
+
+  GetDB()->Query("DELETE FROM calendar");
+
+  for (const auto& row : leaguesResult->data) {
+    int leagueID = atoi(row.at(0).c_str());
+    GenerateRoundRobinFixtures(leagueID, seasonYear, startDate);
+  }
+
+  int totalFixtures = 0;
+  auto countResult = GetDB()->Query("SELECT COUNT(*) FROM calendar");
+  if (!countResult->data.empty() && !countResult->data.at(0).empty()) {
+    totalFixtures = atoi(countResult->data.at(0).at(0).c_str());
+  }
+
+  int numWeeks = totalFixtures > 0 ? 20 : 0;
+  result = GetDB()->Query("UPDATE settings SET timestamp = date(timestamp, '+" +
+                          int_to_str(numWeeks * 7) + " day'), seasonyear = " +
+                          int_to_str(seasonYear));
 }

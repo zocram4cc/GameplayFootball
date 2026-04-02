@@ -18,8 +18,8 @@ public:
   ~Console();
 
   // accepts values from base/log.hpp
-  void PrintLog(e_LogType logType, std::string className, std::string methodName,
-                std::string message);
+  void PrintLog(e_LogType logType, const std::string& className, const std::string& methodName,
+                const std::string& message);
   void Print(const std::string& string, const Vector3& color);
 
 protected:

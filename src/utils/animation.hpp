@@ -54,7 +54,7 @@ struct MovementHistoryEntry {
   int timeDiff_ms;
 };
 
-typedef std::vector<MovementHistoryEntry> MovementHistory;
+using MovementHistory = std::vector<MovementHistoryEntry>;
 
 // usage
 //
@@ -73,11 +73,11 @@ public:
   int GetFrameCount() const;
   int GetEffectiveFrameCount() const { return GetFrameCount() - 1; }
 
-  bool GetKeyFrame(std::string nodeName, int frame, Quaternion& orientation, Vector3& position,
+  bool GetKeyFrame(const std::string& nodeName, int frame, Quaternion& orientation, Vector3& position,
                    bool getOrientation = true, bool getPosition = true) const;
-  void SetKeyFrame(std::string nodeName, int frame, const Quaternion& orientation,
+  void SetKeyFrame(const std::string& nodeName, int frame, const Quaternion& orientation,
                    const Vector3& position = Vector3(0, 0, 0));
-  void DeleteKeyFrame(std::string nodeName, int frame);
+  void DeleteKeyFrame(const std::string& nodeName, int frame);
   void GetInterpolatedValues(const std::map<int, KeyFrame>& animation, int frame,
                              Quaternion& orientation, Vector3& position, bool getOrientation = true,
                              bool getPosition = true) const;

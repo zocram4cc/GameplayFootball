@@ -20,7 +20,7 @@ class Skybox;
 
 class Camera : public Object {
 public:
-  Camera(std::string name);
+  Camera(const std::string& name);
   virtual ~Camera();
 
   virtual void Init();

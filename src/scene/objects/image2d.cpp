@@ -10,7 +10,7 @@
 
 namespace blunted {
 
-Image2D::Image2D(std::string name) : Object(name, e_ObjectType_Image2D) {
+Image2D::Image2D(const std::string& name) : Object(name, e_ObjectType_Image2D) {
   // printf("CREATING IMAGE\n");
 }
 

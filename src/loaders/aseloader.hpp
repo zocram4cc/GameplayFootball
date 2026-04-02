@@ -27,14 +27,14 @@ public:
   virtual ~ASELoader();
 
   // ----- encapsulating load function
-  virtual void Load(std::string filename, boost::intrusive_ptr<Resource<GeometryData>> resource);
+  virtual void Load(const std::string& filename, boost::intrusive_ptr<Resource<GeometryData>> resource);
 
   // ----- interpreter for the .ase treedata
   void Build(const s_tree* data, boost::intrusive_ptr<Resource<GeometryData>> resource);
 
   // ----- per-object interpreters
   void BuildTriangleMesh(const s_tree* data, boost::intrusive_ptr<Resource<GeometryData>> resource,
-                         std::vector<s_Material> materialList);
+                         const std::vector<s_Material>& materialList);
 
 protected:
   int triangleCount;

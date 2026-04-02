@@ -596,7 +596,7 @@ void OpenGLRenderer3D::Exit() {
     noiseTexID = -1;
   }
 
-  std::map<std::string, Shader>::iterator shaderIter = shaders.begin();
+  auto shaderIter = shaders.begin();
   while (shaderIter != shaders.end()) {
     mapping.glDeleteShader((*shaderIter).second.vertexShaderID);
     mapping.glDeleteShader((*shaderIter).second.fragmentShaderID);
@@ -1001,10 +1001,11 @@ GLenum GetGLVertexBufferUsage(e_VertexBufferUsage usage) {
 }
 
 VertexBufferID OpenGLRenderer3D::CreateVertexBuffer(float* vertices, unsigned int verticesDataSize,
-                                                    std::vector<unsigned int> indices,
+                                                    const std::vector<unsigned int>& indices,
                                                     e_VertexBufferUsage usage) {
   GLuint iid;  // element indices
   unsigned int vertexArrayID;
+  std::vector<unsigned int> effectiveIndices = indices;
 
   bool pingPong = false;
   if (usage == e_VertexBufferUsage_DynamicDraw || usage == e_VertexBufferUsage_DynamicRead ||
@@ -1040,17 +1041,18 @@ VertexBufferID OpenGLRenderer3D::CreateVertexBuffer(float* vertices, unsigned in
 
     // generate a buffer for the indices
 
-    if (indices.size() == 0) {
+    if (effectiveIndices.size() == 0) {
       for (unsigned int i = 0; i < verticesDataSize / GetTriangleMeshElementCount() / 3; i++) {
-        indices.push_back(i);
+        effectiveIndices.push_back(i);
       }
     }
     mapping.glGenBuffers(1, &iid);
     mapping.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iid);
-    mapping.glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), nullptr,
-                         GetGLVertexBufferUsage(usage));
-    mapping.glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indices.size() * sizeof(unsigned int),
-                            &indices[0]);
+    mapping.glBufferData(GL_ELEMENT_ARRAY_BUFFER, effectiveIndices.size() * sizeof(unsigned int),
+                         nullptr, GetGLVertexBufferUsage(usage));
+    mapping.glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
+                            effectiveIndices.size() * sizeof(unsigned int),
+                            &effectiveIndices[0]);
 
 #define BUFFER_OFFSET(i) ((char*)nullptr + (i))
     for (int i = 0; i < GetTriangleMeshElementCount(); i++) {
@@ -1416,7 +1418,7 @@ void OpenGLRenderer3D::RenderVertexBuffer(
       int start = vbIndex->startIndex;
       int count = vbIndex->size;
 
-      // if (currentShader->first.compare("zphase") == 0) printf("drawing %i elements in zphase
+      // if (currentShader->first == "zphase") printf("drawing %i elements in zphase
       // mode\n", count);
 
       if (sequential)
@@ -1475,7 +1477,7 @@ void OpenGLRenderer3D::RenderAABB(std::list<VertexBufferQueueEntry>& vertexBuffe
 
   mapping.glBegin(GL_LINES);
 
-  std::list<VertexBufferQueueEntry>::iterator vertexBufferQueueIter = vertexBufferQueue.begin();
+  auto vertexBufferQueueIter = vertexBufferQueue.begin();
   while (vertexBufferQueueIter != vertexBufferQueue.end()) {
     VertexBufferQueueEntry *queueEntry = &(*vertexBufferQueueIter);
 
@@ -1544,7 +1546,7 @@ void OpenGLRenderer3D::RenderAABB(std::list<LightQueueEntry>& lightQueue) {
 
   mapping.glBegin(GL_LINES);
 
-  std::list<LightQueueEntry>::iterator lightQueueIter = lightQueue.begin();
+  auto lightQueueIter = lightQueue.begin();
   while (lightQueueIter != lightQueue.end()) {
     LightQueueEntry *queueEntry = &(*lightQueueIter);
 
@@ -2013,7 +2015,7 @@ void OpenGLRenderer3D::SetRenderBufferStorage(e_InternalPixelFormat internalPixe
 
 // render targets
 
-void OpenGLRenderer3D::SetRenderTargets(std::vector<e_TargetAttachment> targetAttachments) {
+void OpenGLRenderer3D::SetRenderTargets(const std::vector<e_TargetAttachment>& targetAttachments) {
   GLenum targets[targetAttachments.size()];
   for (int i = 0; i < (signed int)targetAttachments.size(); i++) {
     targets[i] = GetGLTargetAttachment(targetAttachments.at(i));

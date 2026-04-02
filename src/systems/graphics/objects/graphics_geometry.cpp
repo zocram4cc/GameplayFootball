@@ -194,7 +194,7 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
 
   // std::vector<Triangle*> triangles;
 
-  float* vertices = 0;
+  float* vertices = nullptr;
   int verticesDataSize = 0;
   std::vector<unsigned int> indices;
   std::vector<unsigned int> indicesTest;
@@ -302,7 +302,7 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
   Renderer3D* renderer3D = caller->GetGraphicsScene()->GetGraphicsSystem()->GetRenderer3D();
 
   caller->vertexBuffer->resourceMutex.lock();
-  float* vertices = 0;
+  float* vertices = nullptr;
   int currentVerticesDataSize = caller->vertexBuffer->GetResource()->GetVerticesDataSize();
 
   std::vector<unsigned int> indices;

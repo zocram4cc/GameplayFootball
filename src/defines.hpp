@@ -34,7 +34,7 @@
 
 namespace blunted {
 
-typedef float real;
+using real = float;
 
 }
 

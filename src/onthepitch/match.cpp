@@ -2063,9 +2063,9 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
       std::list<boost::intrusive_ptr<Geometry>>::iterator victimIter = victimObjectList.begin();
       while (victimIter != victimObjectList.end()) {
         std::string bodyPartName = (*victimIter)->GetName();
-        if (bodyPartName.compare("left_foot") == 0 || bodyPartName.compare("right_foot") == 0 ||
-            bodyPartName.compare("left_lowerleg") == 0 ||
-            bodyPartName.compare("right_lowerleg") == 0
+        if (bodyPartName == "left_foot" || bodyPartName == "right_foot" ||
+            bodyPartName == "left_lowerleg" ||
+            bodyPartName == "right_lowerleg"
             /*bodyPartName == "left_upperleg" || bodyPartName == "right_upperleg"*/) {
           if (objAABB.Intersects((*victimIter)->GetAABB())) {
             // printf("HIT: %s hits %s\n", (*objIter)->GetName().c_str(),

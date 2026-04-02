@@ -89,41 +89,53 @@ void main(void) {
 
   // should be camerapos, why isn't it? vec3(inverse(viewMatrix)[3])
 
-  vec3 eyeToFrag = worldPosition.xyz - cameraPosition;
-  vec3 refl = reflect(normalize(eyeToFrag), normal);
+  vec3 viewDir = normalize(cameraPosition - worldPosition.xyz);
+  vec3 halfDir = normalize(lightDir + viewDir);
 
   vec4 base = texture2D(map_albedo, texCoord);
 
   float spec = base.w;
-  vec3 specularColor = lightColor;// * 0.2f + base.rgb * 0.8f;
-  vec3 specular = pow(max(0.0f, dot(refl, lightDir)), shininess * 128.0f) * spec * falloff * specularColor;
+  vec3 specularColor = lightColor;
+  
+  // Energy-conserving Blinn-Phong
+  float shininessFactor = shininess * 128.0f + 1.0f; // prevent div by zero
+  float energyConservation = (shininessFactor + 8.0f) / (8.0f * 3.14159265f);
+  vec3 specular = pow(max(0.0f, dot(normal, halfDir)), shininessFactor) * spec * falloff * specularColor * energyConservation;
 
   float shaded = 1.0;
   if (has_shadow) {
 
-    const int poisson_size = 9;
+    const int poisson_size = 16;
     vec2 poisson[poisson_size];
-    // poisson[0] = vec2( 0.326, -0.406);
-    // poisson[1] = vec2(-0.840, -0.074);
-    // poisson[2] = vec2( 0.396,  0.457);
+    poisson[0] = vec2( -0.94201624, -0.39906216 );
+    poisson[1] = vec2( 0.94558609, -0.76890725 );
+    poisson[2] = vec2( -0.094184101, -0.92938870 );
+    poisson[3] = vec2( 0.34495938, 0.29387760 );
+    poisson[4] = vec2( -0.91588581, 0.45771432 );
+    poisson[5] = vec2( -0.81544232, -0.87912464 );
+    poisson[6] = vec2( -0.38277543, 0.27676845 );
+    poisson[7] = vec2( 0.97484398, 0.75648379 );
+    poisson[8] = vec2( 0.44323325, -0.97511554 );
+    poisson[9] = vec2( 0.53742981, -0.47373420 );
+    poisson[10] = vec2( -0.26496911, -0.41893023 );
+    poisson[11] = vec2( 0.79197514, 0.19090188 );
+    poisson[12] = vec2( -0.24188840, 0.99706507 );
+    poisson[13] = vec2( -0.81409955, 0.91437590 );
+    poisson[14] = vec2( 0.19984126, 0.78641367 );
+    poisson[15] = vec2( 0.14383161, -0.14100790 );
 
-    poisson[0] = vec2( 0.500,  0.500);
-    poisson[1] = vec2(-0.500,  0.500);
-    poisson[2] = vec2( 0.500, -0.500);
-    poisson[3] = vec2(-0.500, -0.500);
-
-    poisson[4] = vec2( 1.000,  0.000);
-    poisson[5] = vec2( 0.000,  1.000);
-    poisson[6] = vec2(-1.000,  0.000);
-    poisson[7] = vec2( 0.000, -1.000);
-
-    poisson[8] = vec2( 0.000,  0.000);
+    // pseudo-random rotation
+    float random = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+    float s = sin(random * 6.2831853);
+    float c = cos(random * 6.2831853);
+    mat2 rot = mat2(c, -s, s, c);
 
     float offset = -0.0002f;
     vec4 projectedFrag = lightViewProjectionMatrix * vec4(worldPosition, 1.0f);
     for (int i = 0; i < poisson_size; i++) {
-      float lightOccluderDist = textureProj(map_shadow, projectedFrag + (vec4(poisson[i], 0, 0) / 1500.0f) + vec4(0, 0, offset, 0));
-      shaded -= (1.0f - lightOccluderDist) * (1.0f / poisson_size);//0.25f;
+      vec2 rotatedOffset = rot * poisson[i];
+      float lightOccluderDist = textureProj(map_shadow, projectedFrag + (vec4(rotatedOffset, 0, 0) / 1200.0f) + vec4(0, 0, offset, 0));
+      shaded -= (1.0f - lightOccluderDist) * (1.0f / float(poisson_size));
     }
 
     // nice debug

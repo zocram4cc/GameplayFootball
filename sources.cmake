@@ -134,7 +134,7 @@ set(SYSTEMS_AUDIO_RESOURCES_HEADERS
         )
 
 set(SYSTEMS_AUDIO_RENDERING_HEADERS
-        src/systems/audio/rendering/openal_renderer.hpp
+        src/systems/audio/rendering/null_audio_renderer.hpp
         src/systems/audio/rendering/interface_audiorenderer.hpp
         src/systems/audio/rendering/audio_messages.hpp
         )
@@ -145,10 +145,17 @@ set(SYSTEMS_AUDIO_SOURCES
         src/systems/audio/objects/audio_audioreceiver.cpp
         src/systems/audio/objects/audio_sound.cpp
         src/systems/audio/resources/audio_soundbuffer.cpp
-        src/systems/audio/rendering/openal_renderer.cpp
+        src/systems/audio/rendering/null_audio_renderer.cpp
         src/systems/audio/rendering/audio_messages.cpp
         src/systems/audio/audio_object.cpp
         )
+
+if(OpenAL_FOUND)
+  list(APPEND SYSTEMS_AUDIO_RENDERING_HEADERS
+       src/systems/audio/rendering/openal_renderer.hpp)
+  list(APPEND SYSTEMS_AUDIO_SOURCES
+       src/systems/audio/rendering/openal_renderer.cpp)
+endif()
 
 set(LOADERS_HEADERS
         src/loaders/aseloader.hpp
@@ -471,6 +478,7 @@ set(HID_SOURCES
 )
 
 set(MENU_HEADERS
+   src/menu/career/career_database.hpp
    src/menu/career/careerpages.hpp
    src/menu/league/league_calendar.hpp
    src/menu/league/league_standings.hpp
@@ -510,6 +518,7 @@ set(MENU_HEADERS
 )
 
 set(MENU_SOURCES
+   src/menu/career/career_database.cpp
    src/menu/career/careerpages.cpp
    src/menu/credits.cpp
    src/menu/league/league_system.cpp

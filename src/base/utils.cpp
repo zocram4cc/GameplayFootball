@@ -90,7 +90,7 @@ const s_treeentry* treeentry_find(const s_tree* tree, const std::string needle) 
 
   for (unsigned int i = 0; i < tree->entries.size(); i++) {
     assert(tree->entries.at(i));
-    if (tree->entries.at(i)->name.compare(needle) == 0)
+    if (tree->entries.at(i)->name == needle)
       return tree->entries.at(i);
   }
   return nullptr;
@@ -101,7 +101,7 @@ const s_tree* tree_find(const s_tree* tree, const std::string needle) {
 
   for (unsigned int i = 0; i < tree->entries.size(); i++) {
     assert(tree->entries.at(i));
-    if (tree->entries.at(i)->name.compare(needle) == 0) {
+    if (tree->entries.at(i)->name == needle) {
       assert(tree->entries.at(i)->subtree);
       return tree->entries.at(i)->subtree;
     }
@@ -111,7 +111,7 @@ const s_tree* tree_find(const s_tree* tree, const std::string needle) {
 
 // string functions
 
-std::string stringchomp(std::string input, char chomp) {
+std::string stringchomp(const std::string& input, char chomp) {
   if (input.find_first_not_of(chomp) < input.length())
     return (input.substr(input.find_first_not_of(chomp)));
   return "";
@@ -144,7 +144,7 @@ std::string StripString(const std::string& input) {
   return result;
 }
 
-std::string file_to_string(std::string filename) {
+std::string file_to_string(const std::string& filename) {
   char line[1024];
   std::ifstream file;
 
@@ -166,7 +166,7 @@ std::string file_to_string(std::string filename) {
   return source;
 }
 
-void file_to_vector(std::string filename, std::vector<std::string>& destination) {
+void file_to_vector(const std::string& filename, std::vector<std::string>& destination) {
   char line[32767];
   std::ifstream file;
 
@@ -222,7 +222,7 @@ std::string GetStringFromVector(const Vector3& vec) {
 }
 
 Vector3 GetVectorFromString(const std::string& vecString) {
-  if (vecString.compare("") == 0) {
+  if (vecString.empty()) {
     printf("vectorfromstring warning, no value\n");
     return Vector3(0.0f);
   }

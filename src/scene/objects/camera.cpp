@@ -12,7 +12,7 @@
 
 namespace blunted {
 
-Camera::Camera(std::string name) : Object(name, e_ObjectType_Camera) {}
+Camera::Camera(const std::string& name) : Object(name, e_ObjectType_Camera) {}
 
 Camera::~Camera() {}
 

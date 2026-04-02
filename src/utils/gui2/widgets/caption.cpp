@@ -132,9 +132,9 @@ void Gui2Caption::Redraw() {
 
 void Gui2Caption::SetCaption(const std::string& newCaption) {
   std::string adaptedCaption = newCaption;
-  if (adaptedCaption.compare("") == 0)
+  if (adaptedCaption.empty())
     adaptedCaption = " ";
-  if (caption.compare(adaptedCaption) != 0) {
+  if (caption != adaptedCaption) {
     caption = adaptedCaption;
     std::transform(caption.begin(), caption.end(), caption.begin(), ::toupper);
     Redraw();

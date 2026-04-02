@@ -13,7 +13,7 @@
 
 namespace blunted {
 
-Scene3D::Scene3D(std::string name) : Scene(name, e_SceneType_Scene3D) {
+Scene3D::Scene3D(const std::string& name) : Scene(name, e_SceneType_Scene3D) {
   // printf("CREATING SCENE3D\n");
   boost::intrusive_ptr<Node> root(new Node("Scene3D root node"));
   hierarchyRoot = root;

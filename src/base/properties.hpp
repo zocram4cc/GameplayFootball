@@ -24,7 +24,7 @@
 
 namespace blunted {
 
-typedef std::map<std::string, std::string> map_Properties;
+using map_Properties = std::map<std::string, std::string>;
 
 class Vector3;
 
@@ -43,7 +43,7 @@ public:
   bool GetBool(const char* name, bool defaultValue = false) const;
   real GetReal(const char* name, real defaultValue = 0) const;
   int GetInt(const char* name, int defaultValue = 0) const;
-  Vector3 GetVector3(const char* name, Vector3 defaultValue = Vector3(0, 0, 0)) const;
+  Vector3 GetVector3(const char* name, const Vector3& defaultValue = Vector3(0, 0, 0)) const;
   void AddProperties(const Properties* userprops);
   void AddProperties(const Properties& userprops);
   const map_Properties* GetProperties() const;

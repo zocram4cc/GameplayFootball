@@ -218,14 +218,23 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
       windowManager, "caption_league_start_new_currency", 0, 0, 30, 2.5, "Select currency");
   Gui2Caption* saveNameCaption = new Gui2Caption(
       windowManager, "caption_league_start_new_savegamename", 0, 0, 30, 2.5, "Savegame name");
-  Gui2Caption* managerNameCaption = new Gui2Caption(
+   Gui2Caption* managerNameCaption = new Gui2Caption(
       windowManager, "caption_league_start_new_managername", 0, 0, 30, 2.5, "Manager name");
 
+  Gui2Caption* teamSelectCaption = new Gui2Caption(
+      windowManager, "caption_league_start_new_teamselect", 0, 0, 30, 2.5, "Select your team");
+
   databaseSelectButton = new Gui2Button(windowManager, "button_league_start_new_dbselect", 0, 0, 30,
-                                        3, data_SelectedDatabase);
+                                         3, data_SelectedDatabase);
   databaseSelectButton->sig_OnClick.connect([this](...) { GoDatabaseSelectDialog(); });
 
-  currencySelectPulldown =
+   teamSelectPulldown =
+       new Gui2Pulldown(windowManager, "pulldown_league_start_new_teamselect", 0, 0, 30, 3);
+   teamSelectPulldown->sig_OnChange.connect([this](Gui2Pulldown* pd) {
+     data_SelectedTeamID = pd->GetSelected();
+   });
+
+   currencySelectPulldown =
       new Gui2Pulldown(windowManager, "pulldown_league_start_new_currencyselect", 0, 0, 30, 3);
   currencySelectPulldown->AddEntry("Euro", "euro");
   currencySelectPulldown->AddEntry("Dollar", "dollar");
@@ -263,6 +272,14 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridDBSelect->SetWrapping(false);
   grid->AddView(gridDBSelect, 0, 0);
 
+  Gui2Grid* gridTeamSelect =
+      new Gui2Grid(windowManager, "grid_league_start_new_teamselect", 0, 0, 1, 1);
+  gridTeamSelect->AddView(teamSelectCaption, 0, 0);
+  gridTeamSelect->AddView(teamSelectPulldown, 1, 0);
+  gridTeamSelect->UpdateLayout(0.0, 0.0, 0.5, 0.5);
+  gridTeamSelect->SetWrapping(false);
+  grid->AddView(gridTeamSelect, 1, 0);
+
   Gui2Grid* gridCurrencySelect =
       new Gui2Grid(windowManager, "grid_league_start_new_choices_currencyselect", 0, 0, 1, 1);
   gridCurrencySelect->AddView(currencySelectCaption, 0, 0);
@@ -279,7 +296,7 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridSaveName->AddView(saveNameInput, 1, 0);
   gridSaveName->UpdateLayout(0.0, 0.0, 0.5, 0.5);
   gridSaveName->SetWrapping(false);
-  grid->AddView(gridSaveName, 3, 0);
+  grid->AddView(gridSaveName, 4, 0);
 
   Gui2Grid* gridManagerName =
       new Gui2Grid(windowManager, "grid_league_start_new_choices_managername", 0, 0, 1, 1);
@@ -287,9 +304,9 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridManagerName->AddView(managerNameInput, 1, 0);
   gridManagerName->UpdateLayout(0.0, 0.0, 0.5, 0.5);
   gridManagerName->SetWrapping(false);
-  grid->AddView(gridManagerName, 4, 0);
+  grid->AddView(gridManagerName, 5, 0);
 
-  grid->AddView(proceedButton, 5, 0);
+  grid->AddView(proceedButton, 6, 0);
 
   grid->UpdateLayout(0.0, 0.0, 0.0, 3.0);
   frame->AddView(grid);
@@ -345,10 +362,29 @@ void LeagueStartNewPage::CloseDatabaseSelectDialog() {
   if (databaseSelectBrowser->GetClickedEntry().type == e_DirEntryType_Directory) {
     data_SelectedDatabase = databaseSelectBrowser->GetClickedEntry().name;
     databaseSelectButton->SetCaption(data_SelectedDatabase);
+    RefreshTeamSelect();
   }
 
   databaseSelectDialog->Exit();
   delete databaseSelectDialog;
+}
+
+void LeagueStartNewPage::RefreshTeamSelect() {
+  teamSelectPulldown->ClearEntries();
+  try {
+    auto result = GetDB()->Query("SELECT id, name FROM teams ORDER BY name");
+    for (unsigned int r = 0; r < result->data.size(); r++) {
+      std::string id = result->data.at(r).at(0);
+      std::string name = result->data.at(r).at(1);
+      teamSelectPulldown->AddEntry(name, id);
+    }
+  } catch (...) {
+    teamSelectPulldown->AddEntry("Select a database first", "0");
+  }
+  if (data_SelectedTeamID.empty()) {
+    data_SelectedTeamID = "0";
+  }
+  teamSelectPulldown->SetSelected(0);
 }
 
 void LeagueStartNewPage::GoProceed() {
@@ -460,7 +496,8 @@ void LeagueStartNewPage::CloseCreateSaveDialog() {
     auto result = GetDB()->Query(
         "INSERT INTO settings (managername, team_id, currency, difficulty, seasonyear, timestamp) "
         "VALUES ('" +
-        managerNameInput->GetText() + "', 5, '" + currencySelectPulldown->GetSelected() + "', " +
+        managerNameInput->GetText() + "', " + data_SelectedTeamID + ", '" +
+        currencySelectPulldown->GetSelected() + "', " +
         real_to_str(difficultySlider->GetValue()) + ", 2013, '2013-06-01')");
 
     GenerateSeasonCalendars();

@@ -16,7 +16,7 @@ namespace blunted {
 
 class AudioReceiver : public Object {
 public:
-  AudioReceiver(std::string name);
+  AudioReceiver(const std::string& name);
   virtual ~AudioReceiver();
 
   virtual void Init();

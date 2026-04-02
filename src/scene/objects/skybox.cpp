@@ -7,7 +7,7 @@
 
 namespace blunted {
 
-Skybox::Skybox(std::string name) : Geometry(name, e_ObjectType_Skybox) {
+Skybox::Skybox(const std::string& name) : Geometry(name, e_ObjectType_Skybox) {
   localMode = e_LocalMode_Absolute;
 }
 

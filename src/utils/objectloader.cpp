@@ -294,7 +294,7 @@ void ObjectLoader::InterpretProperties(const map_XMLTree& tree, Properties& prop
 }
 
 e_LocalMode ObjectLoader::InterpretLocalMode(const std::string& value) const {
-  if (value.compare("absolute") == 0) {
+  if (value == "absolute") {
     return e_LocalMode_Absolute;
   } else {
     return e_LocalMode_Relative;

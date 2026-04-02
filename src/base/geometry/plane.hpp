@@ -13,7 +13,7 @@
 namespace blunted {
 
 class Plane;
-typedef std::vector<Plane> vector_Planes;
+using vector_Planes = std::vector<Plane>;
 
 class Plane {
   // vector 0 = a position on the plane

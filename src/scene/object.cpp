@@ -9,7 +9,8 @@
 
 namespace blunted {
 
-Object::Object(std::string name, e_ObjectType objectType) : Spatial(name), objectType(objectType) {
+Object::Object(const std::string& name, e_ObjectType objectType)
+    : Spatial(name), objectType(objectType) {
   MustUpdateSpatialData clear;
   clear.haveTo = false;
   clear.excludeSystem = e_SystemType_None;

@@ -20,7 +20,7 @@ void LogClose();
 
 boost::signals2::connection BindLog(const signal_LogCallback::slot_type& slot);
 
-void Log(e_LogType logType, std::string className, std::string methodName, std::string message);
+void Log(e_LogType logType, const std::string& className, const std::string& methodName, const std::string& message);
 
 }  // namespace blunted
 

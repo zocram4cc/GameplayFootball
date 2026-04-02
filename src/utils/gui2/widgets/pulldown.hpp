@@ -25,6 +25,7 @@ public:
   virtual ~Gui2Pulldown();
 
   void AddEntry(const std::string& caption, const std::string& name);
+  void ClearEntries();
   void PullDownOrUp();
   void SetSelected(int selectedEntry);
   std::string GetSelected() const;

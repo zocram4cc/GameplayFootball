@@ -8,7 +8,7 @@
 
 namespace blunted {
 
-typedef Lockable<std::vector<std::shared_ptr<IScene>>> vector_Scenes;
+using vector_Scenes = Lockable<std::vector<std::shared_ptr<IScene>>>;
 
 class SceneManager : public Singleton<SceneManager> {
   friend class Singleton<SceneManager>;

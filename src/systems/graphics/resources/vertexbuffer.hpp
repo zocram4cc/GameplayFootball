@@ -21,9 +21,9 @@ public:
   virtual ~VertexBuffer();
 
   void SetTriangleMesh(float* vertices, unsigned int verticesDataSize,
-                       std::vector<unsigned int> indices);
+                       const std::vector<unsigned int>& indices);
   void TriangleMeshWasUpdatedExternally(unsigned int verticesDataSize,
-                                        std::vector<unsigned int> indices);
+                                        const std::vector<unsigned int>& indices);
   VertexBufferID CreateOrUpdateVertexBuffer(Renderer3D* renderer3D, bool dynamicBuffer);
 
   float* GetTriangleMesh();

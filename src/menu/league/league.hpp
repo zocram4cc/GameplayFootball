@@ -61,18 +61,21 @@ protected:
   void CloseDatabaseSelectDialog();
   void GoProceed();
   void CloseCreateSaveDialog();
+  void RefreshTeamSelect();
 
   Gui2Button* databaseSelectButton;
   Gui2Pulldown* currencySelectPulldown;
   Gui2Slider* difficultySlider;
   Gui2EditLine* saveNameInput;
   Gui2EditLine* managerNameInput;
+  Gui2Pulldown* teamSelectPulldown;
 
   Gui2Dialog* databaseSelectDialog;
   Gui2FileBrowser* databaseSelectBrowser;
   Gui2View* previousFocus;
 
   std::string data_SelectedDatabase;
+  std::string data_SelectedTeamID;
 
   Gui2Dialog* createSaveDialog;
 

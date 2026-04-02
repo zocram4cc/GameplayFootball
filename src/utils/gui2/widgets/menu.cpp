@@ -46,7 +46,7 @@ void Gui2Menu::_AddSubmenu(Gui2Menu* view) {
 }
 
 void Gui2Menu::_RemoveSubmenu(Gui2Menu* view) {
-  std::vector<Gui2Menu*>::iterator iter = subMenus.begin();
+  auto iter = subMenus.begin();
   while (iter != subMenus.end()) {
     if (*iter == view)
       iter = subMenus.erase(iter);

@@ -96,7 +96,7 @@ void ThreadHud::Execute() {
           time_ms;  // maybe not actually ended yet, but 'ended for now' since we cannot foresee the
                     // future. this way at least it can be displayed.
 
-      if (commandName.compare(currentItem.commandName) != 0) {
+      if (commandName != currentItem.commandName) {
         // close current
         isChanged = true;
       }

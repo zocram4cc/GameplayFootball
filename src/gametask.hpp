@@ -18,18 +18,18 @@ using namespace blunted;
 
 class UpdateFullbodyModel : public Command {
 public:
-  UpdateFullbodyModel(std::vector<PlayerBase*> playersToProcess)
+  UpdateFullbodyModel(const std::vector<PlayerBase*>& playersToProcess)
       : Command("UpdateFullBodyModel"), playersToProcess(playersToProcess) {};
   virtual ~UpdateFullbodyModel() {};
 
 protected:
   void Update() {
-    for (unsigned int i = 0; i < playersToProcess.size(); i++) {
-      playersToProcess.at(i)->UpdateFullbodyModel();
+    for (auto* player : playersToProcess) {
+      player->UpdateFullbodyModel();
     }
   }
 
-  virtual bool Execute(void* caller = nullptr) {
+  virtual bool Execute(void* caller = nullptr) override {
     Update();
     return true;
   }

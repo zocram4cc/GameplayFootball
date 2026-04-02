@@ -12,7 +12,7 @@ namespace blunted {
 
 class Skybox : public Geometry {
 public:
-  Skybox(std::string name);
+  Skybox(const std::string& name);
   virtual ~Skybox();
 
 protected:

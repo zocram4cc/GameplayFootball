@@ -10,7 +10,7 @@
 
 namespace blunted {
 
-Joint::Joint(std::string name) : Object(name, e_ObjectType_Joint) {}
+Joint::Joint(const std::string& name) : Object(name, e_ObjectType_Joint) {}
 
 Joint::~Joint() {}
 

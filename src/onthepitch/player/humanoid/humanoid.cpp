@@ -580,8 +580,8 @@ void Humanoid::Process() {
         // targetPlayer = 0;//currentAnim->originatingCommand.touchInfo.targetPlayer;
         Vector3 tmpBallDirection = ballDirection;
         float tmpBallPower = ballPower;
-        Player* tmpTargetPlayer = 0;
-        Player* forcedTargetPlayer = 0;
+        Player* tmpTargetPlayer = nullptr;
+        Player* forcedTargetPlayer = nullptr;
         AI_GetPass(CastPlayer(), currentAnim->originatingCommand.desiredFunctionType,
                    inputDirection, currentAnim->originatingCommand.touchInfo.inputPower,
                    currentAnim->originatingCommand.touchInfo.autoDirectionBias,
@@ -2742,7 +2742,7 @@ signed int Humanoid::GetBestCheatableAnimID(
         } else {
           FFO.Rotate2D(FixAngle(touchMovement.GetNormalized(Vector3(0, -1, 0)).GetAngle2D()));
         }
-        // if (player->GetDebug() && animType.compare("ballcontrol") == 0) {
+        // if (player->GetDebug() && animType == "ballcontrol") {
         //   SetGreenDebugPilon(spatialState.position);
         //   SetYellowDebugPilon(spatialState.position + FFO.GetRotated2D(spatialState.angle)
         //   * 10.0f);

@@ -59,7 +59,14 @@ void main(void) {
   texCoord.x /= contextWidth;
   texCoord.y /= contextHeight;
 
-  vec4 accum = texture2D(map_accumulation, texCoord);
+  // Chromatic Aberration
+  vec2 caOffset = (texCoord - 0.5) * 0.003;
+  vec4 accum;
+  accum.r = texture2D(map_accumulation, texCoord + caOffset).r;
+  accum.g = texture2D(map_accumulation, texCoord).g;
+  accum.b = texture2D(map_accumulation, texCoord - caOffset).b;
+  accum.a = 1.0;
+
   vec3 base = accum.rgb;
 
   vec4 modifier = texture2D(map_modifier, texCoord);
@@ -129,6 +136,12 @@ void main(void) {
 
   fragColor = ContrastSaturationBrightness(fragColor, brightness, 1.0f, saturation);
   fragColor = AlternateContrast(fragColor, contrastBias);
+  
+  // Cinematic Vignette
+  vec2 uv = texCoord * 2.0 - 1.0;
+  float vignette = max(0.0, 1.0 - dot(uv, uv) * 0.35);
+  fragColor *= pow(vignette, 1.5);
+
   fragColor = clamp(fragColor, 0.0, 1.0);
 
   //gl_FragColor = vec4(fragColor, 0);

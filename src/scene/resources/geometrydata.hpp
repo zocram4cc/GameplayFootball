@@ -42,9 +42,9 @@ public:
   void DeleteTriangleMeshes();
   // todo: what about resource acquisition is ownership?
   void SetTriangleMesh(Material material, float* vertices, int verticesDataSize,
-                       std::vector<unsigned int> indices);
+                       const std::vector<unsigned int>& indices);
   void AddTriangleMesh(Material material, float* vertices, int verticesDataSize,
-                       std::vector<unsigned int> indices);
+                       const std::vector<unsigned int>& indices);
   std::vector<MaterializedTriangleMesh> GetTriangleMeshes();
   std::vector<MaterializedTriangleMesh>& GetTriangleMeshesRef();
   void SetDynamic(bool dynamic) { isDynamic = dynamic; }

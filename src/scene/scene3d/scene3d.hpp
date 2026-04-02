@@ -18,7 +18,7 @@ namespace blunted {
 
 class Scene3D : public Scene {
 public:
-  Scene3D(std::string name);
+  Scene3D(const std::string& name);
   virtual ~Scene3D();
 
   virtual void Init();

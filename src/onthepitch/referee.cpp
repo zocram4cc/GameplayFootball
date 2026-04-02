@@ -12,21 +12,21 @@
 #include "scene/objectfactory.hpp"
 
 Referee::Referee(Match* match) : match(match) {
-  buffer.desiredSetPiece = e_SetPiece_KickOff;
-  buffer.teamID = 0;
-  buffer.stopTime = 0;
-  buffer.prepareTime = 0;
-  buffer.startTime = buffer.prepareTime + 2000;
-  buffer.restartPos = Vector3(0);
-  buffer.taker = 0;
-  buffer.endPhase = true;
-  buffer.active = true;
+   buffer.desiredSetPiece = e_SetPiece_KickOff;
+   buffer.teamID = 0;
+   buffer.stopTime = 0;
+   buffer.prepareTime = 0;
+   buffer.startTime = buffer.prepareTime + 2000;
+   buffer.restartPos = Vector3(0, 0, 0);
+   buffer.taker = nullptr;
+   buffer.endPhase = true;
+   buffer.active = true;
 
-  foul.foulPlayer = 0;
-  foul.foulType = 0;
-  foul.advantage = false;
-  foul.foulTime = 0;
-  foul.hasBeenProcessed = true;
+   foul.foulPlayer = nullptr;
+   foul.foulType = 0;
+   foul.advantage = false;
+   foul.foulTime = 0;
+   foul.hasBeenProcessed = true;
 
   afterSetPieceRelaxTime_ms = 0;
 
@@ -134,9 +134,9 @@ void Referee::Process() {
 
         // corner, goal kick or kick off?
         signed int lastSide = -1;
-        Team* lastTouchTeam = match->GetLastTouchTeam();
-        if (lastTouchTeam == 0)
-          lastTouchTeam = match->GetTeam(0);
+         Team* lastTouchTeam = match->GetLastTouchTeam();
+         if (lastTouchTeam == nullptr)
+           lastTouchTeam = match->GetTeam(0);
         lastSide = lastTouchTeam->GetSide();
 
         if (match->IsGoalScored()) {
@@ -179,11 +179,11 @@ void Referee::Process() {
     if (afterSetPieceRelaxTime_ms == 0) {
       if (fabs(ballPos.coords[1]) > pitchHalfH + lineHalfW + 0.11) {
         foul.advantage = false;
-        if (!CheckFoul()) {
-          match->StopPlay();
-          Team* lastTouchTeam = match->GetLastTouchTeam();
-          if (lastTouchTeam == 0)
-            lastTouchTeam = match->GetTeam(0);
+         if (!CheckFoul()) {
+           match->StopPlay();
+           Team* lastTouchTeam = match->GetLastTouchTeam();
+           if (lastTouchTeam == nullptr)
+             lastTouchTeam = match->GetTeam(0);
           buffer.teamID = abs(lastTouchTeam->GetID() - 1);
           buffer.desiredSetPiece = e_SetPiece_ThrowIn;
           buffer.stopTime = match->GetActualTime_ms();

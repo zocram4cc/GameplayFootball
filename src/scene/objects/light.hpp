@@ -22,7 +22,7 @@ enum e_LightType { e_LightType_Directional, e_LightType_Point };
 
 class Light : public Object {
 public:
-  Light(std::string name);
+  Light(const std::string& name);
   virtual ~Light();
 
   virtual void Exit();

@@ -58,6 +58,17 @@ void Gui2Pulldown::AddEntry(const std::string& caption, const std::string& name)
     pulldownButton->SetCaption(caption);  // default selected
 }
 
+void Gui2Pulldown::ClearEntries() {
+  for (auto& entry : entries) {
+    grid->RemoveView(entry.button);
+    entry.button->Exit();
+    delete entry.button;
+  }
+  entries.clear();
+  selectedEntry = 0;
+  pulldownButton->SetCaption("");
+}
+
 void Gui2Pulldown::PullDownOrUp() {
   if (pulledDown == false) {
     this->AddView(bg);

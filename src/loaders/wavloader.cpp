@@ -16,7 +16,8 @@ WAVLoader::WAVLoader() : Loader<SoundBuffer>() {}
 WAVLoader::~WAVLoader() {}
 
 // load file into resource
-void WAVLoader::Load(std::string filename, boost::intrusive_ptr<Resource<SoundBuffer>> resource) {
+void WAVLoader::Load(const std::string& filename,
+                     boost::intrusive_ptr<Resource<SoundBuffer>> resource) {
   int channels, bits;
   unsigned int frequency;
   long BUFFER_SIZE = 1024 * 1024 * 4;

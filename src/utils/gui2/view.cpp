@@ -62,7 +62,7 @@ void Gui2View::Exit() {
 
 void Gui2View::UpdateImagePosition() {
   windowManager->UpdateImagePosition(this);
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->UpdateImagePosition();
     iter++;
@@ -74,7 +74,7 @@ void Gui2View::UpdateImageVisibility() {
     windowManager->Show(this);
   else
     windowManager->Hide(this);
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->UpdateImageVisibility();
     iter++;
@@ -89,7 +89,7 @@ void Gui2View::AddView(Gui2View* view) {
 }
 
 void Gui2View::RemoveView(Gui2View* view) {
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     if (*iter == view) {
       view->Hide();
@@ -237,7 +237,7 @@ void Gui2View::Hide() {
 }
 
 void Gui2View::ShowAllChildren() {
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->Show();
     iter++;
@@ -245,7 +245,7 @@ void Gui2View::ShowAllChildren() {
 }
 
 void Gui2View::HideAllChildren() {
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->Hide();
     iter++;
@@ -258,7 +258,7 @@ void Gui2View::SetRecursiveZPriority(int prio) {
     adaptedPrio++;
   SetZPriority(adaptedPrio);
 
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->SetRecursiveZPriority(adaptedPrio);
     iter++;
@@ -280,7 +280,7 @@ void Gui2View::PrintTree(int depth) {
     printf("  ");
   printf("%s (prio %i)\n", GetName().c_str(), GetZPriority());
 
-  std::vector<Gui2View*>::iterator iter = children.begin();
+  auto iter = children.begin();
   while (iter != children.end()) {
     (*iter)->PrintTree(depth + 1);
     iter++;

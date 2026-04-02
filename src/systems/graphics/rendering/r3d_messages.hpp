@@ -189,7 +189,7 @@ protected:
 class Renderer3DMessage_CreateVertexBuffer : public Command {
 public:
   Renderer3DMessage_CreateVertexBuffer(float* vertices, unsigned int verticesDataSize,
-                                       std::vector<unsigned int> indices, e_VertexBufferUsage usage)
+                                       const std::vector<unsigned int>& indices, e_VertexBufferUsage usage)
       : Command("r3dmsg_CreateVertexBuffer"),
         vertices(vertices),
         verticesDataSize(verticesDataSize),

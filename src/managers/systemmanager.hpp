@@ -15,7 +15,7 @@ class ISystem;
 class IScene;
 class Object;
 
-typedef std::map<std::string, ISystem*> map_Systems;
+using map_Systems = std::map<std::string, ISystem*>;
 
 /// manages the registration of systems and the creation of their scenes and objects
 
@@ -25,7 +25,7 @@ public:
   virtual ~SystemManager();
 
   virtual void Exit();
-  bool RegisterSystem(const std::string systemName, ISystem* system);
+  bool RegisterSystem(const std::string& systemName, ISystem* system);
   void CreateSystemScenes(std::shared_ptr<IScene> scene);
   const map_Systems& GetSystems() const;
   ISystem* GetSystem(const std::string& name) const;

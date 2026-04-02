@@ -18,7 +18,7 @@ class Geometry;
 
 class Joint : public Object {
 public:
-  Joint(std::string name);
+  Joint(const std::string& name);
   virtual ~Joint();
 
   virtual void Exit();

@@ -34,7 +34,7 @@
 #include "visualoptions.hpp"
 
 Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
-  Gui2Page* page = 0;
+  Gui2Page* page = nullptr;
 
   if (GetGameTask()->GetMenuScene()) {
     GetGameTask()->GetMenuScene()->RandomizeTargetLocation();
@@ -323,6 +323,14 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
       page = new CareerTransferMarketPage(windowManager, pageData);
       break;
 
+    case e_PageID_CareerTransferBids:
+      page = new CareerTransferBidsPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerTransferBidDetail:
+      page = new CareerTransferBidDetailPage(windowManager, pageData);
+      break;
+
     case e_PageID_CareerPressConference:
       page = new CareerPressConferencePage(windowManager, pageData);
       break;
@@ -335,12 +343,36 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
       page = new CareerCustomLeaguePage(windowManager, pageData);
       break;
 
+    case e_PageID_CareerFreeAgency:
+      page = new CareerFreeAgencyPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerTraining:
+      page = new CareerTrainingPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerStrategy:
+      page = new CareerStrategyPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerYouthAcademy:
+      page = new CareerYouthAcademyPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerSquadRoster:
+      page = new CareerSquadRosterPage(windowManager, pageData);
+      break;
+
+    case e_PageID_CareerSeason:
+      page = new CareerSeasonPage(windowManager, pageData);
+      break;
+
     default:
-      page = 0;
+      page = nullptr;
       break;
   }
 
-  if (page != 0) {
+  if (page != nullptr) {
     windowManager->GetPagePath()->Push(pageData);
     windowManager->GetRoot()->AddView(page);
   }

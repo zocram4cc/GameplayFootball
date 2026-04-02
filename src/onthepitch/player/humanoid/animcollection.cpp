@@ -120,7 +120,7 @@ AnimCollection::~AnimCollection() {
 }
 
 void AnimCollection::Clear() {
-  std::vector<Animation*>::iterator animIter = animations.begin();
+  auto animIter = animations.begin();
   while (animIter != animations.end()) {
     delete *animIter;
     animIter++;
@@ -314,7 +314,7 @@ void GenerateAutoAnims(const std::vector<Animation*>& templates,
 
             // ITERATE AND INTERPOLATE KEYFRAMES
 
-            std::list<int>::iterator keyIter = keyFrames.begin();
+            auto keyIter = keyFrames.begin();
             while (keyIter != keyFrames.end()) {
               int frame = *keyIter;
               float targetFrame = frame * (1.0f / animSpeedFactor);
@@ -459,7 +459,7 @@ void AnimCollection::Load(std::filesystem::path directory) {
 
   std::vector<Animation*> autoAnims;
   GenerateAutoAnims(templates, autoAnims);
-  std::vector<Animation*>::iterator animIter = templates.begin();
+  auto animIter = templates.begin();
   while (animIter != templates.end()) {
     delete *animIter;
     animIter++;
@@ -977,14 +977,14 @@ void AnimCollection::CrudeSelection(DataSet& dataSet, const CrudeSelectionQuery&
       if (query.heedForcedFoot == true) {
         std::string forcedFoot = animations.at(i)->GetVariable("forcedfoot");
         int which = 0;
-        if (forcedFoot.compare("strong") == 0)
+        if (forcedFoot == "strong")
           which = 1;
-        else if (forcedFoot.compare("weak") == 0)
+        else if (forcedFoot == "weak")
           which = 2;
         if (which != 0) {
           std::string touchFoot = animations.at(i)->GetVariable("touchfoot");
           e_Foot animFoot = e_Foot_Right;
-          if (touchFoot.compare("left") == 0)
+          if (touchFoot == "left")
             animFoot = e_Foot_Left;
 
           // for mirrored anims that, therefore, don't start with right foot
@@ -1078,9 +1078,9 @@ int AddExtraTouches(Animation* animation, boost::intrusive_ptr<Node> playerNode,
     /*
         float bodypartBias = 0.9f;
         std::string animType = animation->GetVariable("type");
-        if (animType.compare("ballcontrol") != 0) {
-        //if (animType.compare("shortpass") == 0 || animType.compare("highpass") == 0 ||
-       animType.compare("shot") == 0) { bodypartBias = 0.95f;
+        if (animType != "ballcontrol") {
+        //if (animType == "shortpass" || animType == "highpass" ||
+       animType == "shot") { bodypartBias = 0.95f;
         }
     */
     float bodypartBias = 1.0f;

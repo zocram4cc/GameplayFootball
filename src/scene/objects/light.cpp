@@ -11,7 +11,7 @@
 
 namespace blunted {
 
-Light::Light(std::string name) : Object(name, e_ObjectType_Light) {
+Light::Light(const std::string& name) : Object(name, e_ObjectType_Light) {
   radius = 512;
   color.Set(1, 1, 1);
   lightType = e_LightType_Point;

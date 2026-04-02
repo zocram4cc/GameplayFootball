@@ -23,7 +23,8 @@ ASELoader::~ASELoader() {}
 // ----- encapsulating load function
 
 // load file into resource
-void ASELoader::Load(std::string filename, boost::intrusive_ptr<Resource<GeometryData>> resource) {
+void ASELoader::Load(const std::string& filename,
+                     boost::intrusive_ptr<Resource<GeometryData>> resource) {
   triangleCount = 0;
   s_tree* data = tree_load(filename);
   Build(data, resource);
@@ -87,7 +88,7 @@ void ASELoader::Build(const s_tree* data, boost::intrusive_ptr<Resource<Geometry
   }
 
   for (unsigned int i = 0; i < data->entries.size(); i++) {
-    if (data->entries.at(i)->name.compare("GEOMOBJECT") == 0) {
+    if (data->entries.at(i)->name == "GEOMOBJECT") {
       if (data->entries.at(i)->subtree)
         if (data->entries.at(i)->subtree->entries.at(0)) {
           BuildTriangleMesh(data->entries.at(i)->subtree, resource, materialList);
@@ -98,7 +99,7 @@ void ASELoader::Build(const s_tree* data, boost::intrusive_ptr<Resource<Geometry
 
 void ASELoader::BuildTriangleMesh(const s_tree* data,
                                   boost::intrusive_ptr<Resource<GeometryData>> resource,
-                                  std::vector<s_Material> materialList) {
+                                  const std::vector<s_Material>& materialList) {
   assert(data);
 
   std::string name =

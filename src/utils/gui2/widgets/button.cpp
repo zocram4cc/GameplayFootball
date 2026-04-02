@@ -64,35 +64,34 @@ void Gui2Button::SetColor(const Vector3& color) {
 void Gui2Button::Redraw() {
   int x, y, w, h;
   windowManager->GetCoordinates(x_percent, y_percent, width_percent, height_percent, x, y, w, h);
-  float y_ratio = h / height_percent;                    // pixels per 1%
-  int accentH = std::max(2, int(round(y_ratio * 0.3)));  // bottom accent bar height
-
-  // Background fill
-  Vector3 bgColor = windowManager->GetStyle()->GetColor(e_DecorationType_Dark1);
-  if (!active)
-    bgColor = windowManager->GetStyle()->GetColor(e_DecorationType_Dark2);
-  image->DrawRectangle(0, 0, w, h, bgColor, 200);
-
-  // Bottom accent bar (focus/hover indicator)
-  Vector3 accentColor;
-  int accentAlpha;
-  if (IsFocussed()) {
-    accentColor = windowManager->GetStyle()->GetColor(e_DecorationType_Bright2);
-    if (toggleable && toggled)
-      accentColor = windowManager->GetStyle()->GetColor(e_DecorationType_Toggled);
-    accentAlpha = 255;
+  
+  // Base background fill (always slightly transparent dark)
+  Vector3 baseColor = windowManager->GetStyle()->GetColor(e_DecorationType_Dark1);
+  if (!active) {
+    baseColor = windowManager->GetStyle()->GetColor(e_DecorationType_Dark2);
+    image->DrawRectangle(0, 0, w, h, baseColor, 120); // Disabled transparency
   } else {
-    float bias = fadeOut_ms / (float)fadeOutTime_ms;
-    Vector3 dark1 = windowManager->GetStyle()->GetColor(e_DecorationType_Dark1);
-    if (toggleable && toggled)
-      dark1 = windowManager->GetStyle()->GetColor(e_DecorationType_Toggled);
-    Vector3 selectedColor = windowManager->GetStyle()->GetColor(e_DecorationType_Bright2);
-    if (toggleable && toggled)
-      selectedColor = windowManager->GetStyle()->GetColor(e_DecorationType_Toggled);
-    accentColor = selectedColor * (1.0f - bias) + dark1 * bias;
-    accentAlpha = int(floor(255.0f * (1.0f - bias)));
+    // Dynamic full-button highlight overlay (Modern flat style)
+    float bias = IsFocussed() ? 0.0f : (fadeOut_ms / (float)fadeOutTime_ms);
+    Vector3 highlightColor = windowManager->GetStyle()->GetColor(e_DecorationType_Bright2);
+    
+    if (toggleable && toggled) {
+      highlightColor = windowManager->GetStyle()->GetColor(e_DecorationType_Toggled);
+      bias = 0.0f; // Always highlight if toggled
+    }
+    
+    // Blend base and highlight based on focus/fade
+    Vector3 finalColor = highlightColor * (1.0f - bias) + baseColor * bias;
+    int finalAlpha = 200 + int(55.0f * (1.0f - bias)); // Fully opaque on hover
+    
+    image->DrawRectangle(0, 0, w, h, finalColor, finalAlpha);
+    
+    // Sleek border highlight for extra polish
+    if (IsFocussed() || (toggleable && toggled)) {
+      image->DrawRectangle(0, 0, w, 2, highlightColor, 255); // Top border
+      image->DrawRectangle(0, h - 2, w, 2, highlightColor, 255); // Bottom border
+    }
   }
-  image->DrawRectangle(0, h - accentH, w, accentH, accentColor, accentAlpha);
 
   image->OnChange();
 }

@@ -90,17 +90,18 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   this->AddView(title);
   title->Show();
 
-  // Wider, taller buttons for a modern vertical list layout
-  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 26, 4, "Match"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_cup", 0, 0, 26, 4, "Cup"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 26, 4, "League"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_edit", 0, 0, 26, 4, "Editor"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 26, 4, "Settings"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 26, 4, "Credits"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 26, 4, "Exit"));
+  // Wider, taller buttons for a bold, modern vertical list layout
+  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 32, 6, "Quick Match"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_cup", 0, 0, 32, 6, "Tournament"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 32, 6, "League Mode"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_edit", 0, 0, 32, 6, "Customizer"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 32, 6, "Options"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 32, 6, "Credits"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 32, 6, "Quit to Desktop"));
+
   if (!IsReleaseVersion()) {
     buttons.push_back(
-        new Gui2Button(windowManager, "button_main_import", 0, 0, 26, 4, "Import FM"));
+        new Gui2Button(windowManager, "button_main_import", 0, 0, 32, 6, "Import Data"));
   }
 
   buttons.at(0)->sig_OnClick.connect([this](...) { GoControllerSelect(); });
@@ -120,8 +121,8 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   buttons.at(2)->SetActive(false);
   buttons.at(3)->SetActive(false);
 
-  // Single-column vertical list on the left side
-  grid = new Gui2Grid(windowManager, "grid_main", 4, 30, 28, 60);
+  // Single-column vertical list on the left side, wider to fit new buttons
+  grid = new Gui2Grid(windowManager, "grid_main", 4, 30, 34, 60);
 
   grid->AddView(buttons.at(0), 0, 0);
   grid->AddView(buttons.at(1), 1, 0);
@@ -211,11 +212,11 @@ bool SortClubPlayersByRole(const PlayerImport& a, const PlayerImport& b) {
   int defPos = -1;
   int attPos = -1;
   for (unsigned int statPos = 0; statPos < a.profileStats.size(); statPos++) {
-    if (a.profileStats.at(statPos).name.compare("mental_defensivepositioning") == 0) {
+    if (a.profileStats.at(statPos).name == "mental_defensivepositioning") {
       aDef = a.profileStats.at(statPos).value;
       defPos = statPos;
     }
-    if (a.profileStats.at(statPos).name.compare("mental_offensivepositioning") == 0) {
+    if (a.profileStats.at(statPos).name == "mental_offensivepositioning") {
       aAtt = a.profileStats.at(statPos).value;
       attPos = statPos;
     }
@@ -661,35 +662,35 @@ bool MainMenuPage::GoImportDB() {
     bool addClub = false;
 
     /* public beta 1
-    if ((club.country.compare("England") == 0 && club.competition.compare("Premier Division") == 0)
-    || (club.country.compare("Germany") == 0 && club.competition.compare("First Division") == 0) ||
-        (club.country.compare("Holland") == 0 && club.competition.compare("Eredivisie") == 0) ||
-        (club.country.compare("Spain")   == 0 && club.competition.compare("LIGA BBVA") == 0)) {
+    if ((club.country == "England" && club.competition == "Premier Division")
+    || (club.country == "Germany" && club.competition == "First Division") ||
+        (club.country == "Holland" && club.competition == "Eredivisie") ||
+        (club.country == "Spain" && club.competition == "LIGA BBVA")) {
       addClub = true;
     }
     */
 
     // public beta 2
-    if (club.name.compare("PSV") == 0)
+    if (club.name == "PSV")
       addClub = true;
-    if (club.name.compare("Ajax") == 0)
+    if (club.name == "Ajax")
       addClub = true;
-    if (club.name.compare("Dortmund") == 0)
+    if (club.name == "Dortmund")
       addClub = true;
-    if (club.name.compare("Bayern") == 0)
+    if (club.name == "Bayern")
       addClub = true;
-    if (club.name.compare("R. Madrid") == 0)
+    if (club.name == "R. Madrid")
       addClub = true;
-    if (club.name.compare("Barcelona") == 0)
+    if (club.name == "Barcelona")
       addClub = true;
-    if (club.name.compare("Arsenal") == 0)
+    if (club.name == "Arsenal")
       addClub = true;
-    if (club.name.compare("Man Utd") == 0)
+    if (club.name == "Man Utd")
       addClub = true;
 
     // printf("club: %s, rep: %i\n", club.name.c_str(), club.reputation);
 
-    if (addClub && club.status.compare("Professional") == 0) {
+    if (addClub && club.status == "Professional") {
       countries.insert(tokens.at(1));  // sets only support unique elements so there'll be no dupes
 
       CountryCompetition cc;
@@ -738,7 +739,7 @@ bool MainMenuPage::GoImportDB() {
 
   query =
       "begin transaction; delete from leagues; delete from sqlite_sequence where name=\"leagues\";";
-  std::map<std::string, CountryCompetition>::iterator compIter = uniqueCompetitions.begin();
+  auto compIter = uniqueCompetitions.begin();
   id = 1;
   while (compIter != uniqueCompetitions.end()) {
     std::map<std::string, int>::iterator countryIter = countryIDs.find(compIter->second.country);
@@ -792,9 +793,9 @@ bool MainMenuPage::GoImportDB() {
            clubName.c_str(), strippedClubName.c_str());
 
     ClubData clubData = GetClubData(namedb, clubs.at(i).name);
-    if (clubData.formation_xml.compare("") == 0)
+    if (clubData.formation_xml.empty())
       clubData.formation_xml = defaultFormation;
-    if (clubData.tactics_xml.compare("") == 0)
+    if (clubData.tactics_xml.empty())
       clubData.tactics_xml = defaultTactics;
 
     // query += "insert into teams (id, league_id, name, logo_url, kit_url, formation) values (" +
@@ -970,7 +971,7 @@ bool MainMenuPage::GoImportDB() {
   result = GetDB()->Query(query);
 
   printf("WORST YOUNGSTERS HALL OF SHAME\n");
-  std::map<float, int>::iterator bestYoungPlayersIter = bestYoungPlayersMap.begin();
+  auto bestYoungPlayersIter = bestYoungPlayersMap.begin();
   for (int i = 0; i < 30; i++) {
     printf("%f (current: %f, age %i): %s\n", bestYoungPlayersIter->first,
            importedPlayers.at(bestYoungPlayersIter->second).averageStat,
@@ -998,7 +999,7 @@ bool MainMenuPage::GoImportDB() {
     // first, put the best keeper on top, and other keepers away
     std::vector<PlayerImport> keepers;
     for (unsigned int p = 0; p < clubs.at(c).players.size(); p++) {
-      if (clubs.at(c).players.at(p).position.compare("GK") == 0)
+      if (clubs.at(c).players.at(p).position == "GK")
         keepers.push_back(clubs.at(c).players.at(p));
     }
     // assert(keepers.size() > 0);
@@ -1011,7 +1012,7 @@ bool MainMenuPage::GoImportDB() {
       std::vector<PlayerImport>::iterator iter = clubs.at(c).players.begin();
       iter++;  // skip keeper we just added
       while (iter != clubs.at(c).players.end()) {
-        if ((*iter).position.compare("GK") == 0) {
+        if ((*iter).position == "GK") {
           if ((*iter).id != keepers.at(0).id)
             query +=
                 (std::string)("delete from players where players.id = " + int_to_str((*iter).id) +
@@ -1176,9 +1177,7 @@ age, totalValues, average, median, lowestValue, highestValue);
     }
 
     // average stats per age over multiple ages to smooth out the graph and to fix ages where few
-players are available (>~40 year old) averageStatPerAge = tempAverageStatPerAge; std::map<int,
-float>::iterator tmpIter = tempAverageStatPerAge.begin(); std::map<int, float>::iterator iter =
-averageStatPerAge.begin(); while (tmpIter != tempAverageStatPerAge.end()) { int amount = 1; //
+players are available (>~40 year old) averageStatPerAge = tempAverageStatPerAge; auto tmpIter = tempAverageStatPerAge.begin(); auto iter = averageStatPerAge.begin(); while (tmpIter != tempAverageStatPerAge.end()) { int amount = 1; //
 divide by how many? (for average) float average = tmpIter->second; if (tmpIter !=
 tempAverageStatPerAge.begin()) { // add previous tmpIter--; average += tmpIter->second; amount++;
         tmpIter++;

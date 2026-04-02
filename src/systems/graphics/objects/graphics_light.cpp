@@ -83,7 +83,7 @@ void GraphicsLight_LightInterpreter::OnUnload() {
 
   Renderer3D* renderer3D = caller->GetGraphicsScene()->GetGraphicsSystem()->GetRenderer3D();
 
-  std::vector<ShadowMap>::iterator iter = caller->shadowMaps.begin();
+  auto iter = caller->shadowMaps.begin();
   while (iter != caller->shadowMaps.end()) {
     // verbose printf("erasing shadowmap %s (framebuffer)\n", (*iter).cameraName.c_str());
 
@@ -279,7 +279,7 @@ void GraphicsLight_LightInterpreter::OnPoke() {
   if (!caller->GetShadow())
     return;
 
-  std::vector<ShadowMap>::iterator iter = caller->shadowMaps.begin();
+  auto iter = caller->shadowMaps.begin();
 
   while (iter != caller->shadowMaps.end()) {
     boost::intrusive_ptr<Renderer3DMessage_RenderShadowMap> renderShadowMap(

@@ -19,7 +19,7 @@ FootballAnimationExtension::~FootballAnimationExtension() {
 
 void FootballAnimationExtension::Shift(int fromFrame,
                                        int offset) {  // todo: offset does not yet work
-  std::map<int, FootballKeyFrame>::iterator animIter = animation.begin();
+  auto animIter = animation.begin();
   std::map<int, FootballKeyFrame> newAnimation;
 
   if (offset == 1) {
@@ -50,7 +50,7 @@ void FootballAnimationExtension::Shift(int fromFrame,
 }
 
 void FootballAnimationExtension::Rotate2D(radian angle) {
-  std::map<int, FootballKeyFrame>::iterator animIter = animation.begin();
+  auto animIter = animation.begin();
   while (animIter != animation.end()) {
     animIter->second.position.Rotate2D(angle);
     animIter++;
@@ -60,7 +60,7 @@ void FootballAnimationExtension::Rotate2D(radian angle) {
 }
 
 void FootballAnimationExtension::Mirror() {
-  std::map<int, FootballKeyFrame>::iterator animIter = animation.begin();
+  auto animIter = animation.begin();
   while (animIter != animation.end()) {
     animIter->second.position.coords[0] = -animIter->second.position.coords[0];
     animIter++;
@@ -134,7 +134,7 @@ void FootballAnimationExtension::Save(FILE* file) {
   std::string line;
   line = "extension,football,";
 
-  std::map<int, FootballKeyFrame>::iterator animIter = animation.begin();
+  auto animIter = animation.begin();
   while (animIter != animation.end()) {
     line.append(int_to_str(animIter->first) + ",");                       // frame number
     line.append(real_to_str(animIter->second.position.coords[0]) + ",");  // X pos
@@ -164,7 +164,7 @@ int FootballAnimationExtension::GetTouchCount() const {
 
 bool FootballAnimationExtension::GetTouch(unsigned int num, Vector3& position, int& frame) {
   if (animation.size() > num) {
-    std::map<int, FootballKeyFrame>::iterator iter = animation.begin();
+    auto iter = animation.begin();
     for (unsigned int i = 0; i < num; i++) {
       iter++;
       if (iter == animation.end())

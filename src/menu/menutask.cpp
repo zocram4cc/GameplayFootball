@@ -61,12 +61,12 @@ MenuTask::MenuTask(float aspectRatio, float margin, TTF_Font* defaultFont,
   style->SetFont(e_TextType_Title, defaultFont);
   style->SetFont(e_TextType_ToolTip, defaultFont);
 
-  // Modern dark sports theme
-  style->SetColor(e_DecorationType_Dark1, Vector3(8, 15, 28));   // deep navy (button bg)
-  style->SetColor(e_DecorationType_Dark2, Vector3(22, 32, 52));  // medium navy (inactive/disabled)
-  style->SetColor(e_DecorationType_Bright1, Vector3(200, 220, 250));  // icy blue-white (text)
-  style->SetColor(e_DecorationType_Bright2, Vector3(30, 200, 120));   // emerald green (hover/focus)
-  style->SetColor(e_DecorationType_Toggled, Vector3(255, 165, 30));   // warm amber (toggled)
+  // Ultra-modern minimalist dark theme with vibrant neon accents
+  style->SetColor(e_DecorationType_Dark1, Vector3(10, 10, 12));       // almost pure black (backgrounds)
+  style->SetColor(e_DecorationType_Dark2, Vector3(28, 28, 32));       // charcoal gray (borders/inactive)
+  style->SetColor(e_DecorationType_Bright1, Vector3(250, 250, 255));  // crisp cool white (text)
+  style->SetColor(e_DecorationType_Bright2, Vector3(0, 220, 255));    // electric cyan (hover/focus)
+  style->SetColor(e_DecorationType_Toggled, Vector3(255, 0, 100));    // vivid magenta (active/toggled)
 
   windowManager->SetTimeStep_ms(10);
 
@@ -151,9 +151,11 @@ void MenuTask::ProcessPhase() {
 }
 
 bool MenuTask::QuickStart() {
-  return !IsReleaseVersion() &&
+  // Keep the normal main-menu flow available in debug builds unless quick-start is explicitly
+  // enabled in the config for local iteration.
+  return !IsReleaseVersion() && GetConfiguration()->GetBool("quick_start", false) &&
          EnvironmentManager::GetInstance().GetTime_ms() <
-             10000;  // after 5 seconds, quickstart disabled (== after > 0 matches have been played)
+             10000;  // after 10 seconds, quickstart disabled
 }
 
 void MenuTask::QuitGame() {

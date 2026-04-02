@@ -33,7 +33,7 @@ VertexBuffer::~VertexBuffer() {
 }
 
 void VertexBuffer::SetTriangleMesh(float* vertices, unsigned int verticesDataSize,
-                                   std::vector<unsigned int> indices) {
+                                   const std::vector<unsigned int>& indices) {
   if (this->vertices)
     delete[] this->vertices;
   this->vertices = vertices;
@@ -41,7 +41,7 @@ void VertexBuffer::SetTriangleMesh(float* vertices, unsigned int verticesDataSiz
 }
 
 void VertexBuffer::TriangleMeshWasUpdatedExternally(unsigned int verticesDataSize,
-                                                    std::vector<unsigned int> indices) {
+                                                    const std::vector<unsigned int>& indices) {
   // printf("%i == %i ?  %i == %i ?\n", this->indices.size(), indices.size(), vertexCount,
   // verticesDataSize / GetTriangleMeshElementCount() / 3);
   if (indices.size() > 0) {

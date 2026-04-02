@@ -36,7 +36,7 @@ struct MustUpdateSpatialData {
 // this implicitly accounts for atomicity in observers.
 class Object : public Subject<Interpreter>, public Spatial {
 public:
-  Object(std::string name, e_ObjectType objectType);
+  Object(const std::string& name, e_ObjectType objectType);
   virtual ~Object();
 
   Object(const Object& src);

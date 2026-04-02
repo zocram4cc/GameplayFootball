@@ -18,7 +18,7 @@ using namespace blunted;
 class PlayerBase;
 class Match;
 
-typedef std::map<const std::string, boost::intrusive_ptr<Node>> NodeMap;
+using NodeMap = std::map<const std::string, boost::intrusive_ptr<Node>>;
 
 struct Joint {
   boost::intrusive_ptr<Node> node;

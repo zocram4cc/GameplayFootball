@@ -113,31 +113,31 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords) {
 }
 
 e_FunctionType StringToFunctionType(const std::string& fun) {
-  if (fun.compare("movement") == 0)
+  if (fun == "movement")
     return e_FunctionType_Movement;
-  if (fun.compare("ballcontrol") == 0)
+  if (fun == "ballcontrol")
     return e_FunctionType_BallControl;
-  if (fun.compare("trap") == 0)
+  if (fun == "trap")
     return e_FunctionType_Trap;
-  if (fun.compare("shortpass") == 0)
+  if (fun == "shortpass")
     return e_FunctionType_ShortPass;
-  if (fun.compare("longpass") == 0)
+  if (fun == "longpass")
     return e_FunctionType_LongPass;
-  if (fun.compare("highpass") == 0)
+  if (fun == "highpass")
     return e_FunctionType_HighPass;
-  if (fun.compare("shot") == 0)
+  if (fun == "shot")
     return e_FunctionType_Shot;
-  if (fun.compare("deflect") == 0)
+  if (fun == "deflect")
     return e_FunctionType_Deflect;
-  if (fun.compare("catch") == 0)
+  if (fun == "catch")
     return e_FunctionType_Catch;
-  if (fun.compare("interfere") == 0)
+  if (fun == "interfere")
     return e_FunctionType_Interfere;
-  if (fun.compare("trip") == 0)
+  if (fun == "trip")
     return e_FunctionType_Trip;
-  if (fun.compare("sliding") == 0)
+  if (fun == "sliding")
     return e_FunctionType_Sliding;
-  if (fun.compare("special") == 0)
+  if (fun == "special")
     return e_FunctionType_Special;
   return e_FunctionType_None;
 }
@@ -185,25 +185,25 @@ std::string GetRoleName(e_PlayerRole playerRole) {
 }
 
 e_PlayerRole GetRoleFromString(const std::string& roleString) {
-  if (roleString.compare("GK") == 0)
+  if (roleString == "GK")
     return e_PlayerRole_GK;
-  if (roleString.compare("CB") == 0)
+  if (roleString == "CB")
     return e_PlayerRole_CB;
-  if (roleString.compare("LB") == 0)
+  if (roleString == "LB")
     return e_PlayerRole_LB;
-  if (roleString.compare("RB") == 0)
+  if (roleString == "RB")
     return e_PlayerRole_RB;
-  if (roleString.compare("DM") == 0)
+  if (roleString == "DM")
     return e_PlayerRole_DM;
-  if (roleString.compare("CM") == 0)
+  if (roleString == "CM")
     return e_PlayerRole_CM;
-  if (roleString.compare("LM") == 0)
+  if (roleString == "LM")
     return e_PlayerRole_LM;
-  if (roleString.compare("RM") == 0)
+  if (roleString == "RM")
     return e_PlayerRole_RM;
-  if (roleString.compare("AM") == 0)
+  if (roleString == "AM")
     return e_PlayerRole_AM;
-  if (roleString.compare("CF") == 0)
+  if (roleString == "CF")
     return e_PlayerRole_CF;
   return e_PlayerRole_CM;  // default
 }

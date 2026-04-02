@@ -213,7 +213,7 @@ void Gui2Slider::SetHelperValue(int index, float value) {
 }
 
 void Gui2Slider::DeleteHelperValue(int index) {
-  std::vector<Gui2Slider_HelperValue>::iterator iter = helperValues.begin();
+  auto iter = helperValues.begin();
   while (iter != helperValues.end()) {
     if ((*iter).index == index) {
       (*iter).descriptionCaption->Exit();

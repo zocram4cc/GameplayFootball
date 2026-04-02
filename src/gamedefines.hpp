@@ -61,9 +61,9 @@ const int temporalSmoother_history_ms = 20;
 
 // #define dataSetSortable 1
 #ifdef dataSetSortable
-typedef std::list<int> DataSet;
+using DataSet = std::list<int>;
 #else
-typedef std::deque<int> DataSet;
+using DataSet = std::deque<int>;
 #endif
 
 const SDL_Keycode defaultKeyIDs[18] = {
@@ -205,7 +205,7 @@ struct PlayerCommand {
   int modifier;
 };
 
-typedef std::vector<PlayerCommand> PlayerCommandQueue;
+using PlayerCommandQueue = std::vector<PlayerCommand>;
 
 enum e_PlayerRole {
   e_PlayerRole_GK,
@@ -295,7 +295,7 @@ public:
   float rating;  // resulting rating
 };
 
-typedef std::vector<PassRating> PassRatings;
+using PassRatings = std::vector<PassRating>;
 
 void GetVertexColors(std::map<Vector3, Vector3>& colorCoords);
 

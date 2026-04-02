@@ -31,7 +31,7 @@ void SystemManager::Exit() {
   systems.clear();
 }
 
-bool SystemManager::RegisterSystem(const std::string systemName, ISystem* system) {
+bool SystemManager::RegisterSystem(const std::string& systemName, ISystem* system) {
   std::pair<map_Systems::iterator, bool> result =
       systems.insert(map_Systems::value_type(systemName, system));
   if (result.second == false) {

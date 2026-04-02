@@ -77,7 +77,7 @@ bool Properties::GetBool(const char* name, bool defaultValue) const {
   if (iter == properties.end()) {
     return defaultValue;
   } else {
-    if (iter->second.compare("true") == 0)
+    if (iter->second == "true")
       return true;
     else
       return false;
@@ -102,7 +102,7 @@ int Properties::GetInt(const char* name, int defaultValue) const {
   }
 }
 
-Vector3 Properties::GetVector3(const char* name, Vector3 defaultValue) const {
+Vector3 Properties::GetVector3(const char* name, const Vector3& defaultValue) const {
   if (Exists(name)) {
     const std::string& str = Get(name);
     return GetVectorFromString(str);

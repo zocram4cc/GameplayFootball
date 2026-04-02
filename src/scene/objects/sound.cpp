@@ -9,7 +9,7 @@
 
 namespace blunted {
 
-Sound::Sound(std::string name) : Object(name, e_ObjectType_Sound) {
+Sound::Sound(const std::string& name) : Object(name, e_ObjectType_Sound) {
   radius = 512;
   gain = 1.0;
   pitch = 1.0;

@@ -17,7 +17,7 @@ namespace blunted {
 
 class Geometry : public Object {
 public:
-  Geometry(std::string name, e_ObjectType objectType = e_ObjectType_Geometry);
+  Geometry(const std::string& name, e_ObjectType objectType = e_ObjectType_Geometry);
   Geometry(const Geometry& src, const std::string& postfix);
   virtual ~Geometry();
 

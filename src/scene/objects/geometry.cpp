@@ -11,7 +11,7 @@
 
 namespace blunted {
 
-Geometry::Geometry(std::string name, e_ObjectType objectType) : Object(name, objectType) {}
+Geometry::Geometry(const std::string& name, e_ObjectType objectType) : Object(name, objectType) {}
 
 Geometry::Geometry(const Geometry& src, const std::string& postfix) : Object(src) {
   if (src.geometryData != boost::intrusive_ptr<Resource<GeometryData>>()) {

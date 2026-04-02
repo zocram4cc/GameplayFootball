@@ -3,6 +3,10 @@
 #include "../../data/matchhistory.hpp"
 #include "../pagefactory.hpp"
 #include "main.hpp"
+#include "utils/gui2/widgets/button.hpp"
+#include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/grid.hpp"
+#include "utils/gui2/widgets/image.hpp"
 
 using namespace blunted;
 

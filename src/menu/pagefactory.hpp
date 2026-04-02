@@ -84,9 +84,17 @@ enum e_PageID {
   e_PageID_CareerNewGame,
   e_PageID_CareerHub,
   e_PageID_CareerTransferMarket,
+  e_PageID_CareerTransferBids,
+  e_PageID_CareerTransferBidDetail,
   e_PageID_CareerPressConference,  // 6.13
   e_PageID_CareerLeagueExpansion,  // 6.16
-  e_PageID_CareerCustomLeague      // 6.17
+  e_PageID_CareerCustomLeague,     // 6.17
+  e_PageID_CareerFreeAgency,
+  e_PageID_CareerTraining,
+  e_PageID_CareerStrategy,
+  e_PageID_CareerYouthAcademy,
+  e_PageID_CareerSquadRoster,
+  e_PageID_CareerSeason
 };
 
 class PageFactory : public Gui2PageFactory {

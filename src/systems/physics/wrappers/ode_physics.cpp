@@ -84,7 +84,7 @@ static void OdePhysicsNearCallback(void* data, dGeomID o1, dGeomID o2) {
         firstTime = false;
         possibleNeighbours = false;
 
-        std::vector<dContact>::iterator subjectIter = contacts.begin();
+        auto subjectIter = contacts.begin();
         while (subjectIter != contacts.end()) {
           // for each contact, find all neighbours
 
@@ -155,7 +155,7 @@ static void OdePhysicsNearCallback(void* data, dGeomID o1, dGeomID o2) {
 
       // add these contact points to the simulation ...
 
-      std::vector<dContact>::iterator subjectIter = contacts.begin();
+      auto subjectIter = contacts.begin();
       // printf("%f - %f\n", properties1->GetReal("friction"), properties2->GetReal("friction"));
       while (subjectIter != contacts.end()) {
         (*subjectIter).surface.mode =
@@ -240,8 +240,8 @@ int OdePhysics::StepTime(int timediff_ms, int resolution_ms) {
 
   // quick hax: link world and space id's, since ODE is kinda silly
   // todo: combine world and space into one map
-  std::map<int, dWorldID>::iterator worldIter = worldMap.begin();
-  std::map<int, dSpaceID>::iterator spaceIter = spaceMap.begin();
+  auto worldIter = worldMap.begin();
+  auto spaceIter = spaceMap.begin();
   while (worldIter != worldMap.end()) {
     for (int i = 0; i < numSteps; i++) {
       dSpaceCollide((*spaceIter).second, (*worldIter).second, &OdePhysicsNearCallback);
@@ -620,7 +620,7 @@ Vector3 OdePhysics::CollisionMeshGetPosition(IPhysicsCollisionMesh* mesh) {
 
 Quaternion OdePhysics::CollisionMeshGetRotation(IPhysicsCollisionMesh* mesh) {
   mutex.lock();
-  dReal* R = 0;
+  dReal* R = nullptr;
   dGeomGetQuaternion(static_cast<OdePhysicsCollisionMesh*>(mesh)->id, R);
   Quaternion rot((float)R[1], (float)R[2], (float)R[3], (float)R[0]);
   mutex.unlock();

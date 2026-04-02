@@ -24,7 +24,7 @@ enum e_ResourceType {
 template <typename T>
 class Resource : public RefCounted {
 public:
-  Resource(std::string identString) : resource(0), identString(identString) { resource = new T(); }
+  Resource(const std::string& identString) : resource(0), identString(identString) { resource = new T(); }
 
   virtual ~Resource() {
     delete resource;

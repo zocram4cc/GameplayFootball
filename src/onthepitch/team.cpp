@@ -40,11 +40,11 @@ Team::~Team() {}
 void Team::Exit() {
   Hide2D();
 
-  for (unsigned int i = 0; i < humanGamers.size(); i++) {
-    delete humanGamers.at(i);
+  for (auto* humanGamer : humanGamers) {
+    delete humanGamer;
   }
-  for (unsigned int i = 0; i < players.size(); i++) {
-    delete players.at(i);
+  for (auto* player : players) {
+    delete player;
   }
 
   delete teamController;
@@ -71,7 +71,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
   Log(e_Notice, "Team", "Team", "Creating players");
 
   // load all players in the team, even the players who sit on the bench. aww.
-  for (int i = 0; i < (signed int)teamData->GetPlayerNum(); i++) {
+  for (int i = 0; i < static_cast<int>(teamData->GetPlayerNum()); i++) {
     PlayerData* playerData = teamData->GetPlayerData(i);
     Player* player = new Player(this, playerData);
     players.push_back(player);
@@ -115,29 +115,29 @@ signed int Team::GetSide() {
 }
 
 Player* Team::GetPlayer(int player_id) {
-  for (int i = 0; i < (signed int)players.size(); i++) {
-    if (players.at(i)->GetID() == player_id) {
-      return players.at(i);
+  for (auto* player : players) {
+    if (player->GetID() == player_id) {
+      return player;
     }
   }
 
   // id not found
-  return 0;
+  return nullptr;
 }
 
 PlayerData* Team::GetPlayerData(int playerID) {
-  for (int i = 0; i < (signed int)players.size(); i++) {
+  for (int i = 0; i < static_cast<int>(players.size()); i++) {
     if (players.at(i)->GetID() == playerID) {
       return teamData->GetPlayerData(i);
     }
   }
 
   assert(1 == 2);
-  return 0;
+  return nullptr;
 }
 
 FormationEntry Team::GetFormationEntry(int playerID) {
-  for (int i = 0; i < (signed int)players.size(); i++) {
+  for (int i = 0; i < static_cast<int>(players.size()); i++) {
     if (players.at(i)->GetID() == playerID) {
       return teamData->GetFormationEntry(i);
     }
@@ -218,7 +218,7 @@ signed int Team::GetBestPossessionPlayerID() {
 
 Player* Team::GetBestPossessionPlayer() {
   int bestTime_ms = 10000000;
-  Player* bestPlayer = 0;
+  Player* bestPlayer = nullptr;
   for (unsigned int i = 0; i < players.size(); i++) {
     if (players.at(i)->IsActive()) {
       int time_ms = players.at(i)->GetTimeNeededToGetToBall_ms();
@@ -373,7 +373,7 @@ void Team::Process() {
       for (unsigned int i = 0; i < humanGamers.size(); i++) {
         // switch button
         int selectedPlayerID = humanGamers.at(i)->GetSelectedPlayerID();
-        Player* selectedPlayer = 0;
+        Player* selectedPlayer = nullptr;
         selectedPlayer = GetPlayer(selectedPlayerID);
         assert(selectedPlayer);
 
@@ -386,7 +386,7 @@ void Team::Process() {
              GetTeamPossessionAmount() < 1.0f) &&
             !selectedPlayer->HasUniquePossession()) {
           int targetPlayerID = -1;
-          Player* targetPlayer = 0;
+          Player* targetPlayer = nullptr;
 
           if (!IsHumanControlled(designatedTeamPossessionPlayer->GetID()) &&
               match->GetBestPossessionTeamID() == GetID()) {
@@ -577,7 +577,7 @@ Player* Team::GetGoalie() {
     }
   }
 
-  return 0;
+  return nullptr;
 }
 
 void Team::SetKitNumber(int num) {

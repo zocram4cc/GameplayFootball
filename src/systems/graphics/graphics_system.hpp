@@ -25,14 +25,14 @@ public:
   GraphicsSystem();
   virtual ~GraphicsSystem();
 
-  virtual void Initialize(const Properties& config);
-  virtual void Exit();
+  virtual void Initialize(const Properties& config) override;
+  virtual void Exit() override;
 
-  e_SystemType GetSystemType() const;
+  e_SystemType GetSystemType() const override;
 
-  virtual ISystemScene* CreateSystemScene(std::shared_ptr<IScene> scene);
+  virtual ISystemScene* CreateSystemScene(std::shared_ptr<IScene> scene) override;
 
-  virtual ISystemTask* GetTask();
+  virtual ISystemTask* GetTask() override;
   virtual Renderer3D* GetRenderer3D();
 
   std::shared_ptr<ResourceManager<Texture>> GetTextureResourceManager();

@@ -19,7 +19,7 @@ namespace blunted {
 
 class Image2D : public Object {
 public:
-  Image2D(std::string name);
+  Image2D(const std::string& name);
   virtual ~Image2D();
 
   virtual void Exit();

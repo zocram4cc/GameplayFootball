@@ -272,7 +272,7 @@ public:
   ThreadHudThread() { hud = new ThreadHud(GetScene2D()); }
   virtual ~ThreadHudThread() { delete hud; }
 
-  virtual void operator()() {
+  virtual void operator()() override {
     bool quit = false;
     while (!quit) {
       SetState(e_ThreadState_Busy);
@@ -354,7 +354,7 @@ int main(int argc, const char** argv) {
   if (GetDebugMode() == e_DebugMode_AI)
     InitDebugOverlay();
 
-  ThreadHudThread* threadHudThread = 0;
+  ThreadHudThread* threadHudThread = nullptr;
   if (!IsReleaseVersion() && 1 == 2) {
     threadHudThread = new ThreadHudThread();
     threadHudThread->Run();
@@ -560,8 +560,8 @@ int main(int argc, const char** argv) {
   scene2D.reset();
   scene3D.reset();
 
-  for (unsigned int i = 0; i < controllers.size(); i++) {
-    delete controllers.at(i);
+  for (auto* controller : controllers) {
+    delete controller;
   }
   controllers.clear();
 

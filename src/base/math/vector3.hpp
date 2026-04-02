@@ -30,7 +30,7 @@ namespace blunted {
 
 class Vector3;
 
-typedef Vector3 Vector;
+using Vector = Vector3;
 
 class Vector3 {
 public:

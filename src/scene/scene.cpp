@@ -7,7 +7,7 @@
 
 namespace blunted {
 
-Scene::Scene(std::string name, e_SceneType sceneType) : name(name), sceneType(sceneType) {}
+Scene::Scene(const std::string& name, e_SceneType sceneType) : name(name), sceneType(sceneType) {}
 
 Scene::~Scene() {}
 

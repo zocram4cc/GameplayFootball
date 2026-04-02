@@ -12,11 +12,11 @@
 
 namespace blunted {
 
-typedef Lockable<std::vector<boost::intrusive_ptr<Object>>> vector_Objects;
+using vector_Objects = Lockable<std::vector<boost::intrusive_ptr<Object>>>;
 
 class Scene : public IScene {
 public:
-  Scene(std::string name, e_SceneType sceneType);
+  Scene(const std::string& name, e_SceneType sceneType);
   virtual ~Scene();
 
   virtual void Init() = 0;  // ATOMIC

@@ -18,7 +18,7 @@ public:
   WAVLoader();
   virtual ~WAVLoader();
 
-  virtual void Load(std::string filename, boost::intrusive_ptr<Resource<SoundBuffer>> resource);
+  virtual void Load(const std::string& filename, boost::intrusive_ptr<Resource<SoundBuffer>> resource);
 
 protected:
 };

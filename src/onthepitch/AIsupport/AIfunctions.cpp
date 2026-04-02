@@ -33,11 +33,12 @@
 
 // convert formation position to formation position based on ball position
 // deprecated
-Vector3 AI_GetAdaptedInitialPos(Match* match, const Vector3& initialPosition, Vector3 focusPoint,
+Vector3 AI_GetAdaptedInitialPos(Match* match, const Vector3& initialPosition, const Vector3& focusPoint,
                                 float ballMagnetDistance, float ballMagnetDistancePow) {
-  if (focusPoint.coords[2] == -100.0)
-    focusPoint = match->GetBall()->Predict(100).Get2D();
-  Vector3 scaledFocusPoint = focusPoint;
+  Vector3 effectiveFocusPoint = focusPoint;
+  if (effectiveFocusPoint.coords[2] == -100.0)
+    effectiveFocusPoint = match->GetBall()->Predict(100).Get2D();
+  Vector3 scaledFocusPoint = effectiveFocusPoint;
 
   float width = 0.8;
   float depth = 0.4;
@@ -62,7 +63,7 @@ Vector3 AI_GetAdaptedInitialPos(Match* match, const Vector3& initialPosition, Ve
   targetPos += max * scaledFocusPoint;
   targetPos *= Vector3(pitchHalfW, pitchHalfH, 0);
 
-  Vector3 ballMagnetPos = focusPoint;
+  Vector3 ballMagnetPos = effectiveFocusPoint;
   Vector3 ballMagnetOffset;
   float ballDistance = (ballMagnetPos - targetPos).GetLength();
   if (ballDistance < ballMagnetDistance)
@@ -1132,7 +1133,7 @@ Player* AI_GetClosestPlayer(Team* team, const Vector3& position, bool onlyAICont
   const std::vector<Player*>& players = team->GetAllPlayers();
 
   float closestDistance = 10000;
-  Player* closestPlayer = 0;
+  Player* closestPlayer = nullptr;
 
   for (unsigned int i = 0; i < players.size(); i++) {
     if (players.at(i)->IsActive() && players.at(i) != except) {
@@ -1171,7 +1172,7 @@ void AI_GetClosestPlayers(Team* team, const Vector3& position, bool onlyAIContro
 
   // printf("tmp players: %i\n", tmpResult.size());
 
-  std::map<float, Player*>::iterator iter = tmpResult.begin();
+  auto iter = tmpResult.begin();
   for (unsigned int i = 0; i < playerCount && iter != tmpResult.end(); i++) {
     result.push_back(iter->second);
     iter++;
@@ -1218,7 +1219,7 @@ Player* AI_GetBestSwitchTargetPlayer(Match* match, Team* team, const Vector3& de
 
   std::vector<Player*> teamPlayers;
   AI_GetClosestPlayers(team, resultingPosition, true, teamPlayers, 8);
-  std::vector<Player*>::iterator iter = teamPlayers.begin();
+  auto iter = teamPlayers.begin();
   while (iter != teamPlayers.end()) {
     if ((*iter)->GetFormationEntry().role == e_PlayerRole_GK) {
       iter = teamPlayers.erase(iter);

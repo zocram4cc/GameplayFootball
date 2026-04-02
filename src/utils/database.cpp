@@ -33,7 +33,7 @@ bool Database::Load(const std::string& filename) {
 std::unique_ptr<DatabaseResult> Database::Query(const std::string& query) {
   int rows, columns;
   char** result;
-  char* errorMsg = 0;
+  char* errorMsg = nullptr;
 
   int returnValue = sqlite3_get_table(db, query.c_str(), &result, &rows, &columns, &errorMsg);
   if (errorMsg) {

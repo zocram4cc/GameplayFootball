@@ -10,6 +10,11 @@
 #include "base/utils.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "rendering/audio_messages.hpp"
+#include "rendering/null_audio_renderer.hpp"
+
+#ifdef GF_USE_OPENAL
+#include "rendering/openal_renderer.hpp"
+#endif
 
 namespace blunted {
 
@@ -25,9 +30,31 @@ void AudioSystem::Initialize(const Properties& config) {
   ResourceManagerPool::GetInstance().RegisterManager(e_ResourceType_AudioSoundBuffer,
                                                      audioSoundBufferResourceManager);
 
-  // start thread for renderer
-  if (config.Get("audio_renderer", "openal") == "openal")
+  const std::string requestedRenderer = config.Get(
+      "audio_renderer",
+#ifdef GF_USE_OPENAL
+      "openal"
+#else
+      "null"
+#endif
+  );
+
+#ifdef GF_USE_OPENAL
+  if (requestedRenderer == "openal") {
     rendererTask = new OpenALRenderer();
+  } else
+#endif
+  {
+    if (requestedRenderer == "openal") {
+      Log(e_Warning, "AudioSystem", "Initialize",
+          "OpenAL support is unavailable in this build, falling back to silent audio");
+    } else if (requestedRenderer != "null") {
+      Log(e_Warning, "AudioSystem", "Initialize",
+          "Unknown audio renderer '" + requestedRenderer + "', using silent audio");
+    }
+    rendererTask = new NullAudioRenderer();
+  }
+
   rendererTask->Run();
 
   boost::intrusive_ptr<AudioRendererMessage_CreateContext> createContext(

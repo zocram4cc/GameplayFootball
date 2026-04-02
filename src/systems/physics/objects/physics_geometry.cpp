@@ -119,7 +119,7 @@ void PhysicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry> 
           // put vertex data into array
           float *vertices = new float[triangles.size() * 3 * 3];
 
-          std::vector<Triangle*>::iterator tris_iter = triangles.begin();
+          auto tris_iter = triangles.begin();
           int counter = 0;
           while (tris_iter != triangles.end()) {
             for (int c = 0; c < 3; c++) {

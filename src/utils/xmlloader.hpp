@@ -12,7 +12,7 @@ namespace blunted {
 
 struct XMLTree;
 
-typedef std::multimap<std::string, XMLTree> map_XMLTree;
+using map_XMLTree = std::multimap<std::string, XMLTree>;
 
 struct XMLTree {
   std::string value;

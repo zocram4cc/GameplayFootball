@@ -75,7 +75,7 @@ void Gui2Grid::AddView(Gui2View* view, int row, int col) {
 }
 
 void Gui2Grid::RemoveView(Gui2View* view) {
-  std::vector<GridContainer>::iterator iter = container.begin();
+  auto iter = container.begin();
   while (iter != container.end()) {
     if (iter->view == view)
       iter = container.erase(iter);
@@ -94,8 +94,8 @@ void Gui2Grid::RemoveView(Gui2View* view) {
 }
 
 void Gui2Grid::RemoveView(int row, int col) {
-  Gui2View* view = 0;
-  std::vector<GridContainer>::iterator iter = container.begin();
+  Gui2View* view = nullptr;
+  auto iter = container.begin();
   while (iter != container.end()) {
     if (iter->row == row && iter->col == col) {
       view = iter->view;
@@ -107,7 +107,7 @@ void Gui2Grid::RemoveView(int row, int col) {
 }
 
 Gui2View* Gui2Grid::FindView(int row, int col) {
-  Gui2View* target = 0;
+  Gui2View* target = nullptr;
   for (int i = 0; i < (signed int)container.size(); i++) {
     if (container.at(i).row == row && container.at(i).col == col) {
       target = container.at(i).view;
@@ -118,7 +118,7 @@ Gui2View* Gui2Grid::FindView(int row, int col) {
 }
 
 int Gui2Grid::GetRow(Gui2View* view) {
-  std::vector<GridContainer>::iterator iter = container.begin();
+  auto iter = container.begin();
   while (iter != container.end()) {
     if (iter->view == view) {
       return iter->row;
@@ -129,7 +129,7 @@ int Gui2Grid::GetRow(Gui2View* view) {
 }
 
 int Gui2Grid::GetColumn(Gui2View* view) {
-  std::vector<GridContainer>::iterator iter = container.begin();
+  auto iter = container.begin();
   while (iter != container.end()) {
     if (iter->view == view) {
       return iter->col;
@@ -288,7 +288,7 @@ void Gui2Grid::ProcessWindowingEvent(WindowingEvent* event) {
     int provisionalSelectedRow = selectedRow;
     int provisionalSelectedCol = selectedCol;
 
-    Gui2View* provisionalTarget = 0;
+    Gui2View* provisionalTarget = nullptr;
     bool selectableFound = false;
     while (!selectableFound && !movedOutOfGrid) {
       provisionalSelectedRow += yoffset;

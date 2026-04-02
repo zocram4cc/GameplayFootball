@@ -115,7 +115,7 @@ namespace blunted {
 
 /* old fashioned way
     dir = opendir(directory.c_str());
-    if (dir != NULL) {
+    if (dir != nullptr) {
       while (entry = readdir(dir)) {
         DirEntry dEntry;
         dEntry.name = entry->d_name;

@@ -33,8 +33,8 @@ Console::~Console() {
   delete text2D;
 }
 
-void Console::PrintLog(e_LogType logType, std::string className, std::string methodName,
-                       std::string message) {
+void Console::PrintLog(e_LogType logType, const std::string& className,
+                       const std::string& methodName, const std::string& message) {
   std::string logTypeString;
   Vector3 color;
   switch (logType) {

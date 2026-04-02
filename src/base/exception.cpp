@@ -9,8 +9,8 @@
 
 namespace blunted {
 
-BluntedException::BluntedException(std::string classname, std::string methodname,
-                                   std::string description) {
+BluntedException::BluntedException(const std::string& classname, const std::string& methodname,
+                                   const std::string& description) {
   printf("exception in [%s::%s] %s\n", classname.c_str(), methodname.c_str(), description.c_str());
   char errorString[256];
   sprintf(errorString, "exception in [%s::%s] %s\n", classname.c_str(), methodname.c_str(),
