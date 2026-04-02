@@ -91,6 +91,7 @@ public:
   MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~MainMenuPage();
 
+  virtual void Process();
   void GoControllerSelect();
   void GoLeague();
   void GoSettings();
@@ -109,6 +110,8 @@ protected:
 
   std::map<int, std::vector<int>> ageValues;
   std::map<int, float> averageStatPerAge;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

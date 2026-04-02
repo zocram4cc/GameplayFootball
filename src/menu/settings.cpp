@@ -559,7 +559,6 @@ GamepadSetupPage::GamepadSetupPage(Gui2WindowManager* windowManager, const Gui2P
   int controllerID = pageData.properties->GetInt("controllerID");
 
   const std::vector<IHIDevice*>& controllers = GetControllers();
-  IHIDevice* controller = controllers.at(controllerID);
 
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_settings_controller_gamepadsetup", 20, 20, 60, 3,

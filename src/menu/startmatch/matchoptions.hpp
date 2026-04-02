@@ -22,6 +22,7 @@ public:
   MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~MatchOptionsPage();
 
+  virtual void Process();
   void GoLoadingMatchPage();
 
   Gui2Button* buttonStart;
@@ -29,6 +30,8 @@ public:
 protected:
   Gui2Slider* difficultySlider;
   Gui2Slider* matchDurationSlider;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

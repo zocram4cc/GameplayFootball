@@ -28,12 +28,12 @@ public:
   TeamData(int teamDatabaseID);
   virtual ~TeamData();
 
-  std::string GetName() { return name; }
-  std::string GetShortName() { return shortName; }
-  std::string GetLogoUrl() { return logo_url; }
-  std::string GetKitUrl() { return kit_url; }
-  Vector3 GetColor1() { return color1; }
-  Vector3 GetColor2() { return color2; }
+  std::string GetName() const { return name; }
+  std::string GetShortName() const { return shortName; }
+  std::string GetLogoUrl() const { return logo_url; }
+  std::string GetKitUrl() const { return kit_url; }
+  Vector3 GetColor1() const { return color1; }
+  Vector3 GetColor2() const { return color2; }
 
   int GetDatabaseID() const { return databaseID; }
 

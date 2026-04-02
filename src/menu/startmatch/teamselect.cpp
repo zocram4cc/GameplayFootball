@@ -5,13 +5,24 @@
 
 #include "teamselect.hpp"
 
+#include <filesystem>
+
 #include "../../main.hpp"
 #include "../pagefactory.hpp"
 #include "utils/database.hpp"
 
 using namespace blunted;
 
-void AddCompetitions(Gui2IconSelector* selector) {
+namespace {
+
+const char* kSelectorFallbackImage = "media/textures/orange.jpg";
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
+
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
+
+int AddCompetitions(Gui2IconSelector* selector) {
   /*
   selector->AddEntry("1", "National teams",
   "databases/default/images_competitions/nationalteams.png"); selector->AddEntry("2", "Premier
@@ -23,6 +34,7 @@ void AddCompetitions(Gui2IconSelector* selector) {
   "databases/default/images_competitions/ligue1.png");
   */
   auto result = GetDB()->Query("select id, name, logo_url from leagues");
+  int competitionCount = 0;
 
   for (unsigned int r = 0; r < result->data.size(); r++) {
     int id = atoi(result->data.at(r).at(0).c_str());
@@ -31,16 +43,28 @@ void AddCompetitions(Gui2IconSelector* selector) {
 
     std::string logoPath = "databases/default/" + logo_url;
     if (!std::filesystem::exists(logoPath))
-      logoPath = "media/textures/orange.jpg";
+      logoPath = kSelectorFallbackImage;
     selector->AddEntry(int_to_str(id), name, logoPath);
+    competitionCount++;
   }
 
+  if (competitionCount == 0) {
+    selector->AddEntry("", "No competitions found", kSelectorFallbackImage);
+  }
+
+  return competitionCount;
 }
 
-void AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
+int AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
+  if (competition_id.empty()) {
+    selector->AddEntry("", "No teams found", kSelectorFallbackImage);
+    return 0;
+  }
+
   auto result = GetDB()->Query(
       "select id, name, logo_url, kit_url from teams where league_id = " + competition_id +
       " order by name");
+  int teamCount = 0;
 
   for (unsigned int r = 0; r < result->data.size(); r++) {
     int id = atoi(result->data.at(r).at(0).c_str());
@@ -49,16 +73,25 @@ void AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
 
     std::string logoPath = "databases/default/" + logo_url;
     if (!std::filesystem::exists(logoPath))
-      logoPath = "media/textures/orange.jpg";
+      logoPath = kSelectorFallbackImage;
     selector->AddEntry(int_to_str(id), name, logoPath);
+    teamCount++;
   }
 
+  if (teamCount == 0) {
+    selector->AddEntry("", "No teams found", kSelectorFallbackImage);
+  }
 
   selector->Show();
+  return teamCount;
 }
 
+}  // namespace
+
 TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      autoAdvanceTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceStage(0) {
   Gui2Image* bg1 = new Gui2Image(windowManager, "teamselect_image_bg1", 19, 24, 30, 42);
   this->AddView(bg1);
   bg1->LoadImage("media/menu/backgrounds/black.png");
@@ -114,7 +147,7 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   grid1->Show();
 
   AddCompetitions(competitionSelect1);
-  AddTeams(teamSelect1, "1");
+  SetupTeamSelect1();
 
   this->AddView(p2);
   this->AddView(grid2);
@@ -124,7 +157,7 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   grid2->UpdateLayout(0.5);
 
   AddCompetitions(competitionSelect2);
-  AddTeams(teamSelect2, "1");
+  SetupTeamSelect2();
 
   competitionSelect1->SetFocus();
 
@@ -142,15 +175,57 @@ TeamSelectPage::~TeamSelectPage() {
   GetMenuTask()->EnableKeyboard();
 }
 
+void TeamSelectPage::Process() {
+  Gui2Page::Process();
+
+  if (!MenuSmokeQuickMatchEnabled()) {
+    return;
+  }
+
+  if (EnvironmentManager::GetInstance().GetTime_ms() <
+      autoAdvanceTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    return;
+  }
+
+  if (autoAdvanceStage == 0) {
+    if (!p2->IsVisible()) {
+      printf("[menu-smoke] Team select ready, revealing CPU opponent selection\n");
+      FocusCompetitionSelect2();
+    }
+    autoAdvanceStage = 1;
+    autoAdvanceTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    return;
+  }
+
+  if (autoAdvanceStage == 1) {
+    if (teamSelect1->GetSelectedEntryID().empty() || teamSelect2->GetSelectedEntryID().empty()) {
+      printf("[menu-smoke] Team select is waiting for valid team data\n");
+      return;
+    }
+
+    autoAdvanceStage = 2;
+    printf("[menu-smoke] Team select confirmed, opening match options\n");
+    GoOptionsMenu();
+  }
+}
+
 void TeamSelectPage::FocusTeamSelect1() {
-  teamSelect1->SetFocus();
+  if (!teamSelect1->GetSelectedEntryID().empty()) {
+    teamSelect1->SetFocus();
+  }
 }
 
 void TeamSelectPage::FocusStart1() {
-  buttonStart1->SetFocus();
+  if (!teamSelect1->GetSelectedEntryID().empty()) {
+    buttonStart1->SetFocus();
+  }
 }
 
 void TeamSelectPage::FocusCompetitionSelect2() {
+  if (teamSelect1->GetSelectedEntryID().empty()) {
+    return;
+  }
+
   p2->Show();
   grid2->Show();
   bg2->Show();
@@ -161,21 +236,27 @@ void TeamSelectPage::FocusCompetitionSelect2() {
 }
 
 void TeamSelectPage::FocusTeamSelect2() {
-  teamSelect2->SetFocus();
+  if (!teamSelect2->GetSelectedEntryID().empty()) {
+    teamSelect2->SetFocus();
+  }
 }
 
 void TeamSelectPage::FocusStart2() {
-  buttonStart2->SetFocus();
+  if (!teamSelect2->GetSelectedEntryID().empty()) {
+    buttonStart2->SetFocus();
+  }
 }
 
 void TeamSelectPage::SetupTeamSelect1() {
   teamSelect1->ClearEntries();
   AddTeams(teamSelect1, competitionSelect1->GetSelectedEntryID());
+  UpdateReadyButtons();
 }
 
 void TeamSelectPage::SetupTeamSelect2() {
   teamSelect2->ClearEntries();
   AddTeams(teamSelect2, competitionSelect2->GetSelectedEntryID());
+  UpdateReadyButtons();
 
   // hax lol, well doesn't seem to work :(
   /*
@@ -187,7 +268,16 @@ void TeamSelectPage::SetupTeamSelect2() {
   */
 }
 
+void TeamSelectPage::UpdateReadyButtons() {
+  buttonStart1->SetActive(!teamSelect1->GetSelectedEntryID().empty());
+  buttonStart2->SetActive(!teamSelect2->GetSelectedEntryID().empty());
+}
+
 void TeamSelectPage::GoOptionsMenu() {
+  if (teamSelect1->GetSelectedEntryID().empty() || teamSelect2->GetSelectedEntryID().empty()) {
+    return;
+  }
+
   GetMenuTask()->SetTeamIDs(teamSelect1->GetSelectedEntryID(), teamSelect2->GetSelectedEntryID());
   // printf("teams: %i vs %i\n", atoi(teamSelect1->GetSelectedEntryID().c_str()),
   // atoi(teamSelect2->GetSelectedEntryID().c_str()));

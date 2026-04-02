@@ -10,8 +10,21 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
+
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
+
+}  // namespace
+
 MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      buttonStart(nullptr),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Image* bg = new Gui2Image(windowManager, "matchoptions_image_bg1", 30, 20, 40, 70);
   this->AddView(bg);
   bg->LoadImage("media/menu/backgrounds/black.png");
@@ -28,7 +41,7 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
                                     "difficulty (when HUMAN vs CPU)");
   matchDurationSlider = new Gui2Slider(windowManager, "matchoptions_slider_matchduration", 0, 0, 29,
                                        6, "match duration (5 minutes .. 25 min.)");
-  Gui2Button* buttonStart =
+  buttonStart =
       new Gui2Button(windowManager, "matchoptions_button_start", 0, 0, 29, 3, "Start match");
 
   float difficulty = GetConfiguration()->GetReal("match_difficulty", _default_Difficulty);
@@ -52,6 +65,18 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
 }
 
 MatchOptionsPage::~MatchOptionsPage() {}
+
+void MatchOptionsPage::Process() {
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeQuickMatchEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Match options confirmed, starting match load\n");
+    GoLoadingMatchPage();
+  }
+}
 
 void MatchOptionsPage::GoLoadingMatchPage() {
   GetConfiguration()->Set("match_difficulty", difficultySlider->GetValue());

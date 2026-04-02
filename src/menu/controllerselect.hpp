@@ -21,6 +21,7 @@ public:
   ControllerSelectPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~ControllerSelectPage();
 
+  void ConfirmSelection();
   void SetImagePositions();
 
   virtual void Process();
@@ -32,6 +33,8 @@ protected:
   std::vector<SideSelection> sides;
   std::vector<unsigned long> delay;
   bool inGame;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

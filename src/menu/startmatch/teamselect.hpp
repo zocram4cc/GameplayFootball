@@ -30,8 +30,10 @@ public:
   void FocusStart2();
   void SetupTeamSelect1();
   void SetupTeamSelect2();
+  void UpdateReadyButtons();
   void GoOptionsMenu();
 
+  virtual void Process();
   virtual void ProcessWindowingEvent(WindowingEvent* event);
 
   Gui2Button* buttonStart1;
@@ -45,6 +47,8 @@ protected:
   Gui2IconSelector* teamSelect2;
   Gui2IconSelector* competitionSelect1;
   Gui2IconSelector* competitionSelect2;
+  unsigned long autoAdvanceTime_ms;
+  int autoAdvanceStage;
 };
 
 #endif

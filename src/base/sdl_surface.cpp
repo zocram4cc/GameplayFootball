@@ -72,14 +72,13 @@ Uint32 sdl_getpixel(const SDL_Surface* surface, int x, int y) {
   }
 }
 
-void sdl_line(SDL_Surface* surface, int x1, int y1, int x2, int y2, Uint32 color) {
+void sdl_line(SDL_Surface*, int, int, int, int, Uint32) {
   // VK: TODO: Use SDL2 functions or remove
   //    sge_Line(surface, x1, y1, x2, y2, color);
   //    sge_AALine(surface, x1, y1, x2, y2, color);
 }
 
-void sdl_triangle_filled(SDL_Surface* surface, const Triangle& triangle, Uint8 r, Uint8 g,
-                         Uint8 b) {
+void sdl_triangle_filled(SDL_Surface*, const Triangle&, Uint8, Uint8, Uint8) {
   // uses only the x, y part of the triangle
 
   // sge: inverse-wounded triangles won't be drawn, so draw twice, both ways round. lame fix :D
@@ -149,7 +148,6 @@ void sdl_alphablit(SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Re
              (x + drect.x) * dst->format->BytesPerPixel;
 
       float srcOpacity = psrc[3] / 256.0f;
-      float dstOpacity = pdst[3] / 256.0f;
       float srcBias = srcOpacity;
       pdst[0] = psrc[0] * srcBias + pdst[0] * (1.0f - srcBias);
       pdst[1] = psrc[1] * srcBias + pdst[1] * (1.0f - srcBias);

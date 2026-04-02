@@ -18,11 +18,19 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
+
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
+
+}  // namespace
+
 IntroPage::IntroPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   windowManager->BlackoutBackground(true);
-
-  Gui2Root* root = windowManager->GetRoot();
 
   bg = new Gui2Image(windowManager, "image_intro", 0, 0, 100, 100);
   bg->LoadImage("media/menu/backgrounds/intro01.png");
@@ -46,15 +54,13 @@ void IntroPage::ProcessWindowingEvent(WindowingEvent* event) {
   }
 }
 
-void IntroPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+void IntroPage::ProcessKeyboardEvent(KeyboardEvent*) {
   CreatePage((int)e_PageID_MainMenu, 0);
 }
 
 OutroPage::OutroPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   windowManager->BlackoutBackground(true);
-
-  Gui2Root* root = windowManager->GetRoot();
 
   bg = new Gui2Image(windowManager, "image_outro", 0, 0, 100, 100);
   bg->LoadImage("media/menu/backgrounds/outro01.png");
@@ -77,12 +83,14 @@ void OutroPage::ProcessWindowingEvent(WindowingEvent* event) {
   }
 }
 
-void OutroPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+void OutroPage::ProcessKeyboardEvent(KeyboardEvent*) {
   GetMenuTask()->QuitGame();
 }
 
 MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   // Title positioned upper-left
   Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 4, 8, 38, 18);
   title->LoadImage("media/menu/main/title01.png");
@@ -90,11 +98,9 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   this->AddView(title);
   title->Show();
 
-  // Wider, taller buttons for a bold, modern vertical list layout
+  // Present only menu options that lead to working pages.
   buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 32, 6, "Quick Match"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_cup", 0, 0, 32, 6, "Tournament"));
   buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 32, 6, "League Mode"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_edit", 0, 0, 32, 6, "Customizer"));
   buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 32, 6, "Options"));
   buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 32, 6, "Credits"));
   buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 32, 6, "Quit to Desktop"));
@@ -105,46 +111,48 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   }
 
   buttons.at(0)->sig_OnClick.connect([this](...) { GoControllerSelect(); });
-  buttons.at(2)->sig_OnClick.connect([this](...) { GoLeague(); });
-  buttons.at(4)->sig_OnClick.connect([this](...) { GoSettings(); });
-  buttons.at(5)->sig_OnClick.connect([this](...) { GoCredits(); });
+  buttons.at(1)->sig_OnClick.connect([this](...) { GoLeague(); });
+  buttons.at(2)->sig_OnClick.connect([this](...) { GoSettings(); });
+  buttons.at(3)->sig_OnClick.connect([this](...) { GoCredits(); });
   if (!IsReleaseVersion()) {
-    buttons.at(6)->sig_OnClick.connect(std::bind(&MenuTask::QuitGame, GetMenuTask()));
+    buttons.at(4)->sig_OnClick.connect(std::bind(&MenuTask::QuitGame, GetMenuTask()));
+    buttons.at(5)->sig_OnClick.connect([this](...) { GoImportDB(); });
   } else {
-    buttons.at(6)->sig_OnClick.connect([this](...) { GoOutro(); });
+    buttons.at(4)->sig_OnClick.connect([this](...) { GoOutro(); });
   }
-  if (!IsReleaseVersion()) {
-    buttons.at(7)->sig_OnClick.connect([this](...) { GoImportDB(); });
-  }
-
-  buttons.at(1)->SetActive(false);
-  buttons.at(2)->SetActive(false);
-  buttons.at(3)->SetActive(false);
 
   // Single-column vertical list on the left side, wider to fit new buttons
   grid = new Gui2Grid(windowManager, "grid_main", 4, 30, 34, 60);
 
-  grid->AddView(buttons.at(0), 0, 0);
-  grid->AddView(buttons.at(1), 1, 0);
-  grid->AddView(buttons.at(2), 2, 0);
-  grid->AddView(buttons.at(3), 3, 0);
-  grid->AddView(buttons.at(4), 4, 0);
-  grid->AddView(buttons.at(5), 5, 0);
-  grid->AddView(buttons.at(6), 6, 0);
-  if (!IsReleaseVersion())
-    grid->AddView(buttons.at(7), 7, 0);
+  for (unsigned int i = 0; i < buttons.size(); i++) {
+    grid->AddView(buttons.at(i), i, 0);
+  }
 
   grid->UpdateLayout(0.25, 0.25, 0.4, 0.4);
 
   this->AddView(grid);
   grid->Show();
 
-  buttons.at(pageData.properties->GetInt("selectedButtonID"))->SetFocus();
+  int selectedButtonID = pageData.properties->GetInt("selectedButtonID");
+  selectedButtonID = clamp(selectedButtonID, 0, (signed int)buttons.size() - 1);
+  buttons.at(selectedButtonID)->SetFocus();
 
   this->Show();
 }
 
 MainMenuPage::~MainMenuPage() {}
+
+void MainMenuPage::Process() {
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeQuickMatchEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Quick Match\n");
+    GoControllerSelect();
+  }
+}
 
 void MainMenuPage::GoControllerSelect() {
   this->Exit();
@@ -160,7 +168,7 @@ void MainMenuPage::GoControllerSelect() {
 void MainMenuPage::GoLeague() {
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 2);
+  pageData.properties->Set("selectedButtonID", 1);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_League_Start, properties, 0);
 
@@ -170,7 +178,7 @@ void MainMenuPage::GoLeague() {
 void MainMenuPage::GoSettings() {
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 4);
+  pageData.properties->Set("selectedButtonID", 2);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_Settings, properties, 0);
 
@@ -180,7 +188,7 @@ void MainMenuPage::GoSettings() {
 void MainMenuPage::GoCredits() {
   this->Exit();
 
-  pageData.properties->Set("selectedButtonID", 5);
+  pageData.properties->Set("selectedButtonID", 3);
   Properties properties;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_Credits, properties, 0);
 

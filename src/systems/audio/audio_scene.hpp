@@ -38,9 +38,9 @@ public:
   virtual void OnLoad();
   virtual void OnUnload();
 
-  virtual void SetGravity(const Vector3& gravity) {}
-  virtual void SetErrorCorrection(float value) {}
-  virtual void SetConstraintForceMixing(float value) {}
+  virtual void SetGravity(const Vector3&) {}
+  virtual void SetErrorCorrection(float) {}
+  virtual void SetConstraintForceMixing(float) {}
 
   virtual ISystemObject* CreateSystemObject(boost::intrusive_ptr<Object> object);
 

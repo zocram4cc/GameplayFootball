@@ -72,7 +72,7 @@ public:
   Message_Shutdown() : Command("shutdown") {};
 
 protected:
-  virtual bool Execute(void* caller = nullptr) { return false; }
+  virtual bool Execute(void* = nullptr) { return false; }
 };
 
 }  // namespace blunted

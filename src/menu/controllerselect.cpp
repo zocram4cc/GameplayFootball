@@ -12,9 +12,21 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
+
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
+
+}  // namespace
+
 ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
                                            const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   inGame = pageData.properties->GetBool("isInGame");
 
   Gui2Image* bg1 = new Gui2Image(windowManager, "image_gameover_bg", 10, 15, 80, 70);
@@ -78,6 +90,19 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
 
 ControllerSelectPage::~ControllerSelectPage() {}
 
+void ControllerSelectPage::ConfirmSelection() {
+  if (!inGame) {
+    if (sides.empty()) {
+      printf("[menu-smoke] Controller select has no available input devices\n");
+      return;
+    }
+
+    GetMenuTask()->SetControllerSetup(sides);
+    printf("[menu-smoke] Controller select confirmed, opening team selection\n");
+    CreatePage(e_PageID_TeamSelect);
+  }
+}
+
 void ControllerSelectPage::SetImagePositions() {
   for (unsigned int i = 0; i < sides.size(); i++) {
     int x = 43 + sides.at(i).side * 25;
@@ -86,7 +111,14 @@ void ControllerSelectPage::SetImagePositions() {
 }
 
 void ControllerSelectPage::Process() {
-  Gui2View::Process();
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeQuickMatchEnabled() && !inGame &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    ConfirmSelection();
+  }
 }
 
 void ControllerSelectPage::ProcessKeyboardEvent(KeyboardEvent* event) {
@@ -102,7 +134,7 @@ void ControllerSelectPage::ProcessKeyboardEvent(KeyboardEvent* event) {
   SetImagePositions();
 }
 
-void ControllerSelectPage::ProcessJoystickEvent(JoystickEvent* event) {
+void ControllerSelectPage::ProcessJoystickEvent(JoystickEvent*) {
   const std::vector<IHIDevice*>& controllers = GetControllers();
   for (unsigned int i = 1; i < controllers.size(); i++) {
     if (delay.at(i) < EnvironmentManager::GetInstance().GetTime_ms() - 250) {

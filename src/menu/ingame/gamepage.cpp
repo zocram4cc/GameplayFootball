@@ -14,8 +14,18 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeQuitDelay_ms = 2000;
+
+bool MenuSmokeQuickMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
+}
+
+}  // namespace
+
 GamePage::GamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData), match(0) {
+    : Gui2Page(windowManager, pageData), match(0), matchReadyTime_ms(0), autoQuitTriggered(false) {
   Gui2Caption* betaSign =
       new Gui2Caption(windowManager, "caption_betasign", 0, 0, 0, 2, "League-Soccer v0.4.0");
   betaSign->SetColor(Vector3(180, 180, 180));
@@ -46,6 +56,8 @@ GamePage::~GamePage() {
 }
 
 void GamePage::Process() {
+  Gui2Page::Process();
+
   if (!match) {
     GetGameTask()->matchLifetimeMutex.lock();
     if (GetGameTask()->GetMatch() != 0) {
@@ -61,8 +73,21 @@ void GamePage::Process() {
       conn_ExtendedReplayMoment =
           match->sig_OnExtendedReplayMoment.connect([this](...) { GoExtendedReplayPage(); });
       conn_GameOver = match->sig_OnGameOver.connect([this](...) { GoGameOverPage(); });
+
+      if (MenuSmokeQuickMatchEnabled()) {
+        matchReadyTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+        printf("[menu-smoke] Gameplay page reached and live match is active\n");
+      }
     }
     GetGameTask()->matchLifetimeMutex.unlock();
+  }
+
+  if (match && !autoQuitTriggered && MenuSmokeQuickMatchEnabled() && matchReadyTime_ms != 0 &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          matchReadyTime_ms + kMenuSmokeQuitDelay_ms) {
+    autoQuitTriggered = true;
+    printf("[menu-smoke] Quick Match verification succeeded, quitting test run\n");
+    EnvironmentManager::GetInstance().SignalQuit();
   }
 }
 

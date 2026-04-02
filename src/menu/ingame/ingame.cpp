@@ -20,8 +20,6 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   GetGameTask()->GetMatch()->Pause(true);
 
-  Gui2Root* root = windowManager->GetRoot();
-
   Gui2Button* buttonGamePlan =
       new Gui2Button(windowManager, "button_gameplan", 0, 0, 30, 3, "game plan");
   Gui2Button* buttonControllerSelect =
@@ -127,7 +125,6 @@ void IngamePage::ProcessWindowingEvent(WindowingEvent* event) {
 
 PreQuitPage::PreQuitPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Root* root = windowManager->GetRoot();
   Gui2Image* bg = new Gui2Image(windowManager, "image_prequit_bg", 30, 42.5, 40, 15);
   bg->LoadImage("media/menu/backgrounds/black.png");
   this->AddView(bg);

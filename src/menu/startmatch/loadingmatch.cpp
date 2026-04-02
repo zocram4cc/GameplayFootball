@@ -5,10 +5,26 @@
 
 #include "loadingmatch.hpp"
 
+#include <filesystem>
+
 #include "../pagefactory.hpp"
 #include "main.hpp"
 
 using namespace blunted;
+
+namespace {
+
+const char* kLoadingFallbackLogo = "media/textures/orange.jpg";
+
+std::string ResolveTeamLogo(const TeamData* teamData) {
+  const std::string& logoPath = teamData->GetLogoUrl();
+  if (!logoPath.empty() && std::filesystem::exists(logoPath)) {
+    return logoPath;
+  }
+  return kLoadingFallbackLogo;
+}
+
+}  // namespace
 
 LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
@@ -30,7 +46,7 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(caption1);
   Gui2Image* logo1 = new Gui2Image(windowManager, "main_loading_team1logo", 25, 48, 10, 12.5);
   this->AddView(logo1);
-  logo1->LoadImage(teamData1->GetLogoUrl());
+  logo1->LoadImage(ResolveTeamLogo(teamData1));
 
   Gui2Caption* caption2 = new Gui2Caption(windowManager, "main_loading_team2caption", 60, 35, 40, 5,
                                           teamData2->GetName());
@@ -39,7 +55,7 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(caption2);
   Gui2Image* logo2 = new Gui2Image(windowManager, "main_loading_team2logo", 65, 48, 10, 12.5);
   this->AddView(logo2);
-  logo2->LoadImage(teamData2->GetLogoUrl());
+  logo2->LoadImage(ResolveTeamLogo(teamData2));
 
   caption1->Show();
   caption2->Show();

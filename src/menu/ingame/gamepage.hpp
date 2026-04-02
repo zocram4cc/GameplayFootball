@@ -34,6 +34,8 @@ public:
 
 protected:
   Match* match;
+  unsigned long matchReadyTime_ms;
+  bool autoQuitTriggered;
 
   boost::signals2::connection conn_MatchPhaseChange;
   boost::signals2::connection conn_ShortReplayMoment;

@@ -10,21 +10,21 @@
 
 namespace blunted {
 
-bool SystemTaskMessage_GetPhase::Execute(void* caller) {
+bool SystemTaskMessage_GetPhase::Execute(void*) {
   task->GetPhase();
   std::unique_lock<std::mutex> lock(GetScheduler()->somethingIsDoneMutex);
   GetScheduler()->somethingIsDone.notify_one();
   return true;
 }
 
-bool SystemTaskMessage_ProcessPhase::Execute(void* caller) {
+bool SystemTaskMessage_ProcessPhase::Execute(void*) {
   task->ProcessPhase();
   std::unique_lock<std::mutex> lock(GetScheduler()->somethingIsDoneMutex);
   GetScheduler()->somethingIsDone.notify_one();
   return true;
 }
 
-bool SystemTaskMessage_PutPhase::Execute(void* caller) {
+bool SystemTaskMessage_PutPhase::Execute(void*) {
   task->PutPhase();
   std::unique_lock<std::mutex> lock(GetScheduler()->somethingIsDoneMutex);
   GetScheduler()->somethingIsDone.notify_one();

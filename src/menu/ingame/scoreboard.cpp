@@ -38,11 +38,8 @@ Gui2ScoreBoard::Gui2ScoreBoard(Gui2WindowManager* windowManager, Match* match)
   xOffset[6] = 51;  // t2 name
   xOffset[7] = 57;  // t2 score
   xOffset[8] = 61;  // end
-  float relToAbsMultiplier = w / (width_percent * 1.0f);
   content_yOffset = 0.2f;
   float content_xOffset = 0.2f;
-
-  float bgAlpha = 100.0f;
 
   // Background covers the centered score panel (from ~32% to ~62%)
   Gui2Image* bg =

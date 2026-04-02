@@ -29,7 +29,7 @@ protected:
     }
   }
 
-  virtual bool Execute(void* caller = nullptr) override {
+  virtual bool Execute(void* = nullptr) override {
     Update();
     return true;
   }
@@ -46,7 +46,7 @@ public:
 protected:
   void Update();
 
-  virtual bool Execute(void* caller = nullptr) {
+  virtual bool Execute(void* = nullptr) {
     Update();
     return true;
   }

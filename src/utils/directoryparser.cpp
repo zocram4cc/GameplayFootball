@@ -17,11 +17,19 @@ DirectoryParser::~DirectoryParser() {}
 
 void DirectoryParser::Parse(std::filesystem::path path, const std::string& extension,
                             std::vector<std::string>& files, bool recurse) {
-  if (!fs::exists(path) || !fs::is_directory(path))
+  if (!fs::exists(path) || !fs::is_directory(path)) {
     Log(e_Error, "DirectoryParser", "Parse",
         "Could not open directory " + path.string() + " for reading");
+    return;
+  }
 
-  fs::directory_iterator dirIter(path);
+  std::error_code ec;
+  fs::directory_iterator dirIter(path, ec);
+  if (ec) {
+    Log(e_Error, "DirectoryParser", "Parse",
+        "Could not iterate directory " + path.string() + ": " + ec.message());
+    return;
+  }
   fs::directory_iterator endIter;
   while (dirIter != endIter) {
     if (is_directory(dirIter->status())) {
@@ -42,7 +50,12 @@ void DirectoryParser::Parse(std::filesystem::path path, const std::string& exten
       }
     }
 
-    dirIter++;
+    dirIter.increment(ec);
+    if (ec) {
+      Log(e_Error, "DirectoryParser", "Parse",
+          "Could not continue iterating directory " + path.string() + ": " + ec.message());
+      return;
+    }
   }
 }
 

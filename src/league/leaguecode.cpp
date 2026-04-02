@@ -196,8 +196,8 @@ bool LoadLeague() {
   return true;
 }
 
-static void GenerateRoundRobinFixtures(int leagueID, int seasonYear,
-                                         const std::string& startDate) {
+static void GenerateRoundRobinFixtures(int leagueID, int,
+                                       const std::string& startDate) {
   auto teamsResult = GetDB()->Query(
       "SELECT id FROM teams WHERE league_id = " + int_to_str(leagueID) + " ORDER BY id");
   if (teamsResult->data.empty()) return;
