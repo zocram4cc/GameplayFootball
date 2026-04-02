@@ -33,6 +33,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   autoRun = false;
   slowMotion = false;
   stayInReplay = true;
+  closeWhenAutorunCompletes = false;
 
   // Timeline label: shows current replay position at bottom centre of screen
   timeLabel = new Gui2Caption(windowManager, "caption_replay_time", 35, 95, 30, 3, "");
@@ -72,6 +73,7 @@ void ReplayPage::OnClose() {
 
 void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay) {
   autoRun = true;
+  closeWhenAutorunCompletes = true;
   cam = 1;
   modifierValue = 0.0;
   signed long tmp = maxTime_ms - replayHistoryOffset_ms;
@@ -182,11 +184,14 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
   if (button2 && autoRun == false) {
     actualTime_ms = minTime_ms;
     autoRun = true;
+    closeWhenAutorunCompletes = false;
   } else if (button2) {
     autoRun = false;
+    closeWhenAutorunCompletes = false;
   }
   if (button1 && autoRun == true) {
     autoRun = false;
+    closeWhenAutorunCompletes = false;
   } else if (button1) {
     cam++;
     if (cam == replayCamCount)
@@ -212,6 +217,11 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
 
   if (autoRun && actualTime_ms >= (signed int)maxTime_ms) {
     autoRun = false;
+    if (closeWhenAutorunCompletes) {
+      closeWhenAutorunCompletes = false;
+      GoBack();
+      return;
+    }
   }
 
   actualTime_ms = clamp(actualTime_ms, minTime_ms, maxTime_ms);

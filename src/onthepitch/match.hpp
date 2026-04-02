@@ -404,6 +404,7 @@ protected:
   Vector3 previousBallPos;
 
   float matchDurationFactor;
+  float matchTimeScale;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;
 

@@ -18,6 +18,14 @@ bool MenuSmokeQuickMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
 }
 
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+bool MenuSmokeAutoQuickMatchEnabled() {
+  return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
+}
+
 }  // namespace
 
 MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
@@ -69,7 +77,7 @@ MatchOptionsPage::~MatchOptionsPage() {}
 void MatchOptionsPage::Process() {
   Gui2Page::Process();
 
-  if (!autoAdvanceTriggered && MenuSmokeQuickMatchEnabled() &&
+  if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
           pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
     autoAdvanceTriggered = true;

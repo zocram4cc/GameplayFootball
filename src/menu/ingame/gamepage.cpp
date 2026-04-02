@@ -22,6 +22,10 @@ bool MenuSmokeQuickMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
 }
 
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
 }  // namespace
 
 GamePage::GamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
@@ -74,7 +78,7 @@ void GamePage::Process() {
           match->sig_OnExtendedReplayMoment.connect([this](...) { GoExtendedReplayPage(); });
       conn_GameOver = match->sig_OnGameOver.connect([this](...) { GoGameOverPage(); });
 
-      if (MenuSmokeQuickMatchEnabled()) {
+      if (MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled()) {
         matchReadyTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
         printf("[menu-smoke] Gameplay page reached and live match is active\n");
       }
@@ -82,7 +86,8 @@ void GamePage::Process() {
     GetGameTask()->matchLifetimeMutex.unlock();
   }
 
-  if (match && !autoQuitTriggered && MenuSmokeQuickMatchEnabled() && matchReadyTime_ms != 0 &&
+  if (match && !autoQuitTriggered && MenuSmokeQuickMatchEnabled() && !MenuSmokeFullMatchEnabled() &&
+      matchReadyTime_ms != 0 &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
           matchReadyTime_ms + kMenuSmokeQuitDelay_ms) {
     autoQuitTriggered = true;

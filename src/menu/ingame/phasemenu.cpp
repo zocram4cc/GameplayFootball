@@ -11,8 +11,35 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 500;
+
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+const char* PhaseName(e_MatchPhase phase) {
+  switch (phase) {
+    case e_MatchPhase_2ndHalf:
+      return "second half";
+    case e_MatchPhase_1stExtraTime:
+      return "first extra time";
+    case e_MatchPhase_2ndExtraTime:
+      return "second extra time";
+    case e_MatchPhase_Penalties:
+      return "penalties";
+    default:
+      return "next phase";
+  }
+}
+
+}  // namespace
+
 MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   GetGameTask()->GetMatch()->Pause(true);
 
   nextPhase = (e_MatchPhase)pageData.properties->GetInt("nextphase");
@@ -49,6 +76,18 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
 }
 
 MatchPhasePage::~MatchPhasePage() {}
+
+void MatchPhasePage::Process() {
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeFullMatchEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Continuing %s automatically\n", PhaseName(nextPhase));
+    ContinueGame();
+  }
+}
 
 void MatchPhasePage::GoGamePlan() {
   Properties properties;

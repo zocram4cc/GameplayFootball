@@ -21,6 +21,7 @@ public:
   MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~MatchPhasePage();
 
+  virtual void Process();
   void GoGamePlan();
 
   Gui2Button* buttonNext;
@@ -31,6 +32,8 @@ public:
 protected:
   Gui2Grid* grid;
   e_MatchPhase nextPhase;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

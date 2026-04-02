@@ -13,8 +13,20 @@
 
 using namespace blunted;
 
+namespace {
+
+constexpr unsigned long kMenuSmokeQuitDelay_ms = 1000;
+
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+}  // namespace
+
 GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoQuitTriggered(false) {
   match = GetGameTask()->GetMatch();
   match->Pause(true);
 
@@ -165,6 +177,23 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
 }
 
 GameOverPage::~GameOverPage() {}
+
+void GameOverPage::Process() {
+  Gui2Page::Process();
+
+  if (!autoQuitTriggered && MenuSmokeFullMatchEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeQuitDelay_ms) {
+    autoQuitTriggered = true;
+    printf("[menu-smoke] Full match complete: %s %i - %i %s\n",
+           match->GetTeam(0)->GetTeamData()->GetName().c_str(),
+           match->GetMatchData()->GetGoalCount(0),
+           match->GetMatchData()->GetGoalCount(1),
+           match->GetTeam(1)->GetTeamData()->GetName().c_str());
+    printf("[menu-smoke] Full-match verification succeeded, quitting test run\n");
+    EnvironmentManager::GetInstance().SignalQuit();
+  }
+}
 
 void GameOverPage::GoRematch() {
   windowManager->GetPagePath()->Clear();

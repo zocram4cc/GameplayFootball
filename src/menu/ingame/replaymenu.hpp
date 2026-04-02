@@ -41,6 +41,7 @@ protected:
   bool autoRun;
   bool stayInReplay;
   bool slowMotion;
+  bool closeWhenAutorunCompletes;
 
   Gui2Caption* timeLabel;
 };

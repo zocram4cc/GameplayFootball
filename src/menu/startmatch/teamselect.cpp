@@ -22,6 +22,14 @@ bool MenuSmokeQuickMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
 }
 
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+bool MenuSmokeAutoQuickMatchEnabled() {
+  return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
+}
+
 int AddCompetitions(Gui2IconSelector* selector) {
   /*
   selector->AddEntry("1", "National teams",
@@ -178,7 +186,7 @@ TeamSelectPage::~TeamSelectPage() {
 void TeamSelectPage::Process() {
   Gui2Page::Process();
 
-  if (!MenuSmokeQuickMatchEnabled()) {
+  if (!MenuSmokeAutoQuickMatchEnabled()) {
     return;
   }
 

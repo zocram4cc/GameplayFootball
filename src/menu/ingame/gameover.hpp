@@ -20,6 +20,7 @@ public:
   GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~GameOverPage();
 
+  virtual void Process();
   void GoRematch();
   void GoMainMenu();
 
@@ -27,6 +28,8 @@ public:
 
 protected:
   Match* match;
+  unsigned long pageCreatedTime_ms;
+  bool autoQuitTriggered;
 };
 
 #endif

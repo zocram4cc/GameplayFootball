@@ -45,6 +45,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   nettingHasChanged = false;
 
   matchDurationFactor = GetConfiguration()->GetReal("match_duration", 1.0) * 0.2f + 0.05f;
+  matchTimeScale = std::max(1.0f, GetConfiguration()->GetReal("menu_smoke_match_time_scale", 1.0f));
   matchDifficulty = GetConfiguration()->GetReal("match_difficulty", 0.8f);
 
   Log(e_Notice, "Match", "Match", "Creating dynamicNode");
@@ -1050,7 +1051,7 @@ void Match::Process() {
     // time
 
     if (IsInPlay() && !IsInSetPiece())
-      matchTime_ms += 10 * (1.0f / matchDurationFactor);
+      matchTime_ms += 10 * (1.0f / matchDurationFactor) * matchTimeScale;
     actualTime_ms += 10;
     if (IsGoalScored())
       goalScoredTimer += 10;

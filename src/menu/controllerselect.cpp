@@ -20,6 +20,14 @@ bool MenuSmokeQuickMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
 }
 
+bool MenuSmokeFullMatchEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+bool MenuSmokeAutoQuickMatchEnabled() {
+  return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
+}
+
 }  // namespace
 
 ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
@@ -97,6 +105,14 @@ void ControllerSelectPage::ConfirmSelection() {
       return;
     }
 
+    if (MenuSmokeFullMatchEnabled()) {
+      for (auto& side : sides) {
+        side.side = 0;
+      }
+      SetImagePositions();
+      printf("[menu-smoke] Controller select switched to CPU vs CPU for full-match verification\n");
+    }
+
     GetMenuTask()->SetControllerSetup(sides);
     printf("[menu-smoke] Controller select confirmed, opening team selection\n");
     CreatePage(e_PageID_TeamSelect);
@@ -113,7 +129,7 @@ void ControllerSelectPage::SetImagePositions() {
 void ControllerSelectPage::Process() {
   Gui2Page::Process();
 
-  if (!autoAdvanceTriggered && MenuSmokeQuickMatchEnabled() && !inGame &&
+  if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() && !inGame &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
           pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
     autoAdvanceTriggered = true;
