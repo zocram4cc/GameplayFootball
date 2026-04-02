@@ -125,12 +125,16 @@ namespace blunted {
 Triangle::Triangle() {}
 
 Triangle::Triangle(const Triangle& triangle) {
-  // todo: is this correct memory 'management' ?
-  memcpy(vertices, triangle.vertices, sizeof(triangle.vertices));
-  memcpy(textureVertices, triangle.textureVertices, sizeof(triangle.textureVertices));
-  memcpy(normals, triangle.normals, sizeof(triangle.normals));
-  memcpy(tangents, triangle.tangents, sizeof(triangle.tangents));
-  memcpy(biTangents, triangle.biTangents, sizeof(triangle.biTangents));
+  for (int vertexIndex = 0; vertexIndex < 3; ++vertexIndex) {
+    vertices[vertexIndex] = triangle.vertices[vertexIndex];
+    normals[vertexIndex] = triangle.normals[vertexIndex];
+    tangents[vertexIndex] = triangle.tangents[vertexIndex];
+    biTangents[vertexIndex] = triangle.biTangents[vertexIndex];
+    for (int textureUnit = 0; textureUnit < 8; ++textureUnit) {
+      textureVertices[vertexIndex][textureUnit] =
+          triangle.textureVertices[vertexIndex][textureUnit];
+    }
+  }
 }
 
 Triangle::Triangle(const Vector3& v1, const Vector3& v2, const Vector3& v3) {

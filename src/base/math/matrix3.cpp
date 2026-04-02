@@ -99,7 +99,7 @@ void Matrix3::Transpose() {
       temp.elements[y + x * 3] = elements[x + y * 3];
     }
   }
-  *this = Matrix3(temp);
+  *this = temp;
 }
 
 }  // namespace blunted

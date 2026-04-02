@@ -184,6 +184,28 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   if(OpenAL_FOUND)
     target_include_directories(gameplayfootball PRIVATE ${OPENAL_INCLUDE_DIR})
   endif()
+  add_custom_command(TARGET gameplayfootball POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:gameplayfootball>/data
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${PROJECT_SOURCE_DIR}/data/football.config
+      $<TARGET_FILE_DIR:gameplayfootball>/football.config
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      ${PROJECT_SOURCE_DIR}/data/football.config
+      $<TARGET_FILE_DIR:gameplayfootball>/data/football.config
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${PROJECT_SOURCE_DIR}/data/databases
+      $<TARGET_FILE_DIR:gameplayfootball>/databases
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${PROJECT_SOURCE_DIR}/data/locale
+      $<TARGET_FILE_DIR:gameplayfootball>/locale
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${PROJECT_SOURCE_DIR}/data/media
+      $<TARGET_FILE_DIR:gameplayfootball>/media
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${PROJECT_SOURCE_DIR}/data/locale
+      $<TARGET_FILE_DIR:gameplayfootball>/data/locale
+    COMMENT "Copying runtime assets for gameplayfootball"
+  )
 endif()
 
 if(BUILD_TESTING)

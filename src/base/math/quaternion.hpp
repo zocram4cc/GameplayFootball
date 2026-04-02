@@ -29,7 +29,7 @@ namespace blunted {
 class Vector3;
 class Matrix3;
 
-static real QUATERNION_IDENTITY[4] = {0, 0, 0, 1};
+inline real QUATERNION_IDENTITY[4] = {0, 0, 0, 1};
 
 class Quaternion {
 public:

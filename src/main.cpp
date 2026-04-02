@@ -7,6 +7,8 @@
 #include <windows.h>
 #endif
 
+#include <filesystem>
+
 #include "SDL2/SDL_ttf.h"
 #include "base/log.hpp"
 #include "base/math/bluntmath.hpp"
@@ -117,6 +119,28 @@ std::string configFile = "football.config";
 std::string GetConfigFilename() {
   return configFile;
 }
+
+namespace {
+
+std::string ResolveConfigFilename(const std::string& requestedFilename) {
+  namespace fs = std::filesystem;
+
+  fs::path requestedPath(requestedFilename);
+  if (fs::exists(requestedPath)) {
+    return requestedPath.generic_string();
+  }
+
+  if (requestedPath.is_relative()) {
+    fs::path dataRelativePath = fs::path("data") / requestedPath.filename();
+    if (fs::exists(dataRelativePath)) {
+      return dataRelativePath.generic_string();
+    }
+  }
+
+  return requestedFilename;
+}
+
+}  // namespace
 
 std::shared_ptr<Scene2D> GetScene2D() {
   return scene2D;
@@ -302,6 +326,7 @@ int main(int argc, const char** argv) {
   config = new Properties();
   if (argc > 1)
     configFile = argv[1];
+  configFile = ResolveConfigFilename(configFile);
   config->LoadFile(configFile.c_str());
 
   // Initialize localization using saved language preference (default: "en")

@@ -13,7 +13,7 @@
 
 namespace blunted {
 
-static real MATRIX4_IDENTITY[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+inline real MATRIX4_IDENTITY[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 
 // column major, row minor matrix
 class Matrix4 {

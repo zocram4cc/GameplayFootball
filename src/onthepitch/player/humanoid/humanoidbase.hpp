@@ -148,6 +148,7 @@ struct AnimApplyBuffer {
     orientation = src.orientation;
     offsets = src.offsets;
   }
+  AnimApplyBuffer& operator=(const AnimApplyBuffer& src) = default;
   Animation* anim;
   int frameNum;
   unsigned long snapshotTime_ms;

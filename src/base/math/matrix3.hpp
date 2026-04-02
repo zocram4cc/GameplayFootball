@@ -25,6 +25,7 @@ public:
   virtual ~Matrix3();
 
   // ----- operator overloading
+  Matrix3& operator=(const Matrix3& mat3) = default;
   void operator=(const Matrix4& mat4);
   Matrix3 operator*(const Matrix3& multiplier) const;
   Vector3 operator*(const Vector3& multiplier) const;

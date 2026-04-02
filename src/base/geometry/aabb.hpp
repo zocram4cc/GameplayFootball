@@ -17,6 +17,7 @@ class AABB {
 public:
   AABB();
   AABB(const AABB& src);
+  AABB& operator=(const AABB& src) = default;
   virtual ~AABB();
 
   AABB operator+=(const AABB& add);

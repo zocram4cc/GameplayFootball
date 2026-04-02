@@ -43,8 +43,7 @@ AABB AABB::operator+(const Vector3& vec) const {
   AABB aabb(*this);
   aabb.minxyz += vec;
   aabb.maxxyz += vec;
-  radius_needupdate = true;
-  center_needupdate = true;
+  aabb.MakeDirty();
   return aabb;
 }
 
@@ -90,8 +89,7 @@ AABB AABB::operator*(const Quaternion& rot) const {
       aabb.maxxyz.coords[2] = vecs.at(i).coords[2];
   }
 
-  radius_needupdate = true;
-  center_needupdate = true;
+  aabb.MakeDirty();
   return aabb;
 }
 
