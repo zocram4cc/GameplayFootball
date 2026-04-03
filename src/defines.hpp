@@ -7,6 +7,12 @@
 #define _HPP_DEFINES
 
 #ifdef WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -16,6 +22,11 @@
 #include <boost/signals2/slot.hpp>
 #include <cassert>
 #include <chrono>
+#ifdef _MSC_VER
+#ifndef _USE_MATH_DEFINES
+#define _USE_MATH_DEFINES
+#endif
+#endif
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>

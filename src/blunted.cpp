@@ -37,7 +37,8 @@
 namespace boost {
 void assertion_failed(char const* expr, char const* function, char const* file, long line) {
   char errorString[256];
-  sprintf(errorString, "%s @ line %li: %s %s\n", file, line, function, expr);
+  std::snprintf(errorString, sizeof(errorString), "%s @ line %li: %s %s\n", file, line, function,
+                expr);
   blunted::Log(blunted::e_FatalError, "boost", "assertion_failed", errorString);
 }
 }  // namespace boost

@@ -4,11 +4,20 @@
 // :)
 
 #ifdef WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
 #include <filesystem>
 
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED
+#endif
 #include "SDL2/SDL_ttf.h"
 #include "base/log.hpp"
 #include "base/math/bluntmath.hpp"

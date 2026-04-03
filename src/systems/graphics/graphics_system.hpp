@@ -45,7 +45,9 @@ public:
     height = this->height;
     bpp = this->bpp;
   }
-  Vector3 GetContextSize() { return Vector3(width, height, bpp); }
+  Vector3 GetContextSize() {
+    return Vector3(static_cast<real>(width), static_cast<real>(height), static_cast<real>(bpp));
+  }
 
   int GetAverageFrameTime_ms(unsigned int frameCount) const {
     assert(task);

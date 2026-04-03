@@ -248,10 +248,11 @@ inline bool Vector3::operator<(const Vector3& vector) const {
 }
 
 inline real Vector3::GetLength() const {
-  float length = sqrt(std::pow(coords[0], 2) + std::pow(coords[1], 2) + std::pow(coords[2], 2));
+  real length =
+      std::sqrt(coords[0] * coords[0] + coords[1] * coords[1] + coords[2] * coords[2]);
 
-  if (length < 0.000001)
-    length = 0;
+  if (length < 0.000001f)
+    length = 0.0f;
   return length;
 }
 

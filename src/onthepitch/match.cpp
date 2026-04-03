@@ -382,7 +382,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   int maxTestLights = 0;
   if (maxTestLights > 0) {
-    boost::intrusive_ptr<Light> lightTest[maxTestLights];
+    std::vector<boost::intrusive_ptr<Light>> lightTest(maxTestLights);
     for (int li = 0; li < maxTestLights; li++) {
       lightTest[li] = boost::static_pointer_cast<Light>(ObjectFactory::GetInstance().CreateObject(
           "testLight #" + int_to_str(li), e_ObjectType_Light));
@@ -579,7 +579,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
                                   ->Fetch(files.at(i)));
   }
   if (Verbose())
-    printf("%lu adboards loaded (out of %lu files)\n", adboardSurfaces.size(), files.size());
+    printf("%zu adboards loaded (out of %zu files)\n", adboardSurfaces.size(), files.size());
   if (adboardSurfaces.empty())
     return;
 
@@ -588,7 +588,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
   std::list<boost::intrusive_ptr<Geometry>> stadiumGeoms;
   stadiumNode->GetObjects<Geometry>(e_ObjectType_Geometry, stadiumGeoms, true);
   if (Verbose())
-    printf("number of stadium objects: %lu\n", stadiumGeoms.size());
+    printf("number of stadium objects: %zu\n", stadiumGeoms.size());
 
   // replace
 

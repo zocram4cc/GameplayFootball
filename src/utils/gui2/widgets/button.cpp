@@ -5,6 +5,7 @@
 
 #include "button.hpp"
 
+#include <cmath>
 #include "SDL2/SDL2_rotozoom.h"
 
 namespace blunted {

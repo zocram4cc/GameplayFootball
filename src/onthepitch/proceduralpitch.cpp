@@ -65,8 +65,8 @@ Uint32 GetPitchDiffuseColor(SDL_Surface* pitchSurf, float xCoord, float yCoord) 
   g = 46 * brightness;
   b = ((25 - contrast * 10) * (2.0f - rToB)) * brightness;
 
-  float seamlessX = ((xCoord / pitchFullHalfW) * 0.5 + 0.5) * seamlessTexW * 18.0 * texScale;
-  float seamlessY = ((yCoord / pitchFullHalfH) * 0.5 + 0.5) * seamlessTexH * 12.0 * texScale;
+  float seamlessX = ((xCoord / pitchFullHalfW) * 0.5f + 0.5f) * seamlessTexW * 18.0f * texScale;
+  float seamlessY = ((yCoord / pitchFullHalfH) * 0.5f + 0.5f) * seamlessTexH * 12.0f * texScale;
   seamlessX = std::fmod(seamlessX, seamlessTexW);
   seamlessY = std::fmod(seamlessY, seamlessTexH);
   // printf("%f, %f - ", seamlessX, seamlessY);
@@ -75,13 +75,13 @@ Uint32 GetPitchDiffuseColor(SDL_Surface* pitchSurf, float xCoord, float yCoord) 
   g = g * (1.0f - texMultiplier) + tex.coords[1] * texMultiplier;
   b = b * (1.0f - texMultiplier) + tex.coords[2] * texMultiplier;
 
-  float perlX = ((xCoord / pitchFullHalfW) * 0.5 + 0.5) * perlinTexW;
-  float perlY = ((yCoord / pitchFullHalfH) * 0.5 + 0.5) * perlinTexH;
+  float perlX = ((xCoord / pitchFullHalfW) * 0.5f + 0.5f) * perlinTexW;
+  float perlY = ((yCoord / pitchFullHalfH) * 0.5f + 0.5f) * perlinTexH;
   float randomSpread = 2.5f;
   float randomX = fastrandom(-1, 1);
-  perlX = clamp(perlX + randomX * randomSpread, 0, perlinTexW - 1);
+  perlX = clamp(perlX + randomX * randomSpread, 0.0f, static_cast<float>(perlinTexW - 1));
   float randomY = fastrandom(-1, 1);
-  perlY = clamp(perlY + randomY * randomSpread, 0, perlinTexH - 1);
+  perlY = clamp(perlY + randomY * randomSpread, 0.0f, static_cast<float>(perlinTexH - 1));
   float perlinNoise = BilinearSample(perlinTex, perlX, perlY, perlinTexW, perlinTexH) - 0.5f;
   float perlinNoiseR = perlinNoise;
   float perlinNoiseG = perlinNoise;
@@ -116,16 +116,17 @@ Uint32 GetPitchDiffuseColor(SDL_Surface* pitchSurf, float xCoord, float yCoord) 
   g *= darkness;
   b *= darkness;
 
-  float overlayX = ((xCoord / pitchFullHalfW) * 0.5 + 0.5) * overlayTexW;
-  float overlayY = ((yCoord / pitchFullHalfH) * 0.5 + 0.5) * overlayTexH;
+  float overlayX = ((xCoord / pitchFullHalfW) * 0.5f + 0.5f) * overlayTexW;
+  float overlayY = ((yCoord / pitchFullHalfH) * 0.5f + 0.5f) * overlayTexH;
   Vector3 overlay = BilinearSample(overlayTex, overlayX, overlayY, overlayTexW, overlayTexH);
   float overlay_alpha =
       BilinearSample(overlay_alphaTex, overlayX, overlayY, overlayTexW, overlayTexH);
-  r = clamp(r * (1.0 - overlay_alpha) + overlay.coords[0] * overlay_alpha, 0, 255);
-  g = clamp(g * (1.0 - overlay_alpha) + overlay.coords[1] * overlay_alpha, 0, 255);
-  b = clamp(b * (1.0 - overlay_alpha) + overlay.coords[2] * overlay_alpha, 0, 255);
+  r = clamp(r * (1.0f - overlay_alpha) + overlay.coords[0] * overlay_alpha, 0.0f, 255.0f);
+  g = clamp(g * (1.0f - overlay_alpha) + overlay.coords[1] * overlay_alpha, 0.0f, 255.0f);
+  b = clamp(b * (1.0f - overlay_alpha) + overlay.coords[2] * overlay_alpha, 0.0f, 255.0f);
 
-  Uint32 color = SDL_MapRGB(pitchSurf->format, r, g, b);
+  Uint32 color = SDL_MapRGB(pitchSurf->format, static_cast<Uint8>(r), static_cast<Uint8>(g),
+                            static_cast<Uint8>(b));
   return color;
 }
 
@@ -133,16 +134,17 @@ inline Uint32 GetPitchSpecularColor(SDL_Surface* pitchSurf, float xCoord, float 
   float base = 2.0f;
   float noisefac = 18.0f;
 
-  float perlX = ((xCoord / pitchFullHalfW) * 0.5 + 0.5) * perlinTexW;
-  float perlY = ((yCoord / pitchFullHalfH) * 0.5 + 0.5) * perlinTexH;
+  float perlX = ((xCoord / pitchFullHalfW) * 0.5f + 0.5f) * perlinTexW;
+  float perlY = ((yCoord / pitchFullHalfH) * 0.5f + 0.5f) * perlinTexH;
   float randomSpread = 2.5f;
   float randomX = fastrandom(-1, 1);
-  perlX = clamp(perlX + randomX * randomSpread, 0, perlinTexW - 1);
+  perlX = clamp(perlX + randomX * randomSpread, 0.0f, static_cast<float>(perlinTexW - 1));
   float randomY = fastrandom(-1, 1);
-  perlY = clamp(perlY + randomY * randomSpread, 0, perlinTexH - 1);
+  perlY = clamp(perlY + randomY * randomSpread, 0.0f, static_cast<float>(perlinTexH - 1));
   float noise = base + BilinearSample(perlinTex, perlX, perlY, perlinTexW, perlinTexH) * noisefac;
 
-  Uint32 color = SDL_MapRGB(pitchSurf->format, noise, noise, noise);
+  Uint32 color = SDL_MapRGB(pitchSurf->format, static_cast<Uint8>(noise), static_cast<Uint8>(noise),
+                            static_cast<Uint8>(noise));
   return color;
 }
 
@@ -172,10 +174,10 @@ Uint32 GetPitchNormalColor(SDL_Surface* pitchSurf, float xCoord, float yCoord,
   Vector3 normal = Vector3(0, 0, 1);
 
   if (fabs(xCoord) < pitchHalfW && fabs(yCoord) < pitchHalfH) {
-    float xRepeat = 11.0f * repeatMultiplier;
-    float yRepeat = 11.0f * repeatMultiplier;
-    float xStrength = 0.12;
-    float yStrength = 0.1;  // i *think* the mowing of the 'lateral' lines may undo the strength of
+  float xRepeat = 11.0f * repeatMultiplier;
+  float yRepeat = 11.0f * repeatMultiplier;
+  float xStrength = 0.12f;
+  float yStrength = 0.1f;  // i *think* the mowing of the 'lateral' lines may undo the strength of
                             // these medial lines. so make this less apparent
 
     int transitionSharpness = 5;
@@ -183,7 +185,7 @@ Uint32 GetPitchNormalColor(SDL_Surface* pitchSurf, float xCoord, float yCoord,
       transitionSharpness = 7;  // wider mow lines == more sharpening to correct for upscale
     normal += Vector3(
         GetSmoothGrassDirection(yCoord / yRepeat, 1.0f, transitionSharpness) * yStrength,
-        GetSmoothGrassDirection(xCoord / xRepeat, 1.0f, transitionSharpness) * xStrength, 0);
+        GetSmoothGrassDirection(xCoord / xRepeat, 1.0f, transitionSharpness) * xStrength, 0.0f);
   }
 
   normal.coords[0] += fastrandom(-1, 1) * noisefac;
@@ -195,8 +197,9 @@ Uint32 GetPitchNormalColor(SDL_Surface* pitchSurf, float xCoord, float yCoord,
   normal.coords[1] = normal.coords[1] * 0.5f + 0.5f;
   normal.coords[2] = normal.coords[2] * 0.5f + 0.5f;
 
-  Uint32 color = SDL_MapRGB(pitchSurf->format, normal.coords[0] * 255, normal.coords[1] * 255,
-                            normal.coords[2] * 255);
+  Uint32 color = SDL_MapRGB(pitchSurf->format, static_cast<Uint8>(normal.coords[0] * 255.0f),
+                            static_cast<Uint8>(normal.coords[1] * 255.0f),
+                            static_cast<Uint8>(normal.coords[2] * 255.0f));
   return color;
 }
 
@@ -238,9 +241,9 @@ void BmpRect(SDL_PixelFormat* pixelFormat, Uint32* bitmap, int resX, int resY, f
     for (int yi = int(ceil(ry1)); yi <= int(floor(ry2)); yi++) {
       Uint8 r, g, b;
       SDL_GetRGB(bitmap[yi * resX + xi], pixelFormat, &r, &g, &b);
-      r = r * 0.5 + 100;
-      g = g * 0.5 + 100;
-      b = b * 0.5 + 100;
+      r = static_cast<Uint8>(r * 0.5f + 100.0f);
+      g = static_cast<Uint8>(g * 0.5f + 100.0f);
+      b = static_cast<Uint8>(b * 0.5f + 100.0f);
       Uint32 lineColor = SDL_MapRGB(pixelFormat, r, g, b);
       bitmap[yi * resX + xi] = lineColor;
     }
@@ -249,7 +252,7 @@ void BmpRect(SDL_PixelFormat* pixelFormat, Uint32* bitmap, int resX, int resY, f
 
 void BmpArc(SDL_PixelFormat* pixelFormat, Uint32* bitmap, int resX, int resY, float x1, float y1,
             float radius, radian begin, radian end, signed int offsetW, signed int offsetH) {
-  int steps = resX * 0.03 * radius;  // hackish approximation ;)
+  int steps = static_cast<int>(resX * 0.03f * radius);  // hackish approximation ;)
   radian step = fabs(end - begin) / (float)steps;
   float currentRad = begin;
   for (int i = 0; i < steps; i++) {
@@ -265,9 +268,9 @@ void BmpArc(SDL_PixelFormat* pixelFormat, Uint32* bitmap, int resX, int resY, fl
     if (rx >= 0 && rx < resX && ry >= 0 && ry < resY) {
       Uint8 r, g, b;
       SDL_GetRGB(bitmap[ry * resX + rx], pixelFormat, &r, &g, &b);
-      r = r * 0.5 + 100;
-      g = g * 0.5 + 100;
-      b = b * 0.5 + 100;
+      r = static_cast<Uint8>(r * 0.5f + 100.0f);
+      g = static_cast<Uint8>(g * 0.5f + 100.0f);
+      b = static_cast<Uint8>(b * 0.5f + 100.0f);
       Uint32 color = SDL_MapRGB(pixelFormat, r, g, b);
       bitmap[ry * resX + rx] = color;
     }
@@ -288,34 +291,36 @@ void DrawLines(SDL_PixelFormat* pixelFormat, Uint32* diffuseBitmap, int resX, in
                               // half-half-width to become the right width. i don't know why either.
 
   // 16.5m box
-  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 16.5 - lineHalfW, 0,
-          pitchHalfW - 16.5 + lineHalfW, 20.15 - lineHalfW, offsetW, offsetH);  // vert
-  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 16.5 - lineHalfW, 20.15 - lineHalfW,
-          pitchHalfW - lineHalfW, 20.15 + lineHalfW, offsetW, offsetH);  // horiz
+  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 16.5f - lineHalfW, 0.0f,
+          pitchHalfW - 16.5f + lineHalfW, 20.15f - lineHalfW, offsetW, offsetH);  // vert
+  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 16.5f - lineHalfW,
+          20.15f - lineHalfW, pitchHalfW - lineHalfW, 20.15f + lineHalfW, offsetW, offsetH);  // horiz
 
   // keeper box (9.16m half width)
-  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 5.5 - lineHalfW, 0,
-          pitchHalfW - 5.5 + lineHalfW, 9.16 - lineHalfW, offsetW, offsetH);  // vert
-  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 5.5 - lineHalfW, 9.16 - lineHalfW,
-          pitchHalfW - lineHalfW, 9.16 + lineHalfW, offsetW, offsetH);  // horiz
+  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 5.5f - lineHalfW, 0.0f,
+          pitchHalfW - 5.5f + lineHalfW, 9.16f - lineHalfW, offsetW, offsetH);  // vert
+  BmpRect(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 5.5f - lineHalfW, 9.16f - lineHalfW,
+          pitchHalfW - lineHalfW, 9.16f + lineHalfW, offsetW, offsetH);  // horiz
 
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0, 0, 9.15, 0.5 * pi, 1 * pi, offsetW,
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0.0f, 0.0f, 9.15f, 0.5f * pi, 1.0f * pi, offsetW,
          offsetH);  // middle circle
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11, 0, 9.15, 1.208 * pi, 1.5 * pi,
-         offsetW, offsetH);  // penalty arc
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11.0f, 0.0f, 9.15f, 1.208f * pi,
+         1.5f * pi, offsetW, offsetH);  // penalty arc
 
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW, pitchHalfH, 0.5, 1.55 * pi, 2 * pi,
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW, pitchHalfH, 0.5f, 1.55f * pi, 2.0f * pi,
          offsetW, offsetH);  // corner arc
 
   // penalty spot
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11, 0, 0.08, 0.5 * pi, 1.5 * pi,
-         offsetW, offsetH);
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11, 0, 0.04, 0.5 * pi, 1.5 * pi,
-         offsetW, offsetH);
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11.0f, 0.0f, 0.08f, 0.5f * pi,
+         1.5f * pi, offsetW, offsetH);
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, pitchHalfW - 11.0f, 0.0f, 0.04f, 0.5f * pi,
+         1.5f * pi, offsetW, offsetH);
 
   // center spot
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0, 0, 0.08, 0.5 * pi, 1.0 * pi, offsetW, offsetH);
-  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0, 0, 0.04, 0.5 * pi, 1.0 * pi, offsetW, offsetH);
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0.0f, 0.0f, 0.08f, 0.5f * pi, 1.0f * pi, offsetW,
+         offsetH);
+  BmpArc(pixelFormat, diffuseBitmap, resX, resY, 0.0f, 0.0f, 0.04f, 0.5f * pi, 1.0f * pi, offsetW,
+         offsetH);
 }
 
 /* todo
@@ -352,8 +357,8 @@ void CreateChunk(int i, int resX, int resY, int resSpecularX, int resSpecularY, 
 
   for (int x = 0; x < resX; x++) {
     for (int y = 0; y < resY; y++) {
-      float xCoord = x / (resX * 1.0) * pitchFullHalfW + pitchFullHalfW * offsetW;
-      float yCoord = y / (resY * 1.0) * pitchFullHalfH + pitchFullHalfH * offsetH;
+      float xCoord = x / (resX * 1.0f) * pitchFullHalfW + pitchFullHalfW * offsetW;
+      float yCoord = y / (resY * 1.0f) * pitchFullHalfH + pitchFullHalfH * offsetH;
       diffuseBitmap[y * resX + x] = GetPitchDiffuseColor(pitchDiffuseSurf, xCoord, yCoord);
     }
   }
@@ -365,8 +370,10 @@ void CreateChunk(int i, int resX, int resY, int resSpecularX, int resSpecularY, 
   // DrawMud(pitchDiffuseSurf->format, diffuseBitmap, resX, resY, offsetW, offsetH);
   for (int x = 0; x < resSpecularX; x++) {
     for (int y = 0; y < resSpecularY; y++) {
-      float xSpecularCoord = x / (resSpecularX * 1.0) * pitchFullHalfW + pitchFullHalfW * offsetW;
-      float ySpecularCoord = y / (resSpecularY * 1.0) * pitchFullHalfH + pitchFullHalfH * offsetH;
+      float xSpecularCoord =
+          x / (resSpecularX * 1.0f) * pitchFullHalfW + pitchFullHalfW * offsetW;
+      float ySpecularCoord =
+          y / (resSpecularY * 1.0f) * pitchFullHalfH + pitchFullHalfH * offsetH;
       specularBitmap[y * resSpecularX + x] =
           GetPitchSpecularColor(pitchSpecularSurf, xSpecularCoord, ySpecularCoord);
     }
@@ -375,8 +382,8 @@ void CreateChunk(int i, int resX, int resY, int resSpecularX, int resSpecularY, 
     printf("1c\n");
   for (int x = 0; x < resNormalX; x++) {
     for (int y = 0; y < resNormalY; y++) {
-      float xNormalCoord = x / (resNormalX * 1.0) * pitchFullHalfW + pitchFullHalfW * offsetW;
-      float yNormalCoord = y / (resNormalY * 1.0) * pitchFullHalfH + pitchFullHalfH * offsetH;
+      float xNormalCoord = x / (resNormalX * 1.0f) * pitchFullHalfW + pitchFullHalfW * offsetW;
+      float yNormalCoord = y / (resNormalY * 1.0f) * pitchFullHalfH + pitchFullHalfH * offsetH;
       normalBitmap[y * resNormalX + x] = GetPitchNormalColor(
           pitchNormalSurf, xNormalCoord, yNormalCoord, grassNormalRepeatMultiplier);
     }
@@ -481,8 +488,9 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
 
   float scale = 0.06f;
 
-  Perlin* perlin1 = new Perlin(4, 0.06 * scale, 0.5, time(nullptr));           // low freq
-  Perlin* perlin2 = new Perlin(4, 0.14 * scale, 0.5, time(nullptr) + 139882);  // mid freq
+  int seed = static_cast<int>(time(nullptr));
+  Perlin* perlin1 = new Perlin(4, 0.06f * scale, 0.5f, seed);            // low freq
+  Perlin* perlin2 = new Perlin(4, 0.14f * scale, 0.5f, seed + 139882);   // mid freq
   //  Perlin *perlin3 = new Perlin(4, 25.4 / 20.0,   3, 423423); // high freq
   perlinTexW = 1600;
   perlinTexH = 1000;
@@ -490,9 +498,9 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
 
   // make sure sines are in range -1 to 1
   // generate sine
-  float noiseFactor = 0.15;  // 'random grid of canals'
+  float noiseFactor = 0.15f;  // 'random grid of canals'
   float sinScale = 4.0f;     // smaller is larger (heh)
-  float ynoise[perlinTexH];
+  std::vector<float> ynoise(perlinTexH);
   for (int y = 0; y < perlinTexH; y++) {
     ynoise[y] =
         (sin(y / (float)perlinTexH * 13 * sinScale) + sin(y / (float)perlinTexH * 43 * sinScale) +
@@ -512,8 +520,8 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
       noise = curve(noise * 0.5f + 0.5f, 0.4f) * 2.0f - 1.0f;  // compress
       // printf("%f ", perlin1->Get(x, y));
       perlinTex[y * perlinTexW + x] =
-          perlin1->Get(x, y) * 0.4f +
-          perlin2->Get(x, y) *
+          perlin1->Get(static_cast<float>(x), static_cast<float>(y)) * 0.4f +
+          perlin2->Get(static_cast<float>(x), static_cast<float>(y)) *
               0.6f;  // + 0.5f to get it from [0..1]; the multiplier is bias between the noises
       perlinTex[y * perlinTexW + x] =
           perlinTex[y * perlinTexW + x] * 1.7f +

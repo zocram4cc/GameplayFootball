@@ -87,7 +87,7 @@ public:
 
   inline int GetPending() {
     queue.Lock();
-    int size = queue.data.size();
+    const int size = static_cast<int>(queue.data.size());
     queue.Unlock();
     return size;
   }

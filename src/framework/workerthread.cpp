@@ -31,7 +31,7 @@ void WorkerThread::operator()() {
     pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpus);
 #endif
 #ifdef WIN32
-    DWORD_PTR affinityMask = 1 << affinity;
+    DWORD_PTR affinityMask = static_cast<DWORD_PTR>(1) << affinity;
     bool success = SetThreadAffinityMask(GetCurrentThread(), affinityMask);
     if (!success)
       printf("set process affinity failed: %li\n", GetLastError());

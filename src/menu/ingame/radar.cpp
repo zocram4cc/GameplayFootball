@@ -5,6 +5,7 @@
 
 #include "radar.hpp"
 
+#include <cmath>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL2_rotozoom.h>
 

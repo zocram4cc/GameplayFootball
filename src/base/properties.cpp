@@ -89,7 +89,7 @@ real Properties::GetReal(const char* name, real defaultValue) const {
   if (iter == properties.end()) {
     return defaultValue;
   } else {
-    return atof(iter->second.c_str());
+    return static_cast<real>(std::atof(iter->second.c_str()));
   }
 }
 
@@ -142,12 +142,12 @@ void Properties::LoadFile(const std::string& filename) {
   std::vector<std::string> content;
   file_to_vector(filename, content);
 
-  int contentSize = content.size();
+  int contentSize = static_cast<int>(content.size());
   for (int i = 0; i < contentSize; i++) {
-    int param_start = content.at(i).find_first_of('"') + 1;
-    int param_end = content.at(i).find_first_of('"', param_start);
-    int value_start = content.at(i).find_first_of('"', param_end + 1) + 1;
-    int value_end = content.at(i).find_first_of('"', value_start);
+    int param_start = static_cast<int>(content.at(i).find_first_of('"')) + 1;
+    int param_end = static_cast<int>(content.at(i).find_first_of('"', param_start));
+    int value_start = static_cast<int>(content.at(i).find_first_of('"', param_end + 1)) + 1;
+    int value_end = static_cast<int>(content.at(i).find_first_of('"', value_start));
 
     std::string param, value;
 

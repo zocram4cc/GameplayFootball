@@ -568,7 +568,7 @@ void TeamAIController::CalculateDynamicRoles() {
 
     hungarian_problem_t p;
 
-    int r[playerNum * playerNum];
+    std::vector<int> r(playerNum * playerNum);
 
     for (unsigned int x = 0; x < playerNum; x++) {
       for (unsigned int y = 0; y < playerNum; y++) {
@@ -583,7 +583,7 @@ void TeamAIController::CalculateDynamicRoles() {
       }
     }
 
-    int** m = array_to_matrix(r, playerNum, playerNum);
+    int** m = array_to_matrix(r.data(), playerNum, playerNum);
 
     /* initialize the hungarian_problem using the cost matrix*/
     int matrix_size = hungarian_init(&p, m, playerNum, playerNum, HUNGARIAN_MODE_MINIMIZE_COST);

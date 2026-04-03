@@ -70,40 +70,40 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
       GetConfiguration()->GetReal("gameplay_accelerationfactor", _default_AccelerationFactor);
 
   allowedBodyDirVecs.push_back(Vector3(0, -1, 0));
-  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.25 * pi));
-  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.25 * pi));
-  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.75 * pi));
-  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.75 * pi));
+  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.25f * pi));
+  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.25f * pi));
+  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.75f * pi));
+  allowedBodyDirVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.75f * pi));
 
-  allowedBodyDirAngles.push_back(0 * pi);
-  allowedBodyDirAngles.push_back(0.25 * pi);
-  allowedBodyDirAngles.push_back(-0.25 * pi);
-  allowedBodyDirAngles.push_back(0.75 * pi);
-  allowedBodyDirAngles.push_back(-0.75 * pi);
+  allowedBodyDirAngles.push_back(0.0f * pi);
+  allowedBodyDirAngles.push_back(0.25f * pi);
+  allowedBodyDirAngles.push_back(-0.25f * pi);
+  allowedBodyDirAngles.push_back(0.75f * pi);
+  allowedBodyDirAngles.push_back(-0.75f * pi);
 
   preferredDirectionVecs.push_back(Vector3(0, -1, 0));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.111 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.111 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.25 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.25 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.5 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.5 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.75 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.75 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.999 * pi));
-  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.999 * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.111f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.111f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.25f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.25f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.5f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.5f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.75f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.75f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(0.999f * pi));
+  preferredDirectionVecs.push_back(Vector3(0, -1, 0).GetRotated2D(-0.999f * pi));
 
-  preferredDirectionAngles.push_back(0 * pi);
-  preferredDirectionAngles.push_back(0.111 * pi);  // 20
-  preferredDirectionAngles.push_back(-0.111 * pi);
-  preferredDirectionAngles.push_back(0.25 * pi);  // 45
-  preferredDirectionAngles.push_back(-0.25 * pi);
-  preferredDirectionAngles.push_back(0.5 * pi);  // 90
-  preferredDirectionAngles.push_back(-0.5 * pi);
-  preferredDirectionAngles.push_back(0.75 * pi);  // 135
-  preferredDirectionAngles.push_back(-0.75 * pi);
-  preferredDirectionAngles.push_back(0.999 * pi);  // 180
-  preferredDirectionAngles.push_back(-0.999 * pi);
+  preferredDirectionAngles.push_back(0.0f * pi);
+  preferredDirectionAngles.push_back(0.111f * pi);  // 20
+  preferredDirectionAngles.push_back(-0.111f * pi);
+  preferredDirectionAngles.push_back(0.25f * pi);  // 45
+  preferredDirectionAngles.push_back(-0.25f * pi);
+  preferredDirectionAngles.push_back(0.5f * pi);  // 90
+  preferredDirectionAngles.push_back(-0.5f * pi);
+  preferredDirectionAngles.push_back(0.75f * pi);  // 135
+  preferredDirectionAngles.push_back(-0.75f * pi);
+  preferredDirectionAngles.push_back(0.999f * pi);  // 180
+  preferredDirectionAngles.push_back(-0.999f * pi);
 
   assert(match);
 

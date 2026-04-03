@@ -149,10 +149,10 @@ void sdl_alphablit(SDL_Surface* src, SDL_Rect* srcrect, SDL_Surface* dst, SDL_Re
 
       float srcOpacity = psrc[3] / 256.0f;
       float srcBias = srcOpacity;
-      pdst[0] = psrc[0] * srcBias + pdst[0] * (1.0f - srcBias);
-      pdst[1] = psrc[1] * srcBias + pdst[1] * (1.0f - srcBias);
-      pdst[2] = psrc[2] * srcBias + pdst[2] * (1.0f - srcBias);
-      pdst[3] = psrc[3] * srcBias + pdst[3] * (1.0f - srcBias);
+      pdst[0] = static_cast<Uint8>(psrc[0] * srcBias + pdst[0] * (1.0f - srcBias));
+      pdst[1] = static_cast<Uint8>(psrc[1] * srcBias + pdst[1] * (1.0f - srcBias));
+      pdst[2] = static_cast<Uint8>(psrc[2] * srcBias + pdst[2] * (1.0f - srcBias));
+      pdst[3] = static_cast<Uint8>(psrc[3] * srcBias + pdst[3] * (1.0f - srcBias));
     }
   }
 
@@ -204,7 +204,7 @@ void sdl_setsurfacealpha(SDL_Surface* surface, int alpha) {
       Uint8* p = (Uint8*)surface->pixels + h * pitch + w * bpp;
       // todo: endiannes!! *update: seems to work as is.. maybe alpha is always in index 3 and only
       // the colors are inverted?
-      p[3] = clamp((p[3] / 256.0f) * (alpha / 256.0f) * 256, 0, 255);
+      p[3] = static_cast<Uint8>(clamp((p[3] / 256.0f) * (alpha / 256.0f) * 256.0f, 0.0f, 255.0f));
     }
   }
   SDL_UnlockSurface(surface);
