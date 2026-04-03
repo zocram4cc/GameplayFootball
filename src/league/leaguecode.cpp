@@ -14,6 +14,26 @@
 #include "utils/database.hpp"
 #include "utils/xmlloader.hpp"
 
+namespace {
+
+bool DatabaseHasTable(Database* database, const std::string& tableName) {
+  auto result = database->Query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '" +
+                                tableName + "' LIMIT 1");
+  return !result->data.empty();
+}
+
+bool DatabaseHasColumn(Database* database, const std::string& tableName, const std::string& columnName) {
+  auto result = database->Query("PRAGMA table_info(" + tableName + ")");
+  for (const auto& row : result->data) {
+    if (row.size() > 1 && row.at(1) == columnName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
 int CreateNewLeagueSave(const std::string& srcDbName, const std::string& saveName) {
   // copy db file
 
@@ -61,17 +81,27 @@ int CreateNewLeagueSave(const std::string& srcDbName, const std::string& saveNam
       imageList.push_back(result->data.at(r).at(0));
       imageList.push_back(result->data.at(r).at(1));
     }
-    result = database->Query("select logo_url from competitions");
-    for (unsigned int r = 0; r < result->data.size(); r++) {
-      imageList.push_back(result->data.at(r).at(0));
+
+    if (DatabaseHasTable(database, "competitions")) {
+      result = database->Query("select logo_url from competitions");
+      for (unsigned int r = 0; r < result->data.size(); r++) {
+        imageList.push_back(result->data.at(r).at(0));
+      }
     }
 
     // create directories, copy files
 
     for (unsigned int i = 0; i < imageList.size(); i++) {
+      if (imageList.at(i).empty()) {
+        continue;
+      }
+
       // printf("copying %s\n", imageList.at(i).c_str());
       std::vector<std::string> tokens;
       tokenize(imageList.at(i), tokens, "/\\");
+      if (tokens.empty()) {
+        continue;
+      }
 
       std::filesystem::path newdir = dest;
       for (unsigned int x = 0; x < tokens.size() - 1; x++) {
@@ -88,12 +118,26 @@ int CreateNewLeagueSave(const std::string& srcDbName, const std::string& saveNam
       std::filesystem::path sourcefile("databases");
       sourcefile /= srcDbName;
       sourcefile /= imageList.at(i);
-      std::error_code error;
-      // printf("copying from %s to %s\n", sourcefile.string().c_str(), destfile.string().c_str());
-      if (!std::filesystem::exists(destfile))
-        std::filesystem::copy_file(sourcefile, destfile, error);
-      if (error)
-        errorCode = 4;
+
+      if (!std::filesystem::exists(sourcefile)) {
+        continue;
+      }
+
+      if (std::filesystem::is_directory(sourcefile)) {
+        if (!std::filesystem::exists(destfile) &&
+            CopyDirectory(sourcefile, destfile) != 0) {
+          errorCode = 4;
+        }
+      } else {
+        std::error_code error;
+        // printf("copying from %s to %s\n", sourcefile.string().c_str(), destfile.string().c_str());
+        if (!std::filesystem::exists(destfile)) {
+          std::filesystem::copy_file(sourcefile, destfile, error);
+        }
+        if (error) {
+          errorCode = 4;
+        }
+      }
       // if (error) printf("file %s could not be copied\n", imageList.at(i).c_str());
       // printf("\n");
     }
@@ -120,12 +164,23 @@ bool PrepareDatabaseForLeague() {
       "competition_id INTEGER, "
       "tournament_id INTEGER)");
 
-  result = GetDB()->Query("ALTER TABLE players ADD COLUMN stats_temporal BLOB");
+  if (!DatabaseHasColumn(GetDB(), "players", "stats_temporal")) {
+    result = GetDB()->Query("ALTER TABLE players ADD COLUMN stats_temporal BLOB");
+  }
 
   // copy stats XML tree into a new XML tree as subset 'current' (this tree is also going to contain
   // the archive per year)
 
-  result = GetDB()->Query("SELECT id, stats FROM players");
+  std::string statsColumnName;
+  if (DatabaseHasColumn(GetDB(), "players", "stats")) {
+    statsColumnName = "stats";
+  } else if (DatabaseHasColumn(GetDB(), "players", "profile_xml")) {
+    statsColumnName = "profile_xml";
+  } else {
+    return false;
+  }
+
+  result = GetDB()->Query("SELECT id, " + statsColumnName + " FROM players");
 
   std::string insertTemporalStatsQuery = "begin transaction;";
 

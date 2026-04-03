@@ -76,7 +76,16 @@ void Gui2EditLine::SetOutlineColor(const Vector3& outlineColor) {
 }
 
 void Gui2EditLine::SetText(const std::string& newText) {
-  caption->SetCaption(newText);
+  currentText = newText;
+  caption->SetCaption(currentText);
+
+  if (cursorPos > static_cast<int>(currentText.size())) {
+    cursorPos = static_cast<int>(currentText.size());
+  }
+
+  float x, y;
+  cursor->GetPosition(x, y);
+  cursor->SetPosition(caption->GetTextWidthPercent(cursorPos), y);
 }
 
 void Gui2EditLine::OnGainFocus() {

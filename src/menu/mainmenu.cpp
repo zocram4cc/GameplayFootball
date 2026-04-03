@@ -30,6 +30,18 @@ bool MenuSmokeFullMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
 }
 
+bool MenuSmokeLeagueEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_league", false);
+}
+
+bool MenuSmokeSettingsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_settings", false);
+}
+
+bool MenuSmokeCreditsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_credits", false);
+}
+
 bool MenuSmokeAutoQuickMatchEnabled() {
   return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
 }
@@ -159,6 +171,24 @@ void MainMenuPage::Process() {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] Main menu ready, opening Quick Match\n");
     GoControllerSelect();
+  } else if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening League Mode\n");
+    GoLeague();
+  } else if (!autoAdvanceTriggered && MenuSmokeSettingsEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Options\n");
+    GoSettings();
+  } else if (!autoAdvanceTriggered && MenuSmokeCreditsEnabled() &&
+             EnvironmentManager::GetInstance().GetTime_ms() >=
+                 pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Main menu ready, opening Credits\n");
+    GoCredits();
   }
 }
 

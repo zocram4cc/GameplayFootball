@@ -8,8 +8,20 @@
 #include "../main.hpp"
 #include "base/utils.hpp"
 
+namespace {
+
+constexpr unsigned long kMenuSmokeCreditsQuitDelay_ms = 1000;
+
+bool MenuSmokeCreditsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_credits", false);
+}
+
+}  // namespace
+
 CreditsPage::CreditsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   windowManager->BlackoutBackground(true);
 
   this->SetFocus();
@@ -303,6 +315,8 @@ void CreditsPage::AddWhitespace() {
 }
 
 void CreditsPage::Process() {
+  Gui2Page::Process();
+
   // SCROLLTEXT
 
   float fullHeight = 100.0 / float(numtexts - 1);
@@ -353,6 +367,14 @@ void CreditsPage::Process() {
     }
     ballPos[i] += ballMov[i] * 0.05;
     balls[i]->SetPosition(ballPos[i].coords[0], ballPos[i].coords[1]);
+  }
+
+  if (!autoAdvanceTriggered && MenuSmokeCreditsEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeCreditsQuitDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Credits page reached successfully\n");
+    GetMenuTask()->QuitGame();
   }
 }
 

@@ -42,6 +42,8 @@ protected:
   Gui2Image* balls[numballs];
   Vector3 ballPos[numballs];
   Vector3 ballMov[numballs];
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 
   float scrollOffset;
   unsigned int creditOffset;

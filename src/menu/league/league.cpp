@@ -5,6 +5,9 @@
 
 #include "league.hpp"
 
+#include <chrono>
+
+#include "../../main.hpp"
 #include "../../league/leaguecode.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
@@ -13,8 +16,30 @@
 #include "utils/gui2/widgets/root.hpp"
 #include "utils/gui2/widgets/text.hpp"
 
+namespace {
+
+constexpr unsigned long kMenuSmokeLeagueAdvanceDelay_ms = 350;
+constexpr unsigned long kMenuSmokeLeagueDialogDelay_ms = 350;
+constexpr unsigned long kMenuSmokeLeagueQuitDelay_ms = 600;
+
+bool MenuSmokeLeagueEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_league", false);
+}
+
+std::string MakeMenuSmokeLeagueSaveName() {
+  const auto now = std::chrono::system_clock::now().time_since_epoch();
+  const auto milliseconds =
+      std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+  return "MenuSmokeLeague_" + std::to_string(milliseconds % 1000000000LL);
+}
+
+}  // namespace
+
 LeaguePage::LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false),
+      autoStepTriggered(false) {
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_league", 20, 20, 60, 3, "League");
   this->AddView(title);
   title->Show();
@@ -42,6 +67,26 @@ LeaguePage::LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 }
 
 LeaguePage::~LeaguePage() {}
+
+void LeaguePage::Process() {
+  Gui2Page::Process();
+
+  if (MenuSmokeLeagueEnabled() && !autoStepTriggered &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+    autoStepTriggered = true;
+    printf("[menu-smoke] League page reached, advancing time once\n");
+    StepTime();
+  }
+
+  if (MenuSmokeLeagueEnabled() && !autoAdvanceTriggered &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeLeagueQuitDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] League page flow succeeded\n");
+    GetMenuTask()->QuitGame();
+  }
+}
 
 void LeaguePage::StepTime() {
   auto result = GetDB()->Query(
@@ -105,7 +150,9 @@ void LeaguePage::SetTimeCaption() {
 }
 
 LeagueStartPage::LeagueStartPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Frame* frame = new Gui2Frame(windowManager, "bg_league_start", 30, 35, 40, 30, true);
   this->AddView(frame);
   frame->Show();
@@ -136,6 +183,18 @@ LeagueStartPage::LeagueStartPage(Gui2WindowManager* windowManager, const Gui2Pag
 }
 
 LeagueStartPage::~LeagueStartPage() {}
+
+void LeagueStartPage::Process() {
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] League start reached, creating a new league\n");
+    GoNew();
+  }
+}
 
 void LeagueStartPage::GoLoad() {
   this->Exit();
@@ -199,7 +258,12 @@ void LeagueStartLoadPage::GoLoadSave() {
 
 LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      success(false),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      dialogShownTime_ms(0),
+      autoAdvanceTriggered(false),
+      autoCloseDialogTriggered(false) {
   data_SelectedDatabase = "default";
 
   Gui2Frame* frame = new Gui2Frame(windowManager, "bg_league_start_new", 5, 5, 90, 90, true);
@@ -326,6 +390,12 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   frame->AddView(explanationText);
   explanationText->Show();
 
+  currencySelectPulldown->SetSelected(0);
+  RefreshTeamSelect();
+  if (MenuSmokeLeagueEnabled()) {
+    saveNameInput->SetText(MakeMenuSmokeLeagueSaveName());
+  }
+
   databaseSelectButton->SetFocus();
 
   this->AddView(frame);
@@ -336,11 +406,35 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
 
 LeagueStartNewPage::~LeagueStartNewPage() {}
 
+void LeagueStartNewPage::Process() {
+  Gui2Page::Process();
+
+  const unsigned long now_ms = EnvironmentManager::GetInstance().GetTime_ms();
+
+  if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
+      now_ms >= pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] League creation page ready, proceeding with defaults\n");
+    GoProceed();
+    return;
+  }
+
+  if (!autoCloseDialogTriggered && createSaveDialog && MenuSmokeLeagueEnabled() &&
+      now_ms >= dialogShownTime_ms + kMenuSmokeLeagueDialogDelay_ms) {
+    autoCloseDialogTriggered = true;
+    if (success) {
+      printf("[menu-smoke] League save created, entering league page\n");
+    } else {
+      printf("[menu-smoke] League creation failed, closing result dialog\n");
+    }
+    CloseCreateSaveDialog();
+  }
+}
+
 void LeagueStartNewPage::GoDatabaseSelectDialog() {
   databaseSelectDialog = new Gui2Dialog(windowManager, "dialog_league_start_new_dbselect", 30, 25,
                                         40, 50, "Select source database");
   previousFocus = windowManager->GetFocus();
-  databaseSelectDialog->sig_OnClose.connect([this](...) { CloseDatabaseSelectDialog(); });
 
   databaseSelectBrowser =
       new Gui2FileBrowser(windowManager, "filebrowser_league_start_new_dbselect", 0, 0, 39, 40,
@@ -385,6 +479,7 @@ void LeagueStartNewPage::RefreshTeamSelect() {
     data_SelectedTeamID = "0";
   }
   teamSelectPulldown->SetSelected(0);
+  data_SelectedTeamID = teamSelectPulldown->GetSelected();
 }
 
 void LeagueStartNewPage::GoProceed() {
@@ -397,7 +492,6 @@ void LeagueStartNewPage::GoProceed() {
   */
 
   int errorCode = CreateNewLeagueSave(data_SelectedDatabase, saveNameInput->GetText());
-  errorCode = 0;  // todo: remove
 
   // result dialog
 
@@ -405,7 +499,8 @@ void LeagueStartNewPage::GoProceed() {
 
   createSaveDialog = new Gui2Dialog(windowManager, "dialog_league_start_new_createsave", 25, 30, 50,
                                     40, "New league creation");
-  createSaveDialog->sig_OnClose.connect([this](...) { CloseCreateSaveDialog(); });
+  dialogShownTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  autoCloseDialogTriggered = false;
 
   if (errorCode == 0) {
     Gui2Text* explanationText =
@@ -485,33 +580,39 @@ void LeagueStartNewPage::CloseCreateSaveDialog() {
 
   std::filesystem::path saveLoc("saves");
   saveLoc /= GetActiveSaveDirectory();
+
+  if (!success) {
+    if (MenuSmokeLeagueEnabled()) {
+      GetMenuTask()->QuitGame();
+    }
+    return;
+  }
+
   GetDB()->Load(saveLoc.string() + "/autosave.sqlite");
 
-  if (success) {
-    bool noError = PrepareDatabaseForLeague();
-    if (!noError)
-      Log(e_FatalError, "LeagueStartNewPage", "CloseCreateSaveDialog",
-          "Could not prepare database for league");
+  bool noError = PrepareDatabaseForLeague();
+  if (!noError)
+    Log(e_FatalError, "LeagueStartNewPage", "CloseCreateSaveDialog",
+        "Could not prepare database for league");
 
-    auto result = GetDB()->Query(
-        "INSERT INTO settings (managername, team_id, currency, difficulty, seasonyear, timestamp) "
-        "VALUES ('" +
-        managerNameInput->GetText() + "', " + data_SelectedTeamID + ", '" +
-        currencySelectPulldown->GetSelected() + "', " +
-        real_to_str(difficultySlider->GetValue()) + ", 2013, '2013-06-01')");
+  auto result = GetDB()->Query(
+      "INSERT INTO settings (managername, team_id, currency, difficulty, seasonyear, timestamp) "
+      "VALUES ('" +
+      managerNameInput->GetText() + "', " + data_SelectedTeamID + ", '" +
+      currencySelectPulldown->GetSelected() + "', " +
+      real_to_str(difficultySlider->GetValue()) + ", 2013, '2013-06-01')");
 
-    GenerateSeasonCalendars();
+  GenerateSeasonCalendars();
 
-    noError = SaveAutosaveToDatabase();
-    if (!noError)
-      Log(e_FatalError, "LeagueStartNewPage", "CloseCreateSaveDialog",
-          "Could not save autosave file to persistent database");
+  noError = SaveAutosaveToDatabase();
+  if (!noError)
+    Log(e_FatalError, "LeagueStartNewPage", "CloseCreateSaveDialog",
+        "Could not save autosave file to persistent database");
 
-    this->Exit();
+  this->Exit();
 
-    Properties properties;
-    windowManager->GetPageFactory()->CreatePage((int)e_PageID_League, properties, 0);
+  Properties properties;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_League, properties, 0);
 
-    delete this;
-  }
+  delete this;
 }

@@ -293,7 +293,13 @@ int CopyDirectory(std::filesystem::path const& source, std::filesystem::path con
 
 bool CreateDirectory(std::filesystem::path const& dir) {
   namespace fs = std::filesystem;
-  return fs::create_directory(dir);
+  if (fs::exists(dir)) {
+    return false;
+  }
+
+  std::error_code error;
+  fs::create_directories(dir, error);
+  return !error && fs::exists(dir);
 }
 
 bool CopyFile(std::filesystem::path const& source, std::filesystem::path const& destinationDir) {

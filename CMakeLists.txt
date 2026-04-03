@@ -30,9 +30,23 @@ if(UNIX)
    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -O3")
 endif()
 
+function(gf_find_boost)
+  find_package(Boost CONFIG QUIET)
+  if(NOT Boost_FOUND)
+    if(POLICY CMP0167)
+      cmake_policy(PUSH)
+      cmake_policy(SET CMP0167 OLD)
+    endif()
+    find_package(Boost REQUIRED)
+    if(POLICY CMP0167)
+      cmake_policy(POP)
+    endif()
+  endif()
+endfunction()
+
 # Find required libraries
 if(GAMEPLAYFOOTBALL_BUILD_GAME)
-  find_package(Boost REQUIRED)
+  gf_find_boost()
   find_package(OpenGL REQUIRED)
   find_package(SDL2 REQUIRED CONFIG)
   find_package(SDL2_image REQUIRED CONFIG)
@@ -41,7 +55,19 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   find_package(OpenAL QUIET)
   find_package(SQLite3 REQUIRED)
 else()
-  find_package(Boost REQUIRED)
+  gf_find_boost()
+endif()
+
+set(GF_BOOST_INCLUDE_DIRS ${Boost_INCLUDE_DIRS})
+if(NOT GF_BOOST_INCLUDE_DIRS AND Boost_INCLUDE_DIR)
+  set(GF_BOOST_INCLUDE_DIRS ${Boost_INCLUDE_DIR})
+endif()
+if(NOT GF_BOOST_INCLUDE_DIRS)
+  if(TARGET Boost::headers)
+    get_target_property(GF_BOOST_INCLUDE_DIRS Boost::headers INTERFACE_INCLUDE_DIRECTORIES)
+  elseif(TARGET Boost::boost)
+    get_target_property(GF_BOOST_INCLUDE_DIRS Boost::boost INTERFACE_INCLUDE_DIRECTORIES)
+  endif()
 endif()
 
 # Source files
@@ -56,7 +82,7 @@ function(gf_target_includes tgt)
     ${SDL2_IMAGE_DIRS}
     ${SDL2_TTF_DIRS}
     ${SDL2_GFX_DIRS}
-    ${Boost_INCLUDE_DIR}
+    ${GF_BOOST_INCLUDE_DIRS}
     ${SQLite3_INCLUDE_DIRS}
   )
   if(OpenAL_FOUND)
@@ -70,7 +96,7 @@ add_library(gf_mathlib STATIC
   ${BASE_MATH_HEADERS})
 target_include_directories(gf_mathlib PUBLIC
   ${PROJECT_SOURCE_DIR}/src
-  ${Boost_INCLUDE_DIR}
+  ${GF_BOOST_INCLUDE_DIRS}
 )
 
 add_library(gf_ballphysicslib STATIC
@@ -178,7 +204,7 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
     ${SDL2_IMAGE_DIRS}
     ${SDL2_TTF_DIRS}
     ${SDL2_GFX_DIRS}
-    ${Boost_INCLUDE_DIR}
+    ${GF_BOOST_INCLUDE_DIRS}
     ${SQLite3_INCLUDE_DIRS}
   )
   if(OpenAL_FOUND)

@@ -13,8 +13,20 @@
 #include "pagefactory.hpp"
 #include "utils/localization.hpp"
 
+namespace {
+
+constexpr unsigned long kMenuSmokeSettingsQuitDelay_ms = 500;
+
+bool MenuSmokeSettingsEnabled() {
+  return GetConfiguration()->GetBool("menu_smoke_test_settings", false);
+}
+
+}  // namespace
+
 SettingsPage::SettingsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_settings", 20, 20, 60, 3, "Settings");
   this->AddView(title);
@@ -55,6 +67,18 @@ SettingsPage::SettingsPage(Gui2WindowManager* windowManager, const Gui2PageData&
 }
 
 SettingsPage::~SettingsPage() {}
+
+void SettingsPage::Process() {
+  Gui2Page::Process();
+
+  if (!autoAdvanceTriggered && MenuSmokeSettingsEnabled() &&
+      EnvironmentManager::GetInstance().GetTime_ms() >=
+          pageCreatedTime_ms + kMenuSmokeSettingsQuitDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Options page reached successfully\n");
+    GetMenuTask()->QuitGame();
+  }
+}
 
 void SettingsPage::GoGameplay() {
   CreatePage(e_PageID_Gameplay);

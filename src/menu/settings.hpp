@@ -24,6 +24,7 @@ class SettingsPage : public Gui2Page {
 public:
   SettingsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~SettingsPage();
+  virtual void Process();
 
   void GoGameplay();
   void GoController();
@@ -32,6 +33,8 @@ public:
   void GoLanguage();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class GameplayPage : public Gui2Page {

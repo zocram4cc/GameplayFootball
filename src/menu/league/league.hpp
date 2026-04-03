@@ -22,22 +22,30 @@ class LeaguePage : public Gui2Page {
 public:
   LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeaguePage();
+  virtual void Process();
 
 protected:
   void StepTime();
   void SetTimeCaption();
 
   Gui2Caption* captionTime;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
+  bool autoStepTriggered;
 };
 
 class LeagueStartPage : public Gui2Page {
 public:
   LeagueStartPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueStartPage();
+  virtual void Process();
 
 protected:
   void GoLoad();
   void GoNew();
+
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueStartLoadPage : public Gui2Page {
@@ -55,6 +63,7 @@ class LeagueStartNewPage : public Gui2Page {
 public:
   LeagueStartNewPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueStartNewPage();
+  virtual void Process();
 
 protected:
   void GoDatabaseSelectDialog();
@@ -80,6 +89,10 @@ protected:
   Gui2Dialog* createSaveDialog;
 
   bool success;
+  unsigned long pageCreatedTime_ms;
+  unsigned long dialogShownTime_ms;
+  bool autoAdvanceTriggered;
+  bool autoCloseDialogTriggered;
 };
 
 #endif
