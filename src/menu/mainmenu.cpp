@@ -31,7 +31,8 @@ bool MenuSmokeFullMatchEnabled() {
 }
 
 bool MenuSmokeLeagueEnabled() {
-  return GetConfiguration()->GetBool("menu_smoke_test_league", false);
+  return GetConfiguration()->GetBool("menu_smoke_test_league", false) ||
+         !GetConfiguration()->Get("menu_smoke_test_league_route", "").empty();
 }
 
 bool MenuSmokeSettingsEnabled() {

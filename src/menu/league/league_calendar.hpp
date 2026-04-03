@@ -16,13 +16,18 @@ class LeagueCalendarPage : public Gui2Page {
 public:
   LeagueCalendarPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueCalendarPage();
+  virtual void Process();
 
 protected:
   void RefreshFixtures();
   void GoBack();
 
   Gui2Pulldown* leagueFilterPulldown;
+  Gui2Caption* fixturesHeader;
+  Gui2Grid* fixturesGrid;
   std::string m_selectedLeagueID;
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

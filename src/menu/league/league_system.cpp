@@ -2,12 +2,15 @@
 
 #include "../../league/leaguecode.hpp"
 #include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 
 LeagueSystemPage::LeagueSystemPage(Gui2WindowManager* windowManager,
                                    const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_system", 20, 5, 60, 3, "System");
   this->AddView(title);
@@ -34,6 +37,20 @@ LeagueSystemPage::LeagueSystemPage(Gui2WindowManager* windowManager,
 }
 
 LeagueSystemPage::~LeagueSystemPage() {}
+
+void LeagueSystemPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("system_settings") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] System page opening settings\n");
+  GoPage(e_PageID_League_System_Settings);
+}
 
 void LeagueSystemPage::GoPage(e_PageID pageID) {
   this->Exit();
@@ -84,7 +101,9 @@ LeagueSystemSavePage::~LeagueSystemSavePage() {}
 
 LeagueSystemSettingsPage::LeagueSystemSettingsPage(Gui2WindowManager* windowManager,
                                                    const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_system_settings", 10, 3, 80, 3, "Settings");
   this->AddView(title);
@@ -141,3 +160,17 @@ LeagueSystemSettingsPage::LeagueSystemSettingsPage(Gui2WindowManager* windowMana
 }
 
 LeagueSystemSettingsPage::~LeagueSystemSettingsPage() {}
+
+void LeagueSystemSettingsPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("system_settings") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] League system settings reached successfully\n");
+  GetMenuTask()->QuitGame();
+}

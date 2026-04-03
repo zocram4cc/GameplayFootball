@@ -1,12 +1,15 @@
 #include "league_management.hpp"
 
 #include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 
 LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
                                            const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_management", 20, 5, 60, 3, "Management");
   this->AddView(title);
@@ -34,6 +37,26 @@ LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
 
 LeagueManagementPage::~LeagueManagementPage() {}
 
+void LeagueManagementPage::Process() {
+  Gui2Page::Process();
+
+  if (autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
+    return;
+  }
+
+  if (league_menu_smoke::RouteEnabled("management")) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] League management reached successfully\n");
+    GetMenuTask()->QuitGame();
+  } else if (league_menu_smoke::RouteEnabled("management_contracts")) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] Management page opening contracts\n");
+    GoPage(e_PageID_League_Management_Contracts);
+  }
+}
+
 void LeagueManagementPage::GoPage(e_PageID pageID) {
   this->Exit();
   Properties properties;
@@ -43,7 +66,9 @@ void LeagueManagementPage::GoPage(e_PageID pageID) {
 
 LeagueManagementContractsPage::LeagueManagementContractsPage(Gui2WindowManager* windowManager,
                                                              const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_management_contracts", 10, 3,
                                         80, 3, "Contracts");
   this->AddView(title);
@@ -87,6 +112,20 @@ LeagueManagementContractsPage::LeagueManagementContractsPage(Gui2WindowManager* 
 }
 
 LeagueManagementContractsPage::~LeagueManagementContractsPage() {}
+
+void LeagueManagementContractsPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("management_contracts") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] Management contracts reached successfully\n");
+  GetMenuTask()->QuitGame();
+}
 
 LeagueManagementTransfersPage::LeagueManagementTransfersPage(Gui2WindowManager* windowManager,
                                                              const Gui2PageData& pageData)

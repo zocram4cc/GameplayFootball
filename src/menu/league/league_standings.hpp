@@ -15,26 +15,35 @@ class LeagueStandingsPage : public Gui2Page {
 public:
   LeagueStandingsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueStandingsPage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueStandingsLeaguePage : public Gui2Page {
 public:
   LeagueStandingsLeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueStandingsLeaguePage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueStandingsLeagueTablePage : public Gui2Page {
 public:
   LeagueStandingsLeagueTablePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueStandingsLeagueTablePage();
+  virtual void Process();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueStandingsLeagueStatsPage : public Gui2Page {

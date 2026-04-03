@@ -15,9 +15,12 @@ class LeagueSystemPage : public Gui2Page {
 public:
   LeagueSystemPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueSystemPage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueSystemSavePage : public Gui2Page {
@@ -32,8 +35,11 @@ class LeagueSystemSettingsPage : public Gui2Page {
 public:
   LeagueSystemSettingsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueSystemSettingsPage();
+  virtual void Process();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

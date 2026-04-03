@@ -1,10 +1,14 @@
 #include "league_inbox.hpp"
 
+#include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 
 LeagueInboxPage::LeagueInboxPage(Gui2WindowManager* windowManager,
                                  const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_inbox", 20, 20, 60, 3, "Inbox");
   this->AddView(title);
@@ -30,3 +34,17 @@ LeagueInboxPage::LeagueInboxPage(Gui2WindowManager* windowManager,
 }
 
 LeagueInboxPage::~LeagueInboxPage() {}
+
+void LeagueInboxPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("inbox") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] League inbox reached successfully\n");
+  GetMenuTask()->QuitGame();
+}

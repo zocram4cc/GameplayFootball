@@ -1,11 +1,14 @@
 #include "league_team.hpp"
 
 #include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 
 LeagueTeamPage::LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_team", 20, 5, 60, 3, "Team Management");
   this->AddView(title);
@@ -44,6 +47,20 @@ LeagueTeamPage::LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageD
 }
 
 LeagueTeamPage::~LeagueTeamPage() {}
+
+void LeagueTeamPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("team_overview") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] Team management opening player overview\n");
+  GoPage(e_PageID_League_Team_PlayerOverview);
+}
 
 void LeagueTeamPage::GoPage(e_PageID pageID) {
   this->Exit();
@@ -161,7 +178,9 @@ LeagueTeamTacticsPage::~LeagueTeamTacticsPage() {}
 
 LeagueTeamPlayerOverviewPage::LeagueTeamPlayerOverviewPage(Gui2WindowManager* windowManager,
                                                             const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playeroverview", 10, 3,
                                         80, 3, "Player Overview");
   this->AddView(title);
@@ -206,6 +225,20 @@ LeagueTeamPlayerOverviewPage::LeagueTeamPlayerOverviewPage(Gui2WindowManager* wi
 }
 
 LeagueTeamPlayerOverviewPage::~LeagueTeamPlayerOverviewPage() {}
+
+void LeagueTeamPlayerOverviewPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("team_overview") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] Team player overview reached successfully\n");
+  GetMenuTask()->QuitGame();
+}
 
 LeagueTeamPlayerDevelopmentPage::LeagueTeamPlayerDevelopmentPage(Gui2WindowManager* windowManager,
                                                                     const Gui2PageData& pageData)

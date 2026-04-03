@@ -5,10 +5,12 @@
 
 #include "league.hpp"
 
+#include <cctype>
 #include <chrono>
 
 #include "../../main.hpp"
 #include "../../league/leaguecode.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 #include "utils/gui2/widgets/caption.hpp"
@@ -18,19 +20,21 @@
 
 namespace {
 
-constexpr unsigned long kMenuSmokeLeagueAdvanceDelay_ms = 350;
-constexpr unsigned long kMenuSmokeLeagueDialogDelay_ms = 350;
-constexpr unsigned long kMenuSmokeLeagueQuitDelay_ms = 600;
-
-bool MenuSmokeLeagueEnabled() {
-  return GetConfiguration()->GetBool("menu_smoke_test_league", false);
-}
-
 std::string MakeMenuSmokeLeagueSaveName() {
   const auto now = std::chrono::system_clock::now().time_since_epoch();
   const auto milliseconds =
       std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-  return "MenuSmokeLeague_" + std::to_string(milliseconds % 1000000000LL);
+  std::string route = league_menu_smoke::GetRoute();
+  if (route.empty()) {
+    route = "bootstrap";
+  }
+  for (char& ch : route) {
+    if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')) {
+      ch = '_';
+    }
+  }
+  return "MenuSmokeLeague_" + route + "_" +
+         std::to_string(milliseconds % 1000000000LL);
 }
 
 }  // namespace
@@ -52,12 +56,22 @@ LeaguePage::LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_main", 20, 30, 60, 50);
 
-  Gui2Button* buttonStepTime =
-      new Gui2Button(windowManager, "button_league_steptime", 20, 30, 30, 3, "Step time");
-  buttonStepTime->sig_OnClick.connect([this](...) { StepTime(); });
-  buttonStepTime->SetFocus();
+  Gui2Button* buttonForward =
+      new Gui2Button(windowManager, "button_league_forward", 20, 30, 30, 3, "Open Dashboard");
+  buttonForward->sig_OnClick.connect([this](...) { GoForward(); });
+  buttonForward->SetFocus();
 
-  grid->AddView(buttonStepTime, 0, 0);
+  Gui2Button* buttonStepTime =
+      new Gui2Button(windowManager, "button_league_steptime", 20, 30, 30, 3, "Advance One Day");
+  buttonStepTime->sig_OnClick.connect([this](...) { StepTime(); });
+
+  Gui2Button* buttonMainMenu =
+      new Gui2Button(windowManager, "button_league_mainmenu", 20, 30, 30, 3, "Return to Main Menu");
+  buttonMainMenu->sig_OnClick.connect([this](...) { GoMainMenu(); });
+
+  grid->AddView(buttonForward, 0, 0);
+  grid->AddView(buttonStepTime, 1, 0);
+  grid->AddView(buttonMainMenu, 2, 0);
 
   this->AddView(grid);
   grid->UpdateLayout();
@@ -71,21 +85,48 @@ LeaguePage::~LeaguePage() {}
 void LeaguePage::Process() {
   Gui2Page::Process();
 
-  if (MenuSmokeLeagueEnabled() && !autoStepTriggered &&
-      EnvironmentManager::GetInstance().GetTime_ms() >=
-          pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+  if (league_menu_smoke::AnyEnabled() && !autoStepTriggered &&
+      league_menu_smoke::Now_ms() >=
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
     autoStepTriggered = true;
     printf("[menu-smoke] League page reached, advancing time once\n");
     StepTime();
   }
 
-  if (MenuSmokeLeagueEnabled() && !autoAdvanceTriggered &&
-      EnvironmentManager::GetInstance().GetTime_ms() >=
-          pageCreatedTime_ms + kMenuSmokeLeagueQuitDelay_ms) {
+  if (league_menu_smoke::HasRoute() && !autoAdvanceTriggered &&
+      league_menu_smoke::Now_ms() >=
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    autoAdvanceTriggered = true;
+    printf("[menu-smoke] League page ready, opening dashboard\n");
+    GoForward();
+  } else if (league_menu_smoke::BootstrapEnabled() && !league_menu_smoke::HasRoute() &&
+             !autoAdvanceTriggered &&
+             league_menu_smoke::Now_ms() >=
+                 pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] League page flow succeeded\n");
     GetMenuTask()->QuitGame();
   }
+}
+
+void LeaguePage::GoForward() {
+  this->Exit();
+
+  Properties properties;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_League_Forward, properties, 0);
+
+  delete this;
+}
+
+void LeaguePage::GoMainMenu() {
+  SaveAutosaveToDatabase();
+
+  this->Exit();
+
+  Properties properties;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_MainMenu, properties, 0);
+
+  delete this;
 }
 
 void LeaguePage::StepTime() {
@@ -129,7 +170,7 @@ void LeaguePage::SetTimeCaption() {
 
 LeagueStartPage::LeagueStartPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData),
-      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
   Gui2Frame* frame = new Gui2Frame(windowManager, "bg_league_start", 30, 35, 40, 30, true);
   this->AddView(frame);
@@ -165,9 +206,9 @@ LeagueStartPage::~LeagueStartPage() {}
 void LeagueStartPage::Process() {
   Gui2Page::Process();
 
-  if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
-      EnvironmentManager::GetInstance().GetTime_ms() >=
-          pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+  if (!autoAdvanceTriggered && league_menu_smoke::AnyEnabled() &&
+      league_menu_smoke::Now_ms() >=
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] League start reached, creating a new league\n");
     GoNew();
@@ -238,7 +279,7 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData),
       success(false),
-      pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       dialogShownTime_ms(0),
       autoAdvanceTriggered(false),
       autoCloseDialogTriggered(false) {
@@ -370,7 +411,7 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
 
   currencySelectPulldown->SetSelected(0);
   RefreshTeamSelect();
-  if (MenuSmokeLeagueEnabled()) {
+  if (league_menu_smoke::AnyEnabled()) {
     saveNameInput->SetText(MakeMenuSmokeLeagueSaveName());
   }
 
@@ -387,18 +428,18 @@ LeagueStartNewPage::~LeagueStartNewPage() {}
 void LeagueStartNewPage::Process() {
   Gui2Page::Process();
 
-  const unsigned long now_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  const unsigned long now_ms = league_menu_smoke::Now_ms();
 
-  if (!autoAdvanceTriggered && MenuSmokeLeagueEnabled() &&
-      now_ms >= pageCreatedTime_ms + kMenuSmokeLeagueAdvanceDelay_ms) {
+  if (!autoAdvanceTriggered && league_menu_smoke::AnyEnabled() &&
+      now_ms >= pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] League creation page ready, proceeding with defaults\n");
     GoProceed();
     return;
   }
 
-  if (!autoCloseDialogTriggered && createSaveDialog && MenuSmokeLeagueEnabled() &&
-      now_ms >= dialogShownTime_ms + kMenuSmokeLeagueDialogDelay_ms) {
+  if (!autoCloseDialogTriggered && createSaveDialog && league_menu_smoke::AnyEnabled() &&
+      now_ms >= dialogShownTime_ms + league_menu_smoke::kDialogDelay_ms) {
     autoCloseDialogTriggered = true;
     if (success) {
       printf("[menu-smoke] League save created, entering league page\n");
@@ -477,7 +518,7 @@ void LeagueStartNewPage::GoProceed() {
 
   createSaveDialog = new Gui2Dialog(windowManager, "dialog_league_start_new_createsave", 25, 30, 50,
                                     40, "New league creation");
-  dialogShownTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  dialogShownTime_ms = league_menu_smoke::Now_ms();
   autoCloseDialogTriggered = false;
 
   if (errorCode == 0) {
@@ -560,7 +601,7 @@ void LeagueStartNewPage::CloseCreateSaveDialog() {
   saveLoc /= GetActiveSaveDirectory();
 
   if (!success) {
-    if (MenuSmokeLeagueEnabled()) {
+    if (league_menu_smoke::AnyEnabled()) {
       GetMenuTask()->QuitGame();
     }
     return;

@@ -15,9 +15,14 @@ class LeagueForwardPage : public Gui2Page {
 public:
   LeagueForwardPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueForwardPage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  void GoMainMenu();
+
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

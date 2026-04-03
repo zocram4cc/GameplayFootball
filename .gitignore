@@ -1,5 +1,6 @@
 build-headless/
 build/
 build-test/
+build-wsl-*/
 docs/html/
 Doxyfile

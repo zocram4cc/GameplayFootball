@@ -15,8 +15,11 @@ class LeagueInboxPage : public Gui2Page {
 public:
   LeagueInboxPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueInboxPage();
+  virtual void Process();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 #endif

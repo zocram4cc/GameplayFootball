@@ -15,9 +15,12 @@ class LeagueTeamPage : public Gui2Page {
 public:
   LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueTeamPage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueTeamFormationPage : public Gui2Page {
@@ -48,8 +51,11 @@ class LeagueTeamPlayerOverviewPage : public Gui2Page {
 public:
   LeagueTeamPlayerOverviewPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueTeamPlayerOverviewPage();
+  virtual void Process();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueTeamPlayerDevelopmentPage : public Gui2Page {

@@ -1,12 +1,15 @@
 #include "league_standings.hpp"
 
 #include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 
 LeagueStandingsPage::LeagueStandingsPage(Gui2WindowManager* windowManager,
                                          const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_standings", 20, 5, 60, 3, "Standings");
   this->AddView(title);
@@ -43,6 +46,20 @@ LeagueStandingsPage::LeagueStandingsPage(Gui2WindowManager* windowManager,
 
 LeagueStandingsPage::~LeagueStandingsPage() {}
 
+void LeagueStandingsPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("standings_table") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] Standings page opening league standings\n");
+  GoPage(e_PageID_League_Standings_League);
+}
+
 void LeagueStandingsPage::GoPage(e_PageID pageID) {
   this->Exit();
   Properties properties;
@@ -52,7 +69,9 @@ void LeagueStandingsPage::GoPage(e_PageID pageID) {
 
 LeagueStandingsLeaguePage::LeagueStandingsLeaguePage(Gui2WindowManager* windowManager,
                                                      const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_standings_league", 20, 5, 60, 3, "League");
   this->AddView(title);
@@ -80,6 +99,20 @@ LeagueStandingsLeaguePage::LeagueStandingsLeaguePage(Gui2WindowManager* windowMa
 
 LeagueStandingsLeaguePage::~LeagueStandingsLeaguePage() {}
 
+void LeagueStandingsLeaguePage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("standings_table") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kAdvanceDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] League standings opening table\n");
+  GoPage(e_PageID_League_Standings_League_Table);
+}
+
 void LeagueStandingsLeaguePage::GoPage(e_PageID pageID) {
   this->Exit();
   Properties properties;
@@ -89,7 +122,9 @@ void LeagueStandingsLeaguePage::GoPage(e_PageID pageID) {
 
 LeagueStandingsLeagueTablePage::LeagueStandingsLeagueTablePage(Gui2WindowManager* windowManager,
                                                                const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_league_table", 10, 2,
                                         80, 3, "League Table");
   this->AddView(title);
@@ -139,6 +174,20 @@ LeagueStandingsLeagueTablePage::LeagueStandingsLeagueTablePage(Gui2WindowManager
 }
 
 LeagueStandingsLeagueTablePage::~LeagueStandingsLeagueTablePage() {}
+
+void LeagueStandingsLeagueTablePage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("standings_table") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] League standings table reached successfully\n");
+  GetMenuTask()->QuitGame();
+}
 
 LeagueStandingsLeagueStatsPage::LeagueStandingsLeagueStatsPage(Gui2WindowManager* windowManager,
                                                                const Gui2PageData& pageData)

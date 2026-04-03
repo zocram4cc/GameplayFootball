@@ -25,6 +25,8 @@ public:
   virtual void Process();
 
 protected:
+  void GoForward();
+  void GoMainMenu();
   void StepTime();
   void SetTimeCaption();
 

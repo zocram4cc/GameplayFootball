@@ -162,6 +162,62 @@ jobs:
             "[menu-smoke] League save created, entering league page" \
             "[menu-smoke] League page flow succeeded"
 
+      - name: Smoke test League Dashboard
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_dashboard.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] League page ready, opening dashboard" \
+            "[menu-smoke] League dashboard reached successfully"
+
+      - name: Smoke test League Inbox
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_inbox.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] League dashboard opening Inbox" \
+            "[menu-smoke] League inbox reached successfully"
+
+      - name: Smoke test League Calendar
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_calendar.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] League dashboard opening Calendar" \
+            "[menu-smoke] League calendar reached successfully"
+
+      - name: Smoke test League Standings
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_standings.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] Standings page opening league standings" \
+            "[menu-smoke] League standings table reached successfully"
+
+      - name: Smoke test League Team
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_team.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] Team management opening player overview" \
+            "[menu-smoke] Team player overview reached successfully"
+
+      - name: Smoke test League Management
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_management.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] League dashboard opening Management" \
+            "[menu-smoke] League management reached successfully"
+
+      - name: Smoke test League System
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league_system.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] System page opening settings" \
+            "[menu-smoke] League system settings reached successfully"
+
       - name: Smoke test Options
         run: |
           cd build

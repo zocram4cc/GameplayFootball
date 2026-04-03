@@ -15,17 +15,23 @@ class LeagueManagementPage : public Gui2Page {
 public:
   LeagueManagementPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueManagementPage();
+  virtual void Process();
 
 protected:
   void GoPage(e_PageID pageID);
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueManagementContractsPage : public Gui2Page {
 public:
   LeagueManagementContractsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
   virtual ~LeagueManagementContractsPage();
+  virtual void Process();
 
 protected:
+  unsigned long pageCreatedTime_ms;
+  bool autoAdvanceTriggered;
 };
 
 class LeagueManagementTransfersPage : public Gui2Page {

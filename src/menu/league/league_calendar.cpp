@@ -1,12 +1,17 @@
 #include "league_calendar.hpp"
 
 #include "../../main.hpp"
+#include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
 
 LeagueCalendarPage::LeagueCalendarPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
-    : Gui2Page(windowManager, pageData) {
+    : Gui2Page(windowManager, pageData),
+      fixturesHeader(nullptr),
+      fixturesGrid(nullptr),
+      pageCreatedTime_ms(league_menu_smoke::Now_ms()),
+      autoAdvanceTriggered(false) {
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_league_calendar", 10, 3, 80, 3, "Calendar / Fixtures");
   this->AddView(title);
@@ -46,7 +51,32 @@ LeagueCalendarPage::LeagueCalendarPage(Gui2WindowManager* windowManager,
 
 LeagueCalendarPage::~LeagueCalendarPage() {}
 
+void LeagueCalendarPage::Process() {
+  Gui2Page::Process();
+
+  if (!league_menu_smoke::RouteEnabled("calendar") || autoAdvanceTriggered ||
+      league_menu_smoke::Now_ms() <
+          pageCreatedTime_ms + league_menu_smoke::kQuitDelay_ms) {
+    return;
+  }
+
+  autoAdvanceTriggered = true;
+  printf("[menu-smoke] League calendar reached successfully\n");
+  GetMenuTask()->QuitGame();
+}
+
 void LeagueCalendarPage::RefreshFixtures() {
+  if (fixturesHeader) {
+    fixturesHeader->Exit();
+    delete fixturesHeader;
+    fixturesHeader = nullptr;
+  }
+  if (fixturesGrid) {
+    fixturesGrid->Exit();
+    delete fixturesGrid;
+    fixturesGrid = nullptr;
+  }
+
   std::string query =
       "SELECT c.timestamp, t1.name, t2.name, l.name "
       "FROM calendar c "
@@ -59,24 +89,23 @@ void LeagueCalendarPage::RefreshFixtures() {
   query += "ORDER BY c.timestamp LIMIT 40";
 
   auto result = GetDB()->Query(query);
-  Gui2Caption* header =
-      new Gui2Caption(windowManager, "caption_cal_header", 5, 12, 90, 2,
-                      "Date              | Home                | Away                | League");
-  this->AddView(header);
-  header->Show();
+  fixturesHeader = new Gui2Caption(windowManager, "caption_cal_header", 5, 12, 90, 2,
+                                   "Date              | Home                | Away                | League");
+  this->AddView(fixturesHeader);
+  fixturesHeader->Show();
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_cal", 5, 15, 90, 68);
+  fixturesGrid = new Gui2Grid(windowManager, "grid_cal", 5, 15, 90, 68);
   int row = 0;
   for (const auto& r : result->data) {
     char buf[256];
     snprintf(buf, sizeof(buf), "%-17s | %-19s | %-19s | %s",
              r.at(0).c_str(), r.at(1).c_str(), r.at(2).c_str(), r.at(3).c_str());
     Gui2Button* btn = new Gui2Button(windowManager, "btn_fixture_" + std::to_string(row), 0, 0, 86, 2.5, buf);
-    grid->AddView(btn, row++, 0);
+    fixturesGrid->AddView(btn, row++, 0);
   }
-  grid->UpdateLayout(0.5);
-  this->AddView(grid);
-  grid->Show();
+  fixturesGrid->UpdateLayout(0.5);
+  this->AddView(fixturesGrid);
+  fixturesGrid->Show();
 }
 
 void LeagueCalendarPage::GoBack() {
