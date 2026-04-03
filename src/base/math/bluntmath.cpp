@@ -35,7 +35,7 @@ real NormalizedClamp(const real value, const real min, const real max) {
 }
 
 real invsqrt(real fvalue) {
-  return 1. / sqrt(fvalue);
+  return 1.0f / std::sqrt(fvalue);
 }
 
 float dot_product(real v1[3], real v2[3]) {

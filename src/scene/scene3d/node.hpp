@@ -52,8 +52,8 @@ public:
                          std::list<boost::intrusive_ptr<T>>& gatherObjects, bool recurse = true,
                          int depth = 0) const {
     objects.Lock();
-    int objectsSize = objects.data.size();
-    for (int i = 0; i < objectsSize; i++) {
+    const std::size_t objectsSize = objects.data.size();
+    for (std::size_t i = 0; i < objectsSize; i++) {
       if (objects.data.at(i)->GetObjectType() == targetObjectType) {
         gatherObjects.push_back(boost::static_pointer_cast<T>(objects.data.at(i)));
       }
@@ -62,8 +62,8 @@ public:
 
     if (recurse) {
       nodes.Lock();
-      int nodesSize = nodes.data.size();
-      for (int i = 0; i < nodesSize; i++) {
+      const std::size_t nodesSize = nodes.data.size();
+      for (std::size_t i = 0; i < nodesSize; i++) {
         nodes.data.at(i)->GetObjects<T>(targetObjectType, gatherObjects, recurse, depth + 1);
       }
       nodes.Unlock();

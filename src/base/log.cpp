@@ -5,6 +5,7 @@
 
 #include "log.hpp"
 
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 
@@ -47,8 +48,8 @@ void Log(e_LogType logType, const std::string& className, const std::string& met
   }
 
   char bla[2048];
-  sprintf(bla, "[%s] in [%s::%s]: %s\n", logTypeString.c_str(), className.c_str(),
-          methodName.c_str(), message.c_str());
+  std::snprintf(bla, sizeof(bla), "[%s] in [%s::%s]: %s\n", logTypeString.c_str(),
+                className.c_str(), methodName.c_str(), message.c_str());
   callback(logType, className.c_str(), methodName.c_str(), message.c_str());
 
   mutex.lock();

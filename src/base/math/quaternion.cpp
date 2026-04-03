@@ -164,7 +164,7 @@ Quaternion Quaternion::GetInverse() const {
     // Log(e_Warning, "Quaternion", "GetInverse", "Unable to normalize quaternion");
     return QUATERNION_IDENTITY;
   } else {
-    real finvnorm = 1.0 / fnorm;
+    real finvnorm = 1.0f / fnorm;
     return Quaternion(-elements[0] * finvnorm, -elements[1] * finvnorm, -elements[2] * finvnorm,
                       elements[3] * finvnorm);
   }
@@ -228,12 +228,12 @@ void Quaternion::SetAngles(radian X, radian Y, radian Z) {
   // http://www.euclideanspace.com/maths/geometry/rotations/conversions/eulerToQuaternion/index.htm
   // assuming the angles are in radians.
 
-  float c1 = cos(Y / 2.0);
-  float s1 = sin(Y / 2.0);
-  float c2 = cos(Z / 2.0);
-  float s2 = sin(Z / 2.0);
-  float c3 = cos(X / 2.0);
-  float s3 = sin(X / 2.0);
+  real c1 = std::cos(Y * 0.5f);
+  real s1 = std::sin(Y * 0.5f);
+  real c2 = std::cos(Z * 0.5f);
+  real s2 = std::sin(Z * 0.5f);
+  real c3 = std::cos(X * 0.5f);
+  real s3 = std::sin(X * 0.5f);
   float c1c2 = c1 * c2;
   float s1s2 = s1 * s2;
   elements[3] = c1c2 * c3 - s1s2 * s3;
@@ -250,7 +250,7 @@ void Quaternion::GetAngleAxis(radian& rfangle, Vector3& rkaxis) const {
 
   rfangle = 2.0f * std::acos(elements[3]);
 
-  double div = std::sqrt(1.0f - elements[3] * elements[3]);
+  real div = std::sqrt(1.0f - elements[3] * elements[3]);
   if (div < 0.000001f) {
     rkaxis.coords[0] = elements[0];
     rkaxis.coords[1] = elements[1];
@@ -326,10 +326,10 @@ void Quaternion::Normalize() {
     Set(QUATERNION_IDENTITY[0], QUATERNION_IDENTITY[1], QUATERNION_IDENTITY[2],
         QUATERNION_IDENTITY[3]);
   } else {
-    if (std::fabs(1.0 - qmagsq) < 2.107342e-08) {
-      scale(2.0 / (1.0 + qmagsq));
+    if (std::fabs(1.0f - qmagsq) < 2.107342e-08f) {
+      scale(2.0f / (1.0f + qmagsq));
     } else {
-      scale(1.0 / sqrt(qmagsq));
+      scale(1.0f / std::sqrt(qmagsq));
     }
   }
 }
@@ -357,8 +357,8 @@ Quaternion Quaternion::GetSlerped(float bias, const Quaternion& to) const {
   Quaternion qb = to;
 
   // Calculate angle between them.
-  double cosHalfTheta = elements[3] * qb.elements[3] + elements[0] * qb.elements[0] +
-                        elements[1] * qb.elements[1] + elements[2] * qb.elements[2];
+  real cosHalfTheta = elements[3] * qb.elements[3] + elements[0] * qb.elements[0] +
+                      elements[1] * qb.elements[1] + elements[2] * qb.elements[2];
 
   if (cosHalfTheta < 0) {
     qb = -qb;
@@ -366,7 +366,7 @@ Quaternion Quaternion::GetSlerped(float bias, const Quaternion& to) const {
   }
 
   // if *this=to or *this=-to then theta = 0 and we can return *this
-  if (fabs(cosHalfTheta) >= 1.0) {
+  if (std::fabs(cosHalfTheta) >= 1.0f) {
     qm.elements[3] = elements[3];
     qm.elements[0] = elements[0];
     qm.elements[1] = elements[1];
@@ -375,21 +375,21 @@ Quaternion Quaternion::GetSlerped(float bias, const Quaternion& to) const {
   }
 
   // Calculate temporary values.
-  double halfTheta = acos(cosHalfTheta);
-  double sinHalfTheta = sqrt(1.0 - cosHalfTheta * cosHalfTheta);
+  real halfTheta = std::acos(cosHalfTheta);
+  real sinHalfTheta = std::sqrt(1.0f - cosHalfTheta * cosHalfTheta);
 
   // if theta = 180 degrees then result is not fully defined
   // we could rotate around any axis normal to *this or to
-  if (fabs(sinHalfTheta) < 0.000001f) {  // fabs is floating point absolute
-    qm.elements[3] = (elements[3] * 0.5 + qb.elements[3] * 0.5);
-    qm.elements[0] = (elements[0] * 0.5 + qb.elements[0] * 0.5);
-    qm.elements[1] = (elements[1] * 0.5 + qb.elements[1] * 0.5);
-    qm.elements[2] = (elements[2] * 0.5 + qb.elements[2] * 0.5);
+  if (std::fabs(sinHalfTheta) < 0.000001f) {  // fabs is floating point absolute
+    qm.elements[3] = (elements[3] * 0.5f + qb.elements[3] * 0.5f);
+    qm.elements[0] = (elements[0] * 0.5f + qb.elements[0] * 0.5f);
+    qm.elements[1] = (elements[1] * 0.5f + qb.elements[1] * 0.5f);
+    qm.elements[2] = (elements[2] * 0.5f + qb.elements[2] * 0.5f);
     return qm;
   }
 
-  double ratioA = sin((1 - bias) * halfTheta) / sinHalfTheta;
-  double ratioB = sin(bias * halfTheta) / sinHalfTheta;
+  real ratioA = std::sin((1.0f - bias) * halfTheta) / sinHalfTheta;
+  real ratioB = std::sin(bias * halfTheta) / sinHalfTheta;
 
   // calculate Quaternion.
   qm.elements[3] = (elements[3] * ratioA + qb.elements[3] * ratioB);

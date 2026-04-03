@@ -72,7 +72,7 @@ public:
   }
   void SetDesiredTimeToBall_ms(int ms) { desiredTimeToBall_ms = ms; }
   int GetDesiredTimeToBall_ms() const {
-    return clamp(desiredTimeToBall_ms, timeNeededToGetToBall_ms, 1000000.0f);
+    return std::clamp(desiredTimeToBall_ms, static_cast<int>(timeNeededToGetToBall_ms), 1000000);
   }
   bool AllowLastDitch(bool includingPossessionAmount = true) const;
 

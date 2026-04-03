@@ -38,7 +38,7 @@ void TaskManager::Exit() {
   EmptyQueue();
 
   // gracefully shutdown threads
-  int poolSize = pool.size();
+  const int poolSize = static_cast<int>(pool.size());
   for (int i = 0; i < poolSize; i++) {
     boost::intrusive_ptr<Message_Shutdown> shutdown(new Message_Shutdown());
     workQueue.PushMessage(shutdown);
@@ -57,11 +57,12 @@ void TaskManager::Exit() {
   pool.clear();
 
   if (workQueue.GetPending() > 0)
-    Log(e_FatalError, "TaskManager", "Exit", workQueue.GetPending() + " messages left on quit!");
+    Log(e_FatalError, "TaskManager", "Exit",
+        std::to_string(workQueue.GetPending()) + " messages left on quit!");
 }
 
 int TaskManager::GetWorkerThreadCount() {
-  return pool.size();
+  return static_cast<int>(pool.size());
 }
 
 e_ThreadState TaskManager::GetWorkerThreadState(int workerThreadIndex) {

@@ -72,7 +72,7 @@ SettingsPage::SettingsPage(Gui2WindowManager* windowManager, const Gui2PageData&
   Gui2Button* buttonController =
       new Gui2Button(windowManager, "button_controller", 0, 0, 30, 3, "controller");
   Gui2Button* buttonGraphics =
-      new Gui2Button(windowManager, "button_graphics", 0, 0, 30, 3, "graphics");
+      new Gui2Button(windowManager, "button_graphics", 0, 0, 30, 3, Localization::GetInstance().Translate("settings_graphics"));
   Gui2Button* buttonAudio = new Gui2Button(windowManager, "button_audio", 0, 0, 30, 3, "audio");
   Gui2Button* buttonLanguage =
       new Gui2Button(windowManager, "button_language", 0, 0, 30, 3, "language");
@@ -1495,8 +1495,10 @@ GamepadFunctionPage::GamepadFunctionPage(Gui2WindowManager* windowManager,
 
   Gui2Button* buttonDefaults = new Gui2Button(windowManager, "button_gamepadfunction_defaults", 0,
                                               0, 30, 3, "reset to defaults");
-  buttonDefaults->sig_OnClick.connect([this](...) { SetDefaults(); });
-  buttonDefaults->sig_OnClick.connect([this](...) { GoBack(); });
+  buttonDefaults->sig_OnClick.connect([this](...) {
+    SetDefaults();
+    GoBack();
+  });
 
   Gui2Image* spacer = new Gui2Image(windowManager, "tmpspacer", 0, 0, 1, 5);  // todo: spacer widget
 
@@ -1648,7 +1650,7 @@ bool CheckDuplicate(const std::vector<Resolution>& res, int x, int y) {
 GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_settings_graphics", 20, 10, 60, 3, "Graphics setup");
+      new Gui2Caption(windowManager, "caption_settings_graphics", 20, 10, 60, 3, Localization::GetInstance().Translate("graphics_title"));
   this->AddView(title);
   title->Show();
   title->SetFocus();
@@ -1717,13 +1719,16 @@ GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData&
       (GetConfiguration()->Get("context_fullscreen", "false").compare("true") == 0) ? true : false;
 
   for (unsigned int i = 0; i < resolutions.size(); i++) {
-    std::string fullscreenString = " windowed";
-    if (resolutions.at(i).fullscreen)
-      fullscreenString = " fullscreen";
+    std::string fullscreenString = "";
+    std::string nameSuffix = "";
+    if (resolutions.at(i).fullscreen) {
+      fullscreenString = " (" + Localization::GetInstance().Translate("graphics_fullscreen") + ")";
+      nameSuffix = "_fs";
+    }
     Gui2Button* button = new Gui2Button(
         windowManager,
         "button_graphics_res" + int_to_str(resolutions.at(i).x) + "x" +
-            int_to_str(resolutions.at(i).y) + fullscreenString,
+            int_to_str(resolutions.at(i).y) + nameSuffix,
         0, 0, 30, 3,
         int_to_str(resolutions.at(i).x) + " x " + int_to_str(resolutions.at(i).y) +
             fullscreenString /* + " @ " + int_to_str(resolutions.at(i).bpp) + " bpp"*/);
@@ -1757,15 +1762,15 @@ GraphicsPage::~GraphicsPage() {}
 
 void GraphicsPage::SetResolution(int resIndex) {
   GetConfiguration()->SetBool("context_fullscreen", resolutions.at(resIndex).fullscreen);
-  GetConfiguration()->Set("context_x", resolutions.at(resIndex).x);
-  GetConfiguration()->Set("context_y", resolutions.at(resIndex).y);
+  GetConfiguration()->SetInt("context_x", resolutions.at(resIndex).x);
+  GetConfiguration()->SetInt("context_y", resolutions.at(resIndex).y);
   GetConfiguration()->SaveFile(GetConfigFilename());
 
   bg = new Gui2Image(windowManager, "image_setresolution_bg", 0, 0, 100, 13);
   bg->LoadImage("media/menu/backgrounds/black.png");
 
   restartCaption1 = new Gui2Caption(windowManager, "caption_settings_resolution_info1", 0, 0, 100,
-                                    3, "please restart the game for the changes to become active.");
+                                    3, Localization::GetInstance().Translate("graphics_restart_note"));
   restartCaption2 = new Gui2Caption(windowManager, "caption_settings_resolution_info2", 0, 0, 100,
                                     3, "if this resolution doesn't happen to work, you can always");
   restartCaption3 = new Gui2Caption(windowManager, "caption_settings_resolution_info3", 0, 0, 100,

@@ -216,7 +216,7 @@ std::string GetStringFromVector(const Vector3& vec) {
   std::string tmp;
   tmp = "";
   char tmpC[1000];
-  sprintf(tmpC, "%f, %f, %f", vec.coords[0], vec.coords[1], vec.coords[2]);
+  std::snprintf(tmpC, sizeof(tmpC), "%f, %f, %f", vec.coords[0], vec.coords[1], vec.coords[2]);
   tmp.assign(tmpC);
   return tmp;
 }
@@ -232,11 +232,11 @@ Vector3 GetVectorFromString(const std::string& vecString) {
   assert(tokenizedString.size() > 0);
   assert(tokenizedString.size() <= 3);
   Vector3 vector;
-  vector.coords[0] = atof(tokenizedString.at(0).c_str());
+  vector.coords[0] = static_cast<real>(std::atof(tokenizedString.at(0).c_str()));
   if (tokenizedString.size() > 1)
-    vector.coords[1] = atof(tokenizedString.at(1).c_str());
+    vector.coords[1] = static_cast<real>(std::atof(tokenizedString.at(1).c_str()));
   if (tokenizedString.size() > 2)
-    vector.coords[2] = atof(tokenizedString.at(2).c_str());
+    vector.coords[2] = static_cast<real>(std::atof(tokenizedString.at(2).c_str()));
   return vector;
 }
 
@@ -247,10 +247,10 @@ Quaternion GetQuaternionFromString(const std::string& quatString) {
   assert(tokenizedString.size() == 4);
   radian angle;
   Vector3 vector;
-  angle = atof(tokenizedString.at(0).c_str()) / 360.0 * 2.0 * pi;
-  vector.coords[0] = atof(tokenizedString.at(1).c_str());
-  vector.coords[1] = atof(tokenizedString.at(2).c_str());
-  vector.coords[2] = atof(tokenizedString.at(3).c_str());
+  angle = static_cast<radian>(std::atof(tokenizedString.at(0).c_str()) / 360.0 * 2.0 * pi);
+  vector.coords[0] = static_cast<real>(std::atof(tokenizedString.at(1).c_str()));
+  vector.coords[1] = static_cast<real>(std::atof(tokenizedString.at(2).c_str()));
+  vector.coords[2] = static_cast<real>(std::atof(tokenizedString.at(3).c_str()));
   Quaternion quaternion;
   quaternion.SetAngleAxis(angle, vector);
   return quaternion;

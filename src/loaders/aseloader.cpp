@@ -6,6 +6,7 @@
 #include "aseloader.hpp"
 
 #include <fstream>
+#include <vector>
 
 #include "base/geometry/triangle.hpp"
 #include "base/geometry/trianglemeshutils.hpp"
@@ -177,7 +178,7 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
       ..
   */
 
-  Vector3 vertex_cache[numvertex];
+  std::vector<Vector3> vertex_cache(numvertex);
 
   if (tree_mesh_vertex_list->entries.size() != (unsigned int)numvertex)
     Log(e_FatalError, "ASELoader", "BuildTriangleMesh",
@@ -306,7 +307,7 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
   */
 
   if (numtvertex > 0) {
-    Vector3 tvertex_cache[numtvertex];
+    std::vector<Vector3> tvertex_cache(numtvertex);
 
     if (tree_mesh_tvertex_list->entries.size() != (unsigned int)numtvertex)
       Log(e_FatalError, "ASELoader", "BuildTriangleMesh",

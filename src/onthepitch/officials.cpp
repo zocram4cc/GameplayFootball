@@ -121,7 +121,7 @@ void Officials::Put() {
     if (bodyPartIter != nodeMap.end()) {
       boost::intrusive_ptr<Spatial> bodyPart = bodyPartIter->second;
       Vector3 position = bodyPart->GetDerivedPosition() +
-                         bodyPart->GetDerivedRotation() * Vector3(0.04, 0, -0.25);  // -0.4
+                         bodyPart->GetDerivedRotation() * Vector3(0.04f, 0.0f, -0.25f);  // -0.4
       if (match->GetReferee()->GetCurrentFoulType() == 2) {
         yellowCard->SetPosition(position);
         yellowCard->SetRotation(bodyPart->GetDerivedRotation());

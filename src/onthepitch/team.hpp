@@ -42,7 +42,7 @@ public:
   void GetActivePlayers(std::vector<Player*>& activePlayers);
   int GetActivePlayerCount() const { return activePlayerCount; }
 
-  unsigned int GetHumanGamerCount() const { return humanGamers.size(); }
+  unsigned int GetHumanGamerCount() const { return static_cast<unsigned int>(humanGamers.size()); }
   void AddHumanGamer(IHIDevice* hid, e_PlayerColor color);
   void DeleteHumanGamers();
   e_PlayerColor GetPlayerColor(int playerID);

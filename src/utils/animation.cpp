@@ -1299,7 +1299,7 @@ void Animation::Load(const std::string& filename) {
   iter = customData->children.begin();
   while (iter != customData->children.end()) {
     char* varName = new char[256];
-    strcpy(varName, (*iter).first.c_str());
+    strcpy_s(varName, 256, (*iter).first.c_str());
     std::string varData = (*iter).second.value;
     // printf("varname: %s, vardata: %s\n", varName, varData.c_str());
 
@@ -1337,8 +1337,8 @@ void Animation::Save(const std::string& filename) {
     fileData.push_back(line);
   }
 
-  FILE* file;
-  file = fopen(filename.c_str(), "w");
+  FILE* file = nullptr;
+  fopen_s(&file, filename.c_str(), "w");
   if (!file) {
     Log(e_Error, "Animation", "Save", "Could not open file " + filename + " for writing");
     return;
@@ -1472,7 +1472,7 @@ void Animation::SetVariable(const std::string& name, const std::string& value) {
     iter2->second = value;
   } else {
     char* varName = new char[256];
-    strcpy(varName, name.c_str());
+    strcpy_s(varName, 256, name.c_str());
     variableCache.insert(std::pair<const char*, std::string>(varName, value));
   }
 }

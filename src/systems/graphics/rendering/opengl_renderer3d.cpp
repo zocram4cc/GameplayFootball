@@ -23,11 +23,11 @@
 #include <OpenGL/gl3.h>
 #include <OpenGL/gl3ext.h>
 #else
-#include <GL/gl.h>
-// #include <GL/glcorearb.h>  // can be used to check for core profile only
+#include <SDL2/SDL_opengl.h>
 #endif
 
 #include <cmath>
+#include <vector>
 
 #include <SDL2/SDL.h>
 
@@ -49,6 +49,9 @@
 namespace blunted {
 
 struct GLfunctions {
+#ifndef APIENTRYP
+#define APIENTRYP APIENTRY *
+#endif
 #define SDL_PROC(ret, func, params) ret(APIENTRYP func) params;
 #include "sdl_glfuncs.h"
 #undef SDL_PROC
@@ -115,7 +118,9 @@ void OpenGLRenderer3D::RenderOverlay2D(const std::vector<Overlay2DQueueEntry>& o
   UseShader("overlay");
 
   // VK: TODO: check window size instead?
-  Matrix4 orthoMatrix = CreateOrthoMatrix(0, context_width, context_height, 0, 0.1, 10);
+  Matrix4 orthoMatrix =
+      CreateOrthoMatrix(0.0f, static_cast<real>(context_width), static_cast<real>(context_height),
+                        0.0f, 0.1f, 10.0f);
   SetMatrix("projection", orthoMatrix);
 
   mapping.glBindVertexArray(overlayBuffer.vertexArrayID);
@@ -127,8 +132,10 @@ void OpenGLRenderer3D::RenderOverlay2D(const std::vector<Overlay2DQueueEntry>& o
     }
 
     Matrix4 modelMatrix(MATRIX4_IDENTITY);
-    modelMatrix.SetTranslation(Vector3(queueEntry.position[0], queueEntry.position[1], -1.0f));
-    modelMatrix.SetScale(Vector3(queueEntry.size[0], queueEntry.size[1], 1.0f));
+    modelMatrix.SetTranslation(
+        Vector3(static_cast<real>(queueEntry.position[0]), static_cast<real>(queueEntry.position[1]), -1.0f));
+    modelMatrix.SetScale(
+        Vector3(static_cast<real>(queueEntry.size[0]), static_cast<real>(queueEntry.size[1]), 1.0f));
     SetMatrix("model", modelMatrix);
 
     BindTexture(queueEntry.texture->GetResource()->GetID());
@@ -516,10 +523,9 @@ bool OpenGLRenderer3D::CreateContext(int width, int height, int bpp, bool fullsc
 #endif
 
 #ifdef WIN32
-  bool success = false;  // wglSwapIntervalEXT(-1);
-  if (!success)
-    wglSwapIntervalEXT(1);
-    // if (!success) printf("ANTI TEAR NOT SUPPORTED\n\n\n\n\n");
+  const int swapIntervalResult = SDL_GL_SetSwapInterval(1);
+  (void)swapIntervalResult;
+  // if (swapIntervalResult != 0) printf("ANTI TEAR NOT SUPPORTED\n\n\n\n\n");
 #endif
 
 #ifdef __linux__
@@ -626,7 +632,7 @@ void OpenGLRenderer3D::Exit() {
 int OpenGLRenderer3D::CreateView(float x_percent, float y_percent, float width_percent,
                                  float height_percent) {
   Log(e_Notice, "OpenGLRenderer3D", "CreateView",
-      "Creating new view, id " + int_to_str(views.size()));
+      "Creating new view, id " + int_to_str(static_cast<int>(views.size())));
 
   View view;
 
@@ -741,7 +747,7 @@ int OpenGLRenderer3D::CreateView(float x_percent, float y_percent, float width_p
 
   views.push_back(view);
 
-  return views.size() - 1;
+  return static_cast<int>(views.size()) - 1;
 }
 
 View& OpenGLRenderer3D::GetView(int viewID) {
@@ -1404,8 +1410,8 @@ void OpenGLRenderer3D::RenderVertexBuffer(
             // SetUniformInt("simple", "has_normal", (int)has_normal);
             // SetUniformInt("simple", "has_specular", (int)has_specular);
             // SetUniformInt("simple", "has_illumination", (int)has_illumination);
-            SetUniformFloat3("simple", "materialbools", (int)has_normal, (int)has_specular,
-                             (int)has_illumination);
+            SetUniformFloat3("simple", "materialbools", static_cast<float>(has_normal),
+                             static_cast<float>(has_specular), static_cast<float>(has_illumination));
           }
 
           currentDiffuseTextureID = diffuseTextureID;
@@ -2016,11 +2022,11 @@ void OpenGLRenderer3D::SetRenderBufferStorage(e_InternalPixelFormat internalPixe
 // render targets
 
 void OpenGLRenderer3D::SetRenderTargets(const std::vector<e_TargetAttachment>& targetAttachments) {
-  GLenum targets[targetAttachments.size()];
+  std::vector<GLenum> targets(targetAttachments.size());
   for (int i = 0; i < (signed int)targetAttachments.size(); i++) {
     targets[i] = GetGLTargetAttachment(targetAttachments.at(i));
   }
-  mapping.glDrawBuffers(targetAttachments.size(), targets);
+  mapping.glDrawBuffers(static_cast<GLsizei>(targetAttachments.size()), targets.data());
 }
 
 // utility
@@ -2094,8 +2100,8 @@ void GeneratePoissonKernel(float* kernel, unsigned int kernelSize) {
   if (!usePrecalculatedSet || kernelSize != 32) {
     unsigned int candidateSize = 32;
 
-    Vector3 samples[kernelSize];
-    Vector3 candidates[candidateSize];
+    std::vector<Vector3> samples(kernelSize);
+    std::vector<Vector3> candidates(candidateSize);
 
     for (unsigned int i = 0; i < kernelSize; i++) {
       // first, create a set of candidates. all these are on the 'hull' of a hemisphere.
@@ -2156,41 +2162,41 @@ void GeneratePoissonKernel(float* kernel, unsigned int kernelSize) {
 
   } else {  // PRECALCULATED SET
 
-    Vector3 samples[kernelSize];
+    std::vector<Vector3> samples(kernelSize);
 
     // these samples seem relatively close to z = 0 (much 'ground effect' on flat surface)
-    samples[0].Set(-0.164502, 0.198563, 0.847836);
-    samples[1].Set(-0.371169, -0.311732, 0.271810);
-    samples[2].Set(0.395387, -0.169534, 0.356410);
-    samples[3].Set(0.199861, 0.154104, 0.106548);
-    samples[4].Set(0.003958, -0.331189, 0.151894);
-    samples[5].Set(-0.128020, 0.276624, 0.133732);
-    samples[6].Set(-0.576721, 0.032381, 0.472200);
-    samples[7].Set(0.042701, 0.189697, 0.215682);
-    samples[8].Set(0.095873, -0.029585, 0.376675);
-    samples[9].Set(-0.018931, -0.559727, 0.723850);
-    samples[10].Set(0.354553, -0.531634, 0.250052);
-    samples[11].Set(0.211686, 0.082632, 0.250673);
-    samples[12].Set(-0.586181, -0.060375, 0.086480);
-    samples[13].Set(0.529458, -0.009977, 0.084485);
-    samples[14].Set(-0.452887, -0.303541, 0.721515);
-    samples[15].Set(-0.223906, 0.180655, 0.100284);
-    samples[16].Set(-0.278485, -0.709826, 0.082907);
-    samples[17].Set(0.195230, 0.204728, 0.573875);
-    samples[18].Set(-0.426917, 0.460452, 0.610940);
-    samples[19].Set(0.115942, -0.134919, 0.290054);
-    samples[20].Set(-0.089691, -0.266767, 0.910242);
-    samples[21].Set(0.259113, 0.638836, 0.159923);
-    samples[22].Set(0.621548, -0.384182, 0.089235);
-    samples[23].Set(0.261258, 0.331540, 0.306923);
-    samples[24].Set(0.170094, -0.678424, 0.471292);
-    samples[25].Set(-0.398759, -0.300976, 0.082431);
-    samples[26].Set(-0.291338, 0.080905, 0.159125);
-    samples[27].Set(-0.391219, 0.082053, 0.638896);
-    samples[28].Set(0.051567, 0.476222, 0.765788);
-    samples[29].Set(-0.181921, 0.545340, 0.430360);
-    samples[30].Set(0.542024, 0.161835, 0.173717);
-    samples[31].Set(-0.059420, 0.778527, 0.233026);
+    samples[0].Set(-0.164502f, 0.198563f, 0.847836f);
+    samples[1].Set(-0.371169f, -0.311732f, 0.271810f);
+    samples[2].Set(0.395387f, -0.169534f, 0.356410f);
+    samples[3].Set(0.199861f, 0.154104f, 0.106548f);
+    samples[4].Set(0.003958f, -0.331189f, 0.151894f);
+    samples[5].Set(-0.128020f, 0.276624f, 0.133732f);
+    samples[6].Set(-0.576721f, 0.032381f, 0.472200f);
+    samples[7].Set(0.042701f, 0.189697f, 0.215682f);
+    samples[8].Set(0.095873f, -0.029585f, 0.376675f);
+    samples[9].Set(-0.018931f, -0.559727f, 0.723850f);
+    samples[10].Set(0.354553f, -0.531634f, 0.250052f);
+    samples[11].Set(0.211686f, 0.082632f, 0.250673f);
+    samples[12].Set(-0.586181f, -0.060375f, 0.086480f);
+    samples[13].Set(0.529458f, -0.009977f, 0.084485f);
+    samples[14].Set(-0.452887f, -0.303541f, 0.721515f);
+    samples[15].Set(-0.223906f, 0.180655f, 0.100284f);
+    samples[16].Set(-0.278485f, -0.709826f, 0.082907f);
+    samples[17].Set(0.195230f, 0.204728f, 0.573875f);
+    samples[18].Set(-0.426917f, 0.460452f, 0.610940f);
+    samples[19].Set(0.115942f, -0.134919f, 0.290054f);
+    samples[20].Set(-0.089691f, -0.266767f, 0.910242f);
+    samples[21].Set(0.259113f, 0.638836f, 0.159923f);
+    samples[22].Set(0.621548f, -0.384182f, 0.089235f);
+    samples[23].Set(0.261258f, 0.331540f, 0.306923f);
+    samples[24].Set(0.170094f, -0.678424f, 0.471292f);
+    samples[25].Set(-0.398759f, -0.300976f, 0.082431f);
+    samples[26].Set(-0.291338f, 0.080905f, 0.159125f);
+    samples[27].Set(-0.391219f, 0.082053f, 0.638896f);
+    samples[28].Set(0.051567f, 0.476222f, 0.765788f);
+    samples[29].Set(-0.181921f, 0.545340f, 0.430360f);
+    samples[30].Set(0.542024f, 0.161835f, 0.173717f);
+    samples[31].Set(-0.059420f, 0.778527f, 0.233026f);
 
     Vector3 average;
     for (unsigned int i = 0; i < kernelSize; i++) {
@@ -2299,9 +2305,9 @@ void OpenGLRenderer3D::LoadShader(const std::string& name, const std::string& fi
 
     unsigned int kernelSize = 32;
     // SetUniformInt("ambient", "SSAO_kernelSize", kernelSize);
-    float SSAO_kernel[kernelSize * 3];
-    GeneratePoissonKernel(&SSAO_kernel[0], kernelSize);
-    SetUniformFloat3Array("ambient", "SSAO_kernel", kernelSize, &SSAO_kernel[0]);
+    std::vector<float> ssaoKernel(kernelSize * 3);
+    GeneratePoissonKernel(ssaoKernel.data(), kernelSize);
+    SetUniformFloat3Array("ambient", "SSAO_kernel", kernelSize, ssaoKernel.data());
   }
   if (name == "lighting") {
     // on (at least older) nvidia cards, we can't 'skip' id's, or so it seems. so make them

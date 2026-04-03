@@ -155,10 +155,8 @@ void Gui2Grid::UpdateLayout(float margin_left_percent, float margin_right_percen
 
   // all sizes are in percentages
 
-  float widths[cols + 1];
-  float heights[rows + 1];
-  memset(&widths[0], 0, sizeof(float) * cols);
-  memset(&heights[0], 0, sizeof(float) * rows);
+  std::vector<float> widths(cols + 1, 0.0f);
+  std::vector<float> heights(rows + 1, 0.0f);
 
   // find max sizes
 

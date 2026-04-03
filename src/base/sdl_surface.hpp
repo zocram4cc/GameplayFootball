@@ -6,6 +6,8 @@
 #ifndef _hpp_sdl_surface
 #define _hpp_sdl_surface
 
+#include <cmath>
+
 #include "SDL2/SDL2_gfxPrimitives.h"
 #include "SDL2/SDL_endian.h"
 #include "SDL2/SDL_image.h"

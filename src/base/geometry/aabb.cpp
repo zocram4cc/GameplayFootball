@@ -118,8 +118,8 @@ real AABB::GetRadius() const {
     x = maxxyz.coords[0] - minxyz.coords[0];
     y = maxxyz.coords[1] - minxyz.coords[1];
     z = maxxyz.coords[2] - minxyz.coords[2];
-    real length = sqrt(pow(x, 2) + pow(y, 2));
-    radius = sqrt(pow(length, 2) + pow(z, 2)) / 2.0;
+    real length = std::sqrt(x * x + y * y);
+    radius = std::sqrt(length * length + z * z) * 0.5f;
     radius_needupdate = false;
   }
   return radius;
@@ -127,9 +127,9 @@ real AABB::GetRadius() const {
 
 void AABB::GetCenter(Vector3& center) const {
   if (center_needupdate) {
-    real x = (minxyz.coords[0] + maxxyz.coords[0]) / 2.0;
-    real y = (minxyz.coords[1] + maxxyz.coords[1]) / 2.0;
-    real z = (minxyz.coords[2] + maxxyz.coords[2]) / 2.0;
+    real x = (minxyz.coords[0] + maxxyz.coords[0]) * 0.5f;
+    real y = (minxyz.coords[1] + maxxyz.coords[1]) * 0.5f;
+    real z = (minxyz.coords[2] + maxxyz.coords[2]) * 0.5f;
     this->center.Set(x, y, z);
     center_needupdate = false;
   }
@@ -167,7 +167,7 @@ bool AABB::Intersects(const vector_Planes& planes) const {
 
   real determinant;
   real distance;
-  int planes_size = planes.size();
+  int planes_size = static_cast<int>(planes.size());
   for (int p = 0; p < planes_size; p++) {
     // check if there is any point (that defines this aabb) on the inside of this plane
     aabb_intersects_planecollection = false;

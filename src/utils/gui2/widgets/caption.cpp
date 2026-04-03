@@ -5,6 +5,7 @@
 
 #include "caption.hpp"
 
+#include <cmath>
 #include "../windowmanager.hpp"
 #include "SDL2/SDL2_rotozoom.h"
 
