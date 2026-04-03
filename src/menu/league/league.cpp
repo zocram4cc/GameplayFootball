@@ -89,31 +89,9 @@ void LeaguePage::Process() {
 }
 
 void LeaguePage::StepTime() {
-  auto result = GetDB()->Query(
-      "SELECT strftime(\"%w\", timestamp), strftime(\"%Y\", timestamp), seasonyear FROM settings "
-      "LIMIT 1");
-  int dayOfWeek = atoi(result->data.at(0).at(0).c_str());
-  int actualyear = atoi(result->data.at(0).at(1).c_str());
-  int seasonyear = atoi(result->data.at(0).at(2).c_str());
-
-  int offset = 0;
-  if (dayOfWeek < 3)
-    offset = 3 - dayOfWeek;
-  else if (dayOfWeek < 6)
-    offset = 6 - dayOfWeek;
-  else
-    offset = 4;
-
-  result = GetDB()->Query("UPDATE settings SET timestamp = date(timestamp, '+" +
-                          int_to_str(offset) + " day')");
-
-  // check if season complete
-  if (actualyear > seasonyear) {
-    result = GetDB()->Query("UPDATE settings SET seasonyear = " + int_to_str(seasonyear + 1));
-    GenerateSeasonCalendars();
+  if (StepLeagueTime()) {
+    SetTimeCaption();
   }
-
-  SetTimeCaption();
 }
 
 void LeaguePage::SetTimeCaption() {

@@ -49,7 +49,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             cmake build-essential \
-            libboost-dev
+            libboost-dev \
+            libsqlite3-dev
 
       - name: Configure (tests only, no game build)
         run: |
@@ -135,6 +136,45 @@ jobs:
 
       - name: Test (Debug)
         run: ctest --test-dir build --output-on-failure
+
+      - name: Smoke test Quick Match
+        run: |
+          chmod +x tests/run_menu_smoke.sh
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_quick_match.config" 40 \
+            "[menu-smoke] Main menu ready, opening Quick Match" \
+            "[menu-smoke] Gameplay page reached and live match is active" \
+            "[menu-smoke] Quick Match verification succeeded, quitting test run"
+
+      - name: Smoke test Full Match
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_full_match.config" 260 \
+            "[menu-smoke] Main menu ready, opening Quick Match" \
+            "[menu-smoke] Full match complete:" \
+            "[menu-smoke] Full-match verification succeeded, quitting test run"
+
+      - name: Smoke test League Mode
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_league.config" 90 \
+            "[menu-smoke] Main menu ready, opening League Mode" \
+            "[menu-smoke] League save created, entering league page" \
+            "[menu-smoke] League page flow succeeded"
+
+      - name: Smoke test Options
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_settings.config" 40 \
+            "[menu-smoke] Main menu ready, opening Options" \
+            "[menu-smoke] Options page reached successfully"
+
+      - name: Smoke test Credits
+        run: |
+          cd build
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_credits.config" 40 \
+            "[menu-smoke] Main menu ready, opening Credits" \
+            "[menu-smoke] Credits page reached successfully"
 
       - name: Configure (Release)
         run: |
@@ -261,4 +301,3 @@ jobs:
           name: gameplayfootball-docs
           path: docs/html/
           if-no-files-found: error
-

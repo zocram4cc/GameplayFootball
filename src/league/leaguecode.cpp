@@ -342,3 +342,39 @@ void GenerateSeasonCalendars() {
                           int_to_str(numWeeks * 7) + " day'), seasonyear = " +
                           int_to_str(seasonYear));
 }
+
+bool StepLeagueTime() {
+  auto result = GetDB()->Query(
+      "SELECT strftime(\"%w\", timestamp), seasonyear FROM settings LIMIT 1");
+  if (result->data.empty() || result->data.at(0).size() < 2) {
+    return false;
+  }
+
+  int dayOfWeek = atoi(result->data.at(0).at(0).c_str());
+  int seasonyear = atoi(result->data.at(0).at(1).c_str());
+
+  int offset = 0;
+  if (dayOfWeek < 3) {
+    offset = 3 - dayOfWeek;
+  } else if (dayOfWeek < 6) {
+    offset = 6 - dayOfWeek;
+  } else {
+    offset = 4;
+  }
+
+  GetDB()->Query("UPDATE settings SET timestamp = date(timestamp, '+" + int_to_str(offset) +
+                 " day')");
+
+  result = GetDB()->Query("SELECT strftime(\"%Y\", timestamp) FROM settings LIMIT 1");
+  if (result->data.empty() || result->data.at(0).empty()) {
+    return false;
+  }
+
+  int actualyear = atoi(result->data.at(0).at(0).c_str());
+  if (actualyear > seasonyear) {
+    GetDB()->Query("UPDATE settings SET seasonyear = " + int_to_str(seasonyear + 1));
+    GenerateSeasonCalendars();
+  }
+
+  return true;
+}

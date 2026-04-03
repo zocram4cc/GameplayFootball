@@ -1,6 +1,8 @@
 include(FetchContent)
 include(GoogleTest)
 
+find_package(SQLite3 REQUIRED)
+
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
@@ -53,6 +55,27 @@ target_link_libraries(gameplayfootball_integration_tests PRIVATE
 )
 
 gtest_discover_tests(gameplayfootball_integration_tests)
+
+add_executable(gameplayfootball_league_integration_tests
+  integration/league_bootstrap_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/league/leaguecode.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/database.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/xmlloader.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/properties.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+)
+
+target_include_directories(gameplayfootball_league_integration_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_league_integration_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+  SQLite::SQLite3
+)
+
+gtest_discover_tests(gameplayfootball_league_integration_tests)
 
 # Career data unit tests (Phase 6: tasks 6.13, 6.16, 6.17)
 add_executable(gameplayfootball_career_tests
