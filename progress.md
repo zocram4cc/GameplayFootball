@@ -8,3 +8,12 @@ Original prompt: keep going until you can go to a main menu click quick match an
 - Changed `MenuTask::QuickStart()` so debug builds only auto-start a match when `quick_start` is explicitly set in config; otherwise they stay on the normal menu flow.
 - Tried running `ctest` in `build-headless`, but the cached test files reference old CI paths under `/home/runner/work/...` and fail before executing tests on this machine.
 - Remaining blocker for full end-to-end verification: build the real game on a machine with the SDL/OpenGL/OpenAL/Boost dependencies available, copy/link `data/` into that build directory, then manually verify `Intro/Main Menu -> Quick Match -> CPU team select -> Start match -> live gameplay`.
+- Hardened menu/controller stability for missing or hot-unplugged devices:
+  `ControllerSelectPage` now handles zero controllers with an on-screen notice + back button, skips unsafe keyboard/gamepad casts, and no longer asserts when controller counts change in-game.
+- Hardened settings subpages against unavailable devices/data:
+  keyboard save now checks for a real keyboard controller before writing config; gamepad list/setup/calibration/mapping/function pages now show a safe fallback page instead of indexing stale controller ids; missing-language and missing-resolution situations now fall back to a usable menu state.
+- Hardened `SetActiveController()` in `MenuTask` so stale controller ids from saved side-selection state no longer index past the current controller list.
+- Verification attempt on Windows:
+  `cmake -S . -B build-menu-check -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` fails during configure because Boost headers are not installed locally (`Could NOT find Boost (missing: Boost_INCLUDE_DIR)`).
+- Verification attempt on existing Linux-style artifacts:
+  `ctest --test-dir build-headless --output-on-failure` still fails immediately because the cached generated test includes point at CI paths under `/home/runner/work/...`.

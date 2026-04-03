@@ -23,13 +23,14 @@ using namespace blunted;
 void SetActiveController(int side, bool keyboard) {
   bool keyboardActive = true;
   const std::vector<SideSelection> sides = GetMenuTask()->GetControllerSetup();
+  const std::vector<IHIDevice*>& controllers = GetControllers();
   int menuControllerID = -1;
   for (unsigned int i = 0; i < sides.size(); i++) {
     if (sides.at(i).side == side) {
-      if (GetControllers().at(sides.at(i).controllerID)->GetDeviceType() ==
-          e_HIDeviceType_Gamepad) {
-        menuControllerID =
-            static_cast<HIDGamepad*>(GetControllers().at(sides.at(i).controllerID))->GetGamepadID();
+      int controllerID = sides.at(i).controllerID;
+      if (controllerID >= 0 && controllerID < static_cast<int>(controllers.size()) &&
+          controllers.at(controllerID)->GetDeviceType() == e_HIDeviceType_Gamepad) {
+        menuControllerID = static_cast<HIDGamepad*>(controllers.at(controllerID))->GetGamepadID();
         keyboardActive = false;
       }
       break;

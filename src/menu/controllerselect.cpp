@@ -28,6 +28,25 @@ bool MenuSmokeAutoQuickMatchEnabled() {
   return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
 }
 
+Gui2Caption* AddControllerSelectNotice(Gui2Page* page, Gui2WindowManager* windowManager,
+                                       const std::string& name, float yPercent,
+                                       const std::string& caption) {
+  Gui2Caption* notice = new Gui2Caption(windowManager, name, 10, yPercent, 80, 3, caption);
+  page->AddView(notice);
+  notice->SetPosition(50 - notice->GetTextWidthPercent() * 0.5, yPercent);
+  notice->Show();
+  return notice;
+}
+
+Gui2Button* AddControllerSelectBackButton(Gui2Page* page, Gui2WindowManager* windowManager,
+                                          const std::string& name, float yPercent = 72.0f) {
+  Gui2Button* backButton = new Gui2Button(windowManager, name, 38, yPercent, 24, 3, "Back");
+  backButton->sig_OnClick.connect([page](...) { page->GoBack(); });
+  page->AddView(backButton);
+  backButton->Show();
+  return backButton;
+}
+
 }  // namespace
 
 ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
@@ -58,14 +77,26 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
   this->SetFocus();
 
   const std::vector<IHIDevice*>& controllers = GetControllers();
+  if (controllers.empty()) {
+    AddControllerSelectNotice(this, windowManager, "caption_controllerselect_noinput", 44,
+                              "No input devices detected.");
+    AddControllerSelectNotice(
+        this, windowManager, "caption_controllerselect_noinput_hint", 49,
+        "Connect a keyboard or gamepad before starting a match.");
+    Gui2Button* backButton =
+        AddControllerSelectBackButton(this, windowManager, "button_controllerselect_back");
+    backButton->SetFocus();
+    this->Show();
+    return;
+  }
+
   if (inGame) {
     sides = GetMenuTask()->GetControllerSetup();
-    assert(sides.size() == controllers.size());
   }
   for (unsigned int i = 0; i < controllers.size(); i++) {
     SideSelection side;
     side.controllerID = i;
-    if (inGame) {
+    if (inGame && i < sides.size()) {
       side.side = sides.at(i).side;
     } else {
       side.side = 0;
@@ -84,11 +115,15 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
       side.controllerImage->LoadImage("media/menu/controller/keyboard_small.png");
     }
     side.controllerImage->Show();
-    if (!inGame)
+    if (!inGame || i >= sides.size())
       sides.push_back(side);
     else
       sides.at(i) = side;
     delay.push_back(0);
+  }
+
+  if (sides.size() > controllers.size()) {
+    sides.resize(controllers.size());
   }
 
   SetImagePositions();
@@ -138,7 +173,15 @@ void ControllerSelectPage::Process() {
 }
 
 void ControllerSelectPage::ProcessKeyboardEvent(KeyboardEvent* event) {
-  HIDKeyboard* keyboard = static_cast<HIDKeyboard*>(GetControllers().at(0));
+  const std::vector<IHIDevice*>& controllers = GetControllers();
+  if (controllers.empty() || sides.empty()) {
+    return;
+  }
+  IHIDevice* controller = controllers.at(0);
+  if (controller->GetDeviceType() != e_HIDeviceType_Keyboard) {
+    return;
+  }
+  HIDKeyboard* keyboard = static_cast<HIDKeyboard*>(controller);
   if (event->GetKeyOnce(keyboard->GetFunctionMapping(e_ButtonFunction_Left))) {
     sides.at(0).side -= 1;
   }
@@ -152,7 +195,10 @@ void ControllerSelectPage::ProcessKeyboardEvent(KeyboardEvent* event) {
 
 void ControllerSelectPage::ProcessJoystickEvent(JoystickEvent*) {
   const std::vector<IHIDevice*>& controllers = GetControllers();
-  for (unsigned int i = 1; i < controllers.size(); i++) {
+  for (unsigned int i = 1; i < controllers.size() && i < sides.size() && i < delay.size(); i++) {
+    if (controllers.at(i)->GetDeviceType() != e_HIDeviceType_Gamepad) {
+      continue;
+    }
     if (delay.at(i) < EnvironmentManager::GetInstance().GetTime_ms() - 250) {
       HIDGamepad* gamepad = static_cast<HIDGamepad*>(controllers.at(i));
       if (gamepad->GetButtonValue(e_ButtonFunction_Left) > 0.5) {
@@ -173,6 +219,10 @@ void ControllerSelectPage::ProcessJoystickEvent(JoystickEvent*) {
 void ControllerSelectPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsActivate()) {
     if (!inGame) {
+      if (sides.empty()) {
+        event->Ignore();
+        return;
+      }
       GetMenuTask()->SetControllerSetup(sides);
 
       CreatePage(e_PageID_TeamSelect);
