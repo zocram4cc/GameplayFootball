@@ -12,7 +12,7 @@
 
 using namespace blunted;
 
-// Mode selection: myCoach / myGM / Player Career / Manager Career
+// Mode selection: myCoach / myGM / Player / Manager / Owner Career
 class CareerMenuPage : public Gui2Page {
 public:
   CareerMenuPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
@@ -23,6 +23,7 @@ protected:
   void GoMyGM();
   void GoPlayerCareer();
   void GoManagerCareer();
+  void GoOwnerCareer();
 
 private:
   void GoCareerMode(const std::string& mode);

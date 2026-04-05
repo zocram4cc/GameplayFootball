@@ -84,7 +84,7 @@ struct CareerPlayer {
 
 struct CareerSave {
   std::string name;
-  std::string mode;        // "manager", "player", "mygm", "mycoach"
+  std::string mode;        // "manager", "player", "mygm", "mycoach", "owner"
   std::string managerName;
   int reputation;
   int seasonsPlayed;

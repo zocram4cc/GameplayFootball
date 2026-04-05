@@ -29,17 +29,21 @@ CareerMenuPage::CareerMenuPage(Gui2WindowManager* windowManager, const Gui2PageD
       new Gui2Button(windowManager, "btn_playercareer", 0, 0, 40, 3, "Player Career");
   Gui2Button* btnManager =
       new Gui2Button(windowManager, "btn_managercareer", 0, 0, 40, 3, "Manager Career");
+  Gui2Button* btnOwner =
+      new Gui2Button(windowManager, "btn_ownercareer", 0, 0, 40, 3, "Owner Career");
 
   btnCoach->sig_OnClick.connect([this](...) { GoMyCoach(); });
   btnGM->sig_OnClick.connect([this](...) { GoMyGM(); });
   btnPlayer->sig_OnClick.connect([this](...) { GoPlayerCareer(); });
   btnManager->sig_OnClick.connect([this](...) { GoManagerCareer(); });
+  btnOwner->sig_OnClick.connect([this](...) { GoOwnerCareer(); });
 
   Gui2Grid* grid = new Gui2Grid(windowManager, "career_grid", 20, 26, 60, 60);
   grid->AddView(btnCoach, 0, 0);
   grid->AddView(btnGM, 1, 0);
   grid->AddView(btnPlayer, 2, 0);
   grid->AddView(btnManager, 3, 0);
+  grid->AddView(btnOwner, 4, 0);
   grid->UpdateLayout(0.5);
 
   this->AddView(grid);
@@ -69,6 +73,9 @@ void CareerMenuPage::GoPlayerCareer() {
 void CareerMenuPage::GoManagerCareer() {
   GoCareerMode("manager");
 }
+void CareerMenuPage::GoOwnerCareer() {
+  GoCareerMode("owner");
+}
 
 // ---------------------------------------------------------------------------
 // CareerNewGamePage
@@ -85,6 +92,8 @@ CareerNewGamePage::CareerNewGamePage(Gui2WindowManager* windowManager, const Gui
     modeLabel = "myGM";
   else if (m_mode == "player")
     modeLabel = "Player Career";
+  else if (m_mode == "owner")
+    modeLabel = "Owner Career";
 
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_newgame", 20, 10, 60, 3, "New " + modeLabel);
@@ -116,6 +125,9 @@ CareerNewGamePage::CareerNewGamePage(Gui2WindowManager* windowManager, const Gui
   } else if (m_mode == "mycoach") {
     nameFieldLabel = "Coach name:";
     nameDefault = "Coach";
+  } else if (m_mode == "owner") {
+    nameFieldLabel = "Owner name:";
+    nameDefault = "Owner";
   }
 
   Gui2Caption* mgrCaption =
@@ -297,6 +309,8 @@ CareerHubPage::CareerHubPage(Gui2WindowManager* windowManager, const Gui2PageDat
       modeDisplay = "myGM";
     else if (activeSave->mode == "player")
       modeDisplay = "Player Career";
+    else if (activeSave->mode == "owner")
+      modeDisplay = "Owner Career";
 
     Gui2Caption* teamLabel =
       new Gui2Caption(windowManager, "caption_hub_team", 10, 8, 80, 2,

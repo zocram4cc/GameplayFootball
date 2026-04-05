@@ -42,6 +42,16 @@ bool CareerDatabase::CreateNewCareer(const std::string& careerName, const std::s
   m_activeSave->teamID = 0;
   m_activeSave->leagueName = "Default League";
 
+  if (mode == "owner") {
+    // Owner careers start with stronger financial control and influence.
+    m_activeSave->reputation = 60;
+    m_activeSave->boardConfidence = 100;
+    m_activeSave->transferBudget = 60000000;
+    m_activeSave->wageBudget = 750000;
+    m_activeSave->trainingPoints = 14;
+    m_activeSave->scoutingNetworkLevel = 2;
+  }
+
   // Roster is filled from the chosen team when the user confirms "Start Career"
   m_activeSave->roster.clear();
 
