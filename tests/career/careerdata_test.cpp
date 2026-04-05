@@ -170,6 +170,130 @@ TEST(CareerDataTest, SetCustomLeagueNoopForUnknownSave) {
 }
 
 // ---------------------------------------------------------------------------
+// Owner mode – CareerMode::OWNER enum support
+// ---------------------------------------------------------------------------
+
+TEST(CareerDataTest, OwnerModeEnumExists) {
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  EXPECT_EQ(s.mode, CareerMode::OWNER);
+}
+
+TEST(CareerDataTest, OwnerModeCreateSaveAndRetrieve) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  s.teamID = 5;
+  s.reputation = 60;
+  s.budget = 60000000;
+  int id = db.CreateSave(s);
+
+  CareerSave* retrieved = db.GetSave(id);
+  ASSERT_NE(retrieved, nullptr);
+  EXPECT_EQ(retrieved->mode, CareerMode::OWNER);
+  EXPECT_EQ(retrieved->budget, 60000000);
+  EXPECT_EQ(retrieved->reputation, 60);
+}
+
+TEST(CareerDataTest, OwnerReputationClampingWorks) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  s.reputation = 90;
+  int id = db.CreateSave(s);
+
+  db.ApplyReputationDelta(id, 20);
+  EXPECT_EQ(db.GetSave(id)->reputation, 100);
+
+  db.ApplyReputationDelta(id, -150);
+  EXPECT_EQ(db.GetSave(id)->reputation, 0);
+}
+
+TEST(CareerDataTest, OwnerModeSeasonAdvances) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  s.currentSeason = 1;
+  int id = db.CreateSave(s);
+
+  db.AdvanceSeason(id);
+  EXPECT_EQ(db.GetSave(id)->currentSeason, 2);
+
+  db.AdvanceSeason(id);
+  EXPECT_EQ(db.GetSave(id)->currentSeason, 3);
+}
+
+TEST(CareerDataTest, OwnerModeLeagueExpansion) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  int id = db.CreateSave(s);
+
+  LeagueExpansionSettings settings;
+  settings.enabled = true;
+  DivisionConfig d;
+  d.name = "Owner League";
+  d.numTeams = 18;
+  d.relegationSpots = 2;
+  settings.divisions.push_back(d);
+
+  db.SetLeagueExpansionSettings(id, settings);
+  EXPECT_TRUE(db.GetSave(id)->leagueSettings.enabled);
+  EXPECT_EQ(db.GetSave(id)->leagueSettings.divisions[0].name, "Owner League");
+}
+
+TEST(CareerDataTest, OwnerModeCustomLeague) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  int id = db.CreateSave(s);
+
+  CustomLeagueConfig cfg;
+  cfg.leagueName = "Owner Super League";
+  cfg.numDivisions = 3;
+  cfg.cupCompetition = true;
+  cfg.cupName = "Owner Cup";
+
+  db.SetCustomLeague(id, cfg);
+  EXPECT_EQ(db.GetSave(id)->customLeague.leagueName, "Owner Super League");
+  EXPECT_EQ(db.GetSave(id)->customLeague.numDivisions, 3);
+  EXPECT_TRUE(db.GetSave(id)->customLeague.cupCompetition);
+}
+
+TEST(CareerDataTest, OwnerDeleteSave) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  int id = db.CreateSave(s);
+
+  ASSERT_NE(db.GetSave(id), nullptr);
+  db.DeleteSave(id);
+  EXPECT_EQ(db.GetSave(id), nullptr);
+}
+
+TEST(CareerDataTest, OwnerRecordSeason) {
+  CareerDatabase db;
+  CareerSave s;
+  s.mode = CareerMode::OWNER;
+  int id = db.CreateSave(s);
+
+  SeasonRecord rec;
+  rec.season = 1;
+  rec.wins = 20;
+  rec.draws = 10;
+  rec.losses = 8;
+  rec.goalsFor = 55;
+  rec.goalsAgainst = 30;
+  rec.leaguePosition = 3;
+  rec.wonTitle = false;
+
+  db.RecordSeason(id, rec);
+  ASSERT_EQ(db.GetSave(id)->history.size(), 1u);
+  EXPECT_EQ(db.GetSave(id)->history[0].wins, 20);
+  EXPECT_EQ(db.GetSave(id)->history[0].leaguePosition, 3);
+}
+
+// ---------------------------------------------------------------------------
 // DraftSystem – projectedPick ordering
 // ---------------------------------------------------------------------------
 

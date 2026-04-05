@@ -43,16 +43,15 @@ bool CareerDatabase::CreateNewCareer(const std::string& careerName, const std::s
   m_activeSave->leagueName = "Default League";
 
   if (mode == "owner") {
-    // Owner careers start with stronger financial control and influence.
     m_activeSave->reputation = 60;
     m_activeSave->boardConfidence = 100;
     m_activeSave->transferBudget = 60000000;
     m_activeSave->wageBudget = 750000;
     m_activeSave->trainingPoints = 14;
     m_activeSave->scoutingNetworkLevel = 2;
+    InitializeOwnerData();
   }
 
-  // Roster is filled from the chosen team when the user confirms "Start Career"
   m_activeSave->roster.clear();
 
   m_activeSave->freeAgents.push_back(CareerPlayer("Chris Free", 71, 71, 29, 0, 15000, "CF"));
@@ -64,7 +63,6 @@ bool CareerDatabase::CreateNewCareer(const std::string& careerName, const std::s
   m_activeSave->isSeasonActive = true;
   m_activeSave->seasonsPlayed = 0;
   
-  // Save to database
   return SaveCareerData();
 }
 
@@ -721,6 +719,10 @@ bool CareerDatabase::CompleteTransfer(const std::string& playerName) {
   m_activeSave->transferBudget -= totalCost;
   m_activeSave->wageBudget -= bidIt->offeredWage;
 
+  if (m_activeSave->mode == "owner") {
+    m_activeSave->finances.transferSpending += totalCost;
+  }
+
   CareerPlayer signedPlayer(playerName, 0, 0, 0, 0, bidIt->offeredWage, "CM");
 
   auto targetIt = std::find_if(m_transferTargets.begin(), m_transferTargets.end(),
@@ -753,6 +755,407 @@ bool CareerDatabase::CompleteTransfer(const std::string& playerName) {
 
   m_activeBids.erase(bidIt);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Owner mode implementation
+// ---------------------------------------------------------------------------
+
+void CareerDatabase::InitializeOwnerData() {
+  if (!m_activeSave) return;
+
+  m_activeSave->stadium.name = m_activeSave->name + " Arena";
+  m_activeSave->stadium.capacity = 30000;
+  m_activeSave->stadium.condition = 75;
+  m_activeSave->stadium.fanSatisfaction = 60;
+  m_activeSave->stadium.maintenanceCost = 500000;
+  m_activeSave->stadium.matchDayRevenue = 800000;
+
+  m_activeSave->stadium.availableUpgrades.clear();
+  m_activeSave->stadium.availableUpgrades.push_back(
+    {"Expanded Seating", "Add 5,000 seats to the stadium", 8000000, 1, 1, 5000, 200000});
+  m_activeSave->stadium.availableUpgrades.push_back(
+    {"VIP Lounge", "Premium hospitality suites for high-paying guests", 5000000, 1, 1, 500, 500000});
+  m_activeSave->stadium.availableUpgrades.push_back(
+    {"Modern Pitch", "Install state-of-the-art hybrid pitch technology", 3000000, 1, 1, 0, 100000});
+  m_activeSave->stadium.availableUpgrades.push_back(
+    {"Training Complex", "World-class training facilities for the squad", 12000000, 2, 2, 0, 150000});
+  m_activeSave->stadium.availableUpgrades.push_back(
+    {"Mega Expansion", "Major stadium expansion with 15,000 additional seats", 25000000, 3, 3, 15000, 600000});
+
+  m_activeSave->staff.push_back(StaffMember("Alex Ferguson", "Manager", 70, 500000, 3));
+  m_activeSave->staff.push_back(StaffMember("Carlos Ramos", "AssistantManager", 55, 150000, 2));
+  m_activeSave->staff.push_back(StaffMember("Maria Schmidt", "HeadScout", 60, 120000, 2));
+
+  m_activeSave->finances = ClubFinances();
+  m_activeSave->finances.netWorth = 80000000;
+  m_activeSave->finances.tvRevenue = 8000000;
+  m_activeSave->finances.ticketPrice = 40;
+  m_activeSave->finances.seasonTicketHolders = 15000;
+
+  m_activeSave->fanBase = 60;
+  m_activeSave->clubPrestige = 55;
+
+  GenerateSponsorOffers();
+  GenerateBoardObjectives();
+}
+
+void CareerDatabase::UpgradeStadium(int upgradeIndex) {
+  if (!m_activeSave) return;
+  auto& avail = m_activeSave->stadium.availableUpgrades;
+  if (upgradeIndex < 0 || upgradeIndex >= static_cast<int>(avail.size())) return;
+
+  StadiumUpgrade upgrade = avail[upgradeIndex];
+  if (m_activeSave->transferBudget < upgrade.cost) return;
+
+  m_activeSave->transferBudget -= upgrade.cost;
+  m_activeSave->finances.stadiumCosts += upgrade.cost;
+  m_activeSave->stadium.upgrades.push_back(upgrade);
+  avail.erase(avail.begin() + upgradeIndex);
+
+  AddEvent("stadium", "Started stadium upgrade: " + upgrade.name + " (€" + std::to_string(upgrade.cost) + ")", 3, true);
+  ModifyBoardConfidence(2);
+}
+
+void CareerDatabase::RenameStadium(const std::string& newName) {
+  if (!m_activeSave || newName.empty()) return;
+  std::string oldName = m_activeSave->stadium.name;
+  m_activeSave->stadium.name = newName;
+  AddEvent("stadium", "Stadium renamed from " + oldName + " to " + newName, 1, false);
+}
+
+void CareerDatabase::RepairStadium(int amount) {
+  if (!m_activeSave) return;
+  long long repairCost = static_cast<long long>(amount) * 50000;
+  if (m_activeSave->transferBudget < repairCost) return;
+
+  m_activeSave->transferBudget -= repairCost;
+  m_activeSave->stadium.condition = std::min(100, m_activeSave->stadium.condition + amount);
+  m_activeSave->stadium.fanSatisfaction = std::min(100, m_activeSave->stadium.fanSatisfaction + amount / 2);
+  AddEvent("stadium", "Stadium repairs completed (+condition)", 1, false);
+}
+
+void CareerDatabase::SetTicketPrice(int price) {
+  if (!m_activeSave) return;
+  price = std::max(10, std::min(200, price));
+  m_activeSave->finances.ticketPrice = price;
+
+  int priceImpact = 0;
+  if (price > 80) priceImpact = -(price - 80) / 10;
+  else if (price < 30) priceImpact = (30 - price) / 10;
+  m_activeSave->stadium.fanSatisfaction = std::max(0, std::min(100,
+    m_activeSave->stadium.fanSatisfaction + priceImpact));
+
+  AddEvent("finances", "Ticket price set to €" + std::to_string(price), 0, false);
+}
+
+void CareerDatabase::HireStaff(const StaffMember& member) {
+  if (!m_activeSave) return;
+
+  auto existing = std::find_if(m_activeSave->staff.begin(), m_activeSave->staff.end(),
+    [&member](const StaffMember& s) { return s.role == member.role; });
+  if (existing != m_activeSave->staff.end()) {
+    AddEvent("staff", "Replaced " + existing->name + " with " + member.name + " as " + member.role, 0, false);
+    m_activeSave->wageBudget += existing->salary;
+    m_activeSave->staff.erase(existing);
+  }
+
+  if (m_activeSave->wageBudget < member.salary) {
+    AddEvent("staff", "Cannot afford salary for " + member.name, -1, false);
+    return;
+  }
+
+  m_activeSave->wageBudget -= member.salary;
+  m_activeSave->staff.push_back(member);
+  AddEvent("staff", "Hired " + member.name + " as " + member.role, 2, false);
+}
+
+void CareerDatabase::FireStaff(const std::string& staffName) {
+  if (!m_activeSave) return;
+  auto it = std::find_if(m_activeSave->staff.begin(), m_activeSave->staff.end(),
+    [&staffName](const StaffMember& s) { return s.name == staffName; });
+  if (it != m_activeSave->staff.end()) {
+    long long severance = it->salary * it->contractYearsRemaining / 2;
+    m_activeSave->transferBudget -= severance;
+    m_activeSave->wageBudget += it->salary;
+    AddEvent("staff", "Fired " + staffName + " (severance: €" + std::to_string(severance) + ")", -2, false);
+    m_activeSave->staff.erase(it);
+  }
+}
+
+void CareerDatabase::GenerateStaffCandidates(std::vector<StaffMember>& candidates) {
+  static const std::vector<std::string> firstNames = {
+    "Roberto", "Hans", "Yuki", "Patrick", "Elena", "Marco", "Sarah", "Ahmed",
+    "Diego", "Olga", "Pierre", "Kenji", "Anna", "Viktor", "Lucia"
+  };
+  static const std::vector<std::string> lastNames = {
+    "Mancini", "Weber", "Tanaka", "O'Brien", "Petrova", "Rossi", "Johnson",
+    "Al-Hassan", "Fernandez", "Novak", "Dubois", "Watanabe", "Berger", "Costa", "Lindqvist"
+  };
+  static const std::vector<std::string> roles = {
+    "Manager", "AssistantManager", "HeadScout", "YouthCoach", "PhysioChief", "MarketingDirector"
+  };
+
+  static std::mt19937 rng(std::random_device{}());
+  candidates.clear();
+
+  for (int i = 0; i < 8; i++) {
+    std::uniform_int_distribution<int> fd(0, firstNames.size() - 1);
+    std::uniform_int_distribution<int> ld(0, lastNames.size() - 1);
+    std::uniform_int_distribution<int> rd(0, roles.size() - 1);
+    std::uniform_int_distribution<int> sd(35, 90);
+    std::uniform_int_distribution<int> yd(1, 4);
+
+    std::string name = firstNames[fd(rng)] + " " + lastNames[ld(rng)];
+    std::string role = roles[rd(rng)];
+    int skill = sd(rng);
+    long long salary = static_cast<long long>(skill) * 3000 + 50000;
+    int years = yd(rng);
+
+    candidates.push_back(StaffMember(name, role, skill, salary, years));
+  }
+}
+
+void CareerDatabase::GenerateSponsorOffers() {
+  if (!m_activeSave) return;
+  m_activeSave->availableSponsorOffers.clear();
+
+  static const std::vector<std::string> sponsorNames = {
+    "NovaTech", "Apex Sports", "GreenLeaf Energy", "Titan Motors", "CloudByte",
+    "Pinnacle Airlines", "Vortex Drinks", "MetroBank", "SunRise Telecom", "BlueWave Insurance",
+    "CrystalPeak Water", "IronForge Metals", "Galaxy Electronics", "SwiftPay", "EcoVista"
+  };
+  static const std::vector<std::string> types = {"Kit", "Stadium", "Training", "Sleeve"};
+
+  static std::mt19937 rng(std::random_device{}());
+  int rep = m_activeSave->reputation;
+  int prestige = m_activeSave->clubPrestige;
+
+  for (int i = 0; i < 5; i++) {
+    std::uniform_int_distribution<int> nd(0, sponsorNames.size() - 1);
+    std::uniform_int_distribution<int> td(0, types.size() - 1);
+    std::uniform_int_distribution<int> yd(1, 4);
+
+    std::string type = types[td(rng)];
+    long long baseRevenue = 500000;
+    if (type == "Kit") baseRevenue = 2000000;
+    else if (type == "Stadium") baseRevenue = 3000000;
+
+    long long revenue = baseRevenue + static_cast<long long>(prestige + rep) * 20000;
+    std::uniform_int_distribution<long long> rv(revenue * 80 / 100, revenue * 120 / 100);
+    revenue = rv(rng);
+
+    int repReq = std::max(0, static_cast<int>(revenue / 200000) - 10);
+
+    m_activeSave->availableSponsorOffers.push_back(
+      SponsorDeal(sponsorNames[nd(rng)], type, revenue, yd(rng), repReq));
+  }
+}
+
+bool CareerDatabase::AcceptSponsorDeal(int dealIndex) {
+  if (!m_activeSave) return false;
+  auto& offers = m_activeSave->availableSponsorOffers;
+  if (dealIndex < 0 || dealIndex >= static_cast<int>(offers.size())) return false;
+
+  SponsorDeal deal = offers[dealIndex];
+  if (m_activeSave->reputation < deal.reputationRequirement) return false;
+
+  auto existing = std::find_if(m_activeSave->activeSponsors.begin(), m_activeSave->activeSponsors.end(),
+    [&deal](const SponsorDeal& s) { return s.type == deal.type; });
+  if (existing != m_activeSave->activeSponsors.end()) {
+    AddEvent("sponsor", "Replaced " + existing->sponsorName + " " + existing->type + " deal", 0, false);
+    m_activeSave->activeSponsors.erase(existing);
+  }
+
+  m_activeSave->activeSponsors.push_back(deal);
+  offers.erase(offers.begin() + dealIndex);
+
+  AddEvent("sponsor", "Signed " + deal.type + " sponsorship with " + deal.sponsorName +
+    " (€" + std::to_string(deal.annualRevenue) + "/yr)", 3, true);
+  ModifyBoardConfidence(2);
+  return true;
+}
+
+void CareerDatabase::TerminateSponsorDeal(const std::string& sponsorName) {
+  if (!m_activeSave) return;
+  auto it = std::find_if(m_activeSave->activeSponsors.begin(), m_activeSave->activeSponsors.end(),
+    [&sponsorName](const SponsorDeal& s) { return s.sponsorName == sponsorName; });
+  if (it != m_activeSave->activeSponsors.end()) {
+    long long penalty = it->annualRevenue * it->yearsRemaining / 3;
+    m_activeSave->transferBudget -= penalty;
+    AddEvent("sponsor", "Terminated deal with " + sponsorName + " (penalty: €" + std::to_string(penalty) + ")", -3, false);
+    m_activeSave->activeSponsors.erase(it);
+    ModifyBoardConfidence(-3);
+  }
+}
+
+void CareerDatabase::ProcessSeasonFinances() {
+  if (!m_activeSave || m_activeSave->mode != "owner") return;
+
+  auto& fin = m_activeSave->finances;
+  auto& stad = m_activeSave->stadium;
+
+  int matchesPerSeason = 38;
+  int avgAttendance = std::min(stad.capacity, m_activeSave->fanBase * 600);
+  avgAttendance = static_cast<int>(avgAttendance * stad.condition / 100.0);
+  fin.matchDayIncome = static_cast<long long>(avgAttendance) * fin.ticketPrice * matchesPerSeason;
+
+  fin.sponsorIncome = 0;
+  for (auto& sp : m_activeSave->activeSponsors) {
+    fin.sponsorIncome += sp.annualRevenue;
+    sp.yearsRemaining--;
+  }
+  m_activeSave->activeSponsors.erase(
+    std::remove_if(m_activeSave->activeSponsors.begin(), m_activeSave->activeSponsors.end(),
+      [](const SponsorDeal& s) { return s.yearsRemaining <= 0; }),
+    m_activeSave->activeSponsors.end());
+
+  fin.merchandiseIncome = static_cast<long long>(m_activeSave->fanBase) * 50000 +
+                          static_cast<long long>(m_activeSave->clubPrestige) * 30000;
+
+  fin.playerWages = 0;
+  for (const auto& p : m_activeSave->roster) {
+    fin.playerWages += p.wage * 52;
+  }
+
+  fin.staffWages = 0;
+  for (auto& s : m_activeSave->staff) {
+    fin.staffWages += s.salary;
+    s.contractYearsRemaining--;
+  }
+  m_activeSave->staff.erase(
+    std::remove_if(m_activeSave->staff.begin(), m_activeSave->staff.end(),
+      [](const StaffMember& s) { return s.contractYearsRemaining <= 0; }),
+    m_activeSave->staff.end());
+
+  fin.stadiumCosts += stad.maintenanceCost;
+
+  fin.totalRevenue = fin.matchDayIncome + fin.sponsorIncome + fin.merchandiseIncome +
+                     fin.tvRevenue + fin.transferIncome;
+  fin.totalExpenses = fin.playerWages + fin.staffWages + fin.stadiumCosts + fin.transferSpending;
+  fin.netWorth += (fin.totalRevenue - fin.totalExpenses);
+
+  if (fin.netWorth < 0) {
+    fin.debtLevel = std::min(100, fin.debtLevel + 10);
+    ModifyBoardConfidence(-5);
+    AddEvent("financial", "Club is in debt! Net worth: €" + std::to_string(fin.netWorth), -5, true);
+  } else {
+    fin.debtLevel = std::max(0, fin.debtLevel - 5);
+  }
+
+  long long budgetIncrease = (fin.totalRevenue - fin.totalExpenses) / 3;
+  if (budgetIncrease > 0) {
+    m_activeSave->transferBudget += budgetIncrease;
+    m_activeSave->wageBudget += budgetIncrease / 5;
+  }
+
+  stad.condition = std::max(0, stad.condition - 5);
+  if (stad.condition < 30) {
+    stad.fanSatisfaction = std::max(0, stad.fanSatisfaction - 10);
+    AddEvent("stadium", "Stadium is deteriorating! Fan satisfaction dropping.", -3, false);
+  }
+
+  for (auto& upgrade : stad.upgrades) {
+    if (upgrade.seasonsRemaining > 0) {
+      upgrade.seasonsRemaining--;
+      if (upgrade.seasonsRemaining == 0) {
+        stad.capacity += upgrade.capacityIncrease;
+        stad.matchDayRevenue += upgrade.revenueBonus;
+        AddEvent("stadium", upgrade.name + " upgrade completed!", 5, true);
+      }
+    }
+  }
+
+  fin.transferSpending = 0;
+  fin.transferIncome = 0;
+}
+
+long long CareerDatabase::GetSeasonProfit() const {
+  if (!m_activeSave) return 0;
+  return m_activeSave->finances.totalRevenue - m_activeSave->finances.totalExpenses;
+}
+
+std::string CareerDatabase::GetFinancialHealthString() const {
+  if (!m_activeSave) return "Unknown";
+  long long profit = GetSeasonProfit();
+  if (m_activeSave->finances.debtLevel > 50) return "Critical";
+  if (profit < -5000000) return "Struggling";
+  if (profit < 0) return "Tight";
+  if (profit < 5000000) return "Stable";
+  if (profit < 20000000) return "Healthy";
+  return "Thriving";
+}
+
+void CareerDatabase::GenerateBoardObjectives() {
+  if (!m_activeSave) return;
+  m_activeSave->boardObjectives.clear();
+
+  m_activeSave->boardObjectives.push_back(
+    BoardObjective(BoardObjectiveType::FINANCIAL_STABILITY,
+      "Achieve a positive net income this season", 5, -10));
+  m_activeSave->boardObjectives.push_back(
+    BoardObjective(BoardObjectiveType::GROW_FANBASE,
+      "Grow the fan base by investing in the club", 3, -5));
+  m_activeSave->boardObjectives.push_back(
+    BoardObjective(BoardObjectiveType::WIN_TITLE,
+      "Challenge for the league title", 10, -15));
+}
+
+void CareerDatabase::EvaluateBoardObjectives() {
+  if (!m_activeSave) return;
+
+  for (auto& obj : m_activeSave->boardObjectives) {
+    if (obj.completed) continue;
+
+    switch (obj.type) {
+      case BoardObjectiveType::FINANCIAL_STABILITY:
+        if (GetSeasonProfit() > 0) {
+          obj.completed = true;
+          m_activeSave->reputation += obj.reputationReward;
+          ModifyBoardConfidence(5);
+          AddEvent("board", "Board objective met: " + obj.description, obj.reputationReward, true);
+        } else {
+          ModifyBoardConfidence(obj.confidencePenalty);
+          AddEvent("board", "Board objective failed: " + obj.description, -3, false);
+        }
+        break;
+      case BoardObjectiveType::GROW_FANBASE:
+        if (m_activeSave->fanBase > 70) {
+          obj.completed = true;
+          m_activeSave->reputation += obj.reputationReward;
+          ModifyBoardConfidence(3);
+          AddEvent("board", "Board objective met: " + obj.description, obj.reputationReward, true);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+void CareerDatabase::InvestInFanBase(long long amount) {
+  if (!m_activeSave || amount <= 0) return;
+  if (m_activeSave->transferBudget < amount) return;
+
+  m_activeSave->transferBudget -= amount;
+  int increase = static_cast<int>(amount / 500000);
+  increase = std::max(1, std::min(increase, 10));
+  m_activeSave->fanBase = std::min(100, m_activeSave->fanBase + increase);
+  m_activeSave->stadium.fanSatisfaction = std::min(100, m_activeSave->stadium.fanSatisfaction + increase / 2);
+
+  AddEvent("marketing", "Invested €" + std::to_string(amount) + " in fan engagement (+fan base)", 1, false);
+}
+
+void CareerDatabase::InvestInPrestige(long long amount) {
+  if (!m_activeSave || amount <= 0) return;
+  if (m_activeSave->transferBudget < amount) return;
+
+  m_activeSave->transferBudget -= amount;
+  int increase = static_cast<int>(amount / 1000000);
+  increase = std::max(1, std::min(increase, 5));
+  m_activeSave->clubPrestige = std::min(100, m_activeSave->clubPrestige + increase);
+
+  AddEvent("prestige", "Invested €" + std::to_string(amount) + " in club branding & prestige", 2, false);
 }
 
 } // namespace blunted

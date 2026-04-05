@@ -94,7 +94,15 @@ enum e_PageID {
   e_PageID_CareerStrategy,
   e_PageID_CareerYouthAcademy,
   e_PageID_CareerSquadRoster,
-  e_PageID_CareerSeason
+  e_PageID_CareerSeason,
+
+  e_PageID_OwnerHub,
+  e_PageID_OwnerStadium,
+  e_PageID_OwnerFinances,
+  e_PageID_OwnerStaff,
+  e_PageID_OwnerStaffHire,
+  e_PageID_OwnerSponsors,
+  e_PageID_OwnerBoardRoom
 };
 
 class PageFactory : public Gui2PageFactory {
