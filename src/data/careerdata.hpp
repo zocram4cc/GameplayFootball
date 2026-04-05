@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-enum class CareerMode { PLAYER, MANAGER, GM, COACH };
+enum class CareerMode { PLAYER, MANAGER, GM, COACH, OWNER };
 
 struct SeasonRecord {
   int season = 0;

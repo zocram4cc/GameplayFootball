@@ -11,6 +11,99 @@ namespace blunted {
 
 enum class BidStatus { PENDING, ACCEPTED, REJECTED, WITHDRAWN };
 
+// ---------------------------------------------------------------------------
+// Owner mode data structures
+// ---------------------------------------------------------------------------
+
+struct StadiumUpgrade {
+  std::string name;
+  std::string description;
+  long long cost;
+  int buildTimeSeasons;         // how many seasons until complete
+  int seasonsRemaining;         // 0 = complete
+  int capacityIncrease;
+  int revenueBonus;             // per-season revenue bonus once built
+  bool isComplete() const { return seasonsRemaining <= 0; }
+};
+
+struct Stadium {
+  std::string name;
+  int capacity;
+  int condition;                // 0-100, degrades over time
+  int fanSatisfaction;          // 0-100
+  long long maintenanceCost;    // per-season
+  long long matchDayRevenue;    // per match
+  std::vector<StadiumUpgrade> upgrades;
+  std::vector<StadiumUpgrade> availableUpgrades;
+
+  Stadium() : capacity(30000), condition(70), fanSatisfaction(60),
+              maintenanceCost(500000), matchDayRevenue(800000) {}
+};
+
+struct StaffMember {
+  std::string name;
+  std::string role;             // "Manager", "AssistantManager", "HeadScout", "YouthCoach", "PhysioChief", "MarketingDirector"
+  int skill;                    // 0-100
+  long long salary;
+  int contractYearsRemaining;
+  int morale;                   // 0-100
+
+  StaffMember() : skill(50), salary(100000), contractYearsRemaining(2), morale(70) {}
+  StaffMember(const std::string& n, const std::string& r, int s, long long sal, int yrs)
+    : name(n), role(r), skill(s), salary(sal), contractYearsRemaining(yrs), morale(70) {}
+};
+
+struct SponsorDeal {
+  std::string sponsorName;
+  std::string type;             // "Kit", "Stadium", "Training", "Sleeve"
+  long long annualRevenue;
+  int yearsRemaining;
+  int reputationRequirement;    // min reputation to attract
+
+  SponsorDeal() : annualRevenue(0), yearsRemaining(0), reputationRequirement(0) {}
+  SponsorDeal(const std::string& name, const std::string& t, long long rev, int yrs, int repReq)
+    : sponsorName(name), type(t), annualRevenue(rev), yearsRemaining(yrs), reputationRequirement(repReq) {}
+};
+
+struct ClubFinances {
+  long long totalRevenue;
+  long long totalExpenses;
+  long long netWorth;
+  long long matchDayIncome;     // accumulated this season
+  long long sponsorIncome;      // accumulated this season
+  long long merchandiseIncome;
+  long long tvRevenue;
+  long long playerWages;        // accumulated this season
+  long long staffWages;
+  long long stadiumCosts;
+  long long transferSpending;
+  long long transferIncome;
+  int ticketPrice;              // 10-200
+  int seasonTicketHolders;
+  int debtLevel;                // 0 = no debt, higher = more debt
+
+  ClubFinances() : totalRevenue(0), totalExpenses(0), netWorth(50000000),
+                   matchDayIncome(0), sponsorIncome(0), merchandiseIncome(0),
+                   tvRevenue(5000000), playerWages(0), staffWages(0),
+                   stadiumCosts(0), transferSpending(0), transferIncome(0),
+                   ticketPrice(40), seasonTicketHolders(15000), debtLevel(0) {}
+};
+
+enum class BoardObjectiveType { PROMOTION, AVOID_RELEGATION, WIN_TITLE, FINANCIAL_STABILITY, GROW_FANBASE };
+
+struct BoardObjective {
+  BoardObjectiveType type;
+  std::string description;
+  bool completed;
+  int reputationReward;
+  int confidencePenalty;        // if not met
+
+  BoardObjective() : type(BoardObjectiveType::FINANCIAL_STABILITY), completed(false),
+                     reputationReward(5), confidencePenalty(-10) {}
+  BoardObjective(BoardObjectiveType t, const std::string& desc, int reward, int penalty)
+    : type(t), description(desc), completed(false), reputationReward(reward), confidencePenalty(penalty) {}
+};
+
 struct CareerEvent {
   std::string type;
   std::string description;
@@ -111,11 +204,21 @@ struct CareerSave {
 
   std::vector<std::string> seasonSummaries;
   bool isSeasonActive;
+
+  // Owner-mode specific fields
+  Stadium stadium;
+  ClubFinances finances;
+  std::vector<StaffMember> staff;
+  std::vector<SponsorDeal> activeSponsors;
+  std::vector<SponsorDeal> availableSponsorOffers;
+  std::vector<BoardObjective> boardObjectives;
+  int fanBase;                  // thousands of fans
+  int clubPrestige;             // 0-100, affects sponsor deals and transfers
   
   CareerSave() : reputation(50), seasonsPlayed(0), teamID(-1), 
                  transferBudget(15000000), wageBudget(250000), boardConfidence(75), 
                  trainingPoints(10), scoutingNetworkLevel(1), activeStrategy("Balanced"),
-                 isSeasonActive(false) {}
+                 isSeasonActive(false), fanBase(50), clubPrestige(50) {}
 };
 
 class CareerDatabase {
@@ -177,6 +280,36 @@ public:
   std::string GetBidStatusString(BidStatus status) const;
   int GetNextBidID() { return ++m_nextBidID; }
   bool CompleteTransfer(const std::string& playerName);
+
+  // Owner mode: Stadium
+  void InitializeOwnerData();
+  void UpgradeStadium(int upgradeIndex);
+  void RenameStadium(const std::string& newName);
+  void RepairStadium(int amount);
+  void SetTicketPrice(int price);
+
+  // Owner mode: Staff
+  void HireStaff(const StaffMember& member);
+  void FireStaff(const std::string& staffName);
+  void GenerateStaffCandidates(std::vector<StaffMember>& candidates);
+
+  // Owner mode: Sponsors
+  void GenerateSponsorOffers();
+  bool AcceptSponsorDeal(int dealIndex);
+  void TerminateSponsorDeal(const std::string& sponsorName);
+
+  // Owner mode: Finances
+  void ProcessSeasonFinances();
+  long long GetSeasonProfit() const;
+  std::string GetFinancialHealthString() const;
+
+  // Owner mode: Board
+  void GenerateBoardObjectives();
+  void EvaluateBoardObjectives();
+
+  // Owner mode: Club
+  void InvestInFanBase(long long amount);
+  void InvestInPrestige(long long amount);
 
   // Helper getters
   int GetReputation() const;

@@ -367,6 +367,34 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
       page = new CareerSeasonPage(windowManager, pageData);
       break;
 
+    case e_PageID_OwnerHub:
+      page = new OwnerHubPage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerStadium:
+      page = new OwnerStadiumPage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerFinances:
+      page = new OwnerFinancesPage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerStaff:
+      page = new OwnerStaffPage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerStaffHire:
+      page = new OwnerStaffHirePage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerSponsors:
+      page = new OwnerSponsorsPage(windowManager, pageData);
+      break;
+
+    case e_PageID_OwnerBoardRoom:
+      page = new OwnerBoardRoomPage(windowManager, pageData);
+      break;
+
     default:
       page = nullptr;
       break;
