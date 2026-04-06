@@ -21,7 +21,11 @@ CameraPage::CameraPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   sliderFOV->AddHelperValue(Vector3(80, 80, 250), "default", _default_CameraFOV);
   sliderAngleFactor->AddHelperValue(Vector3(80, 80, 250), "default", _default_CameraAngleFactor);
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "camgrid", 30, 30, 50, 50);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "camframe", 25, 25, 60, 55, true);
+  this->AddView(frame);
+  frame->Show();
+
+  Gui2Grid* grid = new Gui2Grid(windowManager, "camgrid", 2, 2, 56, 30);
 
   grid->AddView(sliderZoom, 0, 0);
   grid->AddView(sliderHeight, 1, 0);
@@ -47,16 +51,16 @@ CameraPage::CameraPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   buttonPresetWidescreen->sig_OnClick.connect([this](...) { ApplyPreset(0.6f, 0.2f, 0.5f, 0.1f); });
   buttonPresetUltrawide->sig_OnClick.connect([this](...) { ApplyPreset(0.7f, 0.15f, 0.6f, 0.2f); });
 
-  Gui2Grid* presetGrid = new Gui2Grid(windowManager, "cam_presetgrid", 30, 58, 50, 20);
+  Gui2Grid* presetGrid = new Gui2Grid(windowManager, "cam_presetgrid", 2, 35, 56, 18);
   presetGrid->AddView(buttonPresetStandard, 0, 0);
   presetGrid->AddView(buttonPresetWidescreen, 1, 0);
   presetGrid->AddView(buttonPresetUltrawide, 2, 0);
   presetGrid->UpdateLayout(0.5);
 
-  this->AddView(presetGrid);
+  frame->AddView(presetGrid);
   presetGrid->Show();
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   sliderZoom->SetFocus();

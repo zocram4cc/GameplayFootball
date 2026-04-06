@@ -13,8 +13,7 @@ using namespace blunted;
 MatchHistoryPage::MatchHistoryPage(Gui2WindowManager* windowManager,
                                    const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Image* bg = new Gui2Image(windowManager, "image_matchhistory_bg", 5, 5, 90, 90);
-  bg->LoadImage("media/menu/backgrounds/black.png");
+  Gui2Frame* bg = new Gui2Frame(windowManager, "frame_matchhistory_bg", 5, 5, 90, 90, true);
   this->AddView(bg);
   bg->Show();
 

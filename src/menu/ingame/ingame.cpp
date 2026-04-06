@@ -48,7 +48,11 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   buttonSetPieces->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
   buttonPreQuit->sig_OnClick.connect([this](...) { GoPreQuit(); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid", 10, 10, 80, 80);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame", 20, 10, 60, 80, true);
+  this->AddView(frame);
+  frame->Show();
+
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid", 2, 8, 56, 70);
 
   grid->AddView(buttonGamePlan, 0, 0);
   grid->AddView(buttonControllerSelect, 1, 0);
@@ -62,7 +66,7 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   buttonGamePlan->SetFocus();
@@ -125,9 +129,9 @@ void IngamePage::ProcessWindowingEvent(WindowingEvent* event) {
 
 PreQuitPage::PreQuitPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Image* bg = new Gui2Image(windowManager, "image_prequit_bg", 30, 42.5, 40, 15);
-  bg->LoadImage("media/menu/backgrounds/black.png");
-  this->AddView(bg);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_prequit", 25, 40, 50, 20, true);
+  this->AddView(frame);
+  frame->Show();
 
   Gui2Caption* restartCaption = new Gui2Caption(windowManager, "caption_prequit_info", 0, 0, 100, 3,
                                                 "are you sure you want to forfeit?");
@@ -138,7 +142,7 @@ PreQuitPage::PreQuitPage(Gui2WindowManager* windowManager, const Gui2PageData& p
   okButton->sig_OnClick.connect([this](...) { GoMenu(); });
   cancelButton->sig_OnClick.connect([this](...) { GoBack(); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_prequit", 30, 42.5, 40, 15);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_prequit", 2, 2, 46, 16);
 
   grid->AddView(restartCaption, 0, 0);
   grid->AddView(okButton, 1, 0);
@@ -146,7 +150,7 @@ PreQuitPage::PreQuitPage(Gui2WindowManager* windowManager, const Gui2PageData& p
 
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   cancelButton->SetFocus();

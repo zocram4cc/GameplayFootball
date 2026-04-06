@@ -24,6 +24,9 @@ static int GetHubPageID() {
 
 CareerMenuPage::CareerMenuPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_menu", 15, 15, 70, 70, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_career", 20, 20, 60, 3, "Career Mode");
   this->AddView(title);
@@ -89,6 +92,9 @@ void CareerMenuPage::GoOwnerCareer() {
 
 CareerNewGamePage::CareerNewGamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_new", 5, 5, 90, 90, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   m_mode = pageData.properties ? pageData.properties->Get("careerMode", "manager") : "manager";
 
   std::string modeLabel = "Manager Career";
@@ -282,6 +288,9 @@ void CareerNewGamePage::StartCareer() {
 
 CareerHubPage::CareerHubPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_hub", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   CareerSave* activeSaveCheck = CareerDatabase::GetInstance().GetActiveSave();
   if (activeSaveCheck && activeSaveCheck->mode == "owner") {
     CreatePage(e_PageID_OwnerHub);
@@ -425,6 +434,9 @@ void CareerHubPage::GoSeason() {
 CareerTransferMarketPage::CareerTransferMarketPage(Gui2WindowManager* windowManager,
                                                    const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_tm", 0, 0, 100, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   CareerDatabase::GetInstance().PopulateTransferMarket();
 
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
@@ -501,6 +513,9 @@ CareerTransferMarketPage::~CareerTransferMarketPage() {}
 CareerTransferBidsPage::CareerTransferBidsPage(Gui2WindowManager* windowManager,
                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_bids", 0, 0, 100, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_bids_title", 10, 5, 80, 3, "My Transfer Bids");
   this->AddView(title);
@@ -582,6 +597,9 @@ void CareerTransferBidsPage::NegotiateBid(const std::string& playerName) {
 CareerTransferBidDetailPage::CareerTransferBidDetailPage(Gui2WindowManager* windowManager,
                                                          const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_biddtl", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   m_playerName = pageData.properties ? pageData.properties->Get("playerName", "") : "";
   m_askingPrice = pageData.properties ? atoll(pageData.properties->Get("askingPrice", "0").c_str()) : 0;
   m_playerWage = pageData.properties ? atoll(pageData.properties->Get("playerWage", "0").c_str()) : 0;
@@ -680,6 +698,9 @@ void CareerTransferBidDetailPage::PlaceBidForPlayer(long long amount) {
 CareerPressConferencePage::CareerPressConferencePage(Gui2WindowManager* windowManager,
                                                      const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_press", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_pressconf", 10, 5, 80, 3, "Press Conference");
   this->AddView(title);
@@ -741,6 +762,9 @@ void CareerPressConferencePage::SelectAnswer(int answerIndex) {
 CareerLeagueExpansionPage::CareerLeagueExpansionPage(Gui2WindowManager* windowManager,
                                                      const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_exp", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_leagueexp", 10, 5, 80, 3,
                                        "League Expansion & Relegation");
   this->AddView(title);
@@ -796,6 +820,9 @@ void CareerLeagueExpansionPage::AddDivision() {
 CareerCustomLeaguePage::CareerCustomLeaguePage(Gui2WindowManager* windowManager,
                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_cust", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_customleague", 10, 5, 80, 3,
                                        "Custom League Creation");
   this->AddView(title);
@@ -830,6 +857,9 @@ void CareerCustomLeaguePage::CreateCustomLeague() {
 CareerFreeAgencyPage::CareerFreeAgencyPage(Gui2WindowManager* windowManager,
                                            const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_fa", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_freeagency", 10, 5, 80, 3, "Free Agency / Recruiting");
   this->AddView(title);
@@ -874,6 +904,9 @@ void CareerFreeAgencyPage::RecruitPlayer(const std::string& playerName) {
 CareerTrainingPage::CareerTrainingPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_train", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_training", 10, 5, 80, 3, "Squad Training");
   this->AddView(title);
@@ -947,6 +980,9 @@ void CareerTrainingPage::TrainFocus(const std::string& focusArea) {
 CareerStrategyPage::CareerStrategyPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_strat", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_strategy", 10, 5, 80, 3, "Team Strategy");
   this->AddView(title);
@@ -1001,6 +1037,9 @@ void CareerStrategyPage::SetStrategy(const std::string& strategyName) {
 CareerYouthAcademyPage::CareerYouthAcademyPage(Gui2WindowManager* windowManager,
                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_ya", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_youth", 10, 5, 80, 3, "Youth Academy");
   this->AddView(title);
@@ -1059,6 +1098,9 @@ void CareerYouthAcademyPage::PromotePlayer(const std::string& playerName) {
 CareerSquadRosterPage::CareerSquadRosterPage(Gui2WindowManager* windowManager,
                                              const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_squad", 0, 0, 100, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_squad", 10, 3, 80, 3, "My Squad");
   this->AddView(title);
@@ -1128,6 +1170,9 @@ void CareerSquadRosterPage::ReleasePlayer(const std::string& playerName) {
 CareerSeasonPage::CareerSeasonPage(Gui2WindowManager* windowManager,
                                    const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_season", 5, 0, 90, 100, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_season", 10, 5, 80, 3, "End of Season");
   this->AddView(title);

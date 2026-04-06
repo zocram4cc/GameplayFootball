@@ -19,15 +19,19 @@ LeagueForwardPage::LeagueForwardPage(Gui2WindowManager* windowManager, const Gui
     if (result->data.at(0).size() > 1) dateStr = result->data.at(0).at(1);
   }
 
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_forward", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_forward", 20, 5, 60, 3, "League Dashboard");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_forward", 2, 2, 66, 3, "League Dashboard");
+  frame->AddView(title);
   title->Show();
 
   Gui2Caption* info =
-      new Gui2Caption(windowManager, "caption_forward_info", 20, 9, 60, 2,
+      new Gui2Caption(windowManager, "caption_forward_info", 2, 6, 66, 2,
                       "Manager: " + mgrName + " | Date: " + dateStr);
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
   Gui2Button* btnTeam = new Gui2Button(windowManager, "btn_forward_team", 0, 0, 60, 3, "Team Management");
@@ -48,7 +52,7 @@ LeagueForwardPage::LeagueForwardPage(Gui2WindowManager* windowManager, const Gui
   btnLeagueHub->sig_OnClick.connect([this](...) { GoPage(e_PageID_League); });
   btnMainMenu->sig_OnClick.connect([this](...) { GoMainMenu(); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_forward", 20, 16, 60, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_forward", 2, 16, 66, 60);
   grid->AddView(btnTeam, 0, 0);
   grid->AddView(btnCalendar, 1, 0);
   grid->AddView(btnStandings, 2, 0);
@@ -58,7 +62,7 @@ LeagueForwardPage::LeagueForwardPage(Gui2WindowManager* windowManager, const Gui
   grid->AddView(btnLeagueHub, 6, 0);
   grid->AddView(btnMainMenu, 7, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnTeam->SetFocus();

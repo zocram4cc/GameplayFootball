@@ -44,6 +44,10 @@ LeaguePage::LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false),
       autoStepTriggered(false) {
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_league", 10, 10, 80, 80, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
+
   Gui2Caption* title = new Gui2Caption(windowManager, "caption_league", 20, 20, 60, 3, "League");
   this->AddView(title);
   title->Show();

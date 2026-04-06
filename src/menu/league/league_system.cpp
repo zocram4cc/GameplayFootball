@@ -11,9 +11,13 @@ LeagueSystemPage::LeagueSystemPage(Gui2WindowManager* windowManager,
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_system", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_system", 20, 5, 60, 3, "System");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_system", 2, 2, 66, 3, "System");
+  frame->AddView(title);
   title->Show();
 
   Gui2Button* btnSave = new Gui2Button(windowManager, "btn_system_save", 0, 0, 60, 3, "Save");
@@ -24,12 +28,12 @@ LeagueSystemPage::LeagueSystemPage(Gui2WindowManager* windowManager,
   btnSettings->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_System_Settings); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Forward); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_system", 20, 14, 60, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_system", 2, 10, 66, 50);
   grid->AddView(btnSave, 0, 0);
   grid->AddView(btnSettings, 1, 0);
   grid->AddView(btnBack, 2, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnSave->SetFocus();
@@ -62,26 +66,30 @@ void LeagueSystemPage::GoPage(e_PageID pageID) {
 LeagueSystemSavePage::LeagueSystemSavePage(Gui2WindowManager* windowManager,
                                            const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_save", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_system_save", 10, 5, 80, 3, "Save Game");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_system_save", 2, 2, 66, 3, "Save Game");
+  frame->AddView(title);
   title->Show();
 
   std::string saveDir = GetActiveSaveDirectory();
-  Gui2Caption* info = new Gui2Caption(windowManager, "caption_save_info", 10, 15, 80, 6,
+  Gui2Caption* info = new Gui2Caption(windowManager, "caption_save_info", 2, 10, 66, 6,
                                        "Game saves automatically. Your current save: " + saveDir);
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
   Gui2Button* btnSave = new Gui2Button(windowManager, "btn_save_manual", 30, 40, 40, 3, "Manual Save");
   btnSave->sig_OnClick.connect([this, windowManager](...) {
     SaveAutosaveToDatabase();
-    Gui2Caption* feedback = new Gui2Caption(windowManager, "caption_save_feedback", 30, 50, 40, 3,
+    Gui2Caption* feedback = new Gui2Caption(windowManager, "caption_save_feedback", 2, 30, 66, 3,
                                              "Save successful!");
-    this->AddView(feedback);
+    frame->AddView(feedback);
     feedback->Show();
   });
-  this->AddView(btnSave);
+  frame->AddView(btnSave);
   btnSave->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_save_back", 30, 90, 40, 3, "Back");
@@ -104,16 +112,20 @@ LeagueSystemSettingsPage::LeagueSystemSettingsPage(Gui2WindowManager* windowMana
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_settings", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_system_settings", 10, 3, 80, 3, "Settings");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_system_settings", 2, 2, 66, 3, "Settings");
+  frame->AddView(title);
   title->Show();
 
   auto result = GetDB()->Query(
       "SELECT s.managername, t.name, s.currency, s.difficulty, s.seasonyear "
       "FROM settings s JOIN teams t ON s.team_id = t.id LIMIT 1");
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_settings", 10, 10, 80, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_settings", 2, 10, 66, 60);
   int row = 0;
 
   if (!result->data.empty()) {
@@ -143,7 +155,7 @@ LeagueSystemSettingsPage::LeagueSystemSettingsPage(Gui2WindowManager* windowMana
     grid->AddView(valSeason, row++, 1);
   }
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_settings_back", 30, 90, 40, 3, "Back");
@@ -153,7 +165,7 @@ LeagueSystemSettingsPage::LeagueSystemSettingsPage(Gui2WindowManager* windowMana
     windowManager->GetPageFactory()->CreatePage(static_cast<int>(e_PageID_League_System), properties, 0);
     delete this;
   });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
   this->Show();

@@ -9,9 +9,13 @@ LeagueTeamPage::LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageD
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_team", 20, 5, 60, 3, "Team Management");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_team", 2, 2, 66, 3, "Team Management");
+  frame->AddView(title);
   title->Show();
 
   Gui2Button* btnFormation = new Gui2Button(windowManager, "btn_team_formation", 0, 0, 60, 3, "Formation");
@@ -30,7 +34,7 @@ LeagueTeamPage::LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageD
   btnSetup->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Team_Setup); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Forward); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_team", 20, 14, 60, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_team", 2, 10, 66, 75);
   grid->AddView(btnFormation, 0, 0);
   grid->AddView(btnPlayerSel, 1, 0);
   grid->AddView(btnTactics, 2, 0);
@@ -39,7 +43,7 @@ LeagueTeamPage::LeagueTeamPage(Gui2WindowManager* windowManager, const Gui2PageD
   grid->AddView(btnSetup, 5, 0);
   grid->AddView(btnBack, 6, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnFormation->SetFocus();
@@ -72,9 +76,13 @@ void LeagueTeamPage::GoPage(e_PageID pageID) {
 LeagueTeamFormationPage::LeagueTeamFormationPage(Gui2WindowManager* windowManager,
                                                  const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_formation", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_team_formation", 10, 5, 80, 3, "Formation");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_team_formation", 2, 2, 66, 3, "Formation");
+  frame->AddView(title);
   title->Show();
 
   auto result = GetDB()->Query(
@@ -82,9 +90,9 @@ LeagueTeamFormationPage::LeagueTeamFormationPage(Gui2WindowManager* windowManage
   if (!result->data.empty()) {
     std::string teamName = result->data.at(0).at(0);
     Gui2Caption* info =
-        new Gui2Caption(windowManager, "caption_formation_team", 10, 12, 80, 3,
+        new Gui2Caption(windowManager, "caption_formation_team", 2, 6, 66, 3,
                         "Team: " + teamName);
-    this->AddView(info);
+    frame->AddView(info);
     info->Show();
   }
 
@@ -106,24 +114,28 @@ LeagueTeamFormationPage::~LeagueTeamFormationPage() {}
 LeagueTeamPlayerSelectionPage::LeagueTeamPlayerSelectionPage(Gui2WindowManager* windowManager,
                                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playerselection", 10, 3,
-                                        80, 3, "Player Selection");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_playersel", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playerselection", 2, 2,
+                                        66, 3, "Player Selection");
+  frame->AddView(title);
   title->Show();
 
   auto result = GetDB()->Query(
       "SELECT p.id, p.firstname, p.lastname, p.role FROM players p, teams t, settings s "
       "WHERE p.team_id = t.id AND t.id = s.team_id ORDER BY p.formationorder");
   if (!result->data.empty()) {
-    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_playersel", 10, 10, 80, 75);
+    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_playersel", 2, 8, 66, 80);
     int row = 0;
     for (const auto& r : result->data) {
       std::string label = r.at(1) + " " + r.at(2) + " (" + r.at(3) + ")";
-      Gui2Button* btn = new Gui2Button(windowManager, "btn_player_" + r.at(0), 0, 0, 76, 2.5, label);
+      Gui2Button* btn = new Gui2Button(windowManager, "btn_player_" + r.at(0), 0, 0, 86, 2.5, label);
       grid->AddView(btn, row++, 0);
     }
     grid->UpdateLayout(0.5);
-    this->AddView(grid);
+    frame->AddView(grid);
     grid->Show();
   }
 
@@ -145,9 +157,13 @@ LeagueTeamPlayerSelectionPage::~LeagueTeamPlayerSelectionPage() {}
 LeagueTeamTacticsPage::LeagueTeamTacticsPage(Gui2WindowManager* windowManager,
                                               const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_tactics", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_team_tactics", 10, 5, 80, 3, "Team Tactics");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_team_tactics", 2, 2, 66, 3, "Team Tactics");
+  frame->AddView(title);
   title->Show();
 
   auto result = GetDB()->Query(
@@ -155,9 +171,9 @@ LeagueTeamTacticsPage::LeagueTeamTacticsPage(Gui2WindowManager* windowManager,
   if (!result->data.empty()) {
     std::string teamName = result->data.at(0).at(0);
     Gui2Caption* info =
-        new Gui2Caption(windowManager, "caption_tactics_team", 10, 12, 80, 3,
+        new Gui2Caption(windowManager, "caption_tactics_team", 2, 6, 66, 3,
                         "Team: " + teamName);
-    this->AddView(info);
+    frame->AddView(info);
     info->Show();
   }
 
@@ -181,15 +197,19 @@ LeagueTeamPlayerOverviewPage::LeagueTeamPlayerOverviewPage(Gui2WindowManager* wi
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playeroverview", 10, 3,
-                                        80, 3, "Player Overview");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_playerovr", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playeroverview", 2, 2,
+                                        66, 3, "Player Overview");
+  frame->AddView(title);
   title->Show();
 
   Gui2Caption* header =
-      new Gui2Caption(windowManager, "caption_playerovr_header", 5, 7, 90, 2,
+      new Gui2Caption(windowManager, "caption_playerovr_header", 2, 6, 66, 2,
                       "Name                  | Role                | Age | Base Stat");
-  this->AddView(header);
+  frame->AddView(header);
   header->Show();
 
   auto result = GetDB()->Query(
@@ -197,7 +217,7 @@ LeagueTeamPlayerOverviewPage::LeagueTeamPlayerOverviewPage(Gui2WindowManager* wi
       "JOIN teams t ON p.team_id = t.id JOIN settings s ON t.id = s.team_id "
       "ORDER BY p.formationorder");
   if (!result->data.empty()) {
-    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_playerovr", 5, 10, 90, 72);
+    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_playerovr", 2, 10, 66, 75);
     int row = 0;
     for (const auto& r : result->data) {
       char buf[256];
@@ -207,7 +227,7 @@ LeagueTeamPlayerOverviewPage::LeagueTeamPlayerOverviewPage(Gui2WindowManager* wi
       grid->AddView(btn, row++, 0);
     }
     grid->UpdateLayout(0.5);
-    this->AddView(grid);
+    frame->AddView(grid);
     grid->Show();
   }
 
@@ -243,16 +263,20 @@ void LeagueTeamPlayerOverviewPage::Process() {
 LeagueTeamPlayerDevelopmentPage::LeagueTeamPlayerDevelopmentPage(Gui2WindowManager* windowManager,
                                                                     const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playerdevelopment", 10, 5,
-                                        80, 3, "Player Development");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_playerdev", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_team_playerdevelopment", 2, 2,
+                                        66, 3, "Player Development");
+  frame->AddView(title);
   title->Show();
 
   Gui2Caption* info =
-      new Gui2Caption(windowManager, "caption_playerdev_info", 10, 15, 80, 4,
+      new Gui2Caption(windowManager, "caption_playerdev_info", 2, 6, 66, 4,
                       "Player growth is processed at the end of each season. "
                       "Younger players grow faster; older players decline.");
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_playerdev_back", 30, 90, 40, 3, "Back");
@@ -273,9 +297,13 @@ LeagueTeamPlayerDevelopmentPage::~LeagueTeamPlayerDevelopmentPage() {}
 LeagueTeamSetupPage::LeagueTeamSetupPage(Gui2WindowManager* windowManager,
                                          const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_team_setup", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_team_setup", 10, 5, 80, 3, "Team Setup");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_team_setup", 2, 2, 66, 3, "Team Setup");
+  frame->AddView(title);
   title->Show();
 
   auto result = GetDB()->Query(
@@ -283,8 +311,8 @@ LeagueTeamSetupPage::LeagueTeamSetupPage(Gui2WindowManager* windowManager,
       "JOIN settings s ON t.id = s.team_id LIMIT 1");
   if (!result->data.empty()) {
     std::string label = "Team: " + result->data.at(0).at(0) + " | League: " + result->data.at(0).at(1);
-    Gui2Caption* info = new Gui2Caption(windowManager, "caption_setup_info", 10, 15, 80, 3, label);
-    this->AddView(info);
+    Gui2Caption* info = new Gui2Caption(windowManager, "caption_setup_info", 2, 6, 66, 3, label);
+    frame->AddView(info);
     info->Show();
   }
 

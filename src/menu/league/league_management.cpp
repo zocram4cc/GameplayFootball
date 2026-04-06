@@ -10,9 +10,13 @@ LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_management", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_management", 20, 5, 60, 3, "Management");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_management", 2, 2, 66, 3, "Management");
+  frame->AddView(title);
   title->Show();
 
   Gui2Button* btnContracts = new Gui2Button(windowManager, "btn_management_contracts", 0, 0, 60, 3, "Contracts");
@@ -23,12 +27,12 @@ LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
   btnTransfers->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Management_Transfers); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Forward); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_management", 20, 14, 60, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_management", 2, 10, 66, 50);
   grid->AddView(btnContracts, 0, 0);
   grid->AddView(btnTransfers, 1, 0);
   grid->AddView(btnBack, 2, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnContracts->SetFocus();
@@ -69,14 +73,18 @@ LeagueManagementContractsPage::LeagueManagementContractsPage(Gui2WindowManager* 
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_management_contracts", 10, 3,
-                                        80, 3, "Contracts");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_contracts", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_management_contracts", 2, 2,
+                                        66, 3, "Contracts");
+  frame->AddView(title);
   title->Show();
 
-  Gui2Caption* header = new Gui2Caption(windowManager, "caption_contracts_header", 5, 7, 90, 2,
+  Gui2Caption* header = new Gui2Caption(windowManager, "caption_contracts_header", 2, 6, 66, 2,
                                         "Name                  | Role                | Age");
-  this->AddView(header);
+  frame->AddView(header);
   header->Show();
 
   auto result = GetDB()->Query(
@@ -84,7 +92,7 @@ LeagueManagementContractsPage::LeagueManagementContractsPage(Gui2WindowManager* 
       "JOIN teams t ON p.team_id = t.id JOIN settings s ON t.id = s.team_id "
       "ORDER BY p.formationorder");
   if (!result->data.empty()) {
-    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_contracts", 5, 10, 90, 72);
+    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_contracts", 2, 10, 66, 75);
     int row = 0;
     for (const auto& r : result->data) {
       char buf[256];
@@ -94,18 +102,18 @@ LeagueManagementContractsPage::LeagueManagementContractsPage(Gui2WindowManager* 
       grid->AddView(btn, row++, 0);
     }
     grid->UpdateLayout(0.5);
-    this->AddView(grid);
+    frame->AddView(grid);
     grid->Show();
   }
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_contracts_back", 30, 90, 40, 3, "Back");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_contracts_back", 30, 92, 40, 3, "Back");
   btnBack->sig_OnClick.connect([this, windowManager](...) {
     this->Exit();
     Properties properties;
     windowManager->GetPageFactory()->CreatePage(static_cast<int>(e_PageID_League_Management), properties, 0);
     delete this;
   });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   this->SetFocus();
   this->Show();
@@ -130,25 +138,29 @@ void LeagueManagementContractsPage::Process() {
 LeagueManagementTransfersPage::LeagueManagementTransfersPage(Gui2WindowManager* windowManager,
                                                              const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_management_transfers", 10, 5,
-                                        80, 3, "Transfers");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_transfers", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_management_transfers", 2, 2,
+                                        66, 3, "Transfers");
+  frame->AddView(title);
   title->Show();
 
-  Gui2Caption* info = new Gui2Caption(windowManager, "caption_transfers_info", 10, 20, 80, 8,
+  Gui2Caption* info = new Gui2Caption(windowManager, "caption_transfers_info", 2, 10, 66, 8,
                                        "Transfer market is not yet available in League mode. "
                                        "Try Career Mode for full transfer features.");
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_transfers_back", 30, 90, 40, 3, "Back");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_transfers_back", 30, 92, 40, 3, "Back");
   btnBack->sig_OnClick.connect([this, windowManager](...) {
     this->Exit();
     Properties properties;
     windowManager->GetPageFactory()->CreatePage(static_cast<int>(e_PageID_League_Management), properties, 0);
     delete this;
   });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
   this->Show();

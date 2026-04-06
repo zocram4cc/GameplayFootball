@@ -30,10 +30,9 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   match = GetGameTask()->GetMatch();
   match->Pause(true);
 
-  Gui2Image* bg1 = new Gui2Image(windowManager, "image_gameover_bg", 10, 10, 80, 80);
-  this->AddView(bg1);
-  bg1->LoadImage("media/menu/backgrounds/black.png");
-  bg1->Show();
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 10, 80, 80, true);
+  this->AddView(frame);
+  frame->Show();
 
   std::string scoreStr = match->GetTeam(0)->GetTeamData()->GetName() + " " +
                          int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
@@ -42,11 +41,11 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   Gui2Caption* header =
       new Gui2Caption(windowManager, "caption_gameover_header", 0, 15, 80, 4, scoreStr);
   header->SetPosition(50 - header->GetTextWidthPercent() / 2, 15);
-  this->AddView(header);
+  frame->AddView(header);
   header->Show();
 
   buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", 55, 82, 20, 3, "well then");
-  this->AddView(buttonOkay);
+  frame->AddView(buttonOkay);
   buttonOkay->Show();
   buttonOkay->sig_OnClick.connect([this](...) { GoMainMenu(); });
 
@@ -122,7 +121,7 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   buttonOkay->SetFocus();
@@ -166,7 +165,7 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   Gui2Button* buttonHistory =
       new Gui2Button(windowManager, "button_gameover_history", 25, 82, 20, 3, "match history");
-  this->AddView(buttonHistory);
+  frame->AddView(buttonHistory);
   buttonHistory->Show();
   buttonHistory->sig_OnClick.connect([this](...) {
     Properties props;

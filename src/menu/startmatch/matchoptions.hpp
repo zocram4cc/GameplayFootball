@@ -7,6 +7,7 @@
 #define _HPP_MENU_MATCHOPTIONS
 
 #include "utils/gui2/widgets/button.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/iconselector.hpp"
 #include "utils/gui2/widgets/image.hpp"

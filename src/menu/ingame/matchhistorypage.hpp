@@ -2,6 +2,7 @@
 #define _HPP_MENU_MATCHHISTORYPAGE
 
 #include "utils/gui2/page.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;

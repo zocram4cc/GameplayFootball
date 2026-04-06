@@ -22,8 +22,7 @@ SetPieceEditorPage::SetPieceEditorPage(Gui2WindowManager* windowManager,
     params[i] = SetPieceConfig::Load(teamDatabaseID, pieceTypes[i]);
   }
 
-  Gui2Image* bg = new Gui2Image(windowManager, "image_spe_bg", 5, 5, 90, 90);
-  bg->LoadImage("media/menu/backgrounds/black.png");
+  Gui2Frame* bg = new Gui2Frame(windowManager, "frame_spe_bg", 5, 5, 90, 90, true);
   this->AddView(bg);
   bg->Show();
 

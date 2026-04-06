@@ -112,24 +112,27 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false) {
-  // Title positioned upper-left
-  Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 4, 8, 38, 18);
+  // Beautiful elegant background container for title and buttons
+  Gui2Frame* mainContainer = new Gui2Frame(windowManager, "frame_main_menu", 5, 5, 40, 80, true);
+
+  // Title positioned inside the elegant frame
+  Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 2, 2, 36, 16);
   title->LoadImage("media/menu/main/title01.png");
 
-  this->AddView(title);
+  mainContainer->AddView(title);
   title->Show();
 
-  // Present only menu options that lead to working pages.
-  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 32, 6, "Quick Match"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 32, 6, "League Mode"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_career", 0, 0, 32, 6, "Career Mode"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 32, 6, "Options"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 32, 6, "Credits"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 32, 6, "Quit to Desktop"));
+  // Present menu options
+  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 36, 6, "Quick Match"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 36, 6, "League Mode"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_career", 0, 0, 36, 6, "Career Mode"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 36, 6, "Options"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 36, 6, "Credits"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 36, 6, "Quit to Desktop"));
 
   if (!IsReleaseVersion()) {
     buttons.push_back(
-        new Gui2Button(windowManager, "button_main_import", 0, 0, 32, 6, "Import Data"));
+        new Gui2Button(windowManager, "button_main_import", 0, 0, 36, 6, "Import Data"));
   }
 
   buttons.at(0)->sig_OnClick.connect([this](...) { GoControllerSelect(); });
@@ -144,17 +147,20 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
     buttons.at(5)->sig_OnClick.connect([this](...) { GoOutro(); });
   }
 
-  // Single-column vertical list on the left side, wider to fit new buttons
-  grid = new Gui2Grid(windowManager, "grid_main", 4, 30, 34, 60);
+  // Elegant grid positioning inside the container
+  grid = new Gui2Grid(windowManager, "grid_main", 2, 20, 36, 56);
 
   for (unsigned int i = 0; i < buttons.size(); i++) {
     grid->AddView(buttons.at(i), i, 0);
   }
 
-  grid->UpdateLayout(0.25, 0.25, 0.4, 0.4);
+  grid->UpdateLayout(0.3, 0.3, 0.5, 0.5);
 
-  this->AddView(grid);
+  mainContainer->AddView(grid);
   grid->Show();
+
+  this->AddView(mainContainer);
+  mainContainer->Show();
 
   int selectedButtonID = pageData.properties->GetInt("selectedButtonID");
   selectedButtonID = clamp(selectedButtonID, 0, (signed int)buttons.size() - 1);

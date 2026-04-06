@@ -56,10 +56,10 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
       autoAdvanceTriggered(false) {
   inGame = pageData.properties->GetBool("isInGame");
 
-  Gui2Image* bg1 = new Gui2Image(windowManager, "image_gameover_bg", 10, 15, 80, 70);
-  this->AddView(bg1);
-  bg1->LoadImage("media/menu/backgrounds/black.png");
-  bg1->Show();
+  // Elegant semi-transparent background frame
+  Gui2Frame* ctrlFrame = new Gui2Frame(windowManager, "frame_controllerselect", 10, 5, 80, 85, true);
+  this->AddView(ctrlFrame);
+  ctrlFrame->Show();
 
   Gui2Caption* t1 =
       new Gui2Caption(windowManager, "caption_controllerselect_t1", 0, 0, 28, 3, "Team 1");
@@ -69,9 +69,9 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
   t1->SetPosition(25 - t1->GetTextWidthPercent() * 0.5, 10);
   t2->SetPosition(75 - t2->GetTextWidthPercent() * 0.5, 10);
 
-  this->AddView(t1);
+  ctrlFrame->AddView(t1);
   t1->Show();
-  this->AddView(t2);
+  ctrlFrame->AddView(t2);
   t2->Show();
 
   this->SetFocus();

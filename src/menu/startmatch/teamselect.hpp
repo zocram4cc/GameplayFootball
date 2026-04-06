@@ -8,6 +8,7 @@
 
 #include "../../onthepitch/match.hpp"
 #include "utils/gui2/widgets/button.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/iconselector.hpp"
 #include "utils/gui2/widgets/image.hpp"
@@ -40,7 +41,7 @@ public:
   Gui2Button* buttonStart2;
   Gui2Caption* p2;
   Gui2Grid* grid2;
-  Gui2Image* bg2;
+  Gui2Frame* frame2;
 
 protected:
   Gui2IconSelector* teamSelect1;

@@ -4,6 +4,7 @@
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/windowmanager.hpp"
 

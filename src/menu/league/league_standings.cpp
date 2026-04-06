@@ -10,9 +10,13 @@ LeagueStandingsPage::LeagueStandingsPage(Gui2WindowManager* windowManager,
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_standings", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_standings", 20, 5, 60, 3, "Standings");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_standings", 2, 2, 66, 3, "Standings");
+  frame->AddView(title);
   title->Show();
 
   Gui2Button* btnLeague = new Gui2Button(windowManager, "btn_standings_league", 0, 0, 60, 3, "League Table");
@@ -29,7 +33,7 @@ LeagueStandingsPage::LeagueStandingsPage(Gui2WindowManager* windowManager,
   btnICup2->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Standings_ICup2); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Forward); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_standings", 20, 14, 60, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_standings", 2, 10, 66, 60);
   grid->AddView(btnLeague, 0, 0);
   grid->AddView(btnLeagueStats, 1, 0);
   grid->AddView(btnNCup, 2, 0);
@@ -37,7 +41,7 @@ LeagueStandingsPage::LeagueStandingsPage(Gui2WindowManager* windowManager,
   grid->AddView(btnICup2, 4, 0);
   grid->AddView(btnBack, 5, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnLeague->SetFocus();
@@ -72,9 +76,13 @@ LeagueStandingsLeaguePage::LeagueStandingsLeaguePage(Gui2WindowManager* windowMa
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_standings_league", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_standings_league", 20, 5, 60, 3, "League");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_standings_league", 2, 2, 66, 3, "League");
+  frame->AddView(title);
   title->Show();
 
   Gui2Button* btnTable = new Gui2Button(windowManager, "btn_league_table", 0, 0, 60, 3, "Table");
@@ -85,12 +93,12 @@ LeagueStandingsLeaguePage::LeagueStandingsLeaguePage(Gui2WindowManager* windowMa
   btnStats->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Standings_League_Stats); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Standings); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_sub", 20, 14, 60, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_sub", 2, 10, 66, 50);
   grid->AddView(btnTable, 0, 0);
   grid->AddView(btnStats, 1, 0);
   grid->AddView(btnBack, 2, 0);
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   btnTable->SetFocus();
@@ -125,21 +133,25 @@ LeagueStandingsLeagueTablePage::LeagueStandingsLeagueTablePage(Gui2WindowManager
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_league_table", 10, 2,
-                                        80, 3, "League Table");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_table", 5, 5, 90, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_league_table", 2, 2,
+                                        86, 3, "League Table");
+  frame->AddView(title);
   title->Show();
 
-  Gui2Caption* header = new Gui2Caption(windowManager, "caption_table_header", 3, 6, 94, 2,
+  Gui2Caption* header = new Gui2Caption(windowManager, "caption_table_header", 2, 6, 86, 2,
                                         "Team                          | P  | W  | D  | L  | GF | GA | GD | Pts");
-  this->AddView(header);
+  frame->AddView(header);
   header->Show();
 
   auto result = GetDB()->Query(
       "SELECT t.id, t.name, l.name FROM teams t JOIN leagues l ON t.league_id = l.id "
       "ORDER BY l.name, t.name");
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_table", 3, 9, 94, 78);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_table", 2, 9, 86, 78);
   int row = 0;
   std::string currentLeague;
   for (const auto& r : result->data) {
@@ -157,17 +169,17 @@ LeagueStandingsLeagueTablePage::LeagueStandingsLeagueTablePage(Gui2WindowManager
     grid->AddView(btn, row++, 0);
   }
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_table_back", 30, 90, 40, 3, "Back");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_table_back", 30, 92, 40, 3, "Back");
   btnBack->sig_OnClick.connect([this, windowManager](...) {
     this->Exit();
     Properties properties;
     windowManager->GetPageFactory()->CreatePage(static_cast<int>(e_PageID_League_Standings_League), properties, 0);
     delete this;
   });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   this->SetFocus();
   this->Show();
@@ -192,24 +204,28 @@ void LeagueStandingsLeagueTablePage::Process() {
 LeagueStandingsLeagueStatsPage::LeagueStandingsLeagueStatsPage(Gui2WindowManager* windowManager,
                                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_league_stats", 10, 5,
-                                        80, 3, "League Stats");
-  this->AddView(title);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_stats", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_league_stats", 2, 2,
+                                        66, 3, "League Stats");
+  frame->AddView(title);
   title->Show();
 
-  Gui2Caption* info = new Gui2Caption(windowManager, "caption_league_stats_info", 10, 20, 80, 6,
+  Gui2Caption* info = new Gui2Caption(windowManager, "caption_league_stats_info", 2, 10, 66, 6,
                                        "No stats available yet. Play matches to see statistics.");
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_league_stats_back", 30, 90, 40, 3, "Back");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_league_stats_back", 30, 92, 40, 3, "Back");
   btnBack->sig_OnClick.connect([this, windowManager](...) {
     this->Exit();
     Properties properties;
     windowManager->GetPageFactory()->CreatePage(static_cast<int>(e_PageID_League_Standings_League), properties, 0);
     delete this;
   });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
   this->Show();
@@ -220,19 +236,23 @@ LeagueStandingsLeagueStatsPage::~LeagueStandingsLeagueStatsPage() {}
 LeagueStandingsNCupPage::LeagueStandingsNCupPage(Gui2WindowManager* windowManager,
                                                  const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_ncup", 10, 5, 80, 3,
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_standings_ncup", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league_standings_ncup", 2, 2, 66, 3,
                                         "National Cup");
-  this->AddView(title);
+  frame->AddView(title);
   title->Show();
 
-  Gui2Caption* info = new Gui2Caption(windowManager, "caption_ncup_info", 10, 15, 80, 8,
+  Gui2Caption* info = new Gui2Caption(windowManager, "caption_ncup_info", 2, 10, 66, 8,
                                        "Coming Soon - National Cup tournaments will be available in a future update.");
-  this->AddView(info);
+  frame->AddView(info);
   info->Show();
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_ncup_back", 30, 90, 40, 3, "Back");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_ncup_back", 30, 92, 40, 3, "Back");
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Standings); });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
   this->Show();

@@ -9,6 +9,7 @@
 #include "../../onthepitch/match.hpp"
 #include "../cameramenu.hpp"
 #include "utils/gui2/widgets/button.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/menu.hpp"
 #include "utils/gui2/widgets/root.hpp"

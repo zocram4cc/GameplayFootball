@@ -17,10 +17,9 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   int xOffset = 32.5;  // 14;
   teamData = GetGameTask()->GetMatch()->GetTeam(teamID)->GetTeamData();
 
-  Gui2Image* bg1 = new Gui2Image(windowManager, "gameplan_image_bg", xOffset, 15, 35, 72);
-  this->AddView(bg1);
-  bg1->LoadImage("media/menu/backgrounds/black.png");
-  bg1->Show();
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", xOffset, 10, 35, 82, true);
+  this->AddView(frame);
+  frame->Show();
 
   Gui2Caption* header = new Gui2Caption(windowManager, "gameplan_header", xOffset, 11, 35, 3,
                                         "Team " + int_to_str(teamID + 1) + " game plan");
@@ -43,10 +42,10 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   this->sig_OnClose.connect([this](...) { OnClose(); });
 
-  this->AddView(header);
+  frame->AddView(header);
   header->Show();
 
-  this->AddView(grid);
+  frame->AddView(grid);
   gridNav->AddView(buttonLineup, 0, 0);
   gridNav->AddView(buttonTactics, 1, 0);
   gridNav->AddView(buttonFormation, 2, 0);

@@ -10,9 +10,7 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   Vector3 textColor(220, 220, 220);
   Vector3 outlineColor(0, 0, 0);
 
-  Gui2Image* bg = new Gui2Image(windowManager, "image_statsoverlay_bg", 0, 0, 96, 12);
-  bg->LoadImage("media/menu/backgrounds/black.png");
-  bg->GetImage2D()->SetAlpha(0.5f);
+  Gui2Frame* bg = new Gui2Frame(windowManager, "frame_statsoverlay_bg", 0, 0, 96, 12, true);
   this->AddView(bg);
   bg->Show();
 

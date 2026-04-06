@@ -12,18 +12,22 @@ LeagueCalendarPage::LeagueCalendarPage(Gui2WindowManager* windowManager,
       fixturesGrid(nullptr),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
+  frame = new Gui2Frame(windowManager, "frame_league_cal", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+ 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_calendar", 10, 3, 80, 3, "Calendar / Fixtures");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_league_calendar", 2, 2, 66, 3, "Calendar / Fixtures");
+  frame->AddView(title);
   title->Show();
 
   Gui2Caption* filterLabel =
-      new Gui2Caption(windowManager, "caption_cal_filter", 10, 7, 20, 2.5, "Filter by League:");
-  this->AddView(filterLabel);
+      new Gui2Caption(windowManager, "caption_cal_filter", 2, 6, 20, 2.5, "Filter by League:");
+  frame->AddView(filterLabel);
   filterLabel->Show();
 
   leagueFilterPulldown =
-      new Gui2Pulldown(windowManager, "pulldown_cal_league", 30, 7, 30, 3);
+      new Gui2Pulldown(windowManager, "pulldown_cal_league", 22, 6, 30, 3);
   leagueFilterPulldown->AddEntry("All Leagues", "all");
 
   auto leaguesResult = GetDB()->Query("SELECT id, name FROM leagues ORDER BY name");
@@ -35,14 +39,14 @@ LeagueCalendarPage::LeagueCalendarPage(Gui2WindowManager* windowManager,
     m_selectedLeagueID = pd->GetSelected();
     RefreshFixtures();
   });
-  this->AddView(leagueFilterPulldown);
+  frame->AddView(leagueFilterPulldown);
   leagueFilterPulldown->Show();
 
   RefreshFixtures();
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_cal_back", 30, 90, 40, 3, "Back to Dashboard");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_cal_back", 30, 92, 40, 3, "Back to Dashboard");
   btnBack->sig_OnClick.connect([this](...) { GoBack(); });
-  this->AddView(btnBack);
+  frame->AddView(btnBack);
   btnBack->Show();
 
   this->SetFocus();
@@ -89,12 +93,12 @@ void LeagueCalendarPage::RefreshFixtures() {
   query += "ORDER BY c.timestamp LIMIT 40";
 
   auto result = GetDB()->Query(query);
-  fixturesHeader = new Gui2Caption(windowManager, "caption_cal_header", 5, 12, 90, 2,
+  fixturesHeader = new Gui2Caption(windowManager, "caption_cal_header", 2, 10, 66, 2,
                                    "Date              | Home                | Away                | League");
-  this->AddView(fixturesHeader);
+  frame->AddView(fixturesHeader);
   fixturesHeader->Show();
 
-  fixturesGrid = new Gui2Grid(windowManager, "grid_cal", 5, 15, 90, 68);
+  fixturesGrid = new Gui2Grid(windowManager, "grid_cal", 2, 13, 66, 75);
   int row = 0;
   for (const auto& r : result->data) {
     char buf[256];
@@ -104,7 +108,7 @@ void LeagueCalendarPage::RefreshFixtures() {
     fixturesGrid->AddView(btn, row++, 0);
   }
   fixturesGrid->UpdateLayout(0.5);
-  this->AddView(fixturesGrid);
+  frame->AddView(fixturesGrid);
   fixturesGrid->Show();
 }
 

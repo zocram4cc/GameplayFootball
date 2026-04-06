@@ -33,17 +33,16 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
       buttonStart(nullptr),
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Image* bg = new Gui2Image(windowManager, "matchoptions_image_bg1", 30, 20, 40, 70);
-  this->AddView(bg);
-  bg->LoadImage("media/menu/backgrounds/black.png");
-  bg->Show();
+  Gui2Frame* frame = new Gui2Frame(windowManager, "matchoptions_frame", 25, 15, 50, 75, true);
+  this->AddView(frame);
+  frame->Show();
 
   Gui2Caption* header =
-      new Gui2Caption(windowManager, "matchoptions_caption", 30, 15, 40, 3, "Match options");
-  this->AddView(header);
+      new Gui2Caption(windowManager, "matchoptions_caption", 2, 2, 46, 3, "Match Options");
+  frame->AddView(header);
   header->Show();
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "matchoptions_grid", 35, 25, 30, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "matchoptions_grid", 2, 10, 46, 60);
 
   difficultySlider = new Gui2Slider(windowManager, "matchoptions_slider_difficulty", 0, 0, 29, 6,
                                     "difficulty (when HUMAN vs CPU)");
@@ -62,7 +61,7 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(buttonStart, 2, 0);
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   buttonStart->sig_OnClick.connect([this](...) { GoLoadingMatchPage(); });

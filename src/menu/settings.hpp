@@ -12,6 +12,7 @@
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/capturekey.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/widgets/root.hpp"
@@ -84,7 +85,7 @@ protected:
   SDL_Keycode keyIDs[18];
   Gui2Button* keyButtons[18];
 
-  Gui2Image* bg;
+  Gui2Frame* bg;
   Gui2Caption* pressKeyCaption;
   Gui2CaptureKey* captureKey;
 };
@@ -128,7 +129,7 @@ protected:
   float min[_JOYSTICK_MAXAXES];
   float max[_JOYSTICK_MAXAXES];
 
-  Gui2Image* bg;
+  Gui2Frame* bg;
   Gui2Caption* captionExplanation[3];
 };
 
@@ -148,7 +149,7 @@ protected:
   signed int gpbuttonIDs[e_ControllerButton_Size];
   Gui2Button* gpbuttonButtons[e_ControllerButton_Size];  // lol
 
-  Gui2Image* bg;
+  Gui2Frame* bg;
   Gui2Caption* pressGpbuttonCaption;
   Gui2CaptureJoy* captureGpbutton;
 };
@@ -191,7 +192,7 @@ protected:
 
   std::vector<Resolution> resolutions;
 
-  Gui2Image* bg;
+  Gui2Frame* bg;
   Gui2Caption *restartCaption1, *restartCaption2, *restartCaption3;
   Gui2CaptureKey* captureKey;
 };

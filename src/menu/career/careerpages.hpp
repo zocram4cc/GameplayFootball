@@ -8,6 +8,7 @@
 #include "utils/gui2/widgets/grid.hpp"
 #include "utils/gui2/widgets/pulldown.hpp"
 #include "utils/gui2/widgets/editline.hpp"
+#include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;

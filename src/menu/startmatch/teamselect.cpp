@@ -100,14 +100,12 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
     : Gui2Page(windowManager, pageData),
       autoAdvanceTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceStage(0) {
-  Gui2Image* bg1 = new Gui2Image(windowManager, "teamselect_image_bg1", 19, 24, 30, 42);
-  this->AddView(bg1);
-  bg1->LoadImage("media/menu/backgrounds/black.png");
-  bg1->Show();
+  Gui2Frame* frame1 = new Gui2Frame(windowManager, "teamselect_frame1", 15, 18, 34, 52, true);
+  this->AddView(frame1);
+  frame1->Show();
 
-  bg2 = new Gui2Image(windowManager, "teamselect_image_bg2", 51, 24, 30, 42);
-  this->AddView(bg2);
-  bg2->LoadImage("media/menu/backgrounds/black.png");
+  frame2 = new Gui2Frame(windowManager, "teamselect_frame2", 51, 18, 34, 52, true);
+  this->AddView(frame2);
 
   Gui2Caption* teamEmblemCredits =
       new Gui2Caption(windowManager, "teamselect_emblemcredits", 19, 70, 28, 3,
@@ -119,10 +117,10 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   teamEmblemCredits->Show();
 
   Gui2Caption* p1 =
-      new Gui2Caption(windowManager, "teamselect_caption_p1", 19, 20, 28, 3, "Player 1");
-  p2 = new Gui2Caption(windowManager, "teamselect_caption_p2", 51, 20, 28, 3, "Player 2");
-  Gui2Grid* grid1 = new Gui2Grid(windowManager, "teamselect_grid_team1", 19, 24, 30, 41);
-  grid2 = new Gui2Grid(windowManager, "teamselect_grid_team2", 51, 24, 30, 41);
+      new Gui2Caption(windowManager, "teamselect_caption_p1", 2, 2, 30, 3, "Player 1");
+  p2 = new Gui2Caption(windowManager, "teamselect_caption_p2", 2, 2, 30, 3, "Player 2");
+  Gui2Grid* grid1 = new Gui2Grid(windowManager, "teamselect_grid_team1", 2, 8, 30, 42);
+  grid2 = new Gui2Grid(windowManager, "teamselect_grid_team2", 2, 8, 30, 42);
 
   competitionSelect1 = new Gui2IconSelector(windowManager, "teamselect_iconselector_competition1",
                                             0, 0, 29, 18, "Competition select");
@@ -145,9 +143,9 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   competitionSelect1->sig_OnChange.connect([this](...) { SetupTeamSelect1(); });
   competitionSelect2->sig_OnChange.connect([this](...) { SetupTeamSelect2(); });
 
-  this->AddView(p1);
+  frame1->AddView(p1);
   p1->Show();
-  this->AddView(grid1);
+  frame1->AddView(grid1);
   grid1->AddView(competitionSelect1, 0, 0);
   grid1->AddView(teamSelect1, 1, 0);
   grid1->AddView(buttonStart1, 2, 0);
@@ -157,8 +155,8 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   AddCompetitions(competitionSelect1);
   SetupTeamSelect1();
 
-  this->AddView(p2);
-  this->AddView(grid2);
+  frame2->AddView(p2);
+  frame2->AddView(grid2);
   grid2->AddView(competitionSelect2, 0, 0);
   grid2->AddView(teamSelect2, 1, 0);
   grid2->AddView(buttonStart2, 2, 0);
@@ -173,7 +171,7 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
 
   p2->Hide();
   grid2->Hide();
-  bg2->Hide();
+  frame2->Hide();
 
   this->Show();
 }
@@ -236,7 +234,7 @@ void TeamSelectPage::FocusCompetitionSelect2() {
 
   p2->Show();
   grid2->Show();
-  bg2->Show();
+  frame2->Show();
 
   competitionSelect2->SetFocus();
 
@@ -311,7 +309,7 @@ void TeamSelectPage::ProcessWindowingEvent(WindowingEvent* event) {
 
       p2->Hide();
       grid2->Hide();
-      bg2->Hide();
+      frame2->Hide();
 
       SetActiveController(-1, true);
 
