@@ -8,6 +8,7 @@
 #include "../main.hpp"
 #include "cameramenu.hpp"
 #include "career/careerpages.hpp"
+#include "career/ownerpages.hpp"
 #include "controllerselect.hpp"
 #include "credits.hpp"
 #include "gameplan.hpp"

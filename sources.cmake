@@ -480,6 +480,7 @@ set(HID_SOURCES
 set(MENU_HEADERS
    src/menu/career/career_database.hpp
    src/menu/career/careerpages.hpp
+   src/menu/career/ownerpages.hpp
    src/menu/league/league_calendar.hpp
    src/menu/league/league_standings.hpp
    src/menu/league/league_team.hpp
@@ -520,6 +521,7 @@ set(MENU_HEADERS
 set(MENU_SOURCES
    src/menu/career/career_database.cpp
    src/menu/career/careerpages.cpp
+   src/menu/career/ownerpages.cpp
    src/menu/credits.cpp
    src/menu/league/league_system.cpp
    src/menu/league/league_team.cpp
