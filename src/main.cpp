@@ -393,7 +393,7 @@ int main(int argc, const char** argv) {
     threadHudThread = new ThreadHudThread();
     threadHudThread->Run();
   } else {
-    threadHudThread = 0;
+    threadHudThread = nullptr;
   }
 
   // debug pilons

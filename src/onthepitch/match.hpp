@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <memory>
 
 #include "../data/matchdata.hpp"
 #include "../menu/ingame/radar.hpp"
@@ -131,8 +132,8 @@ public:
   void StartSetPiece() { inSetPiece = true; }
   void StopSetPiece() { inSetPiece = false; }
   bool IsInSetPiece() const { return inSetPiece; }
-  Referee* GetReferee() { return referee; }
-  Officials* GetOfficials() { return officials; }
+  Referee* GetReferee() { return referee.get(); }
+  Officials* GetOfficials() { return officials.get(); }
   const RefereeBuffer& GetRefereeBuffer() { return referee->GetBuffer(); };
 
   void SetGoalScored(bool onOff) {
@@ -288,9 +289,9 @@ protected:
   int timeSincePreviousPut_ms;
 
   MatchData* matchData;
-  Team* teams[2];
+  std::unique_ptr<Team> teams[2];
 
-  Officials* officials;
+  std::unique_ptr<Officials> officials;
 
   boost::intrusive_ptr<Node> dynamicNode;
 
@@ -311,15 +312,16 @@ protected:
 
   const std::vector<IHIDevice*>& controllers;
 
-  Ball* ball;
+  std::unique_ptr<Ball> ball;
 
-  std::vector<MentalImage*> mentalImages;  // [index] == index * 10 ms ago ([0] == now)
+  std::vector<std::shared_ptr<MentalImage>> mentalImages;  // [index] == index * 10 ms ago ([0] == now)
 
-  Gui2ScoreBoard* scoreboard;
-  Gui2Radar* radar;
-  Gui2TacticsDebug* tacticsDebug;
-  Gui2Caption* messageCaption;
-  Gui2StatsOverlay* statsOverlay;
+
+  std::unique_ptr<Gui2ScoreBoard> scoreboard;
+  std::unique_ptr<Gui2Radar> radar;
+  std::unique_ptr<Gui2TacticsDebug> tacticsDebug;
+  std::unique_ptr<Gui2Caption> messageCaption;
+  std::unique_ptr<Gui2StatsOverlay> statsOverlay;
   unsigned long messageCaptionRemoveTime_ms;
 
   mutable Lockable<unsigned long> iterations;
@@ -352,7 +354,7 @@ protected:
   boost::intrusive_ptr<Node> fullbodyNode;
   std::map<Vector3, Vector3> colorCoords;
 
-  ValueHistory<float>* possessionSideHistory;
+  std::unique_ptr<ValueHistory<float>> possessionSideHistory;
 
   bool autoUpdateIngameCamera;
 
@@ -383,7 +385,7 @@ protected:
 
   std::deque<Vector3> camPos;  // todo: circular buffer?
 
-  Referee* referee;
+  std::unique_ptr<Referee> referee;
 
   std::shared_ptr<MenuTask> menuTask;
 
@@ -392,7 +394,7 @@ protected:
   boost::intrusive_ptr<Sound> crowd01;
   boost::intrusive_ptr<Sound> crowd02;
 
-  std::vector<ReplaySpatial*> replay;
+  std::vector<std::unique_ptr<ReplaySpatial>> replay;
   blunted::circular_buffer<ReplayBallTouchesNetFrame> replayBallTouchesNetFrames;
   bool resetNetting;
   bool nettingHasChanged;

@@ -13,28 +13,24 @@
 namespace blunted {
 
 template <>
-SystemManager* Singleton<SystemManager>::singleton = 0;
+SystemManager* Singleton<SystemManager>::singleton = nullptr;
 
 SystemManager::SystemManager() {}
 
 SystemManager::~SystemManager() {}
 
 void SystemManager::Exit() {
-  map_Systems::iterator s_iter = systems.begin();
-  while (s_iter != systems.end()) {
-    ISystem* system = s_iter->second;
-    Log(e_Notice, "SystemManager", "Exit", "Deleting system named '" + s_iter->first + "'");
+  for (auto& [name, system] : systems) {
+    Log(e_Notice, "SystemManager", "Exit", "Deleting system named '" + name + "'");
     system->Exit();
     delete system;
-    s_iter++;
   }
   systems.clear();
 }
 
 bool SystemManager::RegisterSystem(const std::string& systemName, ISystem* system) {
-  std::pair<map_Systems::iterator, bool> result =
-      systems.insert(map_Systems::value_type(systemName, system));
-  if (result.second == false) {
+  auto [iter, success] = systems.insert({systemName, system});
+  if (!success) {
     // property already exists, replace its value?
     return false;
   }
@@ -43,11 +39,8 @@ bool SystemManager::RegisterSystem(const std::string& systemName, ISystem* syste
 }
 
 void SystemManager::CreateSystemScenes(std::shared_ptr<IScene> scene) {
-  map_Systems::iterator s_iter = systems.begin();
-  while (s_iter != systems.end()) {
-    ISystem* system = s_iter->second;
+  for (auto& [name, system] : systems) {
     system->CreateSystemScene(scene);
-    s_iter++;
   }
   scene->Init();
 }
@@ -57,11 +50,11 @@ const map_Systems& SystemManager::GetSystems() const {
 }
 
 ISystem* SystemManager::GetSystem(const std::string& name) const {
-  map_Systems::const_iterator s_iter = systems.find(name);
+  auto s_iter = systems.find(name);
   if (s_iter != systems.end()) {
     return s_iter->second;
   } else {
-    return 0;
+    return nullptr;
   }
 }
 

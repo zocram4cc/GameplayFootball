@@ -85,13 +85,13 @@ League-Soccer/
 └────┬───────────────────┘
      │
 ┌────▼───────────────────────────────────────────────────────────────┐
-│  Scene / Object Graph  (src/scene/)                                │
+│  Scene / Object Graph  (src/scene/)                                  │
 │  Scene2D · Scene3D · Node · Object · ObjectFactory                 │
 │  Resources: GeometryData · SoundBuffer · Texture                   │
 └────┬──────────────────────────────────────────────────────────────┘
      │
 ┌────▼──────────────────────────────────────────────────────────────┐
-│  Systems  (src/systems/)                                          │
+│  Systems  (src/systems/)                                             │
 │  GraphicsSystem (OpenGL) · AudioSystem (OpenAL) · PhysicsSystem   │
 │  Each system owns a renderer, a scene proxy and object proxies.   │
 └────┬──────────────────────────────────────────────────────────────┘
@@ -229,12 +229,12 @@ Match
 
 **Key flows:**
 
-- `Match::Update()` is called every game tick via `gameSequence`.
+- `Match::Process()` is called every game tick via `gameSequence`.
 - Each `Player` polls its `IController` for an action (move, pass, shoot, tackle).
 - `TeamAIController` runs pressure/counter-press logic and assigns roles.
 - `BallPhysics` integrates velocity/acceleration each tick and detects goal events.
 - `Referee` checks offside lines, fouls, and match-clock transitions (half-time, full-time).
-- The **Replay** subsystem serialises `MatchState` snapshots each tick for post-match playback.
+- The **Replay** subsystem serializes `MatchState` snapshots each tick for post-match playback.
 
 ---
 
@@ -260,7 +260,7 @@ Screens include: `MainMenu`, `TeamSelect`, `LoadingMatch`, `InGame` (HUD, radar,
 | `PlayerData` | Name, attributes (pace, skill, stamina, …), current fatigue and injury state. |
 | `TeamData` | Roster, formation, kit colours, set-piece configurations. |
 | `MatchData` | Live score, match clock, statistics (shots, possession, pass accuracy). |
-| `MatchHistory` | Serialised match events; loaded/saved via SQLite. |
+| `MatchHistory` | Serialized match events; loaded/saved via SQLite. |
 | `SetPieceConfig` | Encoded corner / free-kick routines. |
 
 Persistence is handled by `src/utils/database.hpp` (a thin wrapper around **SQLite3**) and the query helpers in `src/league/dbquery.hpp`.

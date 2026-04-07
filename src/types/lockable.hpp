@@ -21,16 +21,13 @@ public:
   Lockable() {}
 
   T GetData() const {
-    mutex.lock();
-    T tmp = data;
-    mutex.unlock();
-    return tmp;
+    std::lock_guard<std::mutex> lock(mutex);
+    return data;
   }
 
   void SetData(const T& newdata) {
-    mutex.lock();
-    this->data = newdata;
-    mutex.unlock();
+    std::lock_guard<std::mutex> lock(mutex);
+    data = newdata;
   }
 
   inline T operator=(const T& param) {

@@ -20,7 +20,7 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   if (save) {
     // Top Bar - High-level Club Info
-    std::string clubInfo = "Club: " + save->name + "  |  Season: " + std::to_string(save->seasonsPlayed + 1) + 
+    std::string clubInfo = "Club: " + save->name + "  |  Season: " + std::to_string(save->season.currentSeason) + 
                            "  |  Reputation: " + CareerDatabase::GetInstance().GetReputationStatus();
     Gui2Caption* teamLabel =
         new Gui2Caption(windowManager, "caption_oh_team", 5, 6, 90, 2, clubInfo);

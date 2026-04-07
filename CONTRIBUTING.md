@@ -1,6 +1,6 @@
 # Contributing to Gameplay Football
 
-Thank you for taking the time to contribute! 🎉
+Thank you for taking the time to contribute!
 
 ---
 

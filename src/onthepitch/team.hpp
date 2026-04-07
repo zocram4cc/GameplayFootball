@@ -6,6 +6,7 @@
 #ifndef _HPP_TEAM
 #define _HPP_TEAM
 
+#include <memory>
 #include "../data/teamdata.hpp"
 #include "humangamer.hpp"
 #include "player/player.hpp"
@@ -24,7 +25,7 @@ public:
                    std::map<Vector3, Vector3>& colorCoords);
 
   Match* GetMatch() { return match; }
-  TeamAIController* GetController() { return teamController; }
+  TeamAIController* GetController() { return teamController.get(); }
   boost::intrusive_ptr<Node> GetSceneNode() { return teamNode; }
 
   int GetID() const { return id; }
@@ -35,9 +36,11 @@ public:
   PlayerData* GetPlayerData(int playerID);
   FormationEntry GetFormationEntry(int playerID);
   void SetFormationEntry(int playerID, FormationEntry entry);
-  const std::vector<Player*>& GetAllPlayers() { return players; }
+  const std::vector<std::unique_ptr<Player>>& GetAllPlayers() { return players; }
   void GetAllPlayers(std::vector<Player*>& allPlayers) {
-    allPlayers.insert(allPlayers.end(), players.begin(), players.end());
+    for (auto& p : players) {
+      allPlayers.push_back(p.get());
+    }
   }
   void GetActivePlayers(std::vector<Player*>& activePlayers);
   int GetActivePlayerCount() const { return activePlayerCount; }
@@ -104,15 +107,15 @@ protected:
   float teamPossessionAmount;
   float fadingTeamPossessionAmount;
 
-  TeamAIController* teamController;
+  std::unique_ptr<TeamAIController> teamController;
 
-  std::vector<Player*> players;
+  std::vector<std::unique_ptr<Player>> players;
   int activePlayerCount;
 
   boost::intrusive_ptr<Node> teamNode;
   boost::intrusive_ptr<Node> playerNode;
 
-  std::vector<HumanGamer*> humanGamers;
+  std::vector<std::unique_ptr<HumanGamer>> humanGamers;
 
   // humanGamers index whose turn it is
   // begin() == due next

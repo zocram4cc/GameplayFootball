@@ -7,6 +7,7 @@
 #define _HPP_OFFICIALS
 
 #include "player/humanoid/animcollection.hpp"
+#include <memory>
 
 class PlayerBase;
 class PlayerOfficial;
@@ -20,9 +21,9 @@ public:
   virtual ~Officials();
 
   void GetPlayers(std::vector<PlayerBase*>& players);
-  PlayerOfficial* GetReferee() { return referee; }
-  PlayerOfficial* GetLinesmanNorth() { return linesmen[0]; }
-  PlayerOfficial* GetLinesmanSouth() { return linesmen[1]; }
+  PlayerOfficial* GetReferee() { return referee.get(); }
+  PlayerOfficial* GetLinesmanNorth() { return linesmen[0].get(); }
+  PlayerOfficial* GetLinesmanSouth() { return linesmen[1].get(); }
 
   virtual void Process();
   virtual void PreparePutBuffers(unsigned long snapshotTime_ms);
@@ -35,9 +36,9 @@ public:
 protected:
   Match* match;
 
-  PlayerOfficial* referee;
-  PlayerOfficial* linesmen[2];
-  PlayerData* playerData;
+  std::unique_ptr<PlayerOfficial> referee;
+  std::unique_ptr<PlayerOfficial> linesmen[2];
+  std::unique_ptr<PlayerData> playerData;
 
   boost::intrusive_ptr<Geometry> yellowCard;
   boost::intrusive_ptr<Geometry> redCard;

@@ -36,7 +36,7 @@ This repository merges those upstream improvements with contributions from the b
 - 🏟️ **3D stadium rendering** with OpenGL shaders
 - 🗄️ **SQLite-backed** team and player data
 - 🧩 **Modular C++17 codebase** – easy to extend
-- 🖥️ **Modern dark UI** with vertical main menu and centred HUD
+- 🖥️ **Modern dark UI** with vertical main menu and centered HUD
 - 🔁 **Continuous Integration** on every commit (Ubuntu/Linux)
 
 See [ROADMAP.md](ROADMAP.md) for planned features including replay systems, career modes, and improved AI.
@@ -48,7 +48,7 @@ See [ROADMAP.md](ROADMAP.md) for planned features including replay systems, care
 | Platform | Builds | Runs | Notes |
 |----------|--------|------|-------|
 | Linux    | ✅     | ✅   | Fully supported |
-| macOS    | ✅     | ⚠️   | Compiles; OpenGL main-thread fix pending ([#ROADMAP 4.1](ROADMAP.md)) |
+| macOS    | ✅     | ⚠️   | Compiles; OpenGL main-thread fix pending ([ROADMAP 4.1](ROADMAP.md)) |
 | Windows  | ✅     | ✅   | Build via MSVC + vcpkg |
 
 ---
@@ -179,7 +179,7 @@ cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 make -j$(nproc)
 ```
 
-Code style is enforced by [`.clang-format`](.clang-format) (Google/C++17 style).  Format before committing:
+Code style is enforced by [`.clang-format`](.clang-format) (Google/C++17 style). Format before committing:
 
 ```bash
 # Format a single file
@@ -223,7 +223,7 @@ ctest --test-dir build --output-on-failure
 
 ## Roadmap & Contributing
 
-- See **[ROADMAP.md](ROADMAP.md)** for the full list of planned features across six phases (modernisation, testing, gameplay, platform, developer experience, career modes).
+- See **[ROADMAP.md](ROADMAP.md)** for the full list of planned features across six phases (modernization, testing, gameplay, platform, developer experience, career modes).
 - See **[CONTRIBUTING.md](CONTRIBUTING.md)** for coding style, branch naming, commit conventions, and PR guidelines.
 - Found a bug or have an idea?  [Open an issue](../../issues).
 

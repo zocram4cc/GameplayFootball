@@ -42,8 +42,8 @@ Player::Player(Team* team, PlayerData* playerData)
   manMarkingID = -1;
   buf_nameCaption = "...";
   buf_debugCaption = "debug";
-  nameCaption = 0;
-  debugCaption = 0;
+  nameCaption = nullptr;
+  debugCaption = nullptr;
 
   triggerControlledBallCollision = false;
 
@@ -128,8 +128,8 @@ void Player::Deactivate() {
 
   menuTask->GetWindowManager()->MarkForDeletion(nameCaption);
   menuTask->GetWindowManager()->MarkForDeletion(debugCaption);
-  nameCaption = 0;
-  debugCaption = 0;
+  nameCaption = nullptr;
+  debugCaption = nullptr;
 
   if (team->IsHumanControlled(this->GetID())) {
     team->DeselectPlayer(this);  // don't want any humangamer to have control of this player anymore

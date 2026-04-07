@@ -67,7 +67,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Creating a ball");
 
-  ball = new Ball(this);
+  ball = std::make_unique<Ball>(this);
 
   // animation database
 
@@ -116,10 +116,10 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   assert(matchData != 0);
 
-  teams[0] = 0;
-  teams[1] = 0;
-  teams[0] = new Team(0, this, matchData->GetTeamData(0));
-  teams[1] = new Team(1, this, matchData->GetTeamData(1));
+  teams[0] = nullptr;
+  teams[1] = nullptr;
+  teams[0] = std::make_unique<Team>(0, this, matchData->GetTeamData(0));
+  teams[1] = std::make_unique<Team>(1, this, matchData->GetTeamData(1));
   teams[0]->InitPlayers(fullbodyNode, colorCoords);
   teams[1]->InitPlayers(fullbodyNode, colorCoords);
 
@@ -136,7 +136,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   boost::intrusive_ptr<Resource<Surface>> kit = ResourceManagerPool::GetInstance()
                                                     .GetManager<Surface>(e_ResourceType_Surface)
                                                     ->Fetch(kitFilename);
-  officials = new Officials(this, fullbodyNode, colorCoords, kit, anims);
+  officials = std::make_unique<Officials>(this, fullbodyNode, colorCoords, kit, anims);
 
   dynamicNode->AddObject(officials->GetYellowCardGeom());
   dynamicNode->AddObject(officials->GetRedCardGeom());
@@ -290,7 +290,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Creating referee functionality");
 
-  referee = new Referee(this);
+  referee = std::make_unique<Referee>(this);
 
   // GUI
 
@@ -298,18 +298,19 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Gui2Root* root = menuTask->GetWindowManager()->GetRoot();
 
-  radar =
-      new Gui2Radar(menuTask->GetWindowManager(), "game_radar", 38, 78, 24, 18, this,
-                    matchData->GetTeamData(0)->GetColor1(), matchData->GetTeamData(0)->GetColor2(),
-                    matchData->GetTeamData(1)->GetColor1(), matchData->GetTeamData(1)->GetColor2());
-  root->AddView(radar);
+  radar = std::make_unique<Gui2Radar>(menuTask->GetWindowManager(), "game_radar", 38, 78, 24, 18,
+                                      this, matchData->GetTeamData(0)->GetColor1(),
+                                      matchData->GetTeamData(0)->GetColor2(),
+                                      matchData->GetTeamData(1)->GetColor1(),
+                                      matchData->GetTeamData(1)->GetColor2());
+  root->AddView(radar.get());
   radar->Show();
 
-  tacticsDebug = 0;
+  tacticsDebug = nullptr;
   if (1 == 2) {
-    tacticsDebug = new Gui2TacticsDebug(menuTask->GetWindowManager(), "game_tacticsdebug", 22, 1.3f,
-                                        56, 26, this);
-    root->AddView(tacticsDebug);
+    tacticsDebug = std::make_unique<Gui2TacticsDebug>(menuTask->GetWindowManager(),
+                                                      "game_tacticsdebug", 22, 1.3f, 56, 26, this);
+    root->AddView(tacticsDebug.get());
     tacticsDebug->Show();
 
     const TeamTactics& tactics = matchData->GetTeamData(0)->GetTactics();
@@ -333,17 +334,18 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     tacticsDebug->Redraw();
   }
 
-  scoreboard = new Gui2ScoreBoard(menuTask->GetWindowManager(), this);
-  root->AddView(scoreboard);
+  scoreboard = std::make_unique<Gui2ScoreBoard>(menuTask->GetWindowManager(), this);
+  root->AddView(scoreboard.get());
   scoreboard->Show();
 
-  statsOverlay = new Gui2StatsOverlay(menuTask->GetWindowManager(), this);
-  root->AddView(statsOverlay);
+  statsOverlay = std::make_unique<Gui2StatsOverlay>(menuTask->GetWindowManager(), this);
+  root->AddView(statsOverlay.get());
   statsOverlay->Hide();
 
-  messageCaption = new Gui2Caption(menuTask->GetWindowManager(), "game_messages", 0, 0, 80, 8, "");
+  messageCaption = std::make_unique<Gui2Caption>(menuTask->GetWindowManager(), "game_messages", 0,
+                                                 0, 80, 8, "");
   messageCaption->SetTransparency(0.3f);
-  root->AddView(messageCaption);
+  root->AddView(messageCaption.get());
   messageCaptionRemoveTime_ms = actualTime_ms + 5000;
 
   // for usage in destructor
@@ -374,7 +376,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   gameOver = false;
 
-  possessionSideHistory = new ValueHistory<float>(6000);
+  possessionSideHistory = std::make_unique<ValueHistory<float>>(6000);
 
   Log(e_Notice, "Match", "Match", "Done creating match!");
 
@@ -424,29 +426,23 @@ void Match::Exit() {
   if (Verbose())
     scene3D->PrintTree();
 
-  delete possessionSideHistory;
+  possessionSideHistory.reset();
 
   anims.reset();
   teams[0]->Exit();
   teams[1]->Exit();
-  delete teams[0];
-  delete teams[1];
-  delete officials;
-  delete ball;
-  delete referee;
+  teams[0].reset();
+  teams[1].reset();
+  officials.reset();
+  ball.reset();
+  referee.reset();
   delete matchData;
-  menuTask->SetMatchData(0);
+  menuTask->SetMatchData(nullptr);
 
-  for (unsigned int i = 0; i < mentalImages.size(); i++) {
-    delete mentalImages.at(i);
-  }
   mentalImages.clear();
 
-  for (unsigned int i = 0; i < replay.size(); i++) {
-    delete replay.at(i);
-  }
-
   fullbodyNode->Exit();
+
   fullbodyNode.reset();
 
   messageCaption->Hide();
@@ -684,7 +680,7 @@ const MentalImage* Match::GetMentalImage(int history_ms) {
 
   mentalImages.at(index)->SetTimeStampNeg_ms(index * 10.0f);
 
-  return mentalImages.at(index);
+  return mentalImages.at(index).get();
 }
 
 void Match::UpdateLatestMentalImageBallPredictions() {
@@ -694,11 +690,8 @@ void Match::UpdateLatestMentalImageBallPredictions() {
 
 void Match::ResetSituation(const Vector3& focusPos) {
   camPos.clear();
-  SetBallRetainer(0);
+  SetBallRetainer(nullptr);
   SetGoalScored(false);
-  for (unsigned int i = 0; i < mentalImages.size(); i++) {
-    delete mentalImages[i];
-  }
   mentalImages.clear();
   goalScored = false;
   ballIsInGoal = false;
@@ -958,13 +951,11 @@ void Match::Process() {
 
     // create mental images for the AI to use
 
-    MentalImage* mentalImage = new MentalImage(this);
+    auto mentalImage = std::make_shared<MentalImage>(this);
     mentalImage->TakeSnapshot();
     mentalImages.insert(mentalImages.begin(), mentalImage);
     if (mentalImages.size() > 30) {
-      MentalImage* mentalImageToDelete = mentalImages.back();
       mentalImages.pop_back();
-      delete mentalImageToDelete;
     }
 
     // obvious

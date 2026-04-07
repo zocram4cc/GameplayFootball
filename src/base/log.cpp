@@ -52,20 +52,21 @@ void Log(e_LogType logType, const std::string& className, const std::string& met
                 className.c_str(), methodName.c_str(), message.c_str());
   callback(logType, className.c_str(), methodName.c_str(), message.c_str());
 
-  mutex.lock();
-  printf("%s", bla);
-  if (logFile.is_open())
-    logFile << bla;
-  logFile.flush();
-  mutex.unlock();
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    printf("%s", bla);
+    if (logFile.is_open()) {
+      logFile << bla;
+      logFile.flush();
+    }
+  }
 
   if (logType == e_FatalError) {
     LogClose();
 
 #ifndef NDEBUG
     // for gdb backtracing
-    int* foo = (int*)-1;   // make a bad pointer
-    printf("%d\n", *foo);  // causes segfault
+    std::abort();
 #endif
 
     exit(1);

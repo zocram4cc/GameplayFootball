@@ -4,6 +4,7 @@
 // :)
 
 #include "leaguecode.hpp"
+#include "leaguesetup.hpp"
 
 #define BOOST_FILESYSTEM_VERSION 3
 
@@ -163,6 +164,11 @@ bool PrepareDatabaseForLeague() {
       "team2_id INTEGER, "
       "competition_id INTEGER, "
       "tournament_id INTEGER)");
+
+  GetDB()->Query("DELETE FROM calendar");
+  GetDB()->Query("DELETE FROM teams");
+  GetDB()->Query("DELETE FROM leagues");
+  SetupFourLeagues(GetDB());
 
   if (!DatabaseHasColumn(GetDB(), "players", "stats_temporal")) {
     result = GetDB()->Query("ALTER TABLE players ADD COLUMN stats_temporal BLOB");

@@ -20,7 +20,7 @@ Team::Team(int id, Match* match, TeamData* teamData) : id(id), match(match), tea
   teamNode->SetLocalMode(e_LocalMode_Absolute);
   match->GetDynamicNode()->AddNode(teamNode);
 
-  teamController = new TeamAIController(this);
+  teamController = std::make_unique<TeamAIController>(this);
 
   timeNeededToGetToBall_ms = 100;
   hasPossession = false;
@@ -40,14 +40,16 @@ Team::~Team() {}
 void Team::Exit() {
   Hide2D();
 
-  for (auto* humanGamer : humanGamers) {
-    delete humanGamer;
+  for (auto& humanGamer : humanGamers) {
+    // std::unique_ptr will delete humanGamer
   }
-  for (auto* player : players) {
-    delete player;
+  humanGamers.clear();
+  for (auto& player : players) {
+    // std::unique_ptr will delete player
   }
+  players.clear();
 
-  delete teamController;
+  teamController.reset();
 
   playerNode->Exit();
   playerNode.reset();
@@ -73,8 +75,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
   // load all players in the team, even the players who sit on the bench. aww.
   for (int i = 0; i < static_cast<int>(teamData->GetPlayerNum()); i++) {
     PlayerData* playerData = teamData->GetPlayerData(i);
-    Player* player = new Player(this, playerData);
-    players.push_back(player);
+    auto player = std::make_unique<Player>(this, playerData);
 
     if (i < activePlayerCount) {
       // activate playerCount players (the starting eleven, usually)
@@ -94,9 +95,11 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
                 ->Fetch(kitFilename);
       player->Activate(playerNode, fullbodyNode, colorCoords, kit, match->GetAnimCollection());
     }
+
+    players.push_back(std::move(player));
   }
 
-  designatedTeamPossessionPlayer = players.at(0);
+  designatedTeamPossessionPlayer = players.at(0).get();
 }
 
 signed int Team::GetSide() {
@@ -115,9 +118,9 @@ signed int Team::GetSide() {
 }
 
 Player* Team::GetPlayer(int player_id) {
-  for (auto* player : players) {
+  for (auto& player : players) {
     if (player->GetID() == player_id) {
-      return player;
+      return player.get();
     }
   }
 
@@ -157,19 +160,19 @@ void Team::SetFormationEntry(int playerID, FormationEntry entry) {
 }
 
 void Team::GetActivePlayers(std::vector<Player*>& activePlayers) {
-  for (auto player : players) {
+  for (auto& player : players) {
     if (player->IsActive())
-      activePlayers.push_back(player);
+      activePlayers.push_back(player.get());
   }
 }
 
 void Team::AddHumanGamer(IHIDevice* hid, e_PlayerColor color) {
-  HumanGamer* humanGamer = new HumanGamer(this, hid, color);
-
-  humanGamers.push_back(humanGamer);
+  auto humanGamer = std::make_unique<HumanGamer>(this, hid, color);
 
   humanGamer->SetSelectedPlayerID(
       AI_GetClosestPlayer(this, match->GetBall()->Predict(0).Get2D(), true)->GetID());
+
+  humanGamers.push_back(std::move(humanGamer));
 
   switchPriority.push_back(humanGamers.size() - 1);
   designatedTeamPossessionPlayer =
@@ -177,9 +180,6 @@ void Team::AddHumanGamer(IHIDevice* hid, e_PlayerColor color) {
 }
 
 void Team::DeleteHumanGamers() {
-  for (unsigned int i = 0; i < humanGamers.size(); i++) {
-    delete humanGamers.at(i);
-  }
   humanGamers.clear();
   switchPriority.clear();
 }
@@ -224,7 +224,7 @@ Player* Team::GetBestPossessionPlayer() {
       int time_ms = players.at(i)->GetTimeNeededToGetToBall_ms();
       if (time_ms < bestTime_ms) {
         bestTime_ms = time_ms;
-        bestPlayer = players.at(i);
+        bestPlayer = players.at(i).get();
       }
     }
   }
@@ -573,7 +573,7 @@ Player* Team::GetGoalie() {
   for (unsigned int i = 0; i < players.size(); i++) {
     if (players.at(i)->IsActive()) {
       if (players.at(i)->GetFormationEntry().role == e_PlayerRole_GK)
-        return players.at(i);
+        return players.at(i).get();
     }
   }
 

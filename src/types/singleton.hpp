@@ -13,26 +13,28 @@ namespace blunted {
 template <typename T>
 class Singleton {
 public:
-  Singleton(void) {
+  Singleton() {
     assert(!singleton);
     singleton = static_cast<T*>(this);
   }
 
-  virtual ~Singleton(void) {
-    assert(singleton);  // isn't this a paradox? :D
-    singleton = 0;
+  virtual ~Singleton() {
+    // assert(singleton);  // actually, if it's already deleted via Destroy(), this might be called again?
+    // wait, if Destroy() calls delete singleton, it calls this destructor.
+    // So this is correct.
+    singleton = nullptr;
   }
 
-  static T& GetInstance(void) {
+  static T& GetInstance() {
     assert(singleton);
     return (*singleton);
   }
 
-  static T* GetInstancePtr(void) { return singleton; }
+  static T* GetInstancePtr() { return singleton; }
 
   virtual void Destroy() {
     delete singleton;
-    singleton = 0;
+    singleton = nullptr;
   }
 
 protected:

@@ -11,6 +11,7 @@
 #include "../../utils/gui2/windowmanager.hpp"
 #include "../../data/staffdata.hpp"
 #include "../../data/careerdata.hpp"
+#include "career_database.hpp"
 
 using namespace blunted;
 

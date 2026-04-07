@@ -131,7 +131,7 @@ void Run() {
   // also clears links to user tasks
   scheduler->Exit();
   delete scheduler;
-  scheduler = 0;
+  scheduler = nullptr;
 }
 
 Scheduler* GetScheduler() {
@@ -158,9 +158,9 @@ void Exit() {
   delete aseLoader;
   delete imageLoader;
   delete wavLoader;
-  aseLoader = 0;
-  imageLoader = 0;
-  wavLoader = 0;
+  aseLoader = nullptr;
+  imageLoader = nullptr;
+  wavLoader = nullptr;
 
   Log(e_Notice, "blunted", "Exit", "exiting systemmanager");
   SystemManager::GetInstance().Exit();

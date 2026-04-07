@@ -17,6 +17,8 @@ bool CareerDatabase::Save(const std::string& /*path*/) const {
 int CareerDatabase::CreateSave(const CareerSave& save) {
   CareerSave s = save;
   s.saveID = m_nextSaveID++;
+  s.budget = s.finance.transferBudget;
+  s.reputation = s.club.reputation;
   m_saves.push_back(s);
   return s.saveID;
 }
@@ -43,8 +45,12 @@ void CareerDatabase::RecordSeason(int saveID, const SeasonRecord& record) {
 
 void CareerDatabase::AdvanceSeason(int saveID) {
   CareerSave* s = GetSave(saveID);
-  if (s)
+  if (s) {
     s->currentSeason++;
+    s->season.currentSeason = s->currentSeason;
+    s->season.currentWeek = 1;
+    s->season.inPreseason = true;
+  }
 }
 
 // 6.13 – clamp reputation to [0, 100] after applying delta
@@ -53,6 +59,7 @@ void CareerDatabase::ApplyReputationDelta(int saveID, int delta) {
   if (!s)
     return;
   s->reputation = std::max(0, std::min(100, s->reputation + delta));
+  s->club.reputation = s->reputation;
 }
 
 // 6.16 – replace the league structure stored in a save

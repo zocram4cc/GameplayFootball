@@ -15,7 +15,7 @@ namespace {
 static int MakeSave(CareerDatabase& db) {
   CareerSave s;
   s.mode = CareerMode::MANAGER;
-  s.teamID = 1;
+  s.club.clubID = 1;
   s.reputation = 50;
   return db.CreateSave(s);
 }

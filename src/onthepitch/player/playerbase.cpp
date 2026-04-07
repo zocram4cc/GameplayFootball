@@ -17,9 +17,9 @@ PlayerBase::PlayerBase(Match* match, PlayerData* playerData)
     : match(match),
       playerData(playerData),
       id(playerCount++),
-      humanoid(0),
-      controller(0),
-      externalController(0),
+      humanoid(nullptr),
+      controller(nullptr),
+      externalController(nullptr),
       isActive(false) {
   debug = false;
   lastTouchTime_ms = 0;
@@ -70,8 +70,9 @@ void PlayerBase::Deactivate() {
     humanoid->Hide();
 
   if (externalController)
-    externalController = 0;
+    externalController = nullptr;
   delete controller;
+  controller = nullptr;
 }
 
 IController* PlayerBase::GetController() {

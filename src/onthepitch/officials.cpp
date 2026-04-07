@@ -25,10 +25,10 @@ Officials::Officials(Match* match, boost::intrusive_ptr<Node> fullbodySourceNode
   playerNode->SetName("player");
   playerNode->SetLocalMode(e_LocalMode_Absolute);
 
-  playerData = new PlayerData();
-  referee = new PlayerOfficial(e_OfficialType_Referee, match, playerData);
-  linesmen[0] = new PlayerOfficial(e_OfficialType_Linesman, match, playerData);
-  linesmen[1] = new PlayerOfficial(e_OfficialType_Linesman, match, playerData);
+  playerData = std::unique_ptr<PlayerData>(new PlayerData());
+  referee = std::make_unique<PlayerOfficial>(e_OfficialType_Referee, match, playerData.get());
+  linesmen[0] = std::make_unique<PlayerOfficial>(e_OfficialType_Linesman, match, playerData.get());
+  linesmen[1] = std::make_unique<PlayerOfficial>(e_OfficialType_Linesman, match, playerData.get());
 
   referee->Activate(playerNode, fullbodySourceNode, colorCoords, kit, match->GetAnimCollection());
   linesmen[0]->Activate(playerNode, fullbodySourceNode, colorCoords, kit,
@@ -67,10 +67,10 @@ Officials::Officials(Match* match, boost::intrusive_ptr<Node> fullbodySourceNode
 Officials::~Officials() {
   if (Verbose())
     printf("exiting officials.. ");
-  delete referee;
-  delete linesmen[0];
-  delete linesmen[1];
-  delete playerData;
+  referee.reset();
+  linesmen[0].reset();
+  linesmen[1].reset();
+  playerData.reset();
 
   redCard.reset();
   yellowCard.reset();
@@ -79,9 +79,9 @@ Officials::~Officials() {
 }
 
 void Officials::GetPlayers(std::vector<PlayerBase*>& players) {
-  players.push_back(referee);
-  players.push_back(linesmen[0]);
-  players.push_back(linesmen[1]);
+  players.push_back(referee.get());
+  players.push_back(linesmen[0].get());
+  players.push_back(linesmen[1].get());
 }
 
 void Officials::Process() {
