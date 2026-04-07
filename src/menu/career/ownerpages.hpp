@@ -48,7 +48,7 @@ public:
 protected:
   void UpgradeStadium(int index);
   void RepairStadium();
-  void RenameStadium();
+  void RenameStadium(const std::string& newName);
 };
 
 // Financial overview
