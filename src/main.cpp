@@ -300,6 +300,24 @@ const std::vector<IHIDevice*>& GetControllers() {
   return controllers;
 }
 
+void AddGamepad(int deviceIndex) {
+  if (deviceIndex < 0 || deviceIndex >= SDL_NumJoysticks()) return;
+  HIDGamepad* gamepad = new HIDGamepad(deviceIndex);
+  controllers.push_back(gamepad);
+  printf("[main] Gamepad added: index %d, total controllers: %zu\n", deviceIndex, controllers.size());
+}
+
+void RemoveGamepad(int deviceIndex) {
+  for (auto it = controllers.begin() + 1; it != controllers.end(); ++it) {
+    HIDGamepad* gp = dynamic_cast<HIDGamepad*>(*it);
+    if (gp && gp->GetDeviceID() == deviceIndex) {
+      controllers.erase(it);
+      printf("[main] Gamepad removed: index %d, total controllers: %zu\n", deviceIndex, controllers.size());
+      return;
+    }
+  }
+}
+
 class ThreadHudThread : public Thread {
 public:
   ThreadHudThread() { hud = new ThreadHud(GetScene2D()); }

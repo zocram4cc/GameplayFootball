@@ -20,6 +20,9 @@
 
 #include "environmentmanager.hpp"
 
+extern void AddGamepad(int deviceIndex);
+extern void RemoveGamepad(int deviceIndex);
+
 namespace blunted {
 
 template <>
@@ -73,6 +76,19 @@ void UserEventManager::Exit() {}
 void UserEventManager::InputSDLEvent(const SDL_Event& event) {
   int joyID = 0;
   switch (event.type) {
+    case SDL_JOYDEVICEADDED:
+      printf("[userevent] Gamepad connected: %d\n", event.jdevice.which);
+      joystick[event.jdevice.which] = SDL_JoystickOpen(event.jdevice.which);
+      AddGamepad(event.jdevice.which);
+      break;
+    case SDL_JOYDEVICEREMOVED:
+      printf("[userevent] Gamepad disconnected: %d\n", event.jdevice.which);
+      RemoveGamepad(event.jdevice.which);
+      if (joystick[event.jdevice.which]) {
+        SDL_JoystickClose(joystick[event.jdevice.which]);
+        joystick[event.jdevice.which] = nullptr;
+      }
+      break;
     case SDL_KEYDOWN:
       keyPressedMutex.lock();
       keyPressed[event.key.keysym.sym].pressTime_ms =
