@@ -28,8 +28,12 @@ bool MenuSmokeFullMatchEnabled() {
 GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
-      autoQuitTriggered(false) {
+      autoQuitTriggered(false),
+      match(nullptr) {
   match = GetGameTask()->GetMatch();
+  if (!match) {
+    return;
+  }
   match->Pause(true);
 
   Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 10, 80, 80, true);
@@ -212,8 +216,10 @@ void GameOverPage::GoMainMenu() {
   // Preserve the finished 3D match in career bookkeeping before leaving the game flow.
   if (match && CareerDatabase::GetInstance().GetActiveSave()) {
     auto* matchData = match->GetMatchData();
-    CareerDatabase::GetInstance().Process3DMatchResult(
-        matchData->GetGoalCount(0), matchData->GetGoalCount(1));
+    if (matchData) {
+      CareerDatabase::GetInstance().Process3DMatchResult(
+          matchData->GetGoalCount(0), matchData->GetGoalCount(1));
+    }
   }
   this->Exit();
   GetMenuTask()->SetMenuAction(e_MenuAction_Menu);
