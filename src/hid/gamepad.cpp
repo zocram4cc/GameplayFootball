@@ -41,7 +41,7 @@ void HIDGamepad::LoadConfig() {
 
   std::string gpbuttonIDs_string[14];
   for (int i = 0; i < e_ControllerButton_Size; i++) {
-    // xbox controller defaults
+    // universal controller defaults - xbox style (works for most controllers)
     int defaultButton = 0;
     if (i == 0)
       defaultButton = -3;
@@ -136,7 +136,6 @@ void HIDGamepad::SaveConfig() {
 
 void HIDGamepad::Process() {
   std::unique_lock<std::mutex> blah(mutex);
-  // printf("gamepad ID #%i\n", gamepadID);
   for (int i = 0; i < e_ControllerButton_Size; i++) {
     previousControllerButtonState[i] = controllerButtonState[i];
     signed int buttonID = controllerMapping[i];
@@ -144,13 +143,11 @@ void HIDGamepad::Process() {
       controllerButtonState[i] =
           UserEventManager::GetInstance().GetJoyButtonState(gamepadID, buttonID) ? 1.0 : 0.0;
     } else {  // axis
-      // decode
+      // decode negative buttonID to axis
       int axisID = -buttonID - 1;
       signed int sign = ((axisID % 2) * 2) - 1;
       axisID /= 2;
-      bool deadzone = true;
-      if (axisID < 2)
-        deadzone = false;
+      bool deadzone = true;  // always apply deadzone now for better compatibility
       float value = UserEventManager::GetInstance().GetJoystickAxis(gamepadID, axisID, deadzone);
       if ((sign < 0 && value < 0) || (sign > 0 && value > 0))
         controllerButtonState[i] = fabs(value);
