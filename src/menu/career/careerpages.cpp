@@ -91,10 +91,31 @@ CareerMenuPage::CareerMenuPage(Gui2WindowManager* windowManager, const Gui2PageD
   footer->Show();
 
   btnCoach->SetFocus();
+
+  Gui2Button* btnContinue =
+      new Gui2Button(windowManager, "btn_continue", 0, 0, 34, 4, "Continue\nResume saved");
+  btnContinue->sig_OnClick.connect([this](...) { GoContinueCareer(); });
+  grid->AddView(btnContinue, 3, 0);
+
+  this->AddView(grid);
+  grid->Show();
+
+  btnContinue->SetFocus();
   this->Show();
 }
 
 CareerMenuPage::~CareerMenuPage() {}
+
+void CareerMenuPage::GoContinueCareer() {
+  CareerDatabase::GetInstance().Initialize("user/career");
+  if (CareerDatabase::GetInstance().LoadCareerSave("save")) {
+    m_mode = CareerDatabase::GetInstance().GetActiveSave()->mode == CareerMode::OWNER ? "owner" : "manager";
+    m_selectedTeamID = std::to_string(CareerDatabase::GetInstance().GetActiveSave()->club.clubID);
+    StartCareer();
+  } else {
+    GoCareerMode("manager");
+  }
+}
 
 void CareerMenuPage::GoCareerMode(const std::string& mode) {
   Properties props;

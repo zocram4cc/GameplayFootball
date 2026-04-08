@@ -25,6 +25,7 @@ protected:
   void GoPlayerCareer();
   void GoManagerCareer();
   void GoOwnerCareer();
+  void GoContinueCareer();
 
 private:
   void GoCareerMode(const std::string& mode);
