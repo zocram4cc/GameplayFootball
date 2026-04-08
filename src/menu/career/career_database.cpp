@@ -295,11 +295,19 @@ void CareerDatabase::AdvanceSeason() {
   SeasonRecord record;
   record.season = m_activeSave->season.currentSeason;
   record.teamID = m_activeSave->club.clubID;
-  record.wins = RandomInt(8, 28);
-  record.draws = RandomInt(4, 12);
-  record.losses = std::max(0, 38 - record.wins - record.draws);
-  record.goalsFor = RandomInt(30, 85);
-  record.goalsAgainst = RandomInt(20, 70);
+  if (m_activeSave->seasonWins > 0 || m_activeSave->seasonDraws > 0 || m_activeSave->seasonLosses > 0) {
+    record.wins = m_activeSave->seasonWins;
+    record.draws = m_activeSave->seasonDraws;
+    record.losses = m_activeSave->seasonLosses;
+    record.goalsFor = m_activeSave->seasonGoalsFor;
+    record.goalsAgainst = m_activeSave->seasonGoalsAgainst;
+  } else {
+    record.wins = RandomInt(8, 28);
+    record.draws = RandomInt(4, 12);
+    record.losses = std::max(0, 38 - record.wins - record.draws);
+    record.goalsFor = RandomInt(30, 85);
+    record.goalsAgainst = RandomInt(20, 70);
+  }
   record.leaguePosition = RandomInt(1, 20);
   record.wonTitle = (record.leaguePosition == 1);
   m_activeSave->history.push_back(record);
@@ -349,6 +357,11 @@ void CareerDatabase::AdvanceSeason() {
   m_activeSave->availableSponsorOffers.clear();
   m_activeBids.clear();
   m_transferTargets.clear();
+  m_activeSave->seasonWins = 0;
+  m_activeSave->seasonDraws = 0;
+  m_activeSave->seasonLosses = 0;
+  m_activeSave->seasonGoalsFor = 0;
+  m_activeSave->seasonGoalsAgainst = 0;
   AddEvent("season", "Advanced to season " + std::to_string(m_activeSave->season.currentSeason), 1, true);
   SaveCareerData();
 }
@@ -401,7 +414,7 @@ void CareerDatabase::PopulateTransferMarket() {
     target.overallRating = RandomInt(62, 84);
     target.potentialRating = std::max(target.overallRating, target.overallRating + RandomInt(1, 10));
     target.value = static_cast<long long>(target.overallRating) * target.overallRating * 4500;
-    target.askingPrice = target.value + (target.value / RandomInt(8, 4));
+    target.askingPrice = target.value + target.value * RandomInt(10, 30) / 100;
     target.wage = std::max(1500LL, target.value / 1400LL);
     target.teamID = 1000 + i;
     target.isListed = true;

@@ -113,14 +113,17 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
     Gui2Button* btnQuickFan = new Gui2Button(windowManager, "btn_oh_q_fan", 0, 0, 26, 3, "Invest in Fans");
     Gui2Button* btnQuickPrestige = new Gui2Button(windowManager, "btn_oh_q_prestige", 0, 0, 26, 3, "Raise Prestige");
     Gui2Button* btnQuickSeason = new Gui2Button(windowManager, "btn_oh_q_season", 0, 0, 26, 3, "Season Review");
+    Gui2Button* btnQuickMatchday = new Gui2Button(windowManager, "btn_oh_q_matchday", 0, 0, 26, 3, "Play Matchday");
     btnQuickStadium->sig_OnClick.connect([this](...) { GoStadium(); });
     btnQuickFan->sig_OnClick.connect([this](...) { GoFinances(); });
     btnQuickPrestige->sig_OnClick.connect([this](...) { GoBoardRoom(); });
     btnQuickSeason->sig_OnClick.connect([this](...) { GoSeason(); });
+    btnQuickMatchday->sig_OnClick.connect([this](...) { GoMatchday(); });
     quickGrid->AddView(btnQuickStadium, 0, 0);
     quickGrid->AddView(btnQuickFan, 0, 1);
     quickGrid->AddView(btnQuickPrestige, 1, 0);
     quickGrid->AddView(btnQuickSeason, 1, 1);
+    quickGrid->AddView(btnQuickMatchday, 2, 0);
     quickGrid->UpdateLayout(0.5);
     quickFrame->AddView(quickGrid);
     quickGrid->Show();

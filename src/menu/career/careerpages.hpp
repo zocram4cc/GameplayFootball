@@ -206,6 +206,7 @@ protected:
   void BuildFixtures();
   void GenerateFixtures();
   void SimulateMatch(int fixtureIndex);
+  void SimulateAll();
   void GoBack();
 
   Gui2Frame* frame;

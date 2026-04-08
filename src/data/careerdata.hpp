@@ -357,6 +357,11 @@ struct CareerSave {
   int fanBase = 50;
   int clubPrestige = 50;
   bool isSeasonActive = true;
+  int seasonWins = 0;
+  int seasonDraws = 0;
+  int seasonLosses = 0;
+  int seasonGoalsFor = 0;
+  int seasonGoalsAgainst = 0;
 
   LeagueExpansionSettings leagueSettings;
   CustomLeagueConfig customLeague;

@@ -1003,7 +1003,7 @@ CareerFreeAgencyPage::CareerFreeAgencyPage(Gui2WindowManager* windowManager,
     int row = 0;
     for (const PlayerCareerState& fa : activeSave->freeAgents) {
       std::string label = fa.name + " | OVR: " + std::to_string(fa.ovr) + 
-                          " | Wage: €" + std::to_string(fa.wage);
+                          " | Wage: EUR " + std::to_string(fa.wage);
       Gui2Button* btn = new Gui2Button(windowManager, "btn_recruit_" + fa.name, 0, 0, 76, 3, "Recruit " + label);
       btn->sig_OnClick.connect([this, fa](...) { RecruitPlayer(fa.name); });
       grid->AddView(btn, row++, 0);
@@ -1196,7 +1196,7 @@ CareerYouthAcademyPage::CareerYouthAcademyPage(Gui2WindowManager* windowManager,
     
     int scoutCost = 50000 * activeSave->scoutingNetworkLevel;
     Gui2Button* btnScout = new Gui2Button(windowManager, "btn_scout_youth", 0, 0, 76, 3, 
-                                          "Scout New Talent (-€" + std::to_string(scoutCost) + ")");
+                                          "Scout New Talent (-EUR " + std::to_string(scoutCost) + ")");
     btnScout->sig_OnClick.connect([this](...) { ScoutPlayer(); });
     grid->AddView(btnScout, row++, 0);
 
@@ -1489,6 +1489,11 @@ CareerMatchdayPage::CareerMatchdayPage(Gui2WindowManager* windowManager, const G
   frame->AddView(hint);
   hint->Show();
 
+  Gui2Button* btnSimAll = new Gui2Button(windowManager, "btn_md_simall", 50, 9, 38, 2, "Simulate All");
+  btnSimAll->sig_OnClick.connect([this](...) { SimulateAll(); });
+  frame->AddView(btnSimAll);
+  btnSimAll->Show();
+
   fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 12, 88, 66);
   frame->AddView(fixtureGrid);
   fixtureGrid->Show();
@@ -1621,19 +1626,27 @@ void CareerMatchdayPage::SimulateMatch(int fixtureIndex) {
     CareerDatabase::GetInstance().AddEvent("matchday", summary, isWin ? 1 : -1, homeGoals != awayGoals);
     CareerDatabase::GetInstance().ModifyBoardConfidence(isWin ? 1 : (homeGoals == awayGoals ? 0 : -1));
 
+    if (isWin) save->seasonWins++;
+    else if (homeGoals == awayGoals) save->seasonDraws++;
+    else save->seasonLosses++;
+    save->seasonGoalsFor += homeGoals;
+    save->seasonGoalsAgainst += awayGoals;
+
     int scorers = std::min(homeGoals, 2);
     int rosterSize = static_cast<int>(save->roster.size());
     for (int s = 0; s < scorers; s++) {
       int pIdx = rand() % rosterSize;
       CareerDatabase::GetInstance().RecordMatchStats(save->roster[pIdx].name, 1, 0);
     }
-
-    if (save->mode == CareerMode::OWNER) {
-      CareerDatabase::GetInstance().ProcessSeasonFinances();
-    }
   }
 
   GenerateFixtures();
+}
+
+void CareerMatchdayPage::SimulateAll() {
+  for (int i = 0; i < static_cast<int>(m_played.size()); i++) {
+    if (!m_played[i]) SimulateMatch(i);
+  }
 }
 
 void CareerMatchdayPage::UpdateSummary() {
