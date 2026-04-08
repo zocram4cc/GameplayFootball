@@ -1709,13 +1709,28 @@ void CareerMatchdayPage::PlayMatch() {
   int teamDBID = save->club.clubID;
   if (teamDBID <= 0) teamDBID = 1;
 
+  // Find a valid opponent (try IDs until one exists)
+  int opponentDBID = 1;
+  for (int i = 0; i < 20; i++) {
+    int testID = ((m_week * 3 + i + 1) % 20) + 1;
+    if (testID != teamDBID) {
+      try {
+        auto result = GetDB()->Query("SELECT id FROM teams WHERE id = " + int_to_str(testID));
+        if (!result->data.empty()) {
+          opponentDBID = testID;
+          break;
+        }
+      } catch (...) {}
+    }
+  }
+
   std::vector<SideSelection> sides(2);
   sides[0].controllerID = 0;
   sides[0].side = -1;
   sides[1].controllerID = -1;
   sides[1].side = 1;
   GetMenuTask()->SetControllerSetup(sides);
-  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string((m_week * 3 + 1) % 20 + 1));
+  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string(opponentDBID));
 
   Properties props;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_MatchOptions, props, 0);
@@ -1729,13 +1744,28 @@ void CareerMatchdayPage::PlayMatchFixture(int fixtureIndex) {
   int teamDBID = save->club.clubID;
   if (teamDBID <= 0) teamDBID = 1;
 
+  // Validate opponent exists in database
+  int opponentDBID = 1;
+  for (int i = 0; i < 20; i++) {
+    int testID = ((m_week * 7 + fixtureIndex + i + 1) % 20) + 1;
+    if (testID != teamDBID) {
+      try {
+        auto result = GetDB()->Query("SELECT id FROM teams WHERE id = " + int_to_str(testID));
+        if (!result->data.empty()) {
+          opponentDBID = testID;
+          break;
+        }
+      } catch (...) {}
+    }
+  }
+
   std::vector<SideSelection> sides(2);
   sides[0].controllerID = 0;
   sides[0].side = -1;
   sides[1].controllerID = -1;
   sides[1].side = 1;
   GetMenuTask()->SetControllerSetup(sides);
-  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string((m_week * 7 + fixtureIndex + 1) % 20 + 1));
+  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string(opponentDBID));
 
   Properties props;
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_MatchOptions, props, 0);
