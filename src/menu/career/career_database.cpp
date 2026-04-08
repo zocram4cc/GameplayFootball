@@ -44,7 +44,7 @@ bool CareerDatabase::Initialize(const std::string& saveDir) {
 
 bool CareerDatabase::LoadCareerSave(const std::string& saveName) {
   if (!m_saveDirectory.empty()) {
-    std::string path = m_saveDirectory + "/" + saveName + ".career";
+    std::string path = m_saveDirectory + "/career.save";
     if (LoadFromFile(path)) {
       printf("[career] Loaded save: %s\n", saveName.c_str());
       return true;
@@ -101,7 +101,7 @@ bool CareerDatabase::CreateNewCareer(const std::string& careerName, const std::s
 
 bool CareerDatabase::SaveCareerData() {
   if (!m_activeSave || m_saveDirectory.empty()) return false;
-  std::string path = m_saveDirectory + "/" + m_activeSave->name + ".career";
+  std::string path = m_saveDirectory + "/career.save";
   return SaveToFile(path);
 }
 

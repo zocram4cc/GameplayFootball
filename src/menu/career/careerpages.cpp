@@ -108,11 +108,27 @@ CareerMenuPage::~CareerMenuPage() {}
 
 void CareerMenuPage::GoContinueCareer() {
   CareerDatabase::GetInstance().Initialize("user/career");
-  if (CareerDatabase::GetInstance().LoadCareerSave("save")) {
+  // Try to find any .career file and load the first one
+  bool loaded = false;
+  // For now, try the career name from the database if any save exists
+  // TODO: Implement proper save listing/selection
+  if (CareerDatabase::GetInstance().GetActiveSave()) {
+    std::string careerName = CareerDatabase::GetInstance().GetActiveSave()->name;
+    if (!careerName.empty()) {
+      if (CareerDatabase::GetInstance().LoadCareerSave(careerName)) {
+        m_mode = CareerDatabase::GetInstance().GetActiveSave()->mode == CareerMode::OWNER ? "owner" : "manager";
+        m_selectedTeamID = std::to_string(CareerDatabase::GetInstance().GetActiveSave()->club.clubID);
+        StartCareer();
+        loaded = true;
+      }
+    }
+  }
+  // Fallback: try default name
+  if (!loaded && CareerDatabase::GetInstance().LoadCareerSave("save")) {
     m_mode = CareerDatabase::GetInstance().GetActiveSave()->mode == CareerMode::OWNER ? "owner" : "manager";
     m_selectedTeamID = std::to_string(CareerDatabase::GetInstance().GetActiveSave()->club.clubID);
     StartCareer();
-  } else {
+  } else if (!loaded) {
     GoCareerMode("manager");
   }
 }
