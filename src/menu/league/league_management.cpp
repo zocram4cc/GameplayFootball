@@ -1,5 +1,7 @@
 #include "league_management.hpp"
 
+#include <string>
+
 #include "../../main.hpp"
 #include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
@@ -12,14 +14,43 @@ LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(league_menu_smoke::Now_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_management", 15, 5, 70, 90, true);
+  auto wageCountResult = GetDB()->Query(
+      "SELECT COUNT(*) FROM players p "
+      "JOIN teams t ON p.team_id = t.id "
+      "JOIN settings s ON t.id = s.team_id");
+  auto marketResult = GetDB()->Query(
+      "SELECT COUNT(*) FROM players p "
+      "JOIN teams t ON p.team_id = t.id "
+      "WHERE t.id != (SELECT team_id FROM settings LIMIT 1)");
+
+  const std::string squadContracts =
+      wageCountResult->data.empty() ? "0" : wageCountResult->data.at(0).at(0);
+  const std::string marketTargets =
+      marketResult->data.empty() ? "0" : marketResult->data.at(0).at(0);
+
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_league_management", 8, 5, 84, 90, true);
   this->AddView(frame);
   frame->Show();
  
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_management", 2, 2, 66, 3, "Management");
+      new Gui2Caption(windowManager, "caption_league_management", 3, 2, 36, 3, "Management");
   frame->AddView(title);
   title->Show();
+
+  Gui2Caption* subtitle =
+      new Gui2Caption(windowManager, "caption_league_management_subtitle", 3, 6, 36, 4,
+                      "Handle contracts, monitor the market, and prepare your next squad move.");
+  frame->AddView(subtitle);
+  subtitle->Show();
+
+  Gui2Frame* actionPanel = new Gui2Frame(windowManager, "frame_management_actions", 3, 14, 38, 62, true);
+  frame->AddView(actionPanel);
+  actionPanel->Show();
+
+  Gui2Caption* actionTitle =
+      new Gui2Caption(windowManager, "caption_management_actions", 2, 2, 32, 2, "Front Office");
+  actionPanel->AddView(actionTitle);
+  actionTitle->Show();
 
   Gui2Button* btnContracts = new Gui2Button(windowManager, "btn_management_contracts", 0, 0, 60, 3, "Contracts");
   Gui2Button* btnTransfers = new Gui2Button(windowManager, "btn_management_transfers", 0, 0, 60, 3, "Transfers");
@@ -29,13 +60,43 @@ LeagueManagementPage::LeagueManagementPage(Gui2WindowManager* windowManager,
   btnTransfers->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Management_Transfers); });
   btnBack->sig_OnClick.connect([this](...) { GoPage(e_PageID_League_Forward); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_management", 2, 10, 66, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_management", 2, 8, 32, 42);
   grid->AddView(btnContracts, 0, 0);
   grid->AddView(btnTransfers, 1, 0);
   grid->AddView(btnBack, 2, 0);
-  grid->UpdateLayout(0.5);
-  frame->AddView(grid);
+  grid->UpdateLayout(0.3, 0.3, 0.3, 0.3);
+  actionPanel->AddView(grid);
   grid->Show();
+
+  Gui2Frame* summaryPanel = new Gui2Frame(windowManager, "frame_management_summary", 45, 14, 36, 27, true);
+  frame->AddView(summaryPanel);
+  summaryPanel->Show();
+
+  Gui2Caption* summaryTitle =
+      new Gui2Caption(windowManager, "caption_management_summary", 2, 2, 30, 2, "Contracts");
+  summaryPanel->AddView(summaryTitle);
+  summaryTitle->Show();
+
+  Gui2Caption* summaryBody =
+      new Gui2Caption(windowManager, "caption_management_summary_body", 2, 6, 30, 8,
+                      squadContracts + " active player deals\nReview roles, ages, and squad depth");
+  summaryPanel->AddView(summaryBody);
+  summaryBody->Show();
+
+  Gui2Frame* marketPanel = new Gui2Frame(windowManager, "frame_management_market", 45, 45, 36, 31, true);
+  frame->AddView(marketPanel);
+  marketPanel->Show();
+
+  Gui2Caption* marketTitle =
+      new Gui2Caption(windowManager, "caption_management_market", 2, 2, 30, 2, "Transfer Market");
+  marketPanel->AddView(marketTitle);
+  marketTitle->Show();
+
+  Gui2Caption* marketBody =
+      new Gui2Caption(windowManager, "caption_management_market_body", 2, 6, 30, 10,
+                      marketTargets + " external players in the database\nStart with the highest-rated options");
+  marketPanel->AddView(marketBody);
+  marketBody->Show();
 
   btnContracts->SetFocus();
   this->Show();
