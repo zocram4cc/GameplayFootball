@@ -1484,23 +1484,29 @@ CareerMatchdayPage::CareerMatchdayPage(Gui2WindowManager* windowManager, const G
   frame->AddView(subtitle);
   subtitle->Show();
 
-  Gui2Caption* hint = new Gui2Caption(windowManager, "caption_matchday_hint", 2, 9, 88, 2,
-    "Click 'Simulate' on each fixture to generate a result.");
-  frame->AddView(hint);
-  hint->Show();
-
   Gui2Button* btnSimAll = new Gui2Button(windowManager, "btn_md_simall", 50, 9, 38, 2, "Simulate All");
   btnSimAll->sig_OnClick.connect([this](...) { SimulateAll(); });
   frame->AddView(btnSimAll);
   btnSimAll->Show();
 
-  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 12, 88, 66);
+  Gui2Button* btnPlay = new Gui2Button(windowManager, "btn_md_play", 2, 9, 46, 2, "Play Match (3D)");
+  btnPlay->sig_OnClick.connect([this](...) { PlayMatch(); });
+  frame->AddView(btnPlay);
+  btnPlay->Show();
+
+  Gui2Caption* hint = new Gui2Caption(windowManager, "caption_matchday_hint", 2, 12, 88, 2,
+    "Simulate for instant results, or Play Match for the full 3D experience.");
+  frame->AddView(hint);
+  hint->Show();
+
+  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 15, 88, 60);
   frame->AddView(fixtureGrid);
   fixtureGrid->Show();
 
   BuildFixtures();
+  PopulateGrid();
 
-  summaryCaption = new Gui2Caption(windowManager, "caption_matchday_summary", 2, 82, 88, 2, "");
+  summaryCaption = new Gui2Caption(windowManager, "caption_matchday_summary", 2, 80, 88, 2, "");
   frame->AddView(summaryCaption);
   summaryCaption->Show();
 
@@ -1511,7 +1517,7 @@ CareerMatchdayPage::CareerMatchdayPage(Gui2WindowManager* windowManager, const G
   frame->AddView(btnBack);
   btnBack->Show();
 
-  btnBack->SetFocus();
+  btnSimAll->SetFocus();
   this->Show();
 }
 
@@ -1535,22 +1541,18 @@ void CareerMatchdayPage::BuildFixtures() {
   if (numFixtures < 1) numFixtures = 1;
 
   m_opponents.clear();
-  m_homeGoals.assign(numFixtures, 0);
-  m_awayGoals.assign(numFixtures, 0);
-  m_played.assign(numFixtures, false);
+  m_results.clear();
   fixtureScoreCaps.assign(numFixtures, nullptr);
 
   for (int i = 0; i < numFixtures; i++) {
     int opponentIdx = (m_week * 3 + i) % opponentNames.size();
     m_opponents.push_back(opponentNames[opponentIdx]);
+    m_results.emplace_back();
   }
 }
 
-void CareerMatchdayPage::GenerateFixtures() {
+void CareerMatchdayPage::PopulateGrid() {
   if (fixtureGrid) {
-    for (int i = 0; i < static_cast<int>(fixtureScoreCaps.size()); i++) {
-      fixtureScoreCaps[i] = nullptr;
-    }
     fixtureGrid->Exit();
     delete fixtureGrid;
     fixtureGrid = nullptr;
@@ -1559,37 +1561,55 @@ void CareerMatchdayPage::GenerateFixtures() {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
   if (!save) return;
 
-  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 12, 88, 66);
+  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 15, 88, 60);
 
   int numFixtures = static_cast<int>(m_opponents.size());
   int row = 0;
   for (int i = 0; i < numFixtures; i++) {
-    std::string opponent = m_opponents[i];
+    const auto& res = m_results[i];
 
     Gui2Caption* header = new Gui2Caption(windowManager, "cap_md_hdr_" + std::to_string(i), 0, 0, 88, 2,
-      "--- Match " + std::to_string(i + 1) + ": " + save->name + " vs " + opponent + " ---");
+      "--- Match " + std::to_string(i + 1) + ": " + save->name + " vs " + m_opponents[i] + " ---");
     fixtureGrid->AddView(header, row++, 0);
 
     std::string scoreLabel = "Not played";
-    if (m_played[i]) {
-      scoreLabel = save->name + " " + std::to_string(m_homeGoals[i]) + " - " +
-                   std::to_string(m_awayGoals[i]) + " " + opponent;
+    if (res.played) {
+      char buf[256];
+      snprintf(buf, sizeof(buf), "%s %d - %d %s",
+        save->name.c_str(), res.homeGoals, res.awayGoals, m_opponents[i].c_str());
+      scoreLabel = buf;
     }
     Gui2Caption* scoreCap = new Gui2Caption(windowManager, "cap_md_score_" + std::to_string(i),
       0, 0, 88, 2, scoreLabel);
     fixtureGrid->AddView(scoreCap, row++, 0);
     fixtureScoreCaps[i] = scoreCap;
 
-    if (!m_played[i]) {
-      Gui2Button* btnSim = new Gui2Button(windowManager, "btn_md_sim_" + std::to_string(i), 0, 0, 42, 2.5, "Simulate Match");
+    if (res.played) {
+      char statsBuf[512];
+      std::string scorersStr;
+      if (!res.scorers.empty()) {
+        scorersStr = "Scorers: " + res.scorers[0];
+        for (int s = 1; s < static_cast<int>(res.scorers.size()); s++) {
+          scorersStr += ", " + res.scorers[s];
+        }
+      } else {
+        scorersStr = "No scorers";
+      }
+      snprintf(statsBuf, sizeof(statsBuf), "  Shots: %d-%d | Possession: %d%% | %s",
+        res.homeShots, res.awayShots, res.homePossession, scorersStr.c_str());
+      Gui2Caption* statsCap = new Gui2Caption(windowManager, "cap_md_stats_" + std::to_string(i),
+        0, 0, 88, 2, statsBuf);
+      fixtureGrid->AddView(statsCap, row++, 0);
+    }
+
+    if (!res.played) {
+      Gui2Button* btnSim = new Gui2Button(windowManager, "btn_md_sim_" + std::to_string(i), 0, 0, 42, 2.5, "Simulate");
       btnSim->sig_OnClick.connect([this, i](...) { SimulateMatch(i); });
       fixtureGrid->AddView(btnSim, row, 0);
 
-      std::string coachLabel = "Coach: " + save->managerName;
-      Gui2Caption* coachCap = new Gui2Caption(windowManager, "cap_md_coach_" + std::to_string(i), 0, 0, 42, 2.5, coachLabel);
-      fixtureGrid->AddView(coachCap, row++, 1);
-    } else {
-      row++;
+      Gui2Button* btnPlay = new Gui2Button(windowManager, "btn_md_play_" + std::to_string(i), 0, 0, 42, 2.5, "Play Match (3D)");
+      btnPlay->sig_OnClick.connect([this, i](...) { PlayMatchFixture(i); });
+      fixtureGrid->AddView(btnPlay, row++, 1);
     }
   }
 
@@ -1601,52 +1621,84 @@ void CareerMatchdayPage::GenerateFixtures() {
 }
 
 void CareerMatchdayPage::SimulateMatch(int fixtureIndex) {
-  if (fixtureIndex < 0 || fixtureIndex >= static_cast<int>(m_homeGoals.size())) return;
-  if (m_played[fixtureIndex]) return;
-
-  int homeGoals = rand() % 5;
-  int awayGoals = rand() % 5;
-  m_homeGoals[fixtureIndex] = homeGoals;
-  m_awayGoals[fixtureIndex] = awayGoals;
-  m_played[fixtureIndex] = true;
-
-  m_matchesPlayed++;
-  if (homeGoals > awayGoals) m_wins++;
-  else if (homeGoals == awayGoals) m_draws++;
-  else m_losses++;
-  m_goalsFor += homeGoals;
-  m_goalsAgainst += awayGoals;
+  if (fixtureIndex < 0 || fixtureIndex >= static_cast<int>(m_results.size())) return;
+  if (m_results[fixtureIndex].played) return;
 
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  SimulatedMatch res = CareerDatabase::GetInstance().SimulateMatchResult(
+      m_opponents[fixtureIndex], std::to_string(save ? save->club.clubID : 0));
+  m_results[fixtureIndex] = res;
+
+  m_matchesPlayed++;
+  if (res.homeGoals > res.awayGoals) m_wins++;
+  else if (res.homeGoals == res.awayGoals) m_draws++;
+  else m_losses++;
+  m_goalsFor += res.homeGoals;
+  m_goalsAgainst += res.awayGoals;
+
   if (save) {
-    std::string opponent = fixtureIndex < static_cast<int>(m_opponents.size()) ? m_opponents[fixtureIndex] : "Opponent";
-    std::string summary = save->name + " " + std::to_string(homeGoals) + " - " +
-                         std::to_string(awayGoals) + " " + opponent;
-    bool isWin = homeGoals > awayGoals;
-    CareerDatabase::GetInstance().AddEvent("matchday", summary, isWin ? 1 : -1, homeGoals != awayGoals);
-    CareerDatabase::GetInstance().ModifyBoardConfidence(isWin ? 1 : (homeGoals == awayGoals ? 0 : -1));
+    std::string summary = save->name + " " + std::to_string(res.homeGoals) + " - " +
+                         std::to_string(res.awayGoals) + " " + m_opponents[fixtureIndex];
+    bool isWin = res.homeGoals > res.awayGoals;
+    CareerDatabase::GetInstance().AddEvent("matchday", summary, isWin ? 1 : -1, res.homeGoals != res.awayGoals);
+    CareerDatabase::GetInstance().ModifyBoardConfidence(isWin ? 1 : (res.homeGoals == res.awayGoals ? 0 : -1));
 
     if (isWin) save->seasonWins++;
-    else if (homeGoals == awayGoals) save->seasonDraws++;
+    else if (res.homeGoals == res.awayGoals) save->seasonDraws++;
     else save->seasonLosses++;
-    save->seasonGoalsFor += homeGoals;
-    save->seasonGoalsAgainst += awayGoals;
+    save->seasonGoalsFor += res.homeGoals;
+    save->seasonGoalsAgainst += res.awayGoals;
 
-    int scorers = std::min(homeGoals, 2);
-    int rosterSize = static_cast<int>(save->roster.size());
-    for (int s = 0; s < scorers; s++) {
-      int pIdx = rand() % rosterSize;
-      CareerDatabase::GetInstance().RecordMatchStats(save->roster[pIdx].name, 1, 0);
+    for (const auto& scorerName : res.scorers) {
+      CareerDatabase::GetInstance().RecordMatchStats(scorerName, 1, 0);
     }
   }
 
-  GenerateFixtures();
+  PopulateGrid();
 }
 
 void CareerMatchdayPage::SimulateAll() {
-  for (int i = 0; i < static_cast<int>(m_played.size()); i++) {
-    if (!m_played[i]) SimulateMatch(i);
+  for (int i = 0; i < static_cast<int>(m_results.size()); i++) {
+    if (!m_results[i].played) SimulateMatch(i);
   }
+}
+
+void CareerMatchdayPage::PlayMatch() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (!save) return;
+
+  int teamDBID = save->club.clubID;
+  if (teamDBID <= 0) teamDBID = 1;
+
+  std::vector<SideSelection> sides(2);
+  sides[0].controllerID = 0;
+  sides[0].side = -1;
+  sides[1].controllerID = -1;
+  sides[1].side = 1;
+  GetMenuTask()->SetControllerSetup(sides);
+  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string((m_week * 3 + 1) % 20 + 1));
+
+  Properties props;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_MatchOptions, props, 0);
+}
+
+void CareerMatchdayPage::PlayMatchFixture(int fixtureIndex) {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (!save) return;
+
+  int teamDBID = save->club.clubID;
+  if (teamDBID <= 0) teamDBID = 1;
+
+  std::vector<SideSelection> sides(2);
+  sides[0].controllerID = 0;
+  sides[0].side = -1;
+  sides[1].controllerID = -1;
+  sides[1].side = 1;
+  GetMenuTask()->SetControllerSetup(sides);
+  GetMenuTask()->SetTeamIDs(std::to_string(teamDBID), std::to_string((m_week * 7 + fixtureIndex + 1) % 20 + 1));
+
+  Properties props;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_MatchOptions, props, 0);
 }
 
 void CareerMatchdayPage::UpdateSummary() {

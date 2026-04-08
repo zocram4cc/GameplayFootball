@@ -791,4 +791,78 @@ void CareerDatabase::InvestInPrestige(long long amount) {
   m_activeSave->club.reputation = m_activeSave->reputation;
 }
 
+SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentName, const std::string& opponentTeamDBID) {
+  SimulatedMatch result;
+  result.opponentName = opponentName;
+  if (!m_activeSave) return result;
+
+  int teamOVR = 65;
+  int opponentOVR = 65;
+  int teamMorale = 70;
+  int teamForm = 50;
+  std::string strategy = m_activeSave->activeStrategy;
+
+  int ovrSum = 0;
+  int moraleSum = 0;
+  int formSum = 0;
+  int count = 0;
+  for (const auto& p : m_activeSave->roster) {
+    ovrSum += p.ovr;
+    moraleSum += p.morale;
+    formSum += p.matchForm;
+    count++;
+  }
+  if (count > 0) {
+    teamOVR = ovrSum / count;
+    teamMorale = moraleSum / count;
+    teamForm = formSum / count;
+  }
+
+  opponentOVR = 60 + RandomInt(0, 20);
+
+  int baseAttack = teamOVR + teamForm / 4 + (teamMorale - 50) / 10;
+  int baseDefense = teamOVR + teamForm / 5 + (teamMorale - 50) / 15;
+  int oppAttack = opponentOVR + RandomInt(0, 10);
+  int oppDefense = opponentOVR + RandomInt(0, 5);
+
+  if (strategy == "Attacking") {
+    baseAttack += 5;
+    baseDefense -= 3;
+  } else if (strategy == "Defensive") {
+    baseAttack -= 3;
+    baseDefense += 5;
+  }
+
+  float homeAdv = 1.1f;
+  float attackFactor = (float)baseAttack * homeAdv / std::max(1.0f, (float)oppDefense);
+  float defenseFactor = (float)baseDefense / std::max(1.0f, (float)oppAttack * homeAdv);
+
+  std::normal_distribution<float> goalDist(1.3f, 0.8f);
+  int expectedHomeGoals = std::max(0, (int)(goalDist(CareerRng()) * attackFactor));
+  int expectedAwayGoals = std::max(0, (int)(goalDist(CareerRng()) * defenseFactor));
+
+  result.homeGoals = ClampInt(expectedHomeGoals, 0, 9);
+  result.awayGoals = ClampInt(expectedAwayGoals, 0, 7);
+  result.homeShots = result.homeGoals + RandomInt(2, 8);
+  result.awayShots = result.awayGoals + RandomInt(2, 8);
+  result.homePossession = ClampInt(50 + (teamOVR - opponentOVR) + RandomInt(-5, 5) + (strategy == "Attacking" ? 5 : strategy == "Defensive" ? -5 : 0), 30, 70);
+  result.played = true;
+
+  int totalGoals = result.homeGoals + result.awayGoals;
+  std::vector<int> scorerIndices;
+  int rosterSize = static_cast<int>(m_activeSave->roster.size());
+  for (int g = 0; g < result.homeGoals; g++) {
+    int attempts = 0;
+    int pIdx;
+    do {
+      pIdx = RandomInt(0, rosterSize - 1);
+      attempts++;
+    } while (attempts < 20 && std::find(scorerIndices.begin(), scorerIndices.end(), pIdx) != scorerIndices.end() && rosterSize > scorerIndices.size());
+    scorerIndices.push_back(pIdx);
+    result.scorers.push_back(m_activeSave->roster[pIdx].name);
+  }
+
+  return result;
+}
+
 } // namespace blunted

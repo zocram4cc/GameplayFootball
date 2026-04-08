@@ -15,6 +15,7 @@ using TransferBid = ::TransferBid;
 using StaffMember = ::StaffMember;
 using StadiumUpgrade = ::StadiumUpgrade;
 using SponsorDeal = ::SponsorDeal;
+using SimulatedMatch = ::SimulatedMatch;
 
 class CareerDatabase {
 public:
@@ -85,6 +86,8 @@ public:
 
   void InvestInFanBase(long long amount);
   void InvestInPrestige(long long amount);
+
+  SimulatedMatch SimulateMatchResult(const std::string& opponentName, const std::string& opponentTeamDBID);
 
   int GetReputation() const;
   std::string GetReputationStatus() const;

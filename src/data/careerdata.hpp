@@ -282,6 +282,17 @@ struct ClubFinances {
 
 enum class OwnerObjectiveType { PROMOTION, AVOID_RELEGATION, WIN_TITLE, FINANCIAL_STABILITY, GROW_FANBASE };
 
+struct SimulatedMatch {
+  std::string opponentName;
+  int homeGoals = 0;
+  int awayGoals = 0;
+  int homeShots = 0;
+  int awayShots = 0;
+  int homePossession = 50;
+  std::vector<std::string> scorers;
+  bool played = false;
+};
+
 struct OwnerBoardObjective {
   OwnerObjectiveType type = OwnerObjectiveType::FINANCIAL_STABILITY;
   std::string description;
