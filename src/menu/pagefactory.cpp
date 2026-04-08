@@ -368,6 +368,10 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
       page = new CareerSeasonPage(windowManager, pageData);
       break;
 
+    case e_PageID_CareerMatchday:
+      page = new CareerMatchdayPage(windowManager, pageData);
+      break;
+
     case e_PageID_OwnerHub:
       page = new OwnerHubPage(windowManager, pageData);
       break;

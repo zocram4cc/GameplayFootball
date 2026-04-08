@@ -142,13 +142,15 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
   Gui2Button* btnStaff = new Gui2Button(windowManager, "btn_oh_staff", 0, 0, 25, 3, "Staff");
   Gui2Button* btnBoard = new Gui2Button(windowManager, "btn_oh_board", 0, 0, 25, 3, "Board Room");
 
-  Gui2Button* btnTransfers = new Gui2Button(windowManager, "btn_oh_transfers", 0, 0, 25, 3, "Transfers");
+   Gui2Caption* navSep1 = new Gui2Caption(windowManager, "cap_oh_sep1", 0, 0, 25, 2, "-- Squad --");
+   Gui2Button* btnTransfers = new Gui2Button(windowManager, "btn_oh_transfers", 0, 0, 25, 3, "Transfers");
   Gui2Button* btnSquad = new Gui2Button(windowManager, "btn_oh_squad", 0, 0, 25, 3, "Squad");
   Gui2Button* btnTraining = new Gui2Button(windowManager, "btn_oh_training", 0, 0, 25, 3, "Training");
   Gui2Button* btnFreeAgency = new Gui2Button(windowManager, "btn_oh_freeagency", 0, 0, 25, 3, "Free Agency");
   Gui2Button* btnYouth = new Gui2Button(windowManager, "btn_oh_youth", 0, 0, 25, 3, "Youth Academy");
 
   Gui2Button* btnSeason = new Gui2Button(windowManager, "btn_oh_season", 0, 0, 25, 4, "Advance Season");
+  Gui2Button* btnMatchday = new Gui2Button(windowManager, "btn_oh_matchday", 0, 0, 25, 4, "Play Matchday");
 
   btnStadium->sig_OnClick.connect([this](...) { GoStadium(); });
   btnFinances->sig_OnClick.connect([this](...) { GoFinances(); });
@@ -156,6 +158,7 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
   btnSponsors->sig_OnClick.connect([this](...) { GoSponsors(); });
   btnBoard->sig_OnClick.connect([this](...) { GoBoardRoom(); });
   btnSeason->sig_OnClick.connect([this](...) { GoSeason(); });
+  btnMatchday->sig_OnClick.connect([this](...) { GoMatchday(); });
   btnTransfers->sig_OnClick.connect([this](...) { GoTransferMarket(); });
   btnSquad->sig_OnClick.connect([this](...) { GoSquad(); });
   btnTraining->sig_OnClick.connect([this](...) { GoTraining(); });
@@ -167,19 +170,23 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
   navGrid->AddView(btnFinances, row++, 0);
   navGrid->AddView(btnSponsors, row++, 0);
   navGrid->AddView(btnStaff, row++, 0);
-  navGrid->AddView(btnBoard, row++, 0);
-  
-  // Spacer
-  row++;
-  
+   navGrid->AddView(btnBoard, row++, 0);
+
+   // Section separator
+  navGrid->AddView(navSep1, row++, 0);
+
   navGrid->AddView(btnTransfers, row++, 0);
   navGrid->AddView(btnSquad, row++, 0);
   navGrid->AddView(btnTraining, row++, 0);
   navGrid->AddView(btnFreeAgency, row++, 0);
   navGrid->AddView(btnYouth, row++, 0);
 
-  row++; // Spacer
+  // Section separator
+  Gui2Caption* navSep2 = new Gui2Caption(windowManager, "cap_oh_sep2", 0, 0, 25, 2, "-- Season --");
+  navGrid->AddView(navSep2, row++, 0);
+
   navGrid->AddView(btnSeason, row++, 0);
+  navGrid->AddView(btnMatchday, row++, 0);
 
   navGrid->UpdateLayout(0.5);
   navFrame->AddView(navGrid);
@@ -189,7 +196,7 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
   navFrame->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_oh_back_main", 3, 83, 25, 3, "Back to Career Modes");
-  btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Career); });
+  btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_CareerMenu); });
   root->AddView(btnBack);
   btnBack->Show();
 
@@ -210,6 +217,7 @@ void OwnerHubPage::GoTraining() { CreatePage(e_PageID_CareerTraining); }
 void OwnerHubPage::GoFreeAgency() { CreatePage(e_PageID_CareerFreeAgency); }
 void OwnerHubPage::GoYouthAcademy() { CreatePage(e_PageID_CareerYouthAcademy); }
 void OwnerHubPage::GoSeason() { CreatePage(e_PageID_CareerSeason); }
+void OwnerHubPage::GoMatchday() { CreatePage(e_PageID_CareerMatchday); }
 
 // ---------------------------------------------------------------------------
 // OwnerStadiumPage
@@ -219,69 +227,76 @@ OwnerStadiumPage::OwnerStadiumPage(Gui2WindowManager* windowManager, const Gui2P
     : Gui2Page(windowManager, pageData) {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
 
+  Gui2Frame* root = new Gui2Frame(windowManager, "frame_stad_root", 4, 3, 92, 94, true);
+  this->AddView(root);
+  root->Show();
+
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_stadium", 10, 3, 80, 3, "Stadium Management");
-  this->AddView(title);
+  root->AddView(title);
   title->Show();
 
   if (save) {
-    auto& stad = save->stadium;
-    Gui2Caption* topLine = new Gui2Caption(windowManager, "caption_stad_top", 8, 7, 84, 2,
+    Gui2Caption* topLine = new Gui2Caption(windowManager, "caption_stad_top", 6, 8, 82, 2,
       BuildOwnerTopLine(save));
-    this->AddView(topLine);
+    root->AddView(topLine);
     topLine->Show();
-    
-    Gui2Frame* infoFrame = new Gui2Frame(windowManager, "frame_stad_info", 5, 10, 90, 8, true);
+
+    auto& stad = save->stadium;
+
+    Gui2Frame* infoFrame = new Gui2Frame(windowManager, "frame_stad_info", 4, 12, 84, 10, true);
 
     std::string info1 = stad.name + " | Capacity: " + std::to_string(stad.capacity) +
                         " | Condition: " + std::to_string(stad.condition) + "%" +
                         " | Fan Satisfaction: " + std::to_string(stad.fanSatisfaction) + "%";
-    Gui2Caption* stadInfo = new Gui2Caption(windowManager, "caption_stad_info", 2, 2, 86, 2, info1);
+    Gui2Caption* stadInfo = new Gui2Caption(windowManager, "caption_stad_info", 2, 2, 80, 2, info1);
     infoFrame->AddView(stadInfo);
     stadInfo->Show();
 
-    std::string info2 = "Maintenance Cost: \xe2\x82\xac" + std::to_string(stad.maintenanceCost) + "/season" +
-                        " | Match Revenue: \xe2\x82\xac" + std::to_string(stad.matchDayRevenue) + "/match";
-    Gui2Caption* costInfo = new Gui2Caption(windowManager, "caption_stad_cost", 2, 5, 86, 2, info2);
+    std::string info2 = "Maintenance Cost: EUR " + std::to_string(stad.maintenanceCost) + "/season" +
+                        " | Match Revenue: EUR " + std::to_string(stad.matchDayRevenue) + "/match" +
+                        " | Net Worth: EUR " + std::to_string(save->finances.netWorth);
+    Gui2Caption* costInfo = new Gui2Caption(windowManager, "caption_stad_cost", 2, 5, 80, 2, info2);
     infoFrame->AddView(costInfo);
     costInfo->Show();
-    
-    this->AddView(infoFrame);
+
+    root->AddView(infoFrame);
     infoFrame->Show();
 
-    int nextY = 20;
+    int nextY = 24;
+
     if (!stad.upgrades.empty()) {
-      int activeHeight = 4 + stad.upgrades.size() * 3;
-      Gui2Frame* activeFrame = new Gui2Frame(windowManager, "frame_stad_active", 5, nextY, 90, activeHeight, true);
-      
-      Gui2Caption* activeTitle = new Gui2Caption(windowManager, "caption_stad_active", 2, 1, 86, 2, "Active Upgrades:");
+      int activeHeight = 4 + static_cast<int>(stad.upgrades.size()) * 3;
+      Gui2Frame* activeFrame = new Gui2Frame(windowManager, "frame_stad_active", 4, nextY, 84, activeHeight, true);
+
+      Gui2Caption* activeTitle = new Gui2Caption(windowManager, "caption_stad_active", 2, 1, 80, 2, "Active Upgrades:");
       activeFrame->AddView(activeTitle);
       activeTitle->Show();
 
       int yOff = 4;
       for (const auto& u : stad.upgrades) {
         std::string status = u.isComplete() ? "[COMPLETE]" : "[" + std::to_string(u.seasonsRemaining) + " seasons left]";
-        Gui2Caption* entry = new Gui2Caption(windowManager, "caption_upg_" + u.name, 2, yOff, 86, 2,
-          "  " + u.name + " " + status + " +" + std::to_string(u.capacityIncrease) + " seats, +\xe2\x82\xac" + std::to_string(u.revenueBonus) + "/season");
+        Gui2Caption* entry = new Gui2Caption(windowManager, "caption_upg_" + u.name, 2, yOff, 80, 2,
+          "  " + u.name + " " + status + " +" + std::to_string(u.capacityIncrease) + " seats, +EUR " + std::to_string(u.revenueBonus) + "/season");
         activeFrame->AddView(entry);
         entry->Show();
         yOff += 3;
       }
-      this->AddView(activeFrame);
+      root->AddView(activeFrame);
       activeFrame->Show();
       nextY += activeHeight + 1;
     }
 
-    Gui2Frame* availFrame = new Gui2Frame(windowManager, "frame_stad_avail", 5, nextY, 90, 88 - nextY, true);
+    Gui2Frame* availFrame = new Gui2Frame(windowManager, "frame_stad_avail", 4, nextY, 84, 86 - nextY, true);
 
-    Gui2Caption* availTitle = new Gui2Caption(windowManager, "caption_stad_avail", 2, 1, 86, 2, "Available Upgrades & Actions:");
+    Gui2Caption* availTitle = new Gui2Caption(windowManager, "caption_stad_avail", 2, 1, 80, 2, "Available Upgrades & Actions:");
     availFrame->AddView(availTitle);
     availTitle->Show();
 
-    Gui2Grid* ugGrid = new Gui2Grid(windowManager, "stad_ug_grid", 2, 4, 86, 80 - nextY);
+    Gui2Grid* ugGrid = new Gui2Grid(windowManager, "stad_ug_grid", 2, 4, 80, 80 - nextY);
     int row = 0;
 
-    Gui2Button* btnRename = new Gui2Button(windowManager, "btn_stad_rename", 0, 0, 86, 2.5,
+    Gui2Button* btnRename = new Gui2Button(windowManager, "btn_stad_rename", 0, 0, 80, 2.5,
       "Rename Stadium to " + save->name + " Elite Park");
     btnRename->sig_OnClick.connect([this, save](...) { RenameStadium(save->name + " Elite Park"); });
     ugGrid->AddView(btnRename, row++, 0);
@@ -291,28 +306,29 @@ OwnerStadiumPage::OwnerStadiumPage(Gui2WindowManager* windowManager, const Gui2P
       std::string label = u.name + " | EUR " + std::to_string(u.cost) +
                           " | +" + std::to_string(u.capacityIncrease) + " seats" +
                           " | " + std::to_string(u.buildTimeSeasons) + " season(s)";
-      Gui2Button* btn = new Gui2Button(windowManager, "btn_upg_" + std::to_string(i), 0, 0, 86, 2.5, label);
+      Gui2Button* btn = new Gui2Button(windowManager, "btn_upg_" + std::to_string(i), 0, 0, 80, 2.5, label);
       btn->sig_OnClick.connect([this, i](...) { UpgradeStadium(i); });
       ugGrid->AddView(btn, row++, 0);
     }
 
-    long long repairCost = 50000 * std::max(1, (100 - stad.condition) / 10);
-    Gui2Button* btnRepair = new Gui2Button(windowManager, "btn_stad_repair", 0, 0, 86, 2.5,
-      "Repair Stadium (+10 condition, EUR " + std::to_string(repairCost) + ")");
-    btnRepair->sig_OnClick.connect([this](...) { RepairStadium(); });
+    int repairPoints = 10;
+    long long repairCost = 50000LL * std::max(1, repairPoints / 10);
+    Gui2Button* btnRepair = new Gui2Button(windowManager, "btn_stad_repair", 0, 0, 80, 2.5,
+      "Repair Stadium (+" + std::to_string(repairPoints) + " condition, EUR " + std::to_string(repairCost) + ")");
+    btnRepair->sig_OnClick.connect([this, repairPoints](...) { RepairStadium(repairPoints); });
     ugGrid->AddView(btnRepair, row++, 0);
 
     ugGrid->UpdateLayout(0.5);
     availFrame->AddView(ugGrid);
     ugGrid->Show();
-    
-    this->AddView(availFrame);
+
+    root->AddView(availFrame);
     availFrame->Show();
   }
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_stad_back", 30, 90, 40, 3, "Back to Owner Hub");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_stad_back", 30, 92, 40, 3, "Back to Owner Hub");
   btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_OwnerHub); });
-  this->AddView(btnBack);
+  root->AddView(btnBack);
   btnBack->Show();
 
   btnBack->SetFocus();
@@ -326,8 +342,8 @@ void OwnerStadiumPage::UpgradeStadium(int index) {
   CreatePage(e_PageID_OwnerStadium);
 }
 
-void OwnerStadiumPage::RepairStadium() {
-  CareerDatabase::GetInstance().RepairStadium(10);
+void OwnerStadiumPage::RepairStadium(int points) {
+  CareerDatabase::GetInstance().RepairStadium(points);
   CreatePage(e_PageID_OwnerStadium);
 }
 
@@ -344,108 +360,114 @@ OwnerFinancesPage::OwnerFinancesPage(Gui2WindowManager* windowManager, const Gui
     : Gui2Page(windowManager, pageData) {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
 
+  Gui2Frame* root = new Gui2Frame(windowManager, "frame_fin_root", 4, 3, 92, 94, true);
+  this->AddView(root);
+  root->Show();
+
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_finances", 10, 3, 80, 3, "Club Finances");
-  this->AddView(title);
+  root->AddView(title);
   title->Show();
+
+  Gui2Caption* topLine = new Gui2Caption(windowManager, "caption_fin_topline", 6, 8, 82, 2,
+    BuildOwnerTopLine(save));
+  root->AddView(topLine);
+  topLine->Show();
 
   if (save) {
     auto& fin = save->finances;
 
-    // Overview Card
-    Gui2Frame* overviewFrame = new Gui2Frame(windowManager, "frame_fin_overview", 5, 7, 90, 8, true);
-    
+    Gui2Frame* overviewFrame = new Gui2Frame(windowManager, "frame_fin_overview", 4, 12, 84, 8, true);
+
     std::string healthStr = "Financial Health: " + CareerDatabase::GetInstance().GetFinancialHealthString() +
                             " | Debt Level: " + std::to_string(fin.debtLevel) + "%";
-    Gui2Caption* healthCap = new Gui2Caption(windowManager, "fin_health", 2, 2, 86, 2, healthStr);
+    Gui2Caption* healthCap = new Gui2Caption(windowManager, "fin_health", 2, 2, 80, 2, healthStr);
     overviewFrame->AddView(healthCap);
     healthCap->Show();
-    
+
     std::string netWorthStr = "Net Worth: EUR " + std::to_string(fin.netWorth);
-    Gui2Caption* nwCap = new Gui2Caption(windowManager, "fin_nw", 2, 4, 86, 2, netWorthStr);
+    Gui2Caption* nwCap = new Gui2Caption(windowManager, "fin_nw", 2, 4, 80, 2, netWorthStr);
     overviewFrame->AddView(nwCap);
     nwCap->Show();
-    
-    this->AddView(overviewFrame);
+
+    root->AddView(overviewFrame);
     overviewFrame->Show();
 
-    // Revenue Card
-    Gui2Frame* revFrame = new Gui2Frame(windowManager, "frame_fin_rev", 5, 17, 43, 16, true);
-    
-    Gui2Caption* revTitle = new Gui2Caption(windowManager, "fin_revtitle", 2, 1, 39, 2, "REVENUE:");
+    Gui2Frame* revFrame = new Gui2Frame(windowManager, "frame_fin_rev", 4, 22, 41, 16, true);
+
+    Gui2Caption* revTitle = new Gui2Caption(windowManager, "fin_revtitle", 2, 1, 37, 2, "REVENUE:");
     revFrame->AddView(revTitle);
     revTitle->Show();
-    
+
     std::string revBody = "Match Day: EUR " + std::to_string(fin.matchDayIncome) +
                           "\nSponsors: EUR " + std::to_string(fin.sponsorIncome) +
                           "\nMerchandise: EUR " + std::to_string(fin.merchandiseIncome) +
                           "\nTV Revenue: EUR " + std::to_string(fin.tvRevenue) +
                           "\nTransfers: EUR " + std::to_string(fin.transferIncome) +
                           "\n\nTOTAL: EUR " + std::to_string(fin.totalRevenue);
-    Gui2Caption* revText = new Gui2Caption(windowManager, "fin_revbody", 2, 4, 39, 10, revBody);
+    Gui2Caption* revText = new Gui2Caption(windowManager, "fin_revbody", 2, 4, 37, 10, revBody);
     revFrame->AddView(revText);
     revText->Show();
-    
-    this->AddView(revFrame);
+
+    root->AddView(revFrame);
     revFrame->Show();
 
-    // Expenses Card
-    Gui2Frame* expFrame = new Gui2Frame(windowManager, "frame_fin_exp", 52, 17, 43, 16, true);
-    
-    Gui2Caption* expTitle = new Gui2Caption(windowManager, "fin_exptitle", 2, 1, 39, 2, "EXPENSES:");
+    Gui2Frame* expFrame = new Gui2Frame(windowManager, "frame_fin_exp", 49, 22, 41, 16, true);
+
+    Gui2Caption* expTitle = new Gui2Caption(windowManager, "fin_exptitle", 2, 1, 37, 2, "EXPENSES:");
     expFrame->AddView(expTitle);
     expTitle->Show();
-    
+
     std::string expBody = "Player Wages: EUR " + std::to_string(fin.playerWages) +
                           "\nStaff Wages: EUR " + std::to_string(fin.staffWages) +
                           "\nStadium Costs: EUR " + std::to_string(fin.stadiumCosts) +
                           "\nTransfers: EUR " + std::to_string(fin.transferSpending) +
                           "\n\nTOTAL: EUR " + std::to_string(fin.totalExpenses);
-    Gui2Caption* expText = new Gui2Caption(windowManager, "fin_expbody", 2, 4, 39, 10, expBody);
+    Gui2Caption* expText = new Gui2Caption(windowManager, "fin_expbody", 2, 4, 37, 10, expBody);
     expFrame->AddView(expText);
     expText->Show();
-    
-    this->AddView(expFrame);
+
+    root->AddView(expFrame);
     expFrame->Show();
 
-    // Profit & Details Card
-    Gui2Frame* profitFrame = new Gui2Frame(windowManager, "frame_fin_profit", 5, 35, 90, 8, true);
-    
+    Gui2Frame* profitFrame = new Gui2Frame(windowManager, "frame_fin_profit", 4, 40, 84, 8, true);
+
     std::string profitStr = "NET PROFIT: EUR " + std::to_string(CareerDatabase::GetInstance().GetSeasonProfit());
-    Gui2Caption* profitCap = new Gui2Caption(windowManager, "fin_profit", 2, 2, 86, 2, profitStr);
+    Gui2Caption* profitCap = new Gui2Caption(windowManager, "fin_profit", 2, 2, 80, 2, profitStr);
     profitFrame->AddView(profitCap);
     profitCap->Show();
-    
+
     std::string tktStr = "Ticket Price: EUR " + std::to_string(fin.ticketPrice) +
                          " | Season Ticket Holders: " + std::to_string(fin.seasonTicketHolders);
-    Gui2Caption* tktCap = new Gui2Caption(windowManager, "fin_tp", 2, 4, 86, 2, tktStr);
+    Gui2Caption* tktCap = new Gui2Caption(windowManager, "fin_tp", 2, 4, 80, 2, tktStr);
     profitFrame->AddView(tktCap);
-    tktCap->Show();
-    
-    this->AddView(profitFrame);
     profitFrame->Show();
 
-    // Actions Card
-    Gui2Frame* actFrame = new Gui2Frame(windowManager, "frame_fin_act", 5, 45, 90, 12, true);
-    Gui2Grid* actGrid = new Gui2Grid(windowManager, "fin_act_grid", 2, 2, 86, 8);
+    root->AddView(profitFrame);
+    profitFrame->Show();
+
+    Gui2Frame* actFrame = new Gui2Frame(windowManager, "frame_fin_act", 4, 50, 84, 12, true);
+    Gui2Grid* actGrid = new Gui2Grid(windowManager, "fin_act_grid", 2, 2, 80, 8);
     int row = 0;
 
-    Gui2Button* btnTicketUp = new Gui2Button(windowManager, "btn_ticket_up", 0, 0, 42, 2.5,
-      "Increase Ticket (\xe2\x82\xac10)");
-    btnTicketUp->sig_OnClick.connect([this, &fin](...) { SetTicketPrice(fin.ticketPrice + 10); });
+    int currentPrice = fin.ticketPrice;
+
+    Gui2Button* btnTicketUp = new Gui2Button(windowManager, "btn_ticket_up", 0, 0, 38, 2.5,
+      "Increase Ticket (EUR 10)");
+    btnTicketUp->sig_OnClick.connect([this, currentPrice](...) { SetTicketPrice(currentPrice + 10); });
     actGrid->AddView(btnTicketUp, row, 0);
 
-    Gui2Button* btnTicketDown = new Gui2Button(windowManager, "btn_ticket_down", 0, 0, 42, 2.5,
-      "Decrease Ticket (\xe2\x82\xac10)");
-    btnTicketDown->sig_OnClick.connect([this, &fin](...) { SetTicketPrice(fin.ticketPrice - 10); });
+    Gui2Button* btnTicketDown = new Gui2Button(windowManager, "btn_ticket_down", 0, 0, 38, 2.5,
+      "Decrease Ticket (EUR 10)");
+    btnTicketDown->sig_OnClick.connect([this, currentPrice](...) { SetTicketPrice(currentPrice - 10); });
     actGrid->AddView(btnTicketDown, row++, 1);
 
-    Gui2Button* btnFanInvest = new Gui2Button(windowManager, "btn_fan_invest", 0, 0, 42, 2.5,
+    Gui2Button* btnFanInvest = new Gui2Button(windowManager, "btn_fan_invest", 0, 0, 38, 2.5,
       "Invest Fan Base (EUR 2M)");
     btnFanInvest->sig_OnClick.connect([this](...) { InvestFanBase(); });
     actGrid->AddView(btnFanInvest, row, 0);
 
-    Gui2Button* btnPrestige = new Gui2Button(windowManager, "btn_prestige_invest", 0, 0, 42, 2.5,
+    Gui2Button* btnPrestige = new Gui2Button(windowManager, "btn_prestige_invest", 0, 0, 38, 2.5,
       "Invest Prestige (EUR 3M)");
     btnPrestige->sig_OnClick.connect([this](...) { InvestPrestige(); });
     actGrid->AddView(btnPrestige, row++, 1);
@@ -454,13 +476,13 @@ OwnerFinancesPage::OwnerFinancesPage(Gui2WindowManager* windowManager, const Gui
     actFrame->AddView(actGrid);
     actGrid->Show();
 
-    this->AddView(actFrame);
+    root->AddView(actFrame);
     actFrame->Show();
   }
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_fin_back", 30, 92, 40, 3, "Back to Owner Hub");
   btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_OwnerHub); });
-  this->AddView(btnBack);
+  root->AddView(btnBack);
   btnBack->Show();
 
   btnBack->SetFocus();

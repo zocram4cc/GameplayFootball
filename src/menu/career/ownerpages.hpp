@@ -37,6 +37,7 @@ protected:
   void GoFreeAgency();
   void GoYouthAcademy();
   void GoSeason();
+  void GoMatchday();
 };
 
 // Stadium management
@@ -47,7 +48,7 @@ public:
 
 protected:
   void UpgradeStadium(int index);
-  void RepairStadium();
+  void RepairStadium(int points = 10);
   void RenameStadium(const std::string& newName);
 };
 

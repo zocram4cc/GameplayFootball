@@ -352,6 +352,8 @@ CareerHubPage::CareerHubPage(Gui2WindowManager* windowManager, const Gui2PageDat
       new Gui2Button(windowManager, "btn_customleague", 0, 0, 38, 3, "Custom League");
   Gui2Button* btnSeason =
       new Gui2Button(windowManager, "btn_season_end", 0, 0, 38, 3, ">> End Season / Advance >>");
+  Gui2Button* btnMatchday =
+      new Gui2Button(windowManager, "btn_matchday", 0, 0, 38, 3, "Play Matchday");
 
   btnTransfers->sig_OnClick.connect([this](...) { GoTransferMarket(); });
   btnFreeAgency->sig_OnClick.connect([this](...) { GoFreeAgency(); });
@@ -363,6 +365,7 @@ CareerHubPage::CareerHubPage(Gui2WindowManager* windowManager, const Gui2PageDat
   btnLeagueExp->sig_OnClick.connect([this](...) { GoLeagueExpansion(); });
   btnCustomLeague->sig_OnClick.connect([this](...) { GoCustomLeague(); });
   btnSeason->sig_OnClick.connect([this](...) { GoSeason(); });
+  btnMatchday->sig_OnClick.connect([this](...) { GoMatchday(); });
 
   CareerSave* activeSave = CareerDatabase::GetInstance().GetActiveSave();
   if (activeSave) {
@@ -409,6 +412,7 @@ CareerHubPage::CareerHubPage(Gui2WindowManager* windowManager, const Gui2PageDat
   grid->AddView(btnTraining, 2, 0);
   grid->AddView(btnYouth, 3, 0);
   grid->AddView(btnSeason, 4, 0);
+  grid->AddView(btnMatchday, 5, 0);
   grid->AddView(btnTransfers, 0, 1);
   grid->AddView(btnFreeAgency, 1, 1);
   grid->AddView(btnPressConf, 2, 1);
@@ -435,6 +439,7 @@ void CareerHubPage::GoTraining() { CreatePage(e_PageID_CareerTraining); }
 void CareerHubPage::GoStrategy() { CreatePage(e_PageID_CareerStrategy); }
 void CareerHubPage::GoYouthAcademy() { CreatePage(e_PageID_CareerYouthAcademy); }
 void CareerHubPage::GoSeason() { CreatePage(e_PageID_CareerSeason); }
+void CareerHubPage::GoMatchday() { CreatePage(e_PageID_CareerMatchday); }
 
 // ---------------------------------------------------------------------------
 // CareerTransferMarketPage
@@ -1441,4 +1446,215 @@ void CareerSeasonPage::GoToHub() {
   } else {
     CreatePage(e_PageID_CareerHub);
   }
+}
+
+// ---------------------------------------------------------------------------
+// CareerMatchdayPage - Match Simulation
+// ---------------------------------------------------------------------------
+
+CareerMatchdayPage::CareerMatchdayPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
+    : Gui2Page(windowManager, pageData),
+      frame(nullptr),
+      fixtureGrid(nullptr),
+      summaryCaption(nullptr),
+      m_week(1),
+      m_matchesPlayed(0),
+      m_wins(0),
+      m_draws(0),
+      m_losses(0),
+      m_goalsFor(0),
+      m_goalsAgainst(0) {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) {
+    m_week = save->season.currentWeek;
+  }
+
+  frame = new Gui2Frame(windowManager, "frame_matchday", 4, 3, 92, 94, true);
+  this->AddView(frame);
+  frame->Show();
+
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_matchday", 2, 2, 88, 3,
+    "Matchday " + std::to_string(m_week));
+  frame->AddView(title);
+  title->Show();
+
+  Gui2Caption* subtitle = new Gui2Caption(windowManager, "caption_matchday_sub", 2, 6, 88, 2,
+    save ? (save->name + " | Season " + std::to_string(save->season.currentSeason) +
+            " | Board " + std::to_string(save->boardConfidence) + "%") : "No active career");
+  frame->AddView(subtitle);
+  subtitle->Show();
+
+  Gui2Caption* hint = new Gui2Caption(windowManager, "caption_matchday_hint", 2, 9, 88, 2,
+    "Click 'Simulate' on each fixture to generate a result.");
+  frame->AddView(hint);
+  hint->Show();
+
+  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 12, 88, 66);
+  frame->AddView(fixtureGrid);
+  fixtureGrid->Show();
+
+  BuildFixtures();
+
+  summaryCaption = new Gui2Caption(windowManager, "caption_matchday_summary", 2, 82, 88, 2, "");
+  frame->AddView(summaryCaption);
+  summaryCaption->Show();
+
+  UpdateSummary();
+
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_matchday_back", 30, 88, 40, 3, "Back to Hub");
+  btnBack->sig_OnClick.connect([this](...) { GoBack(); });
+  frame->AddView(btnBack);
+  btnBack->Show();
+
+  btnBack->SetFocus();
+  this->Show();
+}
+
+CareerMatchdayPage::~CareerMatchdayPage() {}
+
+void CareerMatchdayPage::Process() {
+  Gui2Page::Process();
+}
+
+void CareerMatchdayPage::BuildFixtures() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (!save) return;
+
+  static const std::vector<std::string> opponentNames = {
+    "FC United", "Athletic Club", "Wanderers FC", "Real Deportivo", "Inter Milano",
+    "Bayern Munich", "FC Barcelona", "Chelsea FC", "Arsenal FC", "Juventus Turin",
+    "AC Milan", "Liverpool FC", "Borussia Dortmund", "Paris SG", "Ajax Amsterdam",
+    "Porto FC", "Benfica", "Sporting CP", "Napoli", "Atletico Madrid", "Tottenham"};
+
+  int numFixtures = std::min(4, static_cast<int>(save->roster.size()) / 5);
+  if (numFixtures < 1) numFixtures = 1;
+
+  m_opponents.clear();
+  m_homeGoals.assign(numFixtures, 0);
+  m_awayGoals.assign(numFixtures, 0);
+  m_played.assign(numFixtures, false);
+  fixtureScoreCaps.assign(numFixtures, nullptr);
+
+  for (int i = 0; i < numFixtures; i++) {
+    int opponentIdx = (m_week * 3 + i) % opponentNames.size();
+    m_opponents.push_back(opponentNames[opponentIdx]);
+  }
+}
+
+void CareerMatchdayPage::GenerateFixtures() {
+  if (fixtureGrid) {
+    for (int i = 0; i < static_cast<int>(fixtureScoreCaps.size()); i++) {
+      fixtureScoreCaps[i] = nullptr;
+    }
+    fixtureGrid->Exit();
+    delete fixtureGrid;
+    fixtureGrid = nullptr;
+  }
+
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (!save) return;
+
+  fixtureGrid = new Gui2Grid(windowManager, "grid_matchday", 2, 12, 88, 66);
+
+  int numFixtures = static_cast<int>(m_opponents.size());
+  int row = 0;
+  for (int i = 0; i < numFixtures; i++) {
+    std::string opponent = m_opponents[i];
+
+    Gui2Caption* header = new Gui2Caption(windowManager, "cap_md_hdr_" + std::to_string(i), 0, 0, 88, 2,
+      "--- Match " + std::to_string(i + 1) + ": " + save->name + " vs " + opponent + " ---");
+    fixtureGrid->AddView(header, row++, 0);
+
+    std::string scoreLabel = "Not played";
+    if (m_played[i]) {
+      scoreLabel = save->name + " " + std::to_string(m_homeGoals[i]) + " - " +
+                   std::to_string(m_awayGoals[i]) + " " + opponent;
+    }
+    Gui2Caption* scoreCap = new Gui2Caption(windowManager, "cap_md_score_" + std::to_string(i),
+      0, 0, 88, 2, scoreLabel);
+    fixtureGrid->AddView(scoreCap, row++, 0);
+    fixtureScoreCaps[i] = scoreCap;
+
+    if (!m_played[i]) {
+      Gui2Button* btnSim = new Gui2Button(windowManager, "btn_md_sim_" + std::to_string(i), 0, 0, 42, 2.5, "Simulate Match");
+      btnSim->sig_OnClick.connect([this, i](...) { SimulateMatch(i); });
+      fixtureGrid->AddView(btnSim, row, 0);
+
+      std::string coachLabel = "Coach: " + save->managerName;
+      Gui2Caption* coachCap = new Gui2Caption(windowManager, "cap_md_coach_" + std::to_string(i), 0, 0, 42, 2.5, coachLabel);
+      fixtureGrid->AddView(coachCap, row++, 1);
+    } else {
+      row++;
+    }
+  }
+
+  fixtureGrid->UpdateLayout(0.5);
+  frame->AddView(fixtureGrid);
+  fixtureGrid->Show();
+
+  UpdateSummary();
+}
+
+void CareerMatchdayPage::SimulateMatch(int fixtureIndex) {
+  if (fixtureIndex < 0 || fixtureIndex >= static_cast<int>(m_homeGoals.size())) return;
+  if (m_played[fixtureIndex]) return;
+
+  int homeGoals = rand() % 5;
+  int awayGoals = rand() % 5;
+  m_homeGoals[fixtureIndex] = homeGoals;
+  m_awayGoals[fixtureIndex] = awayGoals;
+  m_played[fixtureIndex] = true;
+
+  m_matchesPlayed++;
+  if (homeGoals > awayGoals) m_wins++;
+  else if (homeGoals == awayGoals) m_draws++;
+  else m_losses++;
+  m_goalsFor += homeGoals;
+  m_goalsAgainst += awayGoals;
+
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) {
+    std::string opponent = fixtureIndex < static_cast<int>(m_opponents.size()) ? m_opponents[fixtureIndex] : "Opponent";
+    std::string summary = save->name + " " + std::to_string(homeGoals) + " - " +
+                         std::to_string(awayGoals) + " " + opponent;
+    bool isWin = homeGoals > awayGoals;
+    CareerDatabase::GetInstance().AddEvent("matchday", summary, isWin ? 1 : -1, homeGoals != awayGoals);
+    CareerDatabase::GetInstance().ModifyBoardConfidence(isWin ? 1 : (homeGoals == awayGoals ? 0 : -1));
+
+    int scorers = std::min(homeGoals, 2);
+    int rosterSize = static_cast<int>(save->roster.size());
+    for (int s = 0; s < scorers; s++) {
+      int pIdx = rand() % rosterSize;
+      CareerDatabase::GetInstance().RecordMatchStats(save->roster[pIdx].name, 1, 0);
+    }
+
+    if (save->mode == CareerMode::OWNER) {
+      CareerDatabase::GetInstance().ProcessSeasonFinances();
+    }
+  }
+
+  GenerateFixtures();
+}
+
+void CareerMatchdayPage::UpdateSummary() {
+  if (summaryCaption) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Matches: %d | W %d  D %d  L %d | GF: %d | GA: %d",
+             m_matchesPlayed, m_wins, m_draws, m_losses, m_goalsFor, m_goalsAgainst);
+    summaryCaption->SetCaption(buf);
+  }
+}
+
+void CareerMatchdayPage::GoBack() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save && m_matchesPlayed > 0) {
+    save->season.currentWeek++;
+  }
+  this->Exit();
+  if (IsOwnerMode()) {
+    CreatePage(e_PageID_OwnerHub);
+  } else {
+    CreatePage(e_PageID_CareerHub);
+  }
+  delete this;
 }

@@ -64,6 +64,7 @@ protected:
   void GoStrategy();
   void GoYouthAcademy();
   void GoSeason();
+  void GoMatchday();
 };
 
 // Transfer market browser
@@ -192,6 +193,36 @@ public:
 protected:
   void AdvanceSeason();
   void GoToHub();
+};
+
+// Matchday Simulation
+class CareerMatchdayPage : public Gui2Page {
+public:
+  CareerMatchdayPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
+  virtual ~CareerMatchdayPage();
+  virtual void Process();
+
+protected:
+  void BuildFixtures();
+  void GenerateFixtures();
+  void SimulateMatch(int fixtureIndex);
+  void GoBack();
+
+  Gui2Frame* frame;
+  Gui2Grid* fixtureGrid;
+  Gui2Caption* summaryCaption;
+  std::vector<Gui2Caption*> fixtureScoreCaps;
+  std::vector<std::string> m_opponents;
+  std::vector<int> m_homeGoals;
+  std::vector<int> m_awayGoals;
+  std::vector<bool> m_played;
+  int m_week;
+  int m_matchesPlayed;
+  int m_wins;
+  int m_draws;
+  int m_losses;
+  int m_goalsFor;
+  int m_goalsAgainst;
 };
 
 // ---------------------------------------------------------------------------
