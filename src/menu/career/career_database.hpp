@@ -88,6 +88,7 @@ public:
   void InvestInPrestige(long long amount);
 
   SimulatedMatch SimulateMatchResult(const std::string& opponentName, const std::string& opponentTeamDBID);
+  void Process3DMatchResult(int homeGoals, int awayGoals);
 
   int GetReputation() const;
   std::string GetReputationStatus() const;

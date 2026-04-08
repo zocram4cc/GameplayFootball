@@ -3,6 +3,7 @@
 #include "../pagefactory.hpp"
 #include "../../data/careerdata.hpp"
 #include "../../utils/gui2/widgets/frame.hpp" // For card layout
+#include "../../main.hpp"
 
 namespace {
 
@@ -199,7 +200,7 @@ OwnerHubPage::OwnerHubPage(Gui2WindowManager* windowManager, const Gui2PageData&
   navFrame->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_oh_back_main", 3, 83, 25, 3, "Back to Career Modes");
-  btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_CareerMenu); });
+  btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_MainMenu); });
   root->AddView(btnBack);
   btnBack->Show();
 

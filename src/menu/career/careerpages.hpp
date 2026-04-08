@@ -210,6 +210,7 @@ protected:
   void SimulateAll();
   void PlayMatch();
   void PlayMatchFixture(int fixtureIndex);
+  void Process3DMatchResult(int homeGoals, int awayGoals);
   void GoBack();
 
   Gui2Frame* frame;

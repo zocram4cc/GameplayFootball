@@ -11,6 +11,8 @@
 #include "../pagefactory.hpp"
 #include "main.hpp"
 
+#include "../career/career_database.hpp"
+
 using namespace blunted;
 
 namespace {
@@ -207,6 +209,12 @@ void GameOverPage::GoRematch() {
 }
 
 void GameOverPage::GoMainMenu() {
+  // Preserve the finished 3D match in career bookkeeping before leaving the game flow.
+  if (match && CareerDatabase::GetInstance().GetActiveSave()) {
+    auto* matchData = match->GetMatchData();
+    CareerDatabase::GetInstance().Process3DMatchResult(
+        matchData->GetGoalCount(0), matchData->GetGoalCount(1));
+  }
   this->Exit();
   GetMenuTask()->SetMenuAction(e_MenuAction_Menu);
   delete this;

@@ -1666,6 +1666,8 @@ void CareerMatchdayPage::SimulateAll() {
 void CareerMatchdayPage::PlayMatch() {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
   if (!save) return;
+  if (save->club.clubID <= 0) return;
+  if (m_opponents.empty()) BuildFixtures();
 
   int teamDBID = save->club.clubID;
   if (teamDBID <= 0) teamDBID = 1;
@@ -1684,7 +1686,8 @@ void CareerMatchdayPage::PlayMatch() {
 
 void CareerMatchdayPage::PlayMatchFixture(int fixtureIndex) {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
-  if (!save) return;
+  if (!save || fixtureIndex < 0 || fixtureIndex >= static_cast<int>(m_opponents.size())) return;
+  if (save->club.clubID <= 0) return;
 
   int teamDBID = save->club.clubID;
   if (teamDBID <= 0) teamDBID = 1;
@@ -1714,6 +1717,11 @@ void CareerMatchdayPage::GoBack() {
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
   if (save && m_matchesPlayed > 0) {
     save->season.currentWeek++;
+    save->seasonWins += m_wins;
+    save->seasonDraws += m_draws;
+    save->seasonLosses += m_losses;
+    save->seasonGoalsFor += m_goalsFor;
+    save->seasonGoalsAgainst += m_goalsAgainst;
   }
   this->Exit();
   if (IsOwnerMode()) {
@@ -1722,4 +1730,25 @@ void CareerMatchdayPage::GoBack() {
     CreatePage(e_PageID_CareerHub);
   }
   delete this;
+}
+
+// ---------------------------------------------------------------------------
+// CareerMatchdayPage - 3D match result bookkeeping
+// ---------------------------------------------------------------------------
+
+void CareerMatchdayPage::Process3DMatchResult(int homeGoals, int awayGoals) {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (!save) return;
+  if (save->club.clubID <= 0) return;
+
+  save->seasonWins += (homeGoals > awayGoals) ? 1 : 0;
+  save->seasonDraws += (homeGoals == awayGoals) ? 1 : 0;
+  save->seasonLosses += (homeGoals < awayGoals) ? 1 : 0;
+  save->seasonGoalsFor += homeGoals;
+  save->seasonGoalsAgainst += awayGoals;
+  CareerDatabase::GetInstance().AddEvent(
+      "matchday",
+      save->name + " " + std::to_string(homeGoals) + " - " + std::to_string(awayGoals) + " (3D match)",
+      homeGoals > awayGoals ? 1 : (homeGoals == awayGoals ? 0 : -1),
+      homeGoals != awayGoals);
 }

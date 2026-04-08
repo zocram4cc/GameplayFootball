@@ -818,7 +818,11 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
     teamForm = formSum / count;
   }
 
-  opponentOVR = 60 + RandomInt(0, 20);
+  if (!opponentTeamDBID.empty()) {
+    opponentOVR = 55 + (std::stoi(opponentTeamDBID) % 21);
+  } else {
+    opponentOVR = 60 + RandomInt(0, 20);
+  }
 
   int baseAttack = teamOVR + teamForm / 4 + (teamMorale - 50) / 10;
   int baseDefense = teamOVR + teamForm / 5 + (teamMorale - 50) / 15;
@@ -848,9 +852,9 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
   result.homePossession = ClampInt(50 + (teamOVR - opponentOVR) + RandomInt(-5, 5) + (strategy == "Attacking" ? 5 : strategy == "Defensive" ? -5 : 0), 30, 70);
   result.played = true;
 
-  int totalGoals = result.homeGoals + result.awayGoals;
   std::vector<int> scorerIndices;
   int rosterSize = static_cast<int>(m_activeSave->roster.size());
+  if (rosterSize <= 0) return result;
   for (int g = 0; g < result.homeGoals; g++) {
     int attempts = 0;
     int pIdx;
@@ -863,6 +867,21 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
   }
 
   return result;
+}
+
+void CareerDatabase::Process3DMatchResult(int homeGoals, int awayGoals) {
+  if (!m_activeSave) return;
+  m_activeSave->seasonWins += (homeGoals > awayGoals) ? 1 : 0;
+  m_activeSave->seasonDraws += (homeGoals == awayGoals) ? 1 : 0;
+  m_activeSave->seasonLosses += (homeGoals < awayGoals) ? 1 : 0;
+  m_activeSave->seasonGoalsFor += homeGoals;
+  m_activeSave->seasonGoalsAgainst += awayGoals;
+
+  std::string summary = m_activeSave->name + " " + std::to_string(homeGoals) + " - " +
+                        std::to_string(awayGoals) + " (3D match)";
+  AddEvent("matchday", summary,
+           homeGoals > awayGoals ? 1 : (homeGoals == awayGoals ? 0 : -1),
+           homeGoals != awayGoals);
 }
 
 } // namespace blunted
