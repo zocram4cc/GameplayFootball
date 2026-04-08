@@ -165,6 +165,31 @@ bool PrepareDatabaseForLeague() {
       "competition_id INTEGER, "
       "tournament_id INTEGER)");
 
+  result = GetDB()->Query(
+      "CREATE TABLE match_results(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "calendar_id INTEGER, "
+      "team1_id INTEGER, "
+      "team2_id INTEGER, "
+      "team1_goals INTEGER DEFAULT 0, "
+      "team2_goals INTEGER DEFAULT 0, "
+      "played INTEGER DEFAULT 0, "
+      "competition_id INTEGER)");
+
+  result = GetDB()->Query(
+      "CREATE TABLE inbox_messages(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+      "sender VARCHAR(64), "
+      "subject VARCHAR(128), "
+      "body TEXT, "
+      "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
+      "read INTEGER DEFAULT 0)");
+
+  GetDB()->Query("DELETE FROM inbox_messages");
+  GetDB()->Query(
+      "INSERT INTO inbox_messages (sender, subject, body) "
+      "VALUES ('League Office', 'Welcome to League Mode', "
+      "'Welcome! Your season is about to begin. Check the Calendar for upcoming fixtures, "
+      "the Standings to track your position, and the Dashboard for team management.')");
+
   GetDB()->Query("DELETE FROM calendar");
   GetDB()->Query("DELETE FROM teams");
   GetDB()->Query("DELETE FROM leagues");

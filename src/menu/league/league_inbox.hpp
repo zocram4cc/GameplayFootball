@@ -4,8 +4,10 @@
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/dialog.hpp"
 #include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
+#include "utils/gui2/widgets/text.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 #include "../pagefactory.hpp"
@@ -19,6 +21,14 @@ public:
   virtual void Process();
 
 protected:
+  void RefreshMessages();
+  void GoBack();
+  void DeleteMessage(int msgID);
+
+  Gui2Frame* frame;
+  Gui2Grid* messageGrid;
+  Gui2Caption* countCaption;
+  std::string m_selectedLeagueID;
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;
 };

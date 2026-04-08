@@ -7,9 +7,11 @@
 
 #include <cctype>
 #include <chrono>
+#include <ctime>
 
 #include "../../main.hpp"
 #include "../../league/leaguecode.hpp"
+#include "utils/database.hpp"
 #include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
@@ -44,40 +46,40 @@ LeaguePage::LeaguePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false),
       autoStepTriggered(false) {
-  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_league", 10, 10, 80, 80, true);
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_league", 15, 5, 70, 90, true);
   this->AddView(bgPanel);
   bgPanel->Show();
 
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league", 20, 20, 60, 3, "League");
-  this->AddView(title);
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_league", 2, 2, 66, 3, "League Mode");
+  bgPanel->AddView(title);
   title->Show();
 
-  captionTime = new Gui2Caption(windowManager, "caption_league_time", 60, 20, 20, 3, "time");
-  this->AddView(captionTime);
+  captionTime = new Gui2Caption(windowManager, "caption_league_time", 40, 2, 28, 3, "time");
+  bgPanel->AddView(captionTime);
   captionTime->Show();
 
   SetTimeCaption();
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_main", 20, 30, 60, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_league_main", 2, 8, 66, 60);
 
   Gui2Button* buttonForward =
-      new Gui2Button(windowManager, "button_league_forward", 20, 30, 30, 3, "Open Dashboard");
+      new Gui2Button(windowManager, "button_league_forward", 0, 0, 36, 5, "Open Dashboard");
   buttonForward->sig_OnClick.connect([this](...) { GoForward(); });
   buttonForward->SetFocus();
 
   Gui2Button* buttonStepTime =
-      new Gui2Button(windowManager, "button_league_steptime", 20, 30, 30, 3, "Advance One Day");
+      new Gui2Button(windowManager, "button_league_steptime", 0, 0, 36, 5, "Advance One Day");
   buttonStepTime->sig_OnClick.connect([this](...) { StepTime(); });
 
   Gui2Button* buttonMainMenu =
-      new Gui2Button(windowManager, "button_league_mainmenu", 20, 30, 30, 3, "Return to Main Menu");
+      new Gui2Button(windowManager, "button_league_mainmenu", 0, 0, 36, 5, "Return to Main Menu");
   buttonMainMenu->sig_OnClick.connect([this](...) { GoMainMenu(); });
 
   grid->AddView(buttonForward, 0, 0);
-  grid->AddView(buttonStepTime, 1, 0);
-  grid->AddView(buttonMainMenu, 2, 0);
+  grid->AddView(buttonStepTime, 0, 1);
+  grid->AddView(buttonMainMenu, 1, 0);
 
-  this->AddView(grid);
+  bgPanel->AddView(grid);
   grid->UpdateLayout();
   grid->Show();
 
@@ -240,16 +242,19 @@ void LeagueStartPage::GoNew() {
 LeagueStartLoadPage::LeagueStartLoadPage(Gui2WindowManager* windowManager,
                                          const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Frame* frame = new Gui2Frame(windowManager, "bg_league_start_load", 20, 5, 60, 90, true);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "bg_league_start_load", 10, 5, 80, 90, true);
   this->AddView(frame);
+  frame->Show();
 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_league_start_load", 5, 5, 20, 3, "Load saved league");
+      new Gui2Caption(windowManager, "caption_league_start_load", 2, 2, 66, 3, "Load saved league");
   frame->AddView(title);
+  title->Show();
 
-  browser = new Gui2FileBrowser(windowManager, "filebrowser_league_start_load", 5, 10, 40, 50,
+  browser = new Gui2FileBrowser(windowManager, "filebrowser_league_start_load", 2, 10, 90, 75,
                                 "./saves", e_DirEntryType_Directory);
   frame->AddView(browser);
+  browser->Show();
 
   browser->sig_OnClick.connect([this](...) { GoLoadSave(); });
 
@@ -270,6 +275,30 @@ void LeagueStartLoadPage::GoLoadSave() {
   SaveDatabaseToAutosave();
 
   GetDB()->Load(saveLoc.string() + "/autosave.sqlite");
+
+  auto checkResult = GetDB()->Query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'match_results' LIMIT 1");
+  if (checkResult->data.empty()) {
+    GetDB()->Query(
+        "CREATE TABLE match_results(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "calendar_id INTEGER, "
+        "team1_id INTEGER, "
+        "team2_id INTEGER, "
+        "team1_goals INTEGER DEFAULT 0, "
+        "team2_goals INTEGER DEFAULT 0, "
+        "played INTEGER DEFAULT 0, "
+        "competition_id INTEGER)");
+  }
+
+  auto inboxCheck = GetDB()->Query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'inbox_messages' LIMIT 1");
+  if (inboxCheck->data.empty()) {
+    GetDB()->Query(
+        "CREATE TABLE inbox_messages(id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "sender VARCHAR(64), "
+        "subject VARCHAR(128), "
+        "body TEXT, "
+        "timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "read INTEGER DEFAULT 0)");
+  }
 
   this->Exit();
 
@@ -373,9 +402,9 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridCurrencySelect->AddView(currencySelectPulldown, 1, 0);
   gridCurrencySelect->UpdateLayout(0.0, 0.0, 0.5, 0.5);
   gridCurrencySelect->SetWrapping(false);
-  grid->AddView(gridCurrencySelect, 1, 0);
+  grid->AddView(gridCurrencySelect, 2, 0);
 
-  grid->AddView(difficultySlider, 2, 0);
+  grid->AddView(difficultySlider, 3, 0);
 
   Gui2Grid* gridSaveName =
       new Gui2Grid(windowManager, "grid_league_start_new_choices_savegamename", 0, 0, 1, 1);
@@ -383,7 +412,7 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridSaveName->AddView(saveNameInput, 1, 0);
   gridSaveName->UpdateLayout(0.0, 0.0, 0.5, 0.5);
   gridSaveName->SetWrapping(false);
-  grid->AddView(gridSaveName, 4, 0);
+  grid->AddView(gridSaveName, 5, 0);
 
   Gui2Grid* gridManagerName =
       new Gui2Grid(windowManager, "grid_league_start_new_choices_managername", 0, 0, 1, 1);
@@ -391,9 +420,9 @@ LeagueStartNewPage::LeagueStartNewPage(Gui2WindowManager* windowManager,
   gridManagerName->AddView(managerNameInput, 1, 0);
   gridManagerName->UpdateLayout(0.0, 0.0, 0.5, 0.5);
   gridManagerName->SetWrapping(false);
-  grid->AddView(gridManagerName, 5, 0);
+  grid->AddView(gridManagerName, 6, 0);
 
-  grid->AddView(proceedButton, 6, 0);
+  grid->AddView(proceedButton, 7, 0);
 
   grid->UpdateLayout(0.0, 0.0, 0.0, 3.0);
   frame->AddView(grid);
@@ -489,11 +518,19 @@ void LeagueStartNewPage::CloseDatabaseSelectDialog() {
 void LeagueStartNewPage::RefreshTeamSelect() {
   teamSelectPulldown->ClearEntries();
   try {
-    auto result = GetDB()->Query("SELECT id, name FROM teams ORDER BY name");
-    for (unsigned int r = 0; r < result->data.size(); r++) {
-      std::string id = result->data.at(r).at(0);
-      std::string name = result->data.at(r).at(1);
-      teamSelectPulldown->AddEntry(name, id);
+    Database foundationDB;
+    std::filesystem::path dbPath("databases");
+    dbPath /= data_SelectedDatabase;
+    dbPath /= "database.sqlite";
+    if (foundationDB.Load(dbPath.string())) {
+      auto result = foundationDB.Query("SELECT id, name FROM teams ORDER BY name");
+      for (unsigned int r = 0; r < result->data.size(); r++) {
+        std::string id = result->data.at(r).at(0);
+        std::string name = result->data.at(r).at(1);
+        teamSelectPulldown->AddEntry(name, id);
+      }
+    } else {
+      teamSelectPulldown->AddEntry("Cannot load database", "0");
     }
   } catch (...) {
     teamSelectPulldown->AddEntry("Select a database first", "0");
@@ -618,12 +655,17 @@ void LeagueStartNewPage::CloseCreateSaveDialog() {
     Log(e_FatalError, "LeagueStartNewPage", "CloseCreateSaveDialog",
         "Could not prepare database for league");
 
+  auto now_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  int currentYear = 1900 + std::localtime(&now_time)->tm_year;
+  std::string startDate = std::to_string(currentYear) + "-06-01";
+
   auto result = GetDB()->Query(
       "INSERT INTO settings (managername, team_id, currency, difficulty, seasonyear, timestamp) "
       "VALUES ('" +
       managerNameInput->GetText() + "', " + data_SelectedTeamID + ", '" +
       currencySelectPulldown->GetSelected() + "', " +
-      real_to_str(difficultySlider->GetValue()) + ", 2013, '2013-06-01')");
+      real_to_str(difficultySlider->GetValue()) + ", " +
+      std::to_string(currentYear) + ", '" + startDate + "')");
 
   GenerateSeasonCalendars();
 

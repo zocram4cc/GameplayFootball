@@ -54,20 +54,32 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
   else if (nextPhase == e_MatchPhase_Penalties)
     phaseName = "penalties";
 
-  buttonNext = new Gui2Button(windowManager, "button_next", 0, 0, 30, 3, "begin " + phaseName);
-  Gui2Button* button1 = new Gui2Button(windowManager, "button1", 0, 0, 30, 3, "game plan");
+  std::string phaseLabel = "begin " + phaseName;
+
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_phase", 25, 25, 50, 50, true);
+  this->AddView(bgPanel);
+  bgPanel->Show();
+
+  Gui2Caption* phaseTitle =
+      new Gui2Caption(windowManager, "caption_phase", 2, 2, 46, 3,
+                      phaseName.empty() ? "Match Phase" : phaseName);
+  bgPanel->AddView(phaseTitle);
+  phaseTitle->Show();
+
+  buttonNext = new Gui2Button(windowManager, "button_next", 0, 0, 44, 4, phaseLabel);
+  Gui2Button* button1 = new Gui2Button(windowManager, "button1", 0, 0, 44, 4, "game plan");
 
   buttonNext->sig_OnClick.connect([this](...) { ContinueGame(); });
   button1->sig_OnClick.connect([this](...) { GoGamePlan(); });
 
-  grid = new Gui2Grid(windowManager, "grid", 10, 10, 80, 80);
+  grid = new Gui2Grid(windowManager, "grid", 2, 8, 46, 30);
 
   grid->AddView(buttonNext, 0, 0);
   grid->AddView(button1, 1, 0);
 
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  bgPanel->AddView(grid);
   grid->Show();
 
   buttonNext->SetFocus();

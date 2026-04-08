@@ -1,9 +1,13 @@
 #include "league_calendar.hpp"
 
+#include <cstdlib>
+
 #include "../../main.hpp"
 #include "menu_smoke.hpp"
 #include "../pagefactory.hpp"
 #include "base/utils.hpp"
+#include "utils/gui2/widgets/dialog.hpp"
+#include "utils/gui2/widgets/text.hpp"
 
 LeagueCalendarPage::LeagueCalendarPage(Gui2WindowManager* windowManager,
                                        const Gui2PageData& pageData)
@@ -82,7 +86,7 @@ void LeagueCalendarPage::RefreshFixtures() {
   }
 
   std::string query =
-      "SELECT c.timestamp, t1.name, t2.name, l.name "
+      "SELECT c.id, c.timestamp, t1.name, t2.name, l.name "
       "FROM calendar c "
       "JOIN teams t1 ON c.team1_id = t1.id "
       "JOIN teams t2 ON c.team2_id = t2.id "
@@ -93,18 +97,59 @@ void LeagueCalendarPage::RefreshFixtures() {
   query += "ORDER BY c.timestamp LIMIT 40";
 
   auto result = GetDB()->Query(query);
-  fixturesHeader = new Gui2Caption(windowManager, "caption_cal_header", 2, 10, 66, 2,
-                                   "Date              | Home                | Away                | League");
+  Gui2Caption* fixturesHeader = new Gui2Caption(windowManager, "caption_cal_header", 2, 10, 66, 2,
+                                    "Date              | Home                | Away                | League");
   frame->AddView(fixturesHeader);
   fixturesHeader->Show();
 
   fixturesGrid = new Gui2Grid(windowManager, "grid_cal", 2, 13, 66, 75);
   int row = 0;
   for (const auto& r : result->data) {
+    std::string calID = r.at(0);
     char buf[256];
     snprintf(buf, sizeof(buf), "%-17s | %-19s | %-19s | %s",
-             r.at(0).c_str(), r.at(1).c_str(), r.at(2).c_str(), r.at(3).c_str());
+             r.at(1).c_str(), r.at(2).c_str(), r.at(3).c_str(), r.at(4).c_str());
+    std::string homeTeam = r.at(2);
+    std::string awayTeam = r.at(3);
     Gui2Button* btn = new Gui2Button(windowManager, "btn_fixture_" + std::to_string(row), 0, 0, 86, 2.5, buf);
+    btn->sig_OnClick.connect([this, windowManager, calID, homeTeam, awayTeam](...) {
+      Gui2Dialog* dlg = new Gui2Dialog(windowManager, "dialog_fixture", 25, 25, 50, 50,
+                                       homeTeam + " vs " + awayTeam);
+      Gui2Text* txt = new Gui2Text(windowManager, "text_fixture", 5, 5, 90, 70, 2.5, 40, "");
+      txt->AddText(homeTeam + " vs " + awayTeam);
+      txt->AddEmptyLine();
+      txt->AddText("Simulate this match to generate a result?");
+      dlg->AddContent(txt);
+
+      (dlg->AddSingleButton("Simulate"))->SetFocus();
+      dlg->sig_OnPositive.connect([this, dlg, calID, homeTeam, awayTeam](...) {
+        int goals1 = rand() % 5;
+        int goals2 = rand() % 5;
+        auto calRow = GetDB()->Query(
+            "SELECT team1_id, team2_id, competition_id FROM calendar WHERE id = " + calID);
+        if (!calRow->data.empty()) {
+          std::string t1 = calRow->data.at(0).at(0);
+          std::string t2 = calRow->data.at(0).at(1);
+          std::string comp = calRow->data.at(0).at(2);
+          GetDB()->Query(
+              "INSERT INTO match_results (calendar_id, team1_id, team2_id, team1_goals, team2_goals, played, competition_id) "
+              "VALUES (" + calID + ", " + t1 + ", " + t2 + ", " +
+              std::to_string(goals1) + ", " + std::to_string(goals2) + ", 1, " + comp + ")");
+
+          std::string resultStr = homeTeam + " " + std::to_string(goals1) + " - " +
+                                   std::to_string(goals2) + " " + awayTeam;
+          GetDB()->Query(
+              "INSERT INTO inbox_messages (sender, subject, body) VALUES "
+              "('Match Reporter', 'Match Result: " + resultStr + "', "
+              "'Full-time: " + resultStr + ". Check the Standings page for updated league tables.')");
+        }
+        dlg->Exit();
+        delete dlg;
+        RefreshFixtures();
+      });
+      this->AddView(dlg);
+      dlg->Show();
+    });
     fixturesGrid->AddView(btn, row++, 0);
   }
   fixturesGrid->UpdateLayout(0.5);

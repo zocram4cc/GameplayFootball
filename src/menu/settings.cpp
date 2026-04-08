@@ -215,24 +215,18 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   slider_Quantization->SetValue(GetConfiguration()->GetReal("gameplay_quantizeddirectionbias",
                                                             _default_QuantizedDirectionBias));
 
-  grid->AddView(slider_Quantization, 7, 0);
-
   Gui2Grid* gridMain = new Gui2Grid(windowManager, "grid_settings_gameplay", 2, 7, 66, 80);
 
-  grid->AddView(slider_ShortPass_AutoDirection);
-  grid->AddView(slider_ShortPass_AutoPower);
-
-  grid->AddView(slider_ThroughPass_AutoDirection);
-  grid->AddView(slider_ThroughPass_AutoPower);
-
-  grid->AddView(slider_HighPass_AutoDirection);
-  grid->AddView(slider_HighPass_AutoPower);
-
-  grid->AddView(slider_Shot_AutoDirection);
-
-  grid->AddView(slider_Agility);
-  grid->AddView(slider_Acceleration);
-  grid->AddView(slider_Quantization);
+  gridMain->AddView(slider_ShortPass_AutoDirection, 0, 0);
+  gridMain->AddView(slider_ShortPass_AutoPower, 1, 0);
+  gridMain->AddView(slider_ThroughPass_AutoDirection, 2, 0);
+  gridMain->AddView(slider_ThroughPass_AutoPower, 3, 0);
+  gridMain->AddView(slider_HighPass_AutoDirection, 4, 0);
+  gridMain->AddView(slider_HighPass_AutoPower, 5, 0);
+  gridMain->AddView(slider_Shot_AutoDirection, 6, 0);
+  gridMain->AddView(slider_Agility, 7, 0);
+  gridMain->AddView(slider_Acceleration, 8, 0);
+  gridMain->AddView(slider_Quantization, 9, 0);
 
   gridMain->UpdateLayout(0.5);
   gridMain->Show();
@@ -242,7 +236,7 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   this->AddView(frame);
 
-  grid->SetFocus();
+  slider_ShortPass_AutoDirection->SetFocus();
 
   this->Show();
 }
@@ -509,8 +503,11 @@ KeyboardPage::KeyboardPage(Gui2WindowManager* windowManager, const Gui2PageData&
   grid->UpdateLayout(0.5);
   wrapperGrid->UpdateLayout(0.0);
 
-  this->AddView(wrapperGrid);
+  frame->AddView(wrapperGrid);
   wrapperGrid->Show();
+
+  frame->Show();
+  this->AddView(frame);
 
   keyButtons[0]->SetFocus();
 
@@ -612,14 +609,14 @@ GamepadsPage::GamepadsPage(Gui2WindowManager* windowManager, const Gui2PageData&
   }
 
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   if (x == 0) {
-    AddSettingsNotice(this, windowManager, "caption_settings_controller_gamepads_empty", 62,
+    AddSettingsNotice(frame, windowManager, "caption_settings_controller_gamepads_empty", 62,
                       "No gamepads detected. Connect one to edit gamepad settings.");
     Gui2Button* backButton =
-        AddSettingsBackButton(this, windowManager, "button_gamepadsmenu_back");
+        AddSettingsBackButton(frame, windowManager, "button_gamepadsmenu_back");
     backButton->SetFocus();
   }
 
@@ -693,7 +690,7 @@ GamepadSetupPage::GamepadSetupPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(buttonFunction, 2, 0);
 
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   buttonCalibration->SetFocus();
@@ -1668,9 +1665,13 @@ bool CheckDuplicate(const std::vector<Resolution>& res, int x, int y) {
 
 GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_settings_graphics", 15, 5, 70, 90, true);
+  this->AddView(frame);
+  frame->Show();
+
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_settings_graphics", 20, 10, 60, 3, Localization::GetInstance().Translate("graphics_title"));
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_settings_graphics", 2, 2, 66, 3, Localization::GetInstance().Translate("graphics_title"));
+  frame->AddView(title);
   title->Show();
   title->SetFocus();
 
@@ -1771,7 +1772,7 @@ GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   this->Show();
@@ -1841,10 +1842,13 @@ AudioPage::AudioPage(Gui2WindowManager* windowManager, const Gui2PageData& pageD
     printf("volume: %f\n", GetConfiguration()->GetReal("audio_volume", 0.5));
   sliderVolume->SetValue(GetConfiguration()->GetReal("audio_volume", 0.5));
 
-  this->AddView(grid);
+  frame->AddView(grid);
   grid->Show();
 
   sliderVolume->SetFocus();
+
+  frame->Show();
+  this->AddView(frame);
 
   this->Show();
 }

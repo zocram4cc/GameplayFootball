@@ -449,28 +449,28 @@ CareerTransferMarketPage::CareerTransferMarketPage(Gui2WindowManager* windowMana
   CareerDatabase::GetInstance().PopulateTransferMarket();
 
   CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
-  std::string budgetStr = save ? ("Transfer Budget: €" + std::to_string(save->transferBudget)) : "No active save";
+  std::string budgetStr = save ? ("Transfer Budget: " + FormatCareerMoney(save->transferBudget)) : "No active save";
 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_tm_title", 10, 3, 80, 3, "Transfer Market");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_tm_title", 6, 3, 82, 3, "Transfer Market");
+  bgPanel->AddView(title);
   title->Show();
 
   Gui2Caption* budget =
-      new Gui2Caption(windowManager, "caption_tm_budget", 10, 7, 80, 2, budgetStr);
-  this->AddView(budget);
+      new Gui2Caption(windowManager, "caption_tm_budget", 6, 7, 82, 2, budgetStr);
+  bgPanel->AddView(budget);
   budget->Show();
 
   Gui2Caption* marketHint = new Gui2Caption(
-      windowManager, "caption_tm_hint", 10, 9, 80, 2,
-      "Tap a listed player to open a lightweight negotiation screen with fee and budget warnings.");
-  this->AddView(marketHint);
+      windowManager, "caption_tm_hint", 6, 9, 82, 2,
+      "Select a player to open a negotiation screen with fee and budget details.");
+  bgPanel->AddView(marketHint);
   marketHint->Show();
 
   Gui2Caption* header =
       new Gui2Caption(windowManager, "caption_tm_header", 3, 12, 94, 2,
                       "Name                  | POS | OVR | POT | Age | Value          | Asking Price");
-  this->AddView(header);
+  bgPanel->AddView(header);
   header->Show();
 
   auto targets = CareerDatabase::GetInstance().GetTransferTargets();
@@ -494,12 +494,12 @@ CareerTransferMarketPage::CareerTransferMarketPage(Gui2WindowManager* windowMana
     grid->AddView(btn, row++, 0);
   }
   grid->UpdateLayout(0.5);
-  this->AddView(grid);
+  bgPanel->AddView(grid);
   grid->Show();
 
   Gui2Button* btnBids = new Gui2Button(windowManager, "btn_tm_mybids", 5, 80, 40, 3, "My Bids");
   btnBids->sig_OnClick.connect([this](...) { CreatePage(e_PageID_CareerTransferBids); });
-  this->AddView(btnBids);
+  bgPanel->AddView(btnBids);
   btnBids->Show();
 
   Gui2Button* btnProcess = new Gui2Button(windowManager, "btn_tm_process", 50, 80, 40, 3, "Process Pending Bids");
@@ -507,12 +507,12 @@ CareerTransferMarketPage::CareerTransferMarketPage(Gui2WindowManager* windowMana
     CareerDatabase::GetInstance().ProcessPendingBids();
     CreatePage(e_PageID_CareerTransferBids);
   });
-  this->AddView(btnProcess);
+  bgPanel->AddView(btnProcess);
   btnProcess->Show();
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_tm_back", 30, 90, 40, 3, "Back to Hub");
   btnBack->sig_OnClick.connect([this](...) { CreatePage(GetHubPageID()); });
-  this->AddView(btnBack);
+  bgPanel->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
 
@@ -532,28 +532,29 @@ CareerTransferBidsPage::CareerTransferBidsPage(Gui2WindowManager* windowManager,
   this->AddView(bgPanel);
   bgPanel->Show();
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_bids_title", 10, 5, 80, 3, "My Transfer Bids");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_bids_title", 6, 3, 82, 3, "My Transfer Bids");
+  bgPanel->AddView(title);
   title->Show();
 
   auto& bids = CareerDatabase::GetInstance().GetActiveBids();
   if (bids.empty()) {
     Gui2Caption* info =
-        new Gui2Caption(windowManager, "caption_bids_empty", 10, 20, 80, 4, "No active bids.");
-    this->AddView(info);
+        new Gui2Caption(windowManager, "caption_bids_empty", 10, 20, 80, 4,
+          "No active bids. Place bids from the Transfer Market and then process them here.");
+    bgPanel->AddView(info);
     info->Show();
   } else {
     Gui2Caption* header =
-        new Gui2Caption(windowManager, "caption_bids_header", 5, 12, 90, 2,
+        new Gui2Caption(windowManager, "caption_bids_header", 5, 10, 90, 2,
                         "Player                 | Bid Amount      | Wage    | Yrs | Status");
-    this->AddView(header);
+    bgPanel->AddView(header);
     header->Show();
 
-    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_bids", 5, 15, 90, 60);
+    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_bids", 5, 13, 90, 62);
     int row = 0;
     for (const auto& b : bids) {
       char buf[256];
-      snprintf(buf, sizeof(buf), "%-22s | €%-14lld | €%-6d | %d   | %s",
+      snprintf(buf, sizeof(buf), "%-22s | EUR %-11lld | EUR %-4d | %d   | %s",
                b.playerName.c_str(), b.bidAmount, b.offeredWage, b.contractYears,
                CareerDatabase::GetInstance().GetBidStatusString(b.status).c_str());
       Gui2Button* btn = new Gui2Button(windowManager, "btn_bid_" + std::to_string(row), 0, 0, 86, 2.5, buf);
@@ -570,18 +571,18 @@ CareerTransferBidsPage::CareerTransferBidsPage(Gui2WindowManager* windowManager,
       grid->AddView(btn, row++, 0);
     }
     grid->UpdateLayout(0.5);
-    this->AddView(grid);
+    bgPanel->AddView(grid);
     grid->Show();
   }
 
-  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_bids_back", 5, 85, 40, 3, "Back to Market");
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_bids_back", 5, 82, 40, 3, "Back to Market");
   btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_CareerTransferMarket); });
-  this->AddView(btnBack);
+  bgPanel->AddView(btnBack);
   btnBack->Show();
 
-  Gui2Button* btnHub = new Gui2Button(windowManager, "btn_bids_hub", 50, 85, 40, 3, "Back to Hub");
+  Gui2Button* btnHub = new Gui2Button(windowManager, "btn_bids_hub", 50, 82, 40, 3, "Back to Hub");
   btnHub->sig_OnClick.connect([this](...) { CreatePage(GetHubPageID()); });
-  this->AddView(btnHub);
+  bgPanel->AddView(btnHub);
   btnHub->Show();
   btnBack->SetFocus();
 
@@ -627,65 +628,65 @@ CareerTransferBidDetailPage::CareerTransferBidDetailPage(Gui2WindowManager* wind
   }
 
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_detail_title", 10, 5, 80, 3, "Transfer: " + m_playerName);
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_detail_title", 6, 3, 82, 3, "Transfer: " + m_playerName);
+  bgPanel->AddView(title);
   title->Show();
 
   if (found) {
     std::string info1 = "Position: " + target.preferredPosition + " | OVR: " + std::to_string(target.overallRating) +
                        " | POT: " + std::to_string(target.potentialRating) + " | Age: " + std::to_string(target.age);
-    Gui2Caption* line1 = new Gui2Caption(windowManager, "caption_detail_info1", 10, 12, 80, 3, info1);
-    this->AddView(line1);
+    Gui2Caption* line1 = new Gui2Caption(windowManager, "caption_detail_info1", 6, 10, 82, 3, info1);
+    bgPanel->AddView(line1);
     line1->Show();
 
-    std::string info2 = "Value: €" + std::to_string(target.value) +
-                       " | Asking Price: €" + std::to_string(target.askingPrice) +
-                       " | Wage: €" + std::to_string(target.wage);
-    Gui2Caption* line2 = new Gui2Caption(windowManager, "caption_detail_info2", 10, 16, 80, 3, info2);
-    this->AddView(line2);
+    std::string info2 = "Value: " + FormatCareerMoney(target.value) +
+                       " | Asking Price: " + FormatCareerMoney(target.askingPrice) +
+                       " | Wage: " + FormatCareerMoney(target.wage);
+    Gui2Caption* line2 = new Gui2Caption(windowManager, "caption_detail_info2", 6, 14, 82, 3, info2);
+    bgPanel->AddView(line2);
     line2->Show();
 
-    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_detail", 10, 25, 80, 40);
+    Gui2Grid* grid = new Gui2Grid(windowManager, "grid_detail", 10, 22, 80, 30);
 
     long long askPrice = target.askingPrice;
     Gui2Button* bidFull = new Gui2Button(windowManager, "btn_bid_full", 0, 0, 76, 3,
-      "Bid Asking Price: €" + std::to_string(askPrice));
+      "Bid Asking Price: " + FormatCareerMoney(askPrice));
     bidFull->sig_OnClick.connect([this, askPrice](...) { PlaceBidForPlayer(askPrice); });
     grid->AddView(bidFull, 0, 0);
 
     long long bid80 = target.askingPrice * 80 / 100;
     Gui2Button* bid80Button = new Gui2Button(windowManager, "btn_bid_80", 0, 0, 76, 3,
-      "Bid 80%: €" + std::to_string(bid80) + " (may be rejected)");
+      "Bid 80%: " + FormatCareerMoney(bid80) + " (may be rejected)");
     bid80Button->sig_OnClick.connect([this, bid80](...) { PlaceBidForPlayer(bid80); });
     grid->AddView(bid80Button, 1, 0);
 
     long long bid60 = target.askingPrice * 60 / 100;
     Gui2Button* bid60Button = new Gui2Button(windowManager, "btn_bid_60", 0, 0, 76, 3,
-      "Bid 60%: €" + std::to_string(bid60) + " (likely rejected)");
+      "Bid 60%: " + FormatCareerMoney(bid60) + " (likely rejected)");
     bid60Button->sig_OnClick.connect([this, bid60](...) { PlaceBidForPlayer(bid60); });
     grid->AddView(bid60Button, 2, 0);
 
     grid->UpdateLayout(0.5);
-    this->AddView(grid);
+    bgPanel->AddView(grid);
     grid->Show();
 
     CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
     if (save) {
       long long totalWithFee = target.askingPrice + (target.askingPrice / 20);
-      std::string feeNote = "Agent fee (5%): €" + std::to_string(target.askingPrice / 20) +
-                           " | Total cost: €" + std::to_string(totalWithFee);
+      std::string feeNote = "Agent fee (5%): " + FormatCareerMoney(target.askingPrice / 20) +
+                           " | Total cost: " + FormatCareerMoney(totalWithFee);
       if (totalWithFee > save->transferBudget) {
         feeNote += " | WARNING: Exceeds budget!";
       }
-      Gui2Caption* fee = new Gui2Caption(windowManager, "caption_detail_fee", 10, 68, 80, 4, feeNote);
-      this->AddView(fee);
+      Gui2Caption* fee = new Gui2Caption(windowManager, "caption_detail_fee", 6, 56, 82, 4, feeNote);
+      bgPanel->AddView(fee);
       fee->Show();
     }
   }
 
   Gui2Button* btnBack = new Gui2Button(windowManager, "btn_detail_back", 30, 85, 40, 3, "Back to Market");
   btnBack->sig_OnClick.connect([this](...) { CreatePage(e_PageID_CareerTransferMarket); });
-  this->AddView(btnBack);
+  bgPanel->AddView(btnBack);
   btnBack->Show();
   btnBack->SetFocus();
 
@@ -713,39 +714,61 @@ void CareerTransferBidDetailPage::PlaceBidForPlayer(long long amount) {
 CareerPressConferencePage::CareerPressConferencePage(Gui2WindowManager* windowManager,
                                                      const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_press", 5, 0, 90, 100, true);
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_press", 4, 2, 92, 96, true);
   this->AddView(bgPanel);
   bgPanel->Show();
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_pressconf", 10, 5, 80, 3, "Press Conference");
-  this->AddView(title);
+      new Gui2Caption(windowManager, "caption_pressconf", 6, 3, 82, 3, "Press Conference");
+  bgPanel->AddView(title);
   title->Show();
 
+  CareerSave* activeSave = CareerDatabase::GetInstance().GetActiveSave();
+  if (activeSave) {
+    std::string context = "Season " + std::to_string(activeSave->season.currentSeason) +
+                          " | Reputation: " + CareerDatabase::GetInstance().GetReputationStatus() +
+                          " | Board: " + std::to_string(activeSave->boardConfidence) + "%";
+    Gui2Caption* ctxLine = new Gui2Caption(windowManager, "caption_pc_ctx", 6, 7, 82, 2, context);
+    bgPanel->AddView(ctxLine);
+    ctxLine->Show();
+  }
+
+  Gui2Frame* questionFrame = new Gui2Frame(windowManager, "frame_pc_question", 6, 12, 84, 14, true);
+  Gui2Caption* questionLabel =
+      new Gui2Caption(windowManager, "caption_pc_q_label", 2, 1, 80, 2, "Reporter asks:");
+  questionFrame->AddView(questionLabel);
+  questionLabel->Show();
   Gui2Caption* question =
-      new Gui2Caption(windowManager, "caption_pc_question", 10, 12, 80, 5,
+      new Gui2Caption(windowManager, "caption_pc_question", 2, 4, 80, 8,
                       "How do you feel about the team's performance this week?");
-  this->AddView(question);
+  questionFrame->AddView(question);
   question->Show();
+  bgPanel->AddView(questionFrame);
+  questionFrame->Show();
+
+  Gui2Caption* answerHint = new Gui2Caption(windowManager, "caption_pc_answer_hint", 6, 28, 82, 2,
+    "Your response affects reputation and board confidence.");
+  bgPanel->AddView(answerHint);
+  answerHint->Show();
 
   Gui2Button* btnPositive =
-      new Gui2Button(windowManager, "btn_pc_positive", 0, 0, 76, 3,
-                     "We gave everything – the fans should be proud. (+reputation)");
-  Gui2Button* btnNeutral = new Gui2Button(windowManager, "btn_pc_neutral", 0, 0, 76, 3,
-                                           "It was a decent performance; we move on.");
-  Gui2Button* btnNegative = new Gui2Button(windowManager, "btn_pc_negative", 0, 0, 76, 3,
-                                            "I'm disappointed. We must do better. (-reputation)");
+      new Gui2Button(windowManager, "btn_pc_positive", 0, 0, 76, 4,
+                     "We gave everything - the fans should be proud.\n(+reputation, +board confidence)");
+  Gui2Button* btnNeutral = new Gui2Button(windowManager, "btn_pc_neutral", 0, 0, 76, 4,
+                                           "It was a decent performance; we move on.\n(no change)");
+  Gui2Button* btnNegative = new Gui2Button(windowManager, "btn_pc_negative", 0, 0, 76, 4,
+                                            "I'm disappointed. We must do better.\n(-reputation, -board confidence)");
 
   btnPositive->sig_OnClick.connect([this](...) { SelectAnswer(0); });
   btnNeutral->sig_OnClick.connect([this](...) { SelectAnswer(1); });
   btnNegative->sig_OnClick.connect([this](...) { SelectAnswer(2); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "pc_grid", 12, 22, 76, 50);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "pc_grid", 8, 32, 76, 40);
   grid->AddView(btnPositive, 0, 0);
   grid->AddView(btnNeutral, 1, 0);
   grid->AddView(btnNegative, 2, 0);
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  bgPanel->AddView(grid);
   grid->Show();
 
   btnPositive->SetFocus();
@@ -776,47 +799,112 @@ void CareerPressConferencePage::SelectAnswer(int answerIndex) {
 CareerLeagueExpansionPage::CareerLeagueExpansionPage(Gui2WindowManager* windowManager,
                                                      const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_exp", 5, 0, 90, 100, true);
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_exp", 4, 2, 92, 96, true);
   this->AddView(bgPanel);
   bgPanel->Show();
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_leagueexp", 10, 5, 80, 3,
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_leagueexp", 6, 3, 82, 3,
                                        "League Expansion & Relegation");
-  this->AddView(title);
+  bgPanel->AddView(title);
   title->Show();
 
-  Gui2Caption* info = new Gui2Caption(windowManager, "caption_leagueexp_info", 10, 12, 80, 3,
-                                      "Configure promotion and relegation for your league.");
-  this->AddView(info);
-  info->Show();
+  CareerSave* activeSave = CareerDatabase::GetInstance().GetActiveSave();
+  if (activeSave) {
+    std::string currentConfig = "Divisions: " + std::to_string(activeSave->leagueSettings.divisions.size()) +
+                                " | Promotion/Relegation: " +
+                                (activeSave->leagueSettings.enabled ? "Enabled" : "Disabled");
+    Gui2Caption* statusLine = new Gui2Caption(windowManager, "caption_leagueexp_status", 6, 8, 82, 2, currentConfig);
+    bgPanel->AddView(statusLine);
+    statusLine->Show();
+  }
 
-  Gui2Button* btnEnable = new Gui2Button(windowManager, "btn_leagueexp_enable", 0, 0, 60, 3,
-                                         "Enable Promotion / Relegation");
-  Gui2Button* btnDisable = new Gui2Button(windowManager, "btn_leagueexp_disable", 0, 0, 60, 3,
-                                          "Disable Promotion / Relegation");
+  Gui2Frame* infoFrame = new Gui2Frame(windowManager, "frame_exp_info", 6, 12, 84, 16, true);
+  Gui2Caption* infoBody = new Gui2Caption(windowManager, "caption_leagueexp_body", 2, 2, 80, 12,
+    "Configure promotion and relegation across your league pyramid.\n\n"
+    "Enabling relegation means bottom teams drop to the division below each season, "
+    "while top teams from lower divisions earn promotion.");
+  infoFrame->AddView(infoBody);
+  infoBody->Show();
+  bgPanel->AddView(infoFrame);
+  infoFrame->Show();
+
+  Gui2Grid* grid = new Gui2Grid(windowManager, "leagueexp_grid", 10, 32, 76, 40);
+  Gui2Button* btnEnable = new Gui2Button(windowManager, "btn_leagueexp_enable", 0, 0, 34, 5,
+                                         "Enable\nPromotion/Relegation");
+  Gui2Button* btnDisable = new Gui2Button(windowManager, "btn_leagueexp_disable", 0, 0, 34, 5,
+                                           "Disable\nPromotion/Relegation");
   Gui2Button* btnAddDiv =
-      new Gui2Button(windowManager, "btn_leagueexp_adddiv", 0, 0, 60, 3, "Add Division");
+      new Gui2Button(windowManager, "btn_leagueexp_adddiv", 0, 0, 34, 5, "Add\nDivision");
 
   btnEnable->sig_OnClick.connect([this](...) { EnableRelegation(); });
   btnDisable->sig_OnClick.connect([this](...) { DisableRelegation(); });
   btnAddDiv->sig_OnClick.connect([this](...) { AddDivision(); });
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "leagueexp_grid", 20, 20, 60, 60);
   grid->AddView(btnEnable, 0, 0);
-  grid->AddView(btnDisable, 1, 0);
-  grid->AddView(btnAddDiv, 2, 0);
+  grid->AddView(btnDisable, 0, 1);
+  grid->AddView(btnAddDiv, 1, 0);
   grid->UpdateLayout(0.5);
 
-  this->AddView(grid);
+  bgPanel->AddView(grid);
   grid->Show();
+
+  if (activeSave && activeSave->leagueSettings.enabled) {
+    Gui2Frame* divFrame = new Gui2Frame(windowManager, "frame_exp_divs", 6, 60, 84, 18, true);
+    Gui2Caption* divTitle = new Gui2Caption(windowManager, "caption_exp_divlist", 2, 1, 80, 2,
+      "Active Divisions");
+    divFrame->AddView(divTitle);
+    divTitle->Show();
+    int divY = 4;
+    for (int i = 0; i < static_cast<int>(activeSave->leagueSettings.divisions.size()); i++) {
+      const auto& div = activeSave->leagueSettings.divisions[i];
+      std::string divLine = "Division " + std::to_string(i + 1) + ": " + div.name +
+                            " (" + std::to_string(div.numTeams) + " teams, " +
+                            std::to_string(div.promotionSpots) + " up, " +
+                            std::to_string(div.relegationSpots) + " down)";
+      Gui2Caption* divCap = new Gui2Caption(windowManager, "caption_exp_div_" + std::to_string(i), 2, divY, 80, 2, divLine);
+      divFrame->AddView(divCap);
+      divCap->Show();
+      divY += 2;
+    }
+    bgPanel->AddView(divFrame);
+    divFrame->Show();
+  }
+
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_exp_back", 30, 88, 30, 3, "Back to Hub");
+  btnBack->sig_OnClick.connect([this](...) { CreatePage(GetHubPageID()); });
+  bgPanel->AddView(btnBack);
+  btnBack->Show();
 
   btnEnable->SetFocus();
   this->Show();
 }
 
 CareerLeagueExpansionPage::~CareerLeagueExpansionPage() {}
-void CareerLeagueExpansionPage::EnableRelegation() { CreatePage(GetHubPageID()); }
-void CareerLeagueExpansionPage::DisableRelegation() { CreatePage(GetHubPageID()); }
-void CareerLeagueExpansionPage::AddDivision() { CreatePage(GetHubPageID()); }
+void CareerLeagueExpansionPage::EnableRelegation() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) {
+    save->leagueSettings.enabled = true;
+    if (save->leagueSettings.divisions.empty()) {
+      save->leagueSettings.divisions.push_back({"Premier Division", 20, 3, 3, 0});
+      save->leagueSettings.divisions.push_back({"Second Division", 20, 3, 3, 0});
+    }
+  }
+  CreatePage(e_PageID_CareerLeagueExpansion);
+}
+void CareerLeagueExpansionPage::DisableRelegation() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) save->leagueSettings.enabled = false;
+  CreatePage(e_PageID_CareerLeagueExpansion);
+}
+void CareerLeagueExpansionPage::AddDivision() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) {
+    int divNum = static_cast<int>(save->leagueSettings.divisions.size()) + 1;
+    save->leagueSettings.divisions.push_back(
+      {"Division " + std::to_string(divNum), 20, 3, 3, 0});
+    save->leagueSettings.enabled = true;
+  }
+  CreatePage(e_PageID_CareerLeagueExpansion);
+}
 
 // ---------------------------------------------------------------------------
 // CareerCustomLeaguePage
@@ -825,32 +913,69 @@ void CareerLeagueExpansionPage::AddDivision() { CreatePage(GetHubPageID()); }
 CareerCustomLeaguePage::CareerCustomLeaguePage(Gui2WindowManager* windowManager,
                                                const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
-  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_cust", 5, 0, 90, 100, true);
+  Gui2Frame* bgPanel = new Gui2Frame(windowManager, "bg_career_cust", 4, 2, 92, 96, true);
   this->AddView(bgPanel);
   bgPanel->Show();
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_customleague", 10, 5, 80, 3,
+  Gui2Caption* title = new Gui2Caption(windowManager, "caption_customleague", 6, 3, 82, 3,
                                        "Custom League Creation");
-  this->AddView(title);
+  bgPanel->AddView(title);
   title->Show();
 
-  Gui2Caption* info =
-      new Gui2Caption(windowManager, "caption_customleague_info", 10, 12, 80, 3,
-                      "Design your own league: name, divisions, teams and cup competition.");
-  this->AddView(info);
-  info->Show();
+  Gui2Frame* infoFrame = new Gui2Frame(windowManager, "frame_cust_info", 6, 10, 84, 18, true);
+  Gui2Caption* infoBody = new Gui2Caption(windowManager, "caption_customleague_body", 2, 2, 80, 14,
+    "Design your own league: name, divisions, teams and cup competition.\n\n"
+    "Custom leagues replace the default league structure for this career save. "
+    "You can set the number of divisions and teams per division.");
+  infoFrame->AddView(infoBody);
+  infoBody->Show();
+  bgPanel->AddView(infoFrame);
+  infoFrame->Show();
 
-  Gui2Button* btnCreate = new Gui2Button(windowManager, "btn_customleague_create", 30, 50, 40, 3,
-                                         "Create Custom League");
+  CareerSave* activeSave = CareerDatabase::GetInstance().GetActiveSave();
+  if (activeSave) {
+    Gui2Caption* current = new Gui2Caption(windowManager, "caption_cust_current", 6, 32, 82, 3,
+      "Current: " + (activeSave->customLeague.leagueName.empty() ? "Default League" : activeSave->customLeague.leagueName) +
+      " | Divisions: " + std::to_string(activeSave->customLeague.numDivisions));
+    bgPanel->AddView(current);
+    current->Show();
+  }
+
+  Gui2Grid* grid = new Gui2Grid(windowManager, "cust_grid", 12, 40, 72, 30);
+  Gui2Button* btnCreate = new Gui2Button(windowManager, "btn_customleague_create", 0, 0, 34, 5,
+                                         "Create Custom\nLeague");
+  Gui2Button* btnReset = new Gui2Button(windowManager, "btn_customleague_reset", 0, 0, 34, 5,
+                                        "Reset to\nDefault League");
   btnCreate->sig_OnClick.connect([this](...) { CreateCustomLeague(); });
-  this->AddView(btnCreate);
-  btnCreate->Show();
+  btnReset->sig_OnClick.connect([this, activeSave](...) {
+    if (activeSave) activeSave->customLeague = CustomLeagueConfig();
+    CreatePage(e_PageID_CareerCustomLeague);
+  });
+  grid->AddView(btnCreate, 0, 0);
+  grid->AddView(btnReset, 0, 1);
+  grid->UpdateLayout(0.5);
+  bgPanel->AddView(grid);
+  grid->Show();
+
+  Gui2Button* btnBack = new Gui2Button(windowManager, "btn_cust_back", 30, 88, 30, 3, "Back to Hub");
+  btnBack->sig_OnClick.connect([this](...) { CreatePage(GetHubPageID()); });
+  bgPanel->AddView(btnBack);
+  btnBack->Show();
+
   btnCreate->SetFocus();
 
   this->Show();
 }
 
 CareerCustomLeaguePage::~CareerCustomLeaguePage() {}
-void CareerCustomLeaguePage::CreateCustomLeague() { CreatePage(GetHubPageID()); }
+void CareerCustomLeaguePage::CreateCustomLeague() {
+  CareerSave* save = CareerDatabase::GetInstance().GetActiveSave();
+  if (save) {
+    save->customLeague.leagueName = "Custom League";
+    save->customLeague.numDivisions = 2;
+    save->customLeague.teamsPerDivision = 16;
+  }
+  CreatePage(e_PageID_CareerCustomLeague);
+}
 
 // ---------------------------------------------------------------------------
 // CareerFreeAgencyPage
@@ -1162,7 +1287,7 @@ CareerSquadRosterPage::CareerSquadRosterPage(Gui2WindowManager* windowManager,
 
     Gui2Caption* footer =
       new Gui2Caption(windowManager, "caption_squad_footer", 5, 83, 90, 2,
-        "Total Squad: " + std::to_string(activeSave->roster.size()) + " players | Total Wage Bill: €" + std::to_string(totalWage) + "/week");
+        "Total Squad: " + std::to_string(activeSave->roster.size()) + " players | Total Wage Bill: " + FormatCareerMoney(totalWage) + "/week");
     this->AddView(footer);
     footer->Show();
   }

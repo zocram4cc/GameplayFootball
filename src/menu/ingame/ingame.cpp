@@ -5,6 +5,8 @@
 
 #include "ingame.hpp"
 
+#include <cstdio>
+
 #include "../controllerselect.hpp"
 #include "../gameplan.hpp"
 #include "../pagefactory.hpp"
@@ -20,56 +22,130 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   GetGameTask()->GetMatch()->Pause(true);
 
-  Gui2Button* buttonGamePlan =
-      new Gui2Button(windowManager, "button_gameplan", 0, 0, 30, 3, "game plan");
-  Gui2Button* buttonControllerSelect =
-      new Gui2Button(windowManager, "button_controllerselect", 0, 0, 30, 3, "controller select");
-  Gui2Button* buttonControllerRemap =
-      new Gui2Button(windowManager, "button_controllerremap", 0, 0, 30, 3, "controller remap");
-  Gui2Button* buttonCameraSettings =
-      new Gui2Button(windowManager, "button_camerasettings", 0, 0, 30, 3, "camera settings");
-  Gui2Button* buttonVisualOptions =
-      new Gui2Button(windowManager, "button_visualoptions", 0, 0, 30, 3, "visual options");
-  Gui2Button* buttonSystemSettings =
-      new Gui2Button(windowManager, "button_systemsettings", 0, 0, 30, 3, "system settings");
-  Gui2Button* buttonReplay = new Gui2Button(windowManager, "button_replay", 0, 0, 30, 3, "replay");
-  Gui2Button* buttonSetPieces =
-      new Gui2Button(windowManager, "button_setpieces", 0, 0, 30, 3, "set pieces");
-  Gui2Button* buttonPreQuit =
-      new Gui2Button(windowManager, "button_quit", 0, 0, 30, 3, "forfeit match");
+  Match* match = GetGameTask()->GetMatch();
+  int score0 = match->GetScore(0);
+  int score1 = match->GetScore(1);
+  std::string team0Name = match->GetTeam(0)->GetTeamData()->GetName();
+  std::string team1Name = match->GetTeam(1)->GetTeamData()->GetName();
 
-  buttonGamePlan->sig_OnClick.connect([this](...) { GoGamePlan(); });
-  buttonControllerSelect->sig_OnClick.connect([this](...) { GoControllerSelect(); });
-  buttonControllerRemap->sig_OnClick.connect([this](...) { GoControllerRemap(); });
-  buttonCameraSettings->sig_OnClick.connect([this](...) { GoCameraSettings(); });
-  buttonVisualOptions->sig_OnClick.connect([this](...) { GoVisualOptions(); });
-  buttonSystemSettings->sig_OnClick.connect([this](...) { GoSystemSettings(); });
-  buttonReplay->sig_OnClick.connect([this](...) { GoReplay(); });
-  buttonSetPieces->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
-  buttonPreQuit->sig_OnClick.connect([this](...) { GoPreQuit(); });
+  unsigned long matchTime_ms = match->GetMatchTime_ms();
+  int matchMinute = static_cast<int>(matchTime_ms / 60000);
+  if (matchMinute > 90) matchMinute = 90;
+  else if (matchMinute > 45) matchMinute = 45 + (matchMinute - 45);
 
-  Gui2Frame* frame = new Gui2Frame(windowManager, "frame", 20, 10, 60, 80, true);
+  char scoreBuf[256];
+  snprintf(scoreBuf, sizeof(scoreBuf), "%s  %d - %d  %s  (%d')",
+           team0Name.c_str(), score0, score1, team1Name.c_str(), matchMinute);
+
+  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_ingame", 20, 8, 60, 84, true);
   this->AddView(frame);
   frame->Show();
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid", 2, 8, 56, 70);
+  Gui2Caption* title =
+      new Gui2Caption(windowManager, "caption_ingame_title", 2, 2, 56, 3, "PAUSE");
+  frame->AddView(title);
+  title->Show();
 
-  grid->AddView(buttonGamePlan, 0, 0);
-  grid->AddView(buttonControllerSelect, 1, 0);
-  grid->AddView(buttonControllerRemap, 2, 0);
-  grid->AddView(buttonCameraSettings, 3, 0);
-  grid->AddView(buttonVisualOptions, 4, 0);
-  grid->AddView(buttonSystemSettings, 5, 0);
-  grid->AddView(buttonReplay, 6, 0);
-  grid->AddView(buttonSetPieces, 7, 0);
-  grid->AddView(buttonPreQuit, 8, 0);
+  Gui2Caption* scoreLine =
+      new Gui2Caption(windowManager, "caption_ingame_score", 2, 6, 56, 3, scoreBuf);
+  frame->AddView(scoreLine);
+  scoreLine->Show();
 
-  grid->UpdateLayout(0.5);
+  Gui2Caption* tacticsLabel =
+      new Gui2Caption(windowManager, "caption_ingame_section_tactics", 2, 12, 56, 2, "-- Tactics --");
+  frame->AddView(tacticsLabel);
+  tacticsLabel->Show();
 
-  frame->AddView(grid);
-  grid->Show();
+  Gui2Button* buttonGamePlan =
+      new Gui2Button(windowManager, "button_gameplan", 0, 0, 56, 3, "Game Plan");
+  Gui2Button* buttonSetPieces =
+      new Gui2Button(windowManager, "button_setpieces", 0, 0, 56, 3, "Set Pieces");
 
-  buttonGamePlan->SetFocus();
+  buttonGamePlan->sig_OnClick.connect([this](...) { GoGamePlan(); });
+  buttonSetPieces->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
+
+  Gui2Grid* gridTactics = new Gui2Grid(windowManager, "grid_tactics", 2, 15, 56, 12);
+  gridTactics->AddView(buttonGamePlan, 0, 0);
+  gridTactics->AddView(buttonSetPieces, 1, 0);
+  gridTactics->UpdateLayout(0.5);
+  frame->AddView(gridTactics);
+  gridTactics->Show();
+
+  Gui2Caption* settingsLabel =
+      new Gui2Caption(windowManager, "caption_ingame_section_settings", 2, 32, 56, 2, "-- Settings --");
+  frame->AddView(settingsLabel);
+  settingsLabel->Show();
+
+  Gui2Button* buttonControllerSelect =
+      new Gui2Button(windowManager, "button_controllerselect", 0, 0, 56, 3, "Controller Select");
+  Gui2Button* buttonCameraSettings =
+      new Gui2Button(windowManager, "button_camerasettings", 0, 0, 56, 3, "Camera Settings");
+  Gui2Button* buttonVisualOptions =
+      new Gui2Button(windowManager, "button_visualoptions", 0, 0, 56, 3, "Visual Options");
+  Gui2Button* buttonSystemSettings =
+      new Gui2Button(windowManager, "button_systemsettings", 0, 0, 56, 3, "System Settings");
+
+  buttonControllerSelect->sig_OnClick.connect([this](...) { GoControllerSelect(); });
+  buttonCameraSettings->sig_OnClick.connect([this](...) { GoCameraSettings(); });
+  buttonVisualOptions->sig_OnClick.connect([this](...) { GoVisualOptions(); });
+  buttonSystemSettings->sig_OnClick.connect([this](...) { GoSystemSettings(); });
+
+  Gui2Grid* gridSettings = new Gui2Grid(windowManager, "grid_settings", 2, 35, 56, 20);
+  gridSettings->AddView(buttonControllerSelect, 0, 0);
+  gridSettings->AddView(buttonCameraSettings, 1, 0);
+  gridSettings->AddView(buttonVisualOptions, 2, 0);
+  gridSettings->AddView(buttonSystemSettings, 3, 0);
+  gridSettings->UpdateLayout(0.5);
+  frame->AddView(gridSettings);
+  gridSettings->Show();
+
+  Gui2Caption* mediaLabel =
+      new Gui2Caption(windowManager, "caption_ingame_section_media", 2, 60, 56, 2, "-- Media --");
+  frame->AddView(mediaLabel);
+  mediaLabel->Show();
+
+  Gui2Button* buttonReplay = new Gui2Button(windowManager, "button_replay", 0, 0, 56, 3, "Replay");
+
+  buttonReplay->sig_OnClick.connect([this](...) { GoReplay(); });
+
+  Gui2Grid* gridMedia = new Gui2Grid(windowManager, "grid_media", 2, 63, 56, 6);
+  gridMedia->AddView(buttonReplay, 0, 0);
+  gridMedia->UpdateLayout(0.5);
+  frame->AddView(gridMedia);
+  gridMedia->Show();
+
+  Gui2Caption* exitLabel =
+      new Gui2Caption(windowManager, "caption_ingame_section_exit", 2, 74, 56, 2, "-- Match --");
+  frame->AddView(exitLabel);
+  exitLabel->Show();
+
+  Gui2Button* buttonResume =
+      new Gui2Button(windowManager, "button_resume", 0, 0, 56, 3, "Resume Match");
+  Gui2Button* buttonPreQuit =
+      new Gui2Button(windowManager, "button_quit", 0, 0, 56, 3, "Forfeit Match");
+
+  buttonResume->sig_OnClick.connect([this](...) {
+    GetMenuTask()->ReleaseAllButtons();
+    GetGameTask()->GetMatch()->Pause(false);
+    this->Exit();
+    delete this;
+  });
+  buttonPreQuit->sig_OnClick.connect([this](...) { GoPreQuit(); });
+
+  Gui2Grid* gridExit = new Gui2Grid(windowManager, "grid_exit", 2, 77, 56, 12);
+  gridExit->AddView(buttonResume, 0, 0);
+  gridExit->AddView(buttonPreQuit, 1, 0);
+  gridExit->UpdateLayout(0.5);
+  frame->AddView(gridExit);
+  gridExit->Show();
+
+  Gui2Caption* hintCaption =
+      new Gui2Caption(windowManager, "caption_ingame_hint", 2, 92, 56, 2,
+                      "Press ESC to resume");
+  frame->AddView(hintCaption);
+  hintCaption->Show();
+
+  buttonResume->SetFocus();
 
   this->Show();
 }
@@ -134,11 +210,11 @@ PreQuitPage::PreQuitPage(Gui2WindowManager* windowManager, const Gui2PageData& p
   frame->Show();
 
   Gui2Caption* restartCaption = new Gui2Caption(windowManager, "caption_prequit_info", 0, 0, 100, 3,
-                                                "are you sure you want to forfeit?");
+                                                "Are you sure you want to forfeit this match?");
   Gui2Button* okButton =
-      new Gui2Button(windowManager, "button_prequit_ok", 10, 0, 30, 3, "OK, forfeit");
+      new Gui2Button(windowManager, "button_prequit_ok", 10, 0, 30, 3, "Forfeit");
   Gui2Button* cancelButton =
-      new Gui2Button(windowManager, "button_prequit_cancel", 10, 0, 30, 3, "Continue match");
+      new Gui2Button(windowManager, "button_prequit_cancel", 10, 0, 30, 3, "Continue Match");
   okButton->sig_OnClick.connect([this](...) { GoMenu(); });
   cancelButton->sig_OnClick.connect([this](...) { GoBack(); });
 

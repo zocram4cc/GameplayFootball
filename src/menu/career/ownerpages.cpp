@@ -315,6 +315,7 @@ OwnerStadiumPage::OwnerStadiumPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(btnBack);
   btnBack->Show();
 
+  btnBack->SetFocus();
   this->Show();
 }
 
@@ -462,6 +463,7 @@ OwnerFinancesPage::OwnerFinancesPage(Gui2WindowManager* windowManager, const Gui
   this->AddView(btnBack);
   btnBack->Show();
 
+  btnBack->SetFocus();
   this->Show();
 }
 
@@ -564,6 +566,7 @@ OwnerStaffPage::OwnerStaffPage(Gui2WindowManager* windowManager, const Gui2PageD
   root->AddView(btnBack);
   btnBack->Show();
 
+  btnHire->SetFocus();
   this->Show();
 }
 
@@ -640,6 +643,7 @@ OwnerStaffHirePage::OwnerStaffHirePage(Gui2WindowManager* windowManager, const G
   root->AddView(btnBack);
   btnBack->Show();
 
+  btnBack->SetFocus();
   this->Show();
 }
 
@@ -756,6 +760,7 @@ OwnerSponsorsPage::OwnerSponsorsPage(Gui2WindowManager* windowManager, const Gui
   root->AddView(btnBack);
   btnBack->Show();
 
+  btnBack->SetFocus();
   this->Show();
 }
 
@@ -862,6 +867,7 @@ OwnerBoardRoomPage::OwnerBoardRoomPage(Gui2WindowManager* windowManager, const G
   root->AddView(btnBack);
   btnBack->Show();
 
+  btnBack->SetFocus();
   this->Show();
 }
 

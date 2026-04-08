@@ -4,8 +4,11 @@
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/editline.hpp"
 #include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
+#include "utils/gui2/widgets/pulldown.hpp"
+#include "utils/gui2/widgets/slider.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 #include "../pagefactory.hpp"
@@ -39,6 +42,14 @@ public:
   virtual void Process();
 
 protected:
+  void SaveSettings();
+
+  Gui2EditLine* editManagerName;
+  Gui2Pulldown* pulldownCurrency;
+  Gui2Slider* sliderDifficulty;
+  Gui2EditLine* editSeasonYear;
+  Gui2Frame* frame;
+
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;
 };

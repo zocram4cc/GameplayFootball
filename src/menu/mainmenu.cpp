@@ -112,27 +112,31 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
     : Gui2Page(windowManager, pageData),
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false) {
-  // Beautiful elegant background container for title and buttons
-  Gui2Frame* mainContainer = new Gui2Frame(windowManager, "frame_main_menu", 5, 5, 40, 80, true);
+  Gui2Frame* root = new Gui2Frame(windowManager, "frame_mm_root", 2, 3, 96, 94, true);
+  this->AddView(root);
+  root->Show();
 
-  // Title positioned inside the elegant frame
-  Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 2, 2, 36, 16);
+  Gui2Frame* titlePanel = new Gui2Frame(windowManager, "frame_mm_title", 4, 2, 38, 24, true);
+  Gui2Image* title = new Gui2Image(windowManager, "image_main_title", 2, 2, 34, 18);
   title->LoadImage("media/menu/main/title01.png");
-
-  mainContainer->AddView(title);
+  titlePanel->AddView(title);
   title->Show();
+  root->AddView(titlePanel);
+  titlePanel->Show();
 
-  // Present menu options
-  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 36, 6, "Quick Match"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 36, 6, "League Mode"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_career", 0, 0, 36, 6, "Career Mode"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 36, 6, "Options"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 36, 6, "Credits"));
-  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 36, 6, "Quit to Desktop"));
+  Gui2Frame* navPanel = new Gui2Frame(windowManager, "frame_mm_nav", 4, 28, 38, 50, true);
+  grid = new Gui2Grid(windowManager, "grid_main", 2, 2, 34, 46);
+
+  buttons.push_back(new Gui2Button(windowManager, "button_main_start", 0, 0, 34, 5, "Quick Match"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_league", 0, 0, 34, 5, "League Mode"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_career", 0, 0, 34, 5, "Career Mode"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 34, 5, "Options"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 34, 5, "Credits"));
+  buttons.push_back(new Gui2Button(windowManager, "button_main_quit", 0, 0, 34, 5, "Quit to Desktop"));
 
   if (!IsReleaseVersion()) {
     buttons.push_back(
-        new Gui2Button(windowManager, "button_main_import", 0, 0, 36, 6, "Import Data"));
+        new Gui2Button(windowManager, "button_main_import", 0, 0, 34, 5, "Import Data"));
   }
 
   buttons.at(0)->sig_OnClick.connect([this](...) { GoControllerSelect(); });
@@ -147,20 +151,52 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
     buttons.at(5)->sig_OnClick.connect([this](...) { GoOutro(); });
   }
 
-  // Elegant grid positioning inside the container
-  grid = new Gui2Grid(windowManager, "grid_main", 2, 20, 36, 56);
-
   for (unsigned int i = 0; i < buttons.size(); i++) {
     grid->AddView(buttons.at(i), i, 0);
   }
-
   grid->UpdateLayout(0.3, 0.3, 0.5, 0.5);
 
-  mainContainer->AddView(grid);
+  navPanel->AddView(grid);
   grid->Show();
+  root->AddView(navPanel);
+  navPanel->Show();
 
-  this->AddView(mainContainer);
-  mainContainer->Show();
+  Gui2Frame* infoPanel = new Gui2Frame(windowManager, "frame_mm_info", 46, 4, 50, 42, true);
+  Gui2Caption* welcome = new Gui2Caption(windowManager, "caption_mm_welcome", 2, 2, 46, 3,
+    "League Soccer");
+  infoPanel->AddView(welcome);
+  welcome->Show();
+  Gui2Caption* tagline = new Gui2Caption(windowManager, "caption_mm_tagline", 2, 6, 46, 4,
+    "Open-source football simulation with career modes, owner management, and 3D match engine.");
+  infoPanel->AddView(tagline);
+  tagline->Show();
+  Gui2Caption* modes = new Gui2Caption(windowManager, "caption_mm_modes", 2, 14, 46, 6,
+    "Quick Match: Jump straight into a game.\n"
+    "League Mode: Full season with standings.\n"
+    "Career Mode: Manager, player, GM, coach, or owner.");
+  infoPanel->AddView(modes);
+  modes->Show();
+  Gui2Caption* hint = new Gui2Caption(windowManager, "caption_mm_hint", 2, 26, 46, 4,
+    "Navigate with arrow keys or gamepad. Press Enter or A to select.");
+  infoPanel->AddView(hint);
+  hint->Show();
+  root->AddView(infoPanel);
+  infoPanel->Show();
+
+  Gui2Frame* recentPanel = new Gui2Frame(windowManager, "frame_mm_recent", 46, 50, 50, 34, true);
+  Gui2Caption* recentTitle = new Gui2Caption(windowManager, "caption_mm_recent_title", 2, 2, 46, 2,
+    "Recent Updates");
+  recentPanel->AddView(recentTitle);
+  recentTitle->Show();
+  Gui2Caption* recentBody = new Gui2Caption(windowManager, "caption_mm_recent_body", 2, 6, 46, 10,
+    "- Owner mode with stadium, staff, sponsors\n"
+    "- Transfer market with bid negotiations\n"
+    "- Press conferences and board objectives\n"
+    "- Youth academy and scouting network");
+  recentPanel->AddView(recentBody);
+  recentBody->Show();
+  root->AddView(recentPanel);
+  recentPanel->Show();
 
   int selectedButtonID = pageData.properties->GetInt("selectedButtonID");
   selectedButtonID = clamp(selectedButtonID, 0, (signed int)buttons.size() - 1);
