@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <ctime>
 #include <random>
+#include <fstream>
+#include <sstream>
 
 namespace {
 
@@ -41,6 +43,13 @@ bool CareerDatabase::Initialize(const std::string& saveDir) {
 }
 
 bool CareerDatabase::LoadCareerSave(const std::string& saveName) {
+  if (!m_saveDirectory.empty()) {
+    std::string path = m_saveDirectory + "/" + saveName + ".career";
+    if (LoadFromFile(path)) {
+      printf("[career] Loaded save: %s\n", saveName.c_str());
+      return true;
+    }
+  }
   m_activeSave = std::make_unique<CareerSave>();
   m_activeSave->name = saveName;
   m_activeSave->club.clubName = saveName;
@@ -90,7 +99,11 @@ bool CareerDatabase::CreateNewCareer(const std::string& careerName, const std::s
   return SaveCareerData();
 }
 
-bool CareerDatabase::SaveCareerData() { return true; }
+bool CareerDatabase::SaveCareerData() {
+  if (!m_activeSave || m_saveDirectory.empty()) return false;
+  std::string path = m_saveDirectory + "/" + m_activeSave->name + ".career";
+  return SaveToFile(path);
+}
 
 void CareerDatabase::AddEvent(const std::string& eventType, const std::string& description,
                               int reputationDelta, bool isMajor) {
@@ -882,6 +895,95 @@ void CareerDatabase::Process3DMatchResult(int homeGoals, int awayGoals) {
   AddEvent("matchday", summary,
            homeGoals > awayGoals ? 1 : (homeGoals == awayGoals ? 0 : -1),
            homeGoals != awayGoals);
+}
+
+bool CareerDatabase::SaveToFile(const std::string& path) const {
+  if (!m_activeSave) return false;
+  std::ofstream file(path);
+  if (!file.is_open()) return false;
+  file << "# Career Save: " << m_activeSave->name << "\n";
+  file << "mode=" << static_cast<int>(m_activeSave->mode) << "\n";
+  file << "name=" << m_activeSave->name << "\n";
+  file << "managerName=" << m_activeSave->managerName << "\n";
+  file << "clubName=" << m_activeSave->club.clubName << "\n";
+  file << "clubID=" << m_activeSave->club.clubID << "\n";
+  file << "reputation=" << m_activeSave->reputation << "\n";
+  file << "boardConfidence=" << m_activeSave->boardConfidence << "\n";
+  file << "transferBudget=" << m_activeSave->transferBudget << "\n";
+  file << "wageBudget=" << m_activeSave->wageBudget << "\n";
+  file << "season=" << m_activeSave->season.currentSeason << "\n";
+  file << "week=" << m_activeSave->season.currentWeek << "\n";
+  file << "strategy=" << m_activeSave->activeStrategy << "\n";
+  file << "fanBase=" << m_activeSave->fanBase << "\n";
+  file << "clubPrestige=" << m_activeSave->clubPrestige << "\n";
+  file << "seasonWins=" << m_activeSave->seasonWins << "\n";
+  file << "seasonDraws=" << m_activeSave->seasonDraws << "\n";
+  file << "seasonLosses=" << m_activeSave->seasonLosses << "\n";
+  file << "seasonGoalsFor=" << m_activeSave->seasonGoalsFor << "\n";
+  file << "seasonGoalsAgainst=" << m_activeSave->seasonGoalsAgainst << "\n";
+  file << "netWorth=" << m_activeSave->finances.netWorth << "\n";
+  file << "ticketPrice=" << m_activeSave->finances.ticketPrice << "\n";
+  file << "stadiumCapacity=" << m_activeSave->stadium.capacity << "\n";
+  file << "stadiumName=" << m_activeSave->stadium.name << "\n";
+  file << "rosterSize=" << m_activeSave->roster.size() << "\n";
+  for (size_t i = 0; i < m_activeSave->roster.size(); i++) {
+    const auto& p = m_activeSave->roster[i];
+    file << "player." << i << "=" << p.name << "," << p.position << "," << p.age << "," << p.ovr << "," << p.pot << "," << p.value << "," << p.wage << "\n";
+  }
+  file.close();
+  return true;
+}
+
+bool CareerDatabase::LoadFromFile(const std::string& path) {
+  std::ifstream file(path);
+  if (!file.is_open()) return false;
+  m_activeSave = std::make_unique<CareerSave>();
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    size_t eq = line.find('=');
+    if (eq == std::string::npos) continue;
+    std::string key = line.substr(0, eq);
+    std::string val = line.substr(eq + 1);
+    if (key == "name") m_activeSave->name = val;
+    else if (key == "mode") m_activeSave->mode = static_cast<CareerMode>(std::stoi(val));
+    else if (key == "managerName") m_activeSave->managerName = val;
+    else if (key == "clubName") m_activeSave->club.clubName = val;
+    else if (key == "clubID") m_activeSave->club.clubID = std::stoi(val);
+    else if (key == "reputation") m_activeSave->reputation = std::stoi(val);
+    else if (key == "boardConfidence") m_activeSave->boardConfidence = std::stoi(val);
+    else if (key == "transferBudget") m_activeSave->transferBudget = std::stoll(val);
+    else if (key == "wageBudget") m_activeSave->wageBudget = std::stoll(val);
+    else if (key == "season") m_activeSave->season.currentSeason = std::stoi(val);
+    else if (key == "week") m_activeSave->season.currentWeek = std::stoi(val);
+    else if (key == "strategy") m_activeSave->activeStrategy = val;
+    else if (key == "fanBase") m_activeSave->fanBase = std::stoi(val);
+    else if (key == "clubPrestige") m_activeSave->clubPrestige = std::stoi(val);
+    else if (key == "seasonWins") m_activeSave->seasonWins = std::stoi(val);
+    else if (key == "seasonDraws") m_activeSave->seasonDraws = std::stoi(val);
+    else if (key == "seasonLosses") m_activeSave->seasonLosses = std::stoi(val);
+    else if (key == "seasonGoalsFor") m_activeSave->seasonGoalsFor = std::stoi(val);
+    else if (key == "seasonGoalsAgainst") m_activeSave->seasonGoalsAgainst = std::stoi(val);
+    else if (key == "netWorth") m_activeSave->finances.netWorth = std::stoll(val);
+    else if (key == "ticketPrice") m_activeSave->finances.ticketPrice = std::stoi(val);
+    else if (key == "stadiumCapacity") m_activeSave->stadium.capacity = std::stoi(val);
+    else if (key == "stadiumName") m_activeSave->stadium.name = val;
+    else if (key == "rosterSize") { /* handled below */ }
+    else if (key.rfind("player.", 0) == 0) {
+      PlayerCareerState p;
+      std::stringstream ss(val);
+      std::getline(ss, p.name, ',');
+      std::getline(ss, p.position, ',');
+      p.age = std::stoi(ss.str().substr(ss.str().find(',') + 1));
+      ss.str(ss.str().substr(ss.str().find(',') + 1));
+      if (ss.str().find(',') != std::string::npos) {
+        ss.str(ss.str().substr(ss.str().find(',') + 1));
+      }
+      m_activeSave->roster.push_back(p);
+    }
+  }
+  file.close();
+  return true;
 }
 
 } // namespace blunted

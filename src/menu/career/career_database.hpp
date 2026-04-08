@@ -103,6 +103,9 @@ private:
   std::vector<TransferTarget> m_transferTargets;
   std::vector<TransferBid> m_activeBids;
   int m_nextBidID = 0;
+
+  bool SaveToFile(const std::string& path) const;
+  bool LoadFromFile(const std::string& path);
 };
 
 } // namespace blunted
