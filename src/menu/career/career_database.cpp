@@ -907,6 +907,7 @@ bool CareerDatabase::SaveToFile(const std::string& path) const {
   file << "managerName=" << m_activeSave->managerName << "\n";
   file << "clubName=" << m_activeSave->club.clubName << "\n";
   file << "clubID=" << m_activeSave->club.clubID << "\n";
+  file << "clubLeague=" << m_activeSave->club.leagueName << "\n";
   file << "reputation=" << m_activeSave->reputation << "\n";
   file << "boardConfidence=" << m_activeSave->boardConfidence << "\n";
   file << "transferBudget=" << m_activeSave->transferBudget << "\n";
@@ -928,9 +929,10 @@ bool CareerDatabase::SaveToFile(const std::string& path) const {
   file << "rosterSize=" << m_activeSave->roster.size() << "\n";
   for (size_t i = 0; i < m_activeSave->roster.size(); i++) {
     const auto& p = m_activeSave->roster[i];
-    file << "player." << i << "=" << p.name << "," << p.position << "," << p.age << "," << p.ovr << "," << p.pot << "," << p.value << "," << p.wage << "\n";
+    file << "player." << i << "=" << p.name << "|" << p.position << "|" << p.age << "|" << p.ovr << "|" << p.pot << "|" << p.value << "|" << p.wage << "\n";
   }
   file.close();
+  printf("[career] Saved to %s\n", path.c_str());
   return true;
 }
 
@@ -950,6 +952,7 @@ bool CareerDatabase::LoadFromFile(const std::string& path) {
     else if (key == "managerName") m_activeSave->managerName = val;
     else if (key == "clubName") m_activeSave->club.clubName = val;
     else if (key == "clubID") m_activeSave->club.clubID = std::stoi(val);
+    else if (key == "clubLeague") m_activeSave->club.leagueName = val;
     else if (key == "reputation") m_activeSave->reputation = std::stoi(val);
     else if (key == "boardConfidence") m_activeSave->boardConfidence = std::stoi(val);
     else if (key == "transferBudget") m_activeSave->transferBudget = std::stoll(val);
@@ -971,18 +974,19 @@ bool CareerDatabase::LoadFromFile(const std::string& path) {
     else if (key == "rosterSize") { /* handled below */ }
     else if (key.rfind("player.", 0) == 0) {
       PlayerCareerState p;
-      std::stringstream ss(val);
-      std::getline(ss, p.name, ',');
-      std::getline(ss, p.position, ',');
-      p.age = std::stoi(ss.str().substr(ss.str().find(',') + 1));
-      ss.str(ss.str().substr(ss.str().find(',') + 1));
-      if (ss.str().find(',') != std::string::npos) {
-        ss.str(ss.str().substr(ss.str().find(',') + 1));
-      }
+      size_t p1 = 0, p2 = std::string::npos;
+      p2 = val.find('|'); p.name = val.substr(0, p2);
+      size_t p3 = val.find('|', p2 + 1); if (p3 != std::string::npos) { p.position = val.substr(p2 + 1, p3 - p2 - 1); }
+      size_t p4 = val.find('|', p3 + 1); if (p4 != std::string::npos) { p.age = std::stoi(val.substr(p3 + 1, p4 - p3 - 1)); }
+      size_t p5 = val.find('|', p4 + 1); if (p5 != std::string::npos) { p.ovr = std::stof(val.substr(p4 + 1, p5 - p4 - 1)); }
+      size_t p6 = val.find('|', p5 + 1); if (p6 != std::string::npos) { p.pot = std::stof(val.substr(p5 + 1, p6 - p5 - 1)); }
+      size_t p7 = val.find('|', p6 + 1); if (p7 != std::string::npos) { p.value = std::stoll(val.substr(p6 + 1, p7 - p6 - 1)); }
+      if (p7 != std::string::npos && p7 + 1 < val.size()) { p.wage = std::stoll(val.substr(p7 + 1)); }
       m_activeSave->roster.push_back(p);
     }
   }
   file.close();
+  printf("[career] Loaded from %s (%zu roster)\n", path.c_str(), m_activeSave->roster.size());
   return true;
 }
 
