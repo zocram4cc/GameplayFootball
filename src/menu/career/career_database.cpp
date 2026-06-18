@@ -58,6 +58,22 @@ float SafeStof(const std::string& s, float fallback = 0.0f) {
   }
 }
 
+// Splits a '|'-delimited record into its fields (empty fields preserved).
+std::vector<std::string> SplitPipes(const std::string& s) {
+  std::vector<std::string> tokens;
+  size_t start = 0;
+  while (true) {
+    size_t bar = s.find('|', start);
+    if (bar == std::string::npos) {
+      tokens.push_back(s.substr(start));
+      break;
+    }
+    tokens.push_back(s.substr(start, bar - start));
+    start = bar + 1;
+  }
+  return tokens;
+}
+
 bool IsGoalkeeper(const PlayerCareerState& player) {
   return player.preferredPosition == "GK" || player.position == "GK";
 }
@@ -978,7 +994,10 @@ bool CareerDatabase::SaveToFile(const std::string& path) const {
   file << "rosterSize=" << m_activeSave->roster.size() << "\n";
   for (size_t i = 0; i < m_activeSave->roster.size(); i++) {
     const auto& p = m_activeSave->roster[i];
-    file << "player." << i << "=" << p.name << "|" << p.position << "|" << p.age << "|" << p.ovr << "|" << p.pot << "|" << p.value << "|" << p.wage << "\n";
+    file << "player." << i << "=" << p.name << "|" << p.position << "|" << p.age << "|" << p.ovr
+         << "|" << p.pot << "|" << p.value << "|" << p.wage << "|" << p.morale << "|" << p.matchForm
+         << "|" << p.fitness << "|" << p.careerGoals << "|" << p.careerAssists << "|"
+         << p.matchesPlayed << "\n";
   }
   file.close();
   printf("[career] Saved to %s\n", path.c_str());
@@ -1049,36 +1068,51 @@ bool CareerDatabase::LoadFromFile(const std::string& path) {
       m_activeSave->stadium.name = val;
     else if (key == "rosterSize") { /* handled below */
     } else if (key.rfind("player.", 0) == 0) {
+      // Format: name|position|age|ovr|pot|value|wage|morale|matchForm|fitness|
+      //         careerGoals|careerAssists|matchesPlayed
+      // Trailing fields are optional so older saves (7 fields) still load, with
+      // the newer fields keeping their struct defaults.
+      std::vector<std::string> t = SplitPipes(val);
       PlayerCareerState p;
-      size_t p2 = val.find('|');
-      p.name = val.substr(0, p2);
-      size_t p3 = val.find('|', p2 + 1);
-      if (p3 != std::string::npos) {
-        p.position = val.substr(p2 + 1, p3 - p2 - 1);
-      }
-      size_t p4 = val.find('|', p3 + 1);
-      if (p4 != std::string::npos) {
-        p.age = SafeStoi(val.substr(p3 + 1, p4 - p3 - 1));
-      }
-      size_t p5 = val.find('|', p4 + 1);
-      if (p5 != std::string::npos) {
-        p.ovr = static_cast<int>(SafeStof(val.substr(p4 + 1, p5 - p4 - 1)));
-      }
-      size_t p6 = val.find('|', p5 + 1);
-      if (p6 != std::string::npos) {
-        p.pot = static_cast<int>(SafeStof(val.substr(p5 + 1, p6 - p5 - 1)));
-      }
-      size_t p7 = val.find('|', p6 + 1);
-      if (p7 != std::string::npos) {
-        p.value = SafeStoll(val.substr(p6 + 1, p7 - p6 - 1));
-      }
-      if (p7 != std::string::npos && p7 + 1 < val.size()) {
-        p.wage = SafeStoll(val.substr(p7 + 1));
-      }
+      if (t.size() > 0)
+        p.name = t[0];
+      if (t.size() > 1)
+        p.position = t[1];
+      if (t.size() > 2)
+        p.age = SafeStoi(t[2]);
+      if (t.size() > 3)
+        p.ovr = static_cast<int>(SafeStof(t[3]));
+      if (t.size() > 4)
+        p.pot = static_cast<int>(SafeStof(t[4]));
+      if (t.size() > 5)
+        p.value = SafeStoll(t[5]);
+      if (t.size() > 6)
+        p.wage = SafeStoll(t[6]);
+      if (t.size() > 7)
+        p.morale = SafeStoi(t[7], p.morale);
+      if (t.size() > 8)
+        p.matchForm = SafeStoi(t[8], p.matchForm);
+      if (t.size() > 9)
+        p.fitness = SafeStoi(t[9], p.fitness);
+      if (t.size() > 10)
+        p.careerGoals = SafeStoi(t[10]);
+      if (t.size() > 11)
+        p.careerAssists = SafeStoi(t[11]);
+      if (t.size() > 12)
+        p.matchesPlayed = SafeStoi(t[12]);
+      p.preferredPosition = p.position;
       m_activeSave->roster.push_back(p);
     }
   }
   file.close();
+
+  // Keep the mirrored/derived fields consistent with the loaded top-level
+  // values so a loaded save matches the state produced by CreateNewCareer.
+  m_activeSave->club.reputation = m_activeSave->reputation;
+  m_activeSave->board.confidence = m_activeSave->boardConfidence;
+  m_activeSave->finance.transferBudget = m_activeSave->transferBudget;
+  m_activeSave->finance.wageBudget = m_activeSave->wageBudget;
+
   printf("[career] Loaded from %s (%zu roster)\n", path.c_str(), m_activeSave->roster.size());
   return true;
 }

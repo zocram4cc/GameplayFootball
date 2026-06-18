@@ -97,4 +97,73 @@ TEST(CareerSaveLoadTest, ValidSaveLoadsValues) {
   EXPECT_EQ(save->roster[0].wage, 9000);
 }
 
+// Older saves wrote only 7 player fields; they must still load, with the newer
+// fields keeping their struct defaults rather than being garbage.
+TEST(CareerSaveLoadTest, LegacySevenFieldPlayerLoads) {
+  const std::string contents =
+      "name=Old Save\n"
+      "player.0=Dave|CB|30|79|79|3000000|8000\n";
+
+  CareerDatabase& db = CareerDatabase::GetInstance();
+  db.Initialize(WriteSaveFile(contents));
+  ASSERT_TRUE(db.LoadCareerSave("Old Save"));
+
+  CareerSave* save = db.GetActiveSave();
+  ASSERT_NE(save, nullptr);
+  ASSERT_EQ(save->roster.size(), 1u);
+  EXPECT_EQ(save->roster[0].name, "Dave");
+  EXPECT_EQ(save->roster[0].wage, 8000);
+  // Newer fields absent in the file -> struct defaults.
+  EXPECT_EQ(save->roster[0].morale, 50);
+  EXPECT_EQ(save->roster[0].fitness, 100);
+  EXPECT_EQ(save->roster[0].careerGoals, 0);
+}
+
+// A full save -> load round-trip must preserve player progression (goals,
+// morale, etc.), not just the basic identity fields.
+TEST(CareerSaveLoadTest, RoundTripPreservesPlayerProgress) {
+  CareerDatabase& db = CareerDatabase::GetInstance();
+  db.Initialize(WriteSaveFile(""));  // sets save dir; file overwritten on save
+
+  ASSERT_TRUE(db.CreateNewCareer("Rovers", "manager", "Boss"));
+  CareerSave* save = db.GetActiveSave();
+  ASSERT_NE(save, nullptr);
+  save->roster.clear();
+  PlayerCareerState striker;
+  striker.name = "Emma";
+  striker.position = "ST";
+  striker.ovr = 84;
+  striker.morale = 88;
+  striker.matchForm = 73;
+  striker.fitness = 91;
+  striker.careerGoals = 27;
+  striker.careerAssists = 11;
+  striker.matchesPlayed = 40;
+  save->roster.push_back(striker);
+  save->reputation = 64;
+  save->transferBudget = 8000000;
+
+  ASSERT_TRUE(db.SaveCareerData());
+
+  // Reload from disk and confirm progression survived.
+  ASSERT_TRUE(db.LoadCareerSave("Rovers"));
+  CareerSave* loaded = db.GetActiveSave();
+  ASSERT_NE(loaded, nullptr);
+  ASSERT_EQ(loaded->roster.size(), 1u);
+  const PlayerCareerState& e = loaded->roster[0];
+  EXPECT_EQ(e.name, "Emma");
+  EXPECT_EQ(e.ovr, 84);
+  EXPECT_EQ(e.morale, 88);
+  EXPECT_EQ(e.matchForm, 73);
+  EXPECT_EQ(e.fitness, 91);
+  EXPECT_EQ(e.careerGoals, 27);
+  EXPECT_EQ(e.careerAssists, 11);
+  EXPECT_EQ(e.matchesPlayed, 40);
+
+  // Mirrored/derived fields are kept consistent on load.
+  EXPECT_EQ(loaded->reputation, 64);
+  EXPECT_EQ(loaded->club.reputation, 64);
+  EXPECT_EQ(loaded->finance.transferBudget, loaded->transferBudget);
+}
+
 }  // namespace
