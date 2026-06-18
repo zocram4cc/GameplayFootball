@@ -90,6 +90,10 @@ public:
   SimulatedMatch SimulateMatchResult(const std::string& opponentName, const std::string& opponentTeamDBID);
   void Process3DMatchResult(int homeGoals, int awayGoals);
 
+  // Reseed the simulation RNG so match results are deterministic and
+  // reproducible (used by tests; harmless in normal play).
+  void SeedRng(unsigned int seed);
+
   int GetReputation() const;
   std::string GetReputationStatus() const;
   std::string GetMoraleString(int morale) const;

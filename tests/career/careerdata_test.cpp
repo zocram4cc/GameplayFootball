@@ -183,9 +183,11 @@ TEST(CareerDataTest, OwnerModeCreateSaveAndRetrieve) {
   CareerDatabase db;
   CareerSave s;
   s.mode = CareerMode::OWNER;
-  s.teamID = 5;
-  s.reputation = 60;
-  s.budget = 60000000;
+  s.controlledEntityID = 5;
+  // CreateSave derives the top-level reputation/budget from these canonical
+  // sub-structs, so populate those rather than the derived fields.
+  s.club.reputation = 60;
+  s.finance.transferBudget = 60000000;
   int id = db.CreateSave(s);
 
   CareerSave* retrieved = db.GetSave(id);
@@ -199,7 +201,7 @@ TEST(CareerDataTest, OwnerReputationClampingWorks) {
   CareerDatabase db;
   CareerSave s;
   s.mode = CareerMode::OWNER;
-  s.reputation = 90;
+  s.club.reputation = 90;
   int id = db.CreateSave(s);
 
   db.ApplyReputationDelta(id, 20);

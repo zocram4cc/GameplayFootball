@@ -14,6 +14,10 @@ std::mt19937& CareerRng() {
   return rng;
 }
 
+void SeedCareerRng(unsigned int seed) {
+  CareerRng().seed(seed);
+}
+
 int ClampInt(int value, int minValue, int maxValue) {
   return std::max(minValue, std::min(maxValue, value));
 }
@@ -899,6 +903,10 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
   }
 
   return result;
+}
+
+void CareerDatabase::SeedRng(unsigned int seed) {
+  SeedCareerRng(seed);
 }
 
 void CareerDatabase::Process3DMatchResult(int homeGoals, int awayGoals) {
