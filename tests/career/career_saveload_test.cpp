@@ -166,4 +166,110 @@ TEST(CareerSaveLoadTest, RoundTripPreservesPlayerProgress) {
   EXPECT_EQ(loaded->finance.transferBudget, loaded->transferBudget);
 }
 
+// The broader career state (free agents, youth, staff, sponsors, events, inbox,
+// season history, legacy stats, board objectives) must survive a round-trip.
+TEST(CareerSaveLoadTest, RoundTripPreservesCareerCollections) {
+  CareerDatabase& db = CareerDatabase::GetInstance();
+  db.Initialize(WriteSaveFile(""));
+
+  ASSERT_TRUE(db.CreateNewCareer("Rangers", "owner", "Chief"));
+  CareerSave* save = db.GetActiveSave();
+  ASSERT_NE(save, nullptr);
+
+  // Start from a known state (CreateNewCareer seeds objectives/sponsors).
+  save->freeAgents.clear();
+  save->youthAcademy.clear();
+  save->staff.clear();
+  save->activeSponsors.clear();
+  save->recentEvents.clear();
+  save->inbox.clear();
+  save->history.clear();
+  save->boardObjectives.clear();
+  save->legacyStats.clear();
+
+  PlayerCareerState fa;
+  fa.name = "Free Agent";
+  fa.position = "LW";
+  fa.ovr = 70;
+  fa.careerGoals = 5;
+  save->freeAgents.push_back(fa);
+
+  PlayerCareerState yp;
+  yp.name = "Wonder Kid";
+  yp.position = "AM";
+  yp.ovr = 58;
+  yp.pot = 88;
+  save->youthAcademy.push_back(yp);
+
+  save->staff.push_back(StaffMember("Coach Ray", "Assistant Manager", 77, 120000, 3));
+  save->activeSponsors.push_back(SponsorDeal("MegaCorp", "Main", 4000000, 2, 40));
+  save->recentEvents.emplace_back("matchday", "matchday: beat rivals 3-0", 2, 123456, true);
+  save->legacyStats["titles"] = 4;
+
+  InboxItem msg;
+  msg.id = 9;
+  msg.subject = "Welcome";
+  msg.body = "Good luck this season | stay sharp";  // pipe must be sanitized
+  msg.read = false;
+  msg.weekCreated = 1;
+  save->inbox.push_back(msg);
+
+  SeasonRecord rec;
+  rec.season = 1;
+  rec.wins = 24;
+  rec.draws = 8;
+  rec.losses = 6;
+  rec.goalsFor = 71;
+  rec.wonTitle = true;
+  save->history.push_back(rec);
+
+  OwnerBoardObjective obj;
+  obj.type = OwnerObjectiveType::WIN_TITLE;
+  obj.description = "Win the league";
+  obj.completed = true;
+  save->boardObjectives.push_back(obj);
+
+  ASSERT_TRUE(db.SaveCareerData());
+  ASSERT_TRUE(db.LoadCareerSave("Rangers"));
+  CareerSave* l = db.GetActiveSave();
+  ASSERT_NE(l, nullptr);
+
+  ASSERT_EQ(l->freeAgents.size(), 1u);
+  EXPECT_EQ(l->freeAgents[0].name, "Free Agent");
+  EXPECT_EQ(l->freeAgents[0].careerGoals, 5);
+
+  ASSERT_EQ(l->youthAcademy.size(), 1u);
+  EXPECT_EQ(l->youthAcademy[0].name, "Wonder Kid");
+  EXPECT_EQ(l->youthAcademy[0].pot, 88);
+
+  ASSERT_EQ(l->staff.size(), 1u);
+  EXPECT_EQ(l->staff[0].name, "Coach Ray");
+  EXPECT_EQ(l->staff[0].skill, 77);
+  EXPECT_EQ(l->staff[0].salary, 120000);
+
+  ASSERT_EQ(l->activeSponsors.size(), 1u);
+  EXPECT_EQ(l->activeSponsors[0].sponsorName, "MegaCorp");
+  EXPECT_EQ(l->activeSponsors[0].annualRevenue, 4000000);
+
+  ASSERT_EQ(l->recentEvents.size(), 1u);
+  EXPECT_EQ(l->recentEvents[0].type, "matchday");
+  EXPECT_TRUE(l->recentEvents[0].isMajor);
+
+  ASSERT_EQ(l->inbox.size(), 1u);
+  EXPECT_EQ(l->inbox[0].subject, "Welcome");
+  EXPECT_EQ(l->inbox[0].id, 9);
+  // The pipe in the body was sanitized to a space, so parsing stays intact.
+  EXPECT_EQ(l->inbox[0].body.find('|'), std::string::npos);
+
+  ASSERT_EQ(l->history.size(), 1u);
+  EXPECT_EQ(l->history[0].wins, 24);
+  EXPECT_TRUE(l->history[0].wonTitle);
+
+  ASSERT_EQ(l->boardObjectives.size(), 1u);
+  EXPECT_EQ(l->boardObjectives[0].type, OwnerObjectiveType::WIN_TITLE);
+  EXPECT_TRUE(l->boardObjectives[0].completed);
+
+  EXPECT_EQ(l->legacyStats["titles"], 4);
+}
+
 }  // namespace

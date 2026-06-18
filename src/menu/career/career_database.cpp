@@ -74,6 +74,62 @@ std::vector<std::string> SplitPipes(const std::string& s) {
   return tokens;
 }
 
+// Strips the field separator and newlines from free-text fields so they cannot
+// corrupt the pipe-delimited, line-based save format.
+std::string Sanitize(const std::string& s) {
+  std::string out = s;
+  for (char& c : out) {
+    if (c == '|' || c == '\n' || c == '\r')
+      c = ' ';
+  }
+  return out;
+}
+
+// Serializes a player to the pipe-delimited record used for roster, free agents
+// and youth prospects.
+std::string PlayerToRecord(const PlayerCareerState& p) {
+  std::ostringstream os;
+  os << Sanitize(p.name) << "|" << Sanitize(p.position) << "|" << p.age << "|" << p.ovr << "|"
+     << p.pot << "|" << p.value << "|" << p.wage << "|" << p.morale << "|" << p.matchForm << "|"
+     << p.fitness << "|" << p.careerGoals << "|" << p.careerAssists << "|" << p.matchesPlayed;
+  return os.str();
+}
+
+// Parses a player record. Trailing fields are optional so older 7-field saves
+// still load, with newer fields keeping their struct defaults.
+PlayerCareerState PlayerFromRecord(const std::string& val) {
+  std::vector<std::string> t = SplitPipes(val);
+  PlayerCareerState p;
+  if (t.size() > 0)
+    p.name = t[0];
+  if (t.size() > 1)
+    p.position = t[1];
+  if (t.size() > 2)
+    p.age = SafeStoi(t[2]);
+  if (t.size() > 3)
+    p.ovr = static_cast<int>(SafeStof(t[3]));
+  if (t.size() > 4)
+    p.pot = static_cast<int>(SafeStof(t[4]));
+  if (t.size() > 5)
+    p.value = SafeStoll(t[5]);
+  if (t.size() > 6)
+    p.wage = SafeStoll(t[6]);
+  if (t.size() > 7)
+    p.morale = SafeStoi(t[7], p.morale);
+  if (t.size() > 8)
+    p.matchForm = SafeStoi(t[8], p.matchForm);
+  if (t.size() > 9)
+    p.fitness = SafeStoi(t[9], p.fitness);
+  if (t.size() > 10)
+    p.careerGoals = SafeStoi(t[10]);
+  if (t.size() > 11)
+    p.careerAssists = SafeStoi(t[11]);
+  if (t.size() > 12)
+    p.matchesPlayed = SafeStoi(t[12]);
+  p.preferredPosition = p.position;
+  return p;
+}
+
 bool IsGoalkeeper(const PlayerCareerState& player) {
   return player.preferredPosition == "GK" || player.position == "GK";
 }
@@ -991,14 +1047,63 @@ bool CareerDatabase::SaveToFile(const std::string& path) const {
   file << "ticketPrice=" << m_activeSave->finances.ticketPrice << "\n";
   file << "stadiumCapacity=" << m_activeSave->stadium.capacity << "\n";
   file << "stadiumName=" << m_activeSave->stadium.name << "\n";
+  file << "stadiumCondition=" << m_activeSave->stadium.condition << "\n";
+  file << "stadiumFanSatisfaction=" << m_activeSave->stadium.fanSatisfaction << "\n";
+  file << "controlledEntityID=" << m_activeSave->controlledEntityID << "\n";
+  file << "trainingPoints=" << m_activeSave->trainingPoints << "\n";
+  file << "scoutingNetworkLevel=" << m_activeSave->scoutingNetworkLevel << "\n";
+  file << "objective=" << Sanitize(m_activeSave->objective) << "\n";
+
   file << "rosterSize=" << m_activeSave->roster.size() << "\n";
-  for (size_t i = 0; i < m_activeSave->roster.size(); i++) {
-    const auto& p = m_activeSave->roster[i];
-    file << "player." << i << "=" << p.name << "|" << p.position << "|" << p.age << "|" << p.ovr
-         << "|" << p.pot << "|" << p.value << "|" << p.wage << "|" << p.morale << "|" << p.matchForm
-         << "|" << p.fitness << "|" << p.careerGoals << "|" << p.careerAssists << "|"
-         << p.matchesPlayed << "\n";
+  for (size_t i = 0; i < m_activeSave->roster.size(); i++)
+    file << "player." << i << "=" << PlayerToRecord(m_activeSave->roster[i]) << "\n";
+  for (size_t i = 0; i < m_activeSave->freeAgents.size(); i++)
+    file << "freeAgent." << i << "=" << PlayerToRecord(m_activeSave->freeAgents[i]) << "\n";
+  for (size_t i = 0; i < m_activeSave->youthAcademy.size(); i++)
+    file << "youth." << i << "=" << PlayerToRecord(m_activeSave->youthAcademy[i]) << "\n";
+
+  for (size_t i = 0; i < m_activeSave->staff.size(); i++) {
+    const auto& s = m_activeSave->staff[i];
+    file << "staff." << i << "=" << Sanitize(s.name) << "|" << Sanitize(s.role) << "|" << s.skill
+         << "|" << s.salary << "|" << s.contractYearsRemaining << "|" << s.morale << "\n";
   }
+  for (size_t i = 0; i < m_activeSave->activeSponsors.size(); i++) {
+    const auto& s = m_activeSave->activeSponsors[i];
+    file << "sponsor." << i << "=" << Sanitize(s.sponsorName) << "|" << Sanitize(s.type) << "|"
+         << s.annualRevenue << "|" << s.yearsRemaining << "|" << s.reputationRequirement << "\n";
+  }
+  for (size_t i = 0; i < m_activeSave->recentEvents.size(); i++) {
+    const auto& e = m_activeSave->recentEvents[i];
+    file << "event." << i << "=" << Sanitize(e.type) << "|" << e.reputationImpact << "|"
+         << e.timestamp << "|" << (e.isMajor ? 1 : 0) << "|" << Sanitize(e.description) << "\n";
+  }
+  for (size_t i = 0; i < m_activeSave->inbox.size(); i++) {
+    const auto& m = m_activeSave->inbox[i];
+    file << "inbox." << i << "=" << m.id << "|" << static_cast<int>(m.type) << "|" << m.weekCreated
+         << "|" << (m.read ? 1 : 0) << "|" << m.relatedPlayerID << "|" << m.relatedTeamID << "|"
+         << Sanitize(m.subject) << "|" << Sanitize(m.body) << "\n";
+  }
+  for (size_t i = 0; i < m_activeSave->history.size(); i++) {
+    const auto& h = m_activeSave->history[i];
+    file << "history." << i << "=" << h.season << "|" << h.teamID << "|" << h.wins << "|" << h.draws
+         << "|" << h.losses << "|" << h.goalsFor << "|" << h.goalsAgainst << "|" << h.leaguePosition
+         << "|" << (h.wonTitle ? 1 : 0) << "\n";
+  }
+  for (size_t i = 0; i < m_activeSave->boardObjectives.size(); i++) {
+    const auto& o = m_activeSave->boardObjectives[i];
+    file << "boardObjective." << i << "=" << static_cast<int>(o.type) << "|"
+         << (o.completed ? 1 : 0) << "|" << o.reputationReward << "|" << o.confidencePenalty << "|"
+         << Sanitize(o.description) << "\n";
+  }
+  for (const auto& kv : m_activeSave->legacyStats)
+    file << "legacy." << Sanitize(kv.first) << "=" << kv.second << "\n";
+  for (size_t i = 0; i < m_activeBids.size(); i++) {
+    const auto& b = m_activeBids[i];
+    file << "bid." << i << "=" << Sanitize(b.playerName) << "|" << b.bidAmount << "|"
+         << b.offeredWage << "|" << b.contractYears << "|" << b.agentFee << "|"
+         << static_cast<int>(b.status) << "|" << b.negotiationRounds << "\n";
+  }
+
   file.close();
   printf("[career] Saved to %s\n", path.c_str());
   return true;
@@ -1009,6 +1114,7 @@ bool CareerDatabase::LoadFromFile(const std::string& path) {
   if (!file.is_open())
     return false;
   m_activeSave = std::make_unique<CareerSave>();
+  m_activeBids.clear();
   std::string line;
   while (std::getline(file, line)) {
     if (line.empty() || line[0] == '#')
@@ -1066,42 +1172,145 @@ bool CareerDatabase::LoadFromFile(const std::string& path) {
       m_activeSave->stadium.capacity = SafeStoi(val);
     else if (key == "stadiumName")
       m_activeSave->stadium.name = val;
-    else if (key == "rosterSize") { /* handled below */
+    else if (key == "stadiumCondition")
+      m_activeSave->stadium.condition = SafeStoi(val, m_activeSave->stadium.condition);
+    else if (key == "stadiumFanSatisfaction")
+      m_activeSave->stadium.fanSatisfaction = SafeStoi(val, m_activeSave->stadium.fanSatisfaction);
+    else if (key == "controlledEntityID")
+      m_activeSave->controlledEntityID = SafeStoi(val);
+    else if (key == "trainingPoints")
+      m_activeSave->trainingPoints = SafeStoi(val, m_activeSave->trainingPoints);
+    else if (key == "scoutingNetworkLevel")
+      m_activeSave->scoutingNetworkLevel = SafeStoi(val, m_activeSave->scoutingNetworkLevel);
+    else if (key == "objective")
+      m_activeSave->objective = val;
+    else if (key == "rosterSize") { /* size is implied by the player.N rows */
     } else if (key.rfind("player.", 0) == 0) {
-      // Format: name|position|age|ovr|pot|value|wage|morale|matchForm|fitness|
-      //         careerGoals|careerAssists|matchesPlayed
-      // Trailing fields are optional so older saves (7 fields) still load, with
-      // the newer fields keeping their struct defaults.
+      m_activeSave->roster.push_back(PlayerFromRecord(val));
+    } else if (key.rfind("freeAgent.", 0) == 0) {
+      m_activeSave->freeAgents.push_back(PlayerFromRecord(val));
+    } else if (key.rfind("youth.", 0) == 0) {
+      m_activeSave->youthAcademy.push_back(PlayerFromRecord(val));
+    } else if (key.rfind("staff.", 0) == 0) {
       std::vector<std::string> t = SplitPipes(val);
-      PlayerCareerState p;
+      StaffMember s;
       if (t.size() > 0)
-        p.name = t[0];
+        s.name = t[0];
       if (t.size() > 1)
-        p.position = t[1];
+        s.role = t[1];
       if (t.size() > 2)
-        p.age = SafeStoi(t[2]);
+        s.skill = SafeStoi(t[2], s.skill);
       if (t.size() > 3)
-        p.ovr = static_cast<int>(SafeStof(t[3]));
+        s.salary = SafeStoll(t[3], s.salary);
       if (t.size() > 4)
-        p.pot = static_cast<int>(SafeStof(t[4]));
+        s.contractYearsRemaining = SafeStoi(t[4], s.contractYearsRemaining);
       if (t.size() > 5)
-        p.value = SafeStoll(t[5]);
+        s.morale = SafeStoi(t[5], s.morale);
+      m_activeSave->staff.push_back(s);
+    } else if (key.rfind("sponsor.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      SponsorDeal s;
+      if (t.size() > 0)
+        s.sponsorName = t[0];
+      if (t.size() > 1)
+        s.type = t[1];
+      if (t.size() > 2)
+        s.annualRevenue = SafeStoll(t[2]);
+      if (t.size() > 3)
+        s.yearsRemaining = SafeStoi(t[3]);
+      if (t.size() > 4)
+        s.reputationRequirement = SafeStoi(t[4]);
+      m_activeSave->activeSponsors.push_back(s);
+    } else if (key.rfind("event.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      CareerEvent e;
+      if (t.size() > 0)
+        e.type = t[0];
+      if (t.size() > 1)
+        e.reputationImpact = SafeStoi(t[1]);
+      if (t.size() > 2)
+        e.timestamp = SafeStoll(t[2]);
+      if (t.size() > 3)
+        e.isMajor = SafeStoi(t[3]) != 0;
+      if (t.size() > 4)
+        e.description = t[4];
+      m_activeSave->recentEvents.push_back(e);
+    } else if (key.rfind("inbox.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      InboxItem m;
+      if (t.size() > 0)
+        m.id = SafeStoi(t[0]);
+      if (t.size() > 1)
+        m.type = static_cast<InboxItemType>(SafeStoi(t[1]));
+      if (t.size() > 2)
+        m.weekCreated = SafeStoi(t[2]);
+      if (t.size() > 3)
+        m.read = SafeStoi(t[3]) != 0;
+      if (t.size() > 4)
+        m.relatedPlayerID = SafeStoi(t[4]);
+      if (t.size() > 5)
+        m.relatedTeamID = SafeStoi(t[5]);
       if (t.size() > 6)
-        p.wage = SafeStoll(t[6]);
+        m.subject = t[6];
       if (t.size() > 7)
-        p.morale = SafeStoi(t[7], p.morale);
+        m.body = t[7];
+      m_activeSave->inbox.push_back(m);
+    } else if (key.rfind("history.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      SeasonRecord r;
+      if (t.size() > 0)
+        r.season = SafeStoi(t[0]);
+      if (t.size() > 1)
+        r.teamID = SafeStoi(t[1]);
+      if (t.size() > 2)
+        r.wins = SafeStoi(t[2]);
+      if (t.size() > 3)
+        r.draws = SafeStoi(t[3]);
+      if (t.size() > 4)
+        r.losses = SafeStoi(t[4]);
+      if (t.size() > 5)
+        r.goalsFor = SafeStoi(t[5]);
+      if (t.size() > 6)
+        r.goalsAgainst = SafeStoi(t[6]);
+      if (t.size() > 7)
+        r.leaguePosition = SafeStoi(t[7]);
       if (t.size() > 8)
-        p.matchForm = SafeStoi(t[8], p.matchForm);
-      if (t.size() > 9)
-        p.fitness = SafeStoi(t[9], p.fitness);
-      if (t.size() > 10)
-        p.careerGoals = SafeStoi(t[10]);
-      if (t.size() > 11)
-        p.careerAssists = SafeStoi(t[11]);
-      if (t.size() > 12)
-        p.matchesPlayed = SafeStoi(t[12]);
-      p.preferredPosition = p.position;
-      m_activeSave->roster.push_back(p);
+        r.wonTitle = SafeStoi(t[8]) != 0;
+      m_activeSave->history.push_back(r);
+    } else if (key.rfind("boardObjective.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      OwnerBoardObjective o;
+      if (t.size() > 0)
+        o.type = static_cast<OwnerObjectiveType>(SafeStoi(t[0]));
+      if (t.size() > 1)
+        o.completed = SafeStoi(t[1]) != 0;
+      if (t.size() > 2)
+        o.reputationReward = SafeStoi(t[2], o.reputationReward);
+      if (t.size() > 3)
+        o.confidencePenalty = SafeStoi(t[3], o.confidencePenalty);
+      if (t.size() > 4)
+        o.description = t[4];
+      m_activeSave->boardObjectives.push_back(o);
+    } else if (key.rfind("legacy.", 0) == 0) {
+      m_activeSave->legacyStats[key.substr(7)] = SafeStoi(val);
+    } else if (key.rfind("bid.", 0) == 0) {
+      std::vector<std::string> t = SplitPipes(val);
+      TransferBid b;
+      if (t.size() > 0)
+        b.playerName = t[0];
+      if (t.size() > 1)
+        b.bidAmount = SafeStoll(t[1]);
+      if (t.size() > 2)
+        b.offeredWage = SafeStoi(t[2]);
+      if (t.size() > 3)
+        b.contractYears = SafeStoi(t[3], b.contractYears);
+      if (t.size() > 4)
+        b.agentFee = SafeStoll(t[4]);
+      if (t.size() > 5)
+        b.status = static_cast<BidStatus>(SafeStoi(t[5]));
+      if (t.size() > 6)
+        b.negotiationRounds = SafeStoi(t[6]);
+      m_activeBids.push_back(b);
     }
   }
   file.close();
