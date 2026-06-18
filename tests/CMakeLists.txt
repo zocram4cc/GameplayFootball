@@ -82,6 +82,7 @@ gtest_discover_tests(gameplayfootball_league_integration_tests)
 add_executable(gameplayfootball_career_tests
   career/careerdata_test.cpp
   career/career_simulation_test.cpp
+  career/career_saveload_test.cpp
   ${PROJECT_SOURCE_DIR}/src/data/careerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/draftdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/scoutingdata.cpp

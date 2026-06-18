@@ -31,6 +31,33 @@ int RandomInt(int minValue, int maxValue) {
   return dist(CareerRng());
 }
 
+// Exception-safe numeric parsing for save-file fields. A corrupt or
+// hand-edited save must never crash the game on load; bad fields fall back to
+// a default and parsing continues.
+int SafeStoi(const std::string& s, int fallback = 0) {
+  try {
+    return std::stoi(s);
+  } catch (const std::exception&) {
+    return fallback;
+  }
+}
+
+long long SafeStoll(const std::string& s, long long fallback = 0) {
+  try {
+    return std::stoll(s);
+  } catch (const std::exception&) {
+    return fallback;
+  }
+}
+
+float SafeStof(const std::string& s, float fallback = 0.0f) {
+  try {
+    return std::stof(s);
+  } catch (const std::exception&) {
+    return fallback;
+  }
+}
+
 bool IsGoalkeeper(const PlayerCareerState& player) {
   return player.preferredPosition == "GK" || player.position == "GK";
 }
@@ -844,12 +871,7 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
     int seed = static_cast<int>(std::hash<std::string>{}(opponentName) % 1000);
     opponentOVR = 55 + (seed % 21);
   } else if (!opponentTeamDBID.empty()) {
-    int idValue = 0;
-    try {
-      idValue = std::stoi(opponentTeamDBID);
-    } catch (const std::exception&) {
-      idValue = 0;
-    }
+    int idValue = SafeStoi(opponentTeamDBID);
     opponentOVR = 55 + ((idValue % 21) + 21) % 21;
   } else {
     opponentOVR = 60 + RandomInt(0, 20);
@@ -965,50 +987,94 @@ bool CareerDatabase::SaveToFile(const std::string& path) const {
 
 bool CareerDatabase::LoadFromFile(const std::string& path) {
   std::ifstream file(path);
-  if (!file.is_open()) return false;
+  if (!file.is_open())
+    return false;
   m_activeSave = std::make_unique<CareerSave>();
   std::string line;
   while (std::getline(file, line)) {
-    if (line.empty() || line[0] == '#') continue;
+    if (line.empty() || line[0] == '#')
+      continue;
     size_t eq = line.find('=');
-    if (eq == std::string::npos) continue;
+    if (eq == std::string::npos)
+      continue;
     std::string key = line.substr(0, eq);
     std::string val = line.substr(eq + 1);
-    if (key == "name") m_activeSave->name = val;
-    else if (key == "mode") m_activeSave->mode = static_cast<CareerMode>(std::stoi(val));
-    else if (key == "managerName") m_activeSave->managerName = val;
-    else if (key == "clubName") m_activeSave->club.clubName = val;
-    else if (key == "clubID") m_activeSave->club.clubID = std::stoi(val);
-    else if (key == "clubLeague") m_activeSave->club.leagueName = val;
-    else if (key == "reputation") m_activeSave->reputation = std::stoi(val);
-    else if (key == "boardConfidence") m_activeSave->boardConfidence = std::stoi(val);
-    else if (key == "transferBudget") m_activeSave->transferBudget = std::stoll(val);
-    else if (key == "wageBudget") m_activeSave->wageBudget = std::stoll(val);
-    else if (key == "season") m_activeSave->season.currentSeason = std::stoi(val);
-    else if (key == "week") m_activeSave->season.currentWeek = std::stoi(val);
-    else if (key == "strategy") m_activeSave->activeStrategy = val;
-    else if (key == "fanBase") m_activeSave->fanBase = std::stoi(val);
-    else if (key == "clubPrestige") m_activeSave->clubPrestige = std::stoi(val);
-    else if (key == "seasonWins") m_activeSave->seasonWins = std::stoi(val);
-    else if (key == "seasonDraws") m_activeSave->seasonDraws = std::stoi(val);
-    else if (key == "seasonLosses") m_activeSave->seasonLosses = std::stoi(val);
-    else if (key == "seasonGoalsFor") m_activeSave->seasonGoalsFor = std::stoi(val);
-    else if (key == "seasonGoalsAgainst") m_activeSave->seasonGoalsAgainst = std::stoi(val);
-    else if (key == "netWorth") m_activeSave->finances.netWorth = std::stoll(val);
-    else if (key == "ticketPrice") m_activeSave->finances.ticketPrice = std::stoi(val);
-    else if (key == "stadiumCapacity") m_activeSave->stadium.capacity = std::stoi(val);
-    else if (key == "stadiumName") m_activeSave->stadium.name = val;
-    else if (key == "rosterSize") { /* handled below */ }
-    else if (key.rfind("player.", 0) == 0) {
+    if (key == "name")
+      m_activeSave->name = val;
+    else if (key == "mode")
+      m_activeSave->mode = static_cast<CareerMode>(SafeStoi(val));
+    else if (key == "managerName")
+      m_activeSave->managerName = val;
+    else if (key == "clubName")
+      m_activeSave->club.clubName = val;
+    else if (key == "clubID")
+      m_activeSave->club.clubID = SafeStoi(val);
+    else if (key == "clubLeague")
+      m_activeSave->club.leagueName = val;
+    else if (key == "reputation")
+      m_activeSave->reputation = SafeStoi(val);
+    else if (key == "boardConfidence")
+      m_activeSave->boardConfidence = SafeStoi(val);
+    else if (key == "transferBudget")
+      m_activeSave->transferBudget = SafeStoll(val);
+    else if (key == "wageBudget")
+      m_activeSave->wageBudget = SafeStoll(val);
+    else if (key == "season")
+      m_activeSave->season.currentSeason = SafeStoi(val);
+    else if (key == "week")
+      m_activeSave->season.currentWeek = SafeStoi(val);
+    else if (key == "strategy")
+      m_activeSave->activeStrategy = val;
+    else if (key == "fanBase")
+      m_activeSave->fanBase = SafeStoi(val);
+    else if (key == "clubPrestige")
+      m_activeSave->clubPrestige = SafeStoi(val);
+    else if (key == "seasonWins")
+      m_activeSave->seasonWins = SafeStoi(val);
+    else if (key == "seasonDraws")
+      m_activeSave->seasonDraws = SafeStoi(val);
+    else if (key == "seasonLosses")
+      m_activeSave->seasonLosses = SafeStoi(val);
+    else if (key == "seasonGoalsFor")
+      m_activeSave->seasonGoalsFor = SafeStoi(val);
+    else if (key == "seasonGoalsAgainst")
+      m_activeSave->seasonGoalsAgainst = SafeStoi(val);
+    else if (key == "netWorth")
+      m_activeSave->finances.netWorth = SafeStoll(val);
+    else if (key == "ticketPrice")
+      m_activeSave->finances.ticketPrice = SafeStoi(val);
+    else if (key == "stadiumCapacity")
+      m_activeSave->stadium.capacity = SafeStoi(val);
+    else if (key == "stadiumName")
+      m_activeSave->stadium.name = val;
+    else if (key == "rosterSize") { /* handled below */
+    } else if (key.rfind("player.", 0) == 0) {
       PlayerCareerState p;
-      size_t p1 = 0, p2 = std::string::npos;
-      p2 = val.find('|'); p.name = val.substr(0, p2);
-      size_t p3 = val.find('|', p2 + 1); if (p3 != std::string::npos) { p.position = val.substr(p2 + 1, p3 - p2 - 1); }
-      size_t p4 = val.find('|', p3 + 1); if (p4 != std::string::npos) { p.age = std::stoi(val.substr(p3 + 1, p4 - p3 - 1)); }
-      size_t p5 = val.find('|', p4 + 1); if (p5 != std::string::npos) { p.ovr = std::stof(val.substr(p4 + 1, p5 - p4 - 1)); }
-      size_t p6 = val.find('|', p5 + 1); if (p6 != std::string::npos) { p.pot = std::stof(val.substr(p5 + 1, p6 - p5 - 1)); }
-      size_t p7 = val.find('|', p6 + 1); if (p7 != std::string::npos) { p.value = std::stoll(val.substr(p6 + 1, p7 - p6 - 1)); }
-      if (p7 != std::string::npos && p7 + 1 < val.size()) { p.wage = std::stoll(val.substr(p7 + 1)); }
+      size_t p2 = val.find('|');
+      p.name = val.substr(0, p2);
+      size_t p3 = val.find('|', p2 + 1);
+      if (p3 != std::string::npos) {
+        p.position = val.substr(p2 + 1, p3 - p2 - 1);
+      }
+      size_t p4 = val.find('|', p3 + 1);
+      if (p4 != std::string::npos) {
+        p.age = SafeStoi(val.substr(p3 + 1, p4 - p3 - 1));
+      }
+      size_t p5 = val.find('|', p4 + 1);
+      if (p5 != std::string::npos) {
+        p.ovr = static_cast<int>(SafeStof(val.substr(p4 + 1, p5 - p4 - 1)));
+      }
+      size_t p6 = val.find('|', p5 + 1);
+      if (p6 != std::string::npos) {
+        p.pot = static_cast<int>(SafeStof(val.substr(p5 + 1, p6 - p5 - 1)));
+      }
+      size_t p7 = val.find('|', p6 + 1);
+      if (p7 != std::string::npos) {
+        p.value = SafeStoll(val.substr(p6 + 1, p7 - p6 - 1));
+      }
+      if (p7 != std::string::npos && p7 + 1 < val.size()) {
+        p.wage = SafeStoll(val.substr(p7 + 1));
+      }
       m_activeSave->roster.push_back(p);
     }
   }
