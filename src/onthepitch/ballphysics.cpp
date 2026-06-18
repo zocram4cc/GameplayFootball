@@ -21,6 +21,12 @@ BallGroundInteraction ApplyBallMotionForces(BallPhysicsState& state, const BallP
       blunted::clamp(1.0f - (ballBottom / config.grassHeight), 0.0f, 1.0f);
   interaction.grassInfluenceBias = std::pow(interaction.grassInfluenceBias, 0.7f);
 
+  // Wind only meaningfully affects the ball in flight; a ball settled in the
+  // grass is shielded and dominated by ground friction. Scale the wind by how
+  // airborne the ball is so a calm/grounded ball is unchanged.
+  const float airborneFactor = 1.0f - interaction.grassInfluenceBias;
+  state.momentum += config.wind * (airborneFactor * timeStep_s);
+
   if (state.position.coords[2] < config.ballRadius) {
     if (state.momentum.coords[2] < 0.0f) {
       interaction.frictionFactor =
@@ -34,13 +40,17 @@ BallGroundInteraction ApplyBallMotionForces(BallPhysicsState& state, const BallP
   }
 
   if (state.position.coords[2] < config.ballRadius + config.grassHeight) {
-    const float adaptedFriction = config.friction * interaction.grassInfluenceBias;
+    // A wet pitch is slicker: cut ground friction by up to half at full
+    // wetness so the ball skids and keeps more pace along the turf.
+    const float wetnessFrictionScale = 1.0f - blunted::clamp(config.wetness, 0.0f, 1.0f) * 0.5f;
+    const float adaptedFriction =
+        config.friction * interaction.grassInfluenceBias * wetnessFrictionScale;
     blunted::Vector3 xy = state.momentum.Get2D();
     const float velo = xy.GetLength();
 
     float newVelo = velo - adaptedFriction * std::pow(velo, 2.0f) * timeStep_s;
     newVelo = blunted::clamp(newVelo - (config.linearFriction * interaction.grassInfluenceBias *
-                                        timeStep_s),
+                                        wetnessFrictionScale * timeStep_s),
                              0.0f, 100000.0f);
 
     xy.Normalize(blunted::Vector3(0));

@@ -12,6 +12,15 @@ struct BallPhysicsConfig {
   float linearFriction = 1.6f;
   float gravity = -9.81f;
   float grassHeight = 0.025f;
+
+  // Weather effects (roadmap 3.8). Defaults are zero so a calm, dry pitch
+  // behaves identically to the original physics.
+  // Wind is an acceleration (m/s^2) applied to the ball while it is airborne;
+  // it bends passes, crosses and long shots off-line.
+  blunted::Vector3 wind = blunted::Vector3(0.0f, 0.0f, 0.0f);
+  // Pitch wetness in [0, 1]. A wet pitch is slicker, so the ball skids and
+  // retains more speed along the ground (less grass friction).
+  float wetness = 0.0f;
 };
 
 struct BallPhysicsState {

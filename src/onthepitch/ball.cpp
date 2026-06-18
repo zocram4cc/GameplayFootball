@@ -25,6 +25,12 @@ Ball::Ball(Match* match) : match(match) {
   gravity = -9.81f;
   grassHeight = 0.025f;
 
+  // Weather defaults to calm and dry; a match/season can override it via config
+  // or SetWeather() to bend balls in the wind and skid them on a wet pitch.
+  weatherWind = Vector3(GetConfiguration()->GetReal("match_wind_x", 0.0f),
+                        GetConfiguration()->GetReal("match_wind_y", 0.0f), 0.0f);
+  weatherWetness = clamp(GetConfiguration()->GetReal("match_wetness", 0.0f), 0.0f, 1.0f);
+
   ballTouchesNet = false;
 
   scene3D = GetScene3D();
@@ -116,6 +122,12 @@ void Ball::SetMomentum(const Vector3& target) {
   CalculatePrediction();
 }
 
+void Ball::SetWeather(const Vector3& wind, float wetness) {
+  weatherWind = wind;
+  weatherWetness = clamp(wetness, 0.0f, 1.0f);
+  CalculatePrediction();
+}
+
 void Ball::SetRotation(radian x, radian y, radian z,
                        float bias) {  // radians per second for each axis
   Quaternion rotX;
@@ -167,6 +179,8 @@ BallSpatialInfo Ball::CalculatePrediction() {
   physicsConfig.linearFriction = linearFriction;
   physicsConfig.gravity = gravity;
   physicsConfig.grassHeight = grassHeight;
+  physicsConfig.wind = weatherWind;
+  physicsConfig.wetness = weatherWetness;
 
   ballTouchesNet = false;
 

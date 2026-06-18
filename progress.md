@@ -55,3 +55,18 @@ Warning cleanup work:
 - Verification after the warning pass:
   `cmake --build build-win --config Debug --target gameplayfootball --parallel 1`
   succeeds and still produces `build-win/Debug/gameplayfootball.exe`.
+
+Weather effects (roadmap 3.8):
+
+- Implemented wind + rain affecting ball trajectory in the tested physics core (`src/onthepitch/ballphysics.*`):
+  `BallPhysicsConfig` gained a `wind` acceleration vector and a `[0,1]` `wetness` factor (defaults zero, so a
+  calm/dry pitch is byte-identical to the old behavior). Wind is applied to the airborne ball scaled by an
+  airborne factor (`1 - grassInfluenceBias`) so a grounded/shielded ball is unaffected; wetness scales ground
+  friction down by up to 50% so the ball skids and keeps pace on a wet pitch.
+- Plumbed weather into `Ball` (`src/onthepitch/ball.*`): reads `match_wind_x` / `match_wind_y` / `match_wetness`
+  from configuration on construction, added a `SetWeather(wind, wetness)` setter plus getters, and feeds the
+  values into `CalculatePrediction`'s physics config.
+- Added regression + feature unit tests (`tests/onthepitch/ball_physics_test.cpp`): wind bends an airborne ball,
+  wind does not shove a grounded ball, and a wet pitch lets the ball skid further. Full math/physics suite passes
+  (17/17) via a `-DGAMEPLAYFOOTBALL_BUILD_GAME=OFF` tests-only build.
+- Marked ROADMAP item 3.8 as DONE.

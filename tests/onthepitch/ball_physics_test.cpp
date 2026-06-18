@@ -75,4 +75,59 @@ TEST(BallPhysicsTest, AirborneBallAvoidsGrassFriction) {
   EXPECT_NEAR(interaction.grassInfluenceBias, 0.0f, kEpsilon);
 }
 
+TEST(BallPhysicsTest, WindBendsAirborneBall) {
+  BallPhysicsConfig config;
+  config.gravity = 0.0f;
+  config.drag = 0.0f;
+  config.friction = 0.0f;
+  config.linearFriction = 0.0f;
+  config.wind = blunted::Vector3(5.0f, 0.0f, 0.0f);
+
+  // High above the grass, so the ball is fully airborne (airborneFactor == 1).
+  BallPhysicsState state{blunted::Vector3(0.0f, 0.0f, 1.0f), blunted::Vector3(10.0f, 0.0f, 0.0f)};
+  ApplyBallMotionForces(state, config, 0.1f);
+
+  // Wind acceleration of 5 m/s^2 over 0.1s adds 0.5 m/s downwind.
+  EXPECT_NEAR(state.momentum.coords[0], 10.5f, kEpsilon);
+  EXPECT_NEAR(state.momentum.coords[1], 0.0f, kEpsilon);
+}
+
+TEST(BallPhysicsTest, WindDoesNotShoveGroundedBall) {
+  BallPhysicsConfig config;
+  config.gravity = 0.0f;
+  config.drag = 0.0f;
+  config.wind = blunted::Vector3(5.0f, 0.0f, 0.0f);
+
+  // Resting in the grass: friction dominates and wind is shielded out, so the
+  // result matches GroundFrictionSlowsRollingBall exactly.
+  BallPhysicsState state{blunted::Vector3(0.0f, 0.0f, config.ballRadius),
+                         blunted::Vector3(5.0f, 0.0f, 0.0f)};
+  ApplyBallMotionForces(state, config, 0.1f);
+
+  EXPECT_NEAR(state.momentum.coords[0], 4.74f, kEpsilon);
+  EXPECT_NEAR(state.momentum.coords[1], 0.0f, kEpsilon);
+}
+
+TEST(BallPhysicsTest, WetPitchLetsBallSkid) {
+  BallPhysicsConfig dryConfig;
+  dryConfig.gravity = 0.0f;
+  dryConfig.drag = 0.0f;
+
+  BallPhysicsConfig wetConfig = dryConfig;
+  wetConfig.wetness = 1.0f;
+
+  BallPhysicsState dryState{blunted::Vector3(0.0f, 0.0f, dryConfig.ballRadius),
+                            blunted::Vector3(5.0f, 0.0f, 0.0f)};
+  BallPhysicsState wetState{blunted::Vector3(0.0f, 0.0f, wetConfig.ballRadius),
+                            blunted::Vector3(5.0f, 0.0f, 0.0f)};
+
+  ApplyBallMotionForces(dryState, dryConfig, 0.1f);
+  ApplyBallMotionForces(wetState, wetConfig, 0.1f);
+
+  // A soaked pitch halves ground friction, so the ball keeps more speed.
+  EXPECT_NEAR(dryState.momentum.coords[0], 4.74f, kEpsilon);
+  EXPECT_NEAR(wetState.momentum.coords[0], 4.87f, kEpsilon);
+  EXPECT_GT(wetState.momentum.coords[0], dryState.momentum.coords[0]);
+}
+
 }  // namespace
