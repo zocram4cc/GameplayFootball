@@ -1,6 +1,8 @@
 #include "league_calendar.hpp"
 
+#include <algorithm>
 #include <cstdlib>
+#include <functional>
 
 #include "../../main.hpp"
 #include "menu_smoke.hpp"
@@ -123,8 +125,29 @@ void LeagueCalendarPage::RefreshFixtures() {
 
       (dlg->AddSingleButton("Simulate"))->SetFocus();
       dlg->sig_OnPositive.connect([this, dlg, calID, homeTeam, awayTeam](...) {
-        int goals1 = rand() % 5;
-        int goals2 = rand() % 5;
+        // Strength-aware result: the league stores no explicit ratings, so
+        // derive a stable rating from each team's name and give the home side
+        // an edge. Fixtures are no longer pure coin-flips.
+        auto teamRating = [](const std::string& name) {
+          return 50 + static_cast<int>(std::hash<std::string>{}(name) % 41);  // 50..90
+        };
+        auto sampleGoals = [](int attack, int defense) {
+          float expected =
+              1.35f * static_cast<float>(attack) / static_cast<float>(std::max(1, defense));
+          int goals = static_cast<int>(expected);
+          float frac = expected - static_cast<float>(goals);
+          // Stochastic rounding keeps the expected goal average honest.
+          if ((rand() % 1000) / 1000.0f < frac)
+            goals += 1;
+          // Occasional flair for the odd extra goal.
+          if (rand() % 100 < 15)
+            goals += rand() % 2;
+          return std::max(0, std::min(6, goals));
+        };
+        int homeRating = teamRating(homeTeam) + 6;  // home advantage
+        int awayRating = teamRating(awayTeam);
+        int goals1 = sampleGoals(homeRating, awayRating);
+        int goals2 = sampleGoals(awayRating, homeRating);
         auto calRow = GetDB()->Query(
             "SELECT team1_id, team2_id, competition_id FROM calendar WHERE id = " + calID);
         if (!calRow->data.empty()) {

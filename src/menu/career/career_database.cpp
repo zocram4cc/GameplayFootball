@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include <functional>
 #include <random>
 #include <fstream>
 #include <sstream>
@@ -831,8 +832,21 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
     teamForm = formSum / count;
   }
 
-  if (!opponentTeamDBID.empty()) {
-    opponentOVR = 55 + (std::stoi(opponentTeamDBID) % 21);
+  // Derive a stable opponent rating from the opponent's identity so each
+  // opponent plays to a different strength. Prefer the opponent name (the
+  // caller always has it); fall back to a numeric team id, then to a random
+  // rating. Parsing the id is guarded so a non-numeric id can never throw.
+  if (!opponentName.empty()) {
+    int seed = static_cast<int>(std::hash<std::string>{}(opponentName) % 1000);
+    opponentOVR = 55 + (seed % 21);
+  } else if (!opponentTeamDBID.empty()) {
+    int idValue = 0;
+    try {
+      idValue = std::stoi(opponentTeamDBID);
+    } catch (const std::exception&) {
+      idValue = 0;
+    }
+    opponentOVR = 55 + ((idValue % 21) + 21) % 21;
   } else {
     opponentOVR = 60 + RandomInt(0, 20);
   }
@@ -851,12 +865,15 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
   }
 
   float homeAdv = 1.1f;
+  // Home goals scale with our attack relative to their defense; goals conceded
+  // scale with their attack relative to our defense. Home advantage boosts our
+  // attack and shores up our defense, so a stronger defense concedes fewer.
   float attackFactor = (float)baseAttack * homeAdv / std::max(1.0f, (float)oppDefense);
-  float defenseFactor = (float)baseDefense / std::max(1.0f, (float)oppAttack * homeAdv);
+  float concedeFactor = (float)oppAttack / std::max(1.0f, (float)baseDefense * homeAdv);
 
   std::normal_distribution<float> goalDist(1.3f, 0.8f);
   int expectedHomeGoals = std::max(0, (int)(goalDist(CareerRng()) * attackFactor));
-  int expectedAwayGoals = std::max(0, (int)(goalDist(CareerRng()) * defenseFactor));
+  int expectedAwayGoals = std::max(0, (int)(goalDist(CareerRng()) * concedeFactor));
 
   result.homeGoals = ClampInt(expectedHomeGoals, 0, 9);
   result.awayGoals = ClampInt(expectedAwayGoals, 0, 7);
@@ -874,7 +891,9 @@ SimulatedMatch CareerDatabase::SimulateMatchResult(const std::string& opponentNa
     do {
       pIdx = RandomInt(0, rosterSize - 1);
       attempts++;
-    } while (attempts < 20 && std::find(scorerIndices.begin(), scorerIndices.end(), pIdx) != scorerIndices.end() && rosterSize > scorerIndices.size());
+    } while (attempts < 20 &&
+             std::find(scorerIndices.begin(), scorerIndices.end(), pIdx) != scorerIndices.end() &&
+             rosterSize > static_cast<int>(scorerIndices.size()));
     scorerIndices.push_back(pIdx);
     result.scorers.push_back(m_activeSave->roster[pIdx].name);
   }
