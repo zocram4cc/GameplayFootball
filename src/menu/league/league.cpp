@@ -144,6 +144,8 @@ void LeaguePage::StepTime() {
 void LeaguePage::SetTimeCaption() {
   auto result =
       GetDB()->Query("SELECT timestamp, strftime('%w', timestamp) FROM settings LIMIT 1");
+  if (result->data.empty() || result->data.at(0).size() < 2)
+    return;
   std::string dayName;
   switch (atoi(result->data.at(0).at(1).c_str())) {
     case 0:

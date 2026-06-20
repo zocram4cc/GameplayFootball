@@ -78,11 +78,15 @@ target_link_libraries(gameplayfootball_league_integration_tests PRIVATE
 gtest_discover_tests(gameplayfootball_league_integration_tests)
 
 # Career data unit tests (Phase 6: tasks 6.13, 6.16, 6.17)
+# Also covers the stat-based match simulation (career_database.cpp).
 add_executable(gameplayfootball_career_tests
   career/careerdata_test.cpp
+  career/career_simulation_test.cpp
+  career/career_saveload_test.cpp
   ${PROJECT_SOURCE_DIR}/src/data/careerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/draftdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/scoutingdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/career/career_database.cpp
 )
 
 target_include_directories(gameplayfootball_career_tests PRIVATE

@@ -73,7 +73,7 @@ welcome - see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 | 3.5 | **Set-piece editor** - configurable free-kick / corner routines | `DONE` |
 | 3.6 | **Player stamina system** - fatigue affecting sprint speed | `DONE` |
 | 3.7 | **Injury / substitution system** | `DONE` |
-| 3.8 | **Weather effects** - rain / wind altering ball trajectory | `IDEA` |
+| 3.8 | **Weather effects** - rain / wind altering ball trajectory | `DONE` |
 | 3.9 | **Dynamic crowd audio** - crowd reacts to chances and goals | `DONE` |
 
 ---

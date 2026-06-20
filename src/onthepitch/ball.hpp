@@ -70,6 +70,12 @@ public:
   bool BallTouchesNet() { return ballTouchesNet; }
   Vector3 GetAveragePosition(unsigned int duration_ms) const;
 
+  // Weather control (roadmap 3.8). wind is an acceleration in m/s^2 applied to
+  // the airborne ball; wetness is in [0, 1] and makes the pitch slicker.
+  void SetWeather(const Vector3& wind, float wetness);
+  Vector3 GetWeatherWind() const { return weatherWind; }
+  float GetWeatherWetness() const { return weatherWetness; }
+
   void TriggerBallTouchSound(float gain);
 
   void Process();
@@ -114,6 +120,9 @@ protected:
   float linearFriction;
   float gravity;
   float grassHeight;
+
+  Vector3 weatherWind;
+  float weatherWetness;
 
   bool ballTouchesNet;
 };
