@@ -26,6 +26,9 @@ public:
 
   float GetStat(const char* name);
 
+  // Gives the player a style of his own when the database defines none.
+  void AssignPlayingStyles();
+
   // Traits / specialties this player carries.
   PlayerTraits::TraitMask GetTraits() const { return traits; }
   // MatchPressure::unknownAge when the player was not loaded from the database.

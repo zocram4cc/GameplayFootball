@@ -18,6 +18,8 @@
 
 #include "playercontroller.hpp"
 
+#include "onthepitch/gameplaytuning.hpp"
+
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -291,6 +293,21 @@ void PlayerController::_KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
   if (fabs(match->GetBall()->Predict(160).coords[1]) > 20.05f)
     return;
   if (match->GetBall()->Predict(160).coords[0] * -team->GetSide() > -pitchHalfW + 16.4)
+    return;
+
+  // Whether he gets across at all is decided once per incoming shot, from his
+  // reaction stat: the stock engine always played the save, which is why almost
+  // nothing went in.
+  Player* lastTouchPlayer = match->GetLastTouchPlayer();
+  const unsigned long shotTouchTime_ms =
+      lastTouchPlayer ? lastTouchPlayer->GetLastTouchTime_ms() : 0;
+  if (shotTouchTime_ms != deflectDecisionTouchTime_ms) {
+    deflectDecisionTouchTime_ms = shotTouchTime_ms;
+    deflectAllowed = random(0.0f, 1.0f) < GameplayTuning::GetKeeperSaveChance(
+                                              *GetConfiguration(),
+                                              CastPlayer()->GetStat("physical_reaction"));
+  }
+  if (!deflectAllowed)
     return;
 
   PlayerCommand command;

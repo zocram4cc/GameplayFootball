@@ -70,6 +70,7 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
   // printf("player: %s, %s (age %i)\n", lastName.c_str(), firstName.c_str(), age);
   traits = PlayerTraits::traitMaskNone;
   playerAge = age;
+  bool traitsFromDatabase = false;
 
   map_XMLTree::const_iterator iter = tree.children.begin();
   while (iter != tree.children.end()) {
@@ -77,6 +78,7 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
     // numeric stats (see SIMULATION_IMPROVEMENT_PROPOSAL 3A).
     if ((*iter).first.compare("traits") == 0) {
       traits = PlayerTraits::Parse((*iter).second.value);
+      traitsFromDatabase = traits != PlayerTraits::traitMaskNone;
       iter++;
       continue;
     }
@@ -89,6 +91,9 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
     stats.Set((*iter).first.c_str(), value);
     iter++;
   }
+
+  if (!traitsFromDatabase)
+    AssignPlayingStyles();
 }
 
 PlayerData::PlayerData() {
@@ -129,6 +134,13 @@ PlayerData::~PlayerData() {}
 
 const std::vector<e_PlayerRole>& PlayerData::GetRoles() const {
   return roles;
+}
+
+void PlayerData::AssignPlayingStyles() {
+  // Nothing in the database, so give him a style of his own: deterministic from
+  // his id, suited to his position and his finishing.
+  const e_PlayerRole role = roles.empty() ? e_PlayerRole_CM : roles.at(0);
+  traits = PlayerTraits::AssignForPlayer(databaseID, role, stats.GetReal("technical_shot", 0.5f));
 }
 
 float PlayerData::GetStat(const char* name) {

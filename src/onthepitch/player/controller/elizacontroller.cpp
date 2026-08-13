@@ -19,6 +19,7 @@
 #include "elizacontroller.hpp"
 
 #include "data/playertraits.hpp"
+#include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/penaltyshootoutcontroller.hpp"
 #include "onthepitch/teamphilosophy.hpp"
@@ -1147,11 +1148,19 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   float goalDist = NormalizedClamp(
       (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - player->GetPosition()).GetLength(), 0.0f,
       32.0f);
+  // How far out a player will have a go: the classic 16 metre window was so
+  // tight that whole matches passed with three or four shots. Range shooters and
+  // the team's appetite for a shot widen it further (proposal: an offensive,
+  // flowing game).
+  const float shotAppetite =
+      PlayerTraits::GetShotAppetite(traits) * GameplayTuning::GetShotAppetite(*GetConfiguration());
+  const float shootingRange =
+      GameplayTuning::GetShootingRange(*GetConfiguration()) + PlayerTraits::GetShootingRangeBonus(traits);
   float idealShotPosFactor =
       1.0f - NormalizedClamp(
                  (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())
                      .GetLength(),
-                 0.0f, 16.0f);
+                 0.0f, shootingRange);
   idealShotPosFactor = curve(idealShotPosFactor, 1.0f);
   if (idealShotPosFactor > 0.1f) {
     float odds1 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), -3.6f, 0),
@@ -1175,7 +1184,8 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     if (Verbose())
       printf("ODDS: %f\n", odds);
 
-    if (odds + random(0.0f, 0.5f) > 0.5f) {
+    // A hungrier player needs less of an opening to pull the trigger.
+    if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f) {
       PlayerCommand command;
       command.desiredFunctionType = e_FunctionType_Shot;
       command.useDesiredMovement = false;

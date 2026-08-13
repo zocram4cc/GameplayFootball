@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+
 using blunted::Vector3;
 
 TEST(PlayerTraitsParseTest, ParsesACommaSeparatedListIntoAMask) {
@@ -131,4 +133,90 @@ TEST(KnuckleballerTest, PlayersWithoutTheTraitFlyTrue) {
   const Vector3 result =
       PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::traitMaskNone, rotVec, 40.0f, 1.0f);
   EXPECT_FLOAT_EQ(result.coords[1], rotVec.coords[1]);
+}
+
+// --- Playing styles every player carries, so the flair actually shows up ---
+
+TEST(PlayingStyleTest, EveryPlayerGetsAStyleWithoutTouchingTheDatabase) {
+  // Same player, same style, every match: deterministic from his id.
+  const PlayerTraits::TraitMask first = PlayerTraits::AssignForPlayer(1234, e_PlayerRole_CF, 0.7f);
+  const PlayerTraits::TraitMask again = PlayerTraits::AssignForPlayer(1234, e_PlayerRole_CF, 0.7f);
+  EXPECT_EQ(first, again);
+  EXPECT_NE(first, PlayerTraits::traitMaskNone);
+}
+
+TEST(PlayingStyleTest, DifferentPlayersGetDifferentFlair) {
+  std::set<PlayerTraits::TraitMask> masks;
+  for (int id = 1; id <= 40; id++)
+    masks.insert(PlayerTraits::AssignForPlayer(id, e_PlayerRole_CM, 0.6f));
+  // Not everybody the same; a squad should look varied.
+  EXPECT_GE(masks.size(), 4u);
+}
+
+TEST(PlayingStyleTest, StylesSuitThePositionTheyArePlayedIn) {
+  // A striker can poach or finish, but never plays as a deep-lying anchor.
+  for (int id = 1; id <= 60; id++) {
+    const PlayerTraits::TraitMask striker = PlayerTraits::AssignForPlayer(id, e_PlayerRole_CF, 0.7f);
+    EXPECT_FALSE(PlayerTraits::Has(striker, PlayerTraits::e_Trait_Anchorman)) << id;
+
+    const PlayerTraits::TraitMask centreBack =
+        PlayerTraits::AssignForPlayer(id, e_PlayerRole_CB, 0.4f);
+    EXPECT_FALSE(PlayerTraits::Has(centreBack, PlayerTraits::e_Trait_GoalPoacher)) << id;
+    EXPECT_FALSE(PlayerTraits::Has(centreBack, PlayerTraits::e_Trait_FoxInTheBox)) << id;
+  }
+}
+
+TEST(PlayingStyleTest, GoodFinishersAreTheOnesWhoShootFromRange) {
+  int rangeShootersAmongGoodStrikers = 0;
+  int rangeShootersAmongPoorStrikers = 0;
+  for (int id = 1; id <= 60; id++) {
+    if (PlayerTraits::Has(PlayerTraits::AssignForPlayer(id, e_PlayerRole_AM, 0.95f),
+                          PlayerTraits::e_Trait_LongRangeShooter))
+      rangeShootersAmongGoodStrikers++;
+    if (PlayerTraits::Has(PlayerTraits::AssignForPlayer(id, e_PlayerRole_AM, 0.15f),
+                          PlayerTraits::e_Trait_LongRangeShooter))
+      rangeShootersAmongPoorStrikers++;
+  }
+  EXPECT_GT(rangeShootersAmongGoodStrikers, rangeShootersAmongPoorStrikers);
+}
+
+TEST(PlayingStyleTest, NobodyIsOverloadedWithStyles) {
+  for (int id = 1; id <= 60; id++) {
+    const PlayerTraits::TraitMask mask = PlayerTraits::AssignForPlayer(id, e_PlayerRole_CM, 0.6f);
+    int styles = 0;
+    for (int i = 0; i < PlayerTraits::traitCount; i++) {
+      if (PlayerTraits::Has(mask, PlayerTraits::GetTraitAt(i)))
+        styles++;
+    }
+    EXPECT_GE(styles, 1) << id;
+    EXPECT_LE(styles, 3) << id;
+  }
+}
+
+// --- Shooting appetite: the direct lever on how open the game is ---
+
+TEST(ShotAppetiteTest, APlainPlayerHasNeutralAppetite) {
+  EXPECT_FLOAT_EQ(PlayerTraits::GetShotAppetite(PlayerTraits::traitMaskNone), 1.0f);
+  EXPECT_FLOAT_EQ(PlayerTraits::GetShootingRangeBonus(PlayerTraits::traitMaskNone), 0.0f);
+}
+
+TEST(ShotAppetiteTest, RangeShootersTryFromFurtherOut) {
+  EXPECT_GT(PlayerTraits::GetShootingRangeBonus(PlayerTraits::e_Trait_LongRangeShooter), 0.0f);
+  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_LongRangeShooter), 1.0f);
+}
+
+TEST(ShotAppetiteTest, PoachersAndBoxFoxesShootMoreReadilyThanPlaymakers) {
+  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_FoxInTheBox), 1.0f);
+  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_GoalPoacher), 1.0f);
+  EXPECT_LT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_CreativePlaymaker), 1.0f);
+}
+
+TEST(ShotAppetiteTest, AppetiteStaysSaneEvenWithEveryStyleStacked) {
+  PlayerTraits::TraitMask everything = PlayerTraits::traitMaskNone;
+  for (int i = 0; i < PlayerTraits::traitCount; i++)
+    everything |= PlayerTraits::GetTraitAt(i);
+
+  EXPECT_GT(PlayerTraits::GetShotAppetite(everything), 0.5f);
+  EXPECT_LE(PlayerTraits::GetShotAppetite(everything), 2.0f);
+  EXPECT_LE(PlayerTraits::GetShootingRangeBonus(everything), 14.0f);
 }

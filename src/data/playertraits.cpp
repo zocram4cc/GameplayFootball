@@ -8,8 +8,10 @@ namespace PlayerTraits {
 namespace {
 
 const e_Trait allTraits[traitCount] = {
-    e_Trait_SpeedMerchant, e_Trait_TargetMan,   e_Trait_Knuckleballer,     e_Trait_OneTouchPass,
-    e_Trait_FirstTimeShot, e_Trait_GoalPoacher, e_Trait_CreativePlaymaker,
+    e_Trait_SpeedMerchant,     e_Trait_TargetMan,        e_Trait_Knuckleballer,
+    e_Trait_OneTouchPass,      e_Trait_FirstTimeShot,    e_Trait_GoalPoacher,
+    e_Trait_CreativePlaymaker, e_Trait_FoxInTheBox,      e_Trait_LongRangeShooter,
+    e_Trait_ProlificWinger,    e_Trait_BoxToBox,         e_Trait_Anchorman,
 };
 
 // Lowercases and drops separators so "Target Man", "target_man" and "targetman"
@@ -57,6 +59,16 @@ std::string GetName(e_Trait trait) {
       return "goal_poacher";
     case e_Trait_CreativePlaymaker:
       return "creative_playmaker";
+    case e_Trait_FoxInTheBox:
+      return "fox_in_the_box";
+    case e_Trait_LongRangeShooter:
+      return "long_range_shooter";
+    case e_Trait_ProlificWinger:
+      return "prolific_winger";
+    case e_Trait_BoxToBox:
+      return "box_to_box";
+    case e_Trait_Anchorman:
+      return "anchorman";
     default:
       return "";
   }
@@ -102,6 +114,120 @@ std::string Serialize(TraitMask mask) {
     result += GetName(trait);
   }
   return result;
+}
+
+namespace {
+
+// A small deterministic hash, so a player's flair never changes between matches
+// and no two neighbouring ids get the same set.
+unsigned int PlayerHash(int playerDatabaseID, int salt) {
+  unsigned int hash = static_cast<unsigned int>(playerDatabaseID) * 2654435761u;
+  hash ^= static_cast<unsigned int>(salt) * 2246822519u;
+  hash ^= hash >> 13;
+  hash *= 3266489917u;
+  return hash ^ (hash >> 16);
+}
+
+// Whether a style makes sense for the position a player is fielded in.
+bool SuitsRole(e_Trait trait, e_PlayerRole role) {
+  const bool isForward = role == e_PlayerRole_CF;
+  const bool isWide = role == e_PlayerRole_LM || role == e_PlayerRole_RM ||
+                      role == e_PlayerRole_LB || role == e_PlayerRole_RB;
+  const bool isMidfield = role == e_PlayerRole_CM || role == e_PlayerRole_AM ||
+                          role == e_PlayerRole_DM || role == e_PlayerRole_LM ||
+                          role == e_PlayerRole_RM;
+  const bool isDefender = role == e_PlayerRole_CB || role == e_PlayerRole_LB ||
+                          role == e_PlayerRole_RB || role == e_PlayerRole_DM;
+
+  switch (trait) {
+    case e_Trait_GoalPoacher:
+    case e_Trait_FoxInTheBox:
+      return isForward;
+    case e_Trait_TargetMan:
+      return isForward || role == e_PlayerRole_CB;
+    case e_Trait_ProlificWinger:
+      return isWide;
+    case e_Trait_CreativePlaymaker:
+      return role == e_PlayerRole_AM || role == e_PlayerRole_CM;
+    case e_Trait_Anchorman:
+      return role == e_PlayerRole_DM || role == e_PlayerRole_CB;
+    case e_Trait_BoxToBox:
+      return isMidfield;
+    case e_Trait_LongRangeShooter:
+    case e_Trait_Knuckleballer:
+      return !isDefender || role == e_PlayerRole_DM;
+    case e_Trait_SpeedMerchant:
+      return role != e_PlayerRole_GK;
+    default:
+      // One-touch passing and first-time shooting suit anybody outfield.
+      return role != e_PlayerRole_GK;
+  }
+}
+
+}  // namespace
+
+TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotStat) {
+  if (role == e_PlayerRole_GK)
+    return traitMaskNone;
+
+  // One signature style, plus a chance of one or two more, so a squad has a few
+  // stand-out players rather than eleven identical ones.
+  const unsigned int roll = PlayerHash(playerDatabaseID, 1);
+  const int wanted = 1 + static_cast<int>(roll % 3u);
+
+  TraitMask mask = traitMaskNone;
+  int given = 0;
+  for (int attempt = 0; attempt < traitCount * 2 && given < wanted; attempt++) {
+    const e_Trait candidate =
+        allTraits[PlayerHash(playerDatabaseID, 7 + attempt) % static_cast<unsigned int>(traitCount)];
+    if (Has(mask, candidate) || !SuitsRole(candidate, role))
+      continue;
+
+    // Shooting from distance belongs to the players who can actually finish.
+    if (candidate == e_Trait_LongRangeShooter) {
+      const float threshold = 0.35f + (1.0f - std::max(0.0f, std::min(shotStat, 1.0f))) * 0.6f;
+      if (static_cast<float>(PlayerHash(playerDatabaseID, 31 + attempt) % 1000u) / 1000.0f <
+          threshold)
+        continue;
+    }
+
+    mask |= static_cast<TraitMask>(candidate);
+    given++;
+  }
+
+  // Nobody should be left completely without character.
+  if (mask == traitMaskNone)
+    mask = static_cast<TraitMask>(e_Trait_FirstTimeShot);
+  return mask;
+}
+
+float GetShotAppetite(TraitMask mask) {
+  float appetite = 1.0f;
+  if (Has(mask, e_Trait_LongRangeShooter))
+    appetite += 0.35f;
+  if (Has(mask, e_Trait_FoxInTheBox))
+    appetite += 0.3f;
+  if (Has(mask, e_Trait_GoalPoacher))
+    appetite += 0.25f;
+  if (Has(mask, e_Trait_FirstTimeShot))
+    appetite += 0.1f;
+  // A playmaker looks for the pass before the shot.
+  if (Has(mask, e_Trait_CreativePlaymaker))
+    appetite -= 0.2f;
+  if (Has(mask, e_Trait_Anchorman))
+    appetite -= 0.25f;
+  return std::max(0.55f, std::min(appetite, 2.0f));
+}
+
+float GetShootingRangeBonus(TraitMask mask) {
+  float bonus = 0.0f;
+  if (Has(mask, e_Trait_LongRangeShooter))
+    bonus += 9.0f;
+  if (Has(mask, e_Trait_Knuckleballer))
+    bonus += 3.0f;
+  if (Has(mask, e_Trait_FoxInTheBox))
+    bonus -= 2.0f;  // he wants it inside the six-yard box
+  return std::max(0.0f, std::min(bonus, 14.0f));
 }
 
 float GetAccelerationMultiplier(TraitMask mask) {

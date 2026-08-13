@@ -7,6 +7,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include "base/math/bluntmath.hpp"
+#include "base/properties.hpp"
+
 namespace GameplayTuning {
 
 inline float Clamp01(float value) {
@@ -25,6 +28,26 @@ inline float GetFirstTouchContextPenalty(float opponentDistance, float calmness,
   const float pressurePenalty = pressure * (1.0f - composure * 0.65f) * 0.08f;
   const float orientationPenalty = ballPace * blindSide * (1.0f - composure * 0.4f) * 0.08f;
   return std::min(pressurePenalty + orientationPenalty, 0.14f);
+}
+
+// How open the game is. The stock engine only let a player shoot inside a tight
+// window near the goal, which produced three or four shots a match; these two
+// knobs open that up and are tunable from the config.
+inline float GetShootingRange(const blunted::Properties& config) {
+  return blunted::clamp(config.GetReal("gameplay_shooting_range", 21.0f), 12.0f, 45.0f);
+}
+
+inline float GetShotAppetite(const blunted::Properties& config) {
+  return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.6f), 0.5f, 2.5f);
+}
+
+// Whether a keeper gets across to a shot at all. The stock engine always played
+// the save animation, so almost nothing went in; this makes it his reaction stat
+// against a tunable sharpness.
+inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
+  const float sharpness = blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.55f), 0.2f, 1.0f);
+  const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
+  return blunted::clamp(sharpness * (0.45f + reaction * 0.55f), 0.05f, 0.97f);
 }
 
 // Distance remains the primary fatigue input. This workload factor makes

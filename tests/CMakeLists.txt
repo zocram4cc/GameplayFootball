@@ -91,6 +91,7 @@ gtest_discover_tests(gameplayfootball_league_integration_tests)
 add_executable(gameplayfootball_simulation_tests
   onthepitch/team_philosophy_test.cpp
   onthepitch/team_instructions_test.cpp
+  onthepitch/gameplay_tuning_test.cpp
   onthepitch/match_mentality_test.cpp
   data/player_traits_test.cpp
   data/player_cards_test.cpp
