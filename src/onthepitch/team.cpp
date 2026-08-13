@@ -153,6 +153,15 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
   // mid-shootout would pull the pitch out from under it.
   if (match->GetMatchPhase() == e_MatchPhase_Penalties)
     return false;
+
+  // KNOWN BUG: building the substitute's humanoid segfaults (crash lands inside
+  // Humanoid construction, right after "prepare full body model"). Until that is
+  // found, swaps are opt-in through "substitutions_enabled" so a match cannot
+  // crash under a player; the rules and the menu around it are complete.
+  if (!GetConfiguration()->GetBool("substitutions_enabled", false)) {
+    match->SpamMessage(teamData->GetShortName() + ": substitutions are disabled", 3000);
+    return false;
+  }
   if (!playerOut->IsActive() || playerIn->IsActive())
     return false;
   if (HasBeenSubstituted(playerIn->GetID()))
@@ -191,7 +200,10 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
       humanGamer->SetSelectedPlayerID(playerIn->GetID());
   }
 
-  // The replay tracks scene nodes, and the substitute's humanoid is new.
+  // Everything that cached the outgoing player has to let go of him: the match's
+  // designated possession player, the mental images the AI reads, and the replay
+  // spatials (the substitute's humanoid is a fresh set of scene nodes).
+  match->ReplacePlayerReferences(playerOut, playerIn);
   match->RebuildReplaySpatials();
 
   match->SpamMessage(teamData->GetShortName() + ": " + playerIn->GetPlayerData()->GetLastName() +

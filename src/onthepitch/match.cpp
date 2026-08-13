@@ -1842,6 +1842,18 @@ void Match::GetReplaySpatials(std::list<boost::intrusive_ptr<Spatial>>& spatials
   }
 }
 
+void Match::ReplacePlayerReferences(Player* playerOut, Player* playerIn) {
+  if (designatedPossessionPlayer == playerOut)
+    designatedPossessionPlayer = playerIn;
+  if (ballRetainer == playerOut)
+    ballRetainer = playerIn;
+  if (lastGoalScorer == playerOut)
+    lastGoalScorer = nullptr;
+  // The mental images hold snapshots of a humanoid that no longer exists.
+  mentalImages.clear();
+  bestPossessionTeamID = -1;
+}
+
 void Match::RebuildReplaySpatials() {
   replay.clear();
 

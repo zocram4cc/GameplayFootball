@@ -5,6 +5,10 @@
 
 #include "gameover.hpp"
 
+#include <cmath>
+
+#include "../../data/matchanalytics.hpp"
+
 #include <ctime>
 
 #include "../../data/matchhistory.hpp"
@@ -205,6 +209,16 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
 GameOverPage::~GameOverPage() {}
 
+namespace {
+
+int PossessionPercent(MatchData* matchData, int teamID) {
+  const float mine = static_cast<float>(matchData->GetPossessionTime_ms(teamID));
+  const float total = mine + static_cast<float>(matchData->GetPossessionTime_ms(1 - teamID));
+  return total > 0.0f ? static_cast<int>(std::round(mine / total * 100.0f)) : 50;
+}
+
+}  // namespace
+
 void GameOverPage::Process() {
   Gui2Page::Process();
 
@@ -216,10 +230,22 @@ void GameOverPage::Process() {
            match->GetTeam(0)->GetTeamData()->GetName().c_str(),
            match->GetMatchData()->GetGoalCount(0), match->GetMatchData()->GetGoalCount(1),
            match->GetTeam(1)->GetTeamData()->GetName().c_str());
+    // Balance line: shots, shots on target and expected goals per side, so the
+    // feel of a match ("offensive, flowing, 15-20 shots") can be measured rather
+    // than guessed at.
+    MatchData* matchData = match->GetMatchData();
+    printf(
+        "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "
+        "%i%%-%i%%\n",
+        matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
+        matchData->GetShotsOnTarget(1), MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 0),
+        MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 1), matchData->GetGoalCount(0),
+        matchData->GetGoalCount(1), PossessionPercent(matchData, 0), PossessionPercent(matchData, 1));
     printf("[menu-smoke] Full-match verification succeeded, quitting test run\n");
     EnvironmentManager::GetInstance().SignalQuit();
   }
 }
+
 
 void GameOverPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape()) {

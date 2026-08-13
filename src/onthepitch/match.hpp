@@ -151,6 +151,8 @@ public:
   // Rebuilds the replay spatial list. Needed after a substitution, since the
   // incoming player gets a freshly built humanoid whose nodes are not in it.
   void RebuildReplaySpatials();
+  // Drops every cached reference to a player who has just left the pitch.
+  void ReplacePlayerReferences(Player* playerOut, Player* playerIn);
   int GetLastGoalTeamID() const { return lastGoalTeamID; }
   void SetLastTouchTeamID(int id, e_TouchType touchType = e_TouchType_Intentional_Kicked) {
     lastTouchTeamIDs[touchType] = id;
