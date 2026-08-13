@@ -267,6 +267,32 @@ void TeamAIController::Process() {
       }
     }
   }
+  // Counterattack: the moment the ball is won with the opponent committed
+  // upfield, spring a runner at once instead of waiting for the periodic check.
+  if (team->GetHumanGamerCount() == 0 && !prevTeamHasPossession && teamHasPossession) {
+    const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
+    const float territory =
+        AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
+
+    int opponentsInOwnHalf = 0;
+    std::vector<Player*> opponents;
+    match->GetActiveTeamPlayers(abs(team->GetID() - 1), opponents);
+    for (Player* opponent : opponents) {
+      if (opponent->GetPosition().coords[0] * team->GetSide() > 0.0f)
+        opponentsInOwnHalf++;
+    }
+
+    const float counterSetting =
+        team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
+    if (AITactics::ShouldLaunchCounter(counterSetting, opponentsInOwnHalf, territory)) {
+      ApplyAttackingRun();
+      endApplyAttackingRun_ms =
+          match->GetActualTime_ms() + AITactics::GetCounterWindow_ms(counterSetting);
+      if (Verbose())
+        printf("!!! counterattack sprung: %i opponents caught upfield !!!\n", opponentsInOwnHalf);
+    }
+  }
+
   prevTeamHasPossession = teamHasPossession;
 
   // trigger attacking runs

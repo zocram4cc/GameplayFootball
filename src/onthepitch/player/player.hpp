@@ -104,8 +104,11 @@ public:
   }
   int GetCards() const { return cards; }
 
-  // A keeper who lost his save roll is beaten: his body should not block the
-  // shot either, or nothing would ever go in.
+  // One save decision per incoming shot, rolled from the keeper's reaction stat
+  // and shared by the dive animation and the body-collision pass, so a keeper
+  // who has been beaten is beaten everywhere.
+  bool KeeperAttemptsSave();
+  // Only a genuine shot can beat him; he still collects crosses and slow balls.
   bool IsBeatenKeeper();
 
   // Wet/worn pitch slips (proposal 4A): pace lost for a moment after going down.
@@ -136,6 +139,9 @@ protected:
 
   // Slip bookkeeping.
   unsigned long lastSlipTime_ms = 0;
+  // Save roll, latched per opposing shot touch.
+  unsigned long keeperRollTouchTime_ms = 0;
+  bool keeperRollSave = true;
   Vector3 previousDirectionVec;
   unsigned int timeNeededToGetToBall_ms;
   unsigned int timeNeededToGetToBall_optimistic_ms;

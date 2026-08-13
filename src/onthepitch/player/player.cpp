@@ -30,6 +30,7 @@
 #include "controller/elizacontroller.hpp"
 #include "controller/strategies/strategy.hpp"
 #include "data/playertraits.hpp"
+#include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/pitchconditions.hpp"
 
@@ -129,9 +130,40 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
 }
 
 bool Player::IsBeatenKeeper() {
-  if (GetFormationEntry().role != e_PlayerRole_GK || !controller)
+  if (GetFormationEntry().role != e_PlayerRole_GK)
     return false;
-  return !static_cast<PlayerController*>(controller)->IsDeflectAllowed();
+
+  // The no-block rule only applies to a genuine shot: fast, and heading for his
+  // goal. Crosses and rolling balls are his to collect as always.
+  const Vector3 ballMovement = match->GetBall()->GetMovement();
+  if (ballMovement.GetLength() < 14.0f)
+    return false;
+  const Vector3 towardsOwnGoal =
+      (Vector3(pitchHalfW * team->GetSide(), 0, 0) - match->GetBall()->Predict(0)).Get2D();
+  if (ballMovement.Get2D()
+          .GetNormalized(Vector3(0))
+          .GetDotProduct(towardsOwnGoal.GetNormalized(Vector3(0))) < 0.7f)
+    return false;
+
+  return !KeeperAttemptsSave();
+}
+
+bool Player::KeeperAttemptsSave() {
+  if (GetFormationEntry().role != e_PlayerRole_GK)
+    return true;
+
+  // The shot is identified by the opponent's last touch; one roll per shot.
+  Team* oppTeam = match->GetTeam(abs(team->GetID() - 1));
+  Player* lastOppToucher = oppTeam->GetLastTouchPlayer();
+  const unsigned long shotTouchTime_ms = lastOppToucher ? lastOppToucher->GetLastTouchTime_ms() : 0;
+
+  if (shotTouchTime_ms != keeperRollTouchTime_ms) {
+    keeperRollTouchTime_ms = shotTouchTime_ms;
+    keeperRollSave =
+        blunted::random(0.0f, 1.0f) <
+        GameplayTuning::GetKeeperSaveChance(*GetConfiguration(), GetStat("physical_reaction"));
+  }
+  return keeperRollSave;
 }
 
 float Player::GetSlipVelocityMultiplier() const {

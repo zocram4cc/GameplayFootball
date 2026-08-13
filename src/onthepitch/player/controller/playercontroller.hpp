@@ -41,15 +41,6 @@ protected:
     this->inputDirection = inputDirection;
     this->inputVelocityFloat = inputVelocityFloat;
   }
-  // Whether the keeper won his save roll for the shot on its way in.
-public:
-  bool IsDeflectAllowed() const { return deflectAllowed; }
-
-protected:
-  // Save decision, latched per incoming shot.
-  unsigned long deflectDecisionTouchTime_ms = 0;
-  bool deflectAllowed = true;
-
   virtual void _KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
                                      bool onlyPickupAnims = false);
   virtual void _SetPieceCommand(PlayerCommandQueue& commandQueue);

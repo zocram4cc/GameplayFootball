@@ -268,3 +268,29 @@ TEST(MatchIntegrationTest, FullMatchSimulationSingleTick) {
 }
 
 }  // namespace
+
+// --- Counterattacks: winning the ball against an overcommitted opponent ---
+
+TEST(AITacticsCounterTest, ATurnoverAgainstACommittedOpponentSpringsACounter) {
+  // Six opponents caught in our half at the moment of the turnover.
+  EXPECT_TRUE(AITactics::ShouldLaunchCounter(0.5f, 6, -0.4f));
+  EXPECT_TRUE(AITactics::ShouldLaunchCounter(0.5f, 7, -0.6f));
+}
+
+TEST(AITacticsCounterTest, NoCounterWhenTheOpponentIsSetBehindTheBall) {
+  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.5f, 2, -0.4f));
+  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.5f, 3, 0.5f));
+}
+
+TEST(AITacticsCounterTest, CounterAppetiteScalesWithTheTacticSetting) {
+  // A counter-attacking side springs from softer situations...
+  EXPECT_TRUE(AITactics::ShouldLaunchCounter(1.0f, 4, -0.2f));
+  // ...a possession side needs a much clearer picture.
+  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.0f, 4, -0.2f));
+}
+
+TEST(AITacticsCounterTest, TheCounterWindowIsShortAndSharp) {
+  EXPECT_GE(AITactics::GetCounterWindow_ms(0.0f), 1500U);
+  EXPECT_GT(AITactics::GetCounterWindow_ms(1.0f), AITactics::GetCounterWindow_ms(0.0f));
+  EXPECT_LE(AITactics::GetCounterWindow_ms(1.0f), 6000U);
+}

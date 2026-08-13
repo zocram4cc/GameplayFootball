@@ -232,6 +232,12 @@ void GameOverPage::Process() {
     // feel of a match ("offensive, flowing, 15-20 shots") can be measured rather
     // than guessed at.
     MatchData* matchData = match->GetMatchData();
+    const int passes1 = matchData->GetPassAttempts(0);
+    const int passes2 = matchData->GetPassAttempts(1);
+    const int passAccuracy1 = passes1 > 0 ? (matchData->GetPassesCompleted(0) * 100) / passes1 : 0;
+    const int passAccuracy2 = passes2 > 0 ? (matchData->GetPassesCompleted(1) * 100) / passes2 : 0;
+    printf("[balance-passing] passes %i-%i | accuracy %i%%-%i%%\n", passes1, passes2, passAccuracy1,
+           passAccuracy2);
     printf(
         "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "
         "%i%%-%i%%\n",

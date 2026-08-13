@@ -46,6 +46,25 @@ inline unsigned int GetZonePressureDuration_ms(float pressure) {
   return 700U + static_cast<unsigned int>(ClampSetting(pressure) * 1600.0f);
 }
 
+// A counter springs when the ball is won while the opponent is committed:
+// bodies caught upfield, and the ball still deep in our own territory.
+// `attackingTerritory` is -1 at our goal, +1 at theirs.
+inline bool ShouldLaunchCounter(float counterAttack, int opponentsInOwnHalf,
+                                float attackingTerritory) {
+  const float setting = ClampSetting(counterAttack);
+  // How many of them must be caught out, from 6 for a patient side down to 4
+  // for a side built to break.
+  const int neededOpponents = 6 - static_cast<int>(setting * 2.0f);
+  if (opponentsInOwnHalf < neededOpponents)
+    return false;
+  // The ball has to be won in our own territory for it to be a counter.
+  return attackingTerritory <= -0.1f;
+}
+
+inline unsigned int GetCounterWindow_ms(float counterAttack) {
+  return 2000U + static_cast<unsigned int>(ClampSetting(counterAttack) * 3000.0f);
+}
+
 inline float GetDribbleForwardDrive(float dribbleOffensiveness, float roleMindset) {
   return 0.58f + ClampSetting(dribbleOffensiveness) * 0.28f + ClampSetting(roleMindset) * 0.12f;
 }

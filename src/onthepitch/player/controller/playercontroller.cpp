@@ -295,18 +295,10 @@ void PlayerController::_KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
     return;
 
   // Whether he gets across at all is decided once per incoming shot, from his
-  // reaction stat: the stock engine always played the save, which is why almost
-  // nothing went in.
-  Player* lastTouchPlayer = match->GetLastTouchPlayer();
-  const unsigned long shotTouchTime_ms =
-      lastTouchPlayer ? lastTouchPlayer->GetLastTouchTime_ms() : 0;
-  if (shotTouchTime_ms != deflectDecisionTouchTime_ms) {
-    deflectDecisionTouchTime_ms = shotTouchTime_ms;
-    deflectAllowed =
-        random(0.0f, 1.0f) < GameplayTuning::GetKeeperSaveChance(
-                                 *GetConfiguration(), CastPlayer()->GetStat("physical_reaction"));
-  }
-  if (!deflectAllowed)
+  // reaction stat, by the same roll the body-collision pass consults - so a
+  // beaten keeper is beaten everywhere. The stock engine always played the
+  // save, which is why almost nothing went in.
+  if (!CastPlayer()->KeeperAttemptsSave())
     return;
 
   PlayerCommand command;
