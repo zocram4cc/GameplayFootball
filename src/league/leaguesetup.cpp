@@ -1,10 +1,9 @@
 #include "leaguesetup.hpp"
 
-#include "data/formations.hpp"
-
 #include <iterator>
 
 #include "base/utils.hpp"
+#include "data/formations.hpp"
 
 namespace {
 
@@ -119,8 +118,8 @@ void SetupFourLeagues(Database* db) {
 
     for (int teamIdx = 0; teamIdx < 8; teamIdx++) {
       // Spread the offered formations across the division so opponents differ.
-      const std::string teamFormation = Formations::BuildFormationXml(Formations::GetFormationAt(
-          (leagueIdx * 3 + teamIdx) % Formations::GetCount()));
+      const std::string teamFormation = Formations::BuildFormationXml(
+          Formations::GetFormationAt((leagueIdx * 3 + teamIdx) % Formations::GetCount()));
 
       db->Query(
           "INSERT INTO teams (league_id, name, logo_url, kit_url, formation_xml, "

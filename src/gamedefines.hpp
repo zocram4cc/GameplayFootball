@@ -10,6 +10,7 @@
 
 #include "base/math/vector3.hpp"
 #include "defines.hpp"
+#include "gametypes.hpp"
 #include "onthepitch/velocitystate.hpp"
 
 using namespace blunted;
@@ -111,15 +112,6 @@ enum e_SetPiece {
   e_SetPiece_Penalty,
 };
 
-enum e_MatchPhase {
-  e_MatchPhase_PreMatch,
-  e_MatchPhase_1stHalf,
-  e_MatchPhase_2ndHalf,
-  e_MatchPhase_1stExtraTime,
-  e_MatchPhase_2ndExtraTime,
-  e_MatchPhase_Penalties,
-};
-
 enum e_PlayerCommandModifier {
   e_PlayerCommandModifier_None = 0,
   e_PlayerCommandModifier_KnockOn = 1
@@ -208,19 +200,6 @@ struct PlayerCommand {
 
 using PlayerCommandQueue = std::vector<PlayerCommand>;
 
-enum e_PlayerRole {
-  e_PlayerRole_GK,
-  e_PlayerRole_CB,
-  e_PlayerRole_LB,
-  e_PlayerRole_RB,
-  e_PlayerRole_DM,
-  e_PlayerRole_CM,
-  e_PlayerRole_LM,
-  e_PlayerRole_RM,
-  e_PlayerRole_AM,
-  e_PlayerRole_CF,
-};
-
 std::string GetRoleName(e_PlayerRole playerRole);
 e_PlayerRole GetRoleFromString(const std::string& roleString);
 
@@ -246,16 +225,6 @@ struct PlayerImage {
 };
 
 bool PlayerImageDepthSortFunc(const PlayerImage& a, const PlayerImage& b);
-
-const float pitchHalfW = 55;  // only inside side- and backlines
-const float pitchHalfH = 36;
-const float pitchFullHalfW = 60;  // including 'rim'
-const float pitchFullHalfH = 40;
-const float lineHalfW = 0.06f;
-
-const float goalDepth = 2.55f;
-const float goalHeight = 2.5f;
-const float goalHalfWidth = 3.7f;
 
 enum e_DecayType { e_DecayType_Constant, e_DecayType_Variable };
 

@@ -95,7 +95,7 @@ OpenGLRenderer3D::OpenGLRenderer3D()
   // SetPriorityClass(thread.native_handle(), HIGH_PRIORITY_CLASS);
 };
 
-OpenGLRenderer3D::~OpenGLRenderer3D(){};
+OpenGLRenderer3D::~OpenGLRenderer3D() {};
 
 namespace {
 
@@ -123,8 +123,6 @@ void OpenGLRenderer3D::SwapBuffers() {
   if (!filename.empty())
     WriteScreenshot(filename);
 }
-
-
 
 void OpenGLRenderer3D::WriteScreenshot(const std::string& filename) {
   const int width = context_width;
@@ -536,46 +534,46 @@ bool OpenGLRenderer3D::CreateContext(int width, int height, int bpp, bool fullsc
         "OpenGL version not equal to or higher than 3.2 (or not reported as such)");
 
 #ifdef WIN32
-    // VK: TODO check if centering is still required with SDL2
-    /*
-    SDL_VERSION(&wmInfo.version);
-    if (SDL_GetWMInfo(&wmInfo)) {
+  // VK: TODO check if centering is still required with SDL2
+  /*
+  SDL_VERSION(&wmInfo.version);
+  if (SDL_GetWMInfo(&wmInfo)) {
 
-      HWND hWnd = wmInfo.window;
-      // center window
-      // todo: needs linux version for centering as well. not sure how. find out.
-      if (!fullscreen) {
-        //#undef _WIN32_WINNT
-        //#define _WIN32_WINNT 0x0500
-        //#undef WINVER
-        //#define WINVER 0x0500
-        //#include <windows.h>
-        //#include <winuser.h>
-        HMONITOR mon = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO monInfo;
-        monInfo.cbSize = sizeof(MONITORINFO);
-        bool getMonInfo = GetMonitorInfo(mon, &monInfo);
-        if (getMonInfo != 0) {
-          RECT rect = monInfo.rcWork;
-          int xSize = rect.right - rect.left;
-          int xCenter = rect.left + (xSize * 0.5f);
-          int ySize = rect.bottom - rect.top;
-          int yCenter = rect.top + (ySize * 0.5f);
-          int xWin = xCenter - (width * 0.5f);
-          int yWin = yCenter - (height * 0.5f);
-          xWin = std::max(xWin, 0); // super annoying to have a window's controls being unreachable
-          yWin = std::max(yWin, 0);
-          xWin -= 3;   // window border size (educated guess - is a user setting, after all)
-          yWin -= 12;  // window border size + taskbar (educated guess - user setting)
-          SetWindowPos(hWnd, nullptr, xWin, yWin, 0, 0, SWP_NOSIZE);
-        }
-        //SetWindowPos(hWnd, nullptr, 976, 0, 0, 0, SWP_NOSIZE);
+    HWND hWnd = wmInfo.window;
+    // center window
+    // todo: needs linux version for centering as well. not sure how. find out.
+    if (!fullscreen) {
+      //#undef _WIN32_WINNT
+      //#define _WIN32_WINNT 0x0500
+      //#undef WINVER
+      //#define WINVER 0x0500
+      //#include <windows.h>
+      //#include <winuser.h>
+      HMONITOR mon = MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+      MONITORINFO monInfo;
+      monInfo.cbSize = sizeof(MONITORINFO);
+      bool getMonInfo = GetMonitorInfo(mon, &monInfo);
+      if (getMonInfo != 0) {
+        RECT rect = monInfo.rcWork;
+        int xSize = rect.right - rect.left;
+        int xCenter = rect.left + (xSize * 0.5f);
+        int ySize = rect.bottom - rect.top;
+        int yCenter = rect.top + (ySize * 0.5f);
+        int xWin = xCenter - (width * 0.5f);
+        int yWin = yCenter - (height * 0.5f);
+        xWin = std::max(xWin, 0); // super annoying to have a window's controls being unreachable
+        yWin = std::max(yWin, 0);
+        xWin -= 3;   // window border size (educated guess - is a user setting, after all)
+        yWin -= 12;  // window border size + taskbar (educated guess - user setting)
+        SetWindowPos(hWnd, nullptr, xWin, yWin, 0, 0, SWP_NOSIZE);
       }
-
-      //HDC hDC = GetDC(wmInfo.window);
-      //wglMakeCurrent(hDC, wmInfo.hglrc);
+      //SetWindowPos(hWnd, nullptr, 976, 0, 0, 0, SWP_NOSIZE);
     }
-     */
+
+    //HDC hDC = GetDC(wmInfo.window);
+    //wglMakeCurrent(hDC, wmInfo.hglrc);
+  }
+   */
 #endif
 
 #ifdef WIN32

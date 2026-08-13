@@ -2,11 +2,11 @@
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 3A and TECHNICAL_ROADMAP.md
 // section 4D.
 
-#include "data/playertraits.hpp"
+#include <set>
 
 #include <gtest/gtest.h>
 
-#include <set>
+#include "data/playertraits.hpp"
 
 using blunted::Vector3;
 
@@ -91,8 +91,8 @@ TEST(TargetManTest, ShieldsTheBallOnlyWhileHoldingPosition) {
 
 TEST(KnuckleballerTest, LeavesShortShotsAlone) {
   const Vector3 rotVec(0.0f, 0.0f, 4.0f);
-  const Vector3 result = PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer,
-                                                            rotVec, 12.0f, 1.0f);
+  const Vector3 result =
+      PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer, rotVec, 12.0f, 1.0f);
   EXPECT_FLOAT_EQ(result.coords[0], rotVec.coords[0]);
   EXPECT_FLOAT_EQ(result.coords[1], rotVec.coords[1]);
   EXPECT_FLOAT_EQ(result.coords[2], rotVec.coords[2]);
@@ -100,10 +100,10 @@ TEST(KnuckleballerTest, LeavesShortShotsAlone) {
 
 TEST(KnuckleballerTest, PerturbsLongShotsInTheDirectionOfTheNoiseSample) {
   const Vector3 rotVec(0.0f, 0.0f, 4.0f);
-  const Vector3 positive = PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer,
-                                                              rotVec, 30.0f, 1.0f);
-  const Vector3 negative = PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer,
-                                                              rotVec, 30.0f, -1.0f);
+  const Vector3 positive =
+      PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer, rotVec, 30.0f, 1.0f);
+  const Vector3 negative =
+      PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer, rotVec, 30.0f, -1.0f);
   EXPECT_GT(positive.coords[1], rotVec.coords[1]);
   EXPECT_LT(negative.coords[1], rotVec.coords[1]);
   // Symmetric around the unperturbed value.
@@ -112,8 +112,8 @@ TEST(KnuckleballerTest, PerturbsLongShotsInTheDirectionOfTheNoiseSample) {
 
 TEST(KnuckleballerTest, ZeroNoiseIsAlwaysANoOp) {
   const Vector3 rotVec(1.0f, 2.0f, 3.0f);
-  const Vector3 result = PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer,
-                                                            rotVec, 40.0f, 0.0f);
+  const Vector3 result =
+      PlayerTraits::ApplyKnuckleballSpin(PlayerTraits::e_Trait_Knuckleballer, rotVec, 40.0f, 0.0f);
   EXPECT_FLOAT_EQ(result.coords[0], rotVec.coords[0]);
   EXPECT_FLOAT_EQ(result.coords[1], rotVec.coords[1]);
   EXPECT_FLOAT_EQ(result.coords[2], rotVec.coords[2]);
@@ -156,7 +156,8 @@ TEST(PlayingStyleTest, DifferentPlayersGetDifferentFlair) {
 TEST(PlayingStyleTest, StylesSuitThePositionTheyArePlayedIn) {
   // A striker can poach or finish, but never plays as a deep-lying anchor.
   for (int id = 1; id <= 60; id++) {
-    const PlayerTraits::TraitMask striker = PlayerTraits::AssignForPlayer(id, e_PlayerRole_CF, 0.7f);
+    const PlayerTraits::TraitMask striker =
+        PlayerTraits::AssignForPlayer(id, e_PlayerRole_CF, 0.7f);
     EXPECT_FALSE(PlayerTraits::Has(striker, PlayerTraits::e_Trait_Anchorman)) << id;
 
     const PlayerTraits::TraitMask centreBack =

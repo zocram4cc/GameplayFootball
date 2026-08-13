@@ -2,9 +2,9 @@
 // section 3B: both teams are played by the AI while humans control tactics,
 // lineups and substitutions.
 
-#include "onthepitch/coachmode.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/coachmode.hpp"
 
 TEST(CoachModeParseTest, RecognizesTheControlModes) {
   EXPECT_EQ(CoachMode::Parse("ai"), CoachMode::e_TeamControl_AI);
@@ -79,8 +79,8 @@ TEST(CoachModeSetupTest, TheAINeverGetsATacticsMenu) {
 TEST(CoachModeSetupTest, OutOfRangeTeamIdsAreHandled) {
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
-  EXPECT_TRUE(CoachMode::CanEditTactics(setup, -5));   // clamps to team 0
-  EXPECT_FALSE(CoachMode::CanEditTactics(setup, 7));   // clamps to team 1
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, -5));  // clamps to team 0
+  EXPECT_FALSE(CoachMode::CanEditTactics(setup, 7));  // clamps to team 1
 }
 
 // Derived from the number of human gamers assigned to each team, so an existing

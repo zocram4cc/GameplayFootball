@@ -2,11 +2,10 @@
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 4A. The wind/wetness ball physics
 // they build on already exist in ballphysics.cpp.
 
-#include "onthepitch/pitchconditions.hpp"
-
 #include <gtest/gtest.h>
 
 #include "onthepitch/ballphysics.hpp"
+#include "onthepitch/pitchconditions.hpp"
 
 namespace {
 
@@ -157,5 +156,6 @@ TEST(PlayerSlipTest, ASlipCostsPaceAndThenWearsOff) {
   EXPECT_FLOAT_EQ(PitchConditions::GetSlipVelocityMultiplier(PitchConditions::slipRecoveryTime_ms),
                   1.0f);
   EXPECT_FLOAT_EQ(
-      PitchConditions::GetSlipVelocityMultiplier(PitchConditions::slipRecoveryTime_ms + 5000), 1.0f);
+      PitchConditions::GetSlipVelocityMultiplier(PitchConditions::slipRecoveryTime_ms + 5000),
+      1.0f);
 }

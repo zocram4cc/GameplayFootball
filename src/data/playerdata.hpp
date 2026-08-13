@@ -8,10 +8,10 @@
 
 #include "../gamedefines.hpp"
 #include "../onthepitch/matchpressure.hpp"
-#include "playertraits.hpp"
 #include "../utils.hpp"
 #include "base/properties.hpp"
 #include "defines.hpp"
+#include "playertraits.hpp"
 
 class PlayerData {
 public:

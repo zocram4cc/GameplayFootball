@@ -18,12 +18,6 @@
 
 #include "elizacontroller.hpp"
 
-#include "data/playertraits.hpp"
-#include "onthepitch/gameplaytuning.hpp"
-#include "onthepitch/matchpressure.hpp"
-#include "onthepitch/penaltyshootoutcontroller.hpp"
-#include "onthepitch/teamphilosophy.hpp"
-
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -33,6 +27,11 @@
 #include "../../playercontrolsettings.hpp"
 #include "../humanoid/humanoid_utils.hpp"
 #include "../playerofficial.hpp"
+#include "data/playertraits.hpp"
+#include "onthepitch/gameplaytuning.hpp"
+#include "onthepitch/matchpressure.hpp"
+#include "onthepitch/penaltyshootoutcontroller.hpp"
+#include "onthepitch/teamphilosophy.hpp"
 #include "strategies/offtheball/default_def.hpp"
 #include "strategies/offtheball/default_mid.hpp"
 #include "strategies/offtheball/default_off.hpp"
@@ -1154,8 +1153,8 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   // flowing game).
   const float shotAppetite =
       PlayerTraits::GetShotAppetite(traits) * GameplayTuning::GetShotAppetite(*GetConfiguration());
-  const float shootingRange =
-      GameplayTuning::GetShootingRange(*GetConfiguration()) + PlayerTraits::GetShootingRangeBonus(traits);
+  const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
+                              PlayerTraits::GetShootingRangeBonus(traits);
   float idealShotPosFactor =
       1.0f - NormalizedClamp(
                  (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())

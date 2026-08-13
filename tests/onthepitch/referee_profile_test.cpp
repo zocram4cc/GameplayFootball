@@ -1,9 +1,9 @@
 // Tests for referee personalities and VAR review triggers described in
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 4B.
 
-#include "onthepitch/refereeprofile.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/refereeprofile.hpp"
 
 TEST(RefereeProfileParseTest, RecognizesProfileNamesCaseInsensitively) {
   EXPECT_EQ(RefereeProfile::Parse("strict"), RefereeProfile::e_Profile_Strict);

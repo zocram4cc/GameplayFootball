@@ -1,9 +1,9 @@
 // Tests for mental fatigue and pressure (clutch performers, panicking players)
 // described in SIMULATION_IMPROVEMENT_PROPOSAL.md section 3B.
 
-#include "onthepitch/matchpressure.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/matchpressure.hpp"
 
 namespace {
 
@@ -43,10 +43,9 @@ TEST(ClutchFactorTest, NoBonusWhenTheGameIsAlreadyDecided) {
 
 TEST(ClutchFactorTest, OrdinaryTemperamentsGetNothing) {
   EXPECT_FLOAT_EQ(MatchPressure::GetClutchTechnicalMultiplier(0.5f, 0, Minutes(85)), 1.0f);
-  EXPECT_FLOAT_EQ(
-      MatchPressure::GetClutchTechnicalMultiplier(MatchPressure::clutchResilienceThreshold - 0.01f,
-                                                  0, Minutes(85)),
-      1.0f);
+  EXPECT_FLOAT_EQ(MatchPressure::GetClutchTechnicalMultiplier(
+                      MatchPressure::clutchResilienceThreshold - 0.01f, 0, Minutes(85)),
+                  1.0f);
 }
 
 TEST(PanicTest, NoStumbleRiskUntilTwoOpponentsClose) {

@@ -48,7 +48,7 @@ TeamPhilosophy::e_Philosophy ChoosePhilosophy(TeamPhilosophy::e_Philosophy prefe
 // The shape the CPU wants on the pitch. `preferred` is the team's own formation;
 // the AI only departs from it to chase a game or to see one out.
 Formations::e_Formation ChooseFormation(Formations::e_Formation preferred,
-                                       const MatchSituation& situation);
+                                        const MatchSituation& situation);
 
 // Indices refer to positions in `squad`.
 SubstitutionPlan PlanSubstitution(const std::vector<SubstitutionCandidate>& squad,

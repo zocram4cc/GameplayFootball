@@ -5,11 +5,11 @@
 
 #include "gameplan.hpp"
 
-#include "../main.hpp"
-#include "mainmenu.hpp"
 #include <cmath>
 
+#include "../main.hpp"
 #include "data/formations.hpp"
+#include "mainmenu.hpp"
 #include "onthepitch/match.hpp"
 #include "onthepitch/team.hpp"
 #include "onthepitch/teamphilosophy.hpp"
@@ -49,15 +49,13 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
                                 Localization::GetInstance().Translate("gameplan_lineup"));
   buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 32, 3,
                                  Localization::GetInstance().Translate("gameplan_tactics"));
-  buttonFormation =
-      new Gui2Button(windowManager, "gameplan_button_formation", 0, 0, 32, 3,
-                     Localization::GetInstance().Translate("gameplan_formation") + ": " +
-                         GetFormationCaption());
+  buttonFormation = new Gui2Button(
+      windowManager, "gameplan_button_formation", 0, 0, 32, 3,
+      Localization::GetInstance().Translate("gameplan_formation") + ": " + GetFormationCaption());
 
-  buttonPhilosophy =
-      new Gui2Button(windowManager, "gameplan_button_philosophy", 0, 0, 32, 3,
-                     Localization::GetInstance().Translate("gameplan_philosophy") + ": " +
-                         GetPhilosophyCaption());
+  buttonPhilosophy = new Gui2Button(
+      windowManager, "gameplan_button_philosophy", 0, 0, 32, 3,
+      Localization::GetInstance().Translate("gameplan_philosophy") + ": " + GetPhilosophyCaption());
   buttonSubstitutions =
       new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_substitutions"));
@@ -299,10 +297,10 @@ void GamePlanPage::ApplyFormationShape(const Formations::Shape& shape) {
 void GamePlanPage::CustomFormationOnChange() {
   // Defenders and midfielders are chosen; the forwards are whatever is left, so
   // the eleven always adds up however the sliders are dragged.
-  const int defenders = static_cast<int>(std::round(sliderCustomDefenders->GetValue() *
-                                                   Formations::outfieldPlayers));
-  const int midfielders = static_cast<int>(std::round(sliderCustomMidfielders->GetValue() *
-                                                     Formations::outfieldPlayers));
+  const int defenders =
+      static_cast<int>(std::round(sliderCustomDefenders->GetValue() * Formations::outfieldPlayers));
+  const int midfielders = static_cast<int>(
+      std::round(sliderCustomMidfielders->GetValue() * Formations::outfieldPlayers));
   const Formations::Shape shape = Formations::MakeShapeClamped(defenders, midfielders, 0);
 
   sliderCustomDefenders->SetCaption(Localization::GetInstance().Translate("formation_defenders") +
@@ -332,7 +330,7 @@ void GamePlanPage::GoFormationMenu() {
                            Formations::ShapeName(currentShape);
     const Vector3 color = isCurrent ? Vector3(80, 160, 80) : Vector3(60, 60, 60);
     Gui2Button* button = formationMenu->AddButton("formationbutton_" + int_to_str(row),
-                                                Formations::GetName(candidate), row, 0, color);
+                                                  Formations::GetName(candidate), row, 0, color);
     const int index = row;
     button->sig_OnClick.connect([this, index](Gui2Button* btn) { FormationMenuOnClick(index); });
     if (isCurrent)
@@ -340,14 +338,12 @@ void GamePlanPage::GoFormationMenu() {
   }
 
   // ...and a builder for anything else the manager fancies, from 6-4-0 to 1-0-9.
-  sliderCustomDefenders =
-      formationMenu->AddSlider("formation_custom_defenders",
-                               Localization::GetInstance().Translate("formation_defenders"), row++,
-                               0);
-  sliderCustomMidfielders =
-      formationMenu->AddSlider("formation_custom_midfielders",
-                               Localization::GetInstance().Translate("formation_midfielders"),
-                               row++, 0);
+  sliderCustomDefenders = formationMenu->AddSlider(
+      "formation_custom_defenders", Localization::GetInstance().Translate("formation_defenders"),
+      row++, 0);
+  sliderCustomMidfielders = formationMenu->AddSlider(
+      "formation_custom_midfielders",
+      Localization::GetInstance().Translate("formation_midfielders"), row++, 0);
   sliderCustomDefenders->SetValue(static_cast<float>(currentShape.defenders) /
                                   Formations::outfieldPlayers);
   sliderCustomMidfielders->SetValue(static_cast<float>(currentShape.midfielders) /
@@ -376,16 +372,15 @@ void GamePlanPage::FormationMenuOnClick(int formationIndex) {
   const std::vector<Gui2Button*>& buttons = formationMenu->GetAllButtons();
   for (unsigned int i = 0; i < buttons.size(); i++) {
     buttons.at(i)->SetColor(static_cast<int>(i) == formationIndex ? Vector3(80, 160, 80)
-                                                                 : Vector3(60, 60, 60));
+                                                                  : Vector3(60, 60, 60));
   }
 }
 
 std::string GamePlanPage::GetPhilosophyCaption() const {
-  const TeamPhilosophy::e_Philosophy philosophy = TeamPhilosophy::Parse(
-      teamData->GetTactics().userProperties.Get(
+  const TeamPhilosophy::e_Philosophy philosophy =
+      TeamPhilosophy::Parse(teamData->GetTactics().userProperties.Get(
           "philosophy", teamData->GetTactics().factoryProperties.Get("philosophy", "balanced")));
-  return Localization::GetInstance().Translate("philosophy_" +
-                                              TeamPhilosophy::GetName(philosophy));
+  return Localization::GetInstance().Translate("philosophy_" + TeamPhilosophy::GetName(philosophy));
 }
 
 void GamePlanPage::GoPhilosophyMenu() {
@@ -395,8 +390,8 @@ void GamePlanPage::GoPhilosophyMenu() {
   philosophyMenu->sig_OnClose.connect([this](...) { SaveTactics(); });
   philosophyMenu->sig_OnClose.connect([this](...) { Reactivate(); });
 
-  const TeamPhilosophy::e_Philosophy current = TeamPhilosophy::Parse(
-      teamData->GetTactics().userProperties.Get(
+  const TeamPhilosophy::e_Philosophy current =
+      TeamPhilosophy::Parse(teamData->GetTactics().userProperties.Get(
           "philosophy", teamData->GetTactics().factoryProperties.Get("philosophy", "balanced")));
 
   for (int i = 0; i < TeamPhilosophy::e_Philosophy_Count; i++) {
@@ -418,7 +413,7 @@ void GamePlanPage::PhilosophyMenuOnClick(int philosophyIndex) {
   const TeamPhilosophy::e_Philosophy philosophy =
       static_cast<TeamPhilosophy::e_Philosophy>(philosophyIndex);
   teamData->GetTacticsWritable().userProperties.Set("philosophy",
-                                                   TeamPhilosophy::GetName(philosophy));
+                                                    TeamPhilosophy::GetName(philosophy));
   buttonPhilosophy->SetCaption(Localization::GetInstance().Translate("gameplan_philosophy") + ": " +
                                GetPhilosophyCaption());
 
@@ -426,7 +421,7 @@ void GamePlanPage::PhilosophyMenuOnClick(int philosophyIndex) {
   const std::vector<Gui2Button*>& buttons = philosophyMenu->GetAllButtons();
   for (unsigned int i = 0; i < buttons.size(); i++) {
     buttons.at(i)->SetColor(static_cast<int>(i) == philosophyIndex ? Vector3(80, 160, 80)
-                                                                  : Vector3(60, 60, 60));
+                                                                   : Vector3(60, 60, 60));
   }
 }
 
@@ -448,18 +443,18 @@ void GamePlanPage::GoSubstitutionsMenu() {
     std::vector<Player*> bench;
     team->GetBenchPlayers(bench);
 
-    substitutionsMenu->AddButton(
-        "subs_caption_remaining", Localization::GetInstance().Translate("substitutions_remaining") +
-                                      ": " +
-                                      int_to_str(Substitutions::GetRemaining(
-                                          match->GetSubstitutionState(), teamID)),
-        row++, 0, Vector3(40, 40, 40))
+    substitutionsMenu
+        ->AddButton(
+            "subs_caption_remaining",
+            Localization::GetInstance().Translate("substitutions_remaining") + ": " +
+                int_to_str(Substitutions::GetRemaining(match->GetSubstitutionState(), teamID)),
+            row++, 0, Vector3(40, 40, 40))
         ->SetActive(false);
 
     for (Player* player : onPitch) {
       Gui2Button* button = substitutionsMenu->AddButton(
-          "subsbutton_out_id" + int_to_str(player->GetID()),
-          player->GetPlayerData()->GetLastName(), row++, 0, Vector3(120, 70, 70));
+          "subsbutton_out_id" + int_to_str(player->GetID()), player->GetPlayerData()->GetLastName(),
+          row++, 0, Vector3(120, 70, 70));
       button->sig_OnClick.connect([this](Gui2Button* btn) { SubstitutionsMenuOnClick(btn); });
       button->SetToggleable(true);
       if (row == 2)
@@ -468,8 +463,8 @@ void GamePlanPage::GoSubstitutionsMenu() {
 
     for (Player* player : bench) {
       Gui2Button* button = substitutionsMenu->AddButton(
-          "subsbutton_in_id" + int_to_str(player->GetID()),
-          player->GetPlayerData()->GetLastName(), row++, 0, Vector3(70, 100, 130));
+          "subsbutton_in_id" + int_to_str(player->GetID()), player->GetPlayerData()->GetLastName(),
+          row++, 0, Vector3(70, 100, 130));
       button->sig_OnClick.connect([this](Gui2Button* btn) { SubstitutionsMenuOnClick(btn); });
       button->SetToggleable(true);
     }

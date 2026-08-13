@@ -10,7 +10,8 @@
 #include <string>
 #include <vector>
 
-#include "../gamedefines.hpp"
+#include "../gametypes.hpp"
+#include "base/math/vector3.hpp"
 
 namespace Formations {
 

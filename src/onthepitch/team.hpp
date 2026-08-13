@@ -7,6 +7,7 @@
 #define _HPP_TEAM
 
 #include <memory>
+
 #include "../data/teamdata.hpp"
 #include "humangamer.hpp"
 #include "player/player.hpp"

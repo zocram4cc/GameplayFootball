@@ -4,9 +4,9 @@
 
 #include "data/formations.hpp"
 
-#include <gtest/gtest.h>
-
 #include <set>
+
+#include <gtest/gtest.h>
 
 TEST(FormationsTest, OffersSeveralShapes) {
   EXPECT_GE(Formations::GetCount(), 6);

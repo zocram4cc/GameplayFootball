@@ -32,7 +32,7 @@ TeamPhilosophy::e_Philosophy ChoosePhilosophy(TeamPhilosophy::e_Philosophy prefe
 }
 
 Formations::e_Formation ChooseFormation(Formations::e_Formation preferred,
-                                       const MatchSituation& situation) {
+                                        const MatchSituation& situation) {
   // Chasing the game late: take a defender off the pitch and add a forward.
   if (situation.goalDifference < 0 &&
       situation.matchTime_ms >= MatchMentality::desperationStart_ms) {

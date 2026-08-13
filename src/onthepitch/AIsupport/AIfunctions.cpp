@@ -18,15 +18,13 @@
 
 #include "AIfunctions.hpp"
 
-#include "../matchmentality.hpp"
-#include "../team.hpp"
-
 #include <cmath>
 
 #include "../../main.hpp"
 #include "../aitactics.hpp"
 #include "../ball.hpp"
 #include "../match.hpp"
+#include "../matchmentality.hpp"
 #include "../player/humanoid/humanoid_utils.hpp"
 #include "../player/player.hpp"
 #include "../team.hpp"

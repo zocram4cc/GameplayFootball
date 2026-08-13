@@ -127,7 +127,6 @@ public:
   virtual void SetViewport(int x, int y, int width, int height);
   virtual void GetContextSize(int& width, int& height, int& bpp);
 
-
   virtual void SetPolygonOffset(float scale, float bias);
 
   // shaders

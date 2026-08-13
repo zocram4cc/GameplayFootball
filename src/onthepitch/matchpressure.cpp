@@ -24,7 +24,7 @@ bool IsFinalTenMinutes(unsigned long matchTime_ms) {
 }
 
 float GetClutchTechnicalMultiplier(float resilience, int goalDifference,
-                                  unsigned long matchTime_ms) {
+                                   unsigned long matchTime_ms) {
   if (resilience < clutchResilienceThreshold)
     return 1.0f;
   if (!IsFinalTenMinutes(matchTime_ms) || !IsCloseGame(goalDifference))

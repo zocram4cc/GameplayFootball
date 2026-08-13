@@ -18,13 +18,8 @@
 
 #include "player.hpp"
 
-#include <cstring>
-
-#include "data/playertraits.hpp"
-#include "onthepitch/pitchconditions.hpp"
-#include "onthepitch/matchpressure.hpp"
-
 #include <cmath>
+#include <cstring>
 
 #include "../../main.hpp"
 #include "../../utils.hpp"
@@ -34,6 +29,9 @@
 #include "base/geometry/triangle.hpp"
 #include "controller/elizacontroller.hpp"
 #include "controller/strategies/strategy.hpp"
+#include "data/playertraits.hpp"
+#include "onthepitch/matchpressure.hpp"
+#include "onthepitch/pitchconditions.hpp"
 
 Player::Player(Team* team, PlayerData* playerData)
     : PlayerBase(team->GetMatch(), playerData), team(team) {
@@ -404,16 +402,16 @@ void Player::Process() {
     if (distance > 0.0f) {
       const Vector3 currentDirection = GetDirectionVec();
       if (previousDirectionVec.GetLength() > 0.01f && !IsSlipping()) {
-        const float sharpness = PitchConditions::GetTurnSharpness(
-            currentDirection.GetDotProduct(previousDirectionVec));
+        const float sharpness =
+            PitchConditions::GetTurnSharpness(currentDirection.GetDotProduct(previousDirectionVec));
         const float speedFactor =
             GetMaxVelocity() > 0.0f
                 ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
                 : 0.0f;
-        const float slipChance = PitchConditions::GetSlipChance(
-            match->GetBall()->GetWeatherWetness(),
-            PitchConditions::GetWear(match->GetMatchTime_ms()), sharpness * speedFactor,
-            GetStat("physical_balance"));
+        const float slipChance =
+            PitchConditions::GetSlipChance(match->GetBall()->GetWeatherWetness(),
+                                           PitchConditions::GetWear(match->GetMatchTime_ms()),
+                                           sharpness * speedFactor, GetStat("physical_balance"));
         if (PitchConditions::ShouldSlip(slipChance, random(0.0f, 1.0f)))
           lastSlipTime_ms = match->GetActualTime_ms();
       }
@@ -641,9 +639,9 @@ float Player::GetStat(const char* name) const {
   if (std::strcmp(name, "mental_calmness") == 0) {
     const PlayerTraits::TraitMask traits = playerData->GetTraits();
     if (traits != PlayerTraits::traitMaskNone) {
-      const float speedFactor = GetMaxVelocity() > 0.0f
-                                    ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
-                                    : 0.0f;
+      const float speedFactor =
+          GetMaxVelocity() > 0.0f ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
+                                  : 0.0f;
       return PlayerTraits::GetCalmnessAtSpeed(traits, playerData->GetStat(name) * multiplier,
                                               speedFactor);
     }
@@ -653,7 +651,7 @@ float Player::GetStat(const char* name) const {
   if (std::strncmp(name, "technical_", 10) == 0) {
     Match* playerMatch = team->GetMatch();
     const int goalDifference = playerMatch->GetMatchData()->GetGoalCount(team->GetID()) -
-                              playerMatch->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
+                               playerMatch->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
     multiplier *= MatchPressure::GetClutchTechnicalMultiplier(
         playerData->GetStat("mental_resilience"), goalDifference, playerMatch->GetMatchTime_ms());
   }

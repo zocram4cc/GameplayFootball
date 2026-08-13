@@ -1,9 +1,9 @@
 // Tests for the reactive mentality shifts described in
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 2B.
 
-#include "onthepitch/matchmentality.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/matchmentality.hpp"
 
 namespace {
 
@@ -123,8 +123,9 @@ TEST(MatchMentalityMomentumTest, ApplyingMomentumSumsOntoTheUsersValueAndStaysNo
 
   EXPECT_GT(pushed, userValue);
   EXPECT_LT(held, userValue);
-  EXPECT_FLOAT_EQ(MatchMentality::ApplyMomentum(userValue, MatchMentality::e_Mentality_Normal, 1.0f),
-                  userValue);
+  EXPECT_FLOAT_EQ(
+      MatchMentality::ApplyMomentum(userValue, MatchMentality::e_Mentality_Normal, 1.0f),
+      userValue);
 
   // Never escapes the slider range, whatever the user asked for.
   EXPECT_LE(MatchMentality::ApplyMomentum(1.0f, MatchMentality::e_Mentality_Desperation, 1.0f),
@@ -141,6 +142,6 @@ TEST(MatchMentalityMomentumTest, WeightScalesHowMuchOfTheMomentumIsApplied) {
 
   EXPECT_GT(full, half);
   EXPECT_GT(half, 0.5f);
-  EXPECT_FLOAT_EQ(MatchMentality::ApplyMomentum(0.5f, MatchMentality::e_Mentality_Desperation, 0.0f),
-                  0.5f);
+  EXPECT_FLOAT_EQ(
+      MatchMentality::ApplyMomentum(0.5f, MatchMentality::e_Mentality_Desperation, 0.0f), 0.5f);
 }

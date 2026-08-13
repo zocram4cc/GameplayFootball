@@ -26,8 +26,7 @@ TEST(SubstitutionsTest, AFreshMatchHasAFullSetOfSubstitutionsForBothTeams) {
 
 TEST(SubstitutionsTest, AValidSwapAtAStoppageIsAccepted) {
   const Substitutions::State state;
-  EXPECT_EQ(Substitutions::Validate(state, 0, ValidSwap(), true),
-            Substitutions::e_Result_Accepted);
+  EXPECT_EQ(Substitutions::Validate(state, 0, ValidSwap(), true), Substitutions::e_Result_Accepted);
 }
 
 TEST(SubstitutionsTest, SubstitutionsWaitForTheNextStoppage) {
@@ -84,8 +83,7 @@ TEST(SubstitutionsTest, ATeamRunsOutOfSubstitutionsAfterThree) {
   EXPECT_EQ(Substitutions::Validate(state, 1, ValidSwap(), true),
             Substitutions::e_Result_NoSubstitutionsLeft);
   // The other team still has all three.
-  EXPECT_EQ(Substitutions::Validate(state, 0, ValidSwap(), true),
-            Substitutions::e_Result_Accepted);
+  EXPECT_EQ(Substitutions::Validate(state, 0, ValidSwap(), true), Substitutions::e_Result_Accepted);
 }
 
 TEST(SubstitutionsTest, CommittingBeyondTheLimitNeverGoesNegative) {

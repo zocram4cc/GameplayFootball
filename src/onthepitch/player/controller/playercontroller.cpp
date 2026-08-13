@@ -18,8 +18,6 @@
 
 #include "playercontroller.hpp"
 
-#include "onthepitch/gameplaytuning.hpp"
-
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -30,6 +28,7 @@
 #include "../../team.hpp"
 #include "../humanoid/humanoid_utils.hpp"
 #include "../player.hpp"
+#include "onthepitch/gameplaytuning.hpp"
 
 PlayerController::PlayerController(Match* match) : IController(match) {
   Reset();
@@ -303,9 +302,9 @@ void PlayerController::_KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
       lastTouchPlayer ? lastTouchPlayer->GetLastTouchTime_ms() : 0;
   if (shotTouchTime_ms != deflectDecisionTouchTime_ms) {
     deflectDecisionTouchTime_ms = shotTouchTime_ms;
-    deflectAllowed = random(0.0f, 1.0f) < GameplayTuning::GetKeeperSaveChance(
-                                              *GetConfiguration(),
-                                              CastPlayer()->GetStat("physical_reaction"));
+    deflectAllowed =
+        random(0.0f, 1.0f) < GameplayTuning::GetKeeperSaveChance(
+                                 *GetConfiguration(), CastPlayer()->GetStat("physical_reaction"));
   }
   if (!deflectAllowed)
     return;

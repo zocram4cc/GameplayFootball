@@ -1,15 +1,13 @@
 // Tests for the match phase progression (TECHNICAL_ROADMAP.md checklist item 1:
 // "Fix Match State: clean up extra time logic in Referee").
 
-#include "onthepitch/matchprogression.hpp"
-
 #include <gtest/gtest.h>
 
+#include "onthepitch/matchprogression.hpp"
+
 TEST(MatchProgressionTest, HalfTimeAlwaysLeadsToTheSecondHalf) {
-  const MatchProgression::Outcome level =
-      MatchProgression::GetNext(e_MatchPhase_1stHalf, true);
-  const MatchProgression::Outcome ahead =
-      MatchProgression::GetNext(e_MatchPhase_1stHalf, false);
+  const MatchProgression::Outcome level = MatchProgression::GetNext(e_MatchPhase_1stHalf, true);
+  const MatchProgression::Outcome ahead = MatchProgression::GetNext(e_MatchPhase_1stHalf, false);
 
   EXPECT_FALSE(level.gameOver);
   EXPECT_EQ(level.nextPhase, e_MatchPhase_2ndHalf);
@@ -18,14 +16,12 @@ TEST(MatchProgressionTest, HalfTimeAlwaysLeadsToTheSecondHalf) {
 }
 
 TEST(MatchProgressionTest, ADecidedMatchEndsAtFullTime) {
-  const MatchProgression::Outcome outcome =
-      MatchProgression::GetNext(e_MatchPhase_2ndHalf, false);
+  const MatchProgression::Outcome outcome = MatchProgression::GetNext(e_MatchPhase_2ndHalf, false);
   EXPECT_TRUE(outcome.gameOver);
 }
 
 TEST(MatchProgressionTest, ADrawAtFullTimeGoesToExtraTime) {
-  const MatchProgression::Outcome outcome =
-      MatchProgression::GetNext(e_MatchPhase_2ndHalf, true);
+  const MatchProgression::Outcome outcome = MatchProgression::GetNext(e_MatchPhase_2ndHalf, true);
   EXPECT_FALSE(outcome.gameOver);
   EXPECT_EQ(outcome.nextPhase, e_MatchPhase_1stExtraTime);
 }
@@ -55,8 +51,7 @@ TEST(MatchProgressionTest, StillLevelAfterExtraTimeMeansPenalties) {
 }
 
 TEST(MatchProgressionTest, ThePenaltiesPhaseIsLeftToTheShootout) {
-  const MatchProgression::Outcome outcome =
-      MatchProgression::GetNext(e_MatchPhase_Penalties, true);
+  const MatchProgression::Outcome outcome = MatchProgression::GetNext(e_MatchPhase_Penalties, true);
   EXPECT_FALSE(outcome.gameOver);
   EXPECT_EQ(outcome.nextPhase, e_MatchPhase_Penalties);
 }

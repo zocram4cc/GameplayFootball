@@ -19,10 +19,10 @@
 #ifndef _HPP_TEAM_AICONTROLLER
 #define _HPP_TEAM_AICONTROLLER
 
+#include "../data/formations.hpp"
 #include "../data/setpiececonfig.hpp"
 #include "../gamedefines.hpp"
 #include "base/properties.hpp"
-#include "../data/formations.hpp"
 #include "matchmentality.hpp"
 #include "teaminstructions.hpp"
 #include "teamphilosophy.hpp"

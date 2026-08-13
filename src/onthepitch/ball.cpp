@@ -5,8 +5,6 @@
 
 #include "ball.hpp"
 
-#include "pitchconditions.hpp"
-
 #include <algorithm>
 #include <cmath>
 
@@ -15,6 +13,7 @@
 #include "managers/resourcemanagerpool.hpp"
 #include "managers/usereventmanager.hpp"
 #include "match.hpp"
+#include "pitchconditions.hpp"
 #include "scene/objectfactory.hpp"
 #include "scene/resources/soundbuffer.hpp"
 #include "utils/objectloader.hpp"
@@ -186,7 +185,7 @@ BallSpatialInfo Ball::CalculatePrediction() {
   // Pitch degradation: the surface cuts up as the match wears on, which slows
   // the ball along the ground; rain also thickens the air it flies through.
   PitchConditions::Apply(physicsConfig, PitchConditions::GetWear(match->GetMatchTime_ms()),
-                        weatherWetness);
+                         weatherWetness);
 
   ballTouchesNet = false;
 

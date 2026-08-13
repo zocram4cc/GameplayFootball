@@ -1,11 +1,10 @@
 // Tests for the penalty shootout described in TECHNICAL_ROADMAP.md section 3C:
 // a stat-driven "dice roll" resolution plus the shootout state machine.
 
-#include "onthepitch/penaltyshootout.hpp"
-
 #include <gtest/gtest.h>
 
-#include "gamedefines.hpp"
+#include "gametypes.hpp"
+#include "onthepitch/penaltyshootout.hpp"
 
 namespace {
 
@@ -87,8 +86,10 @@ TEST(PenaltyAimTest, TheSampleSignPicksTheSideOfTheGoal) {
 }
 
 TEST(PenaltyAimTest, AGoodShooterStaysOnTargetWhereAPoorOneSprraysIt) {
-  EXPECT_TRUE(PenaltyShootout::IsOnTarget(PenaltyShootout::CalculateAim(GoodShooter(), 1.0f, 1.0f)));
-  EXPECT_FALSE(PenaltyShootout::IsOnTarget(PenaltyShootout::CalculateAim(PoorShooter(), 1.0f, 1.0f)));
+  EXPECT_TRUE(
+      PenaltyShootout::IsOnTarget(PenaltyShootout::CalculateAim(GoodShooter(), 1.0f, 1.0f)));
+  EXPECT_FALSE(
+      PenaltyShootout::IsOnTarget(PenaltyShootout::CalculateAim(PoorShooter(), 1.0f, 1.0f)));
 }
 
 TEST(PenaltyAimTest, OnTargetMeansInsideTheFrameOfTheGoal) {
@@ -209,8 +210,8 @@ TEST(PenaltyStateTest, OnlyGoalsScore) {
 
 TEST(PenaltyStateTest, FiveKicksEachDecidesTheWinner) {
   // 3-2 after five kicks each.
-  const PenaltyShootout::State state = PlayOut({kGoal, kGoal, kGoal, kGoal, kSave, kSave, kGoal,
-                                               kSave, kSave, kSave});
+  const PenaltyShootout::State state =
+      PlayOut({kGoal, kGoal, kGoal, kGoal, kSave, kSave, kGoal, kSave, kSave, kSave});
 
   EXPECT_EQ(state.score[0], 3);
   EXPECT_EQ(state.score[1], 2);
@@ -364,8 +365,7 @@ PenaltyShootout::KickObservation Observation() {
 }  // namespace
 
 TEST(PenaltyObserveTest, NothingHasHappenedYetWhileTheBallIsStillTravelling) {
-  EXPECT_EQ(PenaltyShootout::ObserveKick(Observation(), 500),
-            PenaltyShootout::e_Outcome_Pending);
+  EXPECT_EQ(PenaltyShootout::ObserveKick(Observation(), 500), PenaltyShootout::e_Outcome_Pending);
 }
 
 TEST(PenaltyObserveTest, ABallInTheNetIsAGoal) {

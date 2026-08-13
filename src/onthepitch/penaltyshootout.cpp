@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "gamedefines.hpp"
+#include "../gametypes.hpp"
 
 namespace PenaltyShootout {
 

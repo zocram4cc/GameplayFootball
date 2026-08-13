@@ -54,7 +54,6 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
       height = atof(result->data.at(0).at(c).c_str());
   }
 
-
   std::vector<std::string> roleStrings;
   tokenize(roleString, roleStrings);
 

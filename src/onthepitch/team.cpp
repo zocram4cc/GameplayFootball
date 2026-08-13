@@ -188,8 +188,7 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
   std::swap(players.at(indexOut), players.at(indexIn));
 
   kit = FetchKit(indexOut);
-  playerIn->Activate(playerNode, fullbodyNode, playerColorCoords, kit,
-                     match->GetAnimCollection());
+  playerIn->Activate(playerNode, fullbodyNode, playerColorCoords, kit, match->GetAnimCollection());
   playerIn->ResetPosition(replacedPosition, Vector3(0));
 
   // Nobody may be left pointing at the player who just walked off.

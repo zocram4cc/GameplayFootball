@@ -6,11 +6,9 @@
 #include "gameover.hpp"
 
 #include <cmath>
-
-#include "../../data/matchanalytics.hpp"
-
 #include <ctime>
 
+#include "../../data/matchanalytics.hpp"
 #include "../../data/matchhistory.hpp"
 #include "../career/career_database.hpp"
 #include "../pagefactory.hpp"
@@ -240,12 +238,12 @@ void GameOverPage::Process() {
         matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
         matchData->GetShotsOnTarget(1), MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 0),
         MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 1), matchData->GetGoalCount(0),
-        matchData->GetGoalCount(1), PossessionPercent(matchData, 0), PossessionPercent(matchData, 1));
+        matchData->GetGoalCount(1), PossessionPercent(matchData, 0),
+        PossessionPercent(matchData, 1));
     printf("[menu-smoke] Full-match verification succeeded, quitting test run\n");
     EnvironmentManager::GetInstance().SignalQuit();
   }
 }
-
 
 void GameOverPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape()) {

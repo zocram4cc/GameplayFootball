@@ -2,9 +2,9 @@
 // Any team that is not run by a human coach gets its philosophy and its
 // substitutions from here.
 
-#include "onthepitch/aimanager.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/aimanager.hpp"
 
 namespace {
 
@@ -34,8 +34,8 @@ AIManager::SubstitutionCandidate Candidate(float fatigue, float injury, bool onP
 // --- Philosophy selection ---
 
 TEST(AIManagerPhilosophyTest, DefaultsToTheTeamsOwnPreferenceEarlyOn) {
-  const TeamPhilosophy::e_Philosophy chosen = AIManager::ChoosePhilosophy(
-      TeamPhilosophy::e_Philosophy_TikiTaka, Situation(0, Minutes(20)));
+  const TeamPhilosophy::e_Philosophy chosen =
+      AIManager::ChoosePhilosophy(TeamPhilosophy::e_Philosophy_TikiTaka, Situation(0, Minutes(20)));
   EXPECT_EQ(chosen, TeamPhilosophy::e_Philosophy_TikiTaka);
 }
 
@@ -46,14 +46,14 @@ TEST(AIManagerPhilosophyTest, ChasesTheGameWithHighPressingLateOn) {
 }
 
 TEST(AIManagerPhilosophyTest, ProtectsANarrowLeadInTheClosingMinutes) {
-  const TeamPhilosophy::e_Philosophy chosen = AIManager::ChoosePhilosophy(
-      TeamPhilosophy::e_Philosophy_Balanced, Situation(1, Minutes(85)));
+  const TeamPhilosophy::e_Philosophy chosen =
+      AIManager::ChoosePhilosophy(TeamPhilosophy::e_Philosophy_Balanced, Situation(1, Minutes(85)));
   EXPECT_EQ(chosen, TeamPhilosophy::e_Philosophy_ParkTheBus);
 }
 
 TEST(AIManagerPhilosophyTest, KeepsTheBallWhenComfortablyAheadWithTimeToPlay) {
-  const TeamPhilosophy::e_Philosophy chosen = AIManager::ChoosePhilosophy(
-      TeamPhilosophy::e_Philosophy_Balanced, Situation(2, Minutes(70)));
+  const TeamPhilosophy::e_Philosophy chosen =
+      AIManager::ChoosePhilosophy(TeamPhilosophy::e_Philosophy_Balanced, Situation(2, Minutes(70)));
   EXPECT_EQ(chosen, TeamPhilosophy::e_Philosophy_TikiTaka);
 }
 
@@ -104,8 +104,8 @@ TEST(AIManagerSubstitutionTest, TakesOffAnExhaustedPlayerForAFreshOne) {
 
 TEST(AIManagerSubstitutionTest, AnInjuredPlayerComesOffAheadOfATiredOne) {
   std::vector<AIManager::SubstitutionCandidate> squad = {
-      Candidate(0.8f, 0.0f, true),   // exhausted
-      Candidate(0.1f, 0.5f, true),   // injured
+      Candidate(0.8f, 0.0f, true),  // exhausted
+      Candidate(0.1f, 0.5f, true),  // injured
       Candidate(0.0f, 0.0f, false),
   };
 
@@ -132,7 +132,7 @@ TEST(AIManagerSubstitutionTest, PicksTheBestAvailableReplacement) {
 
 TEST(AIManagerSubstitutionTest, DoesNothingWithoutSubstitutionsLeft) {
   std::vector<AIManager::SubstitutionCandidate> squad = {Candidate(0.9f, 0.0f, true),
-                                                        Candidate(0.0f, 0.0f, false)};
+                                                         Candidate(0.0f, 0.0f, false)};
 
   const AIManager::SubstitutionPlan plan =
       AIManager::PlanSubstitution(squad, Situation(0, Minutes(70)), 0);
@@ -141,7 +141,7 @@ TEST(AIManagerSubstitutionTest, DoesNothingWithoutSubstitutionsLeft) {
 
 TEST(AIManagerSubstitutionTest, DoesNothingWithAnEmptyBench) {
   std::vector<AIManager::SubstitutionCandidate> squad = {Candidate(0.9f, 0.0f, true),
-                                                        Candidate(0.9f, 0.0f, true)};
+                                                         Candidate(0.9f, 0.0f, true)};
 
   const AIManager::SubstitutionPlan plan =
       AIManager::PlanSubstitution(squad, Situation(0, Minutes(70)), 3);
@@ -150,7 +150,7 @@ TEST(AIManagerSubstitutionTest, DoesNothingWithAnEmptyBench) {
 
 TEST(AIManagerSubstitutionTest, HoldsSubstitutionsBackEarlyInTheMatch) {
   std::vector<AIManager::SubstitutionCandidate> squad = {Candidate(0.7f, 0.0f, true),
-                                                        Candidate(0.0f, 0.0f, false)};
+                                                         Candidate(0.0f, 0.0f, false)};
 
   // Tired after ten minutes is not a reason to burn a substitution.
   EXPECT_FALSE(AIManager::PlanSubstitution(squad, Situation(0, Minutes(10)), 3).wanted);
@@ -159,7 +159,7 @@ TEST(AIManagerSubstitutionTest, HoldsSubstitutionsBackEarlyInTheMatch) {
 
 TEST(AIManagerSubstitutionTest, AnInjuryIsWorthASubstitutionAtAnyTime) {
   std::vector<AIManager::SubstitutionCandidate> squad = {Candidate(0.0f, 0.6f, true),
-                                                        Candidate(0.0f, 0.0f, false)};
+                                                         Candidate(0.0f, 0.0f, false)};
 
   const AIManager::SubstitutionPlan plan =
       AIManager::PlanSubstitution(squad, Situation(0, Minutes(8)), 3);
@@ -169,7 +169,7 @@ TEST(AIManagerSubstitutionTest, AnInjuryIsWorthASubstitutionAtAnyTime) {
 
 TEST(AIManagerSubstitutionTest, NeverSuggestsSwappingAPlayerWithHimself) {
   std::vector<AIManager::SubstitutionCandidate> squad = {Candidate(0.9f, 0.0f, true),
-                                                        Candidate(0.0f, 0.0f, false)};
+                                                         Candidate(0.0f, 0.0f, false)};
 
   const AIManager::SubstitutionPlan plan =
       AIManager::PlanSubstitution(squad, Situation(0, Minutes(70)), 3);

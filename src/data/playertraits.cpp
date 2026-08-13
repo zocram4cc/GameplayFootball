@@ -8,10 +8,10 @@ namespace PlayerTraits {
 namespace {
 
 const e_Trait allTraits[traitCount] = {
-    e_Trait_SpeedMerchant,     e_Trait_TargetMan,        e_Trait_Knuckleballer,
-    e_Trait_OneTouchPass,      e_Trait_FirstTimeShot,    e_Trait_GoalPoacher,
-    e_Trait_CreativePlaymaker, e_Trait_FoxInTheBox,      e_Trait_LongRangeShooter,
-    e_Trait_ProlificWinger,    e_Trait_BoxToBox,         e_Trait_Anchorman,
+    e_Trait_SpeedMerchant,     e_Trait_TargetMan,     e_Trait_Knuckleballer,
+    e_Trait_OneTouchPass,      e_Trait_FirstTimeShot, e_Trait_GoalPoacher,
+    e_Trait_CreativePlaymaker, e_Trait_FoxInTheBox,   e_Trait_LongRangeShooter,
+    e_Trait_ProlificWinger,    e_Trait_BoxToBox,      e_Trait_Anchorman,
 };
 
 // Lowercases and drops separators so "Target Man", "target_man" and "targetman"
@@ -178,8 +178,8 @@ TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotSta
   TraitMask mask = traitMaskNone;
   int given = 0;
   for (int attempt = 0; attempt < traitCount * 2 && given < wanted; attempt++) {
-    const e_Trait candidate =
-        allTraits[PlayerHash(playerDatabaseID, 7 + attempt) % static_cast<unsigned int>(traitCount)];
+    const e_Trait candidate = allTraits[PlayerHash(playerDatabaseID, 7 + attempt) %
+                                        static_cast<unsigned int>(traitCount)];
     if (Has(mask, candidate) || !SuitsRole(candidate, role))
       continue;
 

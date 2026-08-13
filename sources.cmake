@@ -389,6 +389,7 @@ set(LEAGUE_SOURCES
 
 set(CORE_HEADERS
    src/gamedefines.hpp
+   src/gametypes.hpp
    src/utils.hpp
    src/main.hpp
    src/gametask.hpp

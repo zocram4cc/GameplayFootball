@@ -5,13 +5,12 @@
 
 #include "matchoptions.hpp"
 
-#include "systems/graphics/rendering/opengl_renderer3d.hpp"
-
 #include <cmath>
 
 #include "../pagefactory.hpp"
 #include "main.hpp"
 #include "onthepitch/matchduration.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/localization.hpp"
 
 using namespace blunted;
@@ -128,12 +127,10 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   UpdateKitCaptions();
 
   // Tactics for the coming match: the same game plan screen used in-match.
-  Gui2Button* buttonGamePlan1 =
-      new Gui2Button(windowManager, "matchoptions_button_gameplan_1", 0, 0, 29, 3,
-                     TR("gameplan_header") + " 1");
-  Gui2Button* buttonGamePlan2 =
-      new Gui2Button(windowManager, "matchoptions_button_gameplan_2", 0, 0, 29, 3,
-                     TR("gameplan_header") + " 2");
+  Gui2Button* buttonGamePlan1 = new Gui2Button(windowManager, "matchoptions_button_gameplan_1", 0,
+                                               0, 29, 3, TR("gameplan_header") + " 1");
+  Gui2Button* buttonGamePlan2 = new Gui2Button(windowManager, "matchoptions_button_gameplan_2", 0,
+                                               0, 29, 3, TR("gameplan_header") + " 2");
   buttonGamePlan1->sig_OnClick.connect([this](...) { GoGamePlan(0); });
   buttonGamePlan2->sig_OnClick.connect([this](...) { GoGamePlan(1); });
 
@@ -176,8 +173,8 @@ void MatchOptionsPage::UpdateTimeOfDayCaption() {
 void MatchOptionsPage::UpdateKitCaptions() {
   for (int teamID = 0; teamID < 2; teamID++) {
     const int kitNum = KitNumFromSlider(kitSlider[teamID]->GetValue());
-    kitSlider[teamID]->SetCaption(TRF("match_team_kit", {std::to_string(teamID + 1),
-                                                        std::to_string(kitNum)}));
+    kitSlider[teamID]->SetCaption(
+        TRF("match_team_kit", {std::to_string(teamID + 1), std::to_string(kitNum)}));
   }
 }
 

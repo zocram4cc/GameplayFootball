@@ -15,8 +15,8 @@
 #include "../main.hpp"
 #include "onthepitch/humanspeed.hpp"
 #include "onthepitch/playercontrolsettings.hpp"
-#include "pagefactory.hpp"
 #include "onthepitch/refereeprofile.hpp"
+#include "pagefactory.hpp"
 #include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/localization.hpp"
 
@@ -357,21 +357,21 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   // Match rules and simulation options: these apply to CPU teams as well as to
   // human ones, so a CPU-vs-CPU match is played under the same rules.
-  slider_CoachMode = new Gui2Slider(windowManager, "slider_coach_mode", 0, 0, 30, 6,
-                                    TR("settings_coach_mode"));
+  slider_CoachMode =
+      new Gui2Slider(windowManager, "slider_coach_mode", 0, 0, 30, 6, TR("settings_coach_mode"));
   slider_CoachMode->SetValue(GetConfiguration()->GetBool("coach_mode", false) ? 1.0f : 0.0f);
   UpdateCoachModeCaption();
   slider_CoachMode->sig_OnChange.connect([this](Gui2Slider*) { UpdateCoachModeCaption(); });
 
-  slider_Referee = new Gui2Slider(windowManager, "slider_referee", 0, 0, 30, 6,
-                                  TR("settings_referee"));
+  slider_Referee =
+      new Gui2Slider(windowManager, "slider_referee", 0, 0, 30, 6, TR("settings_referee"));
   slider_Referee->SetValue(RefereeSliderFromProfile(
       RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"))));
   UpdateRefereeCaption();
   slider_Referee->sig_OnChange.connect([this](Gui2Slider*) { UpdateRefereeCaption(); });
 
-  slider_Weather = new Gui2Slider(windowManager, "slider_weather", 0, 0, 30, 6,
-                                  TR("settings_weather"));
+  slider_Weather =
+      new Gui2Slider(windowManager, "slider_weather", 0, 0, 30, 6, TR("settings_weather"));
   slider_Weather->SetValue(GetConfiguration()->GetReal("match_weather", 0.0f));
   UpdateWeatherCaption();
   slider_Weather->sig_OnChange.connect([this](Gui2Slider*) { UpdateWeatherCaption(); });
@@ -437,18 +437,18 @@ void GameplayPage::UpdateHumanSpeedCaptions() {
 void GameplayPage::UpdateCoachModeCaption() {
   const bool enabled = slider_CoachMode->GetValue() >= 0.5f;
   slider_CoachMode->SetCaption(TR("settings_coach_mode") + ": " +
-                              TR(enabled ? "action_yes" : "action_no"));
+                               TR(enabled ? "action_yes" : "action_no"));
 }
 
 void GameplayPage::UpdateRefereeCaption() {
   const RefereeProfile::e_Profile profile = RefereeProfileFromSlider(slider_Referee->GetValue());
   slider_Referee->SetCaption(TR("settings_referee") + ": " +
-                            TR("referee_" + RefereeProfile::GetName(profile)));
+                             TR("referee_" + RefereeProfile::GetName(profile)));
 }
 
 void GameplayPage::UpdateWeatherCaption() {
   slider_Weather->SetCaption(TR("settings_weather") + ": " +
-                            TR(WeatherName(slider_Weather->GetValue())));
+                             TR(WeatherName(slider_Weather->GetValue())));
 }
 
 void GameplayPage::UpdatePlayerSwitchCaption() {

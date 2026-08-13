@@ -2,10 +2,9 @@
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 5B: expected goals from the shot
 // context, and heatmaps accumulated from ball positions.
 
-#include "data/matchanalytics.hpp"
-
 #include <gtest/gtest.h>
 
+#include "data/matchanalytics.hpp"
 #include "gamedefines.hpp"
 
 using blunted::Vector3;
@@ -140,7 +139,7 @@ TEST(HeatmapTest, TheCentreOfThePitchLandsInTheMiddleOfTheGrid) {
 
   EXPECT_EQ(heatmap.samples, 1);
   EXPECT_EQ(MatchAnalytics::GetCellCount(heatmap, MatchAnalytics::Heatmap::cellsX / 2,
-                                        MatchAnalytics::Heatmap::cellsY / 2),
+                                         MatchAnalytics::Heatmap::cellsY / 2),
             1);
 }
 
@@ -151,7 +150,7 @@ TEST(HeatmapTest, RepeatedVisitsAccumulateInTheSameCell) {
 
   EXPECT_EQ(heatmap.samples, 3);
   EXPECT_EQ(MatchAnalytics::GetCellCount(heatmap, MatchAnalytics::GetCellX(10.0f),
-                                        MatchAnalytics::GetCellY(5.0f)),
+                                         MatchAnalytics::GetCellY(5.0f)),
             3);
 }
 
@@ -169,7 +168,7 @@ TEST(HeatmapTest, PositionsBeyondTheLinesClampIntoTheEdgeCells) {
 
   EXPECT_EQ(MatchAnalytics::GetCellCount(heatmap, 0, 0), 1);
   EXPECT_EQ(MatchAnalytics::GetCellCount(heatmap, MatchAnalytics::Heatmap::cellsX - 1,
-                                        MatchAnalytics::Heatmap::cellsY - 1),
+                                         MatchAnalytics::Heatmap::cellsY - 1),
             1);
   EXPECT_EQ(heatmap.samples, 2);
 }
@@ -184,7 +183,7 @@ TEST(HeatmapTest, NormalizedIntensityPeaksAtTheBusiestCell) {
   const int busyY = MatchAnalytics::GetCellY(0.0f);
   EXPECT_FLOAT_EQ(MatchAnalytics::GetNormalizedIntensity(heatmap, busyX, busyY), 1.0f);
   EXPECT_FLOAT_EQ(MatchAnalytics::GetNormalizedIntensity(heatmap, MatchAnalytics::GetCellX(-40.0f),
-                                                        MatchAnalytics::GetCellY(-20.0f)),
+                                                         MatchAnalytics::GetCellY(-20.0f)),
                   0.5f);
 }
 

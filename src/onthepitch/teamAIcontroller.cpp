@@ -19,13 +19,12 @@
 #include "teamAIcontroller.hpp"
 
 #include <algorithm>
-
 #include <cmath>
 
+#include "../data/playertraits.hpp"
 #include "../main.hpp"
 #include "../misc/hungarian.h"
 #include "AIsupport/AIfunctions.hpp"
-#include "../data/playertraits.hpp"
 #include "aimanager.hpp"
 #include "aitactics.hpp"
 #include "match.hpp"
@@ -435,7 +434,7 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
   offense_sideFocusStrength += (-0.5 + AI_GetMindSet(role)) * 0.2f;
   defense_sideFocusStrength += (0.5 - AI_GetMindSet(role)) * 0.2f;
   offense_sideFocusStrength =
-      clamp(offense_sideFocusStrength + -0.3f + (offensivenessBias)*0.3f, 0.0f, 1.0f);
+      clamp(offense_sideFocusStrength + -0.3f + (offensivenessBias) * 0.3f, 0.0f, 1.0f);
   defense_sideFocusStrength =
       clamp(defense_sideFocusStrength + -0.3f + (1.0f - offensivenessBias) * 0.3f, 0.0f, 1.0f);
   if (player->GetDebug())
@@ -575,10 +574,9 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
       AI_GetMindSet(role) > 0.5f) {
     const float oppOffsideLineX =
         AI_GetOffsideLine(match, match->GetMentalImage(0), abs(team->GetID() - 1));
-    desiredPos.coords[0] = clamp(
-        PlayerTraits::GetPoacherTargetX(traits, desiredPos.coords[0], oppOffsideLineX,
-                                        team->GetSide()),
-        -pitchHalfW, pitchHalfW);
+    desiredPos.coords[0] = clamp(PlayerTraits::GetPoacherTargetX(traits, desiredPos.coords[0],
+                                                                 oppOffsideLineX, team->GetSide()),
+                                 -pitchHalfW, pitchHalfW);
   }
 
   return desiredPos;
@@ -1169,8 +1167,8 @@ void TeamAIController::ApplyAttackingRun(Player* manualPlayer) {
 
 void TeamAIController::ApplyTeamPressure() {
   // Gegenpressing keeps hunting the ball for several seconds longer.
-  endApplyTeamPressure_ms = match->GetActualTime_ms() + 500 +
-                            TeamPhilosophy::GetTeamPressureDurationBonus_ms(philosophy);
+  endApplyTeamPressure_ms =
+      match->GetActualTime_ms() + 500 + TeamPhilosophy::GetTeamPressureDurationBonus_ms(philosophy);
 
   Player* opp = match->GetTeam(abs(team->GetID() - 1))->GetBestPossessionPlayer();
   if (!opp) {
@@ -1275,8 +1273,7 @@ void TeamAIController::ApplyFormationShape(const Formations::Shape& shape) {
     entry.databasePosition = layout.at(i).position;
     // Same blend the database loader applies, so switching shape mid-match ends
     // up with exactly the positions a fresh load of that shape would give.
-    entry.position =
-        entry.databasePosition * 0.6f + GetDefaultRolePosition(entry.role) * 0.4f;
+    entry.position = entry.databasePosition * 0.6f + GetDefaultRolePosition(entry.role) * 0.4f;
     teamData->SetFormationEntry(i, entry);
   }
 
@@ -1285,7 +1282,7 @@ void TeamAIController::ApplyFormationShape(const Formations::Shape& shape) {
 
 MatchMentality::FormationShape TeamAIController::GetDesperationShape() const {
   const int goalDifference = match->GetMatchData()->GetGoalCount(team->GetID()) -
-                            match->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
+                             match->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
   return MatchMentality::GetDesperationShape(goalDifference);
 }
 
@@ -1304,12 +1301,11 @@ void TeamAIController::UpdateTactics() {
   // own tactic modifiers are then applied on top of that as offsets. A human
   // manager's choice is respected as-is; for a CPU-managed team the AI manager
   // adapts the style to the situation.
-  const TeamPhilosophy::e_Philosophy preferredPhilosophy = TeamPhilosophy::Parse(
-      teamTactics.userProperties.Get("philosophy",
-                                     teamTactics.factoryProperties.Get("philosophy", "balanced")));
-  const Formations::Shape preferredShape = Formations::ParseShape(
-      teamTactics.userProperties.Get("formation",
-                                     teamTactics.factoryProperties.Get("formation", "4-4-2")));
+  const TeamPhilosophy::e_Philosophy preferredPhilosophy =
+      TeamPhilosophy::Parse(teamTactics.userProperties.Get(
+          "philosophy", teamTactics.factoryProperties.Get("philosophy", "balanced")));
+  const Formations::Shape preferredShape = Formations::ParseShape(teamTactics.userProperties.Get(
+      "formation", teamTactics.factoryProperties.Get("formation", "4-4-2")));
 
   if (match->CanCoachTeam(team->GetID())) {
     philosophy = preferredPhilosophy;
@@ -1325,9 +1321,8 @@ void TeamAIController::UpdateTactics() {
     philosophy = AIManager::ChoosePhilosophy(preferredPhilosophy, situation);
 
     // The CPU manager reshapes the team to chase a game or see one out.
-    const Formations::Shape wantedShape =
-        Formations::GetShape(AIManager::ChooseFormation(Formations::FromShape(preferredShape),
-                                                       situation));
+    const Formations::Shape wantedShape = Formations::GetShape(
+        AIManager::ChooseFormation(Formations::FromShape(preferredShape), situation));
     if (Formations::ShapeName(wantedShape) != Formations::ShapeName(formationShape))
       ApplyFormationShape(wantedShape);
   }
@@ -1395,13 +1390,13 @@ void TeamAIController::UpdateTactics() {
     offensivenessBias = MatchMentality::ApplyMomentum(offensivenessBias, mentality, 1.0f);
     liveTeamTactics.Set(
         "position_offense_depth_factor",
-        MatchMentality::ApplyMomentum(liveTeamTactics.GetReal("position_offense_depth_factor", 0.9f),
-                                      mentality, 1.0f));
+        MatchMentality::ApplyMomentum(
+            liveTeamTactics.GetReal("position_offense_depth_factor", 0.9f), mentality, 1.0f));
     // The defensive line follows the same swing, but more cautiously.
-    liveTeamTactics.Set("position_defense_depth_factor",
-                        MatchMentality::ApplyMomentum(
-                            liveTeamTactics.GetReal("position_defense_depth_factor", 0.75f),
-                            mentality, 0.5f));
+    liveTeamTactics.Set(
+        "position_defense_depth_factor",
+        MatchMentality::ApplyMomentum(
+            liveTeamTactics.GetReal("position_defense_depth_factor", 0.75f), mentality, 0.5f));
   }
 }
 

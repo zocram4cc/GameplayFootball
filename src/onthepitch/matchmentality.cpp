@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "gamedefines.hpp"
+#include "../gametypes.hpp"
 
 namespace MatchMentality {
 

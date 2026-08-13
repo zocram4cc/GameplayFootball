@@ -81,8 +81,7 @@ void AddMidfield(std::vector<Slot>& layout, int count) {
 
 void AddAttack(std::vector<Slot>& layout, int count) {
   for (int i = 0; i < count; i++) {
-    layout.push_back(
-        MakeSlot(e_PlayerRole_CF, attackX + (i % 2) * 0.06f, SpreadY(i, count, 0.9f)));
+    layout.push_back(MakeSlot(e_PlayerRole_CF, attackX + (i % 2) * 0.06f, SpreadY(i, count, 0.9f)));
   }
 }
 

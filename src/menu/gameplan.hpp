@@ -8,10 +8,9 @@
 
 #include <memory>
 
-#include "data/formations.hpp"
-
 #include "../data/teamdata.hpp"
 #include "../onthepitch/match.hpp"
+#include "data/formations.hpp"
 #include "utils/database.hpp"
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"

@@ -83,13 +83,12 @@ void PenaltyShootoutController::Start() {
   match->StopSetPiece();
   match->GetReferee()->CancelSetPiece();
 
-  nextEventTime_ms =
-      match->GetActualTime_ms() + PenaltyShootout::GetPhaseDuration_ms(state.phase);
+  nextEventTime_ms = match->GetActualTime_ms() + PenaltyShootout::GetPhaseDuration_ms(state.phase);
 
   match->SpamMessage("PENALTY SHOOTOUT", 4000);
   Log(e_Notice, "PenaltyShootoutController", "Start",
-      "penalty shootout at the x=" + real_to_str(GetGoalX()) + " end: " +
-          match->GetTeam(firstTeam)->GetTeamData()->GetShortName() + " shoot first");
+      "penalty shootout at the x=" + real_to_str(GetGoalX()) +
+          " end: " + match->GetTeam(firstTeam)->GetTeamData()->GetShortName() + " shoot first");
 }
 
 Player* PenaltyShootoutController::SelectTaker(int teamID) {
@@ -297,10 +296,9 @@ PenaltyShootout::KickObservation PenaltyShootoutController::ObserveBall() {
     const float keeperDistance = (keeper->GetPosition() - ballPos.Get2D()).GetLength();
     if (keeperDistance < keeperGrabDistance)
       keeperTouchedBall = true;
-    observation.keeperHasBall =
-        match->GetBallRetainer() == keeper ||
-        (keeperDistance < keeperGrabDistance &&
-         match->GetBall()->GetMovement().GetLength() < ballAtRestSpeed);
+    observation.keeperHasBall = match->GetBallRetainer() == keeper ||
+                                (keeperDistance < keeperGrabDistance &&
+                                 match->GetBall()->GetMovement().GetLength() < ballAtRestSpeed);
   }
   observation.keeperTouchedBall = keeperTouchedBall;
 
@@ -344,9 +342,9 @@ void PenaltyShootoutController::AnnounceOutcome() {
   if (winner == -1)
     return;
 
-  match->SpamMessage(match->GetTeam(winner)->GetTeamData()->GetName() + " win the shootout " +
-                         GetScoreLine(),
-                     6000);
+  match->SpamMessage(
+      match->GetTeam(winner)->GetTeamData()->GetName() + " win the shootout " + GetScoreLine(),
+      6000);
   match->AddExcitementBoost(1.0f, 6000);
   Log(e_Notice, "PenaltyShootoutController", "AnnounceOutcome",
       "penalty shootout won by " + match->GetTeam(winner)->GetTeamData()->GetShortName() + " (" +
@@ -411,6 +409,5 @@ void PenaltyShootoutController::Process() {
       return;
   }
 
-  nextEventTime_ms =
-      match->GetActualTime_ms() + PenaltyShootout::GetPhaseDuration_ms(state.phase);
+  nextEventTime_ms = match->GetActualTime_ms() + PenaltyShootout::GetPhaseDuration_ms(state.phase);
 }

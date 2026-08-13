@@ -2,13 +2,12 @@
 // instructions he toggles, in the style of PES team tactics. These sit on top of
 // the team's philosophy and tactic sliders as offsets.
 
-#include "onthepitch/teaminstructions.hpp"
+#include <set>
 
 #include <gtest/gtest.h>
 
-#include <set>
-
 #include "base/properties.hpp"
+#include "onthepitch/teaminstructions.hpp"
 
 using blunted::Properties;
 
@@ -97,8 +96,7 @@ TEST(TeamInstructionsMentalityTest, BalancedChangesNothing) {
   const Properties reference = NeutralTactics();
   const blunted::map_Properties* properties = reference.GetProperties();
   for (const auto& entry : *properties) {
-    EXPECT_FLOAT_EQ(tactics.GetReal(entry.first.c_str()),
-                    reference.GetReal(entry.first.c_str()))
+    EXPECT_FLOAT_EQ(tactics.GetReal(entry.first.c_str()), reference.GetReal(entry.first.c_str()))
         << entry.first;
   }
 }
@@ -277,8 +275,9 @@ TEST(TeamInstructionsPresetTest, TheDpadReachesEveryMentalityIncludingBalanced) 
   reached.insert(static_cast<int>(state.mentality));  // balanced to start with
 
   for (int i = 0; i < TeamInstructions::presetDirectionCount; i++) {
-    TeamInstructions::SelectMentality(state, TeamInstructions::GetPresetForDirection(
-                                                 static_cast<TeamInstructions::e_PresetDirection>(i)));
+    TeamInstructions::SelectMentality(state,
+                                      TeamInstructions::GetPresetForDirection(
+                                          static_cast<TeamInstructions::e_PresetDirection>(i)));
     reached.insert(static_cast<int>(state.mentality));
   }
   EXPECT_EQ(static_cast<int>(reached.size()), TeamInstructions::e_Mentality_Count);

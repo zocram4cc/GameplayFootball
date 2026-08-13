@@ -1,11 +1,10 @@
 // Tests for the knobs that decide how open a match feels: how far out players
 // shoot, how readily they shoot, and how often a keeper gets across.
 
-#include "onthepitch/gameplaytuning.hpp"
-
 #include <gtest/gtest.h>
 
 #include "base/properties.hpp"
+#include "onthepitch/gameplaytuning.hpp"
 
 using blunted::Properties;
 

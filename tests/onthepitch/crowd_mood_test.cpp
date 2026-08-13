@@ -2,9 +2,9 @@
 // section 5A. The existing crowd audio reacts to goals and to play near the
 // goal; this adds the possession-driven roar of the home support.
 
-#include "onthepitch/crowdmood.hpp"
-
 #include <gtest/gtest.h>
+
+#include "onthepitch/crowdmood.hpp"
 
 // MatchData::GetPossessionFactor_60seconds() returns 0 when team 0 has had all
 // the ball and 1 when team 1 has.

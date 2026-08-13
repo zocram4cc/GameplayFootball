@@ -9,11 +9,11 @@
 
 #include "../controllerselect.hpp"
 #include "../gameplan.hpp"
-#include "onthepitch/coachmode.hpp"
-#include "onthepitch/match.hpp"
 #include "../pagefactory.hpp"
 #include "../settings.hpp"
 #include "main.hpp"
+#include "onthepitch/coachmode.hpp"
+#include "onthepitch/match.hpp"
 #include "replaymenu.hpp"
 #include "utils/localization.hpp"
 
@@ -68,8 +68,7 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   // In coach mode both touchlines are human-run, so each coached team gets its
   // own game plan entry rather than only the team that opened the menu.
   Match* ingameMatch = GetGameTask()->GetMatch();
-  const bool managerDuel =
-      ingameMatch && CoachMode::IsManagerDuel(ingameMatch->GetCoachSetup());
+  const bool managerDuel = ingameMatch && CoachMode::IsManagerDuel(ingameMatch->GetCoachSetup());
 
   Gui2Button* buttonGamePlan = new Gui2Button(
       windowManager, "button_gameplan", 0, 0, 56, 3,
@@ -86,11 +85,11 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   if (managerDuel) {
     const int opponentID = abs(teamID - 1);
-    Gui2Button* buttonGamePlanOpponent = new Gui2Button(
-        windowManager, "button_gameplan_opponent", 0, 0, 56, 3,
-        Localization::GetInstance().Translate("ingame_game_plan") + " (" +
-            Localization::GetInstance().Translate("ingame_team") + " " + int_to_str(opponentID + 1) +
-            ")");
+    Gui2Button* buttonGamePlanOpponent =
+        new Gui2Button(windowManager, "button_gameplan_opponent", 0, 0, 56, 3,
+                       Localization::GetInstance().Translate("ingame_game_plan") + " (" +
+                           Localization::GetInstance().Translate("ingame_team") + " " +
+                           int_to_str(opponentID + 1) + ")");
     buttonGamePlanOpponent->sig_OnClick.connect(
         [this, opponentID](...) { GoGamePlanForTeam(opponentID); });
     grid->AddView(buttonGamePlanOpponent, row++, 0);

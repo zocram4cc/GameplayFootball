@@ -40,6 +40,7 @@ add_executable(gameplayfootball_velocity_tests
 
 target_include_directories(gameplayfootball_velocity_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
 )
 
 target_link_libraries(gameplayfootball_velocity_tests PRIVATE
@@ -55,6 +56,7 @@ add_executable(gameplayfootball_integration_tests
 
 target_include_directories(gameplayfootball_integration_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
 )
 
 target_link_libraries(gameplayfootball_integration_tests PRIVATE

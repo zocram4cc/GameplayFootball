@@ -6,7 +6,7 @@
 #ifndef _HPP_MATCH_PROGRESSION
 #define _HPP_MATCH_PROGRESSION
 
-#include "gamedefines.hpp"
+#include "../gametypes.hpp"
 
 namespace MatchProgression {
 

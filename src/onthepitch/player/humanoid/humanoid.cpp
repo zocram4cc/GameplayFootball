@@ -18,9 +18,6 @@
 
 #include "humanoid.hpp"
 
-#include "data/matchanalytics.hpp"
-#include "data/playertraits.hpp"
-
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -28,6 +25,8 @@
 #include "../../match.hpp"
 #include "../../team.hpp"
 #include "../player.hpp"
+#include "data/matchanalytics.hpp"
+#include "data/playertraits.hpp"
 #include "humanoid_utils.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "systems/graphics/graphics_scene.hpp"
@@ -711,7 +710,8 @@ void Humanoid::Process() {
         if (shotTraits != PlayerTraits::traitMaskNone) {
           const float incomingBallSpeed = match->GetBall()->GetMovement().GetLength();
           // A first-time shot at a rolling ball is struck cleaner and harder.
-          const bool firstTimeShot = match->GetActualTime_ms() - player->GetLastTouchTime_ms() > 400;
+          const bool firstTimeShot =
+              match->GetActualTime_ms() - player->GetLastTouchTime_ms() > 400;
           touchVec *= PlayerTraits::GetFirstTimeShotPowerMultiplier(shotTraits, firstTimeShot,
                                                                     incomingBallSpeed);
 

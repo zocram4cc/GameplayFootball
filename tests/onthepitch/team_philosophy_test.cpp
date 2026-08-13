@@ -1,12 +1,11 @@
 // Tests for tactical archetypes ("team philosophies") described in
 // SIMULATION_IMPROVEMENT_PROPOSAL.md section 2A.
 
-#include "onthepitch/teamphilosophy.hpp"
-
 #include <gtest/gtest.h>
 
 #include "base/properties.hpp"
-#include "gamedefines.hpp"
+#include "gametypes.hpp"
+#include "onthepitch/teamphilosophy.hpp"
 
 using blunted::Properties;
 
@@ -42,7 +41,8 @@ TEST(TeamPhilosophyParseTest, AcceptsSpacingAndPunctuationVariants) {
 
 TEST(TeamPhilosophyParseTest, UnknownAndEmptyNamesFallBackToBalanced) {
   EXPECT_EQ(TeamPhilosophy::Parse(""), TeamPhilosophy::e_Philosophy_Balanced);
-  EXPECT_EQ(TeamPhilosophy::Parse("catenaccio-ish nonsense"), TeamPhilosophy::e_Philosophy_Balanced);
+  EXPECT_EQ(TeamPhilosophy::Parse("catenaccio-ish nonsense"),
+            TeamPhilosophy::e_Philosophy_Balanced);
 }
 
 TEST(TeamPhilosophyParseTest, CanonicalNamesRoundTrip) {
@@ -103,13 +103,14 @@ TEST(TeamPhilosophyPresetTest, PresetsStayWithinSliderRange) {
 }
 
 TEST(TeamPhilosophyBehaviorTest, OnlyGegenpressingExtendsThePressureWindow) {
-  EXPECT_EQ(TeamPhilosophy::GetTeamPressureDurationBonus_ms(
-                TeamPhilosophy::e_Philosophy_Gegenpressing),
-            5000UL);
   EXPECT_EQ(
-      TeamPhilosophy::GetTeamPressureDurationBonus_ms(TeamPhilosophy::e_Philosophy_Balanced), 0UL);
+      TeamPhilosophy::GetTeamPressureDurationBonus_ms(TeamPhilosophy::e_Philosophy_Gegenpressing),
+      5000UL);
+  EXPECT_EQ(TeamPhilosophy::GetTeamPressureDurationBonus_ms(TeamPhilosophy::e_Philosophy_Balanced),
+            0UL);
   EXPECT_EQ(
-      TeamPhilosophy::GetTeamPressureDurationBonus_ms(TeamPhilosophy::e_Philosophy_ParkTheBus), 0UL);
+      TeamPhilosophy::GetTeamPressureDurationBonus_ms(TeamPhilosophy::e_Philosophy_ParkTheBus),
+      0UL);
 }
 
 TEST(TeamPhilosophyBehaviorTest, OnlyGegenpressingCounterPressesOnPossessionLoss) {
@@ -123,8 +124,8 @@ TEST(TeamPhilosophyBehaviorTest, GegenpressingCostsTwentyPercentExtraStamina) {
       TeamPhilosophy::GetStaminaDrainMultiplier(TeamPhilosophy::e_Philosophy_Gegenpressing), 1.2f);
   EXPECT_FLOAT_EQ(TeamPhilosophy::GetStaminaDrainMultiplier(TeamPhilosophy::e_Philosophy_Balanced),
                   1.0f);
-  EXPECT_FLOAT_EQ(TeamPhilosophy::GetStaminaDrainMultiplier(TeamPhilosophy::e_Philosophy_ParkTheBus),
-                  1.0f);
+  EXPECT_FLOAT_EQ(
+      TeamPhilosophy::GetStaminaDrainMultiplier(TeamPhilosophy::e_Philosophy_ParkTheBus), 1.0f);
 }
 
 TEST(TeamPhilosophyBehaviorTest, OnlyTikiTakaPrefersShortPassing) {
@@ -139,8 +140,9 @@ TEST(TeamPhilosophyOffsideTrapTest, ParkTheBusPullsAnAdvancedTrapBackToTheBoxEdg
   const float boxEdgeRight = pitchHalfW - TeamPhilosophy::penaltyBoxDepth;
 
   // Team with side +1 defends the +x goal; a trap at the halfway line is far too high.
-  EXPECT_FLOAT_EQ(TeamPhilosophy::AdaptOffsideTrapX(TeamPhilosophy::e_Philosophy_ParkTheBus, 0.0f, 1),
-                  boxEdgeRight);
+  EXPECT_FLOAT_EQ(
+      TeamPhilosophy::AdaptOffsideTrapX(TeamPhilosophy::e_Philosophy_ParkTheBus, 0.0f, 1),
+      boxEdgeRight);
   // Mirrored for the team defending the -x goal.
   EXPECT_FLOAT_EQ(
       TeamPhilosophy::AdaptOffsideTrapX(TeamPhilosophy::e_Philosophy_ParkTheBus, 0.0f, -1),

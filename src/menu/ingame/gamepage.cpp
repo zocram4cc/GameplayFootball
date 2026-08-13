@@ -5,14 +5,13 @@
 
 #include "gamepage.hpp"
 
-#include "systems/graphics/rendering/opengl_renderer3d.hpp"
-
 #include "../../onthepitch/match.hpp"
 #include "../pagefactory.hpp"
 #include "gameover.hpp"
 #include "main.hpp"
 #include "phasemenu.hpp"
 #include "replaymenu.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 
 using namespace blunted;
 

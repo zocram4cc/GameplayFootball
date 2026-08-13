@@ -6,15 +6,13 @@
 #include "match.hpp"
 
 #include "../data/playertraits.hpp"
-#include "aimanager.hpp"
-#include "coachmode.hpp"
-#include "crowdmood.hpp"
-#include "systems/graphics/rendering/opengl_renderer3d.hpp"
-
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
+#include "aimanager.hpp"
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
+#include "coachmode.hpp"
+#include "crowdmood.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "matchduration.hpp"
 #include "menu/pagefactory.hpp"
@@ -24,6 +22,7 @@
 #include "scene/objectfactory.hpp"
 #include "scene/objects/light.hpp"
 #include "scene/resources/soundbuffer.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/directoryparser.hpp"
 #include "utils/splitgeometry.hpp"
 
@@ -405,9 +404,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     const float wetness = weather;
     const float windStrength = weather * weather * 6.0f;  // storms bend the ball much more
     const float windAngle = random(0.0f, 2.0f * pi);
-    ball->SetWeather(Vector3(std::cos(windAngle) * windStrength,
-                             std::sin(windAngle) * windStrength, 0.0f),
-                     wetness);
+    ball->SetWeather(
+        Vector3(std::cos(windAngle) * windStrength, std::sin(windAngle) * windStrength, 0.0f),
+        wetness);
   }
 
   // Straight to a shootout: handy for trying penalties out without playing a
@@ -827,7 +826,7 @@ void Match::AddExcitementBoost(float amount, int duration_ms) {
 }
 
 Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
-                                                  Player* playerIn) {
+                                                   Player* playerIn) {
   Team* team = GetTeam(teamID);
   const Substitutions::SquadView squad = team->DescribeSwap(playerOut, playerIn);
   const Substitutions::e_Result result =
@@ -950,9 +949,9 @@ void Match::ProcessTacticalHotkeysForPad(int teamID) {
     if (!device->GetButton(directionButtons[i]) ||
         device->GetPreviousButtonState(directionButtons[i]))
       continue;
-    TeamInstructions::SelectMentality(
-        instructions, TeamInstructions::GetPresetForDirection(
-                          static_cast<TeamInstructions::e_PresetDirection>(i)));
+    TeamInstructions::SelectMentality(instructions,
+                                      TeamInstructions::GetPresetForDirection(
+                                          static_cast<TeamInstructions::e_PresetDirection>(i)));
     changed = true;
   }
 
@@ -988,7 +987,8 @@ void Match::ProcessTacticalHotkeys() {
   UserEventManager& events = UserEventManager::GetInstance();
 
   // Shift addresses the other bench in a manager duel.
-  const bool otherTeam = events.GetKeyboardState(SDLK_LSHIFT) || events.GetKeyboardState(SDLK_RSHIFT);
+  const bool otherTeam =
+      events.GetKeyboardState(SDLK_LSHIFT) || events.GetKeyboardState(SDLK_RSHIFT);
   Team* team = GetTeam(GetCoachedTeamID(otherTeam));
   TeamInstructions::State& instructions = team->GetController()->GetInstructions();
 
@@ -1063,10 +1063,10 @@ void Match::UpdateCrowdAudio() {
 
   // Sustained possession by the home side lifts the crowd on top of the
   // goal/danger reactions above.
-  const float possessionExcitement = CrowdMood::GetPossessionExcitement(
-      matchData->GetPossessionFactor_60seconds(), 0);
-  const float effectiveExcitement = clamp(
-      CrowdMood::Blend(excitement + excitementEventBoost, possessionExcitement), 0.0f, 1.0f);
+  const float possessionExcitement =
+      CrowdMood::GetPossessionExcitement(matchData->GetPossessionFactor_60seconds(), 0);
+  const float effectiveExcitement =
+      clamp(CrowdMood::Blend(excitement + excitementEventBoost, possessionExcitement), 0.0f, 1.0f);
   const float masterVolume = clamp(GetConfiguration()->GetReal("audio_volume", 0.5f), 0.0f, 1.0f);
   const bool crowdMuted = masterVolume == 0.0f;
   const float pauseFactor = pause ? 0.22f : 1.0f;
@@ -2537,8 +2537,7 @@ void Match::CheckBallCollisions() {
         // A target man shields the ball with his body while holding position
         // (proposal 3A).
         boundingBoxSizeOffset += PlayerTraits::GetShieldingRadiusBonus(
-            players[i]->GetPlayerData()->GetTraits(),
-            players[i]->GetMovement().GetLength() < 1.0f);
+            players[i]->GetPlayerData()->GetTraits(), players[i]->GetMovement().GetLength() < 1.0f);
 
         if (((players[i]->GetPosition() + Vector3(0, 0, 0.8f)) - ball->Predict(0)).GetLength() <
             2.5f) {  // premature optimization is the root of all evil :D

@@ -2,7 +2,7 @@
 
 #include <cctype>
 
-#include "gamedefines.hpp"
+#include "../gametypes.hpp"
 
 namespace TeamPhilosophy {
 
