@@ -45,7 +45,7 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // the save animation, so almost nothing went in; this makes it his reaction stat
 // against a tunable sharpness.
 inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
-  const float sharpness = blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.55f), 0.2f, 1.0f);
+  const float sharpness = blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.45f), 0.2f, 1.0f);
   const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
   return blunted::clamp(sharpness * (0.45f + reaction * 0.55f), 0.05f, 0.97f);
 }

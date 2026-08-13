@@ -20,6 +20,7 @@ using namespace blunted;
 GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   teamID = pageData.properties->GetInt("teamID", 0);
+  pageCreatedTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
   const int teamDatabaseID = pageData.properties->GetInt("teamDatabaseID", -1);
 
   constexpr float xOffset = 32.5f;
@@ -38,27 +39,27 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   frame->Show();
 
   Gui2Caption* header = new Gui2Caption(
-      windowManager, "gameplan_header", xOffset, 11, 35, 3,
+      windowManager, "gameplan_header", 1.5f, 1.5f, 32, 3,
       Localization::GetInstance().Translate("gameplan_header") + " " + int_to_str(teamID + 1));
-  grid = new Gui2Grid(windowManager, "gameplan_grid", xOffset, 15, 0, 0);
-  gridNav = new Gui2Grid(windowManager, "gameplan_grid_navigation", xOffset, 0, 0, 0);
+  grid = new Gui2Grid(windowManager, "gameplan_grid", 1.5f, 6, 0, 0);
+  gridNav = new Gui2Grid(windowManager, "gameplan_grid_navigation", 0, 0, 0, 0);
 
-  map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 35, 28, teamData);
-  buttonLineup = new Gui2Button(windowManager, "gameplan_button_lineup", 0, 0, 34, 3,
+  map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 32, 26, teamData);
+  buttonLineup = new Gui2Button(windowManager, "gameplan_button_lineup", 0, 0, 32, 3,
                                 Localization::GetInstance().Translate("gameplan_lineup"));
-  buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 34, 3,
+  buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 32, 3,
                                  Localization::GetInstance().Translate("gameplan_tactics"));
   buttonFormation =
-      new Gui2Button(windowManager, "gameplan_button_formation", 0, 0, 34, 3,
+      new Gui2Button(windowManager, "gameplan_button_formation", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_formation") + ": " +
                          GetFormationCaption());
 
   buttonPhilosophy =
-      new Gui2Button(windowManager, "gameplan_button_philosophy", 0, 0, 34, 3,
+      new Gui2Button(windowManager, "gameplan_button_philosophy", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_philosophy") + ": " +
                          GetPhilosophyCaption());
   buttonSubstitutions =
-      new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 34, 3,
+      new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_substitutions"));
 
   buttonLineup->sig_OnClick.connect([this](...) { GoLineupMenu(); });
@@ -96,10 +97,29 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   if (UpdateNonImportableDB()) {
     namedb = std::make_unique<Database>();
     bool dbSuccess = namedb->Load("databases/names.sqlite");
-    if (!dbSuccess)
-      Log(e_FatalError, "MainMenuPage", "GoImportDB", "Could not open database");
+    if (!dbSuccess) {
+      // The names db is only used to mirror edits back into the importable
+      // database; the page works fine without it, so do not kill the game.
+      Log(e_Warning, "GamePlanPage", "GamePlanPage",
+          "could not open names.sqlite; tactics edits will not be mirrored");
+      namedb = nullptr;
+    }
   } else {
     namedb = nullptr;
+  }
+}
+
+void GamePlanPage::Process() {
+  Gui2Page::Process();
+
+  // UI validation: once the page has had time to draw, grab a frame of it.
+  if (!uiShotTaken && GetConfiguration()->GetBool("menu_smoke_open_gameplan", false) &&
+      GetConfiguration()->Exists("screenshot_path") &&
+      EnvironmentManager::GetInstance().GetTime_ms() >= pageCreatedTime_ms + 1200) {
+    uiShotTaken = true;
+    blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") +
+                               "_gameplan.bmp");
+    printf("[menu-smoke] Game plan screenshot requested\n");
   }
 }
 
@@ -183,7 +203,7 @@ void GamePlanPage::LineupMenuOnClick(Gui2Button* button) {
 }
 
 void GamePlanPage::SaveLineup() {
-  if (UpdateNonImportableDB()) {
+  if (UpdateNonImportableDB() && namedb) {
     // saves to temp names db, which is used when importing the actual db.
 
     const std::vector<Gui2Button*>& allButtons = lineupMenu->GetAllButtons();
@@ -516,7 +536,7 @@ void GamePlanPage::SubstitutionsMenuOnClick(Gui2Button* button) {
 }
 
 void GamePlanPage::SaveTactics() {
-  if (UpdateNonImportableDB()) {
+  if (UpdateNonImportableDB() && namedb) {
     // saves to temp names db, which is used when importing the actual db.
 
     std::string tactics_xml;

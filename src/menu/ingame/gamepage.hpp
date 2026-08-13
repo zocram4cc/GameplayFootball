@@ -35,6 +35,7 @@ public:
 protected:
   Match* match;
   unsigned long matchReadyTime_ms;
+  bool gamePlanShotTriggered = false;
   bool autoQuitTriggered;
 
   boost::signals2::connection conn_MatchPhaseChange;

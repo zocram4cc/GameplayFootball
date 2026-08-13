@@ -17,6 +17,7 @@
 #include "onthepitch/playercontrolsettings.hpp"
 #include "pagefactory.hpp"
 #include "onthepitch/refereeprofile.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/localization.hpp"
 
 namespace {
@@ -375,7 +376,7 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   UpdateWeatherCaption();
   slider_Weather->sig_OnChange.connect([this](Gui2Slider*) { UpdateWeatherCaption(); });
 
-  Gui2Grid* gridMain = new Gui2Grid(windowManager, "grid_settings_gameplay", 2, 11, 66, 52);
+  Gui2Grid* gridMain = new Gui2Grid(windowManager, "grid_settings_gameplay", 2, 11, 66, 62);
 
   gridMain->AddView(slider_ShortPass_AutoDirection, 0, 0);
   gridMain->AddView(slider_ShortPass_AutoPower, 1, 0);
@@ -404,7 +405,7 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridMain->Show();
 
   frame->AddView(gridMain);
-  backButton->SetPosition(20, 65);
+  backButton->SetPosition(20, 76);
   frame->AddView(backButton);
   backButton->Show();
   frame->Show();
@@ -466,6 +467,10 @@ void GameplayPage::Process() {
           pageCreatedTime_ms + kMenuSmokeSettingsQuitDelay_ms) {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] Settings Gameplay page reached successfully\n");
+    // A screenshot of the page, so layout can be checked offscreen.
+    if (GetConfiguration()->Exists("screenshot_path"))
+      blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") +
+                                 "_settings_gameplay.bmp");
     GetMenuTask()->QuitGame();
   }
 }

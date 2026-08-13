@@ -36,6 +36,9 @@ protected:
   void UpdateKitCaptions();
   void GoGamePlan(int teamID);
 
+  bool gamePlanShotTriggered = false;
+  bool gamePlanShotTaken = false;
+  unsigned long gamePlanOpenedTime_ms = 0;
   Gui2Slider* weatherSlider;
   Gui2Slider* timeOfDaySlider;
   Gui2Slider* kitSlider[2];

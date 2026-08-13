@@ -5,6 +5,8 @@
 
 #include "matchoptions.hpp"
 
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
+
 #include <cmath>
 
 #include "../pagefactory.hpp"
@@ -194,6 +196,19 @@ void MatchOptionsPage::UpdateMatchDurationCaption() {
 }
 
 void MatchOptionsPage::Process() {
+  // UI validation route: open the pre-match game plan, let it draw, then
+  // screenshot it.
+  if (GetConfiguration()->GetBool("menu_smoke_open_gameplan", false)) {
+    if (!gamePlanShotTriggered) {
+      gamePlanShotTriggered = true;
+      gamePlanOpenedTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+      GoGamePlan(0);
+      printf("[menu-smoke] Game plan page opened for UI check\n");
+      return;
+    }
+    return;
+  }
+
   Gui2Page::Process();
 
   if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&

@@ -39,6 +39,8 @@ public:
 
   void OnClose();
 
+  virtual void Process();
+
   virtual void Deactivate();
   virtual void Reactivate();
 
@@ -67,6 +69,8 @@ public:
 
 protected:
   int teamID;
+  unsigned long pageCreatedTime_ms = 0;
+  bool uiShotTaken = false;
 
   Gui2PlanMap* map;
   Gui2Grid* grid;

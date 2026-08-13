@@ -1381,6 +1381,8 @@ void Match::Process() {
       ballIsInGoal = true;
     if (t2goal)
       ballIsInGoal = true;
+    if ((t1goal || t2goal) && !IsInPlay() && Verbose())
+      printf("[goal-disallowed] ball crossed the line while play was stopped\n");
     if (IsInPlay()) {
       if (t1goal) {
         matchData->SetGoalCount(teams[1]->GetID(), matchData->GetGoalCount(1) + 1);

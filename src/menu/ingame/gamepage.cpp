@@ -5,6 +5,8 @@
 
 #include "gamepage.hpp"
 
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
+
 #include "../../onthepitch/match.hpp"
 #include "../pagefactory.hpp"
 #include "gameover.hpp"
