@@ -2464,6 +2464,10 @@ void Match::CheckBallCollisions() {
   // printf("lasttouchbias: %f, isnul?: %s\n", GetLastTouchBias(200), GetLastTouchBias(200) == 0.0f
   // ? "true" : "false");
   for (int i = 0; i < (signed int)players.size(); i++) {
+    // A keeper who has been beaten does not block the ball with his body.
+    if (players[i]->IsBeatenKeeper())
+      continue;
+
     bool biggestRatio = false;
     int teamID = players[i]->GetTeam()->GetID();
 

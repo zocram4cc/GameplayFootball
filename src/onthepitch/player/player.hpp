@@ -104,6 +104,10 @@ public:
   }
   int GetCards() const { return cards; }
 
+  // A keeper who lost his save roll is beaten: his body should not block the
+  // shot either, or nothing would ever go in.
+  bool IsBeatenKeeper();
+
   // Wet/worn pitch slips (proposal 4A): pace lost for a moment after going down.
   float GetSlipVelocityMultiplier() const;
   bool IsSlipping() const;

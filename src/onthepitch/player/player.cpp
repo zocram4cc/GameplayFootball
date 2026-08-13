@@ -130,6 +130,12 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
   SetDynamicFormationEntry(GetFormationEntry());
 }
 
+bool Player::IsBeatenKeeper() {
+  if (GetFormationEntry().role != e_PlayerRole_GK || !controller)
+    return false;
+  return !static_cast<PlayerController*>(controller)->IsDeflectAllowed();
+}
+
 float Player::GetSlipVelocityMultiplier() const {
   if (lastSlipTime_ms == 0)
     return 1.0f;
