@@ -911,7 +911,80 @@ int Match::GetCoachedTeamID(bool preferSecondTeam) const {
   return 0;
 }
 
+IHIDevice* Match::GetTouchlineDevice(int teamID) {
+  // A human on the sticks uses his own pad for the touchline too.
+  Team* team = GetTeam(teamID);
+  for (unsigned int i = 0; i < team->GetHumanGamerCount(); i++) {
+    IHIDevice* device = team->GetHumanGamerDevice(i);
+    if (device && device->GetDeviceType() == e_HIDeviceType_Gamepad)
+      return device;
+  }
+
+  // A coach has no player to control, so the pad matching his bench is used:
+  // controller 0 runs team 0, controller 1 runs team 1.
+  if (teamID < static_cast<int>(controllers.size())) {
+    IHIDevice* device = controllers.at(teamID);
+    if (device && device->GetDeviceType() == e_HIDeviceType_Gamepad)
+      return device;
+  }
+  return nullptr;
+}
+
+void Match::ProcessTacticalHotkeysForPad(int teamID) {
+  IHIDevice* device = GetTouchlineDevice(teamID);
+  if (!device)
+    return;
+  // RT is the touchline modifier; without it the d-pad plays football as usual.
+  if (!device->GetButton(e_ButtonFunction_Sprint))
+    return;
+
+  Team* team = GetTeam(teamID);
+  TeamInstructions::State& instructions = team->GetController()->GetInstructions();
+  bool changed = false;
+
+  // RT + d-pad: four mentality presets.
+  const e_ButtonFunction directionButtons[TeamInstructions::presetDirectionCount] = {
+      e_ButtonFunction_Up, e_ButtonFunction_Right, e_ButtonFunction_Down, e_ButtonFunction_Left};
+  for (int i = 0; i < TeamInstructions::presetDirectionCount; i++) {
+    // Only on the press, so holding a direction does not spin through presets.
+    if (!device->GetButton(directionButtons[i]) ||
+        device->GetPreviousButtonState(directionButtons[i]))
+      continue;
+    TeamInstructions::SelectMentality(
+        instructions, TeamInstructions::GetPresetForDirection(
+                          static_cast<TeamInstructions::e_PresetDirection>(i)));
+    changed = true;
+  }
+
+  // RT + face buttons: the four instructions a manager reaches for most.
+  const e_ButtonFunction quickButtons[TeamInstructions::quickInstructionCount] = {
+      e_ButtonFunction_ShortPass, e_ButtonFunction_Shot, e_ButtonFunction_HighPass,
+      e_ButtonFunction_LongPass};
+  for (int i = 0; i < TeamInstructions::quickInstructionCount; i++) {
+    if (!device->GetButton(quickButtons[i]) || device->GetPreviousButtonState(quickButtons[i]))
+      continue;
+    TeamInstructions::Toggle(instructions, TeamInstructions::GetQuickInstructionAt(i));
+    changed = true;
+  }
+
+  if (changed)
+    AnnounceInstructions(teamID);
+}
+
+void Match::AnnounceInstructions(int teamID) {
+  Team* team = GetTeam(teamID);
+  // Take effect at once, and show the manager what he just did.
+  team->GetController()->UpdateTactics();
+  SpamMessage(team->GetTeamData()->GetShortName() + ": " +
+                  TeamInstructions::Describe(team->GetController()->GetInstructions()),
+              3500);
+}
+
 void Match::ProcessTacticalHotkeys() {
+  // Either bench can be run from its own pad, so both teams are served.
+  for (int teamID = 0; teamID < 2; teamID++)
+    ProcessTacticalHotkeysForPad(teamID);
+
   UserEventManager& events = UserEventManager::GetInstance();
 
   // Shift addresses the other bench in a manager duel.
@@ -947,10 +1020,7 @@ void Match::ProcessTacticalHotkeys() {
   if (!changed)
     return;
 
-  // Take effect at once, and show the manager what he just did.
-  team->GetController()->UpdateTactics();
-  SpamMessage(team->GetTeamData()->GetShortName() + ": " + TeamInstructions::Describe(instructions),
-              3500);
+  AnnounceInstructions(team->GetID());
 }
 
 void Match::UpdateBallHeatmap() {

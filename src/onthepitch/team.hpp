@@ -48,6 +48,9 @@ public:
 
   unsigned int GetHumanGamerCount() const { return static_cast<unsigned int>(humanGamers.size()); }
   void AddHumanGamer(IHIDevice* hid, e_PlayerColor color);
+  IHIDevice* GetHumanGamerDevice(unsigned int index) {
+    return index < humanGamers.size() ? humanGamers.at(index)->GetHIDevice() : nullptr;
+  }
   void DeleteHumanGamers();
   e_PlayerColor GetPlayerColor(int playerID);
   bool IsHumanControlled(int playerID);

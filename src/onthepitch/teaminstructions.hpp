@@ -42,6 +42,25 @@ struct State {
   InstructionMask instructions = instructionsNone;
 };
 
+// The four d-pad presets a manager can reach with RT held on the pad.
+enum e_PresetDirection {
+  e_PresetDirection_Up = 0,
+  e_PresetDirection_Right,
+  e_PresetDirection_Down,
+  e_PresetDirection_Left,
+};
+const int presetDirectionCount = 4;
+
+// The instructions bound to the pad's face buttons with RT held.
+const int quickInstructionCount = 4;
+
+e_Mentality GetPresetForDirection(e_PresetDirection direction);
+e_Instruction GetQuickInstructionAt(int index);
+
+// Sets a mentality outright; picking the one already set returns to Balanced, so
+// four buttons reach all five rungs.
+void SelectMentality(State& state, e_Mentality mentality);
+
 e_Instruction GetInstructionAt(int index);
 std::string GetMentalityName(e_Mentality mentality);
 std::string GetInstructionName(e_Instruction instruction);

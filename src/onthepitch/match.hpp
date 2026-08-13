@@ -298,6 +298,10 @@ protected:
   void CalculateBestPossessionTeamID();
   // Touchline hotkeys: mentality and advanced instructions, with on-screen feedback.
   void ProcessTacticalHotkeys();
+  void ProcessTacticalHotkeysForPad(int teamID);
+  void AnnounceInstructions(int teamID);
+  // The pad that runs a given bench, if there is one.
+  IHIDevice* GetTouchlineDevice(int teamID);
   int GetCoachedTeamID(bool preferSecondTeam) const;
   void UpdateBallHeatmap();
   // Lets CPU-managed teams use their bench (AIManager); human-coached teams do

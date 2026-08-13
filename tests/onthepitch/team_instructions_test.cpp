@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <set>
+
 #include "base/properties.hpp"
 
 using blunted::Properties;
@@ -228,4 +230,66 @@ TEST(TeamInstructionsFeedbackTest, SaysSoWhenNothingIsSet) {
   const std::string feedback = TeamInstructions::Describe(state);
   EXPECT_FALSE(feedback.empty());
   EXPECT_NE(feedback.find(TeamInstructions::GetMentalityName(state.mentality)), std::string::npos);
+}
+
+// --- Gamepad presets: hold RT and pick a mentality on the d-pad ---
+
+TEST(TeamInstructionsPresetTest, TheFourDirectionsCoverTheExtremes) {
+  EXPECT_EQ(TeamInstructions::GetPresetForDirection(TeamInstructions::e_PresetDirection_Up),
+            TeamInstructions::e_Mentality_AllOutAttack);
+  EXPECT_EQ(TeamInstructions::GetPresetForDirection(TeamInstructions::e_PresetDirection_Right),
+            TeamInstructions::e_Mentality_Attacking);
+  EXPECT_EQ(TeamInstructions::GetPresetForDirection(TeamInstructions::e_PresetDirection_Left),
+            TeamInstructions::e_Mentality_Defensive);
+  EXPECT_EQ(TeamInstructions::GetPresetForDirection(TeamInstructions::e_PresetDirection_Down),
+            TeamInstructions::e_Mentality_AllOutDefence);
+}
+
+TEST(TeamInstructionsPresetTest, EachDirectionIsADistinctPreset) {
+  std::set<int> mentalities;
+  for (int i = 0; i < TeamInstructions::presetDirectionCount; i++) {
+    mentalities.insert(static_cast<int>(TeamInstructions::GetPresetForDirection(
+        static_cast<TeamInstructions::e_PresetDirection>(i))));
+  }
+  EXPECT_EQ(static_cast<int>(mentalities.size()), TeamInstructions::presetDirectionCount);
+}
+
+TEST(TeamInstructionsPresetTest, SelectingAPresetSetsItOutright) {
+  TeamInstructions::State state;
+  TeamInstructions::SelectMentality(state, TeamInstructions::e_Mentality_AllOutAttack);
+  EXPECT_EQ(state.mentality, TeamInstructions::e_Mentality_AllOutAttack);
+
+  // A different preset replaces it, without walking the ladder.
+  TeamInstructions::SelectMentality(state, TeamInstructions::e_Mentality_AllOutDefence);
+  EXPECT_EQ(state.mentality, TeamInstructions::e_Mentality_AllOutDefence);
+}
+
+TEST(TeamInstructionsPresetTest, PressingTheSamePresetAgainReturnsToBalanced) {
+  TeamInstructions::State state;
+  TeamInstructions::SelectMentality(state, TeamInstructions::e_Mentality_Attacking);
+  TeamInstructions::SelectMentality(state, TeamInstructions::e_Mentality_Attacking);
+  EXPECT_EQ(state.mentality, TeamInstructions::e_Mentality_Balanced);
+}
+
+TEST(TeamInstructionsPresetTest, TheDpadReachesEveryMentalityIncludingBalanced) {
+  TeamInstructions::State state;
+  std::set<int> reached;
+  reached.insert(static_cast<int>(state.mentality));  // balanced to start with
+
+  for (int i = 0; i < TeamInstructions::presetDirectionCount; i++) {
+    TeamInstructions::SelectMentality(state, TeamInstructions::GetPresetForDirection(
+                                                 static_cast<TeamInstructions::e_PresetDirection>(i)));
+    reached.insert(static_cast<int>(state.mentality));
+  }
+  EXPECT_EQ(static_cast<int>(reached.size()), TeamInstructions::e_Mentality_Count);
+}
+
+TEST(TeamInstructionsPresetTest, TheFaceButtonInstructionsAreTheHandyFour) {
+  std::set<int> instructions;
+  for (int i = 0; i < TeamInstructions::quickInstructionCount; i++) {
+    const TeamInstructions::e_Instruction instruction = TeamInstructions::GetQuickInstructionAt(i);
+    EXPECT_FALSE(TeamInstructions::GetInstructionName(instruction).empty());
+    instructions.insert(static_cast<int>(instruction));
+  }
+  EXPECT_EQ(static_cast<int>(instructions.size()), TeamInstructions::quickInstructionCount);
 }

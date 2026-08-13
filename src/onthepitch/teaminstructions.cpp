@@ -34,6 +34,32 @@ int GetMentalityStep(e_Mentality mentality) {
 
 }  // namespace
 
+e_Mentality GetPresetForDirection(e_PresetDirection direction) {
+  switch (direction) {
+    case e_PresetDirection_Up:
+      return e_Mentality_AllOutAttack;
+    case e_PresetDirection_Right:
+      return e_Mentality_Attacking;
+    case e_PresetDirection_Down:
+      return e_Mentality_AllOutDefence;
+    default:
+      return e_Mentality_Defensive;
+  }
+}
+
+e_Instruction GetQuickInstructionAt(int index) {
+  // The four a manager reaches for most often, on the pad's face buttons.
+  const e_Instruction quick[quickInstructionCount] = {
+      e_Instruction_FrontlinePressure, e_Instruction_DeepDefensiveLine,
+      e_Instruction_HugTheTouchline, e_Instruction_TikiTaka};
+  return quick[std::max(0, std::min(index, quickInstructionCount - 1))];
+}
+
+void SelectMentality(State& state, e_Mentality mentality) {
+  // Pressing the preset that is already set steps back to Balanced.
+  state.mentality = state.mentality == mentality ? e_Mentality_Balanced : mentality;
+}
+
 e_Instruction GetInstructionAt(int index) {
   return allInstructions[std::max(0, std::min(index, instructionCount - 1))];
 }
