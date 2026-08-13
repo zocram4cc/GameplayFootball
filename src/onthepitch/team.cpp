@@ -55,6 +55,9 @@ void Team::Exit() {
   playerNode->Exit();
   playerNode.reset();
 
+  // Only kept so substitutes could be built; must not outlive the scene.
+  fullbodyNode.reset();
+
   match->GetDynamicNode()->DeleteNode(teamNode);
 }
 
@@ -71,6 +74,10 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
   activePlayerCount = playerNum;
 
+  // Kept so substitutes can be activated mid-match.
+  this->fullbodyNode = fullbodyNode;
+  this->playerColorCoords = colorCoords;
+
   Log(e_Notice, "Team", "Team", "Creating players");
 
   // load all players in the team, even the players who sit on the bench. aww.
@@ -85,25 +92,109 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
     if (i < activePlayerCount) {
       // activate playerCount players (the starting eleven, usually)
-      std::string kitFilename;
-      // printf("%i player id\n", player->GetID());
-      if (teamData->GetFormationEntry(i).role != e_PlayerRole_GK) {
-        kitFilename = GetTeamData()->GetKitUrl() + "_kit_0" +
-                      int_to_str(GetMenuTask()->GetTeamKitNum(GetID())) + ".png";
-        if (!std::filesystem::exists(kitFilename))
-          kitFilename = (GetID() == 0) ? "media/textures/almost_white.png"
-                                       : "media/textures/almost_black.png";
-      } else {
-        kitFilename = "media/objects/players/textures/goalie_kit.png";
-      }
-      kit = ResourceManagerPool::GetInstance()
-                .GetManager<Surface>(e_ResourceType_Surface)
-                ->Fetch(kitFilename);
+      kit = FetchKit(i);
       player->Activate(playerNode, fullbodyNode, colorCoords, kit, match->GetAnimCollection());
     }
   }
 
   designatedTeamPossessionPlayer = players.at(0).get();
+}
+
+boost::intrusive_ptr<Resource<Surface>> Team::FetchKit(int formationIndex) {
+  std::string kitFilename;
+  if (teamData->GetFormationEntry(formationIndex).role != e_PlayerRole_GK) {
+    kitFilename = GetTeamData()->GetKitUrl() + "_kit_0" +
+                  int_to_str(GetMenuTask()->GetTeamKitNum(GetID())) + ".png";
+    if (!std::filesystem::exists(kitFilename))
+      kitFilename =
+          (GetID() == 0) ? "media/textures/almost_white.png" : "media/textures/almost_black.png";
+  } else {
+    kitFilename = "media/objects/players/textures/goalie_kit.png";
+  }
+  return ResourceManagerPool::GetInstance()
+      .GetManager<Surface>(e_ResourceType_Surface)
+      ->Fetch(kitFilename);
+}
+
+void Team::GetBenchPlayers(std::vector<Player*>& benchPlayers) {
+  for (auto& player : players) {
+    if (!player->IsActive() && !HasBeenSubstituted(player->GetID()))
+      benchPlayers.push_back(player.get());
+  }
+}
+
+bool Team::HasBeenSubstituted(int playerID) const {
+  for (int id : substitutedPlayerIDs) {
+    if (id == playerID)
+      return true;
+  }
+  return false;
+}
+
+Substitutions::SquadView Team::DescribeSwap(Player* playerOut, Player* playerIn) const {
+  Substitutions::SquadView squad;
+  if (!playerOut || !playerIn)
+    return squad;
+
+  squad.playerOutIsOnPitch = playerOut->IsActive();
+  squad.playerOutIsSentOff = playerOut->GetCards() > 1;
+  squad.playerInIsOnBench = !playerIn->IsActive();
+  squad.playerInHasPlayed = HasBeenSubstituted(playerIn->GetID());
+  return squad;
+}
+
+bool Team::Substitute(Player* playerOut, Player* playerIn) {
+  if (!playerOut || !playerIn || playerOut == playerIn)
+    return false;
+  // The shootout holds pointers to the taker and the keeper; taking either off
+  // mid-shootout would pull the pitch out from under it.
+  if (match->GetMatchPhase() == e_MatchPhase_Penalties)
+    return false;
+  if (!playerOut->IsActive() || playerIn->IsActive())
+    return false;
+  if (HasBeenSubstituted(playerIn->GetID()))
+    return false;
+
+  int indexOut = -1;
+  int indexIn = -1;
+  for (int i = 0; i < static_cast<int>(players.size()); i++) {
+    if (players.at(i).get() == playerOut)
+      indexOut = i;
+    if (players.at(i).get() == playerIn)
+      indexIn = i;
+  }
+  if (indexOut == -1 || indexIn == -1)
+    return false;
+
+  const Vector3 replacedPosition = playerOut->GetPosition();
+
+  playerOut->Deactivate();
+  substitutedPlayerIDs.push_back(playerOut->GetID());
+
+  // The incoming player inherits the formation slot, which is addressed by
+  // position in this vector, so the two players swap places in it.
+  std::swap(players.at(indexOut), players.at(indexIn));
+
+  kit = FetchKit(indexOut);
+  playerIn->Activate(playerNode, fullbodyNode, playerColorCoords, kit,
+                     match->GetAnimCollection());
+  playerIn->ResetPosition(replacedPosition, Vector3(0));
+
+  // Nobody may be left pointing at the player who just walked off.
+  if (designatedTeamPossessionPlayer == playerOut)
+    designatedTeamPossessionPlayer = playerIn;
+  for (auto& humanGamer : humanGamers) {
+    if (humanGamer->GetSelectedPlayerID() == playerOut->GetID())
+      humanGamer->SetSelectedPlayerID(playerIn->GetID());
+  }
+
+  // The replay tracks scene nodes, and the substitute's humanoid is new.
+  match->RebuildReplaySpatials();
+
+  match->SpamMessage(teamData->GetShortName() + ": " + playerIn->GetPlayerData()->GetLastName() +
+                         " on for " + playerOut->GetPlayerData()->GetLastName(),
+                     3000);
+  return true;
 }
 
 signed int Team::GetSide() {

@@ -126,6 +126,8 @@ public:
   virtual void PopAttribute();
   virtual void SetViewport(int x, int y, int width, int height);
   virtual void GetContextSize(int& width, int& height, int& bpp);
+
+
   virtual void SetPolygonOffset(float scale, float bias);
 
   // shaders
@@ -154,6 +156,7 @@ protected:
   SDL_GLContext context;
   SDL_Window* window;
   int context_width, context_height, context_bpp;
+  void WriteScreenshot(const std::string& filename);
   bool contextIsActive;
 
   float cameraNear;
@@ -185,6 +188,9 @@ protected:
   void DeleteSimpleVertexBuffer(VertexBufferID vertexBufferID);
   void InitializeOverlayAndQuadBuffers();
 };
+
+// Saves the next presented frame as a BMP. Safe to call from any thread.
+void RequestScreenshot(const std::string& filename);
 
 #ifdef WIN32
 static SDL_SysWMinfo wmInfo;

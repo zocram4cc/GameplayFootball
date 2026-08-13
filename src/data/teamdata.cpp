@@ -26,7 +26,7 @@ void EnsureTacticDefinition(TeamTactics& tactics, const char* name, float defaul
 
 }  // namespace
 
-Vector3 GetDefaultRolePosition(e_PlayerRole role) {
+Vector3 GetDefaultRolePosition(e_PlayerRole role) {  // declared in teamdata.hpp
   switch (role) {
     case e_PlayerRole_GK:
       return Vector3(-1.0, 0.0, 0);

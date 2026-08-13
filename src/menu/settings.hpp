@@ -49,7 +49,14 @@ public:
 protected:
   void UpdateHumanSpeedCaptions();
   void UpdatePlayerSwitchCaption();
+  // Match rules / simulation options.
+  void UpdateCoachModeCaption();
+  void UpdateRefereeCaption();
+  void UpdateWeatherCaption();
 
+  Gui2Slider* slider_CoachMode;
+  Gui2Slider* slider_Referee;
+  Gui2Slider* slider_Weather;
   Gui2Slider* slider_ShortPass_AutoDirection;
   Gui2Slider* slider_ShortPass_AutoPower;
   Gui2Slider* slider_ThroughPass_AutoDirection;

@@ -65,6 +65,7 @@ gtest_discover_tests(gameplayfootball_integration_tests)
 
 add_executable(gameplayfootball_league_integration_tests
   integration/league_bootstrap_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
   ${PROJECT_SOURCE_DIR}/src/league/leaguecode.cpp
   ${PROJECT_SOURCE_DIR}/src/league/leaguesetup.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/database.cpp
@@ -84,6 +85,56 @@ target_link_libraries(gameplayfootball_league_integration_tests PRIVATE
 )
 
 gtest_discover_tests(gameplayfootball_league_integration_tests)
+
+# Simulation-depth unit tests (SIMULATION_IMPROVEMENT_PROPOSAL.md / TECHNICAL_ROADMAP.md).
+# These cover pure-logic simulation modules, so they build without SDL/OpenGL.
+add_executable(gameplayfootball_simulation_tests
+  onthepitch/team_philosophy_test.cpp
+  onthepitch/match_mentality_test.cpp
+  data/player_traits_test.cpp
+  data/player_cards_test.cpp
+  onthepitch/match_pressure_test.cpp
+  onthepitch/pitch_conditions_test.cpp
+  onthepitch/referee_profile_test.cpp
+  onthepitch/penalty_shootout_test.cpp
+  onthepitch/crowd_mood_test.cpp
+  data/match_analytics_test.cpp
+  data/formations_test.cpp
+  onthepitch/coach_mode_test.cpp
+  onthepitch/substitutions_test.cpp
+  onthepitch/ai_manager_test.cpp
+  onthepitch/match_progression_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/pitchconditions.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/refereeprofile.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/penaltyshootout.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/crowdmood.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/matchanalytics.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/coachmode.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/substitutions.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/aimanager.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/matchprogression.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/properties.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/log.cpp
+)
+
+target_include_directories(gameplayfootball_simulation_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
+)
+
+target_link_libraries(gameplayfootball_simulation_tests PRIVATE
+  gf_ballphysicslib
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_simulation_tests)
 
 # Career data unit tests (Phase 6: tasks 6.13, 6.16, 6.17)
 # Also covers the stat-based match simulation (career_database.cpp).

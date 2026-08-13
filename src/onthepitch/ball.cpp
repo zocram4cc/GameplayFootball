@@ -5,6 +5,8 @@
 
 #include "ball.hpp"
 
+#include "pitchconditions.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -181,7 +183,10 @@ BallSpatialInfo Ball::CalculatePrediction() {
   physicsConfig.gravity = gravity;
   physicsConfig.grassHeight = grassHeight;
   physicsConfig.wind = weatherWind;
-  physicsConfig.wetness = weatherWetness;
+  // Pitch degradation: the surface cuts up as the match wears on, which slows
+  // the ball along the ground; rain also thickens the air it flies through.
+  PitchConditions::Apply(physicsConfig, PitchConditions::GetWear(match->GetMatchTime_ms()),
+                        weatherWetness);
 
   ballTouchesNet = false;
 

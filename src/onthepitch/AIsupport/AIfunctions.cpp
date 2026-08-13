@@ -18,6 +18,9 @@
 
 #include "AIfunctions.hpp"
 
+#include "../matchmentality.hpp"
+#include "../team.hpp"
+
 #include <cmath>
 
 #include "../../main.hpp"
@@ -487,6 +490,14 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
       myPos.coords[1] * (1.0f - teamTactics.userProperties.GetReal("dribble_centermagnet", 0.5f)) *
           centerModifierInv,
       0);
+
+  // Killing the game off: take the ball into the corner instead of driving at
+  // the goal (proposal 2B).
+  if (MatchMentality::ShouldStayInCorner(team->GetController()->GetMentality(), true)) {
+    const MatchMentality::CornerTarget corner =
+        MatchMentality::GetCornerTarget(side, myPos.coords[1]);
+    oppGoalPos = Vector3(corner.x, corner.y, 0);
+  }
 
   std::vector<ForceSpot> forceField;
 

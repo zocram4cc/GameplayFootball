@@ -18,6 +18,12 @@
 
 #include "player.hpp"
 
+#include <cstring>
+
+#include "data/playertraits.hpp"
+#include "onthepitch/pitchconditions.hpp"
+#include "onthepitch/matchpressure.hpp"
+
 #include <cmath>
 
 #include "../../main.hpp"
@@ -122,6 +128,17 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
       Vector3(0));
 
   SetDynamicFormationEntry(GetFormationEntry());
+}
+
+float Player::GetSlipVelocityMultiplier() const {
+  if (lastSlipTime_ms == 0)
+    return 1.0f;
+  return PitchConditions::GetSlipVelocityMultiplier(match->GetActualTime_ms() - lastSlipTime_ms);
+}
+
+bool Player::IsSlipping() const {
+  return lastSlipTime_ms != 0 &&
+         match->GetActualTime_ms() - lastSlipTime_ms < PitchConditions::slipRecoveryTime_ms;
 }
 
 void Player::Deactivate() {
@@ -376,8 +393,31 @@ void Player::Process() {
     float distance = (posAfter - posBefore).GetLength();
     const float fatigueWorkload = GameplayTuning::GetFatigueWorkloadFactor(
         (posAfter - posBefore).GetLength() * 100.0f, GetMaxVelocity(), hasPossession);
+    // Wet or chewed-up pitch: a sharp turn at pace can put a player on the
+    // floor, which costs him his momentum for a moment (proposal 4A).
+    if (distance > 0.0f) {
+      const Vector3 currentDirection = GetDirectionVec();
+      if (previousDirectionVec.GetLength() > 0.01f && !IsSlipping()) {
+        const float sharpness = PitchConditions::GetTurnSharpness(
+            currentDirection.GetDotProduct(previousDirectionVec));
+        const float speedFactor =
+            GetMaxVelocity() > 0.0f
+                ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
+                : 0.0f;
+        const float slipChance = PitchConditions::GetSlipChance(
+            match->GetBall()->GetWeatherWetness(),
+            PitchConditions::GetWear(match->GetMatchTime_ms()), sharpness * speedFactor,
+            GetStat("physical_balance"));
+        if (PitchConditions::ShouldSlip(slipChance, random(0.0f, 1.0f)))
+          lastSlipTime_ms = match->GetActualTime_ms();
+      }
+      previousDirectionVec = currentDirection;
+    }
+
+    // A high-pressing philosophy burns more stamina (proposal 2A).
+    const float staminaDrain = team->GetController()->GetStaminaDrainMultiplier();
     fatigueFactorInv -= distance * 0.00003f * (2.0f - GetStaminaStat()) * fatigueWorkload *
-                        (1.0f / match->GetMatchDurationFactor());
+                        staminaDrain * (1.0f / match->GetMatchDurationFactor());
     fatigueFactorInv = clamp(fatigueFactorInv, 0.01f, 1.0f);
     // if (GetDebug() && match->GetActualTime_ms() % 1000 == 0) printf("fatigue: %f\n",
     // GetFatigueFactorInv());
@@ -591,6 +631,26 @@ float Player::GetStat(const char* name) const {
       0.3f * GetFatigueFactorInv();  // todo: some stats are more affected by fatigue than others
   // injury reduces all stats by up to 40%
   multiplier *= 1.0f - injuryLevel * 0.4f;
+  // A speed merchant loses his head at full tilt (proposal 3A).
+  if (std::strcmp(name, "mental_calmness") == 0) {
+    const PlayerTraits::TraitMask traits = playerData->GetTraits();
+    if (traits != PlayerTraits::traitMaskNone) {
+      const float speedFactor = GetMaxVelocity() > 0.0f
+                                    ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
+                                    : 0.0f;
+      return PlayerTraits::GetCalmnessAtSpeed(traits, playerData->GetStat(name) * multiplier,
+                                              speedFactor);
+    }
+  }
+
+  // Clutch performers raise their technical game in a tight finish (proposal 3B).
+  if (std::strncmp(name, "technical_", 10) == 0) {
+    Match* playerMatch = team->GetMatch();
+    const int goalDifference = playerMatch->GetMatchData()->GetGoalCount(team->GetID()) -
+                              playerMatch->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
+    multiplier *= MatchPressure::GetClutchTechnicalMultiplier(
+        playerData->GetStat("mental_resilience"), goalDifference, playerMatch->GetMatchTime_ms());
+  }
   // if (GetExternalController()) printf("stat %s: %f\n", name, playerData->GetStat(name));
   // if (GetDebug()) printf("stat %s == %f\n", name, playerData->GetStat(name) * multiplier);
 

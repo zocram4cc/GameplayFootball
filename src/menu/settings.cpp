@@ -16,6 +16,7 @@
 #include "onthepitch/humanspeed.hpp"
 #include "onthepitch/playercontrolsettings.hpp"
 #include "pagefactory.hpp"
+#include "onthepitch/refereeprofile.hpp"
 #include "utils/localization.hpp"
 
 namespace {
@@ -184,6 +185,39 @@ void SettingsPage::GoLanguage() {
   CreatePage(e_PageID_Language);
 }
 
+namespace {
+
+// Three referee temperaments spread over the slider range.
+RefereeProfile::e_Profile RefereeProfileFromSlider(float value) {
+  if (value < 0.33f)
+    return RefereeProfile::e_Profile_Lenient;
+  if (value < 0.66f)
+    return RefereeProfile::e_Profile_Standard;
+  return RefereeProfile::e_Profile_Strict;
+}
+
+float RefereeSliderFromProfile(RefereeProfile::e_Profile profile) {
+  switch (profile) {
+    case RefereeProfile::e_Profile_Lenient:
+      return 0.0f;
+    case RefereeProfile::e_Profile_Strict:
+      return 1.0f;
+    default:
+      return 0.5f;
+  }
+}
+
+// Wetness/wind grow together along the slider: dry, rain, storm.
+std::string WeatherName(float value) {
+  if (value < 0.33f)
+    return "weather_dry";
+  if (value < 0.66f)
+    return "weather_rain";
+  return "weather_storm";
+}
+
+}  // namespace
+
 // GAMEPLAY MENU
 
 GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
@@ -320,6 +354,27 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   assistanceHeader->Show();
   humanControlHeader->Show();
 
+  // Match rules and simulation options: these apply to CPU teams as well as to
+  // human ones, so a CPU-vs-CPU match is played under the same rules.
+  slider_CoachMode = new Gui2Slider(windowManager, "slider_coach_mode", 0, 0, 30, 6,
+                                    TR("settings_coach_mode"));
+  slider_CoachMode->SetValue(GetConfiguration()->GetBool("coach_mode", false) ? 1.0f : 0.0f);
+  UpdateCoachModeCaption();
+  slider_CoachMode->sig_OnChange.connect([this](Gui2Slider*) { UpdateCoachModeCaption(); });
+
+  slider_Referee = new Gui2Slider(windowManager, "slider_referee", 0, 0, 30, 6,
+                                  TR("settings_referee"));
+  slider_Referee->SetValue(RefereeSliderFromProfile(
+      RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"))));
+  UpdateRefereeCaption();
+  slider_Referee->sig_OnChange.connect([this](Gui2Slider*) { UpdateRefereeCaption(); });
+
+  slider_Weather = new Gui2Slider(windowManager, "slider_weather", 0, 0, 30, 6,
+                                  TR("settings_weather"));
+  slider_Weather->SetValue(GetConfiguration()->GetReal("match_weather", 0.0f));
+  UpdateWeatherCaption();
+  slider_Weather->sig_OnChange.connect([this](Gui2Slider*) { UpdateWeatherCaption(); });
+
   Gui2Grid* gridMain = new Gui2Grid(windowManager, "grid_settings_gameplay", 2, 11, 66, 52);
 
   gridMain->AddView(slider_ShortPass_AutoDirection, 0, 0);
@@ -337,6 +392,10 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridMain->AddView(slider_SprintSpeed, 4, 1);
   gridMain->AddView(slider_PlayerSwitchMode, 5, 1);
   gridMain->AddView(slider_Quantization, 6, 1);
+
+  gridMain->AddView(slider_CoachMode, 7, 0);
+  gridMain->AddView(slider_Referee, 7, 1);
+  gridMain->AddView(slider_Weather, 8, 0);
 
   Gui2Button* backButton = new Gui2Button(windowManager, "button_settings_gameplay_back", 0, 0, 30,
                                           3, Localization::GetInstance().Translate("action_back"));
@@ -372,6 +431,23 @@ void GameplayPage::UpdateHumanSpeedCaptions() {
       TR("gameplay_human_sprint_speed"),
       HumanSpeedFromSlider(slider_SprintSpeed->GetValue(), HumanSpeedType::Sprint),
       kDefaultHumanSprintSpeed));
+}
+
+void GameplayPage::UpdateCoachModeCaption() {
+  const bool enabled = slider_CoachMode->GetValue() >= 0.5f;
+  slider_CoachMode->SetCaption(TR("settings_coach_mode") + ": " +
+                              TR(enabled ? "action_yes" : "action_no"));
+}
+
+void GameplayPage::UpdateRefereeCaption() {
+  const RefereeProfile::e_Profile profile = RefereeProfileFromSlider(slider_Referee->GetValue());
+  slider_Referee->SetCaption(TR("settings_referee") + ": " +
+                            TR("referee_" + RefereeProfile::GetName(profile)));
+}
+
+void GameplayPage::UpdateWeatherCaption() {
+  slider_Weather->SetCaption(TR("settings_weather") + ": " +
+                            TR(WeatherName(slider_Weather->GetValue())));
 }
 
 void GameplayPage::UpdatePlayerSwitchCaption() {
@@ -422,6 +498,12 @@ void GameplayPage::Exit() {
       HumanSpeedFromSlider(slider_SprintSpeed->GetValue(), HumanSpeedType::Sprint));
   GetConfiguration()->Set(kPlayerSwitchModeConfigKey, slider_PlayerSwitchMode->GetValue());
   GetConfiguration()->Set("gameplay_quantizeddirectionbias", slider_Quantization->GetValue());
+
+  GetConfiguration()->SetBool("coach_mode", slider_CoachMode->GetValue() >= 0.5f);
+  GetConfiguration()->Set(
+      "referee_profile",
+      RefereeProfile::GetName(RefereeProfileFromSlider(slider_Referee->GetValue())));
+  GetConfiguration()->Set("match_weather", slider_Weather->GetValue());
 
   // printf("%f - %f - %f - %f - %f - %f\n", slider_ShortPass_AutoDirection->GetValue(),
   // slider_ShortPass_AutoPower->GetValue(), slider_ThroughPass_AutoDirection->GetValue(),

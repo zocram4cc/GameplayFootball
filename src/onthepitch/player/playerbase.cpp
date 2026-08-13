@@ -150,7 +150,7 @@ float PlayerBase::GetMaxVelocity() const {
   const float baseSprintVelocity =
       externalController ? ReadConfiguredHumanSpeed(*GetConfiguration(), HumanSpeedType::Sprint)
                          : sprintVelocity;
-  return baseSprintVelocity * GetVelocityMultiplier() * fatigueFactor;
+  return baseSprintVelocity * GetVelocityMultiplier() * fatigueFactor * GetSlipFactor();
 }
 
 float PlayerBase::GetVelocityMultiplier() const {

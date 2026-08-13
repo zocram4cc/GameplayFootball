@@ -13,6 +13,10 @@
 #include "defines.hpp"
 #include "playerdata.hpp"
 
+// Hardcoded reference position for a role; custom formation positions are
+// blended with it so extreme settings stay sane.
+blunted::Vector3 GetDefaultRolePosition(e_PlayerRole role);
+
 struct TeamTactics {
   TeamTactics() {}
 

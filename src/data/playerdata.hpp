@@ -7,6 +7,8 @@
 #define _HPP_PLAYERDATA
 
 #include "../gamedefines.hpp"
+#include "../onthepitch/matchpressure.hpp"
+#include "playertraits.hpp"
 #include "../utils.hpp"
 #include "base/properties.hpp"
 #include "defines.hpp"
@@ -24,6 +26,11 @@ public:
 
   float GetStat(const char* name);
 
+  // Traits / specialties this player carries.
+  PlayerTraits::TraitMask GetTraits() const { return traits; }
+  // MatchPressure::unknownAge when the player was not loaded from the database.
+  int GetAge() const { return playerAge; }
+
   int GetSkinColor() { return skinColor; }
   std::string GetHairStyle() { return hairStyle; }
   std::string GetHairColor() { return hairColor; }
@@ -36,6 +43,8 @@ protected:
   std::vector<e_PlayerRole> roles;
 
   Properties stats;
+  PlayerTraits::TraitMask traits;
+  int playerAge;
 
   int skinColor;
   std::string hairStyle;

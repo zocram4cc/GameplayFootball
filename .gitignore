@@ -10,3 +10,8 @@ vcpkg/
 vcpkg_installed/
 dist/
 .zcode/
+
+# stray local artefacts
+.gemini/
+data/log.txt
+data/gameplayfootball

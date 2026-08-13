@@ -22,6 +22,9 @@
 #include "../data/setpiececonfig.hpp"
 #include "../gamedefines.hpp"
 #include "base/properties.hpp"
+#include "../data/formations.hpp"
+#include "matchmentality.hpp"
+#include "teamphilosophy.hpp"
 
 class Match;
 class Team;
@@ -60,6 +63,20 @@ public:
 
   void UpdateTactics();
 
+  const Formations::Shape& GetFormationShape() const { return formationShape; }
+  // Writes a shape's roles and positions into the team's formation slots. Any
+  // band split totalling ten is accepted, however unorthodox.
+  void ApplyFormationShape(const Formations::Shape& shape);
+  void ApplyFormation(Formations::e_Formation newFormation);
+
+  TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
+  MatchMentality::e_Mentality GetMentality() const { return mentality; }
+  // Outfield shape the team wants while chasing the game.
+  MatchMentality::FormationShape GetDesperationShape() const;
+  float GetStaminaDrainMultiplier() const {
+    return TeamPhilosophy::GetStaminaDrainMultiplier(philosophy);
+  }
+
   unsigned long GetEndApplyAttackingRun_ms() { return endApplyAttackingRun_ms; }
   Player* GetAttackingRunPlayer() { return attackingRunPlayer; }
 
@@ -88,6 +105,10 @@ protected:
   Properties baseTeamTactics;
   Properties teamTacticsModMultipliers;
   Properties liveTeamTactics;
+
+  Formations::Shape formationShape;
+  TeamPhilosophy::e_Philosophy philosophy;
+  MatchMentality::e_Mentality mentality;
 
   float offensivenessBias;
 

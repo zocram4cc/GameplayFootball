@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 
+#include "../data/matchanalytics.hpp"
 #include "../data/matchdata.hpp"
 #include "../menu/ingame/radar.hpp"
 #include "../menu/ingame/scoreboard.hpp"
@@ -18,7 +19,10 @@
 #include "../menu/menutask.hpp"
 #include "AIsupport/mentalimage.hpp"
 #include "ball.hpp"
+#include "coachmode.hpp"
+#include "penaltyshootoutcontroller.hpp"
 #include "base/circular_buffer.hpp"
+#include "substitutions.hpp"
 #include "framework/scheduler.hpp"
 #include "officials.hpp"
 #include "player/humanoid/animcollection.hpp"
@@ -142,6 +146,11 @@ public:
     goalScored = onOff;
   }
   bool IsGoalScored() const { return goalScored; }
+  // Sets a team's goal count and keeps the scoreboard in step.
+  void SetScore(int teamID, int goals);
+  // Rebuilds the replay spatial list. Needed after a substitution, since the
+  // incoming player gets a freshly built humanoid whose nodes are not in it.
+  void RebuildReplaySpatials();
   int GetLastGoalTeamID() const { return lastGoalTeamID; }
   void SetLastTouchTeamID(int id, e_TouchType touchType = e_TouchType_Intentional_Kicked) {
     lastTouchTeamIDs[touchType] = id;
@@ -237,6 +246,21 @@ public:
 
   MatchData* GetMatchData() { return matchData; }
 
+  // Expected-goals tally and ball heatmap for the post-match analysis (5B).
+  MatchAnalytics::ShotTally& GetShotTally() { return shotTally; }
+  const MatchAnalytics::ShotTally& GetShotTally() const { return shotTally; }
+  const MatchAnalytics::Heatmap& GetBallHeatmap() const { return ballHeatmap; }
+
+  PenaltyShootoutController* GetPenaltyShootout() { return penaltyShootout.get(); }
+
+  const CoachMode::Setup& GetCoachSetup() const { return coachSetup; }
+  // Whether a human may open the tactics menu for this team.
+  bool CanCoachTeam(int teamID) const { return CoachMode::CanEditTactics(coachSetup, teamID); }
+  Substitutions::State& GetSubstitutionState() { return substitutionState; }
+  // Requests a substitution for `teamID`; returns the rule check result and
+  // performs the swap when it is accepted.
+  Substitutions::e_Result RequestSubstitution(int teamID, Player* playerOut, Player* playerIn);
+
   float GetMatchDurationFactor() const { return matchDurationFactor; }
   float GetMatchDifficulty() const { return matchDifficulty; }
 
@@ -272,6 +296,10 @@ protected:
   bool CheckForGoal(signed int side);
 
   void CalculateBestPossessionTeamID();
+  void UpdateBallHeatmap();
+  // Lets CPU-managed teams use their bench (AIManager); human-coached teams do
+  // this from the menu instead.
+  void ProcessAutoSubstitutions();
   void UpdateCrowdAudio();
   void CheckHumanoidCollisions();
   void CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBounce>& p1Bounce,
@@ -290,6 +318,14 @@ protected:
   int timeSincePreviousPut_ms;
 
   MatchData* matchData;
+
+  std::unique_ptr<PenaltyShootoutController> penaltyShootout;
+
+  MatchAnalytics::ShotTally shotTally;
+  MatchAnalytics::Heatmap ballHeatmap;
+
+  CoachMode::Setup coachSetup;
+  Substitutions::State substitutionState;
   std::unique_ptr<Team> teams[2];
 
   std::unique_ptr<Officials> officials;

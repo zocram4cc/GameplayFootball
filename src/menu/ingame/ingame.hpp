@@ -23,6 +23,7 @@ public:
   virtual ~IngamePage();
 
   void GoGamePlan();
+  void GoGamePlanForTeam(int gamePlanTeamID);
   void GoControllerSelect();
   void GoControllerRemap();
   void GoCameraSettings();

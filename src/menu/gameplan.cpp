@@ -7,6 +7,12 @@
 
 #include "../main.hpp"
 #include "mainmenu.hpp"
+#include <cmath>
+
+#include "data/formations.hpp"
+#include "onthepitch/match.hpp"
+#include "onthepitch/team.hpp"
+#include "onthepitch/teamphilosophy.hpp"
 #include "utils/localization.hpp"
 
 using namespace blunted;
@@ -33,19 +39,28 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
                                 Localization::GetInstance().Translate("gameplan_lineup"));
   buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 34, 3,
                                  Localization::GetInstance().Translate("gameplan_tactics"));
-  Gui2Button* buttonFormation =
+  buttonFormation =
       new Gui2Button(windowManager, "gameplan_button_formation", 0, 0, 34, 3,
-                     Localization::GetInstance().Translate("gameplan_formation"));
+                     Localization::GetInstance().Translate("gameplan_formation") + ": " +
+                         GetFormationCaption());
+
+  buttonPhilosophy =
+      new Gui2Button(windowManager, "gameplan_button_philosophy", 0, 0, 34, 3,
+                     Localization::GetInstance().Translate("gameplan_philosophy") + ": " +
+                         GetPhilosophyCaption());
+  buttonSubstitutions =
+      new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 34, 3,
+                     Localization::GetInstance().Translate("gameplan_substitutions"));
 
   buttonLineup->sig_OnClick.connect([this](...) { GoLineupMenu(); });
   buttonTactics->sig_OnClick.connect([this](...) { GoTacticsMenu(); });
+  buttonPhilosophy->sig_OnClick.connect([this](...) { GoPhilosophyMenu(); });
+  buttonSubstitutions->sig_OnClick.connect([this](...) { GoSubstitutionsMenu(); });
 
   if (IsReleaseVersion()) {
     buttonLineup->SetActive(false);
   }
-  // "Formation" has no handler (dead button); keep it visibly disabled in every
-  // build so it never reads as actionable.
-  buttonFormation->SetActive(false);
+  buttonFormation->sig_OnClick.connect([this](...) { GoFormationMenu(); });
 
   this->sig_OnClose.connect([this](...) { OnClose(); });
 
@@ -55,7 +70,9 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   frame->AddView(grid);
   gridNav->AddView(buttonLineup, 0, 0);
   gridNav->AddView(buttonTactics, 1, 0);
-  gridNav->AddView(buttonFormation, 2, 0);
+  gridNav->AddView(buttonPhilosophy, 2, 0);
+  gridNav->AddView(buttonSubstitutions, 3, 0);
+  gridNav->AddView(buttonFormation, 4, 0);
   gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
   grid->AddView(gridNav, 1, 0);
@@ -232,6 +249,261 @@ void GamePlanPage::GoTacticsMenu() {
   }
 
   tacticsMenu->Show();
+}
+
+std::string GamePlanPage::GetFormationCaption() const {
+  return Formations::ShapeName(Formations::ParseShape(teamData->GetTactics().userProperties.Get(
+      "formation", teamData->GetTactics().factoryProperties.Get("formation", "4-4-2"))));
+}
+
+void GamePlanPage::ApplyFormationShape(const Formations::Shape& shape) {
+  const std::string name = Formations::ShapeName(shape);
+  teamData->GetTacticsWritable().userProperties.Set("formation", name);
+  buttonFormation->SetCaption(Localization::GetInstance().Translate("gameplan_formation") + ": " +
+                              name);
+
+  Match* match = GetGameTask()->GetMatch();
+  if (match)
+    match->GetTeam(teamID)->GetController()->ApplyFormationShape(shape);
+}
+
+void GamePlanPage::CustomFormationOnChange() {
+  // Defenders and midfielders are chosen; the forwards are whatever is left, so
+  // the eleven always adds up however the sliders are dragged.
+  const int defenders = static_cast<int>(std::round(sliderCustomDefenders->GetValue() *
+                                                   Formations::outfieldPlayers));
+  const int midfielders = static_cast<int>(std::round(sliderCustomMidfielders->GetValue() *
+                                                     Formations::outfieldPlayers));
+  const Formations::Shape shape = Formations::MakeShapeClamped(defenders, midfielders, 0);
+
+  sliderCustomDefenders->SetCaption(Localization::GetInstance().Translate("formation_defenders") +
+                                    ": " + int_to_str(shape.defenders));
+  sliderCustomMidfielders->SetCaption(
+      Localization::GetInstance().Translate("formation_midfielders") + ": " +
+      int_to_str(shape.midfielders) + "   " +
+      Localization::GetInstance().Translate("formation_forwards") + ": " +
+      int_to_str(shape.forwards) + "   (" + Formations::ShapeName(shape) + ")");
+
+  ApplyFormationShape(shape);
+}
+
+void GamePlanPage::GoFormationMenu() {
+  Deactivate();
+
+  formationMenu = new GamePlanSubMenu(windowManager, buttonFormation, grid, "formation_submenu");
+  formationMenu->sig_OnClose.connect([this](...) { SaveTactics(); });
+  formationMenu->sig_OnClose.connect([this](...) { Reactivate(); });
+
+  const Formations::Shape currentShape = Formations::ParseShape(GetFormationCaption());
+
+  int row = 0;
+  for (; row < Formations::GetCount(); row++) {
+    const Formations::e_Formation candidate = Formations::GetFormationAt(row);
+    const bool isCurrent = Formations::ShapeName(Formations::GetShape(candidate)) ==
+                           Formations::ShapeName(currentShape);
+    const Vector3 color = isCurrent ? Vector3(80, 160, 80) : Vector3(60, 60, 60);
+    Gui2Button* button = formationMenu->AddButton("formationbutton_" + int_to_str(row),
+                                                Formations::GetName(candidate), row, 0, color);
+    const int index = row;
+    button->sig_OnClick.connect([this, index](Gui2Button* btn) { FormationMenuOnClick(index); });
+    if (isCurrent)
+      button->SetFocus();
+  }
+
+  // ...and a builder for anything else the manager fancies, from 6-4-0 to 1-0-9.
+  sliderCustomDefenders =
+      formationMenu->AddSlider("formation_custom_defenders",
+                               Localization::GetInstance().Translate("formation_defenders"), row++,
+                               0);
+  sliderCustomMidfielders =
+      formationMenu->AddSlider("formation_custom_midfielders",
+                               Localization::GetInstance().Translate("formation_midfielders"),
+                               row++, 0);
+  sliderCustomDefenders->SetValue(static_cast<float>(currentShape.defenders) /
+                                  Formations::outfieldPlayers);
+  sliderCustomMidfielders->SetValue(static_cast<float>(currentShape.midfielders) /
+                                    Formations::outfieldPlayers);
+  sliderCustomDefenders->sig_OnChange.connect([this](Gui2Slider*) { CustomFormationOnChange(); });
+  sliderCustomMidfielders->sig_OnChange.connect([this](Gui2Slider*) { CustomFormationOnChange(); });
+
+  formationMenu->Show();
+}
+
+void GamePlanPage::FormationMenuOnClick(int formationIndex) {
+  const Formations::e_Formation formation = Formations::GetFormationAt(formationIndex);
+
+  // Reshape the team straight away, so the plan map and the pitch both show it.
+  ApplyFormationShape(Formations::GetShape(formation));
+
+  // Keep the custom sliders in step with the preset that was picked.
+  const Formations::Shape shape = Formations::GetShape(formation);
+  if (sliderCustomDefenders)
+    sliderCustomDefenders->SetValue(static_cast<float>(shape.defenders) /
+                                    Formations::outfieldPlayers);
+  if (sliderCustomMidfielders)
+    sliderCustomMidfielders->SetValue(static_cast<float>(shape.midfielders) /
+                                      Formations::outfieldPlayers);
+
+  const std::vector<Gui2Button*>& buttons = formationMenu->GetAllButtons();
+  for (unsigned int i = 0; i < buttons.size(); i++) {
+    buttons.at(i)->SetColor(static_cast<int>(i) == formationIndex ? Vector3(80, 160, 80)
+                                                                 : Vector3(60, 60, 60));
+  }
+}
+
+std::string GamePlanPage::GetPhilosophyCaption() const {
+  const TeamPhilosophy::e_Philosophy philosophy = TeamPhilosophy::Parse(
+      teamData->GetTactics().userProperties.Get(
+          "philosophy", teamData->GetTactics().factoryProperties.Get("philosophy", "balanced")));
+  return Localization::GetInstance().Translate("philosophy_" +
+                                              TeamPhilosophy::GetName(philosophy));
+}
+
+void GamePlanPage::GoPhilosophyMenu() {
+  Deactivate();
+
+  philosophyMenu = new GamePlanSubMenu(windowManager, buttonPhilosophy, grid, "philosophy_submenu");
+  philosophyMenu->sig_OnClose.connect([this](...) { SaveTactics(); });
+  philosophyMenu->sig_OnClose.connect([this](...) { Reactivate(); });
+
+  const TeamPhilosophy::e_Philosophy current = TeamPhilosophy::Parse(
+      teamData->GetTactics().userProperties.Get(
+          "philosophy", teamData->GetTactics().factoryProperties.Get("philosophy", "balanced")));
+
+  for (int i = 0; i < TeamPhilosophy::e_Philosophy_Count; i++) {
+    const TeamPhilosophy::e_Philosophy philosophy = static_cast<TeamPhilosophy::e_Philosophy>(i);
+    const Vector3 color = philosophy == current ? Vector3(80, 160, 80) : Vector3(60, 60, 60);
+    Gui2Button* button = philosophyMenu->AddButton(
+        "philosophybutton_" + int_to_str(i),
+        Localization::GetInstance().Translate("philosophy_" + TeamPhilosophy::GetName(philosophy)),
+        i, 0, color);
+    button->sig_OnClick.connect([this, i](Gui2Button* btn) { PhilosophyMenuOnClick(i); });
+    if (philosophy == current)
+      button->SetFocus();
+  }
+
+  philosophyMenu->Show();
+}
+
+void GamePlanPage::PhilosophyMenuOnClick(int philosophyIndex) {
+  const TeamPhilosophy::e_Philosophy philosophy =
+      static_cast<TeamPhilosophy::e_Philosophy>(philosophyIndex);
+  teamData->GetTacticsWritable().userProperties.Set("philosophy",
+                                                   TeamPhilosophy::GetName(philosophy));
+  buttonPhilosophy->SetCaption(Localization::GetInstance().Translate("gameplan_philosophy") + ": " +
+                               GetPhilosophyCaption());
+
+  // Reflect the new choice in the button colours.
+  const std::vector<Gui2Button*>& buttons = philosophyMenu->GetAllButtons();
+  for (unsigned int i = 0; i < buttons.size(); i++) {
+    buttons.at(i)->SetColor(static_cast<int>(i) == philosophyIndex ? Vector3(80, 160, 80)
+                                                                  : Vector3(60, 60, 60));
+  }
+}
+
+void GamePlanPage::GoSubstitutionsMenu() {
+  Deactivate();
+
+  substitutionsMenu =
+      new GamePlanSubMenu(windowManager, buttonSubstitutions, grid, "substitutions_submenu");
+  substitutionsMenu->sig_OnClose.connect([this](...) { Reactivate(); });
+
+  Match* match = GetGameTask()->GetMatch();
+  int row = 0;
+
+  if (match) {
+    Team* team = match->GetTeam(teamID);
+
+    std::vector<Player*> onPitch;
+    team->GetActivePlayers(onPitch);
+    std::vector<Player*> bench;
+    team->GetBenchPlayers(bench);
+
+    substitutionsMenu->AddButton(
+        "subs_caption_remaining", Localization::GetInstance().Translate("substitutions_remaining") +
+                                      ": " +
+                                      int_to_str(Substitutions::GetRemaining(
+                                          match->GetSubstitutionState(), teamID)),
+        row++, 0, Vector3(40, 40, 40))
+        ->SetActive(false);
+
+    for (Player* player : onPitch) {
+      Gui2Button* button = substitutionsMenu->AddButton(
+          "subsbutton_out_id" + int_to_str(player->GetID()),
+          player->GetPlayerData()->GetLastName(), row++, 0, Vector3(120, 70, 70));
+      button->sig_OnClick.connect([this](Gui2Button* btn) { SubstitutionsMenuOnClick(btn); });
+      button->SetToggleable(true);
+      if (row == 2)
+        button->SetFocus();
+    }
+
+    for (Player* player : bench) {
+      Gui2Button* button = substitutionsMenu->AddButton(
+          "subsbutton_in_id" + int_to_str(player->GetID()),
+          player->GetPlayerData()->GetLastName(), row++, 0, Vector3(70, 100, 130));
+      button->sig_OnClick.connect([this](Gui2Button* btn) { SubstitutionsMenuOnClick(btn); });
+      button->SetToggleable(true);
+    }
+  }
+
+  substitutionsMenu->Show();
+}
+
+void GamePlanPage::SubstitutionsMenuOnClick(Gui2Button* button) {
+  Match* match = GetGameTask()->GetMatch();
+  if (!match)
+    return;
+
+  // A substitution needs one player from the pitch and one from the bench, so
+  // wait until a second button of the other kind has been toggled.
+  Gui2Button* other = substitutionsMenu->GetToggledButton(button);
+  if (!other)
+    return;
+
+  const bool buttonIsOut = button->GetName().find("_out_") != std::string::npos;
+  const bool otherIsOut = other->GetName().find("_out_") != std::string::npos;
+  if (buttonIsOut == otherIsOut)
+    return;
+
+  Gui2Button* outButton = buttonIsOut ? button : other;
+  Gui2Button* inButton = buttonIsOut ? other : button;
+  outButton->SetToggled(false);
+  inButton->SetToggled(false);
+
+  const int outID = atoi(
+      outButton->GetName().substr(outButton->GetName().rfind("id") + 2, std::string::npos).c_str());
+  const int inID = atoi(
+      inButton->GetName().substr(inButton->GetName().rfind("id") + 2, std::string::npos).c_str());
+
+  Team* team = match->GetTeam(teamID);
+  const Substitutions::e_Result result =
+      match->RequestSubstitution(teamID, team->GetPlayer(outID), team->GetPlayer(inID));
+
+  std::string message;
+  switch (result) {
+    case Substitutions::e_Result_Accepted:
+      message = "substitution_done";
+      break;
+    case Substitutions::e_Result_NotAStoppage:
+      message = "substitution_wait_for_stoppage";
+      break;
+    case Substitutions::e_Result_NoSubstitutionsLeft:
+      message = "substitution_none_left";
+      break;
+    case Substitutions::e_Result_PlayerSentOff:
+      message = "substitution_sent_off";
+      break;
+    default:
+      message = "substitution_unavailable";
+      break;
+  }
+  match->SpamMessage(Localization::GetInstance().Translate(message), 3000);
+
+  if (result == Substitutions::e_Result_Accepted) {
+    // Rebuild the lists so the new line-up is shown.
+    substitutionsMenu->Hide();
+    GoSubstitutionsMenu();
+  }
 }
 
 void GamePlanPage::SaveTactics() {

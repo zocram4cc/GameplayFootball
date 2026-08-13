@@ -18,6 +18,10 @@
 
 #include "opengl_renderer3d.hpp"
 
+#include <cstring>
+#include <mutex>
+#include <vector>
+
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl3.h>
@@ -93,8 +97,61 @@ OpenGLRenderer3D::OpenGLRenderer3D()
 
 OpenGLRenderer3D::~OpenGLRenderer3D(){};
 
+namespace {
+
+// The renderer runs on its own thread, so requests are handed over under a lock.
+std::mutex screenshotMutex;
+std::string requestedScreenshotFilename;
+
+}  // namespace
+
+void RequestScreenshot(const std::string& filename) {
+  std::lock_guard<std::mutex> lock(screenshotMutex);
+  requestedScreenshotFilename = filename;
+}
+
 void OpenGLRenderer3D::SwapBuffers() {
   SDL_GL_SwapWindow(window);
+
+  // Screenshots: written straight after the frame is presented, so what lands
+  // on disk is exactly what was drawn. Used for offscreen (xvfb) verification.
+  std::string filename;
+  {
+    std::lock_guard<std::mutex> lock(screenshotMutex);
+    filename.swap(requestedScreenshotFilename);
+  }
+  if (!filename.empty())
+    WriteScreenshot(filename);
+}
+
+
+
+void OpenGLRenderer3D::WriteScreenshot(const std::string& filename) {
+  const int width = context_width;
+  const int height = context_height;
+  if (width <= 0 || height <= 0)
+    return;
+
+  std::vector<unsigned char> pixels(static_cast<size_t>(width) * height * 4);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadBuffer(GL_BACK);
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+  // OpenGL hands back the image bottom-up; SDL surfaces are top-down.
+  SDL_Surface* surface =
+      SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_ABGR8888);
+  if (!surface)
+    return;
+  for (int y = 0; y < height; y++) {
+    std::memcpy(static_cast<unsigned char*>(surface->pixels) + surface->pitch * y,
+                pixels.data() + static_cast<size_t>(width) * 4 * (height - 1 - y), width * 4);
+  }
+
+  if (SDL_SaveBMP(surface, filename.c_str()) == 0)
+    Log(e_Notice, "OpenGLRenderer3D", "WriteScreenshot", "wrote screenshot " + filename);
+  else
+    Log(e_Warning, "OpenGLRenderer3D", "WriteScreenshot", "could not write " + filename);
+  SDL_FreeSurface(surface);
 }
 
 void OpenGLRenderer3D::SetMatrix(const std::string& shaderUniformName, const Matrix4& matrix) {

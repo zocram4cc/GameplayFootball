@@ -84,6 +84,8 @@ public:
 
   virtual float GetStat(const char* name) const;
   float GetVelocityMultiplier() const;
+  // 1 unless the player is recovering from a slip; overridden by Player.
+  virtual float GetSlipFactor() const { return 1.0f; }
   float GetMaxVelocity() const;
 
   const Anim* GetCurrentAnim() { return humanoid->GetCurrentAnim(); }

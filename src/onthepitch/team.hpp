@@ -10,6 +10,7 @@
 #include "../data/teamdata.hpp"
 #include "humangamer.hpp"
 #include "player/player.hpp"
+#include "substitutions.hpp"
 #include "teamAIcontroller.hpp"
 
 class Match;
@@ -93,6 +94,13 @@ public:
 
   Player* GetGoalie();
 
+  // Substitutions (TECHNICAL_ROADMAP 3B.2). The incoming player takes over the
+  // outgoing player's formation slot; the outgoing player cannot return.
+  bool Substitute(Player* playerOut, Player* playerIn);
+  bool HasBeenSubstituted(int playerID) const;
+  void GetBenchPlayers(std::vector<Player*>& benchPlayers);
+  Substitutions::SquadView DescribeSwap(Player* playerOut, Player* playerIn) const;
+
   void SetKitNumber(int num);
 
 protected:
@@ -126,6 +134,13 @@ protected:
   e_TouchType lastTouchType;
 
   boost::intrusive_ptr<Resource<Surface>> kit;
+
+  // Player ids that have been taken off; they may not come back on.
+  std::vector<int> substitutedPlayerIDs;
+
+  boost::intrusive_ptr<Resource<Surface>> FetchKit(int formationIndex);
+  boost::intrusive_ptr<Node> fullbodyNode;
+  std::map<Vector3, Vector3> playerColorCoords;
 };
 
 #endif

@@ -1,16 +1,20 @@
 #include "statsoverlay.hpp"
 
+#include <algorithm>
+
+#include "../../data/matchanalytics.hpp"
 #include "../../onthepitch/match.hpp"
+#include "utils/localization.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;
 
 Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match)
-    : Gui2View(windowManager, "statsoverlay", 2, 6, 96, 12), match(match) {
+    : Gui2View(windowManager, "statsoverlay", 2, 6, 96, 26), match(match) {
   Vector3 textColor(220, 220, 220);
   Vector3 outlineColor(0, 0, 0);
 
-  Gui2Frame* bg = new Gui2Frame(windowManager, "frame_statsoverlay_bg", 0, 0, 96, 12, true);
+  Gui2Frame* bg = new Gui2Frame(windowManager, "frame_statsoverlay_bg", 0, 0, 96, 26, true);
   this->AddView(bg);
   bg->Show();
 
@@ -23,7 +27,17 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   foulsCaption =
       new Gui2Caption(windowManager, "stats_fouls", 1, 9, 94, 3, "");
 
-  for (Gui2Caption* cap : {possessionCaption, shotsCaption, passCaption, foulsCaption}) {
+  expectedGoalsCaption = new Gui2Caption(windowManager, "stats_xg", 1, 12, 94, 3, "");
+
+  // The heatmap is drawn as four rows of block characters, one per pitch band.
+  for (int i = 0; i < 4; i++) {
+    heatmapCaption[i] = new Gui2Caption(windowManager, "stats_heatmap_" + int_to_str(i), 1,
+                                       15.0f + i * 2.5f, 94, 2.5f, "");
+  }
+
+  for (Gui2Caption* cap : {possessionCaption, shotsCaption, passCaption, foulsCaption,
+                           expectedGoalsCaption, heatmapCaption[0], heatmapCaption[1],
+                           heatmapCaption[2], heatmapCaption[3]}) {
     cap->SetColor(textColor);
     cap->SetOutlineColor(outlineColor);
     this->AddView(cap);
@@ -61,4 +75,29 @@ void Gui2StatsOverlay::UpdateStats() {
   int fouls1 = md->GetFouls(0);
   int fouls2 = md->GetFouls(1);
   foulsCaption->SetCaption(int_to_str(fouls1) + " | fouls | " + int_to_str(fouls2));
+
+  // Expected goals: how good the chances actually were.
+  const MatchAnalytics::ShotTally& tally = match->GetShotTally();
+  expectedGoalsCaption->SetCaption(
+      real_to_str(round(MatchAnalytics::GetExpectedGoals(tally, 0) * 100.0f) / 100.0f) + " | " +
+      Localization::GetInstance().Translate("stats_expected_goals") + " | " +
+      real_to_str(round(MatchAnalytics::GetExpectedGoals(tally, 1) * 100.0f) / 100.0f));
+
+  // Ball heatmap, condensed from the sampled grid into four rows of intensity.
+  const MatchAnalytics::Heatmap& heatmap = match->GetBallHeatmap();
+  const char* intensityChars[5] = {".", ":", "+", "*", "#"};
+  const int rowsPerBand = MatchAnalytics::Heatmap::cellsY / 4;
+  for (int band = 0; band < 4; band++) {
+    std::string row;
+    for (int x = 0; x < MatchAnalytics::Heatmap::cellsX; x++) {
+      float intensity = 0.0f;
+      for (int y = band * rowsPerBand; y < (band + 1) * rowsPerBand; y++)
+        intensity = std::max(intensity, MatchAnalytics::GetNormalizedIntensity(heatmap, x, y));
+      const int level = std::min(static_cast<int>(intensity * 5.0f), 4);
+      row += intensityChars[level];
+      row += " ";
+    }
+    heatmapCaption[band]->SetCaption(
+        band == 0 ? Localization::GetInstance().Translate("stats_ball_heatmap") + "  " + row : row);
+  }
 }

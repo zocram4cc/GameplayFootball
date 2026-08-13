@@ -18,6 +18,11 @@
 
 #include "elizacontroller.hpp"
 
+#include "data/playertraits.hpp"
+#include "onthepitch/matchpressure.hpp"
+#include "onthepitch/penaltyshootoutcontroller.hpp"
+#include "onthepitch/teamphilosophy.hpp"
+
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -146,10 +151,25 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
       actionCommand.desiredFunctionType = e_FunctionType_Shot;
       actionCommand.useDesiredMovement = false;
       actionCommand.useDesiredLookAt = false;
+
+      // During a shootout the placement comes from the taker's stats; a penalty
+      // in open play stays as unpredictable as it was.
+      float aimY = random(-5, 5);
+      float aimPower = random(0.4f, 1.0f);
+      float aimGoalX = -team->GetSide() * pitchHalfW;
+      PenaltyShootoutController* shootout = match->GetPenaltyShootout();
+      if (shootout && shootout->IsStarted() && !shootout->IsFinished()) {
+        aimY = shootout->GetAimY();
+        aimPower = shootout->GetAimPower();
+        // The whole shootout is taken at one end, which may be the end this team
+        // was defending during the match.
+        aimGoalX = shootout->GetGoalX();
+      }
+
       actionCommand.touchInfo.desiredDirection =
-          (Vector3(-team->GetSide() * pitchHalfW, random(-5, 5), 0) - CastPlayer()->GetPosition())
+          (Vector3(aimGoalX, aimY, 0) - CastPlayer()->GetPosition())
               .GetNormalized(Vector3(-team->GetSide(), 0, 0));
-      actionCommand.touchInfo.desiredPower = random(0.4f, 1.0f);
+      actionCommand.touchInfo.desiredPower = aimPower;
       commandQueue.push_back(actionCommand);
 
     } else {
@@ -942,6 +962,13 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   oneTouchIsHard =
       movementDiff - CastPlayer()->GetStat("technical_shortpass") * movementDiff * 0.8f;
 
+  // Cards and philosophy shape how this player uses the ball (roadmap 4D).
+  const PlayerTraits::TraitMask traits = CastPlayer()->GetPlayerData()->GetTraits();
+  const TeamPhilosophy::e_Philosophy philosophy = team->GetController()->GetPhilosophy();
+  // A one-touch passer does not pay the control penalty on a quick release.
+  oneTouchIsHard = PlayerTraits::GetQuickReleaseAccuracyPenalty(
+      traits, CastPlayer()->GetPossessionDuration_ms(), oneTouchIsHard);
+
   std::vector<PlayerImage> opponentPlayerImages;
   _mentalImage->GetTeamPlayerImages(abs(team->GetID() - 1), -1, opponentPlayerImages);
 
@@ -952,7 +979,7 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
 
   // first selection
   float forwardSpaceWeight = 0.4f;
-  float spaceWeight = 0.3f;
+  float spaceWeight = PlayerTraits::GetSpaceRatingWeight(traits, 0.3f);
   float forwardWeight = 2.0f + AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role) * 6.0f;
 
   float totalWeight1 = forwardSpaceWeight + spaceWeight + forwardWeight;
@@ -1034,6 +1061,8 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
                              : 0.0f;
         float passingOddsShort =
             _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages);
+        if (TeamPhilosophy::PrefersShortPassing(philosophy))
+          passingOddsShort = std::min(passingOddsShort * 1.2f, 1.0f);
         float passingOddsLong =
             _GetPassingOdds(mates.at(i), e_FunctionType_LongPass, opponentPlayerImages);
         float passingOddsHigh =
@@ -1064,6 +1093,26 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       }
 
     }  // !self
+  }
+
+  // Panic under pressure: count opponents closing in and let temperament decide
+  // whether the player loses his composure (proposal 3B).
+  {
+    int pressuringOpponents = 0;
+    for (const PlayerImage& oppImage : opponentPlayerImages) {
+      if ((oppImage.position - CastPlayer()->GetPosition()).GetLength() < 3.5f)
+        pressuringOpponents++;
+    }
+
+    const float stumbleChance = MatchPressure::GetStumbleChance(
+        CastPlayer()->GetStat("mental_calmness"), CastPlayer()->GetPlayerData()->GetAge(),
+        pressuringOpponents);
+    if (MatchPressure::ShouldStumble(stumbleChance, random(0.0f, 1.0f))) {
+      _AddPanicPass(commandQueue);
+      if (Verbose())
+        printf("panic under pressure! chance %f, %i opponents\n", stumbleChance,
+               pressuringOpponents);
+    }
   }
 
   // panic

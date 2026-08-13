@@ -22,6 +22,9 @@ protected:
   Gui2Caption* shotsCaption;
   Gui2Caption* passCaption;
   Gui2Caption* foulsCaption;
+  // Expected goals and a compact ball heatmap (proposal 5B).
+  Gui2Caption* expectedGoalsCaption;
+  Gui2Caption* heatmapCaption[4];
 };
 
 #endif

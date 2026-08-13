@@ -8,6 +8,7 @@
 
 #include "../gamedefines.hpp"
 #include "defines.hpp"
+#include "refereeprofile.hpp"
 #include "scene/objects/sound.hpp"
 #include "scene/scene3d/scene3d.hpp"
 
@@ -56,6 +57,10 @@ public:
                                     // tackle resulting in fall, 3 == sliding tackle
   bool CheckFoul();
 
+  // Drops any queued restart. Used when the shootout takes over the pitch, so
+  // no kick-off or goal kick is staged underneath it.
+  void CancelSetPiece();
+
   Player* GetCurrentFoulPlayer() { return foul.foulPlayer; }
   int GetCurrentFoulType() { return foul.foulType; }
 
@@ -72,6 +77,8 @@ protected:
   std::map<Player*, Vector3> offsidePlayers;  // player, position at time of touch
 
   Foul foul;
+
+  RefereeProfile::e_Profile profile;
 
   boost::intrusive_ptr<Sound> whistle[4];  // 0: short, 1: long, 2: half time, 3: full time
 };

@@ -5,6 +5,9 @@
 
 #include "playerdata.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 #include "../main.hpp"
 #include "base/utils.hpp"
 #include "utils/database.hpp"
@@ -65,8 +68,19 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
   XMLTree tree = loader.Load(profileString);
 
   // printf("player: %s, %s (age %i)\n", lastName.c_str(), firstName.c_str(), age);
+  traits = PlayerTraits::traitMaskNone;
+  playerAge = age;
+
   map_XMLTree::const_iterator iter = tree.children.begin();
   while (iter != tree.children.end()) {
+    // The profile may carry a comma-separated list of traits alongside the
+    // numeric stats (see SIMULATION_IMPROVEMENT_PROPOSAL 3A).
+    if ((*iter).first.compare("traits") == 0) {
+      traits = PlayerTraits::Parse((*iter).second.value);
+      iter++;
+      continue;
+    }
+
     float profileStat = atof((*iter).second.value.c_str());  // profile value
 
     float value = CalculateStat(baseStat, profileStat, age, e_DevelopmentCurveType_Normal);
@@ -106,6 +120,9 @@ PlayerData::PlayerData() {
   stats.Set("mental_defensivepositioning", 0.6);
   stats.Set("mental_offensivepositioning", 0.6);
   stats.Set("mental_vision", 0.6);
+
+  traits = PlayerTraits::traitMaskNone;
+  playerAge = MatchPressure::unknownAge;
 }
 
 PlayerData::~PlayerData() {}
@@ -119,5 +136,17 @@ float PlayerData::GetStat(const char* name) {
   if (!exists)
     printf("Stat named '%s' does not exist!\n", name);
   assert(exists);
-  return stats.GetReal(name, 1.0f);
+  float value = stats.GetReal(name, 1.0f);
+
+  // Traits bend the raw stats: a speed merchant is quicker off the mark, a
+  // target man is stronger in the air (see SIMULATION_IMPROVEMENT_PROPOSAL 3A).
+  if (traits != PlayerTraits::traitMaskNone) {
+    if (std::strcmp(name, "physical_acceleration") == 0)
+      value *= PlayerTraits::GetAccelerationMultiplier(traits);
+    else if (std::strcmp(name, "technical_header") == 0)
+      value *= PlayerTraits::GetHeaderMultiplier(traits);
+    value = std::min(value, 1.0f);
+  }
+
+  return value;
 }

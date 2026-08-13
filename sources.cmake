@@ -408,6 +408,18 @@ set(CORE_SOURCES
 
 set(GAME_HEADERS
    src/onthepitch/aitactics.hpp
+   src/onthepitch/aimanager.hpp
+   src/onthepitch/coachmode.hpp
+   src/onthepitch/crowdmood.hpp
+   src/onthepitch/matchmentality.hpp
+   src/onthepitch/matchprogression.hpp
+   src/onthepitch/substitutions.hpp
+   src/onthepitch/matchpressure.hpp
+   src/onthepitch/penaltyshootout.hpp
+   src/onthepitch/penaltyshootoutcontroller.hpp
+   src/onthepitch/pitchconditions.hpp
+   src/onthepitch/refereeprofile.hpp
+   src/onthepitch/teamphilosophy.hpp
    src/onthepitch/ballphysics.hpp
    src/onthepitch/gameplaytuning.hpp
    src/onthepitch/humanspeed.hpp
@@ -472,6 +484,18 @@ set(GAME_SOURCES
    src/onthepitch/proceduralpitch.cpp
    src/onthepitch/team.cpp
    src/onthepitch/teamAIcontroller.cpp
+   src/onthepitch/aimanager.cpp
+   src/onthepitch/coachmode.cpp
+   src/onthepitch/crowdmood.cpp
+   src/onthepitch/matchmentality.cpp
+   src/onthepitch/matchprogression.cpp
+   src/onthepitch/substitutions.cpp
+   src/onthepitch/matchpressure.cpp
+   src/onthepitch/penaltyshootout.cpp
+   src/onthepitch/penaltyshootoutcontroller.cpp
+   src/onthepitch/pitchconditions.cpp
+   src/onthepitch/refereeprofile.cpp
+   src/onthepitch/teamphilosophy.cpp
 )
 
 set(HID_HEADERS
@@ -603,6 +627,9 @@ set(DATA_HEADERS
    src/data/playerdata.hpp
    src/data/matchhistory.hpp
    src/data/setpiececonfig.hpp
+   src/data/formations.hpp
+   src/data/matchanalytics.hpp
+   src/data/playertraits.hpp
 )
 
 set(DATA_SOURCES
@@ -620,4 +647,7 @@ set(DATA_SOURCES
    src/data/teamdata.cpp
    src/data/matchhistory.cpp
    src/data/setpiececonfig.cpp
+   src/data/formations.cpp
+   src/data/matchanalytics.cpp
+   src/data/playertraits.cpp
 )

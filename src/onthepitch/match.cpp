@@ -5,6 +5,12 @@
 
 #include "match.hpp"
 
+#include "../data/playertraits.hpp"
+#include "aimanager.hpp"
+#include "coachmode.hpp"
+#include "crowdmood.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
+
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "base/geometry/triangle.hpp"
@@ -390,6 +396,29 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   possessionSideHistory = std::make_unique<ValueHistory<float>>(6000);
 
+  penaltyShootout = std::make_unique<PenaltyShootoutController>(this);
+
+  // Weather for this match, from the gameplay settings ("match_weather": 0 dry,
+  // 0.5 rain, 1 storm). Wind direction is drawn once per match.
+  {
+    const float weather = clamp(GetConfiguration()->GetReal("match_weather", 0.0f), 0.0f, 1.0f);
+    const float wetness = weather;
+    const float windStrength = weather * weather * 6.0f;  // storms bend the ball much more
+    const float windAngle = random(0.0f, 2.0f * pi);
+    ball->SetWeather(Vector3(std::cos(windAngle) * windStrength,
+                             std::sin(windAngle) * windStrength, 0.0f),
+                     wetness);
+  }
+
+  // Straight to a shootout: handy for trying penalties out without playing a
+  // whole match first ("penalty_shootout_only" in the config).
+  if (GetConfiguration()->GetBool("penalty_shootout_only", false)) {
+    Log(e_Notice, "Match", "Match", "penalty shootout only: skipping to the shootout");
+    SetMatchPhase(e_MatchPhase_Penalties);
+    StopPlay();
+    StopSetPiece();
+  }
+
   Log(e_Notice, "Match", "Match", "Done creating match!");
 
   // light test
@@ -656,6 +685,12 @@ void Match::UpdateControllerSetup() {
       // printf("team id %i, %i\n", teamID, sides.at(i).controllerID);
     }
   }
+
+  // Coach mode: teams without a human on the sticks can still be run from the
+  // touchline by a human manager.
+  const bool coachModeEnabled = GetConfiguration()->GetBool("coach_mode", false);
+  coachSetup = CoachMode::FromHumanGamerCounts(teams[0]->GetHumanGamerCount(),
+                                               teams[1]->GetHumanGamerCount(), coachModeEnabled);
 }
 
 void Match::SpamMessage(const std::string& msg, int time_ms) {
@@ -762,6 +797,11 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   }
 }
 
+void Match::SetScore(int teamID, int goals) {
+  matchData->SetGoalCount(teamID, goals);
+  scoreboard->SetGoalCount(teamID, goals);
+}
+
 signed int Match::GetBestPossessionTeamID() {
   return bestPossessionTeamID;
 }
@@ -778,6 +818,86 @@ void Match::AddExcitementBoost(float amount, int duration_ms) {
     excitementEventBoost = amount;
   if (duration_ms > excitementEventTimer_ms)
     excitementEventTimer_ms = duration_ms;
+}
+
+Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
+                                                  Player* playerIn) {
+  Team* team = GetTeam(teamID);
+  const Substitutions::SquadView squad = team->DescribeSwap(playerOut, playerIn);
+  const Substitutions::e_Result result =
+      Substitutions::Validate(substitutionState, teamID, squad, !IsInPlay());
+  if (result != Substitutions::e_Result_Accepted)
+    return result;
+
+  if (!team->Substitute(playerOut, playerIn))
+    return Substitutions::e_Result_PlayerNotAvailable;
+
+  Substitutions::Commit(substitutionState, teamID);
+  return Substitutions::e_Result_Accepted;
+}
+
+void Match::ProcessAutoSubstitutions() {
+  // Only at stoppages during normal play, and no more than one decision per
+  // second. A shootout is not a stoppage to make substitutions in.
+  if (IsInPlay() || actualTime_ms % 1000 != 0)
+    return;
+  if (matchPhase == e_MatchPhase_Penalties || gameOver)
+    return;
+
+  for (int teamID = 0; teamID < 2; teamID++) {
+    // A human manager makes his own calls.
+    if (CoachMode::CanEditTactics(coachSetup, teamID))
+      continue;
+    if (Substitutions::GetRemaining(substitutionState, teamID) <= 0)
+      continue;
+
+    Team* team = GetTeam(teamID);
+
+    std::vector<Player*> squadPlayers;
+    team->GetAllPlayers(squadPlayers);
+
+    std::vector<AIManager::SubstitutionCandidate> squad;
+    std::vector<Player*> considered;
+    squad.reserve(squadPlayers.size());
+    Player* goalie = team->GetGoalie();
+    for (Player* player : squadPlayers) {
+      if (!player->IsActive() && team->HasBeenSubstituted(player->GetID()))
+        continue;  // already used up
+      // Keepers only come off if they are actually injured.
+      if (player == goalie && player->GetInjuryLevel() < AIManager::substitutionInjuryLevel)
+        continue;
+
+      AIManager::SubstitutionCandidate candidate;
+      candidate.fatigueFactorInv = player->GetFatigueFactorInv();
+      candidate.injuryLevel = player->GetInjuryLevel();
+      candidate.isOnPitch = player->IsActive();
+      candidate.averageStat = player->GetAverageStat();
+      squad.push_back(candidate);
+      considered.push_back(player);
+    }
+
+    AIManager::MatchSituation situation;
+    situation.goalDifference =
+        matchData->GetGoalCount(teamID) - matchData->GetGoalCount(abs(teamID - 1));
+    situation.matchTime_ms = matchTime_ms;
+    situation.possessionShare =
+        CrowdMood::GetHomeSupportFactor(matchData->GetPossessionFactor_60seconds(), teamID);
+
+    const AIManager::SubstitutionPlan plan = AIManager::PlanSubstitution(
+        squad, situation, Substitutions::GetRemaining(substitutionState, teamID));
+    if (!plan.wanted)
+      continue;
+
+    RequestSubstitution(teamID, considered.at(plan.playerOutIndex),
+                        considered.at(plan.playerInIndex));
+  }
+}
+
+void Match::UpdateBallHeatmap() {
+  // One sample a second is plenty for a readable heatmap.
+  if (!IsInPlay() || actualTime_ms % 1000 != 0)
+    return;
+  MatchAnalytics::AddSample(ballHeatmap, ball->Predict(0).Get2D());
 }
 
 void Match::UpdateCrowdAudio() {
@@ -811,7 +931,12 @@ void Match::UpdateCrowdAudio() {
     }
   }
 
-  const float effectiveExcitement = clamp(excitement + excitementEventBoost, 0.0f, 1.0f);
+  // Sustained possession by the home side lifts the crowd on top of the
+  // goal/danger reactions above.
+  const float possessionExcitement = CrowdMood::GetPossessionExcitement(
+      matchData->GetPossessionFactor_60seconds(), 0);
+  const float effectiveExcitement = clamp(
+      CrowdMood::Blend(excitement + excitementEventBoost, possessionExcitement), 0.0f, 1.0f);
   const float masterVolume = clamp(GetConfiguration()->GetReal("audio_volume", 0.5f), 0.0f, 1.0f);
   const bool crowdMuted = masterVolume == 0.0f;
   const float pauseFactor = pause ? 0.22f : 1.0f;
@@ -1014,6 +1139,19 @@ void Match::Process() {
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
   }
 
+  // F12 grabs a screenshot; "screenshot_interval_ms" grabs them on a timer,
+  // which is how an offscreen run can be checked visually.
+  if (UserEventManager::GetInstance().GetKeyboardState(SDLK_F12)) {
+    UserEventManager::GetInstance().SetKeyboardState(SDLK_F12, false);
+    RequestScreenshot(GetConfiguration()->Get("screenshot_path", "screenshot") + "_" +
+                      int_to_str(actualTime_ms) + ".bmp");
+  }
+  const int screenshotInterval_ms = GetConfiguration()->GetInt("screenshot_interval_ms", 0);
+  if (screenshotInterval_ms > 0 && actualTime_ms % screenshotInterval_ms == 0) {
+    RequestScreenshot(GetConfiguration()->Get("screenshot_path", "screenshot") + "_" +
+                      int_to_str(actualTime_ms) + ".bmp");
+  }
+
   if (gameOver) {
     // todonow: just once ^
     sig_OnGameOver(this);
@@ -1026,7 +1164,14 @@ void Match::Process() {
 
     // HIJ IS EEN HONDELUUUL
 
-    referee->Process();
+    // The shootout owns the pitch during the penalties phase: normal play and
+    // the referee's set-piece machinery stay out of the way, otherwise play
+    // would simply restart underneath the shootout.
+    if (matchPhase == e_MatchPhase_Penalties) {
+      penaltyShootout->Process();
+    } else {
+      referee->Process();
+    }
 
     // ball
 
@@ -1181,6 +1326,8 @@ void Match::Process() {
 
   }  // end if !pause
 
+  ProcessAutoSubstitutions();
+  UpdateBallHeatmap();
   UpdateCrowdAudio();
 
   if (autoUpdateIngameCamera)
@@ -1560,6 +1707,18 @@ void Match::GetReplaySpatials(std::list<boost::intrusive_ptr<Spatial>>& spatials
   for (unsigned int i = 0; i < playerOfficials.size(); i++) {
     spatials.push_back(playerOfficials.at(i)->GetHumanoidNode());
     playerOfficials.at(i)->GetHumanoidNode()->GetSpatials(spatials);
+  }
+}
+
+void Match::RebuildReplaySpatials() {
+  replay.clear();
+
+  std::list<boost::intrusive_ptr<Spatial>> spatials;
+  GetReplaySpatials(spatials);
+  for (auto& spatial : spatials) {
+    auto replaySpatial = std::make_unique<ReplaySpatial>(GetReplaySize_ms() / 10);
+    replaySpatial->spatial = spatial;
+    replay.push_back(std::move(replaySpatial));
   }
 }
 
@@ -2225,6 +2384,11 @@ void Match::CheckBallCollisions() {
         if (players[i]->GetCurrentFunctionType() == e_FunctionType_Deflect) {
           boundingBoxSizeOffset += 0.2f;
         }
+        // A target man shields the ball with his body while holding position
+        // (proposal 3A).
+        boundingBoxSizeOffset += PlayerTraits::GetShieldingRadiusBonus(
+            players[i]->GetPlayerData()->GetTraits(),
+            players[i]->GetMovement().GetLength() < 1.0f);
 
         if (((players[i]->GetPosition() + Vector3(0, 0, 0.8f)) - ball->Predict(0)).GetLength() <
             2.5f) {  // premature optimization is the root of all evil :D

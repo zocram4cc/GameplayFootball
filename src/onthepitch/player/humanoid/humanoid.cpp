@@ -18,6 +18,9 @@
 
 #include "humanoid.hpp"
 
+#include "data/matchanalytics.hpp"
+#include "data/playertraits.hpp"
+
 #include <cmath>
 
 #include "../../../main.hpp"
@@ -703,6 +706,25 @@ void Humanoid::Process() {
         if (player->GetDebug() && bumpyRideBias > 0.01f)
           printf("bumpyridebias (shot): %f\n", bumpyRideBias);
 
+        // Trait effects on the strike itself (proposal 3A, roadmap 4D).
+        const PlayerTraits::TraitMask shotTraits = player->GetPlayerData()->GetTraits();
+        if (shotTraits != PlayerTraits::traitMaskNone) {
+          const float incomingBallSpeed = match->GetBall()->GetMovement().GetLength();
+          // A first-time shot at a rolling ball is struck cleaner and harder.
+          const bool firstTimeShot = match->GetActualTime_ms() - player->GetLastTouchTime_ms() > 400;
+          touchVec *= PlayerTraits::GetFirstTimeShotPowerMultiplier(shotTraits, firstTimeShot,
+                                                                    incomingBallSpeed);
+
+          // A knuckleballer's long-range efforts wobble unpredictably.
+          const float goalDistance =
+              (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - spatialState.position).GetLength();
+          const Vector3 knuckled = PlayerTraits::ApplyKnuckleballSpin(
+              shotTraits, Vector3(xRot, yRot, zRot), goalDistance, random(-1.0f, 1.0f));
+          xRot = knuckled.coords[0];
+          yRot = knuckled.coords[1];
+          zRot = knuckled.coords[2];
+        }
+
         match->GetBall()->Touch(touchVec);
         match->GetBall()->SetRotation(xRot, yRot, zRot, 0.7f * (1.0f - bumpyRideBias));
         match->GetBall()->TriggerBallTouchSound(
@@ -713,6 +735,40 @@ void Humanoid::Process() {
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->AddShot(team->GetID());
         match->AddExcitementBoost(0.35f, 2000);
+
+        // Expected goals for the post-match analysis screen (roadmap 5B).
+        {
+          const Vector3 shotPos = match->GetBall()->Predict(0).Get2D();
+          const Vector3 goalPos(pitchHalfW * -team->GetSide(), 0.0f, 0.0f);
+
+          // Count opponents standing in the corridor between ball and goal.
+          int defendersInPath = 0;
+          std::vector<Player*> opponents;
+          match->GetActiveTeamPlayers(abs(team->GetID() - 1), opponents);
+          const Vector3 toGoal = goalPos - shotPos;
+          const float shotDistance = toGoal.GetLength();
+          if (shotDistance > 0.1f) {
+            const Vector3 shotDir = toGoal.GetNormalized(Vector3(0));
+            for (Player* opponent : opponents) {
+              const Vector3 toOpponent = opponent->GetPosition().Get2D() - shotPos;
+              const float along = toOpponent.GetDotProduct(shotDir);
+              if (along <= 0.0f || along > shotDistance)
+                continue;
+              const float lateral = (toOpponent - shotDir * along).GetLength();
+              if (lateral < 2.0f)
+                defendersInPath++;
+            }
+          }
+
+          const bool isHeader =
+              currentAnim->anim->GetVariable("touch_bodypart").compare("head") == 0;
+          // No spot rating is available at this point, so the neutral value is
+          // used and the chance is judged on geometry and pressure alone.
+          const MatchAnalytics::ShotContext shotContext = MatchAnalytics::MakeShotContext(
+              shotPos, team->GetSide(), defendersInPath, isHeader, 0.5f);
+          MatchAnalytics::AddShot(match->GetShotTally(), team->GetID(),
+                                  MatchAnalytics::CalculateExpectedGoals(shotContext));
+        }
 
         // Detect shots on target via linear trajectory projection toward opposing goal
         {

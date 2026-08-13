@@ -8,6 +8,8 @@
 
 #include <memory>
 
+#include "data/formations.hpp"
+
 #include "../data/teamdata.hpp"
 #include "../onthepitch/match.hpp"
 #include "utils/database.hpp"
@@ -46,6 +48,19 @@ public:
   void LineupMenuOnClick(Gui2Button* button);
   void SaveLineup();
 
+  std::string GetFormationCaption() const;
+  void ApplyFormationShape(const Formations::Shape& shape);
+  void CustomFormationOnChange();
+  void GoFormationMenu();
+  void FormationMenuOnClick(int formationIndex);
+
+  std::string GetPhilosophyCaption() const;
+  void GoPhilosophyMenu();
+  void PhilosophyMenuOnClick(int philosophyIndex);
+
+  void GoSubstitutionsMenu();
+  void SubstitutionsMenuOnClick(Gui2Button* button);
+
   void GoTacticsMenu();
   void TacticsMenuOnChange(Gui2Slider* slider, int id);
   void SaveTactics();
@@ -58,11 +73,19 @@ protected:
   Gui2Grid* gridNav;
   Gui2Button* buttonLineup;
   Gui2Button* buttonTactics;
+  Gui2Button* buttonFormation;
+  Gui2Button* buttonPhilosophy;
+  Gui2Button* buttonSubstitutions;
 
   TeamData* teamData;
 
   GamePlanSubMenu* lineupMenu;
   GamePlanSubMenu* tacticsMenu;
+  GamePlanSubMenu* philosophyMenu;
+  GamePlanSubMenu* formationMenu;
+  Gui2Slider* sliderCustomDefenders = nullptr;
+  Gui2Slider* sliderCustomMidfielders = nullptr;
+  GamePlanSubMenu* substitutionsMenu;
 
   std::vector<TacticsSlider> tacticsSliders;
 

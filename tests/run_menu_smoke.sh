@@ -19,7 +19,10 @@ trap cleanup EXIT
 
 runner=(stdbuf -oL -eL timeout "${timeout_seconds}s")
 if command -v xvfb-run >/dev/null 2>&1; then
-  runner=(xvfb-run -a "${runner[@]}")
+  # Force SDL onto the X11 backend and hide any Wayland display, otherwise SDL
+  # talks to the developer's compositor and opens a real window on screen
+  # instead of drawing into Xvfb's virtual framebuffer.
+  runner=(env -u WAYLAND_DISPLAY SDL_VIDEODRIVER=x11 xvfb-run -a "${runner[@]}")
 fi
 
 if ! "${runner[@]}" "$executable" "$config" >"$log_file" 2>&1; then

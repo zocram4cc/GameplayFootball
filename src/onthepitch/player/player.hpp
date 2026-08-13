@@ -104,6 +104,11 @@ public:
   }
   int GetCards() const { return cards; }
 
+  // Wet/worn pitch slips (proposal 4A): pace lost for a moment after going down.
+  float GetSlipVelocityMultiplier() const;
+  bool IsSlipping() const;
+  virtual float GetSlipFactor() const { return GetSlipVelocityMultiplier(); }
+
   void SendOff();
 
   float GetStaminaStat() const;
@@ -124,6 +129,10 @@ protected:
   bool hasBestPossession;
   bool hasUniquePossession;
   int possessionDuration_ms;
+
+  // Slip bookkeeping.
+  unsigned long lastSlipTime_ms = 0;
+  Vector3 previousDirectionVec;
   unsigned int timeNeededToGetToBall_ms;
   unsigned int timeNeededToGetToBall_optimistic_ms;
   unsigned int timeNeededToGetToBall_previous_ms;

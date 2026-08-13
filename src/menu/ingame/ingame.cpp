@@ -9,6 +9,8 @@
 
 #include "../controllerselect.hpp"
 #include "../gameplan.hpp"
+#include "onthepitch/coachmode.hpp"
+#include "onthepitch/match.hpp"
 #include "../pagefactory.hpp"
 #include "../settings.hpp"
 #include "main.hpp"
@@ -63,15 +65,37 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
                       Localization::GetInstance().Translate("ingame_section_tactics"));
   grid->AddView(tacticsLabel, row++, 0);
 
-  Gui2Button* buttonGamePlan =
-      new Gui2Button(windowManager, "button_gameplan", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_game_plan"));
+  // In coach mode both touchlines are human-run, so each coached team gets its
+  // own game plan entry rather than only the team that opened the menu.
+  Match* ingameMatch = GetGameTask()->GetMatch();
+  const bool managerDuel =
+      ingameMatch && CoachMode::IsManagerDuel(ingameMatch->GetCoachSetup());
+
+  Gui2Button* buttonGamePlan = new Gui2Button(
+      windowManager, "button_gameplan", 0, 0, 56, 3,
+      Localization::GetInstance().Translate("ingame_game_plan") +
+          (managerDuel ? " (" + Localization::GetInstance().Translate("ingame_team") + " " +
+                             int_to_str(teamID + 1) + ")"
+                       : ""));
   Gui2Button* buttonSetPieces =
       new Gui2Button(windowManager, "button_setpieces", 0, 0, 56, 3,
                      Localization::GetInstance().Translate("ingame_set_pieces"));
   buttonGamePlan->sig_OnClick.connect([this](...) { GoGamePlan(); });
   buttonSetPieces->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
   grid->AddView(buttonGamePlan, row++, 0);
+
+  if (managerDuel) {
+    const int opponentID = abs(teamID - 1);
+    Gui2Button* buttonGamePlanOpponent = new Gui2Button(
+        windowManager, "button_gameplan_opponent", 0, 0, 56, 3,
+        Localization::GetInstance().Translate("ingame_game_plan") + " (" +
+            Localization::GetInstance().Translate("ingame_team") + " " + int_to_str(opponentID + 1) +
+            ")");
+    buttonGamePlanOpponent->sig_OnClick.connect(
+        [this, opponentID](...) { GoGamePlanForTeam(opponentID); });
+    grid->AddView(buttonGamePlanOpponent, row++, 0);
+  }
+
   grid->AddView(buttonSetPieces, row++, 0);
 
   Gui2Caption* settingsLabel =
@@ -151,8 +175,12 @@ void IngamePage::GoControllerRemap() {
 }
 
 void IngamePage::GoGamePlan() {
+  GoGamePlanForTeam(teamID);
+}
+
+void IngamePage::GoGamePlanForTeam(int gamePlanTeamID) {
   Properties properties;
-  properties.Set("teamID", teamID);
+  properties.Set("teamID", gamePlanTeamID);
   CreatePage(e_PageID_GamePlan, properties);
 }
 

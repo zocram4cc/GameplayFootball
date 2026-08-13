@@ -5,6 +5,9 @@
 
 #include "referee.hpp"
 
+#include "matchprogression.hpp"
+#include "refereeprofile.hpp"
+
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "managers/resourcemanagerpool.hpp"
@@ -21,6 +24,10 @@ Referee::Referee(Match* match) : match(match) {
    buffer.taker = nullptr;
    buffer.endPhase = true;
    buffer.active = true;
+
+   // Referee temperament, configurable per match; "standard" reproduces the
+   // historical thresholds.
+   profile = RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"));
 
    foul.foulPlayer = nullptr;
    foul.foulType = 0;
@@ -80,13 +87,11 @@ void Referee::Process() {
 
     // some phase is over :[
 
-    if (((match->GetMatchPhase() == e_MatchPhase_1stHalf && match->GetMatchTime_ms() > 2700000) ||
-         (match->GetMatchPhase() == e_MatchPhase_2ndHalf && match->GetMatchTime_ms() > 5400000) ||
-         (match->GetMatchPhase() == e_MatchPhase_1stExtraTime &&
-          match->GetMatchTime_ms() > 6300000) ||
-         (match->GetMatchPhase() == e_MatchPhase_2ndExtraTime &&
-          match->GetMatchTime_ms() > 7200000)) &&
-        ballPos.coords[0] < 10 && ballPos.coords[0] > -10) {
+    // Blow for the end of the period at a neutral moment, but never let a period
+    // run away waiting for one.
+    if (MatchProgression::ShouldEndPeriod(
+            match->GetMatchTime_ms(),
+            MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase()), ballPos.coords[0])) {
       foul.advantage = false;
       if (!CheckFoul()) {
         match->StopPlay();
@@ -107,16 +112,15 @@ void Referee::Process() {
           buffer.teamID = 0;
         }
 
-        e_MatchPhase nextPhase;
-        if (match->GetMatchPhase() == e_MatchPhase_1stHalf)
-          nextPhase = e_MatchPhase_2ndHalf;
-        if (match->GetMatchPhase() == e_MatchPhase_2ndHalf)
-          nextPhase = e_MatchPhase_1stExtraTime;
-        if (match->GetMatchPhase() == e_MatchPhase_1stExtraTime)
-          nextPhase = e_MatchPhase_2ndExtraTime;
-        if (match->GetMatchPhase() == e_MatchPhase_2ndExtraTime)
-          nextPhase = e_MatchPhase_Penalties;
-        match->SetMatchPhase(nextPhase);
+        // Extra time only when the match is level, both extra periods always
+        // played, penalties only after a draw in them.
+        const MatchProgression::Outcome progression = MatchProgression::GetNext(
+            match->GetMatchPhase(), match->GetScore(0) == match->GetScore(1));
+        if (progression.gameOver) {
+          match->GameOver();
+          return;
+        }
+        match->SetMatchPhase(progression.nextPhase);
       }
     }
 
@@ -217,15 +221,8 @@ void Referee::Process() {
           if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {
             match->SetMatchPhase(e_MatchPhase_1stHalf);
           } else {
-            // game over conditions
-            if (match->GetMatchPhase() == e_MatchPhase_1stExtraTime) {
-              if (match->GetScore(0) != match->GetScore(1)) {
-                match->GameOver();
-                return;
-              }
-            }
             if (match->GetMatchPhase() == e_MatchPhase_Penalties) {
-              match->GameOver();
+              // The shootout controller decides when this is over.
               return;
             }
             match->sig_OnMatchPhaseChange(match);
@@ -387,21 +384,20 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
                       0.5 +
                   0.5;
 
-      if (severity > 1.0) {
+      // How harshly this is judged depends on the referee's temperament.
+      const int foulType = RefereeProfile::GetFoulType(profile, severity);
+      if (foulType > 0) {
         // uooooga uooooga foul!
         // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -
         // tripper->GetLastTouchTime_ms());
-        foul.foulType = 1;
+        foul.foulType = foulType;
         foul.advantage = true;
         foul.foulPlayer = tripper;
         foul.foulVictim = tripee;
         foul.foulTime = match->GetActualTime_ms();
         foul.foulPosition = tripee->GetPosition();
         foul.hasBeenProcessed = false;
-        if (severity > 1.4)
-          foul.foulType = 2;
-        if (severity > 2.0) {
-          foul.foulType = 3;
+        if (foulType == 3) {
           foul.advantage = false;
         } else {
           if (!IsReleaseVersion())
@@ -410,6 +406,18 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
       }
     }
   }
+}
+
+void Referee::CancelSetPiece() {
+  buffer.active = false;
+  buffer.endPhase = false;
+  buffer.desiredSetPiece = e_SetPiece_None;
+  buffer.taker = nullptr;
+  foul.foulType = 0;
+  foul.foulPlayer = nullptr;
+  foul.advantage = false;
+  foul.hasBeenProcessed = true;
+  match->StopSetPiece();
 }
 
 bool Referee::CheckFoul() {
@@ -426,7 +434,8 @@ bool Referee::CheckFoul() {
       foul.advantage = false;
     } else {
       if (match->GetActualTime_ms() - 600 > foul.foulTime) {
-        if (match->GetActualTime_ms() - 3000 > foul.foulTime) {
+        if (match->GetActualTime_ms() - RefereeProfile::GetAdvantageWindow_ms(profile) >
+            foul.foulTime) {
           // cancel foul, advantage took long enough
           // todo: yellow cards need to be remembered though ;)
           foul.foulPlayer = 0;

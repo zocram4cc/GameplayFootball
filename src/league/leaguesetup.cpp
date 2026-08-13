@@ -1,5 +1,7 @@
 #include "leaguesetup.hpp"
 
+#include "data/formations.hpp"
+
 #include <iterator>
 
 #include "base/utils.hpp"
@@ -95,14 +97,6 @@ void SetupFourLeagues(Database* db) {
       "hairstyle VARCHAR(64), haircolor VARCHAR(64), height FLOAT, weight FLOAT, "
       "formationorder INTEGER, nationalteamformationorder INTEGER);");
 
-  std::string defaultFormation =
-      "<p1><position>-1,0</position><role>GK</role></p1><p2><position>-0.6,0.6</position><role>LB</"
-      "role></p2><p3><position>-0.7,0.2</position><role>CB</role></p3><p4><position>-0.7,-0.2</"
-      "position><role>CB</role></p4><p5><position>-0.6,-0.6</position><role>RB</role></"
-      "p5><p6><position>0.0,0.8</position><role>LM</role></p6><p7><position>0.1,0.0</"
-      "position><role>AM</role></p7><p8><position>0.0,-0.8</position><role>RM</role></"
-      "p8><p9><position>0.7,0.5</position><role>CF</role></p9><p10><position>0.8,0.0</"
-      "position><role>CF</role></p10><p11><position>0.7,-0.5</position><role>CF</role></p11>";
   std::string defaultTactics =
       "<dribble_centermagnet>0.5</dribble_centermagnet><dribble_offensiveness>0.5</"
       "dribble_offensiveness><counter_attack>0.5</counter_attack><support_distance>0.5</"
@@ -124,6 +118,10 @@ void SetupFourLeagues(Database* db) {
     int leagueID = atoi(leagueResult->data.at(0).at(0).c_str());
 
     for (int teamIdx = 0; teamIdx < 8; teamIdx++) {
+      // Spread the offered formations across the division so opponents differ.
+      const std::string teamFormation = Formations::BuildFormationXml(Formations::GetFormationAt(
+          (leagueIdx * 3 + teamIdx) % Formations::GetCount()));
+
       db->Query(
           "INSERT INTO teams (league_id, name, logo_url, kit_url, formation_xml, "
           "formation_factory_xml, tactics_xml, tactics_factory_xml, shortname, color1, color2) "
@@ -131,8 +129,8 @@ void SetupFourLeagues(Database* db) {
           int_to_str(leagueID) +
           ", "
           "'" +
-          std::string(kTeamNames[leagueIdx][teamIdx]) + "', '', '', '" + defaultFormation + "', '" +
-          defaultFormation + "', '" + defaultTactics + "', '" + defaultTactics +
+          std::string(kTeamNames[leagueIdx][teamIdx]) + "', '', '', '" + teamFormation + "', '" +
+          teamFormation + "', '" + defaultTactics + "', '" + defaultTactics +
           "', "
           "'" +
           std::string(kShortNames[leagueIdx][teamIdx]) +
