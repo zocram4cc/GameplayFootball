@@ -8,6 +8,7 @@
 #include "match.hpp"
 #include "player/player.hpp"
 #include "referee.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "team.hpp"
 
 using namespace blunted;
@@ -219,6 +220,11 @@ void PenaltyShootoutController::SetUpKick() {
   // keeper belongs in the goal, and everybody else waits on the halfway line.
   PositionPlayers();
   match->GetBall()->ResetSituation(spot);
+
+  // The set-piece preparation picks a taker by proximity, which is not the man
+  // whose turn it is; the shootout's rotation wins.
+  if (currentTaker)
+    match->GetTeam(state.shootingTeam)->GetController()->SetPieceTaker(currentTaker);
 }
 
 void PenaltyShootoutController::PositionPlayers() {

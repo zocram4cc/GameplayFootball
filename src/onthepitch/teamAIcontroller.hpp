@@ -52,6 +52,9 @@ public:
   void PrepareSetPiece(e_SetPiece setPiece, int takerTeamID = -1);
   SetPieceParams GetSetPieceParams(e_SetPiece setPiece);
   Player* GetPieceTaker() { return taker; }
+  // Overrides the taker the set-piece preparation picked by proximity. The
+  // shootout needs its own rotation to take the kicks.
+  void SetPieceTaker(Player* player) { taker = player; }
   e_SetPiece GetSetPieceType() { return setPieceType; }
   void ApplyAttackingRun(Player* manualPlayer = 0);
   void ApplyTeamPressure();
