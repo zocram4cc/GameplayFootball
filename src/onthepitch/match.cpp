@@ -568,10 +568,14 @@ void Match::SetRandomSunParams() {
   if (Verbose())
     printf("setting random sun params\n");
 
-  float brightness = 1.0f;
+  // Time of day chosen before kick-off: 0 day, 0.5 evening, 1 night. A night
+  // match is lit by the floodlights, so the sun sits low and dim.
+  const float timeOfDay = clamp(GetConfiguration()->GetReal("match_time_of_day", 0.0f), 0.0f, 1.0f);
+
+  float brightness = 1.0f - timeOfDay * 0.45f;
 
   Vector3 sunPos = Vector3(-1.2f, 0.4f, 1.0f);  // sane default
-  float averageHeightMultiplier = 1.3f;
+  float averageHeightMultiplier = 1.3f - timeOfDay * 0.9f;
   sunPos = Vector3(clamp(random(-1.7f, 1.7f), -1.0, 1.0), clamp(random(-1.7f, 1.7f), -1.0, 1.0),
                    averageHeightMultiplier);
   sunPos.Normalize();
@@ -590,6 +594,8 @@ void Match::SetRandomSunParams() {
   sunColorDusk *= 1.2f;
 
   float noonBias = pow(NormalizedClamp(sunPos.coords[2], 0.5f, 1.0f), 1.2f);
+  // Later in the day the warm dusk tint takes over.
+  noonBias *= 1.0f - timeOfDay;
   Vector3 sunColor = sunColorNoon * noonBias + sunColorDusk * (1.0f - noonBias);
 
   Vector3 randomAddition(random(-0.1, 0.1), random(-0.1, 0.1), random(-0.1, 0.1));
@@ -893,6 +899,60 @@ void Match::ProcessAutoSubstitutions() {
   }
 }
 
+int Match::GetCoachedTeamID(bool preferSecondTeam) const {
+  // The team the touchline hotkeys address: the human's own side, or in coach
+  // mode the coached team (shift picks the other one in a manager duel).
+  if (preferSecondTeam && CoachMode::CanEditTactics(coachSetup, 1))
+    return 1;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (CoachMode::CanEditTactics(coachSetup, teamID))
+      return teamID;
+  }
+  return 0;
+}
+
+void Match::ProcessTacticalHotkeys() {
+  UserEventManager& events = UserEventManager::GetInstance();
+
+  // Shift addresses the other bench in a manager duel.
+  const bool otherTeam = events.GetKeyboardState(SDLK_LSHIFT) || events.GetKeyboardState(SDLK_RSHIFT);
+  Team* team = GetTeam(GetCoachedTeamID(otherTeam));
+  TeamInstructions::State& instructions = team->GetController()->GetInstructions();
+
+  bool changed = false;
+
+  // Push the team up the pitch, or drop it back.
+  if (events.GetKeyboardState(SDLK_PAGEUP)) {
+    events.SetKeyboardState(SDLK_PAGEUP, false);
+    TeamInstructions::PushUp(instructions);
+    changed = true;
+  }
+  if (events.GetKeyboardState(SDLK_PAGEDOWN)) {
+    events.SetKeyboardState(SDLK_PAGEDOWN, false);
+    TeamInstructions::DropBack(instructions);
+    changed = true;
+  }
+
+  // F5..F11 toggle the advanced instructions.
+  const SDL_Keycode instructionKeys[TeamInstructions::instructionCount] = {
+      SDLK_F5, SDLK_F6, SDLK_F7, SDLK_F8, SDLK_F9, SDLK_F10, SDLK_F11};
+  for (int i = 0; i < TeamInstructions::instructionCount; i++) {
+    if (!events.GetKeyboardState(instructionKeys[i]))
+      continue;
+    events.SetKeyboardState(instructionKeys[i], false);
+    TeamInstructions::Toggle(instructions, TeamInstructions::GetInstructionAt(i));
+    changed = true;
+  }
+
+  if (!changed)
+    return;
+
+  // Take effect at once, and show the manager what he just did.
+  team->GetController()->UpdateTactics();
+  SpamMessage(team->GetTeamData()->GetShortName() + ": " + TeamInstructions::Describe(instructions),
+              3500);
+}
+
 void Match::UpdateBallHeatmap() {
   // One sample a second is plenty for a readable heatmap.
   if (!IsInPlay() || actualTime_ms % 1000 != 0)
@@ -1138,6 +1198,8 @@ void Match::Process() {
     SetRandomSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
   }
+
+  ProcessTacticalHotkeys();
 
   // F12 grabs a screenshot; "screenshot_interval_ms" grabs them on a timer,
   // which is how an offscreen run can be checked visually.

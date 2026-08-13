@@ -78,6 +78,8 @@ protected:
   Gui2Button* buttonSubstitutions;
 
   TeamData* teamData;
+  // Owned only when the page is opened before a match exists.
+  std::unique_ptr<TeamData> standaloneTeamData;
 
   GamePlanSubMenu* lineupMenu;
   GamePlanSubMenu* tacticsMenu;

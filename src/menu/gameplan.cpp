@@ -20,9 +20,18 @@ using namespace blunted;
 GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   teamID = pageData.properties->GetInt("teamID", 0);
+  const int teamDatabaseID = pageData.properties->GetInt("teamDatabaseID", -1);
 
   constexpr float xOffset = 32.5f;
-  teamData = GetGameTask()->GetMatch()->GetTeam(teamID)->GetTeamData();
+  // Before kick-off there is no match yet, so load the team straight from the
+  // database; during a match the live team data is edited instead.
+  Match* match = GetGameTask()->GetMatch();
+  if (match) {
+    teamData = match->GetTeam(teamID)->GetTeamData();
+  } else {
+    standaloneTeamData = std::make_unique<TeamData>(teamDatabaseID);
+    teamData = standaloneTeamData.get();
+  }
 
   Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", xOffset, 10, 35, 82, true);
   this->AddView(frame);

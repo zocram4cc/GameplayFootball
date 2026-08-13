@@ -90,6 +90,7 @@ gtest_discover_tests(gameplayfootball_league_integration_tests)
 # These cover pure-logic simulation modules, so they build without SDL/OpenGL.
 add_executable(gameplayfootball_simulation_tests
   onthepitch/team_philosophy_test.cpp
+  onthepitch/team_instructions_test.cpp
   onthepitch/match_mentality_test.cpp
   data/player_traits_test.cpp
   data/player_cards_test.cpp
@@ -105,6 +106,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/ai_manager_test.cpp
   onthepitch/match_progression_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp

@@ -1384,6 +1384,10 @@ void TeamAIController::UpdateTactics() {
     iter++;
   }
 
+  // The manager's own instructions from the touchline, on top of everything the
+  // philosophy and his tactic sliders produced.
+  TeamInstructions::Apply(instructions, liveTeamTactics);
+
   // Late-game mentality shift, summed onto whatever the manager's own tactics
   // produced as momentum - it never takes them over.
   mentality = MatchMentality::Decide(goals - oppGoals, match->GetMatchTime_ms());

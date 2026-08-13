@@ -103,8 +103,11 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 boost::intrusive_ptr<Resource<Surface>> Team::FetchKit(int formationIndex) {
   std::string kitFilename;
   if (teamData->GetFormationEntry(formationIndex).role != e_PlayerRole_GK) {
-    kitFilename = GetTeamData()->GetKitUrl() + "_kit_0" +
-                  int_to_str(GetMenuTask()->GetTeamKitNum(GetID())) + ".png";
+    // A kit picked on the match options screen wins over the fixture's default.
+    const int configuredKit =
+        GetConfiguration()->GetInt(("team" + int_to_str(GetID() + 1) + "_kit_num").c_str(), 0);
+    const int kitNum = configuredKit > 0 ? configuredKit : GetMenuTask()->GetTeamKitNum(GetID());
+    kitFilename = GetTeamData()->GetKitUrl() + "_kit_0" + int_to_str(kitNum) + ".png";
     if (!std::filesystem::exists(kitFilename))
       kitFilename =
           (GetID() == 0) ? "media/textures/almost_white.png" : "media/textures/almost_black.png";

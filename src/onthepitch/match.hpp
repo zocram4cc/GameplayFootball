@@ -296,6 +296,9 @@ protected:
   bool CheckForGoal(signed int side);
 
   void CalculateBestPossessionTeamID();
+  // Touchline hotkeys: mentality and advanced instructions, with on-screen feedback.
+  void ProcessTacticalHotkeys();
+  int GetCoachedTeamID(bool preferSecondTeam) const;
   void UpdateBallHeatmap();
   // Lets CPU-managed teams use their bench (AIManager); human-coached teams do
   // this from the menu instead.

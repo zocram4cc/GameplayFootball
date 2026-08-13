@@ -32,6 +32,34 @@ bool MenuSmokeAutoQuickMatchEnabled() {
 
 }  // namespace
 
+namespace {
+
+// Kits shipped per team: _kit_01 .. _kit_03.
+const int kKitCount = 3;
+
+std::string WeatherKey(float value) {
+  if (value < 0.33f)
+    return "weather_dry";
+  if (value < 0.66f)
+    return "weather_rain";
+  return "weather_storm";
+}
+
+std::string TimeOfDayKey(float value) {
+  if (value < 0.33f)
+    return "time_of_day_day";
+  if (value < 0.66f)
+    return "time_of_day_evening";
+  return "time_of_day_night";
+}
+
+int KitNumFromSlider(float value) {
+  const int kitNum = 1 + static_cast<int>(std::round(value * (kKitCount - 1)));
+  return std::max(1, std::min(kitNum, kKitCount));
+}
+
+}  // namespace
+
 MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData),
       buttonStart(nullptr),
@@ -72,10 +100,52 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   UpdateMatchDurationCaption();
   matchDurationSlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateMatchDurationCaption(); });
 
-  grid->AddView(difficultySlider, 0, 0);
-  grid->AddView(matchDurationSlider, 1, 0);
-  grid->AddView(buttonStart, 2, 0);
-  grid->AddView(buttonBack, 3, 0);
+  // Conditions for the coming match.
+  weatherSlider = new Gui2Slider(windowManager, "matchoptions_slider_weather", 0, 0, 29, 6,
+                                 TR("settings_weather"));
+  weatherSlider->SetQuantization(3);
+  weatherSlider->SetValue(GetConfiguration()->GetReal("match_weather", 0.0f));
+  UpdateWeatherCaption();
+  weatherSlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateWeatherCaption(); });
+
+  timeOfDaySlider = new Gui2Slider(windowManager, "matchoptions_slider_timeofday", 0, 0, 29, 6,
+                                   TR("match_time_of_day"));
+  timeOfDaySlider->SetQuantization(3);
+  timeOfDaySlider->SetValue(GetConfiguration()->GetReal("match_time_of_day", 0.0f));
+  UpdateTimeOfDayCaption();
+  timeOfDaySlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateTimeOfDayCaption(); });
+
+  for (int teamID = 0; teamID < 2; teamID++) {
+    kitSlider[teamID] = new Gui2Slider(
+        windowManager, "matchoptions_slider_kit_" + int_to_str(teamID), 0, 0, 29, 6, "");
+    kitSlider[teamID]->SetQuantization(kKitCount);
+    kitSlider[teamID]->SetValue(
+        GetConfiguration()->GetReal(("team" + int_to_str(teamID + 1) + "_kit").c_str(), 0.0f));
+    kitSlider[teamID]->sig_OnChange.connect([this](Gui2Slider*) { UpdateKitCaptions(); });
+  }
+  UpdateKitCaptions();
+
+  // Tactics for the coming match: the same game plan screen used in-match.
+  Gui2Button* buttonGamePlan1 =
+      new Gui2Button(windowManager, "matchoptions_button_gameplan_1", 0, 0, 29, 3,
+                     TR("gameplan_header") + " 1");
+  Gui2Button* buttonGamePlan2 =
+      new Gui2Button(windowManager, "matchoptions_button_gameplan_2", 0, 0, 29, 3,
+                     TR("gameplan_header") + " 2");
+  buttonGamePlan1->sig_OnClick.connect([this](...) { GoGamePlan(0); });
+  buttonGamePlan2->sig_OnClick.connect([this](...) { GoGamePlan(1); });
+
+  int row = 0;
+  grid->AddView(difficultySlider, row++, 0);
+  grid->AddView(matchDurationSlider, row++, 0);
+  grid->AddView(weatherSlider, row++, 0);
+  grid->AddView(timeOfDaySlider, row++, 0);
+  grid->AddView(kitSlider[0], row++, 0);
+  grid->AddView(kitSlider[1], row++, 0);
+  grid->AddView(buttonGamePlan1, row++, 0);
+  grid->AddView(buttonGamePlan2, row++, 0);
+  grid->AddView(buttonStart, row++, 0);
+  grid->AddView(buttonBack, row++, 0);
   grid->UpdateLayout(0.5);
 
   frame->AddView(grid);
@@ -90,6 +160,32 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
 }
 
 MatchOptionsPage::~MatchOptionsPage() {}
+
+void MatchOptionsPage::UpdateWeatherCaption() {
+  weatherSlider->SetCaption(TR("settings_weather") + ": " +
+                            TR(WeatherKey(weatherSlider->GetValue())));
+}
+
+void MatchOptionsPage::UpdateTimeOfDayCaption() {
+  timeOfDaySlider->SetCaption(TR("match_time_of_day") + ": " +
+                              TR(TimeOfDayKey(timeOfDaySlider->GetValue())));
+}
+
+void MatchOptionsPage::UpdateKitCaptions() {
+  for (int teamID = 0; teamID < 2; teamID++) {
+    const int kitNum = KitNumFromSlider(kitSlider[teamID]->GetValue());
+    kitSlider[teamID]->SetCaption(TRF("match_team_kit", {std::to_string(teamID + 1),
+                                                        std::to_string(kitNum)}));
+  }
+}
+
+void MatchOptionsPage::GoGamePlan(int teamID) {
+  Properties properties;
+  properties.Set("teamID", teamID);
+  // No match exists yet, so the page loads the team from the database itself.
+  properties.SetInt("teamDatabaseID", GetMenuTask()->GetTeamID(teamID));
+  CreatePage(e_PageID_GamePlan, properties);
+}
 
 void MatchOptionsPage::UpdateMatchDurationCaption() {
   const int minutes =
@@ -110,6 +206,14 @@ void MatchOptionsPage::Process() {
 }
 
 void MatchOptionsPage::GoLoadingMatchPage() {
+  GetConfiguration()->Set("match_weather", weatherSlider->GetValue());
+  GetConfiguration()->Set("match_time_of_day", timeOfDaySlider->GetValue());
+  for (int teamID = 0; teamID < 2; teamID++) {
+    GetConfiguration()->SetInt(("team" + int_to_str(teamID + 1) + "_kit_num").c_str(),
+                               KitNumFromSlider(kitSlider[teamID]->GetValue()));
+    GetConfiguration()->Set(("team" + int_to_str(teamID + 1) + "_kit").c_str(),
+                            static_cast<float>(kitSlider[teamID]->GetValue()));
+  }
   GetConfiguration()->Set("match_difficulty", difficultySlider->GetValue());
   GetConfiguration()->Set("match_duration_minutes",
                           MatchDurationMinutesFromSlider(matchDurationSlider->GetValue()));

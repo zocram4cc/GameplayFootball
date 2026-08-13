@@ -30,7 +30,15 @@ public:
 
 protected:
   void UpdateMatchDurationCaption();
+  // Match conditions and pre-match tactics.
+  void UpdateWeatherCaption();
+  void UpdateTimeOfDayCaption();
+  void UpdateKitCaptions();
+  void GoGamePlan(int teamID);
 
+  Gui2Slider* weatherSlider;
+  Gui2Slider* timeOfDaySlider;
+  Gui2Slider* kitSlider[2];
   Gui2Slider* difficultySlider;
   Gui2Slider* matchDurationSlider;
   unsigned long pageCreatedTime_ms;

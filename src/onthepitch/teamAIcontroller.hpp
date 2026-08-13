@@ -24,6 +24,7 @@
 #include "base/properties.hpp"
 #include "../data/formations.hpp"
 #include "matchmentality.hpp"
+#include "teaminstructions.hpp"
 #include "teamphilosophy.hpp"
 
 class Match;
@@ -72,6 +73,10 @@ public:
   void ApplyFormationShape(const Formations::Shape& shape);
   void ApplyFormation(Formations::e_Formation newFormation);
 
+  // Instructions the manager has set from the touchline.
+  TeamInstructions::State& GetInstructions() { return instructions; }
+  const TeamInstructions::State& GetInstructions() const { return instructions; }
+
   TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
   MatchMentality::e_Mentality GetMentality() const { return mentality; }
   // Outfield shape the team wants while chasing the game.
@@ -110,6 +115,7 @@ protected:
   Properties liveTeamTactics;
 
   Formations::Shape formationShape;
+  TeamInstructions::State instructions;
   TeamPhilosophy::e_Philosophy philosophy;
   MatchMentality::e_Mentality mentality;
 
