@@ -46,19 +46,30 @@ inline unsigned int GetZonePressureDuration_ms(float pressure) {
   return 700U + static_cast<unsigned int>(ClampSetting(pressure) * 1600.0f);
 }
 
-// A counter springs when the ball is won while the opponent is committed:
-// bodies caught upfield, and the ball still deep in our own territory.
-// `attackingTerritory` is -1 at our goal, +1 at theirs.
-inline bool ShouldLaunchCounter(float counterAttack, int opponentsInOwnHalf,
+// Counterattacking is a tendency, not a switch: the chance of springing a
+// runner at a turnover, shaped by how committed the opponent is and by the
+// counter_attack tactic. `attackingTerritory` is -1 at our goal, +1 at theirs.
+inline float GetCounterTendency(float counterAttack, int opponentsInOwnHalf,
                                 float attackingTerritory) {
+  // A counter starts from a ball won in our own territory.
+  if (attackingTerritory > -0.1f)
+    return 0.0f;
+
+  // How caught-out they are: nobody home is 0, half the team upfield is already
+  // very promising.
+  const float commitment = ClampSetting(static_cast<float>(opponentsInOwnHalf) / 7.0f);
+
   const float setting = ClampSetting(counterAttack);
-  // How many of them must be caught out, from 6 for a patient side down to 4
-  // for a side built to break.
-  const int neededOpponents = 6 - static_cast<int>(setting * 2.0f);
-  if (opponentsInOwnHalf < neededOpponents)
-    return false;
-  // The ball has to be won in our own territory for it to be a counter.
-  return attackingTerritory <= -0.1f;
+  // Even a patient side breaks when the picture is irresistible; a side built
+  // to break needs much less invitation.
+  return ClampSetting(commitment * (0.35f + setting * 0.85f));
+}
+
+// Deterministic roll: `randomSample` is expected in [0, 1) and supplied by the
+// caller.
+inline bool ShouldLaunchCounter(float counterAttack, int opponentsInOwnHalf,
+                                float attackingTerritory, float randomSample) {
+  return randomSample < GetCounterTendency(counterAttack, opponentsInOwnHalf, attackingTerritory);
 }
 
 inline unsigned int GetCounterWindow_ms(float counterAttack) {

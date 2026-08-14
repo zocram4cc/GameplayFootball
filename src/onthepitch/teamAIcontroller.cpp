@@ -284,7 +284,8 @@ void TeamAIController::Process() {
 
     const float counterSetting =
         team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
-    if (AITactics::ShouldLaunchCounter(counterSetting, opponentsInOwnHalf, territory)) {
+    if (AITactics::ShouldLaunchCounter(counterSetting, opponentsInOwnHalf, territory,
+                                       random(0.0f, 1.0f))) {
       ApplyAttackingRun();
       endApplyAttackingRun_ms =
           match->GetActualTime_ms() + AITactics::GetCounterWindow_ms(counterSetting);

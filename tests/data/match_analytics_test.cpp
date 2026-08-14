@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 
 #include "data/matchanalytics.hpp"
-#include "gamedefines.hpp"
+#include "gametypes.hpp"
 
 using blunted::Vector3;
 

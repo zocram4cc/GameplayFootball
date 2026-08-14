@@ -269,24 +269,43 @@ TEST(MatchIntegrationTest, FullMatchSimulationSingleTick) {
 
 }  // namespace
 
-// --- Counterattacks: winning the ball against an overcommitted opponent ---
+// --- Counterattacks: a tendency on a sliding scale, not a switch ---
 
-TEST(AITacticsCounterTest, ATurnoverAgainstACommittedOpponentSpringsACounter) {
-  // Six opponents caught in our half at the moment of the turnover.
-  EXPECT_TRUE(AITactics::ShouldLaunchCounter(0.5f, 6, -0.4f));
-  EXPECT_TRUE(AITactics::ShouldLaunchCounter(0.5f, 7, -0.6f));
+TEST(AITacticsCounterTest, NoCounterFromABallWonUpfield) {
+  EXPECT_FLOAT_EQ(AITactics::GetCounterTendency(1.0f, 7, 0.5f), 0.0f);
+  EXPECT_FLOAT_EQ(AITactics::GetCounterTendency(1.0f, 7, 0.0f), 0.0f);
 }
 
-TEST(AITacticsCounterTest, NoCounterWhenTheOpponentIsSetBehindTheBall) {
-  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.5f, 2, -0.4f));
-  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.5f, 3, 0.5f));
+TEST(AITacticsCounterTest, TheMoreTheyCommitTheStrongerThePull) {
+  const float few = AITactics::GetCounterTendency(0.5f, 2, -0.5f);
+  const float some = AITactics::GetCounterTendency(0.5f, 4, -0.5f);
+  const float many = AITactics::GetCounterTendency(0.5f, 7, -0.5f);
+  EXPECT_LT(few, some);
+  EXPECT_LT(some, many);
 }
 
-TEST(AITacticsCounterTest, CounterAppetiteScalesWithTheTacticSetting) {
-  // A counter-attacking side springs from softer situations...
-  EXPECT_TRUE(AITactics::ShouldLaunchCounter(1.0f, 4, -0.2f));
-  // ...a possession side needs a much clearer picture.
-  EXPECT_FALSE(AITactics::ShouldLaunchCounter(0.0f, 4, -0.2f));
+TEST(AITacticsCounterTest, TheTacticSettingScalesTheTendency) {
+  EXPECT_GT(AITactics::GetCounterTendency(1.0f, 5, -0.4f),
+            AITactics::GetCounterTendency(0.0f, 5, -0.4f));
+  // Even a patient side keeps some appetite when the picture is irresistible.
+  EXPECT_GT(AITactics::GetCounterTendency(0.0f, 7, -0.6f), 0.2f);
+}
+
+TEST(AITacticsCounterTest, TheTendencyIsAProbability) {
+  for (int opponents = 0; opponents <= 10; opponents++) {
+    for (float setting = 0.0f; setting <= 1.0f; setting += 0.5f) {
+      const float tendency = AITactics::GetCounterTendency(setting, opponents, -0.5f);
+      EXPECT_GE(tendency, 0.0f);
+      EXPECT_LE(tendency, 1.0f);
+    }
+  }
+}
+
+TEST(AITacticsCounterTest, TheRollComparesTheSampleAgainstTheTendency) {
+  const float tendency = AITactics::GetCounterTendency(1.0f, 6, -0.5f);
+  ASSERT_GT(tendency, 0.1f);
+  EXPECT_TRUE(AITactics::ShouldLaunchCounter(1.0f, 6, -0.5f, tendency - 0.05f));
+  EXPECT_FALSE(AITactics::ShouldLaunchCounter(1.0f, 6, -0.5f, tendency + 0.05f));
 }
 
 TEST(AITacticsCounterTest, TheCounterWindowIsShortAndSharp) {

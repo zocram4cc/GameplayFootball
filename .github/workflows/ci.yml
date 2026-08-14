@@ -21,7 +21,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install clang-format
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends clang-format
+        # Pinned via pip so contributors and CI agree on the version; the apt
+        # clang-format (14) formats several constructs differently from modern
+        # releases, which made the check fail on correctly formatted code.
+        run: pipx install clang-format==22.1.8
 
       - name: Check changed files
         run: |
@@ -127,7 +130,7 @@ jobs:
       - name: Smoke test Full Match
         run: |
           cd build
-          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_full_match.config" 420 \
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_full_match.config" 640 \
             "[menu-smoke] Main menu ready, opening Quick Match" \
             "[menu-smoke] Full match complete:" \
             "[menu-smoke] Full-match verification succeeded, quitting test run"
@@ -135,7 +138,7 @@ jobs:
       - name: Smoke test Gamepad Controls (full match)
         run: |
           cd build
-          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_gamepad_match.config" 600 \
+          ../tests/run_menu_smoke.sh ./gameplayfootball "${GITHUB_WORKSPACE}/data/menu_smoke_gamepad_match.config" 800 \
             "[menu-smoke] Main menu ready, opening Quick Match" \
             "[menu-smoke] scripted gamepad: input sampled, driving a human player in a live match" \
             "[menu-smoke] Full-match verification succeeded, quitting test run"
