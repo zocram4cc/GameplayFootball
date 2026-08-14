@@ -87,9 +87,12 @@ def crilayla_decompress(data: bytes) -> bytes:
     """CRILAYLA: backwards LZ with variable-length fields + 0x100 raw prefix."""
     if data[:8] != b"CRILAYLA":
         return data
-    uncompressed_size, header_offset = struct.unpack("<II", data[8:16])
-    raw = data[16 + header_offset:16 + header_offset + 0x100]
-    compressed = data[16:16 + header_offset]
+    uncompressed_size, _header_offset = struct.unpack("<II", data[8:16])
+    # the 0x100 raw prefix and the bitstream are anchored to the END of the
+    # blob (some cpks pad between the compressed data and the prefix, so
+    # 16+header_offset is NOT a reliable anchor)
+    raw = data[len(data) - 0x100:]
+    bit_top = len(data) - 0x100 - 1  # bits are read backwards from here
 
     out = bytearray(uncompressed_size)
     out_pos = uncompressed_size  # filled backwards
@@ -100,8 +103,8 @@ def crilayla_decompress(data: bytes) -> bytes:
         nonlocal bitpos
         val = 0
         for _ in range(n):
-            byte = compressed[len(compressed) - 1 - (bitpos >> 3)]
-            bit = (byte >> (bitpos & 7)) & 1
+            byte = data[bit_top - (bitpos >> 3)]
+            bit = (byte >> (7 - (bitpos & 7))) & 1  # MSB-first within each byte
             val = (val << 1) | bit
             bitpos += 1
         return val
@@ -147,9 +150,14 @@ def extract(cpk_path, dest, list_only=False):
     assert tmagic == b"TOC ", tmagic
     f.seek(toc_offset + 16)
     (tsize,) = struct.unpack("<I", f.read(8)[4:8]) if False else (0,)
+    # the @UTF block declares its own size at +4 (big-endian, excludes the
+    # 8-byte magic+size header); read exactly that instead of slurping the
+    # rest of a possibly multi-GB file
     f.seek(toc_offset + 16)
-    toc_blob = f.read()  # generous; @UTF knows its own size
-    toc = read_utf(strip_crypt(toc_blob))
+    probe = strip_crypt(f.read(16))
+    (utf_size,) = struct.unpack(">I", probe[4:8])
+    f.seek(toc_offset + 16)
+    toc = read_utf(strip_crypt(f.read(8 + utf_size)))
 
     base = min(toc_offset, content_offset) if content_offset else toc_offset
 
