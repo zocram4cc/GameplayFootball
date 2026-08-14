@@ -2014,6 +2014,9 @@ void Match::RebuildReplaySpatials() {
 
 void Match::CaptureReplayFrame(unsigned long replayTime_ms) {
   for (unsigned int i = 0; i < replay.size(); i++) {
+    // a substitution can momentarily leave a stale entry until
+    // RebuildReplaySpatials runs; skip rather than dereference null
+    if (!replay.at(i)->spatial) continue;
     Vector3 pos = replay.at(i)->spatial->GetPosition();
     Quaternion orient = replay.at(i)->spatial->GetRotation();
 
