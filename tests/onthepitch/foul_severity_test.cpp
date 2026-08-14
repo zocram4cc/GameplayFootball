@@ -87,6 +87,51 @@ TEST(FoulSeverityTest, InputsAreClamped) {
               FoulSeverity::Score(Slide(true, 0.0f, 0.0f, 0.0f)), 1e-5f);
 }
 
+// --- DOGSO: denying an obvious goal-scoring opportunity (Law 12) ---
+//
+// PES 2021's check, adopted: the fouled player is ahead of the defensive
+// reference line in the attack direction and within the width of the penalty
+// area. attackDirSign is the sign of the attacked goal's x.
+
+TEST(FoulSeverityDOGSOTest, ThroughOnGoalInTheCentralChannelIsDOGSO) {
+  EXPECT_TRUE(FoulSeverity::DeniesObviousChance(1.0f, 30.0f, 5.0f, 25.0f, 20.0f));
+  EXPECT_TRUE(FoulSeverity::DeniesObviousChance(-1.0f, -30.0f, -5.0f, -25.0f, 20.0f));
+}
+
+TEST(FoulSeverityDOGSOTest, BehindTheDefensiveLineIsNotDOGSO) {
+  EXPECT_FALSE(FoulSeverity::DeniesObviousChance(1.0f, 20.0f, 5.0f, 25.0f, 20.0f));
+  EXPECT_FALSE(FoulSeverity::DeniesObviousChance(-1.0f, -20.0f, -5.0f, -25.0f, 20.0f));
+}
+
+TEST(FoulSeverityDOGSOTest, OutWideIsNotDOGSO) {
+  EXPECT_FALSE(FoulSeverity::DeniesObviousChance(1.0f, 30.0f, 25.0f, 25.0f, 20.0f));
+  EXPECT_FALSE(FoulSeverity::DeniesObviousChance(1.0f, 30.0f, -25.0f, 25.0f, 20.0f));
+}
+
+// IFAB 2016: DOGSO is a sending-off, except in the penalty area where a
+// genuine attempt to play the ball reduces it to a caution (the penalty kick
+// restores the lost chance). PES caps every DOGSO to a yellow everywhere,
+// which the audit explicitly says not to copy.
+
+TEST(FoulSeverityDOGSOTest, DOGSOOutsideTheBoxIsAStraightRed) {
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(1, false, true), 3);
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(1, false, false), 3);
+}
+
+TEST(FoulSeverityDOGSOTest, DOGSOInTheBoxWithAPlayOnTheBallIsACaution) {
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(1, true, true), 2);
+  // ...but never downgrades a worse offence.
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(3, true, true), 3);
+}
+
+TEST(FoulSeverityDOGSOTest, DOGSOInTheBoxWithNoAttemptAtTheBallIsStillARed) {
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(1, true, false), 3);
+}
+
+TEST(FoulSeverityDOGSOTest, NoFoulMeansNothingToEscalate) {
+  EXPECT_EQ(FoulSeverity::EscalateForDOGSO(0, false, false), 0);
+}
+
 // Worse challenges never score lower.
 TEST(FoulSeverityTest, ScoreIsMonotonicInEveryTerm) {
   for (int type : {1, 2}) {

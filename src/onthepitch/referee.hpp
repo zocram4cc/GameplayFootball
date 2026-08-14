@@ -85,6 +85,9 @@ protected:
   // stoppage.
   void IssueDeferredCards();
 
+  // Law 12 DOGSO: escalates a foul on a player who was through on goal.
+  int ApplyGoalDenial(int foulType, Player* tripee, Player* tripper, float ballDistance_m);
+
   RefereeProfile::e_Profile profile;
 
   // Which period's added time has been announced already.

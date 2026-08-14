@@ -404,6 +404,32 @@ void Referee::BallTouched() {
   }
 }
 
+int Referee::ApplyGoalDenial(int foulType, Player* tripee, Player* tripper,
+                             float ballDistance_m) {
+  if (foulType < 1)
+    return foulType;
+
+  // The victim attacks the goal at x = -side * pitchHalfW; the reference line
+  // is the fouling team's offside line (their one-but-deepest man).
+  const float attackDirSign = -tripee->GetTeam()->GetSide();
+  const float defensiveLineX =
+      AI_GetOffsideLine(match, match->GetMentalImage(0), tripper->GetTeam()->GetID());
+  if (!FoulSeverity::DeniesObviousChance(attackDirSign, tripee->GetPosition().coords[0],
+                                         tripee->GetPosition().coords[1], defensiveLineX,
+                                         20.15f - lineHalfW))
+    return foulType;
+
+  const bool insidePenaltyArea =
+      fabs(tripee->GetPosition().coords[1]) < 20.15f - lineHalfW &&
+      tripee->GetPosition().coords[0] * attackDirSign > pitchHalfW - 16.5f + lineHalfW;
+  const int escalated = FoulSeverity::EscalateForDOGSO(
+      foulType, insidePenaltyArea,
+      ballDistance_m < FoulSeverity::genuineAttemptBallDistance_m);
+  if (Verbose() && escalated != foulType)
+    printf("referee: goal-scoring opportunity denied (type %i -> %i)\n", foulType, escalated);
+  return escalated;
+}
+
 void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
   if (buffer.active)
     return;
@@ -429,7 +455,9 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
                                  0.5f,
                                  0.0f, 1.0f);
 
-      const int foulType = RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact));
+      const int foulType =
+          ApplyGoalDenial(RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact)),
+                          tripee, tripper, contact.ballDistance_m);
       if (foulType > 0) {
         // uooooga uooooga foul!
         foul.foulType = foulType;
@@ -470,8 +498,13 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
                                  0.5f,
                                  0.0f, 1.0f);
 
-      // How harshly this is judged depends on the referee's temperament.
-      const int foulType = RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact));
+      // How harshly this is judged depends on the referee's temperament. A
+      // slide that never played at the ball (no touch data) was no genuine
+      // attempt, whatever its distance says.
+      const int foulType =
+          ApplyGoalDenial(RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact)),
+                          tripee, tripper,
+                          contact.hasTouchData ? contact.ballDistance_m : 1000.0f);
       if (foulType > 0) {
         // uooooga uooooga foul!
         // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -

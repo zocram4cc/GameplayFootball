@@ -42,4 +42,23 @@ float Score(const Contact& contact) {
   }
 }
 
+bool DeniesObviousChance(float attackDirSign, float fouledX, float fouledY,
+                         float defensiveLineX, float penaltyAreaHalfWidth) {
+  if (attackDirSign == 0.0f)
+    return false;
+  // Ahead of the last line of defence bar the keeper...
+  if (fouledX * attackDirSign <= defensiveLineX * attackDirSign)
+    return false;
+  // ...and heading for goal rather than the corner flag.
+  return std::fabs(fouledY) < penaltyAreaHalfWidth;
+}
+
+int EscalateForDOGSO(int foulType, bool insidePenaltyArea, bool genuineAttemptAtBall) {
+  if (foulType < 1)
+    return foulType;  // no foul given, so no opportunity was denied by one
+  if (insidePenaltyArea && genuineAttemptAtBall)
+    return std::max(foulType, 2);
+  return 3;
+}
+
 }  // namespace FoulSeverity
