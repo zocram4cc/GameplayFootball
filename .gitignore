@@ -24,3 +24,4 @@ data/imports/
 __pycache__/
 data/media/animations/**/pes_*.anim
 data/media/objects/stadiums/pes_*/
+data/media/players/custom/
