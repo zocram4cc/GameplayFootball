@@ -1921,6 +1921,8 @@ void Match::ApplyReplayFrame(unsigned long replayTime_ms) {
         float bias = (float)offset / (float)count;
         // printf("bias: %f\n", bias);
 
+        // same stale-entry hazard as CaptureReplayFrame: skip null spatials
+        if (!replay.at(i)->spatial) break;
         replay.at(i)->spatial->SetPosition(frame1.position * (1.0f - bias) + frame2.position * bias,
                                            false);
         // frame1.orientation.MakeSameNeighborhood(frame2.orientation); only needed for Lerp
