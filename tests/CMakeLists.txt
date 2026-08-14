@@ -55,6 +55,19 @@ add_executable(gameplayfootball_ogg_tests
   ${PROJECT_SOURCE_DIR}/src/loaders/oggdecoder.cpp
 )
 
+# Player model map unit tests (per-player imported models)
+add_executable(gameplayfootball_playermodelmap_tests
+  base/playermodelmap_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/playermodelmap.cpp
+)
+target_include_directories(gameplayfootball_playermodelmap_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_playermodelmap_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_playermodelmap_tests DISCOVERY_MODE PRE_TEST)
+
 target_include_directories(gameplayfootball_ogg_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
 )

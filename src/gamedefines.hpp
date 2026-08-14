@@ -267,7 +267,9 @@ public:
 
 using PassRatings = std::vector<PassRating>;
 
-void GetVertexColors(std::map<Vector3, Vector3>& colorCoords);
+void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
+                     const std::string& aseFilename =
+                         "media/objects/players/models/fullbody.ase");
 
 e_FunctionType StringToFunctionType(const std::string& fun);
 

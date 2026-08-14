@@ -136,6 +136,46 @@ choosing `.faceanim` poses from match context (shoot/tackle/goal/loss — the
 same contexts the PES names encode), nlerp-blended base + additive layers.
 Until that lands, imported heads render statically.
 
+## Stadiums, crowds, referees (imported and editable)
+
+- `stadium_to_gf.py`: PES stadium scene fmdl → multi-material ASE + PNG
+  textures + `.object`; the engine's `stadium_object` config key selects any
+  stadium directory. Verified: the 4CC st060 (31 geoms, 31 textures).
+- `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
+  stand quads (PES's 1.9m row spacing) — silhouette texture + billboard
+  strips hooked into the stadium `.object`.
+- Referees: the `referee_kit` config key points at any PNG; PES referee kit
+  textures (13) live in `data/imports/pes21/referees/`.
+
+## Per-player models (model_url milestone)
+
+The engine's fullbody format IS a skinned mesh: vertex colors pack up to
+three bone influences per vertex (channel = jointID·10 + weight·9, /255 in
+the ASE; joint IDs = `player.object` DFS order). `fmdl_to_fullbody.py`
+converts a skinned PES player fmdl into that format with real PES weights.
+Assignment is the editable `media/players/playermodels.cfg`
+(`<databaseID> <directory>` lines); `Team::InitPlayers` loads the override
+fullbody + its own vertex-color map per player.
+
+## Animation names
+
+mtar entry hashes are `StrCode32` of the bare animation name — recovered so
+far: the `idle`/`idle_045/090/135/180` family (`anim_names.txt`, used
+automatically by `mtar.py` when extracting). The rest of the vocabulary is
+opaque (likely romaji codes); growing the dictionary is incremental — add a
+name to `anim_names.txt` and re-extract.
+
+## Cutscene camerawork (investigated)
+
+PES 2021 ships **no keyframed camera data**: no camera tracks in any
+motion archive, no demo/camera files in any cpk (checked dt00–dt44 and the
+4cc packs; the only hits are UI textures, replay flow JSONs, and the
+980-byte `CameraPickupInfo.bin` parameter table). Entrance/replay/celebration
+camerawork is procedural in the exe. Consequence: camera *paths* cannot be
+imported — but camera *styles* (orbit, rail, zoom-follow and the pickup
+parameters in `CameraPickupInfo.bin`) can be recreated in the engine's
+camera code, which already owns replay framing.
+
 ## Open problems, in priority order
 
 1. **Animation naming/classification.** mtar entries are keyed by 48-bit GZ

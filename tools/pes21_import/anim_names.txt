@@ -1,0 +1,5 @@
+idle
+idle_045
+idle_090
+idle_135
+idle_180

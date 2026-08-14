@@ -12,6 +12,7 @@
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
 #include "playercontrolsettings.hpp"
+#include "utils/playermodelmap.hpp"
 
 Team::Team(int id, Match* match, TeamData* teamData) : id(id), match(match), teamData(teamData) {
   assert(id == 0 || id == 1);
@@ -93,7 +94,20 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
     if (i < activePlayerCount) {
       // activate playerCount players (the starting eleven, usually)
       kit = FetchKit(i);
-      player->Activate(playerNode, fullbodyNode, colorCoords, kit, match->GetAnimCollection());
+      // imported per-player models (media/players/playermodels.cfg) replace
+      // the shared fullbody + its vertex-color skin map
+      const std::string& modelDir = GetPlayerModelDir(playerData->GetDatabaseID());
+      if (!modelDir.empty()) {
+        boost::intrusive_ptr<Node> customBody =
+            loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
+        std::map<Vector3, Vector3> customColors;
+        GetVertexColors(customColors, modelDir + "/fullbody.ase");
+        player->Activate(playerNode, customBody, customColors, kit,
+                         match->GetAnimCollection());
+      } else {
+        player->Activate(playerNode, fullbodyNode, colorCoords, kit,
+                         match->GetAnimCollection());
+      }
     }
   }
 

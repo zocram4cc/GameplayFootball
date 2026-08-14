@@ -74,4 +74,14 @@ if __name__ == "__main__":
         print("  %08x idx=%-6d off=0x%08x size=%d" %
               (entry.name_hash, entry.index, entry.offset, entry.size))
     if len(sys.argv) > 2:
-        print("extracted:", extract(sys.argv[1], sys.argv[2]))
+        # name entries via the (growing) dictionary of recovered anim names;
+        # unresolved entries keep their anim_<hash> form
+        import os
+        dictionary = None
+        names_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "anim_names.txt")
+        if os.path.isfile(names_path):
+            import strcode
+            names = [l.strip() for l in open(names_path) if l.strip()]
+            dictionary = strcode.Dictionary(names)
+        print("extracted:", extract(sys.argv[1], sys.argv[2], dictionary))

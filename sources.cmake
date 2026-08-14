@@ -161,6 +161,7 @@ endif()
 set(LOADERS_HEADERS
         src/loaders/aseloader.hpp
         src/loaders/oggdecoder.hpp
+        src/utils/playermodelmap.hpp
         src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
@@ -170,6 +171,7 @@ set(LOADERS_SOURCES
         src/loaders/imageloader.cpp
         src/loaders/aseloader.cpp
         src/loaders/oggdecoder.cpp
+        src/utils/playermodelmap.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )

@@ -13,7 +13,8 @@ struct index3 {
   int index[3];
 };
 
-void GetVertexColors(std::map<Vector3, Vector3>& colorCoords) {
+void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
+                     const std::string& aseFilename) {
   if (Verbose())
     printf("loading vertex colors.. ");
 
@@ -25,7 +26,7 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords) {
   char line[32767];
   std::ifstream file;
 
-  std::string filename = "media/objects/players/models/fullbody.ase";
+  const std::string& filename = aseFilename;
 
   file.open(filename.c_str(), std::ios::in);
 
