@@ -15,7 +15,7 @@ inline float ClampSetting(float value) {
 // A low setting waits for a clear break; a high setting encourages earlier
 // supporting runs. The neutral value remains close to the previous threshold.
 inline float GetAttackingRunThreshold(float counterAttack) {
-  return 0.60f - ClampSetting(counterAttack) * 0.24f;
+  return 0.52f - ClampSetting(counterAttack) * 0.24f;
 }
 
 inline unsigned int GetAttackingRunDuration_ms(float counterAttack) {
@@ -77,7 +77,7 @@ inline unsigned int GetCounterWindow_ms(float counterAttack) {
 }
 
 inline float GetDribbleForwardDrive(float dribbleOffensiveness, float roleMindset) {
-  return 0.58f + ClampSetting(dribbleOffensiveness) * 0.28f + ClampSetting(roleMindset) * 0.12f;
+  return 0.62f + ClampSetting(dribbleOffensiveness) * 0.28f + ClampSetting(roleMindset) * 0.12f;
 }
 
 // Neutral remains the historical 0.75 force-field scale. Lower values create

@@ -40,7 +40,7 @@ TEST(AITacticsTest, SupportPassRequiresPressureAndClearerSpace) {
 TEST(AITacticsTest, DribbleDirectnessHasMeaningfulTacticalRange) {
   EXPECT_LT(AITactics::GetDribbleForwardDrive(0.0f, 0.5f),
             AITactics::GetDribbleForwardDrive(1.0f, 0.5f));
-  EXPECT_NEAR(AITactics::GetDribbleForwardDrive(0.5f, 0.5f), 0.78f, 0.001f);
+  EXPECT_NEAR(AITactics::GetDribbleForwardDrive(0.5f, 0.5f), 0.82f, 0.001f);
 }
 
 TEST(AITacticsTest, SupportDistancePreservesNeutralSpacingAndOffersSubtleRange) {

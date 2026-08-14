@@ -983,8 +983,14 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   float forwardWeight = 2.0f + AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role) * 6.0f;
 
   float totalWeight1 = forwardSpaceWeight + spaceWeight + forwardWeight;
+  // In the final third the gate relaxes: an incisive ball that only slightly
+  // improves the position is still worth playing, which is where chances come
+  // from.
+  const float finalThirdBias =
+      NormalizedClamp(CastPlayer()->GetPosition().coords[0] * -team->GetSide(), pitchHalfW * 0.2f,
+                      pitchHalfW * 0.75f);
   float tacticalImprovementThreshold =
-      0.06f *
+      0.06f * (1.0f - finalThirdBias * 0.7f) *
       (1.0f - AI_GetMindSet(CastPlayer()
                                 ->GetDynamicFormationEntry()
                                 .role));  // only go on with pass selection if recipient has this
@@ -1139,75 +1145,84 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     }
   }
 
-  if (bestMateRating.player != 0) {
-    _AddPass(commandQueue, bestMateRating.player, bestMateRating.passType);
+  // shoot? Decided before the pass: a player in a shooting position with a
+  // sight of goal has a go instead of recycling the ball sideways - the old
+  // order queued the pass first, so shots only ever happened when no pass
+  // candidate existed, which is why whole matches passed with two shots.
+  bool shooting = false;
+
+  {
+    float goalDist = NormalizedClamp(
+        (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - player->GetPosition()).GetLength(), 0.0f,
+        32.0f);
+    // How far out a player will have a go: the classic 16 metre window was so
+    // tight that whole matches passed with three or four shots. Range shooters and
+    // the team's appetite for a shot widen it further (proposal: an offensive,
+    // flowing game).
+    const float shotAppetite = PlayerTraits::GetShotAppetite(traits) *
+                               GameplayTuning::GetShotAppetite(*GetConfiguration());
+    const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
+                                PlayerTraits::GetShootingRangeBonus(traits);
+    float idealShotPosFactor =
+        1.0f - NormalizedClamp(
+                   (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())
+                       .GetLength(),
+                   0.0f, shootingRange);
+    idealShotPosFactor = curve(idealShotPosFactor, 1.0f);
+    if (idealShotPosFactor > 0.1f) {
+      float odds1 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), -3.6f, 0),
+                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
+      float odds2 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 0.0f, 0),
+                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
+      float odds3 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 3.6f, 0),
+                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
+      float odds = odds2;
+      float y = 0.0f;
+      if (odds1 > odds) {
+        odds = odds1;
+        y = -1.7f;
+      }
+      if (odds3 > odds) {
+        odds = odds3;
+        y = 1.7f;
+      }
+
+      odds = std::pow(odds, 0.5f);
+      if (Verbose())
+        printf("ODDS: %f\n", odds);
+
+      // A hungrier player needs less of an opening to pull the trigger.
+      if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f) {
+        PlayerCommand command;
+        command.desiredFunctionType = e_FunctionType_Shot;
+        command.useDesiredMovement = false;
+        command.useDesiredLookAt = false;
+        command.desiredVelocityFloat =
+            rawInputVelocityFloat;  // this is so we can use sprint/dribble buttons as shot
+                                    // modifiers
+        command.touchInfo.desiredDirection =
+            (Vector3((pitchHalfW + 1.0f) * -team->GetSide(),
+                     y + random(-1.0f + player->GetStat("technical_shot"),
+                                1.0f - player->GetStat("technical_shot")),
+                     0) -
+             (CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.2f))
+                .GetNormalized(Vector3(-team->GetSide(), 0, 0));
+        command.touchInfo.desiredDirection =
+            (command.touchInfo.desiredDirection * 0.7f +
+             -CastPlayer()->GetDirectionVec() *
+                 (CastPlayer()->GetFloatVelocity() / sprintVelocity) * 0.3f)
+                .GetNormalized();
+        command.touchInfo.autoDirectionBias = 1.0f;
+        command.touchInfo.desiredPower =
+            random(0.7f * (0.6f + goalDist * 0.4f), 1.0f * (0.6f + goalDist * 0.4f));
+        commandQueue.push_back(command);
+        shooting = true;
+      }
+    }
   }
 
-  // shoot?
-  float goalDist = NormalizedClamp(
-      (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - player->GetPosition()).GetLength(), 0.0f,
-      32.0f);
-  // How far out a player will have a go: the classic 16 metre window was so
-  // tight that whole matches passed with three or four shots. Range shooters and
-  // the team's appetite for a shot widen it further (proposal: an offensive,
-  // flowing game).
-  const float shotAppetite =
-      PlayerTraits::GetShotAppetite(traits) * GameplayTuning::GetShotAppetite(*GetConfiguration());
-  const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
-                              PlayerTraits::GetShootingRangeBonus(traits);
-  float idealShotPosFactor =
-      1.0f - NormalizedClamp(
-                 (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())
-                     .GetLength(),
-                 0.0f, shootingRange);
-  idealShotPosFactor = curve(idealShotPosFactor, 1.0f);
-  if (idealShotPosFactor > 0.1f) {
-    float odds1 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), -3.6f, 0),
-                                  e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-    float odds2 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 0.0f, 0),
-                                  e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-    float odds3 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 3.6f, 0),
-                                  e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-    float odds = odds2;
-    float y = 0.0f;
-    if (odds1 > odds) {
-      odds = odds1;
-      y = -1.7f;
-    }
-    if (odds3 > odds) {
-      odds = odds3;
-      y = 1.7f;
-    }
-
-    odds = std::pow(odds, 0.5f);
-    if (Verbose())
-      printf("ODDS: %f\n", odds);
-
-    // A hungrier player needs less of an opening to pull the trigger.
-    if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f) {
-      PlayerCommand command;
-      command.desiredFunctionType = e_FunctionType_Shot;
-      command.useDesiredMovement = false;
-      command.useDesiredLookAt = false;
-      command.desiredVelocityFloat =
-          rawInputVelocityFloat;  // this is so we can use sprint/dribble buttons as shot modifiers
-      command.touchInfo.desiredDirection =
-          (Vector3((pitchHalfW + 1.0f) * -team->GetSide(),
-                   y + random(-1.0f + player->GetStat("technical_shot"),
-                              1.0f - player->GetStat("technical_shot")),
-                   0) -
-           (CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.2f))
-              .GetNormalized(Vector3(-team->GetSide(), 0, 0));
-      command.touchInfo.desiredDirection =
-          (command.touchInfo.desiredDirection * 0.7f +
-           -CastPlayer()->GetDirectionVec() * (CastPlayer()->GetFloatVelocity() / sprintVelocity) *
-               0.3f)
-              .GetNormalized();
-      command.touchInfo.autoDirectionBias = 1.0f;
-      command.touchInfo.desiredPower =
-          random(0.7f * (0.6f + goalDist * 0.4f), 1.0f * (0.6f + goalDist * 0.4f));
-      commandQueue.push_back(command);
-    }
+  if (!shooting && bestMateRating.player != 0) {
+    _AddPass(commandQueue, bestMateRating.player, bestMateRating.passType);
   }
 
   e_Velocity enumVelocity = e_Velocity_Idle;

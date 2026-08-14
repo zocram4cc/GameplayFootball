@@ -1247,7 +1247,10 @@ void Match::UpdateIngameCamera() {
     cameraNearCap = 1;
     cameraFarCap = 220;
 
-    if (goalScoredTimer == 6000) {
+    // Fire the replay shortly after the goal: the 10s buffer then covers the
+    // buildup and the finish. Firing at six seconds meant the replay was mostly
+    // the celebration.
+    if (goalScoredTimer == 2500) {
       pause = true;
       sig_OnExtendedReplayMoment(this);
     }

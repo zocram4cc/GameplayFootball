@@ -808,8 +808,7 @@ void Humanoid::Process() {
           if (fabs(shotVelX) > 0.1f && (dx * shotVelX > 0.0f)) {
             float t = dx / shotVelX;
             float y_at_goal = ballPos.coords[1] + touchVec.coords[1] * t;
-            float z_at_goal =
-                ballPos.coords[2] + touchVec.coords[2] * t - 0.5f * 9.81f * t * t;
+            float z_at_goal = ballPos.coords[2] + touchVec.coords[2] * t - 0.5f * 9.81f * t * t;
             if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
                 z_at_goal < goalHeight) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());
