@@ -144,6 +144,8 @@ protected:
 
   boost::intrusive_ptr<Resource<Surface>> FetchKit(int formationIndex);
   boost::intrusive_ptr<Node> fullbodyNode;
+  // source nodes for imported per-player models; kept alive for the match
+  std::vector<boost::intrusive_ptr<Node>> customBodyNodes;
   std::map<Vector3, Vector3> playerColorCoords;
 };
 

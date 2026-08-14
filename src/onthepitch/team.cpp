@@ -59,6 +59,11 @@ void Team::Exit() {
   // Only kept so substitutes could be built; must not outlive the scene.
   fullbodyNode.reset();
 
+  for (auto& customBody : customBodyNodes) {
+    customBody->Exit();
+  }
+  customBodyNodes.clear();
+
   match->GetDynamicNode()->DeleteNode(teamNode);
 }
 
@@ -100,6 +105,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
       if (!modelDir.empty()) {
         boost::intrusive_ptr<Node> customBody =
             loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
+        customBodyNodes.push_back(customBody);  // must not die before Exit()
         // the model's ase carries the directory name (unique resource key)
         std::string baseName =
             modelDir.substr(modelDir.find_last_of('/') + 1);
