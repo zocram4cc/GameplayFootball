@@ -1051,8 +1051,16 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       mateRating.player = mates.at(i);
       mateRating.tacticalRating = mateTacticalRating;
 
+      // A teammate on an attacking run is the chance being created: he is a
+      // pass candidate regardless of the usual improvement gate, and his run
+      // makes the ball forward into space rather than sideways to feet.
+      Player* runner = team->GetController()->GetAttackingRunPlayer();
+      const bool isActiveRunner =
+          mates.at(i) == runner &&
+          team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms();
+
       const bool progressiveCandidate =
-          mateTacticalRating > tacticalRating + tacticalImprovementThreshold;
+          isActiveRunner || mateTacticalRating > tacticalRating + tacticalImprovementThreshold;
       const bool supportCandidate =
           AITactics::ShouldConsiderSupportPass(tacticalRating, sit.spaceRating, mateTacticalRating,
                                                mateSit.spaceRating, longPossessionFactor);
@@ -1087,6 +1095,9 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         float totalRating = mateRating.tacticalDiffRating * tacticalDiffWeight +
                             mateRating.passRating * passWeight + mateRating.supportRating -
                             oneTouchIsHard;
+        // The ball into the runner's path is the pass that makes a chance.
+        if (isActiveRunner)
+          totalRating += 0.3f;
 
         totalRating /= totalWeight2;
 
@@ -1200,11 +1211,12 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         command.desiredVelocityFloat =
             rawInputVelocityFloat;  // this is so we can use sprint/dribble buttons as shot
                                     // modifiers
+        // Close-range shots are placed, not sprayed: the aim error grows with
+        // distance, so a striker eight metres out hits the spot he picked.
+        const float aimNoise = (1.0f - player->GetStat("technical_shot")) *
+                               NormalizedClamp(goalDist * 32.0f, 8.0f, 26.0f);
         command.touchInfo.desiredDirection =
-            (Vector3((pitchHalfW + 1.0f) * -team->GetSide(),
-                     y + random(-1.0f + player->GetStat("technical_shot"),
-                                1.0f - player->GetStat("technical_shot")),
-                     0) -
+            (Vector3((pitchHalfW + 1.0f) * -team->GetSide(), y + random(-aimNoise, aimNoise), 0) -
              (CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.2f))
                 .GetNormalized(Vector3(-team->GetSide(), 0, 0));
         command.touchInfo.desiredDirection =

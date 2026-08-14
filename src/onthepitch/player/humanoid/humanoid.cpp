@@ -750,8 +750,8 @@ void Humanoid::Process() {
         // A shot carries far less wild spin than the animation's raw rotation
         // suggested: the old values curled even well-aimed shots metres wide,
         // which is why matches full of "on target" shots finished 0-0.
-        match->GetBall()->SetRotation(xRot * 0.5f, yRot * 0.5f, zRot * 0.35f,
-                                      0.35f * (1.0f - bumpyRideBias));
+        match->GetBall()->SetRotation(xRot * 0.4f, yRot * 0.4f, zRot * 0.2f,
+                                      0.25f * (1.0f - bumpyRideBias));
         match->GetBall()->TriggerBallTouchSound(
             pow(NormalizedClamp(touchVec.GetLength(), 4.0f, 40.0f), 0.7f));
 
