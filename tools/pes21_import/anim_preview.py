@@ -57,9 +57,9 @@ def fk(player, nodes, frame):
                                         q_rot(world_rot[parent], offset)))
     # limb endpoints beyond the last node of each chain
     tips = {}
-    for tip, node, off in (("head_top", "neck", (0, 0, 0.22)),
-                           ("left_hand", "left_elbow", (0, 0, -0.30)),
-                           ("right_hand", "right_elbow", (0, 0, -0.30)),
+    for tip, node, off in (("head_top", "head", (0, 0, 0.13)),
+                           ("left_hand_tip", "left_hand", (0, 0, -0.06)),
+                           ("right_hand_tip", "right_hand", (0, 0, -0.06)),
                            ("left_toe", "left_ankle", (0, -0.20, -0.10)),
                            ("right_toe", "right_ankle", (0, -0.20, -0.10))):
         tips[tip] = tuple(a + b for a, b in
@@ -68,11 +68,12 @@ def fk(player, nodes, frame):
     return world_pos
 
 
-BONES = [("body", "middle"), ("middle", "neck"), ("neck", "head_top"),
+BONES = [("body", "middle"), ("middle", "neck"), ("neck", "head"),
+         ("head", "head_top"),
          ("middle", "left_shoulder"), ("left_shoulder", "left_elbow"),
-         ("left_elbow", "left_hand"),
+         ("left_elbow", "left_hand"), ("left_hand", "left_hand_tip"),
          ("middle", "right_shoulder"), ("right_shoulder", "right_elbow"),
-         ("right_elbow", "right_hand"),
+         ("right_elbow", "right_hand"), ("right_hand", "right_hand_tip"),
          ("body", "left_thigh"), ("left_thigh", "left_knee"),
          ("left_knee", "left_ankle"), ("left_ankle", "left_toe"),
          ("body", "right_thigh"), ("right_thigh", "right_knee"),

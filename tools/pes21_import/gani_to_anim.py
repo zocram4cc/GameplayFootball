@@ -260,7 +260,8 @@ def solve_gf(rot, pos):
     body = q_norm(w["dsk_hip"])
     out["body"] = body
     out["middle"] = q_norm(q_mul(q_conj(body), w["sk_chest"]))
-    out["neck"] = q_norm(q_mul(q_conj(w["sk_chest"]), w["sk_head"]))
+    out["neck"] = q_norm(q_mul(q_conj(w["sk_chest"]), w["sk_neck"]))
+    out["head"] = q_norm(q_mul(q_conj(w["sk_neck"]), w["sk_head"]))
 
     for side, sign in (("left", "l"), ("right", "r")):
         # legs: thigh aims at the knee, knee is a +X hinge, ankle matches the
@@ -273,13 +274,15 @@ def solve_gf(rot, pos):
         out[side + "_ankle"] = q_norm(q_mul(q_conj(knee_w), w["sk_foot_" + sign]))
 
         # arms: GF's shoulder node is the upper-arm pivot (parent: middle);
-        # elbows hinge on -X
+        # elbows hinge on -X; hands match the PES wrist orientation
         parent = q_norm(q_mul(body, out["middle"]))
-        shoulder_l, elbow_l, _, _ = _solve_chain(
+        shoulder_l, elbow_l, _, elbow_w = _solve_chain(
             parent, p["sk_upperarm_" + sign], p["sk_forearm_" + sign],
             p["sk_hand_" + sign], -1.0)
         out[side + "_shoulder"] = shoulder_l
         out[side + "_elbow"] = elbow_l
+        out[side + "_hand"] = q_norm(q_mul(q_conj(elbow_w),
+                                           w["sk_hand_" + sign]))
 
     hip = p["motion"]
     return out, hip
@@ -287,8 +290,9 @@ def solve_gf(rot, pos):
 
 # --- .anim writing ------------------------------------------------------------
 
-GF_NODES = ["body", "middle", "neck",
-            "left_shoulder", "left_elbow", "right_shoulder", "right_elbow",
+GF_NODES = ["body", "middle", "neck", "head",
+            "left_shoulder", "left_elbow", "left_hand",
+            "right_shoulder", "right_elbow", "right_hand",
             "left_thigh", "left_knee", "left_ankle",
             "right_thigh", "right_knee", "right_ankle"]
 

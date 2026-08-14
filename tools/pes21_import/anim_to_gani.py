@@ -110,8 +110,10 @@ def solve_pes(player_pos, gf_local):
     chest_w = unmap_quat(w["middle"])                    # = belly (chest id)
     locals_fox["sk_belly"] = chest_w
     locals_fox["sk_chest"] = (0, 0, 0, 1)
-    locals_fox["sk_neck"] = (0, 0, 0, 1)
-    locals_fox["sk_head"] = q_norm(q_mul(q_conj(chest_w), unmap_quat(w["neck"])))
+    neck_w = unmap_quat(w["neck"])
+    locals_fox["sk_neck"] = q_norm(q_mul(q_conj(chest_w), neck_w))
+    head_w = unmap_quat(w.get("head", w["neck"]))
+    locals_fox["sk_head"] = q_norm(q_mul(q_conj(neck_w), head_w))
 
     for side, sign in (("left", "l"), ("right", "r")):
         thigh_dir = unmap_vec(q_rot(w[side + "_thigh"], down))
@@ -134,7 +136,8 @@ def solve_pes(player_pos, gf_local):
         locals_fox["sk_shoulder_" + sign] = (0, 0, 0, 1)
         locals_fox["sk_upperarm_" + sign] = q_norm(q_mul(q_conj(chest_w), up_w))
         locals_fox["sk_forearm_" + sign] = q_norm(q_mul(q_conj(up_w), fore_w))
-        locals_fox["sk_hand_" + sign] = (0, 0, 0, 1)
+        hand_w = unmap_quat(w.get(side + "_hand", w[side + "_elbow"]))
+        locals_fox["sk_hand_" + sign] = q_norm(q_mul(q_conj(fore_w), hand_w))
 
     # root: player (x, y) horizontal + z above GF body height
     px, py, pz = player_pos

@@ -6,9 +6,10 @@ Encoding (from humanoidbase.cpp): each color channel holds one bone
 influence as jointID*10 + weight*9 (0..255 scale, ASE stores /255); up to
 three influences per vertex. Joint IDs are the player.object DFS order:
 
-  0 body, 1 middle, 2 neck, 3 left_shoulder, 4 left_elbow,
-  5 right_shoulder, 6 right_elbow, 7 left_thigh, 8 left_knee,
-  9 left_ankle, 10 right_thigh, 11 right_knee, 12 right_ankle
+  0 body, 1 middle, 2 neck, 3 head, 4 left_shoulder, 5 left_elbow,
+  6 left_hand, 7 right_shoulder, 8 right_elbow, 9 right_hand,
+  10 left_thigh, 11 left_knee, 12 left_ankle, 13 right_thigh,
+  14 right_knee, 15 right_ankle
 
 PES bones map to joints through retarget.GF_FROM_PES. The result pairs with
 a kit texture converted from the model's own ftex set.
@@ -29,9 +30,9 @@ import sys
 import ase_util
 import retarget
 
-GF_JOINT_ORDER = ["body", "middle", "neck",
-                  "left_shoulder", "left_elbow",
-                  "right_shoulder", "right_elbow",
+GF_JOINT_ORDER = ["body", "middle", "neck", "head",
+                  "left_shoulder", "left_elbow", "left_hand",
+                  "right_shoulder", "right_elbow", "right_hand",
                   "left_thigh", "left_knee", "left_ankle",
                   "right_thigh", "right_knee", "right_ankle"]
 JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
