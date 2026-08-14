@@ -17,6 +17,8 @@ import os
 import random
 import struct
 
+import ase_util
+
 ROW_MARKER = struct.pack("<f", 1.9)  # the row-step float; neighbours vary
 PERSON_HEIGHT = 0.85
 PERSON_WIDTH = 0.55
@@ -153,7 +155,15 @@ def write_ase(stands, out_dir, name, bitmap_rel):
             v = i * 4
             out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i * 2, v, v + 1, v + 2))
             out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i * 2 + 1, v, v + 2, v + 3))
-        out.write("\t\t}\n\t}\n")
+        out.write("\t\t}\n")
+        all_verts = [p for (a, b, c, d, _) in quads for p in (a, b, c, d)]
+        all_faces = []
+        for i in range(len(quads)):
+            v = i * 4
+            all_faces.append((v, v + 1, v + 2))
+            all_faces.append((v, v + 2, v + 3))
+        ase_util.write_mesh_normals(out, all_verts, all_faces, smooth=False)
+        out.write("\t}\n")
         out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 0\n")
         out.write("\t*PROP_RECVSHADOW 0\n\t*MATERIAL_REF 0\n}\n")
     return path, len(quads)

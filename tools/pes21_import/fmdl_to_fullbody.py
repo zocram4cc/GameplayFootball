@@ -21,6 +21,7 @@ import argparse
 import os
 import sys
 
+import ase_util
 import retarget
 
 GF_JOINT_ORDER = ["body", "middle", "neck",
@@ -143,7 +144,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
         out.write("\t\t*MESH_CFACELIST {\n")
         for i, (a, b, c) in enumerate(faces):
             out.write("\t\t\t*MESH_CFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
-        out.write("\t\t}\n\t}\n")
+        out.write("\t\t}\n")
+        gf_verts = [(pos.x, -pos.z, pos.y) for (pos, _, _) in vertices]
+        ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
+        out.write("\t}\n")
         out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
         out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF 0\n}\n")
 

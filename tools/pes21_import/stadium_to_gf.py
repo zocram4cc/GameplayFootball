@@ -19,6 +19,7 @@ import argparse
 import os
 import sys
 
+import ase_util
 import ftex
 
 
@@ -155,7 +156,12 @@ def _write_geomobject(out, name, mat_index, mesh):
     for i, face in enumerate(mesh.faces):
         a, b, c = [vertex_index[id(v)] for v in face.vertices]
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
-    out.write("\t\t}\n\t}\n")
+    out.write("\t\t}\n")
+    gf_verts = [(pos.x, -pos.z, pos.y) for pos in vertices]
+    tri_faces = [tuple(vertex_index[id(v)] for v in face.vertices)
+                 for face in mesh.faces]
+    ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False)
+    out.write("\t}\n")
     out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
     out.write("\t*PROP_RECVSHADOW 1\n")
     out.write("\t*MATERIAL_REF %d\n" % mat_index)

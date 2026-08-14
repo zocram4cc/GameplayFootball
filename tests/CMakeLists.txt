@@ -60,6 +60,19 @@ add_executable(gameplayfootball_playermodelmap_tests
   base/playermodelmap_test.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/playermodelmap.cpp
 )
+
+# .faceanim loader unit tests (imported PES facial expressions)
+add_executable(gameplayfootball_faceanim_tests
+  base/faceanim_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/faceanim.cpp
+)
+target_include_directories(gameplayfootball_faceanim_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_faceanim_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_faceanim_tests DISCOVERY_MODE PRE_TEST)
 target_include_directories(gameplayfootball_playermodelmap_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
 )

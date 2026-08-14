@@ -162,6 +162,7 @@ set(LOADERS_HEADERS
         src/loaders/aseloader.hpp
         src/loaders/oggdecoder.hpp
         src/utils/playermodelmap.hpp
+        src/utils/faceanim.hpp
         src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
@@ -172,6 +173,7 @@ set(LOADERS_SOURCES
         src/loaders/aseloader.cpp
         src/loaders/oggdecoder.cpp
         src/utils/playermodelmap.cpp
+        src/utils/faceanim.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )
