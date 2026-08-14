@@ -176,16 +176,21 @@ flags, plus the full grammar
 converted anims carry these real names, and the installed celebration set
 uses genuine `dm_goal_*` clips.
 
-## Cutscene camerawork (investigated)
+## Cutscene camerawork (TRACED — the earlier "no data" verdict was wrong)
 
-PES 2021 ships **no keyframed camera data**: no camera tracks in any
-motion archive, no demo/camera files in any cpk (checked dt00–dt44 and the
-4cc packs; the only hits are UI textures, replay flow JSONs, and the
-980-byte `CameraPickupInfo.bin` parameter table). Entrance/replay/celebration
-camerawork is procedural in the exe. Consequence: camera *paths* cannot be
-imported — but camera *styles* (orbit, rail, zoom-follow and the pickup
-parameters in `CameraPickupInfo.bin`) can be recreated in the engine's
-camera code, which already owns replay framing.
+PES 2021 ships **1,274,880 frames (~11h48m at 30fps) of hand-authored
+camera animation** in `dt12_g4.cpk` under
+`common/demo/fixdemo/<category>/cut_data/*.fdc` (4,804 files; goal, ent,
+mode, end, change, timeup, pk, result, foul categories). The `.canm`
+camera streams are embedded inside the `.fdc` containers (never loose,
+which is why early scans missed them): raw float32 quaternion, position,
+vertical FOV, near, far, aspect — metres, Y-up, origin at the centre spot,
+triple-confirmed (penalty cameras at exactly x=52.5, Maya-exact FOVs,
+unit-norm quats). `tools/pes21_import/camera_cut.py` parses all 4,804
+files with zero errors; `docs/PES21_CAMERA_TRACE.md` documents the
+formats and the GF mapping (one +90° X basis rotation; FOV copies
+unchanged; clamp near to ≥0.1). Next milestone: play imported .canm
+tracks in the engine's cutscene camera.
 
 ## Open problems, in priority order
 

@@ -1130,8 +1130,9 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 
 void Match::UpdateIngameCamera() {
   // pre-kickoff cutscene: a slow orbit around the centre spot, tilted up
-  // enough to frame the stands and crowd (PES ships no camera data, so the
-  // camerawork is ours)
+  // enough to frame the stands and crowd. (PES's own hand-authored camera
+  // tracks were later found in dt12's .fdc cut files - see
+  // docs/PES21_CAMERA_TRACE.md; importing them can replace this orbit.)
   if (introCutsceneEnd_ms > 0) {
     unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
     if (now < introCutsceneEnd_ms) {
