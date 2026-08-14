@@ -11,8 +11,14 @@ own pitch surface (the PES pitch is a separate subsystem and GF draws its
 own grass).
 
   python3 stadium_to_gf.py <scene.fmdl> <out_dir> \
-      --fmdl-lib <pes-fmdl dir> --textures <sourceimages/#windx11 dir> \
-      [--name pes_st060] [--extra plane.fmdl ...]
+      --fmdl-lib <pes-fmdl dir> --textures <sourceimages dir or any parent> \
+      [--name pes_st060] [--extra plane.fmdl ...] \
+      [--max-tris 60000] [--max-verts-per-geom 16000]
+
+--textures accepts either the directory that holds the .ftex files or any
+ancestor of it: stadium packs disagree on where sourceimages live
+(sourceimages/#windx11, sourceimages/tga/#windx11, deeper still in mods), so
+every .ftex-holding directory underneath what you pass is searched.
 """
 
 import argparse
@@ -21,6 +27,10 @@ import sys
 
 import ase_util
 import ftex
+
+# untextured materials point here (the PES pack may not ship the ftex a mesh
+# asks for); it is a stock GF asset, so it is always present
+FALLBACK_BITMAP = "media/objects/stadiums/white.png"
 
 
 def _load_fmdl(path, fmdl_lib):
@@ -32,24 +42,65 @@ def _load_fmdl(path, fmdl_lib):
     return f
 
 
-def _texture_png(texture, tex_dirs, out_dir, converted):
+def find_texture_dirs(*roots):
+    """-> every directory at or under `roots` that holds .ftex files.
+
+    Stadium packs put sourceimages in varying subpaths (st060 and st011 both
+    ship sourceimages/tga/#windx11, others drop the tga level), so callers can
+    hand over the stadium directory and let this find the texture dir.
+    """
+    found = []
+    for root in roots:
+        if not root:
+            continue
+        if os.path.isfile(root):
+            root = os.path.dirname(root)
+        for dirpath, _dirnames, filenames in os.walk(root):
+            if any(f.lower().endswith(".ftex") for f in filenames):
+                if dirpath not in found:
+                    found.append(dirpath)
+    return sorted(found)
+
+
+def _tex_stem(filename):
+    """-> basename without extension, for Fox's windows-ish texture paths."""
+    base = filename.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    return os.path.splitext(base)[0]
+
+
+def build_ftex_index(tex_dirs):
+    """-> {lowercase ftex stem: path}, first directory listed wins."""
+    index = {}
+    for tex_dir in tex_dirs:
+        try:
+            entries = sorted(os.listdir(tex_dir))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.lower().endswith(".ftex"):
+                index.setdefault(os.path.splitext(entry)[0].lower(),
+                                 os.path.join(tex_dir, entry))
+    return index
+
+
+def _texture_png(texture, ftex_index, out_dir, converted):
     """Converts the mesh's base ftex to png; returns the bitmap path."""
-    base = os.path.splitext(os.path.basename(texture.filename))[0]
+    base = _tex_stem(texture.filename)
     if base in converted:
         return converted[base]
     png_rel = "textures/%s.png" % base
     out_path = os.path.join(out_dir, png_rel)
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    for tex_dir in tex_dirs:
-        for candidate in (base + ".ftex", os.path.basename(texture.filename)):
-            src = os.path.join(tex_dir, candidate)
-            if os.path.isfile(src):
-                try:
-                    ftex.convert(src, out_path)
-                    converted[base] = png_rel
-                    return png_rel
-                except Exception:
-                    pass
+    src = ftex_index.get(base.lower())
+    if src:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        try:
+            ftex.convert(src, out_path)
+            converted[base] = png_rel
+            return png_rel
+        except Exception as err:
+            sys.stderr.write("ftex conversion failed for %s: %s\n" % (src, err))
+    else:
+        sys.stderr.write("no ftex found for texture %r\n" % (texture.filename,))
     converted[base] = None
     return None
 
@@ -65,10 +116,38 @@ def _mesh_base_texture(mesh):
     return None
 
 
-def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None):
+def split_faces(faces, max_verts):
+    """Splits a face list into chunks of at most `max_verts` unique vertices.
+
+    One fmdl mesh can hold more vertices than the engine wants in a single
+    geometry; the chunks keep sharing one material, so this only changes how
+    many GEOMOBJECTs the ASE has, never what it draws.
+    """
+    if not max_verts or len(faces) * 3 <= max_verts:
+        return [faces]
+    chunks = []
+    current = []
+    seen = set()
+    for face in faces:
+        new = {id(v) for v in face.vertices} - seen
+        if current and len(seen) + len(new) > max_verts:
+            chunks.append(current)
+            current = []
+            seen = set()
+            new = {id(v) for v in face.vertices}
+        seen |= new
+        current.append(face)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
+              max_verts_per_geom=None):
     converted = {}
+    ftex_index = build_ftex_index(tex_dirs)
     materials = []          # (material name, bitmap path or None)
-    geoms = []              # (geom name, material index, mesh)
+    geoms = []              # (geom name, material index, faces)
 
     budget = max_tris if max_tris else float("inf")
     used = 0
@@ -83,9 +162,15 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None):
                 continue
             used += len(mesh.faces)
             tex = _mesh_base_texture(mesh)
-            bitmap = _texture_png(tex, tex_dirs, out_dir, converted) if tex else None
+            bitmap = _texture_png(tex, ftex_index, out_dir, converted) if tex else None
             materials.append(("%s_m%d" % (label, i), bitmap))
-            geoms.append(("%s_%02d" % (label, i), len(materials) - 1, mesh))
+            mat_index = len(materials) - 1
+            chunks = split_faces(mesh.faces, max_verts_per_geom)
+            for part, faces in enumerate(chunks):
+                geom_name = "%s_%02d" % (label, i)
+                if len(chunks) > 1:
+                    geom_name += "_p%02d" % part
+                geoms.append((geom_name, mat_index, faces))
 
     ase_path = os.path.join(out_dir, name + ".ase")
     with open(ase_path, "w") as out:
@@ -109,26 +194,29 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None):
             out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
             out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
             out.write('\t\t*MATERIAL_SHADING Blinn\n')
-            if bitmap:
-                out.write("\t\t*MAP_DIFFUSE {\n")
-                out.write('\t\t\t*MAP_NAME "%s"\n' % mat_name)
-                out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
-                out.write('\t\t\t*BITMAP "media/objects/stadiums/%s/%s"\n'
-                          % (name, bitmap))
-                out.write("\t\t\t*MAP_TYPE Screen\n\t\t}\n")
+            # every material needs a diffuse map: the engine's ASE loader
+            # falls back to a stock "orange.jpg" that does not ship, and a
+            # missing image file is fatal to the loader
+            path = ("media/objects/stadiums/%s/%s" % (name, bitmap) if bitmap
+                    else FALLBACK_BITMAP)
+            out.write("\t\t*MAP_DIFFUSE {\n")
+            out.write('\t\t\t*MAP_NAME "%s"\n' % mat_name)
+            out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
+            out.write('\t\t\t*BITMAP "%s"\n' % path)
+            out.write("\t\t\t*MAP_TYPE Screen\n\t\t}\n")
             out.write("\t}\n")
         out.write("}\n")
 
-        for geom_name, mat_index, mesh in geoms:
-            _write_geomobject(out, geom_name, mat_index, mesh)
+        for geom_name, mat_index, faces in geoms:
+            _write_geomobject(out, geom_name, mat_index, faces)
     return ase_path, len(geoms), sum(1 for _, b in materials if b)
 
 
-def _write_geomobject(out, name, mat_index, mesh):
+def _write_geomobject(out, name, mat_index, faces):
     vertex_index = {}
     vertices = []
     uvs = []
-    for face in mesh.faces:
+    for face in faces:
         for vertex in face.vertices:
             key = id(vertex)
             if key not in vertex_index:
@@ -145,14 +233,14 @@ def _write_geomobject(out, name, mat_index, mesh):
     out.write("\t\t*TM_ROW2 0.0\t0.0\t1.0\n\t\t*TM_ROW3 0.0\t0.0\t0.0\n\t}\n")
     out.write("\t*MESH {\n")
     out.write("\t\t*MESH_NUMVERTEX %d\n" % len(vertices))
-    out.write("\t\t*MESH_NUMFACES %d\n" % len(mesh.faces))
+    out.write("\t\t*MESH_NUMFACES %d\n" % len(faces))
     out.write("\t\t*MESH_VERTEX_LIST {\n")
     for i, pos in enumerate(vertices):
         out.write("\t\t\t*MESH_VERTEX %d\t%.4f\t%.4f\t%.4f\n"
                   % (i, pos.x, -pos.z, pos.y))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_FACE_LIST {\n")
-    for i, face in enumerate(mesh.faces):
+    for i, face in enumerate(faces):
         a, b, c = [vertex_index[id(v)] for v in face.vertices]
         out.write("\t\t\t*MESH_FACE %d: A: %d B: %d C: %d "
                   "AB: 1 BC: 1 CA: 1 *MESH_SMOOTHING 1 *MESH_MTLID 0\n"
@@ -164,15 +252,15 @@ def _write_geomobject(out, name, mat_index, mesh):
         u, v = (uv.u, 1.0 - uv.v) if uv is not None else (0.0, 0.0)
         out.write("\t\t\t*MESH_TVERT %d\t%.5f\t%.5f\t0.0\n" % (i, u, v))
     out.write("\t\t}\n")
-    out.write("\t\t*MESH_NUMTVFACES %d\n" % len(mesh.faces))
+    out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
     out.write("\t\t*MESH_TFACELIST {\n")
-    for i, face in enumerate(mesh.faces):
+    for i, face in enumerate(faces):
         a, b, c = [vertex_index[id(v)] for v in face.vertices]
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
     out.write("\t\t}\n")
     gf_verts = [(pos.x, -pos.z, pos.y) for pos in vertices]
     tri_faces = [tuple(vertex_index[id(v)] for v in face.vertices)
-                 for face in mesh.faces]
+                 for face in faces]
     ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False)
     out.write("\t}\n")
     out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
@@ -210,15 +298,17 @@ OBJECT_TEMPLATE = """<object>
 
 
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
-            max_tris=None):
+            max_tris=None, max_verts_per_geom=None):
     os.makedirs(out_dir, exist_ok=True)
+    tex_dirs = find_texture_dirs(*tex_dirs)
+    print("texture dirs: %s" % (tex_dirs or "none found"))
     fmdls = [(name, _load_fmdl(scene_fmdl, fmdl_lib))]
     for extra in extras:
         label = os.path.splitext(os.path.basename(extra))[0]
         fmdls.append((label, _load_fmdl(extra, fmdl_lib)))
 
     ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
-                                                max_tris)
+                                                max_tris, max_verts_per_geom)
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(OBJECT_TEMPLATE % {"name": name})
@@ -238,15 +328,19 @@ if __name__ == "__main__":
     parser.add_argument("out_dir")
     parser.add_argument("--fmdl-lib", required=True)
     parser.add_argument("--textures", action="append", default=[],
-                        help="directory of .ftex sourceimages (repeatable)")
+                        help="directory of .ftex sourceimages, or any parent "
+                             "of it (repeatable)")
     parser.add_argument("--name", default=None)
     parser.add_argument("--extra", action="append", default=[])
     parser.add_argument("--max-tris", type=int, default=None,
                         help="triangle budget; largest meshes kept first")
+    parser.add_argument("--max-verts-per-geom", type=int, default=None,
+                        help="split meshes above this vertex count into "
+                             "several GEOMOBJECTs sharing one material")
     args = parser.parse_args()
 
     name = args.name or "pes_" + os.path.splitext(os.path.basename(args.fmdl))[0]
     ase_path, geoms, textures = convert(args.fmdl, args.out_dir, args.fmdl_lib,
                                         args.textures, name, args.extra,
-                                        args.max_tris)
+                                        args.max_tris, args.max_verts_per_geom)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))

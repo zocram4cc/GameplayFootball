@@ -140,15 +140,31 @@ Until that lands, imported heads render statically.
 
 - `stadium_to_gf.py`: PES stadium scene fmdl → multi-material ASE + PNG
   textures + `.object`; the engine's `stadium_object` config key selects any
-  stadium directory. Verified: the 4CC st060 (31 geoms, 31 textures).
+  stadium directory. Verified: the 4CC st060 (31 geoms, 31 textures), st002,
+  st011, st019 and st041 (load-probed).
   **Generated ASEs must include MESH_NORMALS** (the loader fatals without) —
   `ase_util.py` provides them for all generators. The engine's text ASE
   parser is slow on big scenes (a 146MB stadium did not finish in 14 min),
   so `--max-tris` caps the budget (60k ≈ 26MB ≈ ~2 min) until the parser is
-  optimized — an engine-side TODO.
+  optimized — an engine-side TODO. `--max-verts-per-geom` splits an oversized
+  fmdl mesh across several GEOMOBJECTs sharing one material, keeping single
+  geometries within what the renderer likes. `--textures` takes the ftex
+  directory or any parent of it: packs disagree on where sourceimages sit
+  (`sourceimages/#windx11` vs `sourceimages/tga/#windx11`), so every
+  ftex-holding directory underneath is searched and indexed by texture stem.
+  A material whose ftex the pack does not ship (20 of st041's 21) still gets a
+  `MAP_DIFFUSE`, pointing at `media/objects/stadiums/white.png`: the ASE
+  loader's own fallback is a stock `orange.jpg` that does not ship, and a
+  missing image file is fatal to `ImageLoader`.
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
-  stand quads (PES's 1.9m row spacing) — silhouette texture + billboard
-  strips hooked into the stadium `.object`.
+  stand quads — silhouette texture + billboard strips hooked into the stadium
+  `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its
+  own AABB offset, record count, then 96-byte records of row step + scale +
+  four corners); row spacing is per stand and per stadium (1.9m in st060,
+  2.1 in st002, 0.7-0.9 in st011), so the records are found structurally.
+  Coverage: st002 (2 stands), st011 (30), st060 (5); st019 and st041 ship no
+  audi fpk at all, so they get no crowd. An empty crowd is never written —
+  a zero-vertex geometry used to abort the renderer's buffer upload.
 - Referees: the `referee_kit` config key points at any PNG; PES referee kit
   textures (13) live in `data/imports/pes21/referees/`.
 

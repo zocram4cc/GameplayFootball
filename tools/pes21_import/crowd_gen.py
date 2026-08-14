@@ -16,34 +16,47 @@ import math
 import os
 import random
 import struct
+import sys
 
 import ase_util
 
-ROW_MARKER = struct.pack("<f", 1.9)  # the row-step float; neighbours vary
 PERSON_HEIGHT = 0.85
 PERSON_WIDTH = 0.55
 
+# audiarea.bin is a handful of stand blocks, each pointed at from the header:
+#   u32 magic (0x0001xxxx, the low half numbering the block)
+#   u32 offset of the block's own AABB (always magic offset + 8)
+#   6f  AABB, u32 record count, u32 pad
+# then `count` records of 96 bytes:
+#   f row step, 2f scale, 12f the stand's four corners, then orientation/pad.
+# Row step is per stand and varies by stadium (1.9m in st060, 2.1 in st002,
+# 0.7-0.9 in st011), so it cannot be used to find the records.
+BLOCK_MAGIC = 0x00010000
+BLOCK_MAGIC_MASK = 0xFFFF0000
+RECORD_SIZE = 96
+
 
 def parse_stands(path):
-    """-> list of 4-corner stands (Fox coords), scanning for the row marker."""
+    """-> list of (4 corners in Fox coords, row step) for every stand."""
     blob = open(path, "rb").read()
     stands = []
-    at = 0
-    while True:
-        at = blob.find(ROW_MARKER, at)
-        if at < 0:
-            break
-        corner_at = at + 12  # row step + two scale floats
-        if corner_at + 48 <= len(blob):
-            scales = struct.unpack_from("<2f", blob, at + 4)
-            floats = struct.unpack_from("<12f", blob, corner_at)
+    for at in range(0, max(0, len(blob) - 8), 4):
+        magic, aabb_at = struct.unpack_from("<II", blob, at)
+        if (magic & BLOCK_MAGIC_MASK) != BLOCK_MAGIC or aabb_at != at + 8:
+            continue
+        count = struct.unpack_from("<I", blob, at + 32)[0]
+        for r in range(count):
+            rec = at + 40 + r * RECORD_SIZE
+            if rec + 60 > len(blob):
+                break
+            row_step = struct.unpack_from("<f", blob, rec)[0]
+            floats = struct.unpack_from("<12f", blob, rec + 12)
             corners = [floats[i:i + 3] for i in range(0, 12, 3)]
-            plausible = (all(0.5 < s < 2.0 for s in scales) and
+            plausible = (0.2 < row_step < 10.0 and
                          all(all(abs(c) < 500 for c in p) for p in corners) and
                          any(any(abs(c) > 3 for c in p) for p in corners))
             if plausible:
-                stands.append(corners)
-        at += len(ROW_MARKER)
+                stands.append((corners, row_step))
     return stands
 
 
@@ -90,8 +103,8 @@ def make_texture(path, columns=8, size=128):
 
 def write_ase(stands, out_dir, name, bitmap_rel):
     quads = []
-    for corners in stands:
-        for a, b in rows_for_stand(corners):
+    for corners, row_step in stands:
+        for a, b in rows_for_stand(corners, row_step):
             length = math.dist(a, b)
             if length < 1.0:
                 continue
@@ -197,6 +210,11 @@ if __name__ == "__main__":
 
     stands = parse_stands(args.audiarea)
     print("stands found:", len(stands))
+    if not stands:
+        # an empty ASE is worse than none: the engine would upload a
+        # zero-vertex geometry for it
+        sys.exit("no stands parsed from %s: refusing to write an empty crowd"
+                 % args.audiarea)
 
     os.makedirs(args.out_dir, exist_ok=True)
     tex_path = os.path.join(args.out_dir, "textures", args.name + ".png")

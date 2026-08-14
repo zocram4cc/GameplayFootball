@@ -49,12 +49,20 @@ def _read_mip(blob, offset, chunk_count, uncomp_size, comp_size):
     out = []
     at = offset
     for _ in range(chunk_count):
-        comp, _uncomp, rel = struct.unpack_from("<HHI", blob, at)
+        comp, uncomp, rel = struct.unpack_from("<HHI", blob, at)
         at += 8
-        raw = bool(rel & 0x80000000)
+        # bit 31 marks a stored chunk, but the smallest mips (a single 16-byte
+        # DXT block) are sometimes stored plain without that flag set, so an
+        # equal compressed size, or a chunk zlib cannot read, means stored too
+        raw = bool(rel & 0x80000000) or comp == uncomp
         rel &= 0x7FFFFFFF
         data = blob[offset + rel:offset + rel + comp]
-        out.append(data if raw else zlib.decompress(data))
+        if not raw:
+            try:
+                data = zlib.decompress(data)
+            except zlib.error:
+                pass
+        out.append(data)
     return b"".join(out)
 
 
