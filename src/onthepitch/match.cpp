@@ -175,6 +175,66 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   float introSeconds = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
   std::string introTrack = GetConfiguration()->Get("intro_cutscene_track", "");
+
+  // PES picks the match entrance by competition: each ent_<id> family is one
+  // entrance presentation, and within a family the shots are authored per
+  // stadium. "entrance_id" names the family; the stadium the match is played in
+  // picks the variant, falling back to any shot in the family when that stadium
+  // has none of its own (see docs/PES21_CAMERA_TRACE.md and tools/pes21_import/
+  // export_entrances.py). Matches with no competition to derive a family from
+  // still get an entrance: the stadium picks a shot across every family, and
+  // failing that any installed shot will do. "entrance_id" "none" opts a match
+  // out, and an explicit "intro_cutscene_track" still wins.
+  std::string entranceID = GetConfiguration()->Get("entrance_id", "");
+  const bool entranceDisabled =
+      entranceID == "none" ||
+      GetConfiguration()->GetBool("penalty_shootout_only", false);
+  if (introTrack.empty() && !entranceDisabled) {
+    // "media/objects/stadiums/pes_st060/..." -> "st060"
+    std::string stadiumToken;
+    {
+      const std::string stadiumPath =
+          GetConfiguration()->Get("stadium_object", "");
+      const size_t at = stadiumPath.find("st");
+      if (at != std::string::npos && at + 5 <= stadiumPath.size())
+        stadiumToken = stadiumPath.substr(at, 5);
+    }
+    const std::string entranceRoot =
+        GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
+    std::vector<std::string> entranceDirs;
+    std::error_code ec;
+    if (!entranceID.empty()) {
+      entranceDirs.push_back(entranceRoot + "/" + entranceID);
+    } else {
+      for (const auto& entry : std::filesystem::directory_iterator(entranceRoot, ec))
+        if (entry.is_directory()) entranceDirs.push_back(entry.path().string());
+      std::sort(entranceDirs.begin(), entranceDirs.end());
+    }
+    std::vector<std::string> candidates;
+    std::vector<std::string> stadiumMatches;
+    for (const auto& dir : entranceDirs) {
+      for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (entry.path().extension() != ".camtrack") continue;
+        const std::string path = entry.path().string();
+        candidates.push_back(path);
+        if (!stadiumToken.empty() &&
+            entry.path().filename().string().find(stadiumToken) != std::string::npos)
+          stadiumMatches.push_back(path);
+      }
+    }
+    const std::vector<std::string>& pick =
+        stadiumMatches.empty() ? candidates : stadiumMatches;
+    if (!pick.empty()) {
+      introTrack = pick[(unsigned int)floor(random(0.0f, pick.size() - 0.001f))];
+      Log(e_Notice, "Match", "Match",
+          "entrance " + (entranceID.empty() ? std::string("(default)") : entranceID) +
+              ": " + introTrack +
+              (stadiumMatches.empty() ? " (no shot for this stadium)" : ""));
+    } else {
+      Log(e_Warning, "Match", "Match", "no entrance camerawork in " + entranceRoot);
+    }
+  }
+
   if (!introTrack.empty()) {
     std::ifstream trackFile(introTrack);
     if (trackFile.good() && introCamTrack.Load(trackFile) && introSeconds <= 0.0f)
@@ -227,9 +287,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
               " categories");
   }
   if (introSeconds > 0.0f) {
-    introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
-    introCutsceneEnd_ms =
-        EnvironmentManager::GetInstance().GetTime_ms() + introCutsceneDuration_ms;
+    // Rounded to the match's 10 ms tick: the referee compares its set-piece
+    // times for equality against actualTime_ms, so an odd millisecond would
+    // never match and the kickoff would never come.
+    introCutsceneDuration_ms = ((unsigned long)(introSeconds * 1000.0f) / 10) * 10;
+    introCutsceneEnd_ms = actualTime_ms + introCutsceneDuration_ms;
   }
 
   cameraUserZoom = GetConfiguration()->GetReal("camera_zoom", _default_CameraZoom);
@@ -852,6 +914,31 @@ void Match::UpdateLatestMentalImageBallPredictions() {
     mentalImages.at(0)->UpdateBallPredictions();
 }
 
+void Match::GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const {
+  // Both teams line up along the halfway line, one row each, facing the main
+  // stand — PES's shape for the walk-out and the anthem. The rows sit a couple
+  // of metres either side of the line so the two teams read as two teams, and
+  // the keeper takes the outside slot as he does in the real thing.
+  const int teamID = player->GetTeamID() == 1 ? 1 : 0;
+  const float rowY = teamID == 0 ? -2.2f : 2.2f;
+
+  int slot = 0;
+  std::vector<Player*> squad;
+  teams[teamID]->GetActivePlayers(squad);
+  for (unsigned int i = 0; i < squad.size(); i++) {
+    if (squad[i] == player) {
+      slot = (int)i;
+      break;
+    }
+  }
+
+  const float spacing = 1.9f;
+  const float rowWidth = spacing * std::max(1, (int)squad.size() - 1);
+  position = Vector3(-rowWidth * 0.5f + spacing * slot, rowY, 0.0f);
+  // Facing the main stand, i.e. down the negative-y touchline.
+  lookAt = position + Vector3(0.0f, -30.0f, 0.0f);
+}
+
 void Match::ResetSituation(const Vector3& focusPos) {
   camPos.clear();
   SetBallRetainer(nullptr);
@@ -1283,7 +1370,7 @@ void Match::UpdateIngameCamera() {
   // hand-authored camerawork plays; otherwise a slow authored orbit around
   // the centre spot frames the stands and crowd.
   if (introCutsceneEnd_ms > 0) {
-    unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+    unsigned long now = actualTime_ms;
     if (now < introCutsceneEnd_ms) {
       float t = 1.0f - (introCutsceneEnd_ms - now) /
                            (float)introCutsceneDuration_ms;

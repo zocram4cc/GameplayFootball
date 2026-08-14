@@ -33,6 +33,11 @@ public:
 
   virtual void Reset();
 
+  // Walks the player out to his slot in the pre-kickoff line-up and stands him
+  // there. Returns true when it has filled the queue, i.e. the caller should do
+  // nothing else this tick. No-op outside the match entrance.
+  bool AddEntranceCommands(PlayerCommandQueue& commandQueue);
+
 protected:
   float OppBetweenBallAndMeDot();
   float CouldWinABallDuelLikeliness();

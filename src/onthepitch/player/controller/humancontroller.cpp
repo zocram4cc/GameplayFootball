@@ -27,6 +27,11 @@ void HumanController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
   _Preprocess();  // calculate some variables
 
+  // The match entrance walks everybody out, the human player included: there is
+  // nothing to control until the teams have lined up and the kickoff is armed.
+  if (AddEntranceCommands(commandQueue))
+    return;
+
   // human input
 
   Vector3 rawInputDirection;

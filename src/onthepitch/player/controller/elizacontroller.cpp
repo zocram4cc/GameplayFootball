@@ -68,6 +68,10 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
   _Preprocess();  // calculate some variables
 
+  // The match entrance owns the players until the kickoff is armed.
+  if (AddEntranceCommands(commandQueue))
+    return;
+
   FormationEntry entry = CastPlayer()->GetDynamicFormationEntry();
   float mindSet = AI_GetMindSet(entry.role);
 

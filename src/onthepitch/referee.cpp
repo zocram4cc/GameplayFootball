@@ -215,6 +215,19 @@ void Referee::Process() {
         whistle[1]->Poke(e_SystemType_Audio);
       }
 
+      // Hold the kickoff for the match entrance. The teams walk out and line up
+      // first; the restart is only armed once that is over, so nobody is
+      // playing football underneath the entrance. The set piece is prepared
+      // once immediately so both sides start from their kickoff shape, then
+      // re-prepared at the end of the entrance to put them back on their marks.
+      if (match->IsInEntrance() && buffer.desiredSetPiece == e_SetPiece_KickOff &&
+          buffer.prepareTime < match->GetEntranceEndTime_ms()) {
+        if (buffer.prepareTime == match->GetActualTime_ms())
+          PrepareSetPiece(buffer.desiredSetPiece);
+        buffer.prepareTime = match->GetEntranceEndTime_ms();
+        buffer.startTime = buffer.prepareTime + 2000;
+      }
+
       if (buffer.prepareTime == match->GetActualTime_ms()) {
         if (buffer.endPhase == true) {
           if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {

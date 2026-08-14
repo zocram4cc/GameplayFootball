@@ -135,6 +135,16 @@ public:
   void StopPlay() { inPlay = false; }
   bool IsInPlay() const { return inPlay; }
 
+  // The match entrance: teams walking out and lining up before the kickoff.
+  // While this is true the kickoff is held and no football is played.
+  bool IsInEntrance() const {
+    return introCutsceneEnd_ms > 0 && actualTime_ms < introCutsceneEnd_ms;
+  }
+  unsigned long GetEntranceEndTime_ms() const { return introCutsceneEnd_ms; }
+  // Where this player stands in the pre-kickoff line-up, and which way he
+  // faces. Both teams line up along the halfway line facing the main stand.
+  void GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const;
+
   void StartSetPiece() { inSetPiece = true; }
   void StopSetPiece() { inSetPiece = false; }
   bool IsInSetPiece() const { return inSetPiece; }
@@ -362,10 +372,15 @@ protected:
   float cameraUserFOV;
   float cameraUserAngleFactor;
 
-  // pre-kickoff stadium fly-around ("intro_cutscene_seconds" config key)
+  // Match entrance. The kickoff is held while this runs: PES does not play
+  // football underneath its entrance, it holds the restart until the teams have
+  // walked out and lined up. Measured on the match's own 10 ms clock so the
+  // referee's set-piece timing and this agree exactly.
+  // ("intro_cutscene_seconds" / "entrance_id" config keys)
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
-  // imported PES camerawork ("intro_cutscene_track" .camtrack path)
+  // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
+  // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
   CamTrack introCamTrack;
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
   // track's authored goal side (+1/-1 from its mean x) for mirroring

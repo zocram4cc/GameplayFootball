@@ -34,6 +34,48 @@ PlayerController::PlayerController(Match* match) : IController(match) {
   Reset();
 }
 
+bool PlayerController::AddEntranceCommands(PlayerCommandQueue& commandQueue) {
+  if (!match->IsInEntrance())
+    return false;
+
+  Vector3 slot;
+  Vector3 lookAt;
+  match->GetEntranceSlot(CastPlayer(), slot, lookAt);
+
+  const Vector3 toSlot = slot - CastPlayer()->GetPosition();
+  const float distance = toSlot.GetLength();
+  // Close enough is standing in line; walking the last few centimetres would
+  // just make the whole row shuffle on the spot.
+  const bool inPlace = distance < 0.4f;
+
+  if (inPlace) {
+    // Standing in line, playing an imported PES entrance/anthem animation
+    // (media/animations/entrance/lineup, specialvar1 = 3). If none is
+    // installed the anim query simply finds nothing and returns, and the
+    // movement command below stands him still instead.
+    PlayerCommand special;
+    special.desiredFunctionType = e_FunctionType_Special;
+    special.useSpecialVar1 = true;
+    special.specialVar1 = 3;
+    special.useSpecialVar2 = true;
+    special.specialVar2 = 1;
+    special.useDesiredMovement = false;
+    special.useDesiredLookAt = false;
+    commandQueue.push_back(special);
+  }
+
+  PlayerCommand command;
+  command.desiredFunctionType = e_FunctionType_Movement;
+  command.useDesiredMovement = true;
+  command.desiredDirection =
+      inPlace ? CastPlayer()->GetDirectionVec() : toSlot.Get2D().GetNormalized(Vector3(0, -1, 0));
+  command.desiredVelocityFloat = inPlace ? idleVelocity : walkVelocity;
+  command.useDesiredLookAt = true;
+  command.desiredLookAt = lookAt;
+  commandQueue.push_back(command);
+  return true;
+}
+
 void PlayerController::Process() {
   int reactionTime_ms = GetReactionTime_ms();
   if (match->GetLastTouchPlayer() == CastPlayer() &&
