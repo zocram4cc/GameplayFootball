@@ -354,6 +354,10 @@ protected:
   float cameraUserFOV;
   float cameraUserAngleFactor;
 
+  // pre-kickoff stadium fly-around ("intro_cutscene_seconds" config key)
+  unsigned long introCutsceneEnd_ms = 0;
+  unsigned long introCutsceneDuration_ms = 0;
+
   std::shared_ptr<AnimCollection> anims;
 
   const std::vector<IHIDevice*>& controllers;

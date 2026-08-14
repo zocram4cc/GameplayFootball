@@ -14,7 +14,12 @@ PES bones map to joints through retarget.GF_FROM_PES. The result pairs with
 a kit texture converted from the model's own ftex set.
 
   python3 fmdl_to_fullbody.py model.fmdl out_dir --fmdl-lib <pes-fmdl dir>
-                              [--texture kit.png]
+                              [--texture kit.png] [--base stock_fullbody.ase]
+
+--base composites the imported mesh OVER the stock body: many aesthetic
+exports (HDG armor) are plate sets that rely on PES's invisible-kit trick,
+so they need the stock skinned body underneath. The stock ase's materials,
+geometry and vertex colors are carried over verbatim.
 """
 
 import argparse
@@ -61,7 +66,21 @@ def encode_color(joints):
     return channels
 
 
-def convert(fmdl_path, out_dir, fmdl_lib, texture):
+MATERIAL_BLOCK = (
+    '\t\t*MATERIAL_NAME "fullbody"\n\t\t*MATERIAL_CLASS "Standard"\n'
+    "\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n"
+    "\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n"
+    "\t\t*MATERIAL_SPECULAR 0.900\t0.900\t0.900\n"
+    "\t\t*MATERIAL_SHINE 0.100\n\t\t*MATERIAL_SHADING Blinn\n"
+    "\t\t*MATERIAL_SHINESTRENGTH 0.0\n"
+    "\t\t*MATERIAL_SELFILLUM 0.0\n"
+    '\t\t*MAP_DIFFUSE {\n\t\t\t*MAP_NAME "fullbody"\n'
+    '\t\t\t*MAP_CLASS "Bitmap"\n'
+    '\t\t\t*BITMAP "%(texture)s"\n'
+    "\t\t\t*MAP_TYPE Screen\n\t\t}\n")
+
+
+def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -90,30 +109,47 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
     # needs a unique ase filename or it collides with the stock fullbody.ase
     unique = "fullbody_%s.ase" % os.path.basename(os.path.normpath(out_dir))
     ase_path = os.path.join(out_dir, unique)
+
+    # --base: carry the stock body (materials, geometry, skin colors) over
+    # verbatim; the import becomes an extra subgeom with its own material
+    material_ref = 0
+    base_head = base_geoms = None
+    if base_ase:
+        import re
+        base_text = open(base_ase).read()
+        geom_at = base_text.find("*GEOMOBJECT {")
+        base_head = base_text[:geom_at]
+        base_geoms = base_text[geom_at:]
+        count_match = re.search(r"\*MATERIAL_COUNT\s+(\d+)", base_head)
+        material_ref = int(count_match.group(1))
+        base_head = base_head.replace(
+            count_match.group(0), "*MATERIAL_COUNT %d" % (material_ref + 1))
+        close_at = base_head.rstrip().rfind("}")
+        plate_material = ("\t*MATERIAL %d {\n%s\t}\n"
+                          % (material_ref, MATERIAL_BLOCK % {"texture": texture}))
+        base_head = base_head[:close_at] + plate_material + base_head[close_at:]
+
     with open(ase_path, "w") as out:
-        out.write("*3DSMAX_ASCIIEXPORT\t200\n")
-        out.write('*COMMENT "PES player -> GF fullbody by tools/pes21_import"\n')
-        out.write("*SCENE {\n\t*SCENE_FILENAME \"fullbody\"\n")
-        out.write("\t*SCENE_FIRSTFRAME 0\n\t*SCENE_LASTFRAME 100\n")
-        out.write("\t*SCENE_FRAMESPEED 30\n\t*SCENE_TICKSPERFRAME 160\n")
-        out.write("\t*SCENE_BACKGROUND_STATIC 0.000\t0.000\t0.000\n")
-        out.write("\t*SCENE_AMBIENT_STATIC 0.000\t0.000\t0.000\n}\n")
-        out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT 1\n\t*MATERIAL 0 {\n")
-        out.write('\t\t*MATERIAL_NAME "fullbody"\n\t\t*MATERIAL_CLASS "Standard"\n')
-        out.write("\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n")
-        out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
-        out.write("\t\t*MATERIAL_SPECULAR 0.900\t0.900\t0.900\n")
-        out.write("\t\t*MATERIAL_SHINE 0.100\n\t\t*MATERIAL_SHADING Blinn\n")
-        out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
-        out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
-        out.write("\t\t*MAP_DIFFUSE {\n\t\t\t*MAP_NAME \"fullbody\"\n")
-        out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
-        out.write('\t\t\t*BITMAP "%s"\n' % texture)
-        out.write("\t\t\t*MAP_TYPE Screen\n\t\t}\n\t}\n}\n")
+        if base_ase:
+            out.write(base_head)
+            out.write(base_geoms)
+            if not base_geoms.endswith("\n"):
+                out.write("\n")
+        else:
+            out.write("*3DSMAX_ASCIIEXPORT\t200\n")
+            out.write('*COMMENT "PES player -> GF fullbody by tools/pes21_import"\n')
+            out.write("*SCENE {\n\t*SCENE_FILENAME \"fullbody\"\n")
+            out.write("\t*SCENE_FIRSTFRAME 0\n\t*SCENE_LASTFRAME 100\n")
+            out.write("\t*SCENE_FRAMESPEED 30\n\t*SCENE_TICKSPERFRAME 160\n")
+            out.write("\t*SCENE_BACKGROUND_STATIC 0.000\t0.000\t0.000\n")
+            out.write("\t*SCENE_AMBIENT_STATIC 0.000\t0.000\t0.000\n}\n")
+            out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT 1\n\t*MATERIAL 0 {\n")
+            out.write(MATERIAL_BLOCK % {"texture": texture})
+            out.write("\t}\n}\n")
 
         out.write("*GEOMOBJECT {\n")
-        out.write('\t*NODE_NAME "fullbody"\n')
-        out.write("\t*NODE_TM {\n\t\t*NODE_NAME \"fullbody\"\n")
+        out.write('\t*NODE_NAME "fullbody_import"\n')
+        out.write("\t*NODE_TM {\n\t\t*NODE_NAME \"fullbody_import\"\n")
         out.write("\t\t*INHERIT_POS 0 0 0\n\t\t*INHERIT_ROT 0 0 0\n\t\t*INHERIT_SCL 0 0 0\n")
         out.write("\t\t*TM_ROW0 1.0\t0.0\t0.0\n\t\t*TM_ROW1 0.0\t1.0\t0.0\n")
         out.write("\t\t*TM_ROW2 0.0\t0.0\t1.0\n\t\t*TM_ROW3 0.0\t0.0\t0.0\n\t}\n")
@@ -155,7 +191,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
         ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
         out.write("\t}\n")
         out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
-        out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF 0\n}\n")
+        out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF %d\n}\n" % material_ref)
 
     object_path = os.path.join(out_dir, "fullbody.object")
     open(object_path, "w").write(
@@ -175,7 +211,10 @@ if __name__ == "__main__":
     parser.add_argument("--fmdl-lib", required=True)
     parser.add_argument("--texture",
                         default="media/objects/players/textures/kit_template.png")
+    parser.add_argument("--base", default=None,
+                        help="stock fullbody.ase to composite the import over")
     args = parser.parse_args()
-    verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture)
-    print("wrote %s/fullbody.ase: %d vertices, %d faces" %
-          (args.out_dir, verts, faces))
+    verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
+                           args.base)
+    print("wrote fullbody (%d imported vertices, %d faces%s)" %
+          (verts, faces, ", composited over base" if args.base else ""))

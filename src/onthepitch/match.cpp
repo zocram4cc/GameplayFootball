@@ -173,6 +173,13 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   cameraNode->SetPosition(Vector3(40, 0, 100));
   GetDynamicNode()->AddNode(cameraNode);
 
+  float introSeconds = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
+  if (introSeconds > 0.0f) {
+    introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
+    introCutsceneEnd_ms =
+        EnvironmentManager::GetInstance().GetTime_ms() + introCutsceneDuration_ms;
+  }
+
   cameraUserZoom = GetConfiguration()->GetReal("camera_zoom", _default_CameraZoom);
   cameraUserHeight = GetConfiguration()->GetReal("camera_height", _default_CameraHeight);
   cameraUserFOV = GetConfiguration()->GetReal("camera_fov", _default_CameraFOV);
@@ -1122,6 +1129,30 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 }
 
 void Match::UpdateIngameCamera() {
+  // pre-kickoff cutscene: a slow orbit around the centre spot, tilted up
+  // enough to frame the stands and crowd (PES ships no camera data, so the
+  // camerawork is ours)
+  if (introCutsceneEnd_ms > 0) {
+    unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+    if (now < introCutsceneEnd_ms) {
+      float t = 1.0f - (introCutsceneEnd_ms - now) /
+                           (float)introCutsceneDuration_ms;
+      float a = t * 2.0f * pi;
+      const float radius = 42.0f;
+      const float camHeight = 16.0f;
+      cameraNodePosition =
+          Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
+      cameraNodeOrientation.SetAngleAxis(a, Vector3(0, 0, 1));
+      cameraOrientation.SetAngleAxis(
+          0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
+      cameraFOV = 35.0f;
+      cameraNearCap = 2.0f;
+      cameraFarCap = 400.0f;
+      return;
+    }
+    introCutsceneEnd_ms = 0;
+  }
+
   // camera
 
   float fov;
