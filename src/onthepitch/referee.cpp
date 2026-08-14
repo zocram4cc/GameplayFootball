@@ -10,6 +10,7 @@
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
 #include "matchprogression.hpp"
+#include "offsiderule.hpp"
 #include "refereeprofile.hpp"
 #include "scene/objectfactory.hpp"
 
@@ -318,6 +319,8 @@ void Referee::BallTouched() {
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
           match->SpamMessage("offside!");
+          if (Verbose())
+            printf("referee: offside\n");
           break;
         } else
           break;
@@ -328,9 +331,9 @@ void Referee::BallTouched() {
 
   offsidePlayers.clear();
 
-  if (match->IsInPlay() &&
-      (buffer.active == false ||
-       (buffer.active == true && buffer.desiredSetPiece != e_SetPiece_ThrowIn))) {
+  // Law 11: a goal kick, throw-in or corner can never put its receivers
+  // offside, so their delivery touch must not arm the flag.
+  if (OffsideRule::ShouldSnapshot(match->IsInPlay(), buffer.active, buffer.desiredSetPiece)) {
     // check for offside players at moment of touch
     float offside = AI_GetOffsideLine(match, match->GetMentalImage(0), abs(lastTouchTeamID - 1));
     std::vector<Player*> players;

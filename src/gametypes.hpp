@@ -22,6 +22,16 @@ enum e_PlayerRole {
   e_PlayerRole_CF,
 };
 
+enum e_SetPiece {
+  e_SetPiece_None,
+  e_SetPiece_KickOff,
+  e_SetPiece_GoalKick,
+  e_SetPiece_FreeKick,
+  e_SetPiece_Corner,
+  e_SetPiece_ThrowIn,
+  e_SetPiece_Penalty,
+};
+
 enum e_MatchPhase {
   e_MatchPhase_PreMatch,
   e_MatchPhase_1stHalf,

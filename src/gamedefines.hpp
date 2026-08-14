@@ -102,15 +102,7 @@ enum e_TouchType {
   e_TouchType_SIZE
 };
 
-enum e_SetPiece {
-  e_SetPiece_None,
-  e_SetPiece_KickOff,
-  e_SetPiece_GoalKick,
-  e_SetPiece_FreeKick,
-  e_SetPiece_Corner,
-  e_SetPiece_ThrowIn,
-  e_SetPiece_Penalty,
-};
+// e_SetPiece lives in gametypes.hpp so the SDL-free rule modules can see it.
 
 enum e_PlayerCommandModifier {
   e_PlayerCommandModifier_None = 0,
