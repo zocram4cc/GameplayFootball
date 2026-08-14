@@ -160,6 +160,8 @@ endif()
 
 set(LOADERS_HEADERS
         src/loaders/aseloader.hpp
+        src/loaders/oggdecoder.hpp
+        src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
         )
@@ -167,6 +169,8 @@ set(LOADERS_HEADERS
 set(LOADERS_SOURCES
         src/loaders/imageloader.cpp
         src/loaders/aseloader.cpp
+        src/loaders/oggdecoder.cpp
+        src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )
 

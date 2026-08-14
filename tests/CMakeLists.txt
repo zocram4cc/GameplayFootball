@@ -49,6 +49,24 @@ target_link_libraries(gameplayfootball_velocity_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_velocity_tests DISCOVERY_MODE PRE_TEST)
 
+# Ogg Vorbis decoder unit tests (pes21 import pack audio)
+add_executable(gameplayfootball_ogg_tests
+  base/oggdecoder_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/loaders/oggdecoder.cpp
+)
+
+target_include_directories(gameplayfootball_ogg_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_ogg_tests PRIVATE
+  GTest::gtest_main
+)
+
+add_test(NAME oggdecoder COMMAND gameplayfootball_ogg_tests)
+set_tests_properties(oggdecoder PROPERTIES
+  ENVIRONMENT "GF_TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data")
+
 # Match simulation integration tests (task 2.6)
 add_executable(gameplayfootball_integration_tests
   integration/match_simulation_test.cpp

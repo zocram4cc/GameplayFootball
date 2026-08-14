@@ -12,6 +12,7 @@
 #include "framework/scheduler.hpp"
 #include "loaders/aseloader.hpp"
 #include "loaders/imageloader.hpp"
+#include "loaders/oggloader.hpp"
 #include "loaders/wavloader.hpp"
 #include "managers/environmentmanager.hpp"
 #include "managers/resourcemanager.hpp"
@@ -48,6 +49,7 @@ namespace blunted {
 ASELoader* aseLoader;
 ImageLoader* imageLoader;
 WAVLoader* wavLoader;
+OGGLoader* oggLoader;
 
 Scheduler* scheduler;
 
@@ -112,6 +114,8 @@ void Initialize(Properties& config) {
   surfaceResourceManager->RegisterLoader("png", imageLoader);
   wavLoader = new WAVLoader();
   soundBufferResourceManager->RegisterLoader("wav", wavLoader);
+  oggLoader = new OGGLoader();
+  soundBufferResourceManager->RegisterLoader("ogg", oggLoader);
 
   TTF_Init();
 
@@ -158,9 +162,11 @@ void Exit() {
   delete aseLoader;
   delete imageLoader;
   delete wavLoader;
+  delete oggLoader;
   aseLoader = nullptr;
   imageLoader = nullptr;
   wavLoader = nullptr;
+  oggLoader = nullptr;
 
   Log(e_Notice, "blunted", "Exit", "exiting systemmanager");
   SystemManager::GetInstance().Exit();

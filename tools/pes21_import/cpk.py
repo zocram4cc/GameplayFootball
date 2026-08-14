@@ -135,7 +135,7 @@ def crilayla_decompress(data: bytes) -> bytes:
     return bytes(raw) + bytes(out)
 
 
-def extract(cpk_path, dest, list_only=False):
+def extract(cpk_path, dest, list_only=False, pattern=None):
     f = open(cpk_path, "rb")
     magic = f.read(4)
     assert magic == b"CPK ", magic
@@ -169,6 +169,8 @@ def extract(cpk_path, dest, list_only=False):
         size = row["FileSize"]
         extract_size = row.get("ExtractSize", size)
         rel = os.path.join(dirname, name)
+        if pattern is not None and pattern not in rel:
+            continue
         if list_only:
             print("%10d %10d  %s" % (size, extract_size, rel))
             count += 1
@@ -203,5 +205,9 @@ def strip_crypt(blob: bytes) -> bytes:
 if __name__ == "__main__":
     cpk = sys.argv[1]
     dest = sys.argv[2] if len(sys.argv) > 2 else "extracted"
-    list_only = len(sys.argv) > 3 and sys.argv[3] == "--list"
-    extract(cpk, dest, list_only)
+    list_only = "--list" in sys.argv[3:]
+    pattern = None
+    for arg in sys.argv[3:]:
+        if arg.startswith("--filter="):
+            pattern = arg.split("=", 1)[1]
+    extract(cpk, dest, list_only, pattern)
