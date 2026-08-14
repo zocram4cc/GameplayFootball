@@ -47,6 +47,10 @@ float GetStaminaDrainMultiplier(e_Philosophy philosophy);
 // Whether the passing game should favour short, safe links.
 bool PrefersShortPassing(e_Philosophy philosophy);
 
+// Scales the execution error of a pass. Short-link styles knock the ball around
+// more precisely; a long-ball game accepts more risk per pass. 1 is neutral.
+float GetPassErrorMultiplier(e_Philosophy philosophy, float supportDistance);
+
 // Adapts a computed offside-trap X coordinate to the philosophy. `teamSide` is
 // -1 or 1 and points from the pitch centre towards the team's own goal.
 float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide);

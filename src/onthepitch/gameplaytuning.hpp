@@ -38,7 +38,7 @@ inline float GetShootingRange(const blunted::Properties& config) {
 }
 
 inline float GetShotAppetite(const blunted::Properties& config) {
-  return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.8f), 0.5f, 2.5f);
+  return blunted::clamp(config.GetReal("gameplay_shot_appetite", 2.0f), 0.5f, 2.5f);
 }
 
 // Whether a keeper gets across to a shot at all. The stock engine always played
@@ -46,7 +46,7 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // against a tunable sharpness.
 inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
   const float sharpness =
-      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.42f), 0.2f, 1.0f);
+      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.36f), 0.2f, 1.0f);
   const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
   return blunted::clamp(sharpness * (0.45f + reaction * 0.55f), 0.05f, 0.97f);
 }

@@ -166,3 +166,31 @@ TEST(TeamPhilosophyOffsideTrapTest, OtherPhilosophiesLeaveTheTrapAlone) {
       TeamPhilosophy::AdaptOffsideTrapX(TeamPhilosophy::e_Philosophy_Gegenpressing, -30.0f, -1),
       -30.0f);
 }
+
+// --- Passing precision by style: short links are safer than long balls ---
+
+TEST(TeamPhilosophyPassingTest, ShortLinkStylesPassMorePrecisely) {
+  // 1 = no change to the execution error; below 1 = steadier passing.
+  const float tikiTaka =
+      TeamPhilosophy::GetPassErrorMultiplier(TeamPhilosophy::e_Philosophy_TikiTaka, 0.25f);
+  const float longBall =
+      TeamPhilosophy::GetPassErrorMultiplier(TeamPhilosophy::e_Philosophy_Balanced, 0.9f);
+  const float neutral =
+      TeamPhilosophy::GetPassErrorMultiplier(TeamPhilosophy::e_Philosophy_Balanced, 0.5f);
+
+  EXPECT_LT(tikiTaka, neutral);
+  EXPECT_GT(longBall, neutral);
+  EXPECT_LT(tikiTaka, 0.8f);
+  EXPECT_GT(longBall, 1.0f);
+}
+
+TEST(TeamPhilosophyPassingTest, TheMultiplierStaysWithinSaneBounds) {
+  for (int i = 0; i < TeamPhilosophy::e_Philosophy_Count; i++) {
+    for (float support = 0.0f; support <= 1.0f; support += 0.25f) {
+      const float multiplier = TeamPhilosophy::GetPassErrorMultiplier(
+          static_cast<TeamPhilosophy::e_Philosophy>(i), support);
+      EXPECT_GE(multiplier, 0.5f);
+      EXPECT_LE(multiplier, 1.4f);
+    }
+  }
+}

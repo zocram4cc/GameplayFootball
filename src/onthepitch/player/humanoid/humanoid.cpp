@@ -29,6 +29,7 @@
 #include "data/playertraits.hpp"
 #include "humanoid_utils.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "onthepitch/teamphilosophy.hpp"
 #include "systems/graphics/graphics_scene.hpp"
 #include "systems/graphics/graphics_system.hpp"
 #include "systems/graphics/objects/graphics_geometry.hpp"
@@ -3100,11 +3101,21 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
 
   float difficultyFactor = atof(currentAnim->anim->GetVariable("touch_difficultyfactor").c_str());
 
-  // apply stats
+  // apply stats. The stat weighs heavier than it used to: an elite passer keeps
+  // his passing in the low-to-mid 80s, a poor one well under 60.
   if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.5f);
+    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.65f);
   if (functionType == e_FunctionType_HighPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_highpass") * 0.5f);
+    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_highpass") * 0.65f);
+
+  // The team's style shapes precision too: a drilled short-passing side knocks
+  // it around more cleanly, a long-ball side accepts more risk per pass.
+  if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass ||
+      functionType == e_FunctionType_HighPass) {
+    difficultyFactor *= TeamPhilosophy::GetPassErrorMultiplier(
+        team->GetController()->GetPhilosophy(),
+        team->GetTeamData()->GetTactics().userProperties.GetReal("support_distance", 0.5f));
+  }
   if (Verbose())
     printf("short pass stat: %f\n", CastPlayer()->GetStat("technical_shortpass"));
 
