@@ -337,8 +337,16 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
       weightedVertex.vertexID = v / 3;
 
       if (colorCoords.find(vertexPos) == colorCoords.end()) {
-        printf("color coord not found: %f, %f, %f\n", vertexPos.coords[0], vertexPos.coords[1],
-               vertexPos.coords[2]);
+        fprintf(stderr,
+                "color coord not found: %f, %f, %f (geometry '%s', %zu colorCoords)\n",
+                vertexPos.coords[0], vertexPos.coords[1], vertexPos.coords[2],
+                fullbodyNode->GetObject("fullbody")
+                    ? boost::static_pointer_cast<Geometry>(
+                          fullbodyNode->GetObject("fullbody"))
+                          ->GetGeometryData()->GetIdentString().c_str()
+                    : "?",
+                colorCoords.size());
+        fflush(stderr);
       }
       assert(colorCoords.find(vertexPos) != colorCoords.end());
       const Vector3& color = colorCoords.find(vertexPos)->second;

@@ -100,8 +100,12 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
       if (!modelDir.empty()) {
         boost::intrusive_ptr<Node> customBody =
             loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
+        // the model's ase carries the directory name (unique resource key)
+        std::string baseName =
+            modelDir.substr(modelDir.find_last_of('/') + 1);
         std::map<Vector3, Vector3> customColors;
-        GetVertexColors(customColors, modelDir + "/fullbody.ase");
+        GetVertexColors(customColors,
+                        modelDir + "/fullbody_" + baseName + ".ase");
         player->Activate(playerNode, customBody, customColors, kit,
                          match->GetAnimCollection());
       } else {

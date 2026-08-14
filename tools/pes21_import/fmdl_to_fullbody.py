@@ -86,7 +86,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
             faces.append(tri)
 
     os.makedirs(out_dir, exist_ok=True)
-    ase_path = os.path.join(out_dir, "fullbody.ase")
+    # the engine's resource cache keys geometry by BASENAME, so every model
+    # needs a unique ase filename or it collides with the stock fullbody.ase
+    unique = "fullbody_%s.ase" % os.path.basename(os.path.normpath(out_dir))
+    ase_path = os.path.join(out_dir, unique)
     with open(ase_path, "w") as out:
         out.write("*3DSMAX_ASCIIEXPORT\t200\n")
         out.write('*COMMENT "PES player -> GF fullbody by tools/pes21_import"\n')
@@ -157,11 +160,11 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
     object_path = os.path.join(out_dir, "fullbody.object")
     open(object_path, "w").write(
         "<object>\n\n\t<geometry>\n"
-        "\t\t<filename>fullbody.ase</filename>\n"
+        "\t\t<filename>%s</filename>\n"
         "\t\t<name>fullbody</name>\n"
         "\t\t<position>0, 0, 0</position>\n"
         "\t\t<rotation>0, 0, 0, 0</rotation>\n"
-        "\t</geometry>\n\n</object>\n")
+        "\t</geometry>\n\n</object>\n" % unique)
     return len(vertices), len(faces)
 
 
