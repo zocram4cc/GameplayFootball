@@ -1110,8 +1110,14 @@ VertexBufferID OpenGLRenderer3D::CreateVertexBuffer(float* vertices, unsigned in
     mapping.glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iid);
     mapping.glBufferData(GL_ELEMENT_ARRAY_BUFFER, effectiveIndices.size() * sizeof(unsigned int),
                          nullptr, GetGLVertexBufferUsage(usage));
-    mapping.glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
-                            effectiveIndices.size() * sizeof(unsigned int), &effectiveIndices[0]);
+    // an empty geometry (a mesh with zero faces, as an asset converter may
+    // legitimately emit) leaves effectiveIndices empty: uploading nothing is
+    // fine, but indexing element 0 of an empty vector is not
+    if (!effectiveIndices.empty()) {
+      mapping.glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0,
+                              effectiveIndices.size() * sizeof(unsigned int),
+                              effectiveIndices.data());
+    }
 
 #define BUFFER_OFFSET(i) ((char*)nullptr + (i))
     for (int i = 0; i < GetTriangleMeshElementCount(); i++) {
