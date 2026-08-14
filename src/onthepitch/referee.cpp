@@ -7,6 +7,7 @@
 
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
+#include "foulseverity.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
 #include "matchprogression.hpp"
@@ -386,22 +387,40 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
   if (buffer.active)
     return;
 
-  if (tackleType == 2) {  // standing tackle
+  if ((tackleType == 1 || tackleType == 2) &&
+      (tripper != foul.foulPlayer || foul.foulType == 0)) {  // standing challenges
+
     if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&
         (tripper->GetCurrentFunctionType() == e_FunctionType_Interfere ||
          tripper->GetCurrentFunctionType() == e_FunctionType_Sliding) &&
         (tripee->GetPosition() - match->GetBall()->Predict(0).Get2D()).GetLength() < 2.0 &&
         tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID()) {
-      // uooooga uooooga foul!
-      foul.foulType = 1;
-      foul.advantage = true;
-      foul.foulPlayer = tripper;
-      foul.foulVictim = tripee;
-      foul.foulTime = match->GetActualTime_ms();
-      foul.foulPosition = tripee->GetPosition();
-      foul.hasBeenProcessed = false;
-      if (!IsReleaseVersion())
-        match->SpamMessage("advantage", 2000);
+      // Law 12: a standing challenge is not automatically innocent. The same
+      // severity pipeline judges it that judges a slide.
+      FoulSeverity::Contact contact;
+      contact.tackleType = tackleType;
+      contact.ballDistance_m =
+          (match->GetBall()->Predict(0).Get2D() - tripee->GetPosition()).GetLength();
+      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
+                                         .GetNormalized(0)
+                                         .GetDotProduct(tripee->GetDirectionVec()) *
+                                     0.5f +
+                                 0.5f,
+                                 0.0f, 1.0f);
+
+      const int foulType = RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact));
+      if (foulType > 0) {
+        // uooooga uooooga foul!
+        foul.foulType = foulType;
+        foul.advantage = (foulType != 3);
+        foul.foulPlayer = tripper;
+        foul.foulVictim = tripee;
+        foul.foulTime = match->GetActualTime_ms();
+        foul.foulPosition = tripee->GetPosition();
+        foul.hasBeenProcessed = false;
+        if (foul.advantage && !IsReleaseVersion())
+          match->SpamMessage("advantage", 2000);
+      }
     }
 
   } else if (tackleType == 3 &&
@@ -411,27 +430,27 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
         tripper->GetCurrentFunctionType() == e_FunctionType_Sliding &&
         tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID() &&
         (match->GetBall()->Predict(0) - tripee->GetPosition()).GetLength() < 8.0) {
-      float severity = 1.0;
-      if (tripper->TouchAnim()) {
-        severity = std::pow(clamp(fabs(tripper->GetTouchFrame() - tripper->GetCurrentFrame()) /
-                                      tripper->GetTouchFrame(),
-                                  0.0, 1.0),
-                            0.7) *
-                   0.5;
-        severity +=
-            NormalizedClamp((match->GetBall()->Predict(0) - tripper->GetTouchPos()).GetLength(),
-                            0.0, 2.0) *
-            0.5;
+      FoulSeverity::Contact contact;
+      contact.tackleType = 3;
+      contact.hasTouchData = tripper->TouchAnim();
+      if (contact.hasTouchData) {
+        contact.timingError =
+            clamp(fabs(tripper->GetTouchFrame() - tripper->GetCurrentFrame()) /
+                      tripper->GetTouchFrame(),
+                  0.0, 1.0);
+        contact.ballDistance_m =
+            (match->GetBall()->Predict(0) - tripper->GetTouchPos()).GetLength();
       }
       // from behind?
-      severity += (tripee->GetPosition() - tripper->GetPosition())
-                          .GetNormalized(0)
-                          .GetDotProduct(tripee->GetDirectionVec()) *
-                      0.5 +
-                  0.5;
+      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
+                                         .GetNormalized(0)
+                                         .GetDotProduct(tripee->GetDirectionVec()) *
+                                     0.5f +
+                                 0.5f,
+                                 0.0f, 1.0f);
 
       // How harshly this is judged depends on the referee's temperament.
-      const int foulType = RefereeProfile::GetFoulType(profile, severity);
+      const int foulType = RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact));
       if (foulType > 0) {
         // uooooga uooooga foul!
         // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -
@@ -535,6 +554,11 @@ bool Referee::CheckFoul() {
     if (foul.foulType >= 2)
       match->StartCutscene("foul", 5.0f);
     match->SpamMessage(spamMessage);
+    // The statistic counts whistles, not collisions: it used to be incremented
+    // by the collision producer before the referee had decided anything.
+    match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());
+    if (Verbose())
+      printf("referee: foul (type %i)%s\n", foul.foulType, penalty ? " penalty" : "");
 
     foul.hasBeenProcessed = true;
 

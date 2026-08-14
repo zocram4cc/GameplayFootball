@@ -436,6 +436,7 @@ set(GAME_HEADERS
    src/onthepitch/refereeprofile.hpp
    src/onthepitch/offsiderule.hpp
    src/onthepitch/cardbook.hpp
+   src/onthepitch/foulseverity.hpp
    src/onthepitch/teaminstructions.hpp
    src/onthepitch/teamphilosophy.hpp
    src/onthepitch/ballphysics.hpp
@@ -515,6 +516,7 @@ set(GAME_SOURCES
    src/onthepitch/refereeprofile.cpp
    src/onthepitch/offsiderule.cpp
    src/onthepitch/cardbook.cpp
+   src/onthepitch/foulseverity.cpp
    src/onthepitch/teaminstructions.cpp
    src/onthepitch/teamphilosophy.cpp
 )
