@@ -77,6 +77,14 @@ public:
   TeamInstructions::State& GetInstructions() { return instructions; }
   const TeamInstructions::State& GetInstructions() const { return instructions; }
 
+  // The live value of a tactic slider after the whole pipeline - base
+  // defaults, philosophy preset, user modifiers, touchline instructions and
+  // reactive mentality. Every gameplay read of a tactic belongs here; the raw
+  // team data bypasses everything the manager is doing.
+  float GetLiveTacticReal(const char* name, float defaultValue) const {
+    return liveTeamTactics.GetReal(name, defaultValue);
+  }
+
   TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
   MatchMentality::e_Mentality GetMentality() const { return mentality; }
   // Outfield shape the team wants while chasing the game.

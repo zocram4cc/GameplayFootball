@@ -457,7 +457,7 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
   Vector3 myMov = player->GetMovement();
 
   const float offenseFactor = AITactics::GetDribbleForwardDrive(
-      teamTactics.userProperties.GetReal("dribble_offensiveness", 0.5f),
+      player->GetTeam()->GetController()->GetLiveTacticReal("dribble_offensiveness", 0.5f),
       AI_GetMindSet(player->GetDynamicFormationEntry().role));
   float powerMultiplier = 1.0f;  // should alter (average) resulting velocity
 
@@ -485,7 +485,8 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
                               // so much (probably because of no opponents :P)
   Vector3 oppGoalPos = Vector3(
       -side * pitchHalfW,
-      myPos.coords[1] * (1.0f - teamTactics.userProperties.GetReal("dribble_centermagnet", 0.5f)) *
+      myPos.coords[1] *
+          (1.0f - team->GetController()->GetLiveTacticReal("dribble_centermagnet", 0.5f)) *
           centerModifierInv,
       0);
 

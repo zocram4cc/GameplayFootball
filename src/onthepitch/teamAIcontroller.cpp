@@ -76,6 +76,14 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   baseTeamTactics.Set("position_offense_microfocus_strength", 0.7f);
   baseTeamTactics.Set("position_defense_microfocus_strength", 0.8f);
 
+  // The non-positional sliders travel through the same pipeline. Their neutral
+  // base is 0.5; the philosophy preset moves it, the user's slider offsets it.
+  baseTeamTactics.Set("team_pressure", 0.5f);
+  baseTeamTactics.Set("counter_attack", 0.5f);
+  baseTeamTactics.Set("support_distance", 0.5f);
+  baseTeamTactics.Set("dribble_offensiveness", 0.5f);
+  baseTeamTactics.Set("dribble_centermagnet", 0.5f);
+
   // how much [-1 * this value .. +1 * this value] offset we can add to the above tactics.
   teamTacticsModMultipliers.Set("position_offense_depth_factor", 0.1f);
   teamTacticsModMultipliers.Set("position_defense_depth_factor", 0.1f);
@@ -87,6 +95,19 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   teamTacticsModMultipliers.Set("position_defense_sidefocus_strength", 0.1f);
   teamTacticsModMultipliers.Set("position_offense_microfocus_strength", 0.15f);
   teamTacticsModMultipliers.Set("position_defense_microfocus_strength", 0.15f);
+  // These four used to be missing, so their user sliders were multiplied by 0.
+  teamTacticsModMultipliers.Set("position_offense_ownhalf_factor", 0.1f);
+  teamTacticsModMultipliers.Set("position_defense_ownhalf_factor", 0.1f);
+  teamTacticsModMultipliers.Set("position_offense_midfieldfocus_strength", 0.15f);
+  teamTacticsModMultipliers.Set("position_defense_midfieldfocus_strength", 0.15f);
+  // At 0.5 the offset formula (user - 0.5) * 2 * multiplier makes the user's
+  // slider land exactly as-is on the neutral 0.5 base, which is how these five
+  // were read before they travelled through the pipeline at all.
+  teamTacticsModMultipliers.Set("team_pressure", 0.5f);
+  teamTacticsModMultipliers.Set("counter_attack", 0.5f);
+  teamTacticsModMultipliers.Set("support_distance", 0.5f);
+  teamTacticsModMultipliers.Set("dribble_offensiveness", 0.5f);
+  teamTacticsModMultipliers.Set("dribble_centermagnet", 0.5f);
 
   offensivenessBias = 0.5f;
   philosophy = TeamPhilosophy::e_Philosophy_Balanced;
@@ -249,7 +270,7 @@ void TeamAIController::Process() {
       const float primaryDistance =
           primaryDefender ? (primaryDefender->GetPosition() - ballPos).GetLength() : 1000.0f;
       const float pressureSetting =
-          team->GetTeamData()->GetTactics().userProperties.GetReal("team_pressure", 0.5f);
+          liveTeamTactics.GetReal("team_pressure", 0.5f);
       const float territory =
           AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
       if (AITactics::ShouldStartZonePressure(pressureSetting, territory, primaryDistance))
@@ -283,7 +304,7 @@ void TeamAIController::Process() {
     }
 
     const float counterSetting =
-        team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
+        liveTeamTactics.GetReal("counter_attack", 0.5f);
     if (AITactics::ShouldLaunchCounter(counterSetting, opponentsInOwnHalf, territory,
                                        random(0.0f, 1.0f))) {
       ApplyAttackingRun();
@@ -304,7 +325,7 @@ void TeamAIController::Process() {
         2) {  // with >= 2 human players, one can do the running manually
       if (match->GetBestPossessionTeamID() == team->GetID()) {
         const float counterAttack =
-            team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
+            liveTeamTactics.GetReal("counter_attack", 0.5f);
         const float neededRating = AITactics::GetAttackingRunThreshold(counterAttack);
 
         // from a certain distance, running is not very useful (can't pass that far)
@@ -343,7 +364,7 @@ void TeamAIController::Process() {
 
   if (match->GetActualTime_ms() % 1500 == 0) {
     const float counterAttack =
-        team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
+        liveTeamTactics.GetReal("counter_attack", 0.5f);
     const float supportLead = 0.5f + AITactics::ClampSetting(counterAttack) * 2.0f;
     forwardSupportPlayer = AI_GetClosestPlayer(
         team,
@@ -416,7 +437,7 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
     role = player->GetFormationEntry().role;
 
   const float counterAttack = AITactics::ClampSetting(
-      team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f));
+      liveTeamTactics.GetReal("counter_attack", 0.5f));
   Vector3 focalPoint = match->GetDesignatedPossessionPlayer()->GetPosition();
   float urgencyBias =
       1.0f - NormalizedClamp((focalPoint - player->GetPosition()).GetLength(), 2.0f, 30.0f);
@@ -1185,7 +1206,7 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
 
 void TeamAIController::ApplyAttackingRun(Player* manualPlayer) {
   const float counterAttack =
-      team->GetTeamData()->GetTactics().userProperties.GetReal("counter_attack", 0.5f);
+      liveTeamTactics.GetReal("counter_attack", 0.5f);
   endApplyAttackingRun_ms =
       match->GetActualTime_ms() + AITactics::GetAttackingRunDuration_ms(counterAttack);
 
@@ -1232,7 +1253,7 @@ void TeamAIController::ApplyTeamPressure() {
 
 void TeamAIController::ApplyZonePressure() {
   const float pressureSetting =
-      team->GetTeamData()->GetTactics().userProperties.GetReal("team_pressure", 0.5f);
+      liveTeamTactics.GetReal("team_pressure", 0.5f);
   zonePressureActive = true;
   zonePressureEndTime_ms =
       match->GetActualTime_ms() + AITactics::GetZonePressureDuration_ms(pressureSetting);

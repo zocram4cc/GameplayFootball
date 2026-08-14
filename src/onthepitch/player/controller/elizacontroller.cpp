@@ -774,7 +774,7 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
   float flockToPossessionPlayerWeight = 0.45f * overallWeight;
 
   const float webScale = AITactics::GetSupportWebScale(
-      team->GetTeamData()->GetTactics().userProperties.GetReal("support_distance", 0.5f));
+      team->GetController()->GetLiveTacticReal("support_distance", 0.5f));
 
   switch (CastPlayer()->GetDynamicFormationEntry().role) {
     case e_PlayerRole_CB:

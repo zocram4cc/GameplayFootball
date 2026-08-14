@@ -3114,7 +3114,7 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
       functionType == e_FunctionType_HighPass) {
     difficultyFactor *= TeamPhilosophy::GetPassErrorMultiplier(
         team->GetController()->GetPhilosophy(),
-        team->GetTeamData()->GetTactics().userProperties.GetReal("support_distance", 0.5f));
+        team->GetController()->GetLiveTacticReal("support_distance", 0.5f));
   }
   if (Verbose())
     printf("short pass stat: %f\n", CastPlayer()->GetStat("technical_shortpass"));
