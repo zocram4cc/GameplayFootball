@@ -216,6 +216,10 @@ void Referee::Process() {
         whistle[1]->Poke(e_SystemType_Audio);
       }
 
+      // Play has stopped: settle any bookings owed from advantages played.
+      if (CardBook::HasPending(cardBook) && buffer.stopTime + 300 == match->GetActualTime_ms())
+        IssueDeferredCards();
+
       // Hold the kickoff for the match entrance. The teams walk out and line up
       // first; the restart is only armed once that is over, so nobody is
       // playing football underneath the entrance. The set piece is prepared
@@ -275,6 +279,33 @@ void Referee::Process() {
 
   if (afterSetPieceRelaxTime_ms > 0)
     afterSetPieceRelaxTime_ms -= 10;
+}
+
+void Referee::IssueDeferredCards() {
+  const std::vector<CardBook::DeferredCard> cards = CardBook::Drain(cardBook);
+  bool anyCardShown = false;
+  for (const CardBook::DeferredCard& card : cards) {
+    if (!card.player)
+      continue;
+    if (card.foulType == 2) {
+      match->SpamMessage("yellow card (advantage played)");
+      card.player->GiveYellowCard(match->GetActualTime_ms() + 4000);
+    } else if (card.foulType == 3) {
+      match->SpamMessage("red card (advantage played)!!!");
+      card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
+    }
+    if (Verbose())
+      printf("referee: deferred card issued (type %i)\n", card.foulType);
+    anyCardShown = true;
+  }
+
+  if (anyCardShown) {
+    // Leave room for the booking ceremony before the restart, like the
+    // directly-whistled card path does.
+    buffer.prepareTime += 6000;
+    buffer.startTime = buffer.prepareTime + 2000;
+    match->StartCutscene("foul", 5.0f);
+  }
 }
 
 void Referee::PrepareSetPiece(e_SetPiece setPiece) {
@@ -451,10 +482,13 @@ bool Referee::CheckFoul() {
       if (match->GetActualTime_ms() - 600 > foul.foulTime) {
         if (match->GetActualTime_ms() - RefereeProfile::GetAdvantageWindow_ms(profile) >
             foul.foulTime) {
-          // cancel foul, advantage took long enough
-          // todo: yellow cards need to be remembered though ;)
+          // The advantage ran its course: the free kick is waived, but Law 5
+          // keeps the sanction - a card-worthy foul is booked at the next
+          // stoppage.
+          CardBook::OnAdvantageExpired(cardBook, foul.foulPlayer, foul.foulType, foul.foulTime);
           foul.foulPlayer = 0;
           foul.foulType = 0;
+          foul.advantage = false;
         } else {
           // calculate if there's advantage still
           if (foul.foulVictim->GetTeam()->GetFadingTeamPossessionAmount() < 1.0) {

@@ -171,6 +171,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/pitch_conditions_test.cpp
   onthepitch/referee_profile_test.cpp
   onthepitch/offside_rule_test.cpp
+  onthepitch/card_book_test.cpp
   onthepitch/penalty_shootout_test.cpp
   onthepitch/crowd_mood_test.cpp
   data/match_analytics_test.cpp
@@ -187,6 +188,7 @@ add_executable(gameplayfootball_simulation_tests
   ${PROJECT_SOURCE_DIR}/src/onthepitch/pitchconditions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/refereeprofile.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/offsiderule.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/cardbook.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/penaltyshootout.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/crowdmood.cpp
   ${PROJECT_SOURCE_DIR}/src/data/matchanalytics.cpp

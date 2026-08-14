@@ -7,6 +7,7 @@
 #define _HPP_REFEREE
 
 #include "../gamedefines.hpp"
+#include "cardbook.hpp"
 #include "defines.hpp"
 #include "refereeprofile.hpp"
 #include "scene/objects/sound.hpp"
@@ -77,6 +78,12 @@ protected:
   std::map<Player*, Vector3> offsidePlayers;  // player, position at time of touch
 
   Foul foul;
+
+  CardBook::Book cardBook;
+
+  // Law 5: cards owed from advantage-eaten fouls are shown at the next
+  // stoppage.
+  void IssueDeferredCards();
 
   RefereeProfile::e_Profile profile;
 
