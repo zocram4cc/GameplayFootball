@@ -4,6 +4,8 @@
 // :)
 
 #include "gameplan.hpp"
+#include "utils/playermodelmap.hpp"
+#include <cstdlib>
 
 #include <cmath>
 
@@ -168,10 +170,33 @@ void GamePlanPage::GoLineupMenu() {
       button->SetFocus();
   }
 
+  // imported player portrait (editable media/players/playerportraits.cfg)
+  lineupPortrait = new Gui2Image(windowManager, "lineup_portrait", 72, 30, 16, 22);
+  this->AddView(lineupPortrait);
+  if (!playerData.empty())
+    ShowLineupPortrait(playerData.at(0)->GetDatabaseID());
+
   lineupMenu->Show();
 }
 
+void GamePlanPage::ShowLineupPortrait(int databaseID) {
+  if (!lineupPortrait) return;
+  const std::string& path = GetPlayerPortrait(databaseID);
+  if (path.empty()) {
+    lineupPortrait->Hide();
+    return;
+  }
+  lineupPortrait->LoadImage(path);
+  lineupPortrait->Show();
+}
+
 void GamePlanPage::LineupMenuOnClick(Gui2Button* button) {
+  // "playerbutton_id<N>" carries the database id
+  const std::string& name = button->GetName();
+  size_t at = name.find("_id");
+  if (at != std::string::npos)
+    ShowLineupPortrait(atoi(name.c_str() + at + 3));
+
   Gui2Button* selected = lineupMenu->GetToggledButton(button);
   if (selected) {
     // switch players

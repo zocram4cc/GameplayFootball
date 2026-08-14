@@ -360,6 +360,12 @@ protected:
   unsigned long introCutsceneDuration_ms = 0;
   // imported PES camerawork ("intro_cutscene_track" .camtrack path)
   CamTrack introCamTrack;
+  // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
+  // track's authored goal side (+1/-1 from its mean x) for mirroring
+  std::vector<CamTrack> goalCamTracks;
+  std::vector<int> goalCamAuthoredSides;
+  // per-team chant loops (config "team1_chant"/"team2_chant"), gained up on goals
+  boost::intrusive_ptr<Sound> teamChant[2];
 
   std::shared_ptr<AnimCollection> anims;
 

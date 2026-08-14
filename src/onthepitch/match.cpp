@@ -180,6 +180,30 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     if (trackFile.good() && introCamTrack.Load(trackFile) && introSeconds <= 0.0f)
       introSeconds = introCamTrack.GetDurationSeconds();
   }
+
+  // PES goal camerawork pool: any .camtrack in the goal cutscene directory
+  {
+    std::string goalDir =
+        GetConfiguration()->Get("goal_cutscene_dir", "media/cutscenes/goal");
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(goalDir, ec)) {
+      if (entry.path().extension() != ".camtrack") continue;
+      std::ifstream file(entry.path());
+      CamTrack track;
+      if (file.good() && track.Load(file)) {
+        float meanX = 0.0f;
+        int samples = std::min(30, track.GetFrameCount());
+        for (int s = 0; s < samples; s++)
+          meanX += track.Sample((float)s).position[0];
+        goalCamAuthoredSides.push_back(meanX >= 0.0f ? 1 : -1);
+        goalCamTracks.push_back(track);
+      }
+    }
+    if (!goalCamTracks.empty())
+      Log(e_Notice, "Match", "Match",
+          "Loaded " + int_to_str((int)goalCamTracks.size()) +
+              " goal camera tracks");
+  }
   if (introSeconds > 0.0f) {
     introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
     introCutsceneEnd_ms =
@@ -293,6 +317,27 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   crowd02->SetLoop(true);
   crowd02->Poke(e_SystemType_Audio);
   GetScene3D()->AddObject(crowd02);
+
+  // per-team chants from the import pack (any format the sound manager
+  // loads; the pack ships OGG)
+  for (int t = 0; t < 2; t++) {
+    std::string chantFile = GetConfiguration()->Get(
+        ("team" + int_to_str(t + 1) + "_chant").c_str(), "");
+    if (chantFile.empty() || !std::filesystem::exists(chantFile)) continue;
+    boost::intrusive_ptr<Resource<SoundBuffer>> chantBuffer =
+        ResourceManagerPool::GetInstance()
+            .GetManager<SoundBuffer>(e_ResourceType_SoundBuffer)
+            ->Fetch(chantFile, true, true);
+    teamChant[t] = boost::static_pointer_cast<Sound>(
+        ObjectFactory::GetInstance().CreateObject(
+            "teamchant" + int_to_str(t), e_ObjectType_Sound));
+    GetScene3D()->CreateSystemObjects(teamChant[t]);
+    teamChant[t]->SetSoundBuffer(chantBuffer);
+    teamChant[t]->SetGain(0.0f);
+    teamChant[t]->SetLoop(true);
+    teamChant[t]->Poke(e_SystemType_Audio);
+    GetScene3D()->AddObject(teamChant[t]);
+  }
 
   // match params
 
@@ -1288,21 +1333,52 @@ void Match::UpdateIngameCamera() {
     }
 
   } else {
-    // scorer cam
+    // scorer cam: PES's own goal camerawork when tracks are available,
+    // mirrored to whichever goal was actually scored in
+    bool trackApplied = false;
+    if (!goalCamTracks.empty() && lastGoalTeamID >= 0) {
+      int pick = (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
+                 (int)goalCamTracks.size();
+      const CamTrack& track = goalCamTracks[pick];
+      CamTrackFrame frame = track.Sample(goalScoredTimer * 0.03f);
+      int scoredSide = -teams[lastGoalTeamID]->GetSide();
+      if (scoredSide != goalCamAuthoredSides[pick]) {
+        frame.position[0] = -frame.position[0];
+        frame.rotation[1] = -frame.rotation[1];
+        frame.rotation[2] = -frame.rotation[2];
+      }
+      cameraNodePosition = Vector3(frame.position[0], frame.position[1],
+                                   frame.position[2]);
+      cameraNodeOrientation = QUATERNION_IDENTITY;
+      cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
+                            frame.rotation[2], frame.rotation[3]);
+      cameraFOV = frame.fov;
+      cameraNearCap = std::max(0.1f, frame.near);
+      cameraFarCap = frame.far;
+      trackApplied = true;
+    }
 
     Vector3 targetPos = ball->Predict(0).Get2D();
     if (lastGoalScorer) {
       targetPos = lastGoalScorer->GetPosition();
     }
 
-    radian rot = (float)goalScoredTimer * 0.0005f;
-    cameraOrientation.SetAngleAxis(0.45f * pi, Vector3(1, 0, 0));
-    cameraNodeOrientation.SetAngleAxis(rot, Vector3(0, 0, 1));
-    cameraNodePosition = targetPos + Vector3(0, -1, 0).GetRotated2D(rot) * 15.0f + Vector3(0, 0, 3);
-    cameraFOV = 35.0f;
+    if (!trackApplied) {
+      radian rot = (float)goalScoredTimer * 0.0005f;
+      cameraOrientation.SetAngleAxis(0.45f * pi, Vector3(1, 0, 0));
+      cameraNodeOrientation.SetAngleAxis(rot, Vector3(0, 0, 1));
+      cameraNodePosition =
+          targetPos + Vector3(0, -1, 0).GetRotated2D(rot) * 15.0f + Vector3(0, 0, 3);
+      cameraFOV = 35.0f;
 
-    cameraNearCap = 1;
-    cameraFarCap = 220;
+      cameraNearCap = 1;
+      cameraFarCap = 220;
+    }
+
+    // the scoring team's chant swells while the goal is being celebrated
+    if (lastGoalTeamID >= 0 && teamChant[lastGoalTeamID])
+      teamChant[lastGoalTeamID]->SetGain(
+          0.9f * (1.0f - NormalizedClamp(goalScoredTimer, 6000, 9000)));
 
     // Fire the replay shortly after the goal: the 10s buffer then covers the
     // buildup and the finish. Firing at six seconds meant the replay was mostly
@@ -1427,8 +1503,14 @@ void Match::Process() {
     actualTime_ms += 10;
     if (IsGoalScored())
       goalScoredTimer += 10;
-    else
+    else {
+      if (goalScoredTimer != 0) {
+        // celebration over: fade the chants back out
+        for (int t = 0; t < 2; t++)
+          if (teamChant[t]) teamChant[t]->SetGain(0.0f);
+      }
       goalScoredTimer = 0;
+    }
 
     if (IsInPlay() && !IsInSetPiece())
       GetMatchData()->AddPossessionTime_10ms(designatedPossessionPlayer->GetTeamID());

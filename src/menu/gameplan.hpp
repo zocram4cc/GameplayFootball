@@ -47,6 +47,7 @@ public:
 
   void GoLineupMenu();
   void LineupMenuOnClick(Gui2Button* button);
+  void ShowLineupPortrait(int databaseID);
   void SaveLineup();
 
   std::string GetFormationCaption() const;
@@ -85,6 +86,7 @@ protected:
   std::unique_ptr<TeamData> standaloneTeamData;
 
   GamePlanSubMenu* lineupMenu;
+  Gui2Image* lineupPortrait = nullptr;
   GamePlanSubMenu* tacticsMenu;
   GamePlanSubMenu* philosophyMenu;
   GamePlanSubMenu* formationMenu;
