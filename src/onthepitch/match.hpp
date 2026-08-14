@@ -7,6 +7,7 @@
 #define _HPP_MATCH
 
 #include <fstream>
+#include <mutex>
 #include "utils/camtrack.hpp"
 #include <iostream>
 #include <memory>
@@ -263,6 +264,8 @@ public:
   // Requests a substitution for `teamID`; returns the rule check result and
   // performs the swap when it is accepted.
   Substitutions::e_Result RequestSubstitution(int teamID, Player* playerOut, Player* playerIn);
+  // drains queued swaps; call only under GameTask's put-buffer mutex
+  void ExecutePendingSubstitutions();
 
   float GetMatchDurationFactor() const { return matchDurationFactor; }
   float GetMatchDifficulty() const { return matchDifficulty; }
@@ -336,6 +339,9 @@ protected:
 
   CoachMode::Setup coachSetup;
   Substitutions::State substitutionState;
+  struct PendingSubstitution { int teamID; Player* playerOut; Player* playerIn; };
+  std::vector<PendingSubstitution> pendingSubstitutions;
+  std::mutex pendingSubstitutionsMutex;
   std::unique_ptr<Team> teams[2];
 
   std::unique_ptr<Officials> officials;

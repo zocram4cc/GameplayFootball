@@ -898,11 +898,31 @@ Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut
   if (result != Substitutions::e_Result_Accepted)
     return result;
 
-  if (!team->Substitute(playerOut, playerIn))
-    return Substitutions::e_Result_PlayerNotAvailable;
-
-  Substitutions::Commit(substitutionState, teamID);
+  // rebuilding a humanoid races the graphics put phase, so the swap is
+  // queued and executed under the put-buffer mutex (ExecutePendingSubstitutions)
+  std::lock_guard<std::mutex> lock(pendingSubstitutionsMutex);
+  pendingSubstitutions.push_back({teamID, playerOut, playerIn});
   return Substitutions::e_Result_Accepted;
+}
+
+void Match::ExecutePendingSubstitutions() {
+  std::vector<PendingSubstitution> pending;
+  {
+    std::lock_guard<std::mutex> lock(pendingSubstitutionsMutex);
+    pending.swap(pendingSubstitutions);
+  }
+  for (const auto& sub : pending) {
+    Team* team = GetTeam(sub.teamID);
+    // conditions may have changed since the request; re-validate quietly
+    const Substitutions::SquadView squad =
+        team->DescribeSwap(sub.playerOut, sub.playerIn);
+    if (Substitutions::Validate(substitutionState, sub.teamID, squad,
+                                !IsInPlay()) != Substitutions::e_Result_Accepted)
+      continue;
+    if (!team->Substitute(sub.playerOut, sub.playerIn))
+      continue;
+    Substitutions::Commit(substitutionState, sub.teamID);
+  }
 }
 
 void Match::ProcessAutoSubstitutions() {

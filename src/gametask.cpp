@@ -131,6 +131,7 @@ void GameTask::ProcessPhase() {
     match->Process();
 
     matchPutBufferMutex.lock();
+    match->ExecutePendingSubstitutions();
     match->PreparePutBuffers();
     matchPutBufferMutex.unlock();
   }
