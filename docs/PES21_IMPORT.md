@@ -141,6 +141,11 @@ Until that lands, imported heads render statically.
 - `stadium_to_gf.py`: PES stadium scene fmdl → multi-material ASE + PNG
   textures + `.object`; the engine's `stadium_object` config key selects any
   stadium directory. Verified: the 4CC st060 (31 geoms, 31 textures).
+  **Generated ASEs must include MESH_NORMALS** (the loader fatals without) —
+  `ase_util.py` provides them for all generators. The engine's text ASE
+  parser is slow on big scenes (a 146MB stadium did not finish in 14 min),
+  so `--max-tris` caps the budget (60k ≈ 26MB ≈ ~2 min) until the parser is
+  optimized — an engine-side TODO.
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads (PES's 1.9m row spacing) — silhouette texture + billboard
   strips hooked into the stadium `.object`.
@@ -159,11 +164,17 @@ fullbody + its own vertex-color map per player.
 
 ## Animation names
 
-mtar entry hashes are `StrCode32` of the bare animation name — recovered so
-far: the `idle`/`idle_045/090/135/180` family (`anim_names.txt`, used
-automatically by `mtar.py` when extracting). The rest of the vocabulary is
-opaque (likely romaji codes); growing the dictionary is incremental — add a
-name to `anim_names.txt` and re-extract.
+mtar entry hashes are `StrCode32` of the bare animation name — and the
+dictionary is **complete: 4,389/4,389 resolve** (`anim_names.txt`, mined by
+`mine_anim_names.py`). The canonical source is
+`common/anime/Mbinfo/json/anim_infos.json` (plain JSON, `file_name` fields);
+`PES2021.exe` strings cover the remainder. Names are self-classifying:
+`dm_goal_*` goal celebrations (archer, ivoryCoastDance, Head_sliding),
+`dm_miss_*` dejection, `dm_oop_*` cutscene one-offs, `assistant_*` linesman
+flags, plus the full grammar
+`<action>_<startSpeed>_<endSpeed>_<height>_<angle>_<modifiers>`. The pack's
+converted anims carry these real names, and the installed celebration set
+uses genuine `dm_goal_*` clips.
 
 ## Cutscene camerawork (investigated)
 
