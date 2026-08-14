@@ -72,6 +72,9 @@ protected:
   bool keeperTouchedBall;
   // Whether the keeper has already been hauled back to this goal for this kick.
   bool keeperHauledBack;
+  // Whether the taker has actually struck the ball yet. Until he has, the ball
+  // sitting still on the spot must not be read as a kick that has finished.
+  bool ballStruck;
   // Outcome rolled from the two players' stats before the kick is taken.
   PenaltyShootout::e_Outcome plannedOutcome;
   // Side of the pitch the shootout is held at (-1 or 1), drawn at the start.

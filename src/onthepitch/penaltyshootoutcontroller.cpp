@@ -21,6 +21,9 @@ const float penaltySpotDistance = 11.0f;
 const float ballAtRestSpeed = 0.6f;
 // The keeper counts as having the ball inside this radius.
 const float keeperGrabDistance = 1.2f;
+// How long the taker gets to actually strike the ball before the kick is
+// abandoned. Generous: it only exists so a stuck taker cannot hang the phase.
+const unsigned long runUpTimeout_ms = 12000;
 
 std::string OutcomeText(PenaltyShootout::e_Outcome outcome) {
   switch (outcome) {
@@ -54,6 +57,8 @@ void PenaltyShootoutController::Reset() {
   takenMask[1] = 0;
   currentTaker = nullptr;
   keeperTouchedBall = false;
+  keeperHauledBack = false;
+  ballStruck = false;
   shootoutEndSide = 1;
   plannedOutcome = PenaltyShootout::e_Outcome_Pending;
 }
@@ -149,8 +154,10 @@ void PenaltyShootoutController::SetUpKick() {
   match->ResetSituation(spot);
   match->GetBall()->ResetSituation(spot);
   match->SetBallRetainer(nullptr);
+  match->SetGoalScored(false);
   keeperTouchedBall = false;
   keeperHauledBack = false;
+  ballStruck = false;
 
   // Where this taker puts it comes from his stats; the engine's own penalty set
   // piece then plays the kick out with the real shot and dive animations.
@@ -304,8 +311,15 @@ PenaltyShootout::KickObservation PenaltyShootoutController::ObserveBall() {
 
   observation.ballLeftField = std::fabs(ballPos.coords[0]) > pitchHalfW + goalDepth ||
                               std::fabs(ballPos.coords[1]) > pitchHalfH;
-  // Only counts once the ball has actually been struck.
-  observation.ballStopped = match->GetActualTime_ms() > kickStartTime_ms + 1200 &&
+
+  // "The ball stopped" only means anything once it has been struck. The taker
+  // needs a run-up, so for the first second or so of a kick the ball is sitting
+  // motionless on the spot — reading that as a finished kick scored a MISS
+  // before anyone had touched it. Wait for it to leave the spot.
+  if ((ballPos - GetPenaltySpot()).GetLength() > 0.5f ||
+      match->GetBall()->GetMovement().GetLength() > 2.0f)
+    ballStruck = true;
+  observation.ballStopped = ballStruck &&
                             match->GetBall()->GetMovement().GetLength() < ballAtRestSpeed;
 
   return observation;
@@ -359,8 +373,10 @@ void PenaltyShootoutController::Process() {
   if (IsFinished())
     return;
 
-  // While a kick is live, let it play out on the pitch. The rolled outcome is
-  // what gets recorded; watching the ball is only what paces the sequence.
+  // While a kick is live, let it play out on the pitch. What the ball does is
+  // what gets recorded: the roll in SetUpKick only aims the kick, it does not
+  // decide it. Recording the roll instead was how the tally came to disagree
+  // with what the camera plainly showed.
   if (state.phase == PenaltyShootout::e_Phase_Execution) {
     // One of the two keepers is defending the end he did not defend during the
     // match, so his instinct is to walk back to his own goal. He is only hauled
@@ -375,12 +391,34 @@ void PenaltyShootoutController::Process() {
       keeperHauledBack = true;
     }
 
-    const PenaltyShootout::e_Outcome observed =
-        PenaltyShootout::ObserveKick(ObserveBall(), match->GetActualTime_ms() - kickStartTime_ms);
+    const PenaltyShootout::KickObservation observation = ObserveBall();
+    // The kick clock only runs once the ball has been struck; before that the
+    // taker is still walking up, and a run-up longer than the timeout would
+    // otherwise be recorded as a miss.
+    const unsigned long sinceKick_ms =
+        ballStruck ? match->GetActualTime_ms() - kickStartTime_ms : 0;
+    PenaltyShootout::e_Outcome observed = PenaltyShootout::ObserveKick(observation, sinceKick_ms);
+
+    // Watchdog for a taker who never strikes the ball at all, so the shootout
+    // cannot wedge in the execution phase.
+    if (observed == PenaltyShootout::e_Outcome_Pending && !ballStruck &&
+        match->GetActualTime_ms() - kickStartTime_ms >= runUpTimeout_ms)
+      observed = PenaltyShootout::e_Outcome_Miss;
+
     if (observed == PenaltyShootout::e_Outcome_Pending)
       return;
 
-    FinishKick(plannedOutcome);
+    // The ball's own position at the moment of the verdict, so a run's log can
+    // be checked against what the camera showed without trusting the classifier.
+    const Vector3 verdictPos = match->GetBall()->Predict(0);
+    Log(e_Notice, "PenaltyShootoutController", "Process",
+        "verdict " + OutcomeText(observed) + " (aimed for " + OutcomeText(plannedOutcome) +
+            ") ball at x=" + real_to_str(verdictPos.coords[0]) + " y=" +
+            real_to_str(verdictPos.coords[1]) + " z=" + real_to_str(verdictPos.coords[2]) +
+            " goalline x=" + real_to_str(GetGoalX()) +
+            (observed != plannedOutcome ? " [MISMATCH: recording what the ball did]" : ""));
+
+    FinishKick(observed);
     nextEventTime_ms =
         match->GetActualTime_ms() + PenaltyShootout::GetPhaseDuration_ms(state.phase);
     return;

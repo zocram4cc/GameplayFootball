@@ -1705,17 +1705,19 @@ void Match::Process() {
 
     // check for goals
 
-    // The shootout controller scores its own kicks; the match-level counter
-    // stands down for the penalties phase.
+    // The goal line is checked in every phase — the shootout needs to know
+    // whether the ball actually crossed it, since that is what its tally is
+    // built on. What the penalties phase suppresses is only the *scoring*
+    // below: the shootout keeps its own count and the match score is frozen.
     const bool shootoutOwnsScoring = matchPhase == e_MatchPhase_Penalties;
-    bool t1goal = !shootoutOwnsScoring && CheckForGoal(teams[0]->GetSide());
-    bool t2goal = !shootoutOwnsScoring && CheckForGoal(teams[1]->GetSide());
+    bool t1goal = CheckForGoal(teams[0]->GetSide());
+    bool t2goal = CheckForGoal(teams[1]->GetSide());
     if (t1goal)
       ballIsInGoal = true;
     if (t2goal)
       ballIsInGoal = true;
 
-    if (IsInPlay()) {
+    if (IsInPlay() && !shootoutOwnsScoring) {
       if (t1goal) {
         matchData->SetGoalCount(teams[1]->GetID(), matchData->GetGoalCount(1) + 1);
         scoreboard->SetGoalCount(1, matchData->GetGoalCount(1));
