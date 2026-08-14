@@ -81,7 +81,8 @@ MATERIAL_BLOCK = (
     "\t\t\t*MAP_TYPE Screen\n\t\t}\n")
 
 
-def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None):
+def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
+            max_tris=None):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -92,7 +93,18 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None):
     vertices = []       # (pos, uv, color)
     faces = []
     index = {}
-    for mesh in fmdl.meshes:
+    # keep the biggest meshes within the triangle budget: the engine's
+    # fullbody preparation is quadratic in vertex count, so huge imports
+    # must be capped (decorative meshes drop first)
+    meshes = sorted(fmdl.meshes, key=lambda m: -len(m.faces))
+    if max_tris:
+        kept, used = [], 0
+        for m in meshes:
+            if used + len(m.faces) <= max_tris:
+                kept.append(m)
+                used += len(m.faces)
+        meshes = kept
+    for mesh in meshes:
         for face in mesh.faces:
             tri = []
             for vertex in face.vertices:
@@ -214,8 +226,10 @@ if __name__ == "__main__":
                         default="media/objects/players/textures/kit_template.png")
     parser.add_argument("--base", default=None,
                         help="stock fullbody.ase to composite the import over")
+    parser.add_argument("--max-tris", type=int, default=None,
+                        help="triangle budget (biggest meshes kept first)")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
-                           args.base)
+                           args.base, args.max_tris)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))

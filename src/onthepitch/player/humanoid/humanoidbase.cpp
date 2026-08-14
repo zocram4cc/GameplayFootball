@@ -290,10 +290,12 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
 
     int elementOffset = meshRef.size / GetTriangleMeshElementCount();  // was: fullbodyMeshSize
 
-    // map is used for duplicate 'search'
     std::vector<std::vector<Vector3>> uniqueVertices;
 
-    // generate list of unique vertices and an array linking vertexIDs with uniqueVertexIDs
+    // generate list of unique vertices and an array linking vertexIDs with
+    // uniqueVertexIDs. keyed lookup: the old linear scan was O(n^2) and made
+    // imported high-poly bodies take minutes to prepare.
+    std::map<std::pair<Vector3, Vector3>, int> uniqueLookup;
     int* uniqueIndices = new int[elementOffset / 3];
     for (int v = 0; v < elementOffset; v += 3) {
       std::vector<Vector3> elementalVertex;
@@ -301,23 +303,18 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
         elementalVertex.push_back(Vector3(meshRef.data[v + e * elementOffset],
                                           meshRef.data[v + e * elementOffset + 1],
                                           meshRef.data[v + e * elementOffset + 2]));
-        // test: if (e == 2) elementalVertex.at(elementalVertex.size() - 1) += 0.2f;
       }
 
-      // see if this one already exists; if not, add
-      bool duplicate = false;
-      int index = 0;
-      for (unsigned int i = 0; i < uniqueVertices.size(); i++) {
-        if (uniqueVertices[i][0] == elementalVertex[0] &&
-            uniqueVertices[i][2] == elementalVertex[2]) {  // texcoord also needs to be shared
-          duplicate = true;
-          index = i;
-          break;
-        }
-      }
-      if (!duplicate) {
+      // position + texcoord identify a unique vertex
+      auto key = std::make_pair(elementalVertex[0], elementalVertex[2]);
+      auto found = uniqueLookup.find(key);
+      int index;
+      if (found != uniqueLookup.end()) {
+        index = found->second;
+      } else {
         uniqueVertices.push_back(elementalVertex);
-        index = uniqueVertices.size() - 1;
+        index = (int)uniqueVertices.size() - 1;
+        uniqueLookup[key] = index;
       }
       uniqueIndices[v / 3] = index;
     }
