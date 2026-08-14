@@ -9,6 +9,10 @@ sources here are a local install and 4cc aesthetic exports.
 Everything lives in `tools/pes21_import/`; converted content is written to
 `data/imports/<pack>/` (git-ignored — packs are generated, not source).
 
+**Ground rule:** when import fidelity forces a choice between the PES asset
+and the engine, the PES side wins — extend the open-source engine rather than
+downgrade the asset.
+
 ## The two sides
 
 ### GameplayFootball (target)
@@ -16,23 +20,36 @@ Everything lives in `tools/pes21_import/`; converted content is written to
 | Thing | Format | Where |
 |---|---|---|
 | Player model | 3ds Max ASE, one `GEOMOBJECT` per body part (`pelvis`, `trunk`, `head`, `upperarm_left`…) referenced by an `.object` XML | `data/media/objects/players/` |
-| Skeleton | 15 implicit nodes: `player` (root motion) + body, middle, neck, L/R shoulder/elbow/thigh/knee/ankle | encoded in the animations |
-| Animation | plain text: one CSV line per node — `name,frame,qx,qy,qz,qw,frame,…`; the `player` line carries `frame,x,y,z` root positions; optional `extension,football,…` ball keys; XML-ish metadata tail (`<type>`, touch variables) | `data/media/animations/**/*.anim`, loader `src/utils/animation.cpp` (`Animation::Load`) |
+| Skeleton | 14 nodes: `player` (root motion) + body, middle, neck, L/R shoulder/elbow/thigh/knee/ankle, bind pose in `player.object` (Z up, faces −Y, 10 ms frames) | `data/media/objects/players/player.object` |
+| Animation | plain text: one CSV line per node — `name,frame,qx,qy,qz,qw,…`; the `player` line carries `frame,x,y,z` root positions; optional `extension,football,…` ball keys; XML metadata tail (`<type>`…) | `data/media/animations/**/*.anim`, loader `src/utils/animation.cpp` |
 | Billboards | PNG textures | `data/media/textures/adboards/` |
 | Audio | 44.1 kHz WAV | `data/media/sounds/` |
 | Portraits | none in-engine yet; packs store PNG, menu wiring is future work | `data/imports/<pack>/portraits/` |
 
-### PES 2021 (source)
+### PES 2021 (source) — all formats DECODED
 
 | Thing | Format | Notes |
 |---|---|---|
-| Containers | CriPak `.cpk` (`@UTF` tables + CRILAYLA) | `cpk.py` extracts, pure Python — verified on `dt13_all.cpk` (416 files) |
-| Body animations | `.mtar` motion archives, each entry a `.gani` blob keyed by a 32-bit name hash | `mtar.py` — verified: 10 archives, **4,389 animations** |
-| Animation | Fox Engine `.gani`: MOTION chunk, track table (body anims: consistently 27 tracks = the animated body bones), compressed curves | `gani.py` surveys structure; **curve decoding is the open problem** (see below) |
-| Rig | `.frig` (`body_skel.frig`, `face_skel.frig`, hand rigs) — group metadata; authoritative bone list+bind pose comes from any `.fmdl`'s bone table | |
-| Player model | Fox Engine `.fmdl` + `.dds` texture set | parsed by the 4cc `pes-fmdl` Blender addon's `FmdlFile.py`, which runs fine outside Blender |
-| Face expressions | `face_skel.frig` + `FHSequence` tables (`Facebase.bin`, `Faceadd.bin`) + face `.gani`s (59 tracks) | required for full player import — flagged, not started |
+| Containers | CriPak `.cpk` (`@UTF` tables + CRILAYLA) | `cpk.py`, pure Python — verified on `dt13_all.cpk` (416 files) |
+| Body animations | `.mtar` motion archives, 16-byte entries keyed by a 48-bit GZ path hash | `mtar.py` — 10 archives, **4,389 animations** |
+| Animation | Fox Engine `.gani` v1 (GZ generation): per-file TrackHeader, 15 units / 27 segments for the body rig, quantized-quaternion bitstream + AnimHalf vector curves | `gani.py` — **full curve decoder, 4,389/4,389 decode clean** |
+| Rig | `.frig`: unit records + a bone table of `StrCode32` hashes; `body_skel.frig` maps the 27 gani tracks onto 20 bones (`RIG_ROOT`, motion node, `dsk_hip`, `sk_*`) | decoded; the map is baked into `retarget.py` |
+| Name hashes | Fox `StrCode` = CityHash **1.0** (`CityHash64WithSeeds(str+'\0', K2, (sbyte)str[0]*0x10000+len)`); pip `cityhash` is CityHash 1.1 and gives wrong values | `strcode.py` — own CityHash 1.0 port, verified: `strcode32("MOTION")` = gani node id `0x08908348`, `strcode32("RIG_ROOT")` = unit-0 hash, all 27 frig bone hashes resolve |
+| Player model | Fox Engine `.fmdl` + `.dds` texture set | `fmdl_to_ase.py` via the 4cc `pes-fmdl` parser |
+| Face expressions | `face_skel.frig` (59 tracks) + `FHSequence` tables + face `.gani`s | decodable with the same code; **needs an engine-side face rig** (see below) |
 | Audio | `.adx`/`.hca` in sound cpks | ffmpeg decodes ADX directly |
+
+## Gani format details (as implemented)
+
+- Positions are IEEE half-floats with the exponent rebased +7 (×128), in
+  millimetres: metres = raw/128000. Root motion is split: `RIG_ROOT` carries
+  XZ (+yaw quat), the motion node carries Y, bind-relative.
+- Frames are ~1/59.94 s; `frame_scale` (byte at TrackHeader+0x10) is a
+  per-delta tick multiplier.
+- Chain units (legs seg0, arms seg1) hold auxiliary IK vec3 channels, often
+  0xFF-filled — skipped by the converter.
+- Track→bone order comes from `body_skel.frig` and is constant across all
+  body ganis (`retarget.PES_TRACK_MAP`).
 
 ## What works today
 
@@ -43,55 +60,58 @@ python3 tools/pes21_import/cpk.py dt13_all.cpk out/
 # 2. List / extract a motion archive
 python3 tools/pes21_import/mtar.py out/.../body_anime_file0.mtar ganis/
 
-# 3. Survey a .gani (size, motion hash, track count/offsets)
+# 3. Decode + validate a .gani (curves, all 27 tracks)
 python3 tools/pes21_import/gani.py ganis/anim_xxxxxxxx.gani
 
-# 4. Convert a full-body .fmdl into a GameplayFootball ASE
+# 4. Convert one gani or a whole directory to GF .anim
+python3 tools/pes21_import/gani_to_anim.py ganis/anim_x.gani out.anim
+python3 tools/pes21_import/gani_to_anim.py --batch ganis/ data/imports/pes21/animations/body_anime_file0/
+# verified: 4,389/4,389 converted, 0 failures
+
+# 5. Visual check: render an .anim as a stick-figure filmstrip (GF FK)
+python3 tools/pes21_import/anim_preview.py out.anim strip.png
+
+# 6. Convert a full-body .fmdl into a GameplayFootball ASE
 python3 tools/pes21_import/fmdl_to_ase.py model.fmdl out.ase \
     --fmdl-lib "<4cc Blender pack>/scripts/addons/pes-fmdl"
-# verified: an HDG Helldiver (12.5k verts) → 11,778 faces across 10 body parts
 
-# 5. Package portraits / adboards / chants into a pack
+# 7. Package portraits / adboards / chants into a pack
 python3 tools/pes21_import/package_assets.py --export "HDG VGL26 AET" --pack data/imports/hdg
-# verified: 23 portraits → data/imports/hdg/portraits/*.png
 ```
 
-The skeleton bridge is `retarget.py`: a PES-bone → GF-node map that drives mesh
-segmentation now and animation retargeting later. It is data — refine it there,
-not in code.
+The retarget (in `gani_to_anim.py`, data in `retarget.py`): decoded PES locals
+are FK'd over the PES bind skeleton (world-aligned bind frames), mapped
+Fox→GF coordinates `(x,y,z)→(x,−z,y)`, then GF nodes are solved — direct
+orientation match for body/middle/neck/ankles, aim-plus-hinge-roll for
+thighs/shoulders, pure hinge angles for knees (+X) and elbows (−X).
 
 ## Open problems, in priority order
 
-1. **`.gani` curve decoding.** Structure is mapped (header, MOTION chunk, track
-   table); the per-track curve encoding (quantized quaternion keys) is not.
-   The MGSV modding community (FoxKit) has partial GAni research to draw on.
-   Until then no PES animation can be converted. Everything downstream of the
-   curves — the `.anim` writer, root-motion extraction from `sk_hip`, metadata
-   classification (which anims are celebrations vs entrances vs play, from
-   `AnimeTable/bin/*.bin`) — is straightforward once keys are readable.
-2. **Name hash dictionary.** mtar entries and gani tracks are keyed by a Fox
-   32-bit name hash. `strcode.py` has a placeholder polynomial + dictionary
-   matcher; the real algorithm should be lifted from community tooling and
-   validated against bone names harvested from `.fmdl` files (they are plain
-   text there). With it, animations get real names instead of `anim_<hash>`.
-3. **Engine-side model hookup.** `PlayerData` needs a `model_url` (planned in
-   TECHNICAL_ROADMAP "Arbitrary Model Loading") so a converted `.ase`/`.object`
-   replaces the shared fullbody per player. `Team::FetchKit` /
-   `ObjectLoader::LoadObject` are the seams.
-4. **Face skeleton + expressions** (user requirement): bring `face_skel` and
-   the FHSequence expression system across once body animation conversion
-   works.
-5. **Stadiums**: PES stadium models are large multi-`.fmdl` scenes in other
-   cpks; the fmdl→ase path applies, but scene assembly, lighting and collision
-   are their own project. Billboards/chants already have a home
-   (`textures/adboards`, `sounds/`).
+1. **Animation naming/classification.** mtar entries are keyed by 48-bit GZ
+   path hashes (`strcode.gz_hash` — full `/Assets/...` path, extension
+   dropped). A dictionary of PES anime paths (or `AnimeTable/bin/*.bin`)
+   would separate celebrations / entrances / play and give real names;
+   until then output is `anim_<hash>.anim` grouped per source mtar.
+2. **Engine-side hookup.** Converted anims need `<type>`/touch metadata to
+   join the anim collection (celebrations are the easiest entry point);
+   models need `PlayerData.model_url` (`Team::FetchKit` /
+   `ObjectLoader::LoadObject` are the seams).
+3. **Face rig in the engine** (fidelity rule: engine change, not asset
+   drop): add face bone nodes + a `face.anim` channel so `face_skel.frig` +
+   FHSequence expressions can drive imported heads.
+4. **Richer body skeleton**: PES animates clavicles, hands, spine chain
+   (20 bones vs GF's 14 nodes). Candidate engine extension to stop
+   collapsing those into the coarse rig.
+5. **Stadiums**: multi-`.fmdl` scenes; fmdl→ase applies, scene assembly is
+   its own project. Billboards/chants already have a home.
 
 ## Pack layout
 
 ```
 data/imports/<pack>/
-  models/<player>.ase        converted full-body models
+  animations/<source-mtar>/<anim>.anim
+  models/<player>.ase
   portraits/<player>.png
-  adboards/<name>.png        copy or reference from stadium config
+  adboards/<name>.png
   chants/<name>.wav
 ```
