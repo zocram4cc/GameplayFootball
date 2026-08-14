@@ -99,6 +99,43 @@ Fox→GF coordinates `(x,y,z)→(x,−z,y)`, then GF nodes are solved — direct
 orientation match for body/middle/neck/ankles, aim-plus-hinge-roll for
 thighs/shoulders, pure hinge angles for knees (+X) and elbows (−X).
 
+## Installed content (engine wiring)
+
+Converted animations join the live game via
+`tools/pes21_import/install_anims.py`, which copies a pack `.anim` into the
+anim collection with the metadata the target class needs. First wired class:
+celebrations (`--class happy_normal|happy_extreme|sad_normal` →
+`<type>special` + the specialvar pair the controller queries). Installed
+files are named `pes_*.anim` and git-ignored. Verified: the full-match
+headless smoke loads all installed PES anims into the collection and plays a
+match with a goal, no errors.
+
+## Face expressions (decoded; engine rig designed)
+
+- `face_skel.frig` parses with `frig.py` (works for both rigs — magic is
+  `strcode32("Face")`/`strcode32("HumanBody")`): 32 units / 59 tracks over
+  31 face bones, 29 resolved to `skf_*` muscle names from fmdl bone tables.
+- Expressions are **named** loose ganis in dt13
+  (`FoxAnim/Face/Animations/{Base,Add}`): 166 base + 15 additive, from
+  `smil_soft` and `angr_brwnit_*` to context poses (`base_g_shoot`,
+  `base_d_end_cup_warai`). All 181 decode with the standard gani decoder.
+- `face_to_anim.py` exports them to an open text format
+  (`data/imports/pes21/faces_anim/*.faceanim`): `skf_bone,frame,qx,qy,qz,qw`
+  rotation lines and `skf_bone_pos,...` translation lines, metres.
+- FHSequence bins (`Facebase.bin`/`Faceadd.bin`) sequence those expressions
+  in-game; the expression names are already self-describing, so an engine
+  implementation can key off contexts directly and FHSequence decode is
+  optional.
+
+**Engine face rig design** (per the fidelity ground rule): GF renders rigid
+per-node meshes, so faithful facial animation needs a skinned head — the
+plan is a `FaceRig` attached to the `neck` node: (1) load the per-player
+face `.ase` plus an `skf_*` weight map exported by `fmdl_to_ase.py`, (2) CPU
+skinning of the head mesh only (~2k verts — cheap), (3) a `FaceState`
+choosing `.faceanim` poses from match context (shoot/tackle/goal/loss — the
+same contexts the PES names encode), nlerp-blended base + additive layers.
+Until that lands, imported heads render statically.
+
 ## Open problems, in priority order
 
 1. **Animation naming/classification.** mtar entries are keyed by 48-bit GZ
@@ -127,5 +164,5 @@ data/imports/<pack>/
   models/<player>.ase
   portraits/<player>.png
   adboards/<name>.png
-  chants/<name>.wav
+  chants/<name>.ogg
 ```
