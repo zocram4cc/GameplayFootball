@@ -254,17 +254,18 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
   // normal rotation matrix
   Matrix3 rotation_matrix;
 
-  rotation_matrix.elements[0] = atof(tree_node_tm->entries.at(4)->values.at(0).c_str());
-  rotation_matrix.elements[1] = atof(tree_node_tm->entries.at(4)->values.at(1).c_str());
-  rotation_matrix.elements[2] = atof(tree_node_tm->entries.at(4)->values.at(2).c_str());
-
-  rotation_matrix.elements[3] = atof(tree_node_tm->entries.at(5)->values.at(0).c_str());
-  rotation_matrix.elements[4] = atof(tree_node_tm->entries.at(5)->values.at(1).c_str());
-  rotation_matrix.elements[5] = atof(tree_node_tm->entries.at(5)->values.at(2).c_str());
-
-  rotation_matrix.elements[6] = atof(tree_node_tm->entries.at(6)->values.at(0).c_str());
-  rotation_matrix.elements[7] = atof(tree_node_tm->entries.at(6)->values.at(1).c_str());
-  rotation_matrix.elements[8] = atof(tree_node_tm->entries.at(6)->values.at(2).c_str());
+  // find the rows by name: exporters differ on which INHERIT_*/TM_* entries
+  // they include, so positional indexing is not safe
+  const char* rowNames[3] = {"TM_ROW0", "TM_ROW1", "TM_ROW2"};
+  for (int row = 0; row < 3; row++) {
+    const s_treeentry* rowEntry = treeentry_find(tree_node_tm, rowNames[row]);
+    if (!rowEntry || rowEntry->values.size() < 3)
+      Log(e_FatalError, "ASELoader", "BuildTriangleMesh",
+          std::string("NODE_TM row missing: ") + rowNames[row]);
+    for (int c = 0; c < 3; c++)
+      rotation_matrix.elements[row * 3 + c] =
+          atof(rowEntry->values.at(c).c_str());
+  }
 
   normalize(&rotation_matrix.elements[0]);
   normalize(&rotation_matrix.elements[3]);

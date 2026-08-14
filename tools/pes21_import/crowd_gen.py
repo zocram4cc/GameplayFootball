@@ -126,6 +126,7 @@ def write_ase(stands, out_dir, name, bitmap_rel):
         out.write("*GEOMOBJECT {\n")
         out.write('\t*NODE_NAME "crowd"\n')
         out.write("\t*NODE_TM {\n\t\t*NODE_NAME \"crowd\"\n")
+        out.write("\t\t*INHERIT_POS 0 0 0\n\t\t*INHERIT_ROT 0 0 0\n\t\t*INHERIT_SCL 0 0 0\n")
         out.write("\t\t*TM_ROW0 1.0\t0.0\t0.0\n\t\t*TM_ROW1 0.0\t1.0\t0.0\n")
         out.write("\t\t*TM_ROW2 0.0\t0.0\t1.0\n\t\t*TM_ROW3 0.0\t0.0\t0.0\n\t}\n")
         out.write("\t*MESH {\n")
