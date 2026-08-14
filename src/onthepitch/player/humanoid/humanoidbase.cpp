@@ -875,6 +875,14 @@ void HumanoidBase::FetchPutBuffers(unsigned long putTime_ms) {
 }
 
 void HumanoidBase::Put() {
+  // A humanoid that was activated (substitute coming on) after this frame's
+  // put buffers were fetched has nothing to display yet. Drawing it anyway
+  // dereferenced an uninitialized anim pointer: GameTask::PutPhase runs
+  // match->Put() outside matchPutBufferMutex, so Team::Put can see the new
+  // player before his first FetchPutBuffers. Skip the frame instead.
+  if (!fetchedbuf_animApplyBuffer.anim)
+    return;
+
   // unsigned long timeDiff_ms =
   // match->GetTimeSincePreviousPut_ms();//EnvironmentManager::GetInstance().GetTime_ms() -
   // match->GetPreviousTime_ms();

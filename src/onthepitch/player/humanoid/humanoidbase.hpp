@@ -131,6 +131,7 @@ struct IdealAnimDescription {
 
 struct AnimApplyBuffer {
   AnimApplyBuffer() {
+    anim = 0;
     frameNum = 0;
     snapshotTime_ms = 0;
     smooth = true;
