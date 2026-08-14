@@ -37,6 +37,151 @@ GF_JOINT_ORDER = ["body", "middle", "neck", "head",
                   "right_thigh", "right_knee", "right_ankle"]
 JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
 
+# each GF joint's PES anchor bone and the bone whose bind position defines
+# the limb direction (None = axial joint, translation-only)
+JOINT_PES_BONES = {
+    "body": ("dsk_hip", None),
+    "middle": ("sk_belly", None),
+    "neck": ("sk_neck", None),
+    "head": ("sk_head", None),
+    "left_shoulder": ("sk_upperarm_l", "sk_forearm_l"),
+    "left_elbow": ("sk_forearm_l", "sk_hand_l"),
+    "left_hand": ("sk_hand_l", None),
+    "right_shoulder": ("sk_upperarm_r", "sk_forearm_r"),
+    "right_elbow": ("sk_forearm_r", "sk_hand_r"),
+    "right_hand": ("sk_hand_r", None),
+    "left_thigh": ("sk_thigh_l", "sk_leg_l"),
+    "left_knee": ("sk_leg_l", "sk_foot_l"),
+    "left_ankle": ("sk_foot_l", None),
+    "right_thigh": ("sk_thigh_r", "sk_leg_r"),
+    "right_knee": ("sk_leg_r", "sk_foot_r"),
+    "right_ankle": ("sk_foot_r", None),
+}
+# leaf joints inherit their parent limb's rotation so extremities stay attached
+JOINT_ROTATION_PARENT = {
+    "left_hand": "left_elbow", "right_hand": "right_elbow",
+    "left_ankle": "left_knee", "right_ankle": "right_knee",
+}
+
+
+def _gf_world_positions():
+    """GF joint name -> world bind position (accumulated player.object offsets)."""
+    out = {}
+    for name in GF_JOINT_ORDER:
+        offset, parent = retarget.GF_BIND[name]
+        if parent is None:
+            out[name] = offset
+        else:
+            p = out[parent]
+            out[name] = (p[0] + offset[0], p[1] + offset[1], p[2] + offset[2])
+    return out
+
+
+def _rotation_between(a, b):
+    """3x3 rotation matrix taking unit vector a to unit vector b."""
+    import math
+    ax, ay, az = a
+    bx, by, bz = b
+    cx, cy, cz = (ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx)
+    d = ax * bx + ay * by + az * bz
+    s = math.sqrt(cx * cx + cy * cy + cz * cz)
+    if s < 1e-8:
+        if d > 0:
+            return ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+        return ((-1, 0, 0), (0, -1, 0), (0, 0, 1))  # opposite: flip
+    # Rodrigues
+    kx, ky, kz = cx / s, cy / s, cz / s
+    c = d
+    v = 1 - c
+    return ((c + kx * kx * v, kx * ky * v - kz * s, kx * kz * v + ky * s),
+            (ky * kx * v + kz * s, c + ky * ky * v, ky * kz * v - kx * s),
+            (kz * kx * v - ky * s, kz * ky * v + kx * s, c + kz * kz * v))
+
+
+def _mat_vec(m, v):
+    return (m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2])
+
+
+def build_bind_alignment(fmdl, normalize_proportions=True):
+    """Per GF joint: (pes pivot GF-coords, rotation matrix, scale, gf pivot).
+
+    Rotates each limb from the MODEL'S OWN bind pose onto GF's bind
+    directions and re-anchors it at the GF joint, so PrepareFullbodyModel's
+    joint-relative offsets are computed in matching poses. Falls back to
+    the standard PES bind for bones the model does not carry.
+    """
+    import math
+    model_bones = {}
+    for bone in fmdl.bones:
+        g = bone.globalPosition
+        model_bones[bone.name] = (g.x, -g.z, g.y)          # fox -> GF
+
+    def pes_pos(bone_name):
+        if bone_name in model_bones:
+            return model_bones[bone_name]
+        std = retarget.PES_BIND.get(bone_name)
+        if std:
+            p = std[0]
+            return (p[0], -p[2], p[1])
+        return (0.0, 0.0, 1.0)
+
+    gf_pos = _gf_world_positions()
+    transforms = {}
+    for joint, (bone, direction_child) in JOINT_PES_BONES.items():
+        pivot_pes = pes_pos(bone)
+        pivot_gf = gf_pos[joint]
+        rotation = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+        scale = 1.0
+        if direction_child:
+            child_pes = pes_pos(direction_child)
+            d_pes = tuple(c - p for c, p in zip(child_pes, pivot_pes))
+            len_pes = math.sqrt(sum(c * c for c in d_pes))
+            # GF direction: the child joint's offset in player.object
+            gf_children = {"left_shoulder": "left_elbow",
+                           "right_shoulder": "right_elbow",
+                           "left_elbow": "left_hand",
+                           "right_elbow": "right_hand",
+                           "left_thigh": "left_knee",
+                           "right_thigh": "right_knee",
+                           "left_knee": "left_ankle",
+                           "right_knee": "right_ankle"}
+            gf_child = gf_children[joint]
+            d_gf = tuple(c - p for c, p in zip(gf_pos[gf_child], pivot_gf))
+            len_gf = math.sqrt(sum(c * c for c in d_gf))
+            if len_pes > 1e-6 and len_gf > 1e-6:
+                rotation = _rotation_between(
+                    tuple(c / len_pes for c in d_pes),
+                    tuple(c / len_gf for c in d_gf))
+                if normalize_proportions:
+                    scale = len_gf / len_pes
+        transforms[joint] = (pivot_pes, rotation, scale, pivot_gf)
+
+    # leaves ride their parent limb's rotation/scale, anchored at their own pivots
+    for leaf, parent in JOINT_ROTATION_PARENT.items():
+        pivot_pes, _, _, _ = transforms[leaf]
+        _, rotation, scale, _ = transforms[parent]
+        transforms[leaf] = (pivot_pes, rotation, scale, gf_pos[leaf])
+    return transforms
+
+
+def align_vertex(pos_gf, joints, transforms):
+    """Blend the per-joint bind alignments for one vertex ((x,y,z) GF coords)."""
+    out = [0.0, 0.0, 0.0]
+    total = 0.0
+    for joint_id, weight in joints:
+        joint = GF_JOINT_ORDER[joint_id]
+        pivot_pes, rotation, scale, pivot_gf = transforms[joint]
+        local = tuple((p - q) * scale for p, q in zip(pos_gf, pivot_pes))
+        rotated = _mat_vec(rotation, local)
+        for c in range(3):
+            out[c] += weight * (rotated[c] + pivot_gf[c])
+        total += weight
+    if total <= 0:
+        return pos_gf
+    return (out[0] / total, out[1] / total, out[2] / total)
+
 
 def vertex_joints(vertex, pes_to_gf_map):
     """-> [(jointID, weight)] top-3, normalized, engine-encodable."""
@@ -82,7 +227,7 @@ MATERIAL_BLOCK = (
 
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
-            max_tris=None):
+            max_tris=None, align_bind=True, normalize_proportions=True):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -104,6 +249,9 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 kept.append(m)
                 used += len(m.faces)
         meshes = kept
+    transforms = None
+    if align_bind:
+        transforms = build_bind_alignment(fmdl, normalize_proportions)
     for mesh in meshes:
         for face in mesh.faces:
             tri = []
@@ -112,8 +260,13 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 if key not in index:
                     index[key] = len(vertices)
                     uv = vertex.uv[0] if vertex.uv else None
-                    color = encode_color(vertex_joints(vertex, pes_to_gf_map))
-                    vertices.append((vertex.position, uv, color))
+                    joints = vertex_joints(vertex, pes_to_gf_map)
+                    color = encode_color(joints)
+                    pos = (vertex.position.x, -vertex.position.z,
+                           vertex.position.y)
+                    if transforms:
+                        pos = align_vertex(pos, joints, transforms)
+                    vertices.append((pos, uv, color))
                 tri.append(index[key])
             faces.append(tri)
 
@@ -172,7 +325,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
         out.write("\t\t*MESH_VERTEX_LIST {\n")
         for i, (pos, _, _) in enumerate(vertices):
             out.write("\t\t\t*MESH_VERTEX %d\t%.6f\t%.6f\t%.6f\n"
-                      % (i, pos.x, -pos.z, pos.y))
+                      % (i, pos[0], pos[1], pos[2]))
         out.write("\t\t}\n\t\t*MESH_FACE_LIST {\n")
         for i, (a, b, c) in enumerate(faces):
             out.write("\t\t\t*MESH_FACE %d: A: %d B: %d C: %d AB: 1 BC: 1 CA: 1 "
@@ -200,7 +353,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
         for i, (a, b, c) in enumerate(faces):
             out.write("\t\t\t*MESH_CFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
         out.write("\t\t}\n")
-        gf_verts = [(pos.x, -pos.z, pos.y) for (pos, _, _) in vertices]
+        gf_verts = [pos for (pos, _, _) in vertices]
         ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
         out.write("\t}\n")
         out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
@@ -228,8 +381,14 @@ if __name__ == "__main__":
                         help="stock fullbody.ase to composite the import over")
     parser.add_argument("--max-tris", type=int, default=None,
                         help="triangle budget (biggest meshes kept first)")
+    parser.add_argument("--no-align", action="store_true",
+                        help="skip bind-pose alignment onto GF joints")
+    parser.add_argument("--keep-proportions", action="store_true",
+                        help="do not normalize limb lengths to GF's skeleton")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
-                           args.base, args.max_tris)
+                           args.base, args.max_tris,
+                           align_bind=not args.no_align,
+                           normalize_proportions=not args.keep_proportions)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))
