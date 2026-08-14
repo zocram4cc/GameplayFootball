@@ -1375,14 +1375,16 @@ void Match::Process() {
 
     // check for goals
 
-    bool t1goal = CheckForGoal(teams[0]->GetSide());
-    bool t2goal = CheckForGoal(teams[1]->GetSide());
+    // The shootout controller scores its own kicks; the match-level counter
+    // stands down for the penalties phase.
+    const bool shootoutOwnsScoring = matchPhase == e_MatchPhase_Penalties;
+    bool t1goal = !shootoutOwnsScoring && CheckForGoal(teams[0]->GetSide());
+    bool t2goal = !shootoutOwnsScoring && CheckForGoal(teams[1]->GetSide());
     if (t1goal)
       ballIsInGoal = true;
     if (t2goal)
       ballIsInGoal = true;
-    if ((t1goal || t2goal) && !IsInPlay() && Verbose())
-      printf("[goal-disallowed] ball crossed the line while play was stopped\n");
+
     if (IsInPlay()) {
       if (t1goal) {
         matchData->SetGoalCount(teams[1]->GetID(), matchData->GetGoalCount(1) + 1);
@@ -1913,7 +1915,6 @@ bool Match::CheckForGoal(signed int side) {
   if (!intersect) {
     intersect = goal2.IntersectsLine(line, intersectVec);
   }
-
   // extra check: ball could have gone 'in' via the side netting, if line begin == inside pitch, but
   // outside of post, and line end == in goal. disallow!
   if (fabs(previousBallPos.coords[1]) > 3.7 &&

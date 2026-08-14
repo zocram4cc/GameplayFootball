@@ -1,0 +1,342 @@
+{
+  "tests": 54,
+  "name": "AllTests",
+  "testsuites": [
+    {
+      "name": "CareerModuleSimTest",
+      "tests": 3,
+      "testsuite": [
+        {
+          "name": "PlayerGrowthNeverExceedsPotential",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 36
+        },
+        {
+          "name": "AgingVeteranDeclinesAtCeiling",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 49
+        },
+        {
+          "name": "ScoutingYouthSpendsBudgetAndAddsProspect",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 61
+        }
+      ]
+    },
+    {
+      "name": "CareerTransferModuleTest",
+      "tests": 4,
+      "testsuite": [
+        {
+          "name": "MarketValueFavoursYouthAndPotential",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 75
+        },
+        {
+          "name": "FullBidAcceptedAndCompleted",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 84
+        },
+        {
+          "name": "NegotiationDiscountIsProgressive",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 115
+        },
+        {
+          "name": "UnaffordableNegotiationLeavesBidUnchanged",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 143
+        }
+      ]
+    },
+    {
+      "name": "CareerFinanceModuleTest",
+      "tests": 3,
+      "testsuite": [
+        {
+          "name": "ModifyBudgetKeepsMirrorsConsistent",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 164
+        },
+        {
+          "name": "FinancialHealthStringTiers",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 175
+        },
+        {
+          "name": "SetTicketPriceClamps",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 205
+        }
+      ]
+    },
+    {
+      "name": "LocalizationTest",
+      "tests": 1,
+      "testsuite": [
+        {
+          "name": "FormatsMultilineCareerTextAndFallsBackToEnglish",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 187
+        }
+      ]
+    },
+    {
+      "name": "CareerBoardModuleTest",
+      "tests": 2,
+      "testsuite": [
+        {
+          "name": "ObjectivesScaleWithReputation",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 219
+        },
+        {
+          "name": "NearMissPenaltyIsHalved",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_modules_test.cpp",
+          "line": 237
+        }
+      ]
+    },
+    {
+      "name": "CareerDataTest",
+      "tests": 19,
+      "testsuite": [
+        {
+          "name": "ReputationClampsAtHundred",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 27
+        },
+        {
+          "name": "ReputationClampsAtZero",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 34
+        },
+        {
+          "name": "ReputationPositiveDelta",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 41
+        },
+        {
+          "name": "ReputationNegativeDelta",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 48
+        },
+        {
+          "name": "ReputationNoopForUnknownSave",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 55
+        },
+        {
+          "name": "SetLeagueExpansionSettingsPersists",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 65
+        },
+        {
+          "name": "ComputePromotionRelegation_BottomTeamsRelegated",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 87
+        },
+        {
+          "name": "ComputePromotionRelegation_LastDivisionNotRelegated",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 111
+        },
+        {
+          "name": "ComputePromotionRelegation_EmptyStandings",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 129
+        },
+        {
+          "name": "SetCustomLeaguePersists",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 144
+        },
+        {
+          "name": "SetCustomLeagueNoopForUnknownSave",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 164
+        },
+        {
+          "name": "OwnerModeEnumExists",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 176
+        },
+        {
+          "name": "OwnerModeCreateSaveAndRetrieve",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 182
+        },
+        {
+          "name": "OwnerReputationClampingWorks",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 200
+        },
+        {
+          "name": "OwnerModeSeasonAdvances",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 214
+        },
+        {
+          "name": "OwnerModeLeagueExpansion",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 228
+        },
+        {
+          "name": "OwnerModeCustomLeague",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 247
+        },
+        {
+          "name": "OwnerDeleteSave",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 265
+        },
+        {
+          "name": "OwnerRecordSeason",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 276
+        }
+      ]
+    },
+    {
+      "name": "DraftDataTest",
+      "tests": 2,
+      "testsuite": [
+        {
+          "name": "ProjectedPickMatchesSortedOrder",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 309
+        },
+        {
+          "name": "ProjectedPickIsOneForBestProspect",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 325
+        }
+      ]
+    },
+    {
+      "name": "ScoutingNetworkTest",
+      "tests": 4,
+      "testsuite": [
+        {
+          "name": "UncertaintyAtSkill100Is5",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 337
+        },
+        {
+          "name": "UncertaintyAtSkill0Is30",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 349
+        },
+        {
+          "name": "UncertaintyAtSkill50Is18",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 361
+        },
+        {
+          "name": "NoScoutUsesDefaultSkill50",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/careerdata_test.cpp",
+          "line": 374
+        }
+      ]
+    },
+    {
+      "name": "CareerSimTest",
+      "tests": 5,
+      "testsuite": [
+        {
+          "name": "SeededResultsAreReproducible",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_simulation_test.cpp",
+          "line": 42
+        },
+        {
+          "name": "ResultFieldsStayWithinBounds",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_simulation_test.cpp",
+          "line": 61
+        },
+        {
+          "name": "StrongerTeamConcedesFewerGoals",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_simulation_test.cpp",
+          "line": 85
+        },
+        {
+          "name": "StrongerOpponentScoresMore",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_simulation_test.cpp",
+          "line": 109
+        },
+        {
+          "name": "NonNumericTeamIdDoesNotThrow",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_simulation_test.cpp",
+          "line": 148
+        }
+      ]
+    },
+    {
+      "name": "CareerSaveLoadTest",
+      "tests": 8,
+      "testsuite": [
+        {
+          "name": "MissingSaveFileReturnsFalse",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 37
+        },
+        {
+          "name": "CorruptNumericFieldsDoNotThrow",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 48
+        },
+        {
+          "name": "ValidSaveLoadsValues",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 92
+        },
+        {
+          "name": "LegacySevenFieldPlayerLoads",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 121
+        },
+        {
+          "name": "RoundTripPreservesPlayerProgress",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 143
+        },
+        {
+          "name": "RoundTripPreservesCareerCollections",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 190
+        },
+        {
+          "name": "SaveProducesSqliteContainer",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 297
+        },
+        {
+          "name": "LegacyPlainTextSaveStillLoads",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_saveload_test.cpp",
+          "line": 320
+        }
+      ]
+    },
+    {
+      "name": "CareerLongRunAudit",
+      "tests": 3,
+      "testsuite": [
+        {
+          "name": "EstimateLeaguePositionBands",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_longrun_audit_test.cpp",
+          "line": 166
+        },
+        {
+          "name": "ApplyMatchResultDrawIsReputationNeutral",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_longrun_audit_test.cpp",
+          "line": 175
+        },
+        {
+          "name": "TwelveSeasonsFourPersonaTiers",
+          "file": "\/home\/z\/Code\/GameplayFootball\/tests\/career\/career_longrun_audit_test.cpp",
+          "line": 192
+        }
+      ]
+    }
+  ]
+}

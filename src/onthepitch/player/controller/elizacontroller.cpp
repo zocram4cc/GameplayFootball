@@ -1172,11 +1172,11 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     float y = 0.0f;
     if (odds1 > odds) {
       odds = odds1;
-      y = -2.4f;
+      y = -1.7f;
     }
     if (odds3 > odds) {
       odds = odds3;
-      y = 2.4f;
+      y = 1.7f;
     }
 
     odds = std::pow(odds, 0.5f);

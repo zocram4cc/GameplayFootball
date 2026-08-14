@@ -725,15 +725,43 @@ void Humanoid::Process() {
           zRot = knuckled.coords[2];
         }
 
+        // Keep the shot under the bar: the raw shot vector regularly arrived at
+        // the goal 3.5m up, which is why matches full of "on target" shots
+        // finished 0-0. Clamp the vertical component so the ball, under
+        // gravity, crosses the line no higher than just under the bar.
+        {
+          const float goalLineX = pitchHalfW * -team->GetSide();
+          const float distanceToGoal =
+              std::fabs(goalLineX - match->GetBall()->Predict(0).coords[0]);
+          const float horizontalSpeed = std::max(8.0f, touchVec.Get2D().GetLength());
+          const float flightTime = distanceToGoal / horizontalSpeed;
+          if (flightTime > 0.05f && flightTime < 3.0f) {
+            const float startZ = match->GetBall()->Predict(0).coords[2];
+            const float maxArrivalHeight = 2.1f;
+            const float maxVz =
+                (maxArrivalHeight - startZ) / flightTime + 0.5f * 9.81f * flightTime;
+            if (touchVec.coords[2] > maxVz)
+              touchVec.coords[2] = maxVz;
+          }
+        }
+
         match->GetBall()->Touch(touchVec);
-        match->GetBall()->SetRotation(xRot, yRot, zRot, 0.7f * (1.0f - bumpyRideBias));
+        // A shot carries far less wild spin than the animation's raw rotation
+        // suggested: the old values curled even well-aimed shots metres wide,
+        // which is why matches full of "on target" shots finished 0-0.
+        match->GetBall()->SetRotation(xRot * 0.5f, yRot * 0.5f, zRot * 0.35f,
+                                      0.35f * (1.0f - bumpyRideBias));
         match->GetBall()->TriggerBallTouchSound(
             pow(NormalizedClamp(touchVec.GetLength(), 4.0f, 40.0f), 0.7f));
 
         team->SetLastTouchPlayer(
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
-        match->GetMatchData()->AddShot(team->GetID());
+        // Shootout kicks are scored by the shootout controller and must not
+        // pollute the match statistics.
+        const bool inShootout = match->GetMatchPhase() == e_MatchPhase_Penalties;
+        if (!inShootout)
+          match->GetMatchData()->AddShot(team->GetID());
         match->AddExcitementBoost(0.35f, 2000);
 
         // Expected goals for the post-match analysis screen (roadmap 5B).
@@ -766,8 +794,9 @@ void Humanoid::Process() {
           // used and the chance is judged on geometry and pressure alone.
           const MatchAnalytics::ShotContext shotContext = MatchAnalytics::MakeShotContext(
               shotPos, team->GetSide(), defendersInPath, isHeader, 0.5f);
-          MatchAnalytics::AddShot(match->GetShotTally(), team->GetID(),
-                                  MatchAnalytics::CalculateExpectedGoals(shotContext));
+          if (!inShootout)
+            MatchAnalytics::AddShot(match->GetShotTally(), team->GetID(),
+                                    MatchAnalytics::CalculateExpectedGoals(shotContext));
         }
 
         // Detect shots on target via linear trajectory projection toward opposing goal
@@ -779,8 +808,10 @@ void Humanoid::Process() {
           if (fabs(shotVelX) > 0.1f && (dx * shotVelX > 0.0f)) {
             float t = dx / shotVelX;
             float y_at_goal = ballPos.coords[1] + touchVec.coords[1] * t;
-            float z_at_goal = ballPos.coords[2] + touchVec.coords[2] * t;
-            if (fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f && z_at_goal < goalHeight) {
+            float z_at_goal =
+                ballPos.coords[2] + touchVec.coords[2] * t - 0.5f * 9.81f * t * t;
+            if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
+                z_at_goal < goalHeight) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());
               match->AddExcitementBoost(0.55f, 2500);
             }
