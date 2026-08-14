@@ -70,6 +70,17 @@ def _name(raw, offset):
     return raw[offset:raw.index(b"\0", offset)].decode("ascii", "replace")
 
 
+def _dxt1_image(width, height, pixels):
+    # wrap in a minimal DDS so Pillow's DDS plugin does the block decode
+    import io
+    from PIL import Image
+    header = struct.pack("<4sIIIIIII44x", b"DDS ", 124, 0x1 | 0x2 | 0x4 | 0x1000 | 0x80000,
+                         height, width, len(pixels), 0, 0)
+    header += struct.pack("<II4sIIIII", 32, 0x4, b"DXT1", 0, 0, 0, 0, 0)
+    header += struct.pack("<IIIII", 0x1000, 0, 0, 0, 0)
+    return Image.open(io.BytesIO(header + pixels)).convert("RGBA")
+
+
 def parse(raw):
     """Returns ([(name, width, height, rgba_bytes)], [region dicts])."""
     if raw[:4] != b"TXP2":
@@ -95,6 +106,9 @@ def parse(raw):
         elif payload >= width * height:
             mode = "L"
             pixels = dec[0x40:0x40 + width * height]
+        elif payload >= width * height // 2:
+            mode = "DXT1"  # fmt 0x16
+            pixels = dec[0x40:0x40 + width * height // 2]
         else:
             raise ValueError("texture %d: unknown layout (%dx%d, %d bytes, fmt %02x)"
                              % (i, width, height, payload, dec[0x17]))
@@ -118,7 +132,10 @@ def extract(bin_path, out_dir):
         os.makedirs(out_dir, exist_ok=True)
         textures, regions = parse(payload)
         for name, mode, width, height, pixels in textures:
-            img = Image.frombytes(mode, (width, height), pixels)
+            if mode == "DXT1":
+                img = _dxt1_image(width, height, pixels)
+            else:
+                img = Image.frombytes(mode, (width, height), pixels)
             img.save(os.path.join(out_dir, name + ".png"))
             total += 1
         if regions:
