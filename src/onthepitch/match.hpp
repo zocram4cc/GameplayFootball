@@ -370,6 +370,19 @@ protected:
   // track's authored goal side (+1/-1 from its mean x) for mirroring
   std::vector<CamTrack> goalCamTracks;
   std::vector<int> goalCamAuthoredSides;
+  // stoppage cutscenes: PES's other fixdemo categories, played at their
+  // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
+  std::map<std::string, std::vector<CamTrack>> cutscenePools;
+  const CamTrack* activeCutscene = nullptr;
+  unsigned long cutsceneStart_ms = 0;
+  unsigned long cutsceneEnd_ms = 0;
+
+ public:
+  // plays a random track from the category's pool during the current
+  // stoppage (no-op when the pool is empty or a cutscene is running)
+  void StartCutscene(const std::string& category, float capSeconds);
+
+ protected:
   // per-team chant loops (config "team1_chant"/"team2_chant"), gained up on goals
   boost::intrusive_ptr<Sound> teamChant[2];
 

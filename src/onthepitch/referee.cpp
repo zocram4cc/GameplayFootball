@@ -482,6 +482,8 @@ bool Referee::CheckFoul() {
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
+    if (foul.foulType >= 2)
+      match->StartCutscene("foul", 5.0f);
     match->SpamMessage(spamMessage);
 
     foul.hasBeenProcessed = true;

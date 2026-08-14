@@ -204,6 +204,28 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
           "Loaded " + int_to_str((int)goalCamTracks.size()) +
               " goal camera tracks");
   }
+
+  // stoppage cutscene pools, one directory per PES fixdemo category
+  {
+    int loadedPools = 0;
+    for (const char* category :
+         {"timeup", "change", "foul", "pk", "result", "end"}) {
+      std::string dir = std::string("media/cutscenes/") + category;
+      std::error_code ec;
+      for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (entry.path().extension() != ".camtrack") continue;
+        std::ifstream file(entry.path());
+        CamTrack track;
+        if (file.good() && track.Load(file))
+          cutscenePools[category].push_back(track);
+      }
+      if (!cutscenePools[category].empty()) loadedPools++;
+    }
+    if (loadedPools > 0)
+      Log(e_Notice, "Match", "Match",
+          "Loaded stoppage cutscene pools for " + int_to_str(loadedPools) +
+              " categories");
+  }
   if (introSeconds > 0.0f) {
     introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
     introCutsceneEnd_ms =
@@ -845,18 +867,35 @@ void Match::ResetSituation(const Vector3& focusPos) {
   */
 }
 
+void Match::StartCutscene(const std::string& category, float capSeconds) {
+  if (activeCutscene) return;
+  auto pool = cutscenePools.find(category);
+  if (pool == cutscenePools.end() || pool->second.empty()) return;
+  const CamTrack& track =
+      pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
+                   pool->second.size()];
+  activeCutscene = &track;
+  cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  float seconds = std::min(capSeconds, track.GetDurationSeconds());
+  cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
+}
+
 void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   matchPhase = newMatchPhase;
   if (matchPhase == e_MatchPhase_1stHalf)
     matchTime_ms = 0;
-  else if (matchPhase == e_MatchPhase_2ndHalf)
+  else if (matchPhase == e_MatchPhase_2ndHalf) {
     matchTime_ms = 2700000;
-  else if (matchPhase == e_MatchPhase_1stExtraTime)
+    StartCutscene("timeup", 6.0f);
+  } else if (matchPhase == e_MatchPhase_1stExtraTime) {
     matchTime_ms = 5400000;
-  else if (matchPhase == e_MatchPhase_2ndExtraTime)
+    StartCutscene("timeup", 6.0f);
+  } else if (matchPhase == e_MatchPhase_2ndExtraTime)
     matchTime_ms = 6300000;
-  else if (matchPhase == e_MatchPhase_Penalties)
+  else if (matchPhase == e_MatchPhase_Penalties) {
     matchTime_ms = 7200000;
+    StartCutscene("pk", 7.0f);
+  }
 
   matchTimeExact_ms = static_cast<double>(matchTime_ms);
 
@@ -877,6 +916,7 @@ signed int Match::GetBestPossessionTeamID() {
 
 void Match::GameOver() {
   gameOver = true;
+  StartCutscene("result", 8.0f);
 }
 
 void Match::AddExcitementBoost(float amount, int duration_ms) {
@@ -922,6 +962,7 @@ void Match::ExecutePendingSubstitutions() {
     if (!team->Substitute(sub.playerOut, sub.playerIn))
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
+    StartCutscene("change", 5.0f);
   }
 }
 
@@ -1200,6 +1241,25 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 }
 
 void Match::UpdateIngameCamera() {
+  // stoppage cutscene: play until it ends or the ball is back in play
+  if (activeCutscene) {
+    unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+    if (now < cutsceneEnd_ms && !IsInPlay()) {
+      CamTrackFrame frame =
+          activeCutscene->Sample((now - cutsceneStart_ms) * 0.03f);
+      cameraNodePosition = Vector3(frame.position[0], frame.position[1],
+                                   frame.position[2]);
+      cameraNodeOrientation = QUATERNION_IDENTITY;
+      cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
+                            frame.rotation[2], frame.rotation[3]);
+      cameraFOV = frame.fov;
+      cameraNearCap = std::max(0.1f, frame.near);
+      cameraFarCap = frame.far;
+      return;
+    }
+    activeCutscene = nullptr;
+  }
+
   // pre-kickoff cutscene. With an imported PES camera track
   // ("intro_cutscene_track", see docs/PES21_CAMERA_TRACE.md) the original
   // hand-authored camerawork plays; otherwise a slow authored orbit around
