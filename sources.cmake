@@ -163,6 +163,8 @@ set(LOADERS_HEADERS
         src/loaders/oggdecoder.hpp
         src/utils/playermodelmap.hpp
         src/utils/faceanim.hpp
+        src/utils/facerigdata.hpp
+        src/onthepitch/player/humanoid/facerig.hpp
         src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
@@ -174,6 +176,8 @@ set(LOADERS_SOURCES
         src/loaders/oggdecoder.cpp
         src/utils/playermodelmap.cpp
         src/utils/faceanim.cpp
+        src/utils/facerigdata.cpp
+        src/onthepitch/player/humanoid/facerig.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )

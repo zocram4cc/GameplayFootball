@@ -7,6 +7,7 @@
 #define _HPP_HUMANOIDBASE
 
 #include "../../../gamedefines.hpp"
+#include "onthepitch/player/humanoid/facerig.hpp"
 #include "../../../utils.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "animcollection.hpp"
@@ -325,6 +326,7 @@ protected:
   radian ForceIntoPreferredDirectionAngle(radian angle) const;
 
   boost::intrusive_ptr<Node> fullbodyNode;
+  FaceRig faceRig;
   std::vector<FloatArray> uniqueFullbodyMesh;
   std::vector<std::vector<WeightedVertex>> weightedVerticesVec;  // < subgeoms < vertices > >
   unsigned int fullbodySubgeomCount;

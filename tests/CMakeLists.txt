@@ -66,6 +66,19 @@ add_executable(gameplayfootball_faceanim_tests
   base/faceanim_test.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/faceanim.cpp
 )
+
+# FaceRig data/blend unit tests
+add_executable(gameplayfootball_facerig_tests
+  base/facerig_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/facerigdata.cpp
+)
+target_include_directories(gameplayfootball_facerig_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_facerig_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_facerig_tests DISCOVERY_MODE PRE_TEST)
 target_include_directories(gameplayfootball_faceanim_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
 )

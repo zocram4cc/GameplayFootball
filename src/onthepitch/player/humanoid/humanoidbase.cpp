@@ -4,6 +4,7 @@
 // :)
 
 #include <cmath>
+#include "utils/playermodelmap.hpp"
 
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
@@ -155,6 +156,16 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
 
   PrepareFullbodyModel(colorCoords);
   buf_bodyUpdatePhase = 0;
+
+  // imported faces: expression rig when the player's model dir ships one
+  if (player->GetPlayerData()) {
+    const std::string& modelDir =
+        GetPlayerModelDir(player->GetPlayerData()->GetDatabaseID());
+    if (!modelDir.empty() && faceRig.Load(modelDir)) {
+      faceRig.Bind(boost::static_pointer_cast<Geometry>(
+          fullbodyNode->GetObject("fullbody")));
+    }
+  }
 
   // hairstyle
 
@@ -654,6 +665,19 @@ void HumanoidBase::UploadFullbodyModel() {
 */
 
 void HumanoidBase::Process() {
+  // imported faces: pick the expression from what the body is doing
+  if (faceRig.IsActive() && currentAnim && currentAnim->anim) {
+    e_FaceExpression expression = e_FaceExpression::Neutral;
+    if (currentAnim->anim->GetVariable("type") == "special") {
+      const std::string& var1 = currentAnim->anim->GetVariable("specialvar1");
+      expression = (var1 == "2") ? e_FaceExpression::Sad
+                                 : e_FaceExpression::Happy;
+    } else if (spatialState.floatVelocity > 7.0f) {
+      expression = e_FaceExpression::Exert;
+    }
+    faceRig.SetExpression(expression);
+  }
+
   _cache_AgilityFactor =
       GetConfiguration()->GetReal("gameplay_agilityfactor", _default_AgilityFactor);
   _cache_AccelerationFactor =
