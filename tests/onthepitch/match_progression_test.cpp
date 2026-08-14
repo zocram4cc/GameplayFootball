@@ -94,3 +94,87 @@ TEST(PeriodEndTest, KnowsWhenEachPeriodIsDue) {
   EXPECT_EQ(MatchProgression::GetPeriodEndTime_ms(e_MatchPhase_1stExtraTime), 6300000UL);
   EXPECT_EQ(MatchProgression::GetPeriodEndTime_ms(e_MatchPhase_2ndExtraTime), 7200000UL);
 }
+
+// --- Added time (Law 7: allowance for time lost) ---
+//
+// The clock stops during every restart, so the allowance is accrued per
+// discrete event: goals, substitutions, cards and injuries
+// (docs/RULESET_AUDIT.md gap 5).
+
+TEST(AddedTimeTest, EachKindOfTimeLossAccrues) {
+  MatchProgression::Stoppage stoppage;
+  EXPECT_EQ(stoppage.accrued_ms, 0UL);
+
+  MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Goal);
+  EXPECT_EQ(stoppage.accrued_ms, MatchProgression::stoppagePerGoal_ms);
+
+  MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Substitution);
+  MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Card);
+  MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Injury);
+  EXPECT_EQ(stoppage.accrued_ms, MatchProgression::stoppagePerGoal_ms +
+                                     MatchProgression::stoppagePerSubstitution_ms +
+                                     MatchProgression::stoppagePerCard_ms +
+                                     MatchProgression::stoppagePerInjury_ms);
+}
+
+TEST(AddedTimeTest, TheAllowanceIsRealistic) {
+  // A goal is worth about a minute of celebration; the others about half.
+  EXPECT_EQ(MatchProgression::stoppagePerGoal_ms, 60000UL);
+  EXPECT_EQ(MatchProgression::stoppagePerSubstitution_ms, 30000UL);
+  EXPECT_EQ(MatchProgression::stoppagePerCard_ms, 30000UL);
+  EXPECT_EQ(MatchProgression::stoppagePerInjury_ms, 30000UL);
+}
+
+TEST(AddedTimeTest, TheAllowanceIsCapped) {
+  MatchProgression::Stoppage stoppage;
+  for (int i = 0; i < 100; i++)
+    MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Goal);
+  EXPECT_EQ(stoppage.accrued_ms, MatchProgression::maxStoppageTime_ms);
+}
+
+TEST(AddedTimeTest, ThePeriodRunsLongerByExactlyTheAllowance) {
+  MatchProgression::Stoppage stoppage;
+  MatchProgression::AddStoppage(stoppage, MatchProgression::e_Stoppage_Goal);
+
+  const unsigned long endWith =
+      MatchProgression::GetPeriodEndTime_ms(e_MatchPhase_1stHalf, stoppage);
+  EXPECT_EQ(endWith, 2700000UL + MatchProgression::stoppagePerGoal_ms);
+
+  // The referee still waits for a neutral moment measured from the new end.
+  EXPECT_FALSE(MatchProgression::ShouldEndPeriod(2700001, endWith, 0.0f));
+  EXPECT_TRUE(MatchProgression::ShouldEndPeriod(endWith + 1, endWith, 0.0f));
+}
+
+TEST(AddedTimeTest, AnnouncedMinutesRoundUpAndNeverVanish) {
+  MatchProgression::Stoppage stoppage;
+  EXPECT_EQ(MatchProgression::GetAnnouncedAddedMinutes(stoppage), 0);
+
+  stoppage.accrued_ms = 1000;  // any loss at all is announced as +1
+  EXPECT_EQ(MatchProgression::GetAnnouncedAddedMinutes(stoppage), 1);
+
+  stoppage.accrued_ms = 60000;
+  EXPECT_EQ(MatchProgression::GetAnnouncedAddedMinutes(stoppage), 1);
+
+  stoppage.accrued_ms = 61000;
+  EXPECT_EQ(MatchProgression::GetAnnouncedAddedMinutes(stoppage), 2);
+}
+
+// --- The scoreboard clock ---
+
+TEST(AddedTimeClockTest, RegulationTimeIsPlainMinutesAndSeconds) {
+  EXPECT_EQ(MatchProgression::FormatClock(0, 2700000), "00:00");
+  EXPECT_EQ(MatchProgression::FormatClock(65000, 2700000), "01:05");
+  EXPECT_EQ(MatchProgression::FormatClock(2699999, 2700000), "44:59");
+  EXPECT_EQ(MatchProgression::FormatClock(2700000, 2700000), "45:00");
+}
+
+TEST(AddedTimeClockTest, StoppageTimeShowsThePeriodEndPlusOvertime) {
+  EXPECT_EQ(MatchProgression::FormatClock(2700001, 2700000), "45:00 +0:00");
+  EXPECT_EQ(MatchProgression::FormatClock(2712000, 2700000), "45:00 +0:12");
+  EXPECT_EQ(MatchProgression::FormatClock(5460500, 5400000), "90:00 +1:00");
+}
+
+TEST(AddedTimeClockTest, PhasesWithoutAScheduledEndTickPlainly) {
+  // Pre-match and penalties report a scheduled end of 0.
+  EXPECT_EQ(MatchProgression::FormatClock(7200000, 0), "120:00");
+}

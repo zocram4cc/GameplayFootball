@@ -23,6 +23,7 @@
 #include "ball.hpp"
 #include "base/circular_buffer.hpp"
 #include "coachmode.hpp"
+#include "matchprogression.hpp"
 #include "framework/scheduler.hpp"
 #include "officials.hpp"
 #include "penaltyshootoutcontroller.hpp"
@@ -260,6 +261,13 @@ public:
 
   MatchData* GetMatchData() { return matchData; }
 
+  // Law 7 allowance for time lost, accrued per event and reset at every phase
+  // change. The referee extends the period by it; the scoreboard displays it.
+  void AddLostTime(MatchProgression::e_StoppageReason reason) {
+    MatchProgression::AddStoppage(stoppage, reason);
+  }
+  const MatchProgression::Stoppage& GetStoppage() const { return stoppage; }
+
   // Expected-goals tally and ball heatmap for the post-match analysis (5B).
   MatchAnalytics::ShotTally& GetShotTally() { return shotTally; }
   const MatchAnalytics::ShotTally& GetShotTally() const { return shotTally; }
@@ -349,6 +357,7 @@ protected:
 
   CoachMode::Setup coachSetup;
   Substitutions::State substitutionState;
+  MatchProgression::Stoppage stoppage;
   struct PendingSubstitution { int teamID; Player* playerOut; Player* playerIn; };
   std::vector<PendingSubstitution> pendingSubstitutions;
   std::mutex pendingSubstitutionsMutex;

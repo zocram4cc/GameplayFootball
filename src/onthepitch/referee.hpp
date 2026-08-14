@@ -87,6 +87,9 @@ protected:
 
   RefereeProfile::e_Profile profile;
 
+  // Which period's added time has been announced already.
+  e_MatchPhase addedTimeAnnouncedPhase;
+
   boost::intrusive_ptr<Sound> whistle[4];  // 0: short, 1: long, 2: half time, 3: full time
 };
 

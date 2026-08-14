@@ -1004,6 +1004,9 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
 
   matchTimeExact_ms = static_cast<double>(matchTime_ms);
 
+  // A fresh period starts with a clean added-time slate.
+  stoppage = MatchProgression::Stoppage();
+
   if (matchPhase == e_MatchPhase_2ndHalf) {
     teams[0]->RelaxFatigue(0.05f);
     teams[1]->RelaxFatigue(0.05f);
@@ -1067,6 +1070,7 @@ void Match::ExecutePendingSubstitutions() {
     if (!team->Substitute(sub.playerOut, sub.playerIn))
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
+    AddLostTime(MatchProgression::e_Stoppage_Substitution);
     StartCutscene("change", 5.0f);
   }
 }
@@ -2045,18 +2049,10 @@ void Match::Put() {
     // is irregular since not all process runs are put)
     //  clock
 
-    int seconds = (int)(fetchedbuf_matchTime_ms / 1000.0) % 60;
-    int minutes = (int)(fetchedbuf_matchTime_ms / 60000.0);
-
-    std::string timeStr = "";
-    if (minutes < 10)
-      timeStr += "0";
-    timeStr += int_to_str(minutes);
-    timeStr += ":";
-    if (seconds < 10)
-      timeStr += "0";
-    timeStr += int_to_str(seconds);
-    scoreboard->SetTimeStr(timeStr);
+    // Past the period's scheduled end the clock holds and shows the overtime
+    // separately ("45:00 +0:12"), so added time is visible on the scoreboard.
+    scoreboard->SetTimeStr(MatchProgression::FormatClock(
+        fetchedbuf_matchTime_ms, MatchProgression::GetPeriodEndTime_ms(GetMatchPhase())));
     //}
 
     if (statsOverlay->IsVisible())
@@ -2663,7 +2659,10 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
                      tripType);
           referee->TripNotice(p1, p2, tripType);
           // foul statistics are counted by the referee at the whistle
+          const bool p1WasFit = p1->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
           p1->Injure(tripType * 0.04f);
+          if (p1WasFit && p1->GetInjuryLevel() >= AIManager::substitutionInjuryLevel)
+            AddLostTime(MatchProgression::e_Stoppage_Injury);
           AddExcitementBoost(0.5f + tripType * 0.1f, 3000);
         }
       }
@@ -2679,7 +2678,10 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
                      tripType);
           referee->TripNotice(p2, p1, tripType);
           // foul statistics are counted by the referee at the whistle
+          const bool p2WasFit = p2->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
           p2->Injure(tripType * 0.04f);
+          if (p2WasFit && p2->GetInjuryLevel() >= AIManager::substitutionInjuryLevel)
+            AddLostTime(MatchProgression::e_Stoppage_Injury);
           AddExcitementBoost(0.5f + tripType * 0.1f, 3000);
         }
       }

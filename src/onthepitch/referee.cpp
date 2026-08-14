@@ -38,6 +38,8 @@ Referee::Referee(Match* match) : match(match) {
 
   afterSetPieceRelaxTime_ms = 0;
 
+  addedTimeAnnouncedPhase = e_MatchPhase_PreMatch;
+
   // whistle
 
   boost::intrusive_ptr<Resource<SoundBuffer>> soundBufferRes =
@@ -88,10 +90,27 @@ void Referee::Process() {
 
     // some phase is over :[
 
-    // Blow for the end of the period at a neutral moment, but never let a period
-    // run away waiting for one.
+    // The fourth official's board: announce the allowance once, as the period
+    // reaches its scheduled end.
+    const unsigned long scheduledEnd_ms =
+        MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase());
+    if (scheduledEnd_ms > 0 && match->GetMatchTime_ms() >= scheduledEnd_ms &&
+        addedTimeAnnouncedPhase != match->GetMatchPhase()) {
+      addedTimeAnnouncedPhase = match->GetMatchPhase();
+      const int addedMinutes = MatchProgression::GetAnnouncedAddedMinutes(match->GetStoppage());
+      if (addedMinutes > 0) {
+        match->SpamMessage("added time: +" + std::to_string(addedMinutes) + " min", 4000);
+        if (Verbose())
+          printf("referee: added time +%i min\n", addedMinutes);
+      }
+    }
+
+    // Blow for the end of the period at a neutral moment - no earlier than the
+    // scheduled end plus the Law 7 allowance for time lost - but never let a
+    // period run away waiting for one.
     if (MatchProgression::ShouldEndPeriod(
-            match->GetMatchTime_ms(), MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase()),
+            match->GetMatchTime_ms(),
+            MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase(), match->GetStoppage()),
             ballPos.coords[0])) {
       foul.advantage = false;
       if (!CheckFoul()) {
@@ -145,6 +164,7 @@ void Referee::Process() {
         lastSide = lastTouchTeam->GetSide();
 
         if (match->IsGoalScored()) {
+          match->AddLostTime(MatchProgression::e_Stoppage_Goal);
           buffer.desiredSetPiece = e_SetPiece_KickOff;
           buffer.stopTime = match->GetActualTime_ms();
           buffer.prepareTime = match->GetActualTime_ms() + 6000;
@@ -297,6 +317,7 @@ void Referee::IssueDeferredCards() {
     }
     if (Verbose())
       printf("referee: deferred card issued (type %i)\n", card.foulType);
+    match->AddLostTime(MatchProgression::e_Stoppage_Card);
     anyCardShown = true;
   }
 
@@ -551,8 +572,10 @@ bool Referee::CheckFoul() {
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
-    if (foul.foulType >= 2)
+    if (foul.foulType >= 2) {
+      match->AddLostTime(MatchProgression::e_Stoppage_Card);
       match->StartCutscene("foul", 5.0f);
+    }
     match->SpamMessage(spamMessage);
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.
