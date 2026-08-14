@@ -106,6 +106,9 @@ def parse(raw):
         elif fmt == 0x16:  # DXT1 (0.5 bytes/px)
             mode = "DXT1"
             pixels = dec[0x40:0x40 + width * height // 2]
+        elif fmt == 0x18:  # DXT3 (1 byte/px, explicit alpha)
+            mode = "DXT3"
+            pixels = dec[0x40:0x40 + width * height]
         elif fmt == 0x1a:  # DXT5 (1 byte/px)
             mode = "DXT5"
             pixels = dec[0x40:0x40 + width * height]
@@ -132,7 +135,7 @@ def extract(bin_path, out_dir):
         os.makedirs(out_dir, exist_ok=True)
         textures, regions = parse(payload)
         for name, mode, width, height, pixels in textures:
-            if mode in ("DXT1", "DXT5"):
+            if mode in ("DXT1", "DXT3", "DXT5"):
                 img = _dxt_image(mode.encode(), width, height, pixels)
             else:
                 img = Image.frombytes(mode, (width, height), pixels)
