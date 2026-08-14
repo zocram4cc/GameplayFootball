@@ -194,8 +194,12 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
 }
 
 TeamSelectPage::~TeamSelectPage() {
-  GetMenuTask()->SetActiveJoystickID(0);
-  GetMenuTask()->EnableKeyboard();
+  // during MenuTask's own destruction the global is already null
+  auto menuTask = GetMenuTask();
+  if (menuTask) {
+    menuTask->SetActiveJoystickID(0);
+    menuTask->EnableKeyboard();
+  }
 }
 
 void TeamSelectPage::Process() {
