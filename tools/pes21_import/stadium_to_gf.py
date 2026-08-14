@@ -65,13 +65,23 @@ def _mesh_base_texture(mesh):
     return None
 
 
-def write_ase(fmdls, out_dir, name, tex_dirs):
+def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None):
     converted = {}
     materials = []          # (material name, bitmap path or None)
     geoms = []              # (geom name, material index, mesh)
 
+    budget = max_tris if max_tris else float("inf")
+    used = 0
     for label, fmdl in fmdls:
-        for i, mesh in enumerate(fmdl.meshes):
+        # biggest meshes first so a budget keeps the structural shell and
+        # drops decorative detail last-to-first
+        order = sorted(range(len(fmdl.meshes)),
+                       key=lambda i: -len(fmdl.meshes[i].faces))
+        for i in order:
+            mesh = fmdl.meshes[i]
+            if used + len(mesh.faces) > budget:
+                continue
+            used += len(mesh.faces)
             tex = _mesh_base_texture(mesh)
             bitmap = _texture_png(tex, tex_dirs, out_dir, converted) if tex else None
             materials.append(("%s_m%d" % (label, i), bitmap))
@@ -196,14 +206,16 @@ OBJECT_TEMPLATE = """<object>
 """
 
 
-def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=()):
+def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
+            max_tris=None):
     os.makedirs(out_dir, exist_ok=True)
     fmdls = [(name, _load_fmdl(scene_fmdl, fmdl_lib))]
     for extra in extras:
         label = os.path.splitext(os.path.basename(extra))[0]
         fmdls.append((label, _load_fmdl(extra, fmdl_lib)))
 
-    ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs)
+    ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
+                                                max_tris)
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(OBJECT_TEMPLATE % {"name": name})
@@ -226,9 +238,12 @@ if __name__ == "__main__":
                         help="directory of .ftex sourceimages (repeatable)")
     parser.add_argument("--name", default=None)
     parser.add_argument("--extra", action="append", default=[])
+    parser.add_argument("--max-tris", type=int, default=None,
+                        help="triangle budget; largest meshes kept first")
     args = parser.parse_args()
 
     name = args.name or "pes_" + os.path.splitext(os.path.basename(args.fmdl))[0]
     ase_path, geoms, textures = convert(args.fmdl, args.out_dir, args.fmdl_lib,
-                                        args.textures, name, args.extra)
+                                        args.textures, name, args.extra,
+                                        args.max_tris)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))
