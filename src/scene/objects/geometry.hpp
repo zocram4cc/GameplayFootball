@@ -38,8 +38,12 @@ public:
   virtual void ApplyForceAtRelativePosition(float force, const Vector3& direction,
                                             const Vector3& position);
 
+  void SetCastShadow(bool castShadow) { this->castShadow = castShadow; }
+  bool GetCastShadow() const { return castShadow; }
+
 protected:
   boost::intrusive_ptr<Resource<GeometryData>> geometryData;
+  bool castShadow = true;
 };
 
 class IGeometryInterpreter : public Interpreter {

@@ -23,12 +23,25 @@ def _normalize(v):
     return (v[0] / n, v[1] / n, v[2] / n) if n > 1e-12 else (0.0, 0.0, 1.0)
 
 
-def write_mesh_normals(out, vertices, faces, smooth=True):
+def write_mesh_normals(out, vertices, faces, smooth=True, constant=None):
     """Emits *MESH_NORMALS for faces=[(a,b,c)] over vertices=[(x,y,z)].
 
     smooth=True averages face normals per vertex (organic meshes);
     smooth=False writes flat face normals (stadium/crowd billboards).
+    constant=(x,y,z) forces one normal everywhere - pointing it away from
+    the sun makes a surface effectively unlit (sky domes).
     """
+    if constant is not None:
+        out.write("\t\t*MESH_NORMALS {\n")
+        n = _normalize(constant)
+        for i, (a, b, c) in enumerate(faces):
+            out.write("\t\t\t*MESH_FACENORMAL %d\t%.4f\t%.4f\t%.4f\n"
+                      % (i, n[0], n[1], n[2]))
+            for idx in (a, b, c):
+                out.write("\t\t\t\t*MESH_VERTEXNORMAL %d\t%.4f\t%.4f\t%.4f\n"
+                          % (idx, n[0], n[1], n[2]))
+        out.write("\t\t}\n")
+        return
     face_normals = []
     for a, b, c in faces:
         n = _normalize(_cross(_sub(vertices[b], vertices[a]),

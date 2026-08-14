@@ -333,6 +333,10 @@ void GraphicsTaskCommand_EnqueueView::EnqueueShadowMap(boost::intrusive_ptr<Ligh
                                                                    visibleGeometry, bounding);
     // std::static_pointer_cast<Scene3D>(scene)->GetObjects<Geometry>(e_ObjectType_Geometry,
     // visibleGeometry);
+    for (auto iter = visibleGeometry.begin(); iter != visibleGeometry.end();) {
+      if (!(*iter)->GetCastShadow()) iter = visibleGeometry.erase(iter);
+      else iter++;
+    }
     light->EnqueueShadowMap(camera, visibleGeometry);
   }
 }

@@ -243,6 +243,9 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   renderer->SetUniformFloat2("postprocess", "cameraClip", depthParamNear, depthParamFar);
   renderer->SetUniformFloat("postprocess", "fogScale",
                             0.8f - NormalizedClamp(buffer.cameraFOV, 20, 100) * 0.6f);
+  // the sky gradient needs per-pixel view directions
+  renderer->SetUniformMatrix4("postprocess", "inverseProjectionViewMatrix",
+                              inverseProjectionViewMatrix);
 
   renderer->SetViewport(view.x, height - (view.y + view.height), view.width, view.height);
 

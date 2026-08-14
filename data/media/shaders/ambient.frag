@@ -188,12 +188,16 @@ void main(void) {
   // self-illumination
 
   vec4 aux = texture2D(map_aux, texCoord.st);
-  float self_illumination = aux.w;
+  float self_illumination = clamp(aux.w, 0.0, 1.0);
 
+  // fully self-illuminated surfaces (sky dome) emit their raw albedo,
+  // bypassing the desaturation/tint above and the SSAO darkening below
+  vec3 rawAlbedo = texture2D(map_albedo, texCoord).xyz;
   vec3 fragColor = vec3(clamp(base * (1.0 + self_illumination), 0.0, 1.0));
+  fragColor = mix(fragColor, rawAlbedo, self_illumination);
 
   //stdout0 = vec4(vec3(depth / 2.0f), 1.0);
-  stdout0 = vec4(fragColor * SSAO, 1.0);
+  stdout0 = vec4(fragColor * mix(SSAO, 1.0, self_illumination), 1.0);
   stdout1.r = GetEdge(texCoord); // AA
   stdout1.g = SSAO;
 }

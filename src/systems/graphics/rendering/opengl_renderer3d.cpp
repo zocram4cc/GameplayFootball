@@ -2323,7 +2323,10 @@ void OpenGLRenderer3D::LoadShader(const std::string& name, const std::string& fi
   }
   if (name == "ambient") {
     mapping.glBindAttribLocation(shader.programID, 0, "position");
-    mapping.glBindFragDataLocation(shader.programID, 0, "stdout");
+    // ambient.frag outputs stdout0 (color) and stdout1 (edge/SSAO); binding a
+    // non-existent "stdout" left the linker free to swap the draw buffers
+    mapping.glBindFragDataLocation(shader.programID, 0, "stdout0");
+    mapping.glBindFragDataLocation(shader.programID, 1, "stdout1");
   }
   if (name == "lighting") {
     mapping.glBindFragDataLocation(shader.programID, 0, "stdout0");
@@ -2374,7 +2377,7 @@ void OpenGLRenderer3D::LoadShader(const std::string& name, const std::string& fi
     SetUniformInt("lighting", "map_albedo", 0);
     SetUniformInt("lighting", "map_normal", 1);
     SetUniformInt("lighting", "map_depth", 2);  // was: 3
-    // SetUniformInt("lighting", "map_aux", 3); // was: 2
+    SetUniformInt("lighting", "map_aux", 3);  // self-illumination in .w
     SetUniformInt("lighting", "map_shadow", 7);
 
     SetUniformFloat("lighting", "contextX", (float)0.0);

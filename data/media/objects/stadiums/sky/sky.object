@@ -1,0 +1,14 @@
+<object>
+
+	<geometry>
+		<filename>sky.ase</filename>
+		<name>sky</name>
+		<position>0, 0, -20</position>
+		<rotation>0, 0, 0, 0</rotation>
+		<properties>
+			<physicable>false</physicable>
+			<movable>false</movable>
+		</properties>
+	</geometry>
+
+</object>

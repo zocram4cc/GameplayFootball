@@ -14,8 +14,16 @@ uniform float contextY;
 uniform vec2 cameraClip;
 
 uniform float fogScale;
+uniform mat4 inverseProjectionViewMatrix;
 
 out vec4 stdout;
+
+vec3 GetWorldPosition(vec2 texCoord, float depth) {
+  vec4 projectedPos = vec4(texCoord.x * 2 - 1, texCoord.y * 2 - 1, depth * 2 - 1, 1.0f);
+  vec4 worldPosition = inverseProjectionViewMatrix * projectedPos;
+  worldPosition.xyz /= worldPosition.w;
+  return worldPosition.xyz;
+}
 
 // http://mouaif.wordpress.com/2009/01/05/photoshop-math-with-glsl-shaders/
 
@@ -117,7 +125,6 @@ void main(void) {
   float fogFactor = clamp(fragDepth * 0.01f * (1.0f - fogScale) - 0.16f * fogScale, 0.0f, 0.25f);
 
   fragColor = fragColor * (1.0f - fogFactor) + fogColor * fogFactor;
-  if (depth > 0.999f) fragColor = fogColor; // fill 'background'/sky
 
   float brightness = 1.0f;
   float contrastBias = 0.3f;//0.1f; // 0 == normal .. 1 == 'fake hdri'
@@ -132,7 +139,25 @@ void main(void) {
 
   fragColor = ContrastSaturationBrightness(fragColor, brightness, 1.0f, saturation);
   fragColor = AlternateContrast(fragColor, contrastBias);
-  
+
+  // sky: color the empty background (cleared depth) with a view-direction
+  // gradient instead of a flat fill - kills the white void behind open
+  // stadiums without needing sky geometry. Applied after grading so the sky
+  // keeps its saturation.
+  if (depth > 0.999999f) {
+    vec3 viewDir = normalize(GetWorldPosition(texCoord, 1.0f) -
+                             GetWorldPosition(texCoord, 0.0f));
+    vec3 skyZenith = vec3(0.32, 0.52, 0.78);
+    vec3 skyHorizon = vec3(0.78, 0.85, 0.93);
+    float elevation = clamp(viewDir.z, 0.0f, 1.0f);
+    vec3 sky = mix(skyHorizon, skyZenith, pow(elevation, 0.55f));
+    // below the horizon fade to the graded fog fill so stadium gaps stay hazy
+    vec3 gradedFog = AlternateContrast(
+        ContrastSaturationBrightness(fogColor, brightness, 1.0f, saturation),
+        contrastBias);
+    fragColor = mix(gradedFog, sky, smoothstep(-0.06f, 0.02f, viewDir.z));
+  }
+
   // Cinematic Vignette
   vec2 uv = texCoord * 2.0 - 1.0;
   float vignette = max(0.0, 1.0 - dot(uv, uv) * 0.18);

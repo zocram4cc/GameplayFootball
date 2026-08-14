@@ -5,7 +5,7 @@
 uniform sampler2D map_albedo; // 0
 uniform sampler2D map_normal; // 1
 uniform sampler2D map_depth;  // was: 3, now: 2
-//uniform sampler2D map_aux;    // was: 2, now: 3 (disabled though)
+uniform sampler2D map_aux;    // 3; self-illumination factor in .w
 uniform sampler2DShadow map_shadow; // was: 7, now: 3
 
 //uniform mat4 viewMatrix;
@@ -153,6 +153,11 @@ void main(void) {
   }
 
   vec3 fragColor = (base.rgb * lighted + specular) * shaded;
+
+  // self-illuminated surfaces (sky dome) already emit their albedo in the
+  // ambient pass; keep sunlight/shadow from re-shading them
+  float self_illumination = clamp(texture2D(map_aux, texCoord).w, 0.0, 1.0);
+  fragColor *= 1.0 - self_illumination;
 
   // debug stuff
   //stdout0 = vec4(worldPosition.x * 0.01f + 0.05f, worldPosition.y * 0.01f + 0.05f, worldPosition.z * 0.01f, 0.0f);

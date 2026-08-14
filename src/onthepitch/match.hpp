@@ -354,6 +354,7 @@ protected:
 
   boost::intrusive_ptr<Node> stadiumNode;
   boost::intrusive_ptr<Node> goalsNode;
+  boost::intrusive_ptr<Node> skydomeNode;
 
   // camera user settings
   float cameraUserZoom;

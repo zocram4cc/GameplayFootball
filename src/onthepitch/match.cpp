@@ -287,6 +287,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   GetScene3D()->AddNode(goalsNode);
   PrepareGoalNetting();
 
+  // optional sky geometry for stadiums that ship their own dome; the default
+  // sky is a view-direction gradient in postprocess.frag (no geometry needed),
+  // as imported geometry runs through the full lighting pipeline and comes out
+  // fogged/desaturated (see docs/TECHNICAL_ROADMAP notes on self-illumination)
+  std::string skydomeObject = GetConfiguration()->Get("skydome_object", "");
+  if (skydomeObject != "" && !SuperDebug() &&
+      std::filesystem::exists(skydomeObject)) {
+    skydomeNode = loader.LoadObject(GetScene3D(), skydomeObject);
+    skydomeNode->SetLocalMode(e_LocalMode_Absolute);
+    // the dome encloses the whole shadow volume; letting it into the shadow
+    // map would put the entire stadium in shade
+    std::list<boost::intrusive_ptr<Geometry>> skydomeGeoms;
+    skydomeNode->GetObjects<Geometry>(e_ObjectType_Geometry, skydomeGeoms);
+    for (auto& geom : skydomeGeoms) geom->SetCastShadow(false);
+    GetScene3D()->AddNode(skydomeNode);
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -591,6 +608,7 @@ void Match::Exit() {
   scene3D->DeleteNode(GetDynamicNode());
   scene3D->DeleteNode(stadiumNode);
   scene3D->DeleteNode(goalsNode);
+  if (skydomeNode) scene3D->DeleteNode(skydomeNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
@@ -1894,7 +1912,11 @@ void Match::Put() {
 
   cameraNode->SetRotation(fetchedbuf_cameraNodeOrientation, false);
   camera->SetFOV(fetchedbuf_cameraFOV);
-  camera->SetCapping(fetchedbuf_cameraNearCap, fetchedbuf_cameraFarCap);
+  // the sky dome sits ~320m out, beyond the 200-250m gameplay far caps that
+  // predate it; floor the far plane so the sky is never clipped away
+  float farCap = fetchedbuf_cameraFarCap;
+  if (skydomeNode) farCap = std::max(farCap, 500.0f);
+  camera->SetCapping(fetchedbuf_cameraNearCap, farCap);
 
   if (!GetPause()) {
     if (GetDebugMode() == e_DebugMode_AI) {
