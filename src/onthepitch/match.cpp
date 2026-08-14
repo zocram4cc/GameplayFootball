@@ -147,7 +147,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Creating referee/linesmen models");
 
-  std::string kitFilename = "media/objects/players/textures/referee_kit.png";
+  // referees are data too: any PNG with the player kit UV layout works
+  std::string kitFilename = GetConfiguration()->Get(
+      "referee_kit", "media/objects/players/textures/referee_kit.png");
   boost::intrusive_ptr<Resource<Surface>> kit = ResourceManagerPool::GetInstance()
                                                     .GetManager<Surface>(e_ResourceType_Surface)
                                                     ->Fetch(kitFilename);
@@ -185,7 +187,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   boost::intrusive_ptr<Node> tmpStadiumNode;
   if (!SuperDebug()) {
-    tmpStadiumNode = loader.LoadObject(GetScene3D(), "media/objects/stadiums/test/test.object");
+    // stadiums are data: point this key at any .object under media/objects/
+    // stadiums (imported PES stadiums install as pes_<id>/pes_<id>.object)
+    std::string stadiumObject = GetConfiguration()->Get(
+        "stadium_object", "media/objects/stadiums/test/test.object");
+    tmpStadiumNode = loader.LoadObject(GetScene3D(), stadiumObject);
     RandomizeAdboards(tmpStadiumNode);
   }
   if (SuperDebug())
