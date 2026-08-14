@@ -9,9 +9,14 @@ sources here are a local install and 4cc aesthetic exports.
 Everything lives in `tools/pes21_import/`; converted content is written to
 `data/imports/<pack>/` (git-ignored — packs are generated, not source).
 
-**Ground rule:** when import fidelity forces a choice between the PES asset
-and the engine, the PES side wins — extend the open-source engine rather than
-downgrade the asset.
+**Ground rules:**
+- when import fidelity forces a choice between the PES asset and the engine,
+  the PES side wins — extend the open-source engine rather than downgrade the
+  asset;
+- packs hold **simple, editable formats through and through**: PNG, OGG
+  Vorbis (the engine has an stb_vorbis loader), plain-text `.anim`, ASE.
+  Proprietary formats are tool inputs — and, for gani, a tool *output* too:
+  edited `.anim` files re-encode to valid `.gani` (see below).
 
 ## The two sides
 
@@ -70,6 +75,15 @@ python3 tools/pes21_import/gani_to_anim.py --batch ganis/ data/imports/pes21/ani
 
 # 5. Visual check: render an .anim as a stick-figure filmstrip (GF FK)
 python3 tools/pes21_import/anim_preview.py out.anim strip.png
+
+# 5b. Round trip: edit the text .anim, re-encode it as a valid .gani
+python3 tools/pes21_import/anim_to_gani.py edited.anim out.gani --template original.gani
+# verified: edited clip re-decodes cleanly and keeps the edit (arms-raised POC)
+
+# 5c. Build the whole pack in one shot (portraits/anims/adboards/chants/faces)
+python3 tools/pes21_import/build_pes21_pack.py "/path/to/PES21/Data" \
+    --faces 100117 --fmdl-lib "<pes-fmdl dir>"
+# current pack: 14,672 portraits, 4,389 anims, 336 adboards, 333 chants (ogg)
 
 # 6. Convert a full-body .fmdl into a GameplayFootball ASE
 python3 tools/pes21_import/fmdl_to_ase.py model.fmdl out.ase \

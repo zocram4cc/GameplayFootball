@@ -57,6 +57,7 @@ class Segment:
         self.type = QUAT
         self.component_bits = 0
         self.data_offset = 0          # absolute
+        self.data_end = 0             # absolute, one past the blob (set on decode)
         self.ms_id = 0
         self.deltas = []              # deltas[0] == 0; frame k = sum(deltas[:k+1])
         self.quats = []               # (x, y, z, w) for QUAT / QUAT_DIFF
@@ -167,6 +168,7 @@ def _decode_segment(blob, seg, static, hermite, frame_count):
                 seg.deltas.append(delta)
                 if delta == 0 and acc < frame_count:
                     raise ValueError("stuck quat stream")
+        seg.data_end = (bit_pos + 7) >> 3
         return
 
     comps = _COMP_COUNT.get(seg.type, 3)
@@ -189,6 +191,7 @@ def _decode_segment(blob, seg, static, hermite, frame_count):
             seg.deltas.append(delta)
             if delta == 0 and acc < frame_count:
                 raise ValueError("stuck vector stream")
+    seg.data_end = offset
 
 
 def parse(blob: bytes, decode: bool = True) -> Gani:
