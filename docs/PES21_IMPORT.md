@@ -208,6 +208,33 @@ formats and the GF mapping (one +90° X basis rotation; FOV copies
 unchanged; clamp near to ≥0.1). Next milestone: play imported .canm
 tracks in the engine's cutscene camera.
 
+## Menu / in-match UI art (REVERSED — dt11_x64.cpk)
+
+The Flash-derived UI stores its art in `common/menu/**/*.bin`. Chain of
+containers, all decoded by `tools/pes21_import/txp2.py`:
+
+1. **WESYS wrapper** (same as constants: `wesys_constant.unwrap`) — tag
+   bytes + "WESYS", u32 compressed/uncompressed, zlib.
+2. **Named archive** (same `.o` layout as constants) holding one
+   `afp_<name>.apk` payload.
+3. **TXP2 texture package** (big-endian): texture count/table at
+   0x18/0x1c (12-byte entries `{name_off, size, data_off}`), sprite region
+   count/table at 0x24/0x28 (10-byte entries `{texture_no, l, t, r, b}`,
+   exported as `regions.json`).
+4. Each texture blob: u32 uncompressed + u32 compressed + **Okumura LZSS**
+   (0x1000 zero-primed window, write pos 0xFEE, LSB-first flags, set
+   bit = literal) around a **TXDT** payload: u16 width/height at 0x10,
+   pixels from 0x40 — fmt 0x15 = raw RGBA8888, fmt 0x1a = 8bpp
+   alpha/gray (fonts, masks).
+
+`python3 txp2.py --batch <dt11_dir> <out>` mirrors the tree and emits
+PNGs. Key packages: `general/game2d.bin` (in-match HUD), `general/
+gamePlan*.bin` (tactics screens), `licence/game2d*.bin` (competition
+scoreboard skins), `general/topModeSelect*Bg_*` (menu backgrounds).
+Fonts (`font/*_fnt.bin`) are a separate `WFNT` format, not yet decoded
+(`match_fnt`, `numMatch_fnt` = scoreboard faces — worth reversing for a
+PES-style scoreboard theme).
+
 ## Open problems, in priority order
 
 1. **Animation naming/classification.** mtar entries are keyed by 48-bit GZ
