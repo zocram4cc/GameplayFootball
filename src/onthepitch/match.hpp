@@ -7,6 +7,7 @@
 #define _HPP_MATCH
 
 #include <fstream>
+#include "utils/camtrack.hpp"
 #include <iostream>
 #include <memory>
 
@@ -357,6 +358,8 @@ protected:
   // pre-kickoff stadium fly-around ("intro_cutscene_seconds" config key)
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
+  // imported PES camerawork ("intro_cutscene_track" .camtrack path)
+  CamTrack introCamTrack;
 
   std::shared_ptr<AnimCollection> anims;
 

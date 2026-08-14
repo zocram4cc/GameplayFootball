@@ -174,6 +174,12 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   GetDynamicNode()->AddNode(cameraNode);
 
   float introSeconds = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
+  std::string introTrack = GetConfiguration()->Get("intro_cutscene_track", "");
+  if (!introTrack.empty()) {
+    std::ifstream trackFile(introTrack);
+    if (trackFile.good() && introCamTrack.Load(trackFile) && introSeconds <= 0.0f)
+      introSeconds = introCamTrack.GetDurationSeconds();
+  }
   if (introSeconds > 0.0f) {
     introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
     introCutsceneEnd_ms =
@@ -1129,15 +1135,28 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 }
 
 void Match::UpdateIngameCamera() {
-  // pre-kickoff cutscene: a slow orbit around the centre spot, tilted up
-  // enough to frame the stands and crowd. (PES's own hand-authored camera
-  // tracks were later found in dt12's .fdc cut files - see
-  // docs/PES21_CAMERA_TRACE.md; importing them can replace this orbit.)
+  // pre-kickoff cutscene. With an imported PES camera track
+  // ("intro_cutscene_track", see docs/PES21_CAMERA_TRACE.md) the original
+  // hand-authored camerawork plays; otherwise a slow authored orbit around
+  // the centre spot frames the stands and crowd.
   if (introCutsceneEnd_ms > 0) {
     unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
     if (now < introCutsceneEnd_ms) {
       float t = 1.0f - (introCutsceneEnd_ms - now) /
                            (float)introCutsceneDuration_ms;
+      if (introCamTrack.GetFrameCount() > 0) {
+        CamTrackFrame frame =
+            introCamTrack.Sample(t * (introCamTrack.GetFrameCount() - 1));
+        cameraNodePosition = Vector3(frame.position[0], frame.position[1],
+                                     frame.position[2]);
+        cameraNodeOrientation = QUATERNION_IDENTITY;
+        cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
+                              frame.rotation[2], frame.rotation[3]);
+        cameraFOV = frame.fov;
+        cameraNearCap = std::max(0.1f, frame.near);
+        cameraFarCap = frame.far;
+        return;
+      }
       float a = t * 2.0f * pi;
       const float radius = 42.0f;
       const float camHeight = 16.0f;
