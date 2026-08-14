@@ -1416,7 +1416,10 @@ void Match::UpdateIngameCamera() {
     // scorer cam: PES's own goal camerawork when tracks are available,
     // mirrored to whichever goal was actually scored in
     bool trackApplied = false;
-    if (!goalCamTracks.empty() && lastGoalTeamID >= 0) {
+    // canned tracks don't follow the real ball: during a shootout that
+    // masks the actual outcome, so the ball-tracking scorer cam rules there
+    if (!goalCamTracks.empty() && lastGoalTeamID >= 0 &&
+        matchPhase != e_MatchPhase_Penalties) {
       int pick = (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
                  (int)goalCamTracks.size();
       const CamTrack& track = goalCamTracks[pick];
