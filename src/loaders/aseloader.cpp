@@ -81,9 +81,14 @@ void ASELoader::Build(const s_tree* data, boost::intrusive_ptr<Resource<Geometry
       }
     }
 
-    mat.shininess = shine->values.at(0);
-    mat.specular_amount = shinestrength->values.at(0);
-    mat.self_illumination.Set(atof(self_illumination->values.at(0).c_str()));
+    // tolerate exporters that omit these (imported/generated content)
+    mat.shininess = (shine && !shine->values.empty())
+                        ? shine->values.at(0) : "0.1";
+    mat.specular_amount = (shinestrength && !shinestrength->values.empty())
+                              ? shinestrength->values.at(0) : "0.0";
+    mat.self_illumination.Set(
+        (self_illumination && !self_illumination->values.empty())
+            ? atof(self_illumination->values.at(0).c_str()) : 0.0f);
 
     materialList.push_back(mat);
   }

@@ -116,6 +116,8 @@ def write_ase(stands, out_dir, name, bitmap_rel):
         out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
         out.write("\t\t*MATERIAL_SPECULAR 0.000\t0.000\t0.000\n")
         out.write("\t\t*MATERIAL_SHINE 0.010\n\t\t*MATERIAL_SHADING Blinn\n")
+        out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
+        out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
         out.write("\t\t*MAP_DIFFUSE {\n\t\t\t*MAP_NAME \"crowd\"\n")
         out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
         out.write('\t\t\t*BITMAP "%s"\n' % bitmap_rel)

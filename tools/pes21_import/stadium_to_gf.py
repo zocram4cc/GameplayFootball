@@ -106,6 +106,8 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None):
             out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
             out.write("\t\t*MATERIAL_SPECULAR 0.000\t0.000\t0.000\n")
             out.write("\t\t*MATERIAL_SHINE 0.010\n")
+            out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
+            out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
             out.write('\t\t*MATERIAL_SHADING Blinn\n')
             if bitmap:
                 out.write("\t\t*MAP_DIFFUSE {\n")

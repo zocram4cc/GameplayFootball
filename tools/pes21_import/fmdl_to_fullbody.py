@@ -101,6 +101,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture):
         out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
         out.write("\t\t*MATERIAL_SPECULAR 0.900\t0.900\t0.900\n")
         out.write("\t\t*MATERIAL_SHINE 0.100\n\t\t*MATERIAL_SHADING Blinn\n")
+        out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
+        out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
         out.write("\t\t*MAP_DIFFUSE {\n\t\t\t*MAP_NAME \"fullbody\"\n")
         out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
         out.write('\t\t\t*BITMAP "%s"\n' % texture)
