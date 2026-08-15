@@ -512,6 +512,8 @@ set(GAME_SOURCES
    src/onthepitch/crowdmood.cpp
    src/onthepitch/matchmentality.cpp
    src/onthepitch/matchprogression.cpp
+   src/onthepitch/modelviewer.cpp
+   src/onthepitch/modelviewer.hpp
    src/onthepitch/substitutions.cpp
    src/onthepitch/matchpressure.cpp
    src/onthepitch/penaltyshootout.cpp
