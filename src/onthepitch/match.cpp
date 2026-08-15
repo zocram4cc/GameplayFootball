@@ -599,12 +599,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   // lower-third banner (section 4). Both drive their own visibility/fade off
   // Match's already-public state (entrance timing / explicit Show calls) via
   // an overridden Process(), so no further per-frame wiring is needed here.
+  // Init() is called after AddView() deliberately, so each widget builds its
+  // images/captions once already attached to its final parent.
   formationGraphic =
       std::make_unique<Gui2FormationGraphic>(menuTask->GetWindowManager(), "game_formationgraphic", this);
   root->AddView(formationGraphic.get());
+  formationGraphic->Init();
 
   banner = std::make_unique<Gui2Banner>(menuTask->GetWindowManager(), "game_banner", this);
   root->AddView(banner.get());
+  banner->Init();
 
   // for usage in destructor
   scene3D = GetScene3D();
