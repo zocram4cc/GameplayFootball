@@ -172,6 +172,8 @@ void Humanoid::Process() {
     currentMentalImage = match->GetMentalImage(
         instaDoorheb ? 0 : CastPlayer()->GetController()->GetReactionTime_ms());
   }
+  // the match has no mental images yet; nothing below can decide anything
+  if (!currentMentalImage) return;
 
   CalculateSpatialState();
   spatialState.positionOffsetMovement = Vector3(0);
@@ -1113,6 +1115,10 @@ void Humanoid::Process() {
 }
 
 void Humanoid::CalculateGeomOffsets() {
+  // Before the match has built its first mental image there is nothing to
+  // read the ball from, and the offsets below all lean on it.
+  if (!currentMentalImage) return;
+
   SetOffset("middle", 0.0, QUATERNION_IDENTITY);
   SetOffset("neck", 0.0, QUATERNION_IDENTITY);
   SetOffset("left_thigh", 0.0, QUATERNION_IDENTITY);

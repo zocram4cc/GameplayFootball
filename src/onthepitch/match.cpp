@@ -595,11 +595,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   root->AddView(statsOverlay.get());
   statsOverlay->Hide();
 
-  messageCaption =
-      std::make_unique<Gui2Caption>(menuTask->GetWindowManager(), "game_messages", 0, 0, 80, 8, "");
-  messageCaption->SetTransparency(0.3f);
-  root->AddView(messageCaption.get());
-  messageCaptionRemoveTime_ms = actualTime_ms + 5000;
+  // Pre-match formation graphic (docs/PRESENTATION_SPEC.md 1.1) and in-match
+  // lower-third banner (section 4). Both drive their own visibility/fade off
+  // Match's already-public state (entrance timing / explicit Show calls) via
+  // an overridden Process(), so no further per-frame wiring is needed here.
+  formationGraphic =
+      std::make_unique<Gui2FormationGraphic>(menuTask->GetWindowManager(), "game_formationgraphic", this);
+  root->AddView(formationGraphic.get());
+
+  banner = std::make_unique<Gui2Banner>(menuTask->GetWindowManager(), "game_banner", this);
+  root->AddView(banner.get());
 
   // for usage in destructor
   scene3D = GetScene3D();
@@ -723,13 +728,15 @@ void Match::Exit() {
 
   fullbodyNode.reset();
 
-  // Exit() removes messageCaption from the GUI view tree (root) and cleans up
-  // its own children; reset() then deletes the Gui2Caption exactly once.
-  // Without this, root's cascading Exit() (triggered below by menuTask.reset())
-  // would delete it first, leaving this unique_ptr dangling and causing a
+  // Exit() removes these from the GUI view tree (root) and cleans up their
+  // own children; reset() then deletes each widget exactly once. Without
+  // this, root's cascading Exit() (triggered below by menuTask.reset()) would
+  // delete them first, leaving these unique_ptrs dangling and causing a
   // heap-use-after-free when Match's destructor runs.
-  messageCaption->Exit();
-  messageCaption.reset();
+  formationGraphic->Exit();
+  formationGraphic.reset();
+  banner->Exit();
+  banner.reset();
 
   // remove, don't delete, because main.cpp is owner
   GetDynamicNode()->RemoveObject(GetGreenDebugPilon());
@@ -938,11 +945,12 @@ void Match::UpdateControllerSetup() {
 }
 
 void Match::SpamMessage(const std::string& msg, int time_ms) {
-  messageCaption->SetCaption(msg);
-  float w = messageCaption->GetTextWidthPercent();
-  messageCaption->SetPosition(50 - w * 0.5f, 5);
-  messageCaption->Show();
-  messageCaptionRemoveTime_ms = actualTime_ms + time_ms;
+  ShowBanner(-1, msg, "", time_ms);
+}
+
+void Match::ShowBanner(int teamID, const std::string& title, const std::string& subtitle,
+                       int time_ms) {
+  banner->Show(teamID, title, subtitle, time_ms);
 }
 
 Player* Match::GetPlayer(int playerID) {
@@ -971,6 +979,11 @@ void Match::GetOfficialPlayers(std::vector<PlayerBase*>& players) {
 }
 
 const MentalImage* Match::GetMentalImage(int history_ms) {
+  // No images yet (the first frames of a match) or none left (teardown): the
+  // clamp below would ask for element -1 and hand back a bogus image, whose
+  // match pointer the caller then reads through.
+  if (mentalImages.empty()) return nullptr;
+
   int index = int(round((float)history_ms / 10.0));
   if (index >= (signed int)mentalImages.size())
     index = mentalImages.size() - 1;
@@ -1238,10 +1251,33 @@ void Match::UpdateCutsceneChoreo() {
   }
 }
 
+void Match::InvalidateCachedMentalImages() {
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (!teams[teamID]) continue;
+    std::vector<Player*> squad;
+    teams[teamID]->GetAllPlayers(squad);
+    for (Player* player : squad)
+      if (player && player->CastHumanoid()) player->CastHumanoid()->InvalidateMentalImage();
+  }
+  // the referee and his assistants run humanoids of their own
+  if (officials) {
+    PlayerOfficial* crew[3] = {officials->GetReferee(), officials->GetLinesmanNorth(),
+                               officials->GetLinesmanSouth()};
+    for (PlayerOfficial* official : crew)
+      if (official && official->CastHumanoid())
+        official->CastHumanoid()->InvalidateMentalImage();
+  }
+}
+
 void Match::ResetSituation(const Vector3& focusPos) {
   camPos.clear();
   SetBallRetainer(nullptr);
   SetGoalScored(false);
+  // Players cache the mental image they last read; the vector below is about
+  // to be emptied, so drop those pointers before the memory goes. Without
+  // this the graphics thread's next put reads a freed image and dies inside
+  // Match::GetBall().
+  InvalidateCachedMentalImages();
   mentalImages.clear();
   goalScored = false;
   ballIsInGoal = false;
@@ -1391,9 +1427,8 @@ void Match::ExecutePendingSubstitutions() {
     // then ("substitution_cutscene_chance", 0..1).
     std::string out = sub.playerOut ? sub.playerOut->GetPlayerData()->GetLastName() : "";
     std::string in = sub.playerIn ? sub.playerIn->GetPlayerData()->GetLastName() : "";
-    SpamMessage(team->GetTeamData()->GetShortName() + " SUB: " + in +
-                    (out.empty() ? "" : " for " + out),
-                4000);
+    ShowBanner(sub.teamID, "Substitution",
+              "IN: " + in + (out.empty() ? "" : "   OUT: " + out), 4000);
     if (random(0.0f, 1.0f) <
         GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f))
       StartCutscene("change", 5.0f);
@@ -1538,12 +1573,9 @@ void Match::AnnounceInstructions(int teamID) {
   std::string subject;
   Player* focus = team->GetDesignatedTeamPossessionPlayer();
   if (!focus || focus->GetTeam() != team) focus = team->GetLastTouchPlayer();
-  if (focus && focus->GetPlayerData())
-    subject = " (" + focus->GetPlayerData()->GetLastName() + ")";
-  SpamMessage(team->GetTeamData()->GetShortName() + ": " +
-                  TeamInstructions::Describe(team->GetController()->GetInstructions()) +
-                  subject,
-              3500);
+  if (focus && focus->GetPlayerData()) subject = focus->GetPlayerData()->GetLastName();
+  ShowBanner(teamID, TeamInstructions::Describe(team->GetController()->GetInstructions()), subject,
+            3500);
 }
 
 void Match::ProcessTacticalHotkeys() {
@@ -1991,7 +2023,11 @@ void Match::UpdateIngameCamera() {
 
   // Model viewer: debug tooling, so the bench itself lives in modelviewer.cpp
   const ModelViewerSettings viewer = LoadModelViewerSettings();
-  if (ModelViewerIsRunning(viewer, actualTime_ms)) {
+  // Not before the match is actually running: the opening frames are still
+  // wiring humanoids up, and reaching into them from here took the put
+  // thread down inside CalculateGeomOffsets.
+  if (ModelViewerIsRunning(viewer, actualTime_ms) && actualTime_ms >= 2000 &&
+      IsInPlay() && !mentalImages.empty()) {
     Player* subject = PickModelViewerSubject(viewer.playerFilter);
     if (subject) {
       modelViewerSubject = subject;
@@ -2495,9 +2531,6 @@ void Match::Put() {
     if (statsOverlay->IsVisible())
       statsOverlay->UpdateStats();
 
-    if (messageCaptionRemoveTime_ms <= fetchedbuf_actualTime_ms)
-      messageCaption->Hide();
-
     // radar
 
     radar->Put();
@@ -2625,6 +2658,7 @@ void Match::ReplacePlayerReferences(Player* playerOut, Player* playerIn) {
   if (lastGoalScorer == playerOut)
     lastGoalScorer = nullptr;
   // The mental images hold snapshots of a humanoid that no longer exists.
+  InvalidateCachedMentalImages();
   mentalImages.clear();
   bestPossessionTeamID = -1;
 }

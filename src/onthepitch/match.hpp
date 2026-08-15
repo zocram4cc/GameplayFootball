@@ -15,6 +15,8 @@
 
 #include "../data/matchanalytics.hpp"
 #include "../data/matchdata.hpp"
+#include "../menu/ingame/banner.hpp"
+#include "../menu/ingame/formationgraphic.hpp"
 #include "../menu/ingame/radar.hpp"
 #include "../menu/ingame/scoreboard.hpp"
 #include "../menu/ingame/statsoverlay.hpp"
@@ -113,7 +115,14 @@ public:
   void SetRandomSunParams();
   void RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode);
   void UpdateControllerSetup();
+  // Legacy plain-string call sites (goal commentary etc.) still work; routes
+  // to the team-less (centre) banner slot. See ShowBanner for the richer,
+  // team-tagged lower-third form (docs/PRESENTATION_SPEC.md section 4).
   void SpamMessage(const std::string& msg, int time_ms = 3000);
+  // teamID -1 for a team-less message (referee/commentary cue), 0/1 for a
+  // team-tagged one (tactics changes, subs, bookings/sending-off/offside).
+  void ShowBanner(int teamID, const std::string& title, const std::string& subtitle,
+                  int time_ms = 3500);
   int GetScore(int teamID) { return matchData->GetGoalCount(teamID); }
   Ball* GetBall() { return ball.get(); }
   Team* GetTeam(int teamID) { return teams[teamID].get(); }
@@ -128,6 +137,8 @@ public:
   void UpdateLatestMentalImageBallPredictions();
 
   void ResetSituation(const Vector3& focusPos);
+  // drops every player's cached mental image before the match frees them
+  void InvalidateCachedMentalImages();
 
   void Pause(bool doPause) { pause = doPause; }
   bool GetPause() { return pause; }
@@ -494,9 +505,9 @@ protected:
   std::unique_ptr<Gui2ScoreBoard> scoreboard;
   std::unique_ptr<Gui2Radar> radar;
   std::unique_ptr<Gui2TacticsDebug> tacticsDebug;
-  std::unique_ptr<Gui2Caption> messageCaption;
+  std::unique_ptr<Gui2FormationGraphic> formationGraphic;
+  std::unique_ptr<Gui2Banner> banner;
   std::unique_ptr<Gui2StatsOverlay> statsOverlay;
-  unsigned long messageCaptionRemoveTime_ms;
 
   mutable Lockable<unsigned long> iterations;
   TaskSequenceInfo gameSequenceInfo;
