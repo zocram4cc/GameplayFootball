@@ -24,6 +24,7 @@
 #include "scene/resources/soundbuffer.hpp"
 #include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/directoryparser.hpp"
+#include "utils/playermodelmap.hpp"
 #include "utils/splitgeometry.hpp"
 
 const unsigned int replaySize_ms = 10000;
@@ -1927,6 +1928,57 @@ void Match::UpdateIngameCamera() {
       cameraNodeOrientation = QUATERNION_IDENTITY;
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);
+      cameraFOV = frame.fov;
+      cameraNearCap = frame.near;
+      cameraFarCap = frame.far;
+    }
+  }
+
+  // Model viewer ("debug_model_viewer_seconds"): orbits a chosen player at
+  // full-body framing so imported models can be inspected in the engine that
+  // actually skins them - bad joints show up as bent or detached limbs.
+  // "debug_model_viewer_player" picks him: a shirt number, or a substring of
+  // the model directory from playermodels.cfg ("2hug_k1858"). Empty means the
+  // first player of team 1.
+  float viewerSeconds =
+      GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
+  if (viewerSeconds > 0.0f &&
+      actualTime_ms < (unsigned long)(viewerSeconds * 1000.0f)) {
+    const std::string wanted =
+        GetConfiguration()->Get("debug_model_viewer_player", "");
+    Player* subject = nullptr;
+    for (int t = 0; t < 2 && !subject; t++) {
+      std::vector<Player*> activePlayers;
+      teams[t]->GetActivePlayers(activePlayers);
+      for (Player* candidate : activePlayers) {
+        if (!subject) subject = candidate;  // the fallback
+        if (wanted.empty()) break;
+        const std::string modelDir =
+            GetPlayerModelDir(candidate->GetPlayerData()->GetDatabaseID());
+        if (!modelDir.empty() && modelDir.find(wanted) != std::string::npos) {
+          subject = candidate;
+          break;
+        }
+      }
+    }
+    if (subject) {
+      // a slow orbit at chest height, close enough to read the legs
+      const float t = actualTime_ms * 0.0004f;
+      const Vector3 centre = subject->GetPosition() + Vector3(0, 0, 0.95f);
+      const float radius = GetConfiguration()->GetReal("debug_model_viewer_radius", 3.4f);
+      Vector3 camPos = centre + Vector3(std::sin(t) * radius, -std::cos(t) * radius, 0.35f);
+      CamTrackFrame frame;
+      frame.position = {camPos.coords[0], camPos.coords[1], camPos.coords[2]};
+      frame.fov = 32.0f;
+      frame.near = 0.1f;
+      frame.far = 300.0f;
+      frame = RetargetCamTrackFrame(
+          frame, {centre.coords[0], centre.coords[1], centre.coords[2]}, 1.0f, 0.5f);
+      cameraNodePosition =
+          Vector3(frame.position[0], frame.position[1], frame.position[2]);
+      cameraNodeOrientation = QUATERNION_IDENTITY;
+      cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                            frame.rotation[3]);
       cameraFOV = frame.fov;
       cameraNearCap = frame.near;
       cameraFarCap = frame.far;
