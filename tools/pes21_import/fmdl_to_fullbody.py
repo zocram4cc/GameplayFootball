@@ -109,6 +109,19 @@ def _mat_vec(m, v):
             m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2])
 
 
+def drop_stretched_faces(vertices, faces, max_edge):
+    """Removes faces with an edge longer than max_edge; -> (faces, dropped)."""
+    if max_edge <= 0.0:
+        return faces, 0
+    kept = []
+    for tri in faces:
+        a, b, c = (vertices[i][0] for i in tri)
+        if max(math.dist(a, b), math.dist(b, c), math.dist(c, a)) > max_edge:
+            continue
+        kept.append(tri)
+    return kept, len(faces) - len(kept)
+
+
 def model_fit_scale(fmdl, target_height=1.80):
     """Uniform scale bringing a model onto the engine's skeleton.
 
@@ -234,7 +247,7 @@ def vertex_skin_joints(vertex, joints, joint_positions):
     dominant = GF_JOINT_ORDER[joints[0][0]]
     if math.dist(position, joint_positions[dominant]) <= FAR_BIND_METRES:
         return joints
-    return nearest_joints(position, joint_positions, count=1)
+    return nearest_joints(position, joint_positions, count=3)
 
 
 def nearest_joints(position, joint_positions, count=3, falloff=0.35):
@@ -422,7 +435,8 @@ MATERIAL_BLOCK = (
 
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
-            max_tris=None, align_bind=True, normalize_proportions=True):
+            max_tris=None, align_bind=True, normalize_proportions=True,
+            max_edge=0.2):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -471,6 +485,15 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     vertices.append((pos, uv, color))
                 tri.append(index[key])
             faces.append(tri)
+
+    # Stray triangles: a face whose vertices ended up under different joints
+    # gets stretched between them, and the engine renders those as the long
+    # flat shards the model viewer shows. On a fitted 1.8 m body a real
+    # triangle is centimetres across (median 1.8 cm here), so anything spanning
+    # a fifth of a metre is an artefact rather than authored geometry.
+    faces, dropped = drop_stretched_faces(vertices, faces, max_edge)
+    if dropped:
+        print("dropped %d stretched triangles (edge > %.2fm)" % (dropped, max_edge))
 
     os.makedirs(out_dir, exist_ok=True)
     # the engine's resource cache keys geometry by BASENAME, so every model
@@ -587,10 +610,14 @@ if __name__ == "__main__":
                         help="skip bind-pose alignment onto GF joints")
     parser.add_argument("--keep-proportions", action="store_true",
                         help="do not normalize limb lengths to GF's skeleton")
+    parser.add_argument("--max-edge", type=float, default=0.2,
+                        help="drop triangles with an edge longer than this "
+                             "(metres, 0 disables); they are stretched artefacts")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
                            args.base, args.max_tris,
                            align_bind=not args.no_align,
-                           normalize_proportions=not args.keep_proportions)
+                           normalize_proportions=not args.keep_proportions,
+                           max_edge=args.max_edge)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))
