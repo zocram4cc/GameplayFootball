@@ -185,17 +185,24 @@ def root_yaw(q):
     return math.atan2(f[0], f[2])
 
 
-def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False):
+def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
+            scale=None):
     """World rotation+position per PES bone at PES frame t (Fox coords).
 
     With strip_root the RIG_ROOT translation and yaw are removed (the pose
     stays in place, facing +Z, keeping any root tilt) — for clips whose world
     placement is driven externally, like the fixdemo entrance choreography.
+
+    `scale` is metres per raw position unit; it defaults to the legacy
+    retarget.PES_POS_TO_M so existing callers (the entrance/cutscene export)
+    are untouched. Match animation passes retarget.PES_POS_TO_M_GAMEPLAY —
+    see calibrate_pos_scale.py for how that number was measured.
     """
     rot = {}
     pos = {}
     bind = retarget.PES_BIND
-    scale = retarget.PES_POS_TO_M
+    if scale is None:
+        scale = retarget.PES_POS_TO_M
 
     rq = q_norm(root_q.quat(t)) if root_q else (0, 0, 0, 1)
     rp = tuple(c * scale for c in root_p.vec(t)) if root_p else (0.0, 0.0, 0.0)
@@ -311,8 +318,13 @@ GF_NODES = ["body", "middle", "neck", "head",
             "right_thigh", "right_knee", "right_ankle"]
 
 
-def convert(blob, anim_type="movement", key_step=2, strip_root=False):
-    """gani bytes -> .anim text."""
+def convert(blob, anim_type="movement", key_step=2, strip_root=False,
+            pos_scale=None):
+    """gani bytes -> .anim text.
+
+    `pos_scale` is metres per raw position unit (see fk_pose); match
+    animation wants retarget.PES_POS_TO_M_GAMEPLAY.
+    """
     g = gani.parse(blob)
     bones, root_q, root_p, mot_q, mot_p = build_samplers(g)
 
@@ -324,7 +336,8 @@ def convert(blob, anim_type="movement", key_step=2, strip_root=False):
     origin = None
     for f in range(0, gf_frames + 1, key_step):
         t = min(f * GF_FRAME_MS / PES_FRAME_MS, float(g.frame_count))
-        rot, pos = fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root)
+        rot, pos = fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root,
+                           pos_scale)
         locals_, hip = solve_gf(rot, pos)
         if origin is None:
             origin = (hip[0], hip[1])
@@ -371,14 +384,19 @@ def main():
     parser.add_argument("--type", default="movement")
     parser.add_argument("--key-step", type=int, default=2,
                         help="GF frames between keys (2 = every 20ms)")
+    parser.add_argument("--gameplay-scale", action="store_true",
+                        help="use the calibrated match-animation position "
+                             "scale (retarget.PES_POS_TO_M_GAMEPLAY)")
     parser.add_argument("--strip-root", action="store_true",
                         help="remove RIG_ROOT yaw+translation (in-place clip "
                              "for externally driven playback, e.g. .chor)")
     args = parser.parse_args()
 
+    pos_scale = retarget.PES_POS_TO_M_GAMEPLAY if args.gameplay_scale else None
+
     if not args.batch:
         text, g = convert(open(args.src, "rb").read(), args.type, args.key_step,
-                          args.strip_root)
+                          args.strip_root, pos_scale)
         open(args.dest, "w").write(text)
         print("wrote %s (%d PES frames -> %d bytes)"
               % (args.dest, g.frame_count, len(text)))
@@ -391,7 +409,8 @@ def main():
             continue
         try:
             text, _ = convert(open(os.path.join(args.src, name), "rb").read(),
-                              args.type, args.key_step, args.strip_root)
+                              args.type, args.key_step, args.strip_root,
+                              pos_scale)
             out = os.path.join(args.dest, os.path.splitext(name)[0] + ".anim")
             open(out, "w").write(text)
             done += 1
