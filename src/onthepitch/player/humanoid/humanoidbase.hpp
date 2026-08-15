@@ -324,6 +324,7 @@ protected:
   bool CompareBallDirectionSimilarity(int animIndex1, int animIndex2) const;
   bool CompareBaseanimSimilarity(int animIndex1, int animIndex2) const;
   bool CompareCatchOrDeflect(int animIndex1, int animIndex2) const;
+  bool CompareImportedPreference(int animIndex1, int animIndex2) const;
   void SetNumericVariableSimilarityPredicate(const std::string& varName, float desiredValue) const;
   bool CompareNumericVariable(int animIndex1, int animIndex2) const;
 

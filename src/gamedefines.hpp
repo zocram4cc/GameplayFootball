@@ -257,6 +257,7 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
                          "media/objects/players/models/fullbody.ase");
 
 e_FunctionType StringToFunctionType(const std::string& fun);
+std::string FunctionTypeToString(e_FunctionType functionType);
 
 float GetGlobalVelocityMultiplier();
 

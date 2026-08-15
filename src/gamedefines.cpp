@@ -143,6 +143,41 @@ e_FunctionType StringToFunctionType(const std::string& fun) {
   return e_FunctionType_None;
 }
 
+std::string FunctionTypeToString(e_FunctionType functionType) {
+  // the inverse of StringToFunctionType, so config can name a family the same
+  // way an .anim's <type> does
+  switch (functionType) {
+    case e_FunctionType_Movement:
+      return "movement";
+    case e_FunctionType_BallControl:
+      return "ballcontrol";
+    case e_FunctionType_Trap:
+      return "trap";
+    case e_FunctionType_ShortPass:
+      return "shortpass";
+    case e_FunctionType_LongPass:
+      return "longpass";
+    case e_FunctionType_HighPass:
+      return "highpass";
+    case e_FunctionType_Shot:
+      return "shot";
+    case e_FunctionType_Deflect:
+      return "deflect";
+    case e_FunctionType_Catch:
+      return "catch";
+    case e_FunctionType_Interfere:
+      return "interfere";
+    case e_FunctionType_Trip:
+      return "trip";
+    case e_FunctionType_Sliding:
+      return "sliding";
+    case e_FunctionType_Special:
+      return "special";
+    default:
+      return "";
+  }
+}
+
 std::string GetRoleName(e_PlayerRole playerRole) {
   switch (playerRole) {
     case e_PlayerRole_GK:
