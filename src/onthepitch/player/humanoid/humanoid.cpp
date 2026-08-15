@@ -103,6 +103,33 @@ bool _PassFiddlingEnabled() {
   return true;
 }
 
+bool PreferImportedAnims(e_FunctionType functionType) {
+  // Which families the imported set has taken over, as a comma-separated list
+  // of GF type names (`anim_prefer_imported`). A family is added once its
+  // imported clips cover the situations the stock ones did; until then the
+  // two simply coexist and the stock ordering stands.
+  static const std::string preferred =
+      GetConfiguration()->Get("anim_prefer_imported", "sliding,interfere,deflect");
+  if (preferred.empty())
+    return false;
+
+  const std::string type = FunctionTypeToString(functionType);
+  if (type.empty())
+    return false;
+
+  // exact token match: "pass" must not be found inside "highpass"
+  size_t at = preferred.find(type);
+  while (at != std::string::npos) {
+    const bool leftOK = (at == 0) || preferred[at - 1] == ',';
+    const size_t end = at + type.length();
+    const bool rightOK = (end == preferred.length()) || preferred[end] == ',';
+    if (leftOK && rightOK)
+      return true;
+    at = preferred.find(type, at + 1);
+  }
+  return false;
+}
+
 void Humanoid::Process() {
   // match entrance: a fed choreography pose owns the tick
   if (ProcessChoreo()) return;
@@ -2109,6 +2136,23 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
 #else
     std::stable_sort(dataSet.begin(), dataSet.end(),
                      [this](int a, int b) { return CompareBaseanimSimilarity(a, b); });
+#endif
+  }
+
+  // Imported clips take over from the stock ones, family by family. The sorts
+  // above are stable and each later one outranks the earlier, so this sits
+  // near the end deliberately: for the families named in
+  // `anim_prefer_imported` a mocapped clip gets first refusal, and the stock
+  // clip it replaces stays queued right behind it. GetBestCheatableAnimID
+  // then walks the list and takes the first that can actually reach the ball,
+  // so a gap in the imported coverage falls back to the old animation instead
+  // of leaving the player with nothing to do.
+  if (PreferImportedAnims(command.desiredFunctionType)) {
+#ifdef dataSetSortable
+    dataSet.sort([this](int a, int b) { return CompareImportedPreference(a, b); });
+#else
+    std::stable_sort(dataSet.begin(), dataSet.end(),
+                     [this](int a, int b) { return CompareImportedPreference(a, b); });
 #endif
   }
 

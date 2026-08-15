@@ -2395,6 +2395,20 @@ bool HumanoidBase::CompareBaseanimSimilarity(int animIndex1, int animIndex2) con
   return false;
 }
 
+bool HumanoidBase::CompareImportedPreference(int animIndex1, int animIndex2) const {
+  // Hands an imported (mocapped) clip first refusal over the stock one it is
+  // replacing. It is a preference, not a substitution: the stock clip stays
+  // in the set right behind it, so a situation the imported family does not
+  // cover is still answered rather than dropped. That is what lets a family
+  // be replaced a batch at a time without the gameplay noticing a hole.
+  bool imported1 = (anims->GetAnim(animIndex1)->GetVariable("imported").compare("true") == 0);
+  bool imported2 = (anims->GetAnim(animIndex2)->GetVariable("imported").compare("true") == 0);
+
+  if (imported1 == true && imported2 == false)
+    return true;
+  return false;
+}
+
 bool HumanoidBase::CompareCatchOrDeflect(int animIndex1, int animIndex2) const {
   bool catch1 = (anims->GetAnim(animIndex1)->GetVariable("outgoing_retain_state").compare("") != 0);
   bool catch2 = (anims->GetAnim(animIndex2)->GetVariable("outgoing_retain_state").compare("") != 0);

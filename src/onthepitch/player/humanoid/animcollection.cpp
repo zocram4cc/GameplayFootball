@@ -520,6 +520,14 @@ void AnimCollection::Load(std::filesystem::path directory) {
             new FootballAnimationExtension(animation));
         animation->AddExtension("football", extension);
         animation->Load(files.at(i));
+        // Imported clips are installed into a "pes" subdirectory of the
+        // family they join. Marking them here is what lets the selector hand
+        // them first refusal over the stock clip they replace (see
+        // Humanoid::PreferImportedAnims) without anything having to be
+        // written into the generated files themselves.
+        if (files.at(i).find("/pes/") != std::string::npos ||
+            files.at(i).find("\\pes\\") != std::string::npos)
+          animation->SetVariable("imported", "true");
         if (mirror == 1)
           animation->Mirror();
 
