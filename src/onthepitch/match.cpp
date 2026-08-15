@@ -1087,6 +1087,7 @@ void Match::LoadCutsceneChoreo(const std::string& category, const std::string& d
 void Match::StartCutsceneChoreo(const std::string& category) {
   activeCutsceneChoreo = nullptr;
   cutsceneCast.clear();
+  cutsceneOfficialCast.clear();
   auto pool = cutsceneChoreoPools.find(category);
   if (pool == cutsceneChoreoPools.end() || pool->second.empty()) {
     const size_t slash = category.find('/');
@@ -1097,32 +1098,58 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   activeCutsceneChoreo =
       &pool->second[(actualTime_ms / 10) % pool->second.size()];
 
-  // Cast the players nearest each staged mark, so the referee's slot gets the
-  // referee-like actor and the celebration goes to whoever is closest to it.
+  // Cast by role first - the incident's own people take their marks - then
+  // fill the remaining marks with whoever stands nearest them.
   std::vector<Player*> available;
   for (int teamID = 0; teamID < 2; teamID++) {
     std::vector<Player*> squad;
     teams[teamID]->GetActivePlayers(squad);
     for (Player* player : squad) available.push_back(player);
   }
+  auto take = [&available](Player* player) {
+    if (!player) return false;
+    auto at = std::find(available.begin(), available.end(), player);
+    if (at == available.end()) return false;
+    available.erase(at);
+    return true;
+  };
+
   for (const auto& slot : activeCutsceneChoreo->GetSlots()) {
     auto clip = cutsceneClips.find(slot.animFile);
-    if (clip == cutsceneClips.end() || available.empty()) continue;
-    Vector3 mark;
-    radian yaw = 0;
-    int animFrame = 0;
-    activeCutsceneChoreo->Sample(slot, 0.0f, mark, yaw, animFrame);
-    auto nearest = available.begin();
-    float bestDistance = (*nearest)->GetPosition().GetDistance(mark);
-    for (auto iter = available.begin(); iter != available.end(); iter++) {
-      const float distance = (*iter)->GetPosition().GetDistance(mark);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        nearest = iter;
+    if (clip == cutsceneClips.end()) continue;
+
+    Player* cast = nullptr;
+    if (slot.role == e_ChoreoRole_Official) {
+      // the referee plays himself; he is not one of the 22
+      if (officials && officials->GetReferee()) {
+        cutsceneOfficialCast.push_back({officials->GetReferee(), &slot, clip->second.get()});
+        continue;
       }
+    } else if (slot.role == e_ChoreoRole_Primary && take(cutscenePrimary)) {
+      cast = cutscenePrimary;
+    } else if (slot.role == e_ChoreoRole_Opponent && take(cutsceneOpponent)) {
+      cast = cutsceneOpponent;
     }
-    cutsceneCast.push_back({*nearest, &slot, clip->second.get()});
-    available.erase(nearest);
+
+    if (!cast) {
+      if (available.empty()) continue;
+      Vector3 mark;
+      radian yaw = 0;
+      int animFrame = 0;
+      activeCutsceneChoreo->Sample(slot, 0.0f, mark, yaw, animFrame);
+      auto nearest = available.begin();
+      float bestDistance = (*nearest)->GetPosition().GetDistance(mark);
+      for (auto iter = available.begin(); iter != available.end(); iter++) {
+        const float distance = (*iter)->GetPosition().GetDistance(mark);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          nearest = iter;
+        }
+      }
+      cast = *nearest;
+      available.erase(nearest);
+    }
+    cutsceneCast.push_back({cast, &slot, clip->second.get()});
   }
 }
 
@@ -1131,6 +1158,9 @@ void Match::UpdateCutsceneChoreo() {
     if (!activeCutscene) {
       activeCutsceneChoreo = nullptr;
       cutsceneCast.clear();
+      cutsceneOfficialCast.clear();
+      cutscenePrimary = nullptr;
+      cutsceneOpponent = nullptr;
     }
     return;
   }
@@ -1142,6 +1172,13 @@ void Match::UpdateCutsceneChoreo() {
     int animFrame = 0;
     activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
     cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
+  }
+  for (auto& cast : cutsceneOfficialCast) {
+    Vector3 position;
+    radian yaw = 0;
+    int animFrame = 0;
+    activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    cast.official->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
   }
 }
 

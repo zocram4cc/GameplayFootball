@@ -34,9 +34,21 @@ struct ChoreoKey {
   float yaw = 0.0f;  // radians, unwrapped; a player at yaw a faces (sin a, -cos a)
 };
 
+// Who a staged actor is meant to be. PES names the parts in the clip itself
+// (a "_judge" clip is the official) and puts them in team-coded slots, so a
+// cutscene can be cast with the people the incident actually involved rather
+// than whoever happens to stand nearby.
+enum e_ChoreoRole {
+  e_ChoreoRole_Extra,      // any spare player
+  e_ChoreoRole_Primary,    // the incident's subject: the booked player, scorer
+  e_ChoreoRole_Opponent,   // his counterpart: the fouled player, the victim
+  e_ChoreoRole_Official,   // referee or assistant
+};
+
 struct ChoreoSlot {
   int slot = -1;
   std::string animFile;  // relative to the .chor's own directory
+  e_ChoreoRole role = e_ChoreoRole_Extra;
   int phaseFrames = 0;
   bool loop = true;
   std::vector<ChoreoKey> keys;  // one clip cycle on the 10 ms frame grid

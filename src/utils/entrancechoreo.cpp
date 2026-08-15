@@ -30,6 +30,15 @@ bool EntranceChoreo::Load(std::istream& in) {
           int loop = 1;
           tokens >> loop;
           slot.loop = loop != 0;
+        } else if (key == "role") {
+          std::string role;
+          tokens >> role;
+          if (role == "primary")
+            slot.role = e_ChoreoRole_Primary;
+          else if (role == "opponent")
+            slot.role = e_ChoreoRole_Opponent;
+          else if (role == "official")
+            slot.role = e_ChoreoRole_Official;
         }
       }
       parsed.push_back(slot);
