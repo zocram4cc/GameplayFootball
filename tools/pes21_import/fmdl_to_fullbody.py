@@ -109,6 +109,24 @@ def _mat_vec(m, v):
             m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2])
 
 
+def model_fit_scale(fmdl, target_height=1.80):
+    """Uniform scale bringing a model onto the engine's skeleton.
+
+    4cc characters are authored at their own scale - this one stands 2.84 m
+    with a 2 m arm span - and the engine skins them with a 1.8 m rig, so the
+    surplus geometry hangs off the joints and swings into the streaks the
+    model viewer shows. Fitting overall height first puts every part within
+    reach of the joint that drives it.
+    """
+    zs = [v.position.y for mesh in fmdl.meshes for v in mesh.vertices]
+    if not zs:
+        return 1.0
+    height = max(zs) - min(zs)
+    if height <= 0.01:
+        return 1.0
+    return target_height / height
+
+
 def build_bind_alignment(fmdl, normalize_proportions=True):
     """Per GF joint: (pes pivot GF-coords, rotation matrix, scale, gf pivot).
 
@@ -420,6 +438,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # bind positions of the GF joints: unweighted costume geometry binds to
     # whichever joints it sits near, rather than to one fixed fallback
     joint_positions = _gf_world_positions()
+    # stylised exports come at their own scale; fit the model to the rig first
+    fit = model_fit_scale(fmdl)
     meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map, joint_positions)
     transforms = None
     if align_bind:
@@ -440,8 +460,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     joints = vertex_joints(vertex, pes_to_gf_map)
                     skin = vertex_skin_joints(vertex, joints, joint_positions)
                     color = encode_color(skin)
-                    pos = (vertex.position.x, -vertex.position.z,
-                           vertex.position.y)
+                    pos = (vertex.position.x * fit, -vertex.position.z * fit,
+                           vertex.position.y * fit)
                     if transforms:
                         # NB: the bind transform must be uniform across a mesh.
                         # Treating re-bound vertices differently (rotation
