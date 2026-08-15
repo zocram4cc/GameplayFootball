@@ -258,6 +258,27 @@ target_link_libraries(gameplayfootball_simulation_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_simulation_tests DISCOVERY_MODE PRE_TEST)
 
+# Pre-match formation graphic + in-match banner presentation logic (broadcast
+# presentation UI: docs/PRESENTATION_SPEC.md sections 1.1 and 4). Pure logic,
+# no TeamData/Gui2/SDL dependency.
+add_executable(gameplayfootball_presentation_tests
+  menu/formation_graphic_layout_test.cpp
+  menu/banner_presentation_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/ingame/formationgraphiclayout.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/ingame/bannerpresentation.cpp
+)
+
+target_include_directories(gameplayfootball_presentation_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_presentation_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_presentation_tests DISCOVERY_MODE PRE_TEST)
+
 # Career data unit tests (Phase 6: tasks 6.13, 6.16, 6.17)
 # Also covers the stat-based match simulation (career_database.cpp).
 add_executable(gameplayfootball_career_tests
