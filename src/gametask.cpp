@@ -130,8 +130,18 @@ void GameTask::ProcessPhase() {
   if (match) {
     match->Process();
 
+    // Executing a substitution rebuilds humanoid scene nodes that the
+    // graphics thread's PutPhase walks outside matchPutBufferMutex, so it
+    // needs the substitution lock exclusively. Only pay for that on the rare
+    // frame that has one queued; a request that slips in after this check
+    // simply waits for the next Process frame.
+    std::unique_lock<std::shared_mutex> substitutionLock(matchSubstitutionMutex, std::defer_lock);
+    if (match->HasPendingSubstitutions())
+      substitutionLock.lock();
+
     matchPutBufferMutex.lock();
-    match->ExecutePendingSubstitutions();
+    if (substitutionLock.owns_lock())
+      match->ExecutePendingSubstitutions();
     match->PreparePutBuffers();
     matchPutBufferMutex.unlock();
   }
@@ -147,6 +157,11 @@ void GameTask::PutPhase() {
   std::vector<PlayerBase*> playersToProcess;
 
   matchLifetimeMutex.lock();
+
+  // Everything below reads humanoid scene nodes, the team player lists and
+  // the replay spatials; hold the substitution lock (shared) so a substitution
+  // executing on the game thread cannot rebuild them mid-put.
+  matchSubstitutionMutex.lock_shared();
 
   if (match) {
     matchPutBufferMutex.lock();
@@ -221,6 +236,7 @@ void GameTask::PutPhase() {
 
   }  // !match
 
+  matchSubstitutionMutex.unlock_shared();
   matchLifetimeMutex.unlock();
 
   menuSceneLifetimeMutex.lock();

@@ -283,8 +283,11 @@ public:
   // Requests a substitution for `teamID`; returns the rule check result and
   // performs the swap when it is accepted.
   Substitutions::e_Result RequestSubstitution(int teamID, Player* playerOut, Player* playerIn);
-  // drains queued swaps; call only under GameTask's put-buffer mutex
+  // drains queued swaps; call only under GameTask's put-buffer mutex while
+  // holding GameTask's substitution lock exclusively (the rebuild replaces
+  // humanoid scene nodes the graphics put phase walks)
   void ExecutePendingSubstitutions();
+  bool HasPendingSubstitutions();
 
   float GetMatchDurationFactor() const { return matchDurationFactor; }
   float GetMatchDifficulty() const { return matchDifficulty; }

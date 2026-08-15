@@ -1138,6 +1138,11 @@ Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut
   return Substitutions::e_Result_Accepted;
 }
 
+bool Match::HasPendingSubstitutions() {
+  std::lock_guard<std::mutex> lock(pendingSubstitutionsMutex);
+  return !pendingSubstitutions.empty();
+}
+
 void Match::ExecutePendingSubstitutions() {
   std::vector<PendingSubstitution> pending;
   {
