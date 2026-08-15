@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(gameplayfootball_math_tests
   base/math_test.cpp
+  base/skinning_math_test.cpp
   onthepitch/ball_physics_test.cpp
 )
 

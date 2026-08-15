@@ -428,8 +428,14 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
   fullbodyGeometryData->resourceMutex.unlock();
   boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->OnUpdateGeometryData();
 
-  for (unsigned int i = 0; i < joints.size(); i++) {
-    joints.at(i).orientation = jointsVec[i]->GetDerivedRotation().GetInverse().GetNormalized();
+  // hair attaches to the neck joint; find it by name (joint order is the
+  // player.object DFS order and may change with the skeleton)
+  neckJointIndex = 0;
+  for (unsigned int i = 0; i < jointsVec.size(); i++) {
+    if (jointsVec[i]->GetName() == "neck") {
+      neckJointIndex = i;
+      break;
+    }
   }
 
   Animation* straightAnim = new Animation();
@@ -439,8 +445,17 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
                               animApplyBuffer.smoothFactor, animApplyBuffer.position,
                               animApplyBuffer.orientation, animApplyBuffer.offsets, 0, false, true);
 
+  // Bake the mesh from its authoring pose (base.anim.util, captured in
+  // origPos/origOrientation above) into the bind pose (straight.anim.util):
+  // proper inverse-bind linear blend skinning, per influence
+  //   R_straight * R_base^-1 * (v - p_base) + p_straight.
+  // With the native PES rig both poses are identity, so this bake is a
+  // no-op; the general form is kept so a bent authoring pose stays legal.
   for (unsigned int i = 0; i < joints.size(); i++) {
     joints.at(i).position = jointsVec[i]->GetDerivedPosition();  // * zMultiplier;
+    joints.at(i).orientation = (jointsVec[i]->GetDerivedRotation() *
+                                joints.at(i).origOrientation.GetInverse())
+                                   .GetNormalized();
   }
 
   if (Verbose())
@@ -450,8 +465,11 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
   boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))
       ->OnUpdateGeometryData(false);
 
+  // the bind: the pose the (now baked) mesh is stored in. UpdateFullbodyNodes
+  // skins by the change since this pose, R_current * R_bind^-1.
   for (unsigned int i = 0; i < joints.size(); i++) {
     joints.at(i).origPos = jointsVec[i]->GetDerivedPosition();
+    joints.at(i).origOrientation = jointsVec[i]->GetDerivedRotation().GetNormalized();
   }
 
   delete straightAnim;
@@ -467,7 +485,12 @@ void HumanoidBase::UpdateFullbodyNodes() {
   fullbodyNode->SetPosition(fullbodyOffset);
 
   for (unsigned int i = 0; i < joints.size(); i++) {
-    joints[i].orientation = joints[i].node->GetDerivedRotation();
+    // linear blend skinning: rotate by the change since the bind pose
+    // (R_current * R_bind^-1), not by the absolute orientation - the
+    // distinction is what lets several joints share a vertex
+    joints[i].orientation =
+        (joints[i].node->GetDerivedRotation() * joints[i].origOrientation.GetInverse())
+            .GetNormalized();
     joints[i].position = joints[i].node->GetDerivedPosition() - fullbodyOffset;
   }
 
@@ -482,8 +505,8 @@ void HumanoidBase::UpdateFullbodyNodes() {
   false); hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   }
   */
-  hairStyle->SetRotation(joints[2].orientation, false);
-  hairStyle->SetPosition(joints[2].position * zMultiplier + fullbodyOffset, false);
+  hairStyle->SetRotation(joints[neckJointIndex].orientation, false);
+  hairStyle->SetPosition(joints[neckJointIndex].position * zMultiplier + fullbodyOffset, false);
   hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
   // hairStyle->SetRotation(nodeMap.find("neck")->second->GetDerivedRotation());

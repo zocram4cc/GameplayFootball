@@ -62,18 +62,11 @@ Gui2FormationGraphic::~Gui2FormationGraphic() {}
 void Gui2FormationGraphic::Init() {
   if (!enabled) return;
 
-  panelBg = new Gui2Image(windowManager, "formationgraphic_panel", 0, 0, width_percent,
-                          height_percent);
-  this->AddView(panelBg);
-  panelBg->LoadImage("media/ui/pes/formation_panel.png");
-  panelBg->Show();
-
+  // The backgrounds are built on the first Process(), not here: an image
+  // created while Init() runs never reaches the renderer, while the per-starter
+  // icons built later from Process() do. Same widget, same technique - only the
+  // moment of creation differs.
   headerHeight = windowManager->GetHeightPercentForWidth(width_percent, kHeaderAspect);
-  headerBg = new Gui2Image(windowManager, "formationgraphic_header", 0, 0, width_percent,
-                           headerHeight);
-  this->AddView(headerBg);
-  headerBg->LoadImage("media/ui/pes/formation_header.png");
-  headerBg->Show();
 
   const float tagHeight = std::min(headerHeight * 0.62f, 3.6f);
   teamTagCaption = new Gui2Caption(windowManager, "formationgraphic_teamtag", 0,
@@ -277,12 +270,32 @@ void Gui2FormationGraphic::BuildForTeam(int teamID) {
   }
 }
 
+void Gui2FormationGraphic::BuildBackgrounds() {
+  if (panelBg) return;
+
+  panelBg = new Gui2Image(windowManager, "formationgraphic_panel", 0, 0, width_percent,
+                          height_percent);
+  this->AddView(panelBg);
+  panelBg->LoadImage("media/ui/pes/formation_panel.png");
+  panelBg->Show();
+  panelBg->SetZPriority(0);        // behind the content it backs
+
+  headerBg = new Gui2Image(windowManager, "formationgraphic_header", 0, 0, width_percent,
+                           headerHeight);
+  this->AddView(headerBg);
+  headerBg->LoadImage("media/ui/pes/formation_header.png");
+  headerBg->Show();
+  headerBg->SetZPriority(1);
+
+  currentAlpha = -1.0f;            // the new images need their alpha applied
+}
+
 void Gui2FormationGraphic::ApplyAlpha(float alpha) {
   if (alpha == currentAlpha) return;
   currentAlpha = alpha;
 
-  panelBg->GetImage2D()->SetAlpha(alpha);
-  headerBg->GetImage2D()->SetAlpha(alpha);
+  if (panelBg) panelBg->GetImage2D()->SetAlpha(alpha);
+  if (headerBg) headerBg->GetImage2D()->SetAlpha(alpha);
   teamTagCaption->SetTransparency(1.0f - alpha);
   subsHeaderCaption->SetTransparency(1.0f - alpha);
 
@@ -299,6 +312,23 @@ void Gui2FormationGraphic::ApplyAlpha(float alpha) {
 void Gui2FormationGraphic::Process() {
   Gui2View::Process();
   if (!enabled) return;
+
+  // Debug: hold the graphic on screen regardless of the entrance schedule, so
+  // its artwork can be judged without racing a pre-match window that is over
+  // in seconds. "debug_formation_graphic_always" "true".
+  static const bool alwaysShow =
+      GetConfiguration()->GetBool("debug_formation_graphic_always", false);
+  BuildBackgrounds();
+
+  if (alwaysShow) {
+    if (builtForTeamID != 0) {
+      BuildForTeam(0);
+      builtForTeamID = 0;
+      currentAlpha = -1.0f;
+    }
+    ApplyAlpha(1.0f);
+    return;
+  }
 
   if (!match->IsInEntrance()) {
     if (entranceStart_ms != 0 || builtForTeamID != -2) {
