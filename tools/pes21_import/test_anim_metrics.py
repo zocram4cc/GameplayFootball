@@ -145,6 +145,27 @@ def test_lie_state_of_stock_clips_matches_their_declared_special_state():
     assert checked >= 20, checked
 
 
+def test_step_count_matches_what_stock_movement_clips_declare():
+    """GF flips the current foot on an odd <steps>, so the count -- and above
+    all its parity -- has to agree with the authors'."""
+    rows = []
+    for dirpath, _, files in os.walk(os.path.join(ANIMS, "movement")):
+        for name in files:
+            if not name.endswith(".anim") or name.startswith("pes_"):
+                continue
+            anim = am.parse_anim(os.path.join(dirpath, name))
+            want = anim.variables.get("steps")
+            if want:
+                rows.append((name, int(want), am.step_count(anim)))
+    assert len(rows) >= 10, len(rows)
+    exact = sum(1 for _, w, g in rows if w == g)
+    parity = sum(1 for _, w, g in rows if (w % 2) == (g % 2))
+    assert all(abs(w - g) <= 1 for _, w, g in rows), \
+        [r for r in rows if abs(r[1] - r[2]) > 1]
+    assert exact >= 0.8 * len(rows), (exact, len(rows))
+    assert parity >= 0.8 * len(rows), (parity, len(rows))
+
+
 def test_forward_kinematics_lands_on_the_stock_ball_keyframes():
     """The FK must put the limb where the hand-authored ball is.
 

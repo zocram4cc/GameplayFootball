@@ -472,6 +472,59 @@ def keeper_contact(anim, step=1):
             "reach": reach, "two_handed": two_handed}
 
 
+def step_count(anim, step=2):
+    """How many steps the clip takes, from its foot plants.
+
+    GF's `<steps>` tells the selector which foot a movement clip leaves the
+    player on (Animation::GetOutgoingFoot flips the current foot on an odd
+    count), so it has to be a count of *alternations*, not of plant frames:
+    a foot that stays down through six sampled frames is one step, and the
+    same foot planting twice in a row without the other in between is still
+    one step.
+
+    Sampling a plant frame by frame flickers -- a toe hovering at the
+    threshold goes down, up and down again inside one stride -- so plants are
+    read as contiguous runs with hysteresis (a foot that is down stays down
+    until it clearly lifts), short gaps are bridged, and two runs of the same
+    foot in a row count once.
+    """
+    frames = list(range(0, anim.last_frame + 1, step))
+    down = {"left": [], "right": []}
+    state = {"left": False, "right": False}
+    for f in frames:
+        pos, _ = fk(anim, f)
+        for side in ("left", "right"):
+            z = pos[side + "_toe"][2]
+            if state[side]:
+                state[side] = z < 0.22           # stays down until it lifts
+            else:
+                state[side] = z < 0.13           # has to get low to count
+            down[side].append(state[side])
+
+    runs = []                                     # (start index, side)
+    for side in ("left", "right"):
+        i = 0
+        series = down[side]
+        while i < len(series):
+            if not series[i]:
+                i += 1
+                continue
+            start = i
+            gap = 0
+            while i < len(series) and (series[i] or gap < 2):
+                gap = 0 if series[i] else gap + 1
+                i += 1
+            runs.append((start, side))
+    runs.sort()
+
+    steps, last = 0, None
+    for _, side in runs:
+        if side != last:
+            steps += 1
+            last = side
+    return steps
+
+
 def approach_velocity(anim):
     """The velocity the clip assumes the player *arrives* with, m/s 2D.
 
