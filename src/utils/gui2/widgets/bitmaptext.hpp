@@ -64,6 +64,9 @@ public:
 
   void SetText(const std::string& newText);
   void SetAlignment(Alignment newAlignment);
+  // 0 == fully transparent, 1 == fully opaque (cross-fades: see
+  // src/menu/ingame/formationgraphic.cpp).
+  void SetAlpha(float alpha);
 
 protected:
   const Gui2BitmapFont* font;

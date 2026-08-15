@@ -588,6 +588,10 @@ set(MENU_HEADERS
    src/menu/ingame/radar.hpp
    src/menu/ingame/matchhistorypage.hpp
    src/menu/ingame/setpieceeditor.hpp
+   src/menu/ingame/formationgraphic.hpp
+   src/menu/ingame/formationgraphiclayout.hpp
+   src/menu/ingame/banner.hpp
+   src/menu/ingame/bannerpresentation.hpp
 )
 
 set(MENU_SOURCES
@@ -637,6 +641,10 @@ set(MENU_SOURCES
    src/menu/ingame/playerhud.cpp
    src/menu/ingame/matchhistorypage.cpp
    src/menu/ingame/setpieceeditor.cpp
+   src/menu/ingame/formationgraphic.cpp
+   src/menu/ingame/formationgraphiclayout.cpp
+   src/menu/ingame/banner.cpp
+   src/menu/ingame/bannerpresentation.cpp
    src/menu/settings.cpp
 )
 

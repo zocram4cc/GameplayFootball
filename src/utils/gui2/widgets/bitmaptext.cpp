@@ -136,6 +136,8 @@ void Gui2BitmapText::SetAlignment(Alignment newAlignment) {
   Redraw();
 }
 
+void Gui2BitmapText::SetAlpha(float alpha) { image->SetAlpha(alpha); }
+
 void Gui2BitmapText::Redraw() {
   int x, y, w, h;
   windowManager->GetCoordinates(x_percent, y_percent, width_percent, height_percent, x, y, w, h);
