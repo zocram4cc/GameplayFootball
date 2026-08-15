@@ -355,6 +355,15 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
           "Loaded stoppage cutscene pools for " + int_to_str(loadedPools) +
               " categories");
   }
+  // The model viewer is a bench, not a match: hold the kickoff for as long as
+  // it runs. That is the same hold the entrance uses, and posing a player is
+  // only safe while it is on - during play his own animation machinery owns
+  // him and fighting it corrupts the put.
+  {
+    const float viewerSeconds =
+        GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
+    if (viewerSeconds > 0.0f) introSeconds = std::max(introSeconds, viewerSeconds);
+  }
   if (introSeconds > 0.0f) {
     // Rounded to the match's 10 ms tick: the referee compares its set-piece
     // times for equality against actualTime_ms, so an odd millisecond would
@@ -1105,6 +1114,9 @@ Player* Match::PickModelViewerSubject(const std::string& filter) {
 void Match::UpdateModelViewerPlayback() {
   const ModelViewerSettings settings = LoadModelViewerSettings();
   if (!ModelViewerIsRunning(settings, actualTime_ms)) return;
+  // only while the match is held (see the constructor): posing a player who is
+  // taking part fights his own animation machinery
+  if (!IsInEntrance()) return;
   // picked here, on the game thread: the camera runs on its own and must not
   // hand a humanoid across to be posed
   Player* subject = PickModelViewerSubject(settings.playerFilter);
@@ -1746,7 +1758,11 @@ void Match::UpdateIngameCamera() {
   // ("intro_cutscene_track", see docs/PES21_CAMERA_TRACE.md) the original
   // hand-authored camerawork plays; otherwise a slow authored orbit around
   // the centre spot frames the stands and crowd.
-  if (introCutsceneEnd_ms > 0) {
+  // the bench holds the match with the same mechanism, but frames the model
+  // itself rather than the stadium
+  const bool modelViewerHolding =
+      GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f) > 0.0f;
+  if (introCutsceneEnd_ms > 0 && !modelViewerHolding) {
     unsigned long now = actualTime_ms;
     if (now < introCutsceneEnd_ms) {
       float t = 1.0f - (introCutsceneEnd_ms - now) /
@@ -2035,7 +2051,7 @@ void Match::UpdateIngameCamera() {
   // wiring humanoids up, and reaching into them from here took the put
   // thread down inside CalculateGeomOffsets.
   if (ModelViewerIsRunning(viewer, actualTime_ms) && actualTime_ms >= 2000 &&
-      IsInPlay() && !mentalImages.empty()) {
+      (IsInEntrance() || IsInPlay()) && !mentalImages.empty()) {
     Player* subject = PickModelViewerSubject(viewer.playerFilter);
     if (subject) {
       const Vector3 centre = subject->GetPosition() + Vector3(0, 0, 0.95f);
@@ -2134,7 +2150,7 @@ void Match::Process() {
 // animation machinery and corrupts it (isolated by bisection: camera-only
 // runs clean, this path segfaults in the put). Off until the bench can
 // pose a player outside the live squad.
-    if (GetConfiguration()->GetBool("debug_model_viewer_playback", false))
+    if (GetConfiguration()->GetBool("debug_model_viewer_playback", true))
       UpdateModelViewerPlayback();
     teams[0]->Process();
     teams[1]->Process();
