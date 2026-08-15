@@ -89,6 +89,9 @@ Vector3 MentalImage::GetBallPrediction(unsigned int time_ms) const {
   index = index / 10;
 
   Vector3 mentalResult = ballPredictions[index];
+  // The match tears its ball down before the graphics thread has finished its
+  // last put, so on the way out there is nothing real left to blend towards.
+  if (!match->GetBall()) return mentalResult;
   Vector3 realResult = match->GetBall()->Predict(time_ms);
 
   // let there be a maximum difference between the two. why?

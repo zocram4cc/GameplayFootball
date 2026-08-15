@@ -34,6 +34,20 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
     Log(e_FatalError, "", "GetVertexColors", "file not found or empty: " + filename);
 
   while (file.getline(line, 32767)) {
+    // Only five keywords matter here, and an imported body is hundreds of
+    // thousands of lines - tokenising every one of them into strings was the
+    // bulk of a match's load time. Skip to the keyword first and let the rest
+    // of the file cost a couple of character comparisons.
+    const char* keyword = line;
+    while (*keyword == ' ' || *keyword == '\t') keyword++;
+    if (*keyword != '*') continue;
+    if (strncmp(keyword, "*MESH_VERTEX ", 13) != 0 &&
+        strncmp(keyword, "*MESH_FACE ", 11) != 0 &&
+        strncmp(keyword, "*MESH_VERTCOL ", 14) != 0 &&
+        strncmp(keyword, "*MESH_CFACE ", 12) != 0 &&
+        strncmp(keyword, "*MESH_NORMALS", 13) != 0)
+      continue;
+
     std::string line_str;
     line_str.assign(line);
 
