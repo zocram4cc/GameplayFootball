@@ -394,7 +394,10 @@ protected:
   unsigned long introCutsceneDuration_ms = 0;
   // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
   // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
+  // PES stages an entrance as several authored shots cut back to back; they
+  // play in order, each one filling its own slice of the entrance
   CamTrack introCamTrack;
+  std::vector<CamTrack> introShots;
   // imported PES player choreography for the entrance: a .chor exported from
   // the family's _pl packs (tools/pes21_import/entrance_pl.py), picked from
   // the same directory as the camerawork, plus its in-place .anim clips.
