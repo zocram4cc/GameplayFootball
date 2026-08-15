@@ -245,6 +245,10 @@ public:
   // kinematically, instead of running its usual anim selection. When the
   // feed stops, control returns to the regular machinery from wherever the
   // choreography left the player.
+  // The match owns its mental images and throws them away at every restart,
+  // so anyone holding one has to be told before the memory goes.
+  void InvalidateMentalImage() { currentMentalImage = nullptr; }
+
   void SetChoreoPose(Animation* anim, int animFrame, const Vector3& position,
                      radian angle);
   bool InChoreo() const { return choreoActive; }
