@@ -452,7 +452,6 @@ protected:
   ModelViewerSettings LoadModelViewerSettings() const;
   Player* PickModelViewerSubject(const std::string& filter);
   void UpdateModelViewerPlayback();
-  Player* modelViewerSubject = nullptr;
   int modelViewerAnimIndex = -1;
 
   void LoadCutsceneChoreo(const std::string& category, const std::string& dir);
