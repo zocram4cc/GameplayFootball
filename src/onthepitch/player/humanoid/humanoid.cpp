@@ -2257,6 +2257,17 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
   // make it so
 
   if (selectedAnimID != -1) {
+    // Which animation actually won, for the non-movement families. Imported
+    // clips live or die on being selected at all, and nothing else in the
+    // engine says whether they were: the collection loads them either way.
+    // Off unless the config asks (`anim_selection_log "true"`).
+    static const bool logAnimSelection =
+        GetConfiguration()->GetBool("anim_selection_log", false);
+    if (logAnimSelection && command.desiredFunctionType != e_FunctionType_Movement) {
+      printf("[anim-select] type %d -> %s\n", (int)command.desiredFunctionType,
+             anims->GetAnim(selectedAnimID)->GetName().c_str());
+    }
+
     /*
     if (command.desiredFunctionType != e_FunctionType_Movement) {
       if (player->GetDebug()) {
