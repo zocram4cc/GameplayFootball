@@ -1629,6 +1629,18 @@ void Match::UpdateIngameCamera() {
         frame.rotation[1] = -frame.rotation[1];
         frame.rotation[2] = -frame.rotation[2];
       }
+      // the tracks are authored against PES's celebration staging; re-aim
+      // them at the actual celebrating player (or the ball) so the shot
+      // frames whoever scored instead of PES's staged runner, never clips
+      // inside him, and the PES super-telephoto lens curve adapts to the
+      // real subject distance
+      Vector3 subject = lastGoalScorer
+                            ? lastGoalScorer->GetPosition()
+                            : ball->Predict(0).Get2D();
+      frame = RetargetCamTrackFrame(
+          frame,
+          {subject.coords[0], subject.coords[1], subject.coords[2] + 1.5f},
+          1.5f, 0.75f);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;
