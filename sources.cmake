@@ -342,6 +342,7 @@ set(UTILS_GUI2_HEADERS
 
 set(UTILS_GUI2_WIDGETS_HEADERS
         src/utils/gui2/widgets/slider.hpp
+        src/utils/gui2/widgets/bitmaptext.hpp
         src/utils/gui2/widgets/image.hpp
         src/utils/gui2/widgets/dialog.hpp
         src/utils/gui2/widgets/editline.hpp
@@ -361,6 +362,7 @@ set(UTILS_GUI2_WIDGETS_HEADERS
 
 set(UTILS_GUI2_SOURCES
         src/utils/gui2/style.cpp
+        src/utils/gui2/widgets/bitmaptext.cpp
         src/utils/gui2/widgets/caption.cpp
         src/utils/gui2/widgets/menu.cpp
         src/utils/gui2/widgets/editline.cpp

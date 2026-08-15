@@ -8,6 +8,7 @@
 
 #include "scene/objects/image2d.hpp"
 #include "utils/gui2/view.hpp"
+#include "utils/gui2/widgets/bitmaptext.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/image.hpp"
 
@@ -28,19 +29,35 @@ public:
   void SetGoalCount(int teamID, int goalCount);
 
 protected:
+  // "scoreboard_theme" config: current default look
+  void ConstructDefaultTheme();
+  // "scoreboard_theme" "pes": compact centered bar + clock, PES21 art
+  void ConstructPesTheme();
+
   Match* match;
+  bool pesTheme = false;
 
   std::string timeStr;
   int goalCount[2];
 
-  Gui2Caption* timeCaption;
-  Gui2Caption* teamNameCaption[2];
-  Gui2Caption* goalCountCaption[2];
+  // default theme
+  Gui2Caption* timeCaption = nullptr;
+  Gui2Caption* goalCountCaption[2] = {nullptr, nullptr};
+  Gui2Image* leagueLogo = nullptr;
+  Gui2Image* tvLogo = nullptr;
 
-  Gui2Image* leagueLogo;
-  Gui2Image* teamLogo[2];
+  // both themes
+  Gui2Caption* teamNameCaption[2] = {nullptr, nullptr};
+  Gui2Image* teamLogo[2] = {nullptr, nullptr};
 
-  Gui2Image* tvLogo;
+  // pes theme
+  Gui2Image* barImage = nullptr;
+  Gui2Image* clockPanel = nullptr;
+  Gui2Image* addedTimePanel = nullptr;
+  Gui2BitmapText* scoreText = nullptr;
+  Gui2BitmapText* clockText = nullptr;
+  Gui2BitmapText* addedTimeText = nullptr;
+  bool addedTimeVisible = false;
 };
 
 #endif
