@@ -359,6 +359,9 @@ protected:
   // index into joints of the "neck" node (hair attachment); joint order is
   // the player.object DFS order, so never hardcode it
   unsigned int neckJointIndex = 0;
+  // legacy hairstyle meshes: only on the legacy body (the PES base body
+  // ships its own hair); see the constructor's player_hairstyles handling
+  bool hairstyleActive = true;
   Vector3 fullbodyOffset;
   boost::intrusive_ptr<Node> fullbodyTargetNode;
 

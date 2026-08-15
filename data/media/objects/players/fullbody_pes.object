@@ -1,0 +1,10 @@
+<object>
+
+	<geometry>
+		<filename>models/fullbody_pes.ase</filename>
+		<name>fullbody</name>
+		<position>0, 0, 0</position>
+		<rotation>0, 0, 0, 0</rotation>
+	</geometry>
+
+</object>
