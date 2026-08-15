@@ -1064,6 +1064,10 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
   float seconds = std::min(capSeconds, track.GetDurationSeconds());
   cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
+  Log(e_Notice, "Match", "StartCutscene",
+      "category " + category + ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
+          int_to_str((matchTime_ms / 1000) % 60) + ", " + int_to_str((int)(seconds * 10)) +
+          " ds");
 }
 
 void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
