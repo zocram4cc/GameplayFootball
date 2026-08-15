@@ -50,6 +50,9 @@ public:
     return humanoid ? humanoid->GetGeomPosition() : Vector3(0);
   }
   inline Vector3 GetDirectionVec() const { return humanoid->GetDirectionVec(); }
+  inline bool HasActiveFaceRig() const {
+    return humanoid ? humanoid->HasActiveFaceRig() : false;
+  }
   inline Vector3 GetBodyDirectionVec() const { return humanoid->GetBodyDirectionVec(); }
   inline Vector3 GetMovement() const { return humanoid->GetMovement(); }
   inline radian GetAngle() const { return humanoid->GetAngle(); }
