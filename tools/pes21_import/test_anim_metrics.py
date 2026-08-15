@@ -175,7 +175,15 @@ def test_forward_kinematics_lands_on_the_stock_ball_keyframes():
     rows = am.validate(GAME_DIR)
     gaps = sorted(r[4] for r in rows)
     assert len(rows) >= 30
-    assert gaps[len(gaps) // 2] < 0.20, gaps[len(gaps) // 2]
+    # The stock clips' hand-authored ball keyframes still assume the legacy
+    # proportions (shoulders 12 cm higher than the native PES rig), so the FK
+    # gap against THEM carries a fixed anatomical bias on top of the tool's
+    # own error: median 0.12 m before the rig migration, 0.22 m after.
+    # In-engine those keys still connect (GetBestCheatableAnimID allows
+    # 0.22 m of height cheat plus per-type radius); clips converted from PES
+    # place their contacts with the same FK that measures them, so this bias
+    # does not exist for imported content.
+    assert gaps[len(gaps) // 2] < 0.25, gaps[len(gaps) // 2]
     assert gaps[-1] < 0.40, gaps[-1]
 
 

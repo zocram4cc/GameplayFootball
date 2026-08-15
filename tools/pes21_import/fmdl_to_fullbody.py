@@ -1,18 +1,21 @@
 """Converts a skinned PES player .fmdl into GameplayFootball's fullbody
-morph format: one "fullbody" GEOMOBJECT whose VERTEX COLORS carry the skin
+format: one "fullbody" GEOMOBJECT whose VERTEX COLORS carry the skin
 weights the engine's PrepareFullbodyModel expects.
+
+Since the native-rig migration this is a change of basis, not a retarget:
+the engine's skeleton IS the PES animated rig (retarget.GF_NODES), player
+fmdls are authored at that very bind pose, and the engine captures its bind
+in the same pose (base.anim.util is identity). So vertices map Fox->GF
+coordinates ((x, y, z) -> (x, -z, y)) and weights resolve bone->joint
+through retarget.resolve_bone: animated bones 1:1, helper bones (dsk_*
+twists, skh_* fingers, cloth) onto the animated bone they rigidly follow -
+lossless under the engine's inverse-bind skinning.
 
 Encoding (from humanoidbase.cpp): each color channel holds one bone
 influence as jointID*10 + weight*9 (0..255 scale, ASE stores /255); up to
-three influences per vertex. Joint IDs are the player.object DFS order:
-
-  0 body, 1 middle, 2 neck, 3 head, 4 left_shoulder, 5 left_elbow,
-  6 left_hand, 7 right_shoulder, 8 right_elbow, 9 right_hand,
-  10 left_thigh, 11 left_knee, 12 left_ankle, 13 right_thigh,
-  14 right_knee, 15 right_ankle
-
-PES bones map to joints through retarget.GF_FROM_PES. The result pairs with
-a kit texture converted from the model's own ftex set.
+three influences per vertex. PES skins with up to four; the three
+strongest are kept and renormalized (the only approximation in this
+pipeline, and a standard one).
 
   python3 fmdl_to_fullbody.py model.fmdl out_dir --fmdl-lib <pes-fmdl dir>
                               [--texture kit.png] [--base stock_fullbody.ase]
@@ -31,342 +34,27 @@ import sys
 import ase_util
 import retarget
 
-GF_JOINT_ORDER = ["body", "middle", "neck", "head",
-                  "left_shoulder", "left_elbow", "left_hand",
-                  "right_shoulder", "right_elbow", "right_hand",
-                  "left_thigh", "left_knee", "left_ankle",
-                  "right_thigh", "right_knee", "right_ankle"]
-JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
-
-# how far a vertex may sit from the joint that drives it before the bind is
-# treated as trailing geometry and re-anchored (metres, GF scale)
-FAR_BIND_METRES = 0.55
-
-# each GF joint's PES anchor bone and the bone whose bind position defines
-# the limb direction (None = axial joint, translation-only)
-JOINT_PES_BONES = {
-    "body": ("dsk_hip", None),
-    "middle": ("sk_belly", None),
-    "neck": ("sk_neck", None),
-    "head": ("sk_head", None),
-    "left_shoulder": ("sk_upperarm_l", "sk_forearm_l"),
-    "left_elbow": ("sk_forearm_l", "sk_hand_l"),
-    "left_hand": ("sk_hand_l", None),
-    "right_shoulder": ("sk_upperarm_r", "sk_forearm_r"),
-    "right_elbow": ("sk_forearm_r", "sk_hand_r"),
-    "right_hand": ("sk_hand_r", None),
-    "left_thigh": ("sk_thigh_l", "sk_leg_l"),
-    "left_knee": ("sk_leg_l", "sk_foot_l"),
-    "left_ankle": ("sk_foot_l", None),
-    "right_thigh": ("sk_thigh_r", "sk_leg_r"),
-    "right_knee": ("sk_leg_r", "sk_foot_r"),
-    "right_ankle": ("sk_foot_r", None),
-}
-# leaf joints inherit their parent limb's rotation so extremities stay attached
-JOINT_ROTATION_PARENT = {
-    "left_hand": "left_elbow", "right_hand": "right_elbow",
-    "left_ankle": "left_knee", "right_ankle": "right_knee",
-}
+GF_JOINT_ORDER = list(retarget.GF_JOINT_ORDER)
+JOINT_ID = dict(retarget.JOINT_ID)
 
 
-def _gf_world_positions():
-    """GF joint name -> world bind position (accumulated player.object offsets)."""
-    out = {}
-    for name in GF_JOINT_ORDER:
-        offset, parent = retarget.GF_BIND[name]
-        if parent is None:
-            out[name] = offset
-        else:
-            p = out[parent]
-            out[name] = (p[0] + offset[0], p[1] + offset[1], p[2] + offset[2])
-    return out
-
-
-def _quat_mul(a, b):
-    ax, ay, az, aw = a
-    bx, by, bz, bw = b
-    return (aw * bx + ax * bw + ay * bz - az * by,
-            aw * by - ax * bz + ay * bw + az * bx,
-            aw * bz + ax * by - ay * bx + az * bw,
-            aw * bw - ax * bx - ay * by - az * bz)
-
-
-def _quat_rot(q, v):
-    x, y, z, w = q
-    vx, vy, vz = v
-    tx, ty, tz = 2.0 * (y * vz - z * vy), 2.0 * (z * vx - x * vz), 2.0 * (x * vy - y * vx)
-    return (vx + w * tx + y * tz - z * ty,
-            vy + w * ty + z * tx - x * tz,
-            vz + w * tz + x * ty - y * tx)
-
-
-def gf_base_pose(base_anim=None, want_rotations=False):
-    """GF joint -> world position in the pose the ENGINE measures joints in.
-
-    HumanoidBase applies base.anim.util before recording each joint's origPos,
-    and that pose is far from the raw bind: the shoulders turn ~40 degrees, the
-    elbows ~62, the knees ~69. Placing imported geometry against the straight
-    bind instead leaves every limb's vertices hanging off the wrong pivot, and
-    the engine's rigid per-joint skinning then flings them apart - the shards
-    the model viewer shows. Falls back to the plain bind if the file is absent.
-    """
-    local = {}
-    if base_anim is None:
-        here = os.path.dirname(os.path.abspath(__file__))
-        for candidate in ("data/media/animations/base.anim.util",
-                          "media/animations/base.anim.util",
-                          os.path.join(here, "..", "..", "data", "media",
-                                       "animations", "base.anim.util")):
-            if os.path.exists(candidate):
-                base_anim = candidate
-                break
-    if base_anim is None:
-        bind = _gf_world_positions()
-        identity = {n: (0.0, 0.0, 0.0, 1.0) for n in GF_JOINT_ORDER}
-        return (bind, identity) if want_rotations else bind
-    try:
-        for line in open(base_anim):
-            parts = line.strip().split(",")
-            if len(parts) < 6 or parts[0] == "player":
-                continue
-            name = parts[0]
-            if name in JOINT_ID:
-                local[name] = tuple(float(x) for x in parts[2:6])   # qx,qy,qz,qw
-    except OSError:
-        return _gf_world_positions()
-
-    pos = {}
-    rot = {}
-    for name in GF_JOINT_ORDER:
-        offset, parent = retarget.GF_BIND[name]
-        q = local.get(name, (0.0, 0.0, 0.0, 1.0))
-        if parent is None:
-            pos[name] = offset
-            rot[name] = q
-        else:
-            pos[name] = tuple(p + o for p, o in zip(pos[parent], _quat_rot(rot[parent], offset)))
-            rot[name] = _quat_mul(rot[parent], q)
-    return (pos, rot) if want_rotations else pos
-
-
-def _rotation_between(a, b):
-    """3x3 rotation matrix taking unit vector a to unit vector b."""
-    import math
-    ax, ay, az = a
-    bx, by, bz = b
-    cx, cy, cz = (ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx)
-    d = ax * bx + ay * by + az * bz
-    s = math.sqrt(cx * cx + cy * cy + cz * cz)
-    if s < 1e-8:
-        if d > 0:
-            return ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-        return ((-1, 0, 0), (0, -1, 0), (0, 0, 1))  # opposite: flip
-    # Rodrigues
-    kx, ky, kz = cx / s, cy / s, cz / s
-    c = d
-    v = 1 - c
-    return ((c + kx * kx * v, kx * ky * v - kz * s, kx * kz * v + ky * s),
-            (ky * kx * v + kz * s, c + ky * ky * v, ky * kz * v - kx * s),
-            (kz * kx * v - ky * s, kz * ky * v + kx * s, c + kz * kz * v))
-
-
-def _mat_vec(m, v):
-    return (m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2])
-
-
-def drop_stretched_faces(vertices, faces, max_edge):
-    """Removes faces with an edge longer than max_edge; -> (faces, dropped)."""
-    if max_edge <= 0.0:
-        return faces, 0
-    kept = []
-    for tri in faces:
-        a, b, c = (vertices[i][0] for i in tri)
-        if max(math.dist(a, b), math.dist(b, c), math.dist(c, a)) > max_edge:
-            continue
-        kept.append(tri)
-    return kept, len(faces) - len(kept)
-
-
-def model_fit_scale(fmdl, target_height=1.80):
-    """Uniform scale bringing a model onto the engine's skeleton.
-
-    4cc characters are authored at their own scale - this one stands 2.84 m
-    with a 2 m arm span - and the engine skins them with a 1.8 m rig, so the
-    surplus geometry hangs off the joints and swings into the streaks the
-    model viewer shows. Fitting overall height first puts every part within
-    reach of the joint that drives it.
-    """
-    zs = [v.position.y for mesh in fmdl.meshes for v in mesh.vertices]
-    if not zs:
-        return 1.0
-    height = max(zs) - min(zs)
-    if height <= 0.01:
-        return 1.0
-    return target_height / height
-
-
-def build_bind_alignment(fmdl, normalize_proportions=True):
-    """Per GF joint: (pes pivot GF-coords, rotation matrix, scale, gf pivot).
-
-    Rotates each limb from the MODEL'S OWN bind pose onto GF's bind
-    directions and re-anchors it at the GF joint, so PrepareFullbodyModel's
-    joint-relative offsets are computed in matching poses. Falls back to
-    the standard PES bind for bones the model does not carry.
-    """
-    import math
-    model_bones = {}
-    for bone in fmdl.bones:
-        g = bone.globalPosition
-        model_bones[bone.name] = (g.x, -g.z, g.y)          # fox -> GF
-
-    def pes_pos(bone_name):
-        if bone_name in model_bones:
-            return model_bones[bone_name]
-        std = retarget.PES_BIND.get(bone_name)
-        if std:
-            p = std[0]
-            return (p[0], -p[2], p[1])
-        return (0.0, 0.0, 1.0)
-
-    gf_pos = gf_base_pose()
-    transforms = {}
-    for joint, (bone, direction_child) in JOINT_PES_BONES.items():
-        pivot_pes = pes_pos(bone)
-        pivot_gf = gf_pos[joint]
-        rotation = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-        scale = 1.0
-        if direction_child:
-            child_pes = pes_pos(direction_child)
-            d_pes = tuple(c - p for c, p in zip(child_pes, pivot_pes))
-            len_pes = math.sqrt(sum(c * c for c in d_pes))
-            # GF direction: the child joint's offset in player.object
-            gf_children = {"left_shoulder": "left_elbow",
-                           "right_shoulder": "right_elbow",
-                           "left_elbow": "left_hand",
-                           "right_elbow": "right_hand",
-                           "left_thigh": "left_knee",
-                           "right_thigh": "right_knee",
-                           "left_knee": "left_ankle",
-                           "right_knee": "right_ankle"}
-            gf_child = gf_children[joint]
-            d_gf = tuple(c - p for c, p in zip(gf_pos[gf_child], pivot_gf))
-            len_gf = math.sqrt(sum(c * c for c in d_gf))
-            if len_pes > 1e-6 and len_gf > 1e-6:
-                rotation = _rotation_between(
-                    tuple(c / len_pes for c in d_pes),
-                    tuple(c / len_gf for c in d_gf))
-                if normalize_proportions:
-                    # clamped: chibi/stylized rigs have tiny limbs, and an
-                    # unclamped ratio balloons them into giants
-                    scale = max(0.5, min(2.0, len_gf / len_pes))
-        transforms[joint] = (pivot_pes, rotation, scale, pivot_gf)
-
-    # leaves ride their parent limb's rotation/scale, anchored at their own pivots
-    for leaf, parent in JOINT_ROTATION_PARENT.items():
-        pivot_pes, _, _, _ = transforms[leaf]
-        _, rotation, scale, _ = transforms[parent]
-        transforms[leaf] = (pivot_pes, rotation, scale, gf_pos[leaf])
-    return transforms
-
-
-def align_vertex(pos_gf, joints, transforms, translate_only=False):
-    """Blend the per-joint bind alignments for one vertex ((x,y,z) GF coords).
-
-    translate_only skips the limb rotation and scale and just re-anchors the
-    vertex. Trailing geometry (hair, a cape) sits far from the joint it hangs
-    off, and turning it by that limb's bind rotation swings it out into the
-    long flat shards the model viewer shows.
-    """
-    out = [0.0, 0.0, 0.0]
-    total = 0.0
-    for joint_id, weight in joints:
-        joint = GF_JOINT_ORDER[joint_id]
-        pivot_pes, rotation, scale, pivot_gf = transforms[joint]
-        if translate_only:
-            local = tuple(p - q for p, q in zip(pos_gf, pivot_pes))
-            rotated = local
-        else:
-            local = tuple((p - q) * scale for p, q in zip(pos_gf, pivot_pes))
-            rotated = _mat_vec(rotation, local)
-        for c in range(3):
-            out[c] += weight * (rotated[c] + pivot_gf[c])
-        total += weight
-    if total <= 0:
-        return pos_gf
-    return (out[0] / total, out[1] / total, out[2] / total)
-
-
-def to_joint_local(position, joint, base_pos, base_rot):
-    """Express a world position as the engine expects to store it.
-
-    HumanoidBase skins with
-
-        (vertex - joint.origPos) rotated by joint.orientation + joint.position
-
-    using the joint's ABSOLUTE orientation rather than the change since bind,
-    so the stored offset has to be in the joint's base-pose local frame or the
-    base rotation gets applied twice. That error is negligible at the ankle
-    (2 degrees) and ruinous at the elbow (62), which is why imported legs
-    survived while arms tore apart.
-    """
-    qx, qy, qz, qw = base_rot[joint]
-    offset = tuple(p - o for p, o in zip(position, base_pos[joint]))
-    local = _quat_rot((-qx, -qy, -qz, qw), offset)      # inverse rotation
-    return tuple(o + l for o, l in zip(base_pos[joint], local))
-
-
-def skin_joints_for_position(position, joints, joint_positions):
-    """Skin weights for a vertex at its FINAL position.
-
-    Keeps the rig's own weights when the joint driving the vertex is close
-    enough to actually drive it; otherwise binds to the joints the vertex sits
-    among. GF skins rigidly per joint, so a vertex left bound to a joint half a
-    metre away swings like a flail.
-    """
-    if not joint_positions:
-        return joints
-    dominant = GF_JOINT_ORDER[joints[0][0]]
-    if math.dist(position, joint_positions[dominant]) <= FAR_BIND_METRES:
-        return joints
-    return nearest_joints(position, joint_positions, count=3)
-
-
-def vertex_skin_joints(vertex, joints, joint_positions):
-    """Runtime skin weights for a vertex, given its bind-pose joints.
-
-    PES bends long trailing geometry (hair down the back, capes, skirts) with
-    extra bones GF does not have, so those vertices arrive bound a metre from
-    the joint that drives them and flail when it turns. Their skin weight is
-    moved to the joint they actually sit on; the bind alignment is left alone,
-    so the mesh keeps its shape.
-    """
-    if not joint_positions:
-        return joints
-    p = vertex.position
-    position = (p.x, -p.z, p.y)          # fox -> GF
-    dominant = GF_JOINT_ORDER[joints[0][0]]
-    if math.dist(position, joint_positions[dominant]) <= FAR_BIND_METRES:
-        return joints
-    return nearest_joints(position, joint_positions, count=3)
+def fox_to_gf(p):
+    return (p.x, -p.z, p.y)
 
 
 def nearest_joints(position, joint_positions, count=3, falloff=0.35):
     """-> [(jointID, weight)] for geometry that carries no skin weights.
 
-    4cc exports ship hats, hair, capes and skirts as rigid props with an empty
-    bone mapping. Welding those to one fixed joint drags them across the body
-    (the "floating head" look); binding them to the joints they actually sit
-    near follows the skeleton instead. Weights fall off with distance, so a
-    hat is head-bound while hair down the back blends head into neck.
+    4cc exports ship hats, hair, capes and skirts as rigid props with an
+    empty bone mapping. Binding them to the joints they sit near follows the
+    skeleton; weights fall off with distance, so a hat is head-bound while
+    hair down the back blends head into neck.
     """
     ordered = sorted(
         ((name, math.dist(position, pos)) for name, pos in joint_positions.items()),
         key=lambda pair: pair[1])[:count]
     if not ordered:
         return [(JOINT_ID["middle"], 1.0)]
-    # inverse-distance blending, softened so the nearest joint dominates
     weights = []
     for name, distance in ordered:
         weights.append((JOINT_ID[name], 1.0 / (falloff + distance) ** 2))
@@ -374,16 +62,9 @@ def nearest_joints(position, joint_positions, count=3, falloff=0.35):
     return [(j, w / total) for j, w in weights]
 
 
-def vertex_joints(vertex, pes_to_gf_map, joint_positions=None):
-    """-> [(jointID, weight)] top-3, normalized, engine-encodable.
-
-    `joint_positions` (GF joint name -> bind position) lets unweighted
-    geometry bind to the joints it sits near instead of a fixed fallback.
-    """
-    position = None
-    if joint_positions:
-        p = vertex.position
-        position = (p.x, -p.z, p.y)   # fox -> GF, to match the joint bind
+def vertex_joints(vertex, bone_to_joint, joint_positions=None):
+    """-> [(jointID, weight)] top-3, normalized, engine-encodable."""
+    position = fox_to_gf(vertex.position) if joint_positions else None
 
     if not vertex.boneMapping:
         if position is not None:
@@ -393,14 +74,10 @@ def vertex_joints(vertex, pes_to_gf_map, joint_positions=None):
     weights = {}
     unmapped = 0.0
     for bone, weight in vertex.boneMapping.items():
-        gf_node = pes_to_gf_map.get(bone.name)
-        if gf_node is None:
-            gf_node = retarget.gf_node_for_bone(bone.name)
-        if gf_node is None:
-            # a bone outside the body rig (prop bones on hats and tails)
+        joint = bone_to_joint.get(bone.name)
+        if joint is None:
             unmapped += weight
             continue
-        joint = JOINT_ID[gf_node]
         weights[joint] = weights.get(joint, 0.0) + weight
 
     if unmapped > 0.0 and position is not None:
@@ -416,9 +93,7 @@ def vertex_joints(vertex, pes_to_gf_map, joint_positions=None):
         if position is not None:
             return nearest_joints(position, joint_positions)
         return [(JOINT_ID["middle"], 1.0)]
-    top = [(j, w / total) for j, w in top]
-
-    return top
+    return [(j, w / total) for j, w in top]
 
 
 def encode_color(joints):
@@ -432,28 +107,18 @@ def encode_color(joints):
     return channels
 
 
-def mesh_rebind_joint(mesh, pes_to_gf_map, joint_positions):
-    """-> jointID to bind a whole mesh to, or None to keep its own weights.
-
-    PES bends long trailing geometry with extra bones GF does not have, so a
-    cape rigged to the head arrives as vertices a metre from their joint. Bound
-    per vertex they tear apart; bound as one piece to the joint they sit on,
-    they simply follow it.
-    """
-    positions = []
-    far = 0
-    for vertex in mesh.vertices:
-        p = vertex.position
-        pos = (p.x, -p.z, p.y)          # fox -> GF
-        positions.append(pos)
-        joints = vertex_joints(vertex, pes_to_gf_map)
-        dominant = GF_JOINT_ORDER[joints[0][0]]
-        if math.dist(pos, joint_positions[dominant]) > FAR_BIND_METRES:
-            far += 1
-    if not positions or far < len(positions) * 0.5:
-        return None                      # normal skinned geometry: leave it
-    centre = tuple(sum(c[i] for c in positions) / len(positions) for i in range(3))
-    return nearest_joints(centre, joint_positions, count=1)[0][0]
+def build_bone_map(fmdl):
+    """fmdl bone table -> {bone name: GF joint id} via retarget.resolve_bone."""
+    positions = {}
+    for bone in fmdl.bones:
+        g = bone.globalPosition
+        positions[bone.name] = (g.x, g.y, g.z)
+    out = {}
+    for bone in fmdl.bones:
+        node = retarget.resolve_bone(bone.name, positions)
+        if node is not None:
+            out[bone.name] = JOINT_ID[node]
+    return out
 
 
 def _mesh_signature(mesh):
@@ -465,21 +130,19 @@ def _mesh_signature(mesh):
     return tuple(sig)
 
 
-def _mesh_joints(mesh, pes_to_gf_map, joint_positions=None):
+def _mesh_joints(mesh, bone_to_joint, joint_positions=None):
     """Set of GF joint IDs a mesh's skin weights reference."""
     joints = set()
     for vertex in mesh.vertices:
-        for joint_id, _ in vertex_joints(vertex, pes_to_gf_map, joint_positions):
+        for joint_id, _ in vertex_joints(vertex, bone_to_joint, joint_positions):
             joints.add(joint_id)
     return joints
 
 
-def select_meshes(meshes, max_tris, pes_to_gf_map, joint_positions=None):
+def select_meshes(meshes, max_tris, bone_to_joint, joint_positions=None):
     """Dedupe identical meshes, then pick within the triangle budget.
 
-    The old biggest-first fill let one huge decorative mesh exhaust the
-    budget and drop the body ("floating hat" players). Selection is now
-    coverage-first: greedy set-cover over the GF joints the skin references
+    Coverage-first: greedy set-cover over the GF joints the skin references
     (so every limb keeps geometry), then remaining budget fills biggest-first.
     """
     seen = set()
@@ -493,12 +156,10 @@ def select_meshes(meshes, max_tris, pes_to_gf_map, joint_positions=None):
     if not max_tris:
         return unique
 
-    joints_of = {id(m): _mesh_joints(m, pes_to_gf_map, joint_positions) for m in unique}
+    joints_of = {id(m): _mesh_joints(m, bone_to_joint, joint_positions) for m in unique}
     kept, used = [], 0
     covered = set()
     remaining = sorted(unique, key=lambda m: -len(m.faces))
-    # coverage pass: repeatedly take the mesh adding most uncovered joints
-    # (ties: biggest) while it fits the budget
     while True:
         best, best_new = None, 0
         for m in remaining:
@@ -511,12 +172,10 @@ def select_meshes(meshes, max_tris, pes_to_gf_map, joint_positions=None):
         used += len(best.faces)
         covered |= joints_of[id(best)]
         remaining.remove(best)
-    # fill pass: biggest remaining meshes that still fit
     for m in remaining:
         if used + len(m.faces) <= max_tris:
             kept.append(m)
             used += len(m.faces)
-    # keep the original draw order for deterministic output
     order = {id(m): i for i, m in enumerate(unique)}
     kept.sort(key=lambda m: order[id(m)])
     return kept
@@ -537,32 +196,21 @@ MATERIAL_BLOCK = (
 
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
-            max_tris=None, align_bind=True, normalize_proportions=True,
-            max_edge=0.2, only_meshes=None, force_joint=None):
+            max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
     fmdl.readFile(fmdl_path)
 
-    pes_to_gf_map = retarget.pes_to_gf()
+    bone_to_joint = build_bone_map(fmdl)
+    joint_positions = retarget.gf_world_bind()
 
     vertices = []       # (pos, uv, color)
     faces = []
     index = {}
-    # duplicate meshes are dropped, then the triangle budget keeps joint
-    # coverage first (a body for every limb) and biggest meshes second
-    # bind positions of the GF joints: unweighted costume geometry binds to
-    # whichever joints it sits near, rather than to one fixed fallback
-    joint_positions, base_rotations = gf_base_pose(want_rotations=True)
-    # stylised exports come at their own scale; fit the model to the rig first
-    fit = model_fit_scale(fmdl)
-    meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map, joint_positions)
+    meshes = select_meshes(fmdl.meshes, max_tris, bone_to_joint, joint_positions)
     if only_meshes is not None:
-        # bisecting which piece of a model misbehaves
         meshes = [m for i, m in enumerate(meshes) if i in only_meshes]
-    transforms = None
-    if align_bind:
-        transforms = build_bind_alignment(fmdl, normalize_proportions)
     for mesh in meshes:
         for face in mesh.faces:
             tri = []
@@ -571,50 +219,26 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 if key not in index:
                     index[key] = len(vertices)
                     uv = vertex.uv[0] if vertex.uv else None
-                    # the bind alignment must use the joint the SOURCE rig
-                    # placed the vertex under, or neighbouring vertices bake
-                    # through different transforms and the mesh tears. The
-                    # runtime skin weight is free to differ: trailing
-                    # geometry follows the joint it sits on instead.
-                    joints = vertex_joints(vertex, pes_to_gf_map)
-                    if force_joint is not None:
-                        skin = [(force_joint, 1.0)]
-
-                    pos = (vertex.position.x * fit, -vertex.position.z * fit,
-                           vertex.position.y * fit)
-                    if transforms:
-                        # Blend the bind transforms by DISTANCE to the joints,
-                        # not by the rig's skin weights. Weights can jump from
-                        # one joint to another between neighbouring vertices,
-                        # and where the two transforms differ (the shoulder
-                        # carries a 47 degree rotation here) that jump rips the
-                        # surface open. Distance varies smoothly, so the seam
-                        # closes.
-                        align_joints = nearest_joints(pos, joint_positions,
-                                                      count=3, falloff=0.18)
-                        # NB: the bind transform must be uniform across a mesh.
-                        # Treating re-bound vertices differently (rotation
-                        # skipped, or a different joint) tears the geometry
-                        # into flat shards - seen twice in the model viewer.
-                        pos = align_vertex(pos, align_joints, transforms)
-                    # The PES rig's own weights, kept whole. The engine blends
-                    # influences properly now (it rotates by each joint's change
-                    # since the base pose), so nothing has to be flattened onto
-                    # a single joint to survive skinning.
-                    skin = joints
+                    skin = ([(force_joint, 1.0)] if force_joint is not None
+                            else vertex_joints(vertex, bone_to_joint,
+                                               joint_positions))
+                    pos = fox_to_gf(vertex.position)
                     color = encode_color(skin)
                     vertices.append((pos, uv, color))
                 tri.append(index[key])
             faces.append(tri)
 
-    # Stray triangles: a face whose vertices ended up under different joints
-    # gets stretched between them, and the engine renders those as the long
-    # flat shards the model viewer shows. On a fitted 1.8 m body a real
-    # triangle is centimetres across (median 1.8 cm here), so anything spanning
-    # a fifth of a metre is an artefact rather than authored geometry.
-    faces, dropped = drop_stretched_faces(vertices, faces, max_edge)
-    if dropped:
-        print("dropped %d stretched triangles (edge > %.2fm)" % (dropped, max_edge))
+    if max_edge > 0.0:
+        kept = []
+        for tri in faces:
+            a, b, c = (vertices[i][0] for i in tri)
+            if max(math.dist(a, b), math.dist(b, c), math.dist(c, a)) > max_edge:
+                continue
+            kept.append(tri)
+        if len(kept) != len(faces):
+            print("dropped %d stretched triangles (edge > %.2fm)"
+                  % (len(faces) - len(kept), max_edge))
+        faces = kept
 
     os.makedirs(out_dir, exist_ok=True)
     # the engine's resource cache keys geometry by BASENAME, so every model
@@ -726,26 +350,20 @@ if __name__ == "__main__":
     parser.add_argument("--base", default=None,
                         help="stock fullbody.ase to composite the import over")
     parser.add_argument("--max-tris", type=int, default=None,
-                        help="triangle budget (biggest meshes kept first)")
-    parser.add_argument("--no-align", action="store_true",
-                        help="skip bind-pose alignment onto GF joints")
-    parser.add_argument("--keep-proportions", action="store_true",
-                        help="do not normalize limb lengths to GF's skeleton")
+                        help="triangle budget (joint coverage first)")
     parser.add_argument("--force-joint", type=int, default=None,
                         help="debug: bind every vertex to this joint id")
     parser.add_argument("--only-meshes", default="",
                         help="comma-separated mesh indices to keep (after dedupe)")
-    parser.add_argument("--max-edge", type=float, default=0.2,
+    parser.add_argument("--max-edge", type=float, default=0.0,
                         help="drop triangles with an edge longer than this "
-                             "(metres, 0 disables); they are stretched artefacts")
+                             "(metres, 0 disables) - a lint for broken exports")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
                            args.base, args.max_tris,
-                           align_bind=not args.no_align,
-                           normalize_proportions=not args.keep_proportions,
-                           max_edge=args.max_edge,
                            only_meshes=({int(x) for x in args.only_meshes.split(",") if x.strip()}
                                         if args.only_meshes else None),
-                           force_joint=args.force_joint)
+                           force_joint=args.force_joint,
+                           max_edge=args.max_edge)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))

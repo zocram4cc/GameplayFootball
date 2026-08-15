@@ -3,7 +3,7 @@
 Decodes the engine's skin encoding exactly like HumanoidBase::
 PrepareFullbodyModel: each color channel (0..255) holds one influence as
 jointID*10 + weight*9; jointID = floor(channel/10); influences with
-weight > 0.01 count. Joint IDs are the 16-joint player.object DFS order
+weight > 0.01 count. Joint IDs are the player.object DFS order (retarget.GF_JOINT_ORDER)
 (retarget.GF_BIND).
 
 Checks per GEOMOBJECT and per model:
@@ -32,13 +32,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import retarget
 
-GF_JOINT_ORDER = ["body", "middle", "neck", "head",
-                  "left_shoulder", "left_elbow", "left_hand",
-                  "right_shoulder", "right_elbow", "right_hand",
-                  "left_thigh", "left_knee", "left_ankle",
-                  "right_thigh", "right_knee", "right_ankle"]
-LEG_JOINTS = set(range(10, 16))
-ARM_JOINTS = set(range(4, 10))
+GF_JOINT_ORDER = list(retarget.GF_JOINT_ORDER)
+LEG_JOINTS = {retarget.JOINT_ID[n] for n in (
+    "left_thigh", "left_knee", "left_ankle",
+    "right_thigh", "right_knee", "right_ankle")}
+ARM_JOINTS = {retarget.JOINT_ID[n] for n in (
+    "left_clavicle", "left_shoulder", "left_elbow", "left_hand",
+    "right_clavicle", "right_shoulder", "right_elbow", "right_hand")}
 
 
 def joint_anchors():
@@ -102,7 +102,7 @@ def decode(channel):
     return joint, weight
 
 
-def validate_geom(geom, njoints=16, max_anchor=0.85):
+def validate_geom(geom, njoints=len(GF_JOINT_ORDER), max_anchor=0.85):
     """-> (errors, warnings, stats) for one GEOMOBJECT."""
     errors, warnings = [], []
     verts, colors = geom["verts"], geom["colors"]
