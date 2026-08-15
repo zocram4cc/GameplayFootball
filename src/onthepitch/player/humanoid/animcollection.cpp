@@ -491,10 +491,22 @@ void AnimCollection::Load(std::filesystem::path directory) {
 
   bool omitLuxuryAnims = true;
 
+  // Imported clips that have not earned their place yet live under an
+  // "experimental" directory and stay out of the collection unless asked for.
+  // Some families -- dribbles and tricks above all -- land in `ballcontrol`,
+  // which is the type the whole possession game runs through, so a bad batch
+  // does not merely look wrong, it stops players keeping the ball. Shipping
+  // them dark keeps them one config key away from a play session without
+  // risking every other one.
+  const bool loadExperimentalAnims =
+      GetConfiguration()->GetBool("anim_experimental", false);
+
   for (unsigned int i = 0; i < files.size(); i++) {
     // printf("%s\n", files.at(i).c_str());
 
     if ((omitLuxuryAnims && files.at(i).find("luxury") != std::string::npos) ||
+        (!loadExperimentalAnims &&
+         files.at(i).find("experimental") != std::string::npos) ||
         files.at(i).find("templates") != std::string::npos) {
       // printf ("ignoring\n");
 

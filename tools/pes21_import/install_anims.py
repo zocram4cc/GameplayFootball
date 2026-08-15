@@ -40,7 +40,7 @@ CLASSES = {
 
 # --- match classes ----------------------------------------------------------
 
-MATCH_CLASSES = ("sliding", "interfere", "keeper")
+MATCH_CLASSES = ("sliding", "interfere", "keeper", "trick")
 
 # GF files match clips under <type>/<incoming velocity>/, and the selector
 # leans on that reading being right, so the directory is derived, not chosen.
@@ -102,7 +102,8 @@ def prepare_match_anim(path, anim_class):
     if anim.last_frame < 12:
         return None, None, "too short after trimming"
 
-    finder = am.keeper_contact if anim_class == "keeper" else am.sliding_contact
+    finder = {"keeper": am.keeper_contact,
+              "trick": am.touch_contact}.get(anim_class, am.sliding_contact)
     contact = finder(anim)
     if contact is None or contact["frame"] >= anim.last_frame:
         return None, None, "no ball contact"
@@ -139,6 +140,16 @@ def prepare_match_anim(path, anim_class):
             variables["incomingballdirection_maxdeviation"] = "0.5"
             variables["type"] = "interfere"
             subdir = os.path.join("interfere", velocity, "pes")
+    elif anim_class == "trick":
+        if lie is not None:
+            return None, None, "goes to ground: not a touch"
+        # ballcontrol is the type the possession game runs through and GF
+        # filters it strictly on direction, so an imported batch competes
+        # directly with the tuned locomotion set. These ship dark: the
+        # engine skips any path containing "experimental" unless
+        # `anim_experimental` is set (AnimCollection::Load).
+        variables["type"] = "ballcontrol"
+        subdir = os.path.join("ballcontrol", velocity, "experimental")
     else:
         kind = _classify_keeper(os.path.basename(path))
         if kind is None:
