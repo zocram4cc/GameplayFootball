@@ -521,6 +521,10 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       matchData->GetTeamData(1)->GetColor1(), matchData->GetTeamData(1)->GetColor2());
   root->AddView(radar.get());
   radar->Show();
+  // off / transparent / on, picked in the graphics settings page
+  radar->SetTransparentOpacity(GetConfiguration()->GetReal("radar_opacity", 0.55f));
+  radar->SetMode(
+      Gui2Radar::ParseMode(GetConfiguration()->Get("radar_mode", "transparent")));
 
   tacticsDebug = nullptr;
   if (1 == 2) {

@@ -57,6 +57,52 @@ Gui2Radar::Gui2Radar(Gui2WindowManager* windowManager, const std::string& name, 
 
 Gui2Radar::~Gui2Radar() {}
 
+Gui2Radar::e_Mode Gui2Radar::ParseMode(const std::string& mode) {
+  if (mode == "off") return e_Mode_Off;
+  if (mode == "transparent") return e_Mode_Transparent;
+  return e_Mode_On;
+}
+
+std::string Gui2Radar::ModeToString(e_Mode mode) {
+  switch (mode) {
+    case e_Mode_Off:
+      return "off";
+    case e_Mode_Transparent:
+      return "transparent";
+    default:
+      return "on";
+  }
+}
+
+float Gui2Radar::GetEffectiveOpacity() const {
+  switch (mode) {
+    case e_Mode_Off:
+      return 0.0f;
+    case e_Mode_Transparent:
+      return transparentOpacity;
+    default:
+      return 1.0f;
+  }
+}
+
+void Gui2Radar::ApplyOpacity(Gui2Image* image) const {
+  if (!image) return;
+  image->GetImage2D()->SetAlpha(GetEffectiveOpacity());
+}
+
+void Gui2Radar::SetMode(e_Mode newMode) {
+  mode = newMode;
+  ApplyOpacity(bg);
+  ApplyOpacity(ball);
+  for (unsigned int i = 0; i < team1avatars.size(); i++) ApplyOpacity(team1avatars.at(i));
+  for (unsigned int i = 0; i < team2avatars.size(); i++) ApplyOpacity(team2avatars.at(i));
+}
+
+void Gui2Radar::SetTransparentOpacity(float opacity) {
+  transparentOpacity = clamp(opacity, 0.0f, 1.0f);
+  SetMode(mode);
+}
+
 void Gui2Radar::ReloadAvatars(int teamID, unsigned int playerCount) {
   if (teamID == 0) {
     for (unsigned int i = 0; i < team1avatars.size(); i++) {
@@ -71,6 +117,7 @@ void Gui2Radar::ReloadAvatars(int teamID, unsigned int playerCount) {
       this->AddView(avatar);
       avatar->LoadImage("media/menu/radar/p1.png");
       avatar->Show();
+      ApplyOpacity(avatar);
       team1avatars.push_back(avatar);
     }
   }
@@ -89,6 +136,7 @@ void Gui2Radar::ReloadAvatars(int teamID, unsigned int playerCount) {
       this->AddView(avatar);
       avatar->LoadImage("media/menu/radar/p2.png");
       avatar->Show();
+      ApplyOpacity(avatar);
       team2avatars.push_back(avatar);
     }
   }

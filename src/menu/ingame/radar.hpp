@@ -24,10 +24,30 @@ public:
 
   void ReloadAvatars(int teamID, unsigned int playerCount);
 
+  // Broadcast presentation: the radar sits over the pitch, so besides being
+  // switched off it can be drawn see-through.
+  enum e_Mode { e_Mode_Off, e_Mode_Transparent, e_Mode_On };
+  // parses the "radar_mode" config value ("off"/"transparent"/"on")
+  static e_Mode ParseMode(const std::string& mode);
+  static std::string ModeToString(e_Mode mode);
+  static e_Mode NextMode(e_Mode mode) { return e_Mode((int(mode) + 1) % 3); }
+
+  void SetMode(e_Mode mode);
+  e_Mode GetMode() const { return mode; }
+  // opacity used by the transparent mode (0 == invisible, 1 == opaque)
+  void SetTransparentOpacity(float opacity);
+
   virtual void Process();
   virtual void Put();
 
 protected:
+  // applies the alpha the current mode asks for to one image
+  void ApplyOpacity(Gui2Image* image) const;
+  float GetEffectiveOpacity() const;
+
+  float transparentOpacity = 0.55f;
+  e_Mode mode = e_Mode_On;
+
   Gui2Image* bg;
   std::vector<Gui2Image*> team1avatars;
   std::vector<Gui2Image*> team2avatars;

@@ -14,6 +14,7 @@
 
 #include "../main.hpp"
 #include "onthepitch/humanspeed.hpp"
+#include "menu/ingame/radar.hpp"
 #include "onthepitch/playercontrolsettings.hpp"
 #include "onthepitch/refereeprofile.hpp"
 #include "pagefactory.hpp"
@@ -2057,6 +2058,12 @@ GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData&
   frame->AddView(grid);
   grid->Show();
 
+  radarButton = new Gui2Button(windowManager, "button_settings_graphics_radar", 35, 87, 30, 3,
+                               GetRadarButtonText());
+  radarButton->sig_OnClick.connect([this](...) { ToggleRadar(); });
+  this->AddView(radarButton);
+  radarButton->Show();
+
   Gui2Button* backButton =
       new Gui2Button(windowManager, "button_settings_graphics_back", 35, 92, 30, 3,
                      Localization::GetInstance().Translate("action_back"));
@@ -2068,6 +2075,25 @@ GraphicsPage::GraphicsPage(Gui2WindowManager* windowManager, const Gui2PageData&
 }
 
 GraphicsPage::~GraphicsPage() {}
+
+std::string GraphicsPage::GetRadarButtonText() const {
+  const Gui2Radar::e_Mode mode =
+      Gui2Radar::ParseMode(GetConfiguration()->Get("radar_mode", "transparent"));
+  const char* modeKey = mode == Gui2Radar::e_Mode_Off       ? "generic_off"
+                        : mode == Gui2Radar::e_Mode_On      ? "generic_on"
+                                                            : "graphics_radar_transparent";
+  return Localization::GetInstance().Translate("graphics_radar") + ": " +
+         Localization::GetInstance().Translate(modeKey);
+}
+
+void GraphicsPage::ToggleRadar() {
+  // cycles off -> transparent -> on
+  const Gui2Radar::e_Mode next = Gui2Radar::NextMode(
+      Gui2Radar::ParseMode(GetConfiguration()->Get("radar_mode", "transparent")));
+  GetConfiguration()->Set("radar_mode", Gui2Radar::ModeToString(next));
+  GetConfiguration()->SaveFile(GetConfigFilename());
+  radarButton->SetCaption(GetRadarButtonText());
+}
 
 void GraphicsPage::Process() {
   Gui2Page::Process();
