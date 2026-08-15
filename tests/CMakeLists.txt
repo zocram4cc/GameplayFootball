@@ -94,6 +94,19 @@ target_link_libraries(gameplayfootball_entrancechoreo_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_entrancechoreo_tests DISCOVERY_MODE PRE_TEST)
 
+# Replay/cutscene wipe overlay manifest unit tests
+add_executable(gameplayfootball_wipeoverlay_tests
+  base/wipeoverlay_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/wipeoverlay.cpp
+)
+target_include_directories(gameplayfootball_wipeoverlay_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_wipeoverlay_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_wipeoverlay_tests DISCOVERY_MODE PRE_TEST)
+
 # FaceRig data/blend unit tests
 add_executable(gameplayfootball_facerig_tests
   base/facerig_test.cpp
