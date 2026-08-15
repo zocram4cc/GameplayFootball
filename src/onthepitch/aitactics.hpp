@@ -29,6 +29,22 @@ inline float GetAttackingTerritory(float ballX, int teamSide, float pitchHalfLen
   return std::max(-1.0f, std::min(ballX * static_cast<float>(-teamSide) / pitchHalfLength, 1.0f));
 }
 
+// Zone pressure is executed by AI teammates only (the presser is picked from
+// AI-controlled players), so it applies to CPU and human-controlled sides
+// alike. It used to be gated on a fully-CPU side, which kept a human team's AI
+// teammates from ever pressing as a unit (docs/PES21_TACTICS.md section 9).
+inline bool ShouldAutomateZonePressure(int humanGamerCount) {
+  (void)humanGamerCount;
+  return true;
+}
+
+// Attacking runs - the turnover counter included - are sprung automatically
+// only while fewer than two humans control the side; with a second human
+// present, the off-ball run is his to make.
+inline bool ShouldAutomateAttackingRuns(int humanGamerCount) {
+  return humanGamerCount < 2;
+}
+
 // Classic zone pressure is selective rather than an automatic all-pitch swarm.
 // More aggressive settings activate deeper and from farther away.
 inline bool ShouldStartZonePressure(float pressure, float attackingTerritory,

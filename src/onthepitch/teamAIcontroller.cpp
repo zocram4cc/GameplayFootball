@@ -262,8 +262,9 @@ void TeamAIController::Process() {
 
   // PES-style zone pressure: after a suitable turnover, the nearest defender
   // engages normally and one additional defender closes down for a short,
-  // tactic-dependent period.
-  if (team->GetHumanGamerCount() == 0) {
+  // tactic-dependent period. The second presser is always an AI teammate, so
+  // this applies to human-controlled sides too.
+  if (AITactics::ShouldAutomateZonePressure(team->GetHumanGamerCount())) {
     if (prevTeamHasPossession && !teamHasPossession) {
       Player* primaryDefender = team->GetDesignatedTeamPossessionPlayer();
       const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
@@ -290,7 +291,8 @@ void TeamAIController::Process() {
   }
   // Counterattack: the moment the ball is won with the opponent committed
   // upfield, spring a runner at once instead of waiting for the periodic check.
-  if (team->GetHumanGamerCount() == 0 && !prevTeamHasPossession && teamHasPossession) {
+  if (AITactics::ShouldAutomateAttackingRuns(team->GetHumanGamerCount()) &&
+      !prevTeamHasPossession && teamHasPossession) {
     const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
     const float territory =
         AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
@@ -321,8 +323,8 @@ void TeamAIController::Process() {
 
   if (match->GetActualTime_ms() % 500 == 0 &&
       endApplyAttackingRun_ms <= match->GetActualTime_ms()) {
-    if (team->GetHumanGamerCount() <
-        2) {  // with >= 2 human players, one can do the running manually
+    // With >= 2 human players, one can do the running manually.
+    if (AITactics::ShouldAutomateAttackingRuns(team->GetHumanGamerCount())) {
       if (match->GetBestPossessionTeamID() == team->GetID()) {
         const float counterAttack =
             liveTeamTactics.GetReal("counter_attack", 0.5f);

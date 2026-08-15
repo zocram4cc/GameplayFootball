@@ -24,6 +24,27 @@ TEST(AITacticsTest, ZonePressureIsSelectiveBySettingTerritoryAndDistance) {
   EXPECT_TRUE(AITactics::ShouldStartZonePressure(1.0f, -0.3f, 15.0f));
 }
 
+// docs/PES21_TACTICS.md section 9: zone pressure and the turnover counter used
+// to be gated on a fully-CPU side, so a human-controlled team's AI teammates
+// never pressed as a unit and never sprang a counter. Collective pressing is
+// executed by AI teammates only (ApplyTeamPressure never picks a
+// human-controlled presser), so it applies at any human count.
+TEST(AITacticsTest, ZonePressureAppliesToHumanControlledSidesToo) {
+  EXPECT_TRUE(AITactics::ShouldAutomateZonePressure(0));
+  EXPECT_TRUE(AITactics::ShouldAutomateZonePressure(1));
+  EXPECT_TRUE(AITactics::ShouldAutomateZonePressure(2));
+}
+
+// Attacking runs (the turnover counter included) stay automated with one human
+// on the side; with a second human present the off-ball run is his to make,
+// matching the long-standing rule for tactics-induced runs.
+TEST(AITacticsTest, AttackingRunsAreAutomatedBelowTwoHumans) {
+  EXPECT_TRUE(AITactics::ShouldAutomateAttackingRuns(0));
+  EXPECT_TRUE(AITactics::ShouldAutomateAttackingRuns(1));
+  EXPECT_FALSE(AITactics::ShouldAutomateAttackingRuns(2));
+  EXPECT_FALSE(AITactics::ShouldAutomateAttackingRuns(3));
+}
+
 TEST(AITacticsTest, TerritoryUsesTheTeamsAttackingDirection) {
   EXPECT_FLOAT_EQ(AITactics::GetAttackingTerritory(-52.5f, 1, 52.5f), 1.0f);
   EXPECT_FLOAT_EQ(AITactics::GetAttackingTerritory(52.5f, -1, 52.5f), 1.0f);
