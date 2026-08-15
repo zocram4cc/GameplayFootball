@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include "base/math/vector3.hpp"
 #include "onthepitch/offsiderule.hpp"
 
 TEST(OffsideRuleTest, TheLawsExemptRestartsCannotCreateOffside) {
@@ -74,4 +75,29 @@ TEST(OffsideRuleTest, ADefendersDeflectionOrSaveKeepsThePhaseAlive) {
   EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_Accidental));
   EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_Intentional_Nonkicked));
   EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_None));
+}
+
+// Law 11: the free kick for offside is taken where the OFFENCE occurred -
+// where the flagged player became involved in active play - not where he stood
+// when the pass was struck. The two can be far apart: a player may run back
+// from an offside position and only commit the offence when he plays the ball.
+
+TEST(OffsideRuleTest, RestartIsWhereThePlayerBecameInvolvedNotWhereHeStoodAtThePass) {
+  const blunted::Vector3 positionAtPass(30.0f, 5.0f, 0.0f);
+  const blunted::Vector3 positionAtInvolvement(18.0f, -3.0f, 0.0f);
+  const blunted::Vector3 restart =
+      OffsideRule::RestartPosition(positionAtPass, positionAtInvolvement);
+  EXPECT_FLOAT_EQ(restart.coords[0], positionAtInvolvement.coords[0]);
+  EXPECT_FLOAT_EQ(restart.coords[1], positionAtInvolvement.coords[1]);
+}
+
+TEST(OffsideRuleTest, RestartCanBeInTheOffendersOwnHalf) {
+  // IFAB 2016 clarification: if the player moves back past halfway before
+  // playing the ball, the free kick is still taken where he played it.
+  const blunted::Vector3 positionAtPass(6.0f, 0.0f, 0.0f);
+  const blunted::Vector3 positionAtInvolvement(-4.0f, 2.0f, 0.0f);
+  const blunted::Vector3 restart =
+      OffsideRule::RestartPosition(positionAtPass, positionAtInvolvement);
+  EXPECT_FLOAT_EQ(restart.coords[0], -4.0f);
+  EXPECT_FLOAT_EQ(restart.coords[1], 2.0f);
 }

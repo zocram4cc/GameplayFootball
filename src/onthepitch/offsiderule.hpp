@@ -5,6 +5,7 @@
 #ifndef _HPP_OFFSIDE_RULE
 #define _HPP_OFFSIDE_RULE
 
+#include "../base/math/vector3.hpp"
 #include "../gametypes.hpp"
 
 namespace OffsideRule {
@@ -33,6 +34,13 @@ bool IsDeliberatePlay(e_TouchType touchType);
 // `opponentOfFlagged` is whether the toucher opposes the flagged players; pass
 // false when nobody is flagged.
 bool TouchResetsPhase(bool opponentOfFlagged, e_TouchType touchType);
+
+// Law 11: the free kick is taken where the offence occurred - where the
+// flagged player became involved in active play - not where he stood when the
+// pass was struck. That holds even when he has dropped back into his own half
+// before playing the ball (IFAB 2016 clarification).
+blunted::Vector3 RestartPosition(const blunted::Vector3& positionAtPass,
+                                 const blunted::Vector3& positionAtInvolvement);
 
 }  // namespace OffsideRule
 

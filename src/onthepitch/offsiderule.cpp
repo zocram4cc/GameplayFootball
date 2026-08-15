@@ -25,4 +25,10 @@ bool TouchResetsPhase(bool opponentOfFlagged, e_TouchType touchType) {
   return IsDeliberatePlay(touchType);
 }
 
+blunted::Vector3 RestartPosition(const blunted::Vector3& positionAtPass,
+                                 const blunted::Vector3& positionAtInvolvement) {
+  (void)positionAtPass;  // recorded to judge the offence, not to restart from
+  return positionAtInvolvement;
+}
+
 }  // namespace OffsideRule

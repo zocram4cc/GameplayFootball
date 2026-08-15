@@ -368,7 +368,12 @@ void Referee::BallTouched() {
           buffer.stopTime = match->GetActualTime_ms();
           buffer.prepareTime = match->GetActualTime_ms() + 2000;
           buffer.startTime = buffer.prepareTime + 2000;
-          buffer.restartPos = playerIter->second;
+          // Law 11: the free kick is taken where the offence occurred - the
+          // spot where the flagged player just played the ball - not where he
+          // stood when the pass was struck (that stored position only judged
+          // the offside position itself).
+          buffer.restartPos =
+              OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
           match->SpamMessage("offside!");
