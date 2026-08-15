@@ -356,6 +356,9 @@ protected:
   unsigned int fullbodySubgeomCount;
   std::vector<int*> uniqueIndicesVec;
   std::vector<Joint> joints;
+  // index into joints of the "neck" node (hair attachment); joint order is
+  // the player.object DFS order, so never hardcode it
+  unsigned int neckJointIndex = 0;
   Vector3 fullbodyOffset;
   boost::intrusive_ptr<Node> fullbodyTargetNode;
 

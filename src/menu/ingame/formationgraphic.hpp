@@ -53,6 +53,8 @@ protected:
   // enough to call once per team switch (twice per entrance), not per frame.
   void BuildForTeam(int teamID);
   void ClearDynamicViews();
+  // built on the first Process(); see the note in Init()
+  void BuildBackgrounds();
   void ApplyAlpha(float alpha);
 
   Match* match;

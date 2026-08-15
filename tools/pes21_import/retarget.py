@@ -1,55 +1,25 @@
 """PES <-> GameplayFootball skeleton bridge.
 
-GameplayFootball animates fifteen named nodes (see data/media/animations):
-player (root position), body, middle, neck, left/right shoulder, elbow,
-thigh, knee, ankle. PES models (.fmdl) are skinned to the Fox body skeleton
-(sk_* bones, plus dsk_* twist helpers that carry no unique animation).
+Since the native-rig migration the engine's skeleton IS the PES animated
+rig, 1:1: GameplayFootball's player.object carries twenty nodes, one per
+bone of PES's body animation rig (body_skel.frig), at the PES bind
+positions (Fox coords mapped (x, y, z) -> (x, -z, y) into GF's Z-up,
+faces -Y frame), with identity bind rotations (Fox skeletons are
+world-aligned). The sixteen legacy node names are kept -- engine code
+refers to them -- and four nodes are new: hip (dsk_hip), chest (sk_chest),
+left_clavicle / right_clavicle (sk_shoulder_l/r).
 
-The map below drives both mesh segmentation (which GF body part each PES bone's
-vertices belong to) and, once .gani curves are decoded, animation retargeting.
+Everything else PES has (dsk_* skin helpers, skh_* fingers, skf_* face
+muscles, cloth bones) is never independently animated by the body ganis;
+under the engine's inverse-bind skinning, collapsing such a bone onto the
+animated bone it rigidly follows is mathematically lossless, so skin
+weights resolve through HELPER_TO_GF/resolve_bone below. (What IS lost:
+Fox's runtime constraints -- twist distribution on dsk_forearm/dsk_thigh,
+clavicle aim -- which GF does not emulate. Documented, not accidental.)
+
+The authoritative bone data comes from the base package's body.skl
+(pes_skl.py); PES_BIND below matches it and body_skel.frig.
 """
-
-# GF node -> the PES bones whose vertices/curves it absorbs. Order matters for
-# mesh segmentation: earlier entries win when weights tie.
-GF_FROM_PES = {
-    "body": ["sk_hip", "dsk_hip"],
-    "middle": ["sk_belly", "sk_chest", "sk_spine"],
-    "neck": ["sk_neck"],
-    "head": ["sk_head", "dsk_head"],
-    "left_shoulder": ["sk_upperarm_l", "dsk_upperarm_l", "sk_clavicle_l", "dsk_deltoid_l"],
-    "left_elbow": ["sk_forearm_l", "dsk_forearm_l"],
-    "left_hand": ["sk_hand_l", "dsk_hand_l"],
-    "right_shoulder": ["sk_upperarm_r", "dsk_upperarm_r", "sk_clavicle_r", "dsk_deltoid_r"],
-    "right_elbow": ["sk_forearm_r", "dsk_forearm_r"],
-    "right_hand": ["sk_hand_r", "dsk_hand_r"],
-    "left_thigh": ["sk_thigh_l", "dsk_thigh_l"],
-    "left_knee": ["sk_leg_l", "dsk_leg_l"],
-    "left_ankle": ["sk_foot_l", "dsk_foot_l", "sk_toe_l", "dsk_toe_l"],
-    "right_thigh": ["sk_thigh_r", "dsk_thigh_r"],
-    "right_knee": ["sk_leg_r", "dsk_leg_r"],
-    "right_ankle": ["sk_foot_r", "dsk_foot_r", "sk_toe_r", "dsk_toe_r"],
-}
-
-# GF body part -> the .ase GEOMOBJECT the engine attaches to that node.
-GF_GEOMOBJECT = {
-    "body": "pelvis",
-    "middle": "trunk",
-    "neck": "head",
-    "head": "head",
-    "left_hand": "lowerarm_left",
-    "right_hand": "lowerarm_right",
-    "left_shoulder": "upperarm_left",
-    "left_elbow": "lowerarm_left",
-    "right_shoulder": "upperarm_right",
-    "right_elbow": "lowerarm_right",
-    "left_thigh": "upperleg_left",
-    "left_knee": "lowerleg_left",
-    "left_ankle": "foot_left",
-    "right_thigh": "upperleg_right",
-    "right_knee": "lowerleg_right",
-    "right_ankle": "foot_right",
-}
-
 
 # ---------------------------------------------------------------------------
 # Animation-skeleton data (decoded from dt13 body_skel.frig + .gani files).
@@ -92,9 +62,9 @@ PES_POS_TO_M = 1.0 / 128000.0
 # is the kind of constant an engine actually stores.
 PES_POS_TO_M_GAMEPLAY = 1.0 / 20480.0
 
-# Bind pose (Fox coords: Y up, +Z forward, metres), harvested from HDG
-# full-body .fmdl bone tables; frames are world-aligned (identity bind
-# rotations - Fox skeletons store positions only).
+# Bind pose (Fox coords: Y up, +Z forward, metres), from the base package's
+# body.skl (== the fmdl bone tables); animation frames are world-aligned
+# (identity bind rotations - Fox skeletons store positions only).
 PES_BIND = {
     # bone: (global bind position, parent)
     "motion":        ((0.0000, 0.9921, -0.0184), None),        # = dsk_hip pos
@@ -119,44 +89,175 @@ PES_BIND = {
     "sk_hand_r":     ((-0.6035, 1.0639, 0.0695), "sk_forearm_r"),
 }
 
-# GameplayFootball's bind skeleton (from data/media/objects/players/
-# player.object): Z up, character faces -Y, node offsets in metres.
-GF_BIND = {
-    "body": ((0.0, 0.0, 0.96), None),
-    "middle": ((0.0, 0.0, 0.15), "body"),
-    "neck": ((0.0, -0.03, 0.5), "middle"),
-    "head": ((0.0, -0.01, 0.09), "neck"),
-    "left_shoulder": ((0.16, -0.01, 0.48), "middle"),
-    "left_elbow": ((-0.01, 0.0, -0.33), "left_shoulder"),
-    "left_hand": ((0.0, 0.0, -0.28), "left_elbow"),
-    "right_shoulder": ((-0.16, -0.01, 0.48), "middle"),
-    "right_elbow": ((0.01, 0.0, -0.33), "right_shoulder"),
-    "right_hand": ((0.0, 0.0, -0.28), "right_elbow"),
-    "left_thigh": ((0.087, 0.0, -0.01), "body"),
-    "left_knee": ((0.0, 0.0, -0.42), "left_thigh"),
-    "left_ankle": ((0.0, -0.04, -0.44), "left_knee"),
-    "right_thigh": ((-0.087, 0.0, -0.01), "body"),
-    "right_knee": ((0.0, 0.0, -0.42), "right_thigh"),
-    "right_ankle": ((0.0, -0.04, -0.44), "right_knee"),
-}
-GF_BODY_HEIGHT = 0.96
+
+def fox_to_gf(v):
+    """Fox coords (Y up, +Z forward) -> GF coords (Z up, faces -Y)."""
+    return (v[0], -v[2], v[1])
 
 
-def pes_to_gf():
-    """Inverted map: PES bone name -> GF node."""
+# ---------------------------------------------------------------------------
+# The engine's native skeleton: GF node -> PES bone, in player.object DFS
+# order. The list order IS the joint-ID order (vertex-colour weight
+# encoding: channel = jointID*10 + weight*9).
+GF_NODES = [
+    # (GF node, PES bone, GF parent)
+    ("body",           "motion",        None),
+    ("hip",            "dsk_hip",       "body"),
+    ("left_thigh",     "sk_thigh_l",    "hip"),
+    ("left_knee",      "sk_leg_l",      "left_thigh"),
+    ("left_ankle",     "sk_foot_l",     "left_knee"),
+    ("right_thigh",    "sk_thigh_r",    "hip"),
+    ("right_knee",     "sk_leg_r",      "right_thigh"),
+    ("right_ankle",    "sk_foot_r",     "right_knee"),
+    ("middle",         "sk_belly",      "body"),
+    ("chest",          "sk_chest",      "middle"),
+    ("neck",           "sk_neck",       "chest"),
+    ("head",           "sk_head",       "neck"),
+    ("left_clavicle",  "sk_shoulder_l", "chest"),
+    ("left_shoulder",  "sk_upperarm_l", "left_clavicle"),
+    ("left_elbow",     "sk_forearm_l",  "left_shoulder"),
+    ("left_hand",      "sk_hand_l",     "left_elbow"),
+    ("right_clavicle", "sk_shoulder_r", "chest"),
+    ("right_shoulder", "sk_upperarm_r", "right_clavicle"),
+    ("right_elbow",    "sk_forearm_r",  "right_shoulder"),
+    ("right_hand",     "sk_hand_r",     "right_elbow"),
+]
+
+GF_JOINT_ORDER = [name for name, _, _ in GF_NODES]
+JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
+GF_PARENT = {name: parent for name, _, parent in GF_NODES}
+PES_OF_GF = {name: bone for name, bone, _ in GF_NODES}
+GF_OF_PES = {bone: name for name, bone, _ in GF_NODES}
+
+
+def _build_gf_bind():
+    """GF node -> (local offset from parent, parent), GF coords, from PES_BIND."""
+    world = {bone: fox_to_gf(pos) for bone, (pos, _) in PES_BIND.items()}
+    bind = {}
+    for name, bone, parent in GF_NODES:
+        w = world[bone]
+        if parent is None:
+            bind[name] = (w, None)
+        else:
+            p = world[PES_OF_GF[parent]]
+            bind[name] = ((w[0] - p[0], w[1] - p[1], w[2] - p[2]), parent)
+    return bind
+
+
+# GF node -> (offset from parent node, parent node). This is exactly what
+# data/media/objects/players/player.object encodes (see
+# gen_player_object.py, which writes that file from this table).
+GF_BIND = _build_gf_bind()
+
+# The body node's height above the ground in the bind pose (the .anim
+# player-line origin): PES's "motion" mover.
+GF_BODY_HEIGHT = PES_BIND["motion"][0][1]
+
+
+def gf_world_bind():
+    """GF node -> world bind position (GF coords)."""
     out = {}
-    for gf_node, pes_bones in GF_FROM_PES.items():
-        for bone in pes_bones:
-            out[bone] = gf_node
+    for name in GF_JOINT_ORDER:
+        offset, parent = GF_BIND[name]
+        if parent is None:
+            out[name] = offset
+        else:
+            p = out[parent]
+            out[name] = (p[0] + offset[0], p[1] + offset[1], p[2] + offset[2])
     return out
 
 
-def gf_node_for_bone(bone_name: str):
-    """Best-effort lookup, tolerant of suffix variations (sk_hand_l_01...)."""
-    table = pes_to_gf()
-    if bone_name in table:
-        return table[bone_name]
-    for pes, gf_node in table.items():
-        if bone_name.startswith(pes):
-            return gf_node
+# ---------------------------------------------------------------------------
+# Helper-bone collapse: every PES bone that is not independently animated
+# resolves to the animated GF node it rigidly follows. Curated by anatomy
+# from the body.skl bone list; resolve_bone() falls back on name patterns
+# and, given bind positions, on proximity.
+HELPER_TO_GF = {
+    # pelvis / trunk
+    "dsk_back": "middle", "dsk_belly_scale": "middle",
+    "dsk_hip_l": "hip", "dsk_hip_r": "hip",
+    "dsk_pants_l": "hip", "dsk_pants_r": "hip",
+    "dsk_pos_pants_l": "hip", "dsk_pos_pants_r": "hip",
+    "dsk_sternum_l": "chest", "dsk_sternum_r": "chest",
+    "dsk_pectoralis_l": "chest", "dsk_pectoralis_r": "chest",
+    "dsk_pos_pectoralis_l": "chest", "dsk_pos_pectoralis_r": "chest",
+    "dsk_scapula_l": "chest", "dsk_scapula_r": "chest",
+    "dsk_pos_scapula_l": "chest", "dsk_pos_scapula_r": "chest",
+    # clavicle skin rides the animated clavicle bone; collar skin the chest
+    "dsk_clavicle_l": "left_clavicle", "dsk_clavicle_r": "right_clavicle",
+    "dsk_trapezius_l": "left_clavicle", "dsk_trapezius_r": "right_clavicle",
+    "dsk_collar_l": "chest", "dsk_collar_r": "chest",
+    # neck / head
+    "dsk_scm": "neck", "dsk_neckback": "neck",
+    # arms (deltoid/underarm/sleeve cluster sit on the upper arm)
+    "dsk_deltoid_l": "left_shoulder", "dsk_deltoid_r": "right_shoulder",
+    "dsk_underarm_l": "left_shoulder", "dsk_underarm_r": "right_shoulder",
+    "dsk_underarm_ba_l": "left_shoulder", "dsk_underarm_ba_r": "right_shoulder",
+    "dsk_elbow_l": "left_elbow", "dsk_elbow_r": "right_elbow",
+    "dsk_forearm_t_l": "left_elbow", "dsk_forearm_t_r": "right_elbow",
+    # wrist-twist carrier: statically parented to the forearm (candy-wrapper
+    # twist distribution is a Fox constraint GF does not emulate)
+    "dsk_forearm_l": "left_elbow", "dsk_forearm_r": "right_elbow",
+    "dsk_wrist_l": "left_hand", "dsk_wrist_r": "right_hand",
+    # legs
+    "dsk_thighmain_l": "left_thigh", "dsk_thighmain_r": "right_thigh",
+    "dsk_thigh_l": "left_thigh", "dsk_thigh_r": "right_thigh",
+    "dsk_pos_thigh_l": "left_thigh", "dsk_pos_thigh_r": "right_thigh",
+    "dsk_knee_l": "left_knee", "dsk_knee_r": "right_knee",
+    "dsk_kneeback_l": "left_knee", "dsk_kneeback_r": "right_knee",
+    "dsk_leg_l": "left_knee", "dsk_leg_r": "right_knee",
+    "dsk_foot_l": "left_ankle", "dsk_foot_r": "right_ankle",
+    "dsk_toe_l": "left_ankle", "dsk_toe_r": "right_ankle",
+    "sk_toe_l": "left_ankle", "sk_toe_r": "right_ankle",
+}
+# name-pattern families (prefix match), checked after the exact table
+_HELPER_FAMILIES = [
+    ("dsk_hem_", {"_l": "left_thigh", "_r": "right_thigh"}),
+    ("dsk_pos_hem_", {"_l": "left_thigh", "_r": "right_thigh"}),
+    ("dsk_belly_", {"_l": "middle", "_r": "middle"}),
+    ("dsk_pos_belly_", {"_l": "middle", "_r": "middle"}),
+    ("dsk_sleeve_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
+    ("tip_dsk_sleeve_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
+    ("tip_dsk_pos_sleeve_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
+    ("pos_arm_target_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
+    ("dsk_upperarm_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
+    ("dsk_ear", {"_l": "head", "_r": "head"}),
+    ("tip_dsk_toe", {"_l": "left_ankle", "_r": "right_ankle"}),
+    # fingers (hand_[lr].skl / hand meshes) and face muscles
+    ("skh_", {"_l": "left_hand", "_r": "right_hand"}),
+    ("skf_", {"_l": "head", "_r": "head", "": "head"}),
+]
+
+
+def resolve_bone(bone_name, bind_positions=None):
+    """PES bone name -> GF node name (None if unresolvable).
+
+    bind_positions: optional {bone: (x,y,z) Fox coords} (e.g. an fmdl bone
+    table) for a nearest-animated-bone fallback on unknown names.
+    """
+    if bone_name in GF_OF_PES:
+        return GF_OF_PES[bone_name]
+    if bone_name in HELPER_TO_GF:
+        return HELPER_TO_GF[bone_name]
+    for prefix, sides in _HELPER_FAMILIES:
+        if bone_name.startswith(prefix):
+            if bone_name.endswith("_l") or "_l_" in bone_name[len(prefix):]:
+                return sides.get("_l")
+            if bone_name.endswith("_r") or "_r_" in bone_name[len(prefix):]:
+                return sides.get("_r")
+            for key in ("", "_l"):
+                if key in sides:
+                    return sides[key]
+    # dsk_x -> sk_x (twist helper sharing its master's name)
+    if bone_name.startswith("dsk_") and ("sk_" + bone_name[4:]) in GF_OF_PES:
+        return GF_OF_PES["sk_" + bone_name[4:]]
+    if bind_positions is not None and bone_name in bind_positions:
+        p = bind_positions[bone_name]
+        best, best_d = None, None
+        for gf_name, bone, _ in GF_NODES:
+            q = PES_BIND[bone][0]
+            d = sum((a - b) ** 2 for a, b in zip(p, q))
+            if best_d is None or d < best_d:
+                best, best_d = gf_name, d
+        return best
     return None
