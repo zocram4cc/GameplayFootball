@@ -26,6 +26,9 @@ struct Joint {
   Vector3 position;
   Quaternion orientation;
   Vector3 origPos;
+  // the joint's orientation in the base pose the geometry was authored in;
+  // skinning rotates by the change since then, not by the absolute value
+  Quaternion origOrientation;
 };
 
 struct WeightedBone {
