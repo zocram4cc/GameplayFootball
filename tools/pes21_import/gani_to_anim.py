@@ -1,18 +1,21 @@
 """Converts decoded PES .gani body animations into GameplayFootball .anim files.
 
-Pipeline per output frame (GF frame = 10 ms):
-  1. sample every mapped PES bone quaternion (nlerp) and the root/motion
-     position tracks (lerp) at the equivalent PES time (PES frame = 1/59.94 s)
-  2. run FK over the PES bind skeleton (world-aligned bind frames, so world
-     rotation = product of local anim quats down the chain)
-  3. map world transforms from Fox coords (Y up, +Z forward) into GF coords
-     (Z up, -Y forward): (x, y, z) -> (x, -z, y), quats likewise
-  4. solve GF's 13 nodes:
-       body / middle / neck / ankles: direct orientation match
-       thighs & shoulders: aim the bind -Z bone axis at the FK'd limb
-         direction, rolled so the hinge axis lands on local X
-       knees (+X) & elbows (-X): pure hinge angles, GF's conventions
-  5. write the .anim text: a player root line + one line per node + metadata
+Since the native-rig migration the engine's skeleton IS the PES animated rig
+(retarget.GF_NODES, 1:1), so conversion is a change of basis, not a retarget:
+
+  1. sample every PES bone's LOCAL quaternion (nlerp) and the root/motion
+     position tracks (lerp) at the equivalent PES time (PES frame = 1/59.94 s,
+     GF frame = 10 ms)
+  2. map each local quaternion from Fox coords (Y up, +Z forward) into GF
+     coords (Z up, faces -Y): both rigs' binds are world-aligned, so the same
+     conjugation (x, y, z) -> (x, -z, y) applies to every local
+  3. body = RIG_ROOT o motion (GF's body node is the PES mover; the player
+     root line carries the world translation); every other node's line is its
+     PES bone's local, verbatim
+
+Nothing is solved and nothing is lost: clavicles (sk_shoulder_*), the
+belly/chest spine chain and the wrists all keep their own tracks, which the
+old aim-and-hinge retarget onto the 16-node skeleton used to collapse.
 
 Usage:
   python3 gani_to_anim.py in.gani out.anim [--type movement]
@@ -68,50 +71,8 @@ def q_axis_angle(axis, angle):
     return q_norm((axis[0] * s, axis[1] * s, axis[2] * s, math.cos(angle * 0.5)))
 
 
-def q_from_matrix(m):
-    """Columns m = (X, Y, Z) basis vectors -> quaternion."""
-    xx, yx, zx = m[0]
-    xy, yy, zy = m[1]
-    xz, yz, zz = m[2]
-    tr = xx + yy + zz
-    if tr > 0:
-        s = math.sqrt(tr + 1.0) * 2
-        return q_norm(((yz - zy) / s, (zx - xz) / s, (xy - yx) / s, 0.25 * s))
-    if xx > yy and xx > zz:
-        s = math.sqrt(1.0 + xx - yy - zz) * 2
-        return q_norm((0.25 * s, (yx + xy) / s, (zx + xz) / s, (yz - zy) / s))
-    if yy > zz:
-        s = math.sqrt(1.0 + yy - xx - zz) * 2
-        return q_norm(((yx + xy) / s, 0.25 * s, (zy + yz) / s, (zx - xz) / s))
-    s = math.sqrt(1.0 + zz - xx - yy) * 2
-    return q_norm(((zx + xz) / s, (zy + yz) / s, 0.25 * s, (xy - yx) / s))
-
-
-def v_sub(a, b):
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
-
-
 def v_add(a, b):
     return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
-
-
-def v_cross(a, b):
-    return (a[1] * b[2] - a[2] * b[1],
-            a[2] * b[0] - a[0] * b[2],
-            a[0] * b[1] - a[1] * b[0])
-
-
-def v_dot(a, b):
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-
-
-def v_len(a):
-    return math.sqrt(v_dot(a, a))
-
-
-def v_normalize(a):
-    n = v_len(a)
-    return (a[0] / n, a[1] / n, a[2] / n) if n > 1e-9 else (0.0, 0.0, 0.0)
 
 
 # --- Fox -> GF coordinate mapping -------------------------------------------
@@ -177,7 +138,7 @@ def build_samplers(g):
     return bones, root_q, root_p, mot_q, mot_p
 
 
-# --- FK over the PES skeleton -------------------------------------------------
+# --- root handling ------------------------------------------------------------
 
 def root_yaw(q):
     """Yaw of a Fox root quaternion about +Y (0 faces +Z, pi/2 faces +X)."""
@@ -185,21 +146,19 @@ def root_yaw(q):
     return math.atan2(f[0], f[2])
 
 
-def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
-            scale=None):
-    """World rotation+position per PES bone at PES frame t (Fox coords).
+def sample_root(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
+                scale=None):
+    """(body world quat, motion world position) at PES frame t, Fox coords.
 
     With strip_root the RIG_ROOT translation and yaw are removed (the pose
-    stays in place, facing +Z, keeping any root tilt) — for clips whose world
+    stays in place, facing +Z, keeping any root tilt) - for clips whose world
     placement is driven externally, like the fixdemo entrance choreography.
 
     `scale` is metres per raw position unit; it defaults to the legacy
     retarget.PES_POS_TO_M so existing callers (the entrance/cutscene export)
-    are untouched. Match animation passes retarget.PES_POS_TO_M_GAMEPLAY —
+    are untouched. Match animation passes retarget.PES_POS_TO_M_GAMEPLAY -
     see calibrate_pos_scale.py for how that number was measured.
     """
-    rot = {}
-    pos = {}
     bind = retarget.PES_BIND
     if scale is None:
         scale = retarget.PES_POS_TO_M
@@ -213,8 +172,24 @@ def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
     mq = q_norm(mot_q.quat(t)) if mot_q else (0, 0, 0, 1)
     mp = tuple(c * scale for c in mot_p.vec(t)) if mot_p else (0.0, 0.0, 0.0)
 
-    rot["motion"] = q_mul(rq, mq)
-    pos["motion"] = v_add(rp, q_rot(rq, v_add(bind["motion"][0], mp)))
+    body_q = q_mul(rq, mq)
+    body_p = v_add(rp, q_rot(rq, v_add(bind["motion"][0], mp)))
+    return body_q, body_p
+
+
+# legacy full-FK helper, still used by calibrate_pos_scale.py and by tools
+# that need world transforms of every bone (metrics research, previews)
+def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
+            scale=None):
+    """World rotation+position per PES bone at PES frame t (Fox coords)."""
+    rot = {}
+    pos = {}
+    bind = retarget.PES_BIND
+
+    body_q, body_p = sample_root(bones, root_q, root_p, mot_q, mot_p, t,
+                                 strip_root, scale)
+    rot["motion"] = body_q
+    pos["motion"] = body_p
 
     order = ["dsk_hip", "sk_thigh_l", "sk_leg_l", "sk_foot_l",
              "sk_thigh_r", "sk_leg_r", "sk_foot_r",
@@ -224,105 +199,22 @@ def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
     for bone in order:
         bpos, parent = bind[bone]
         local = bones[bone].quat(t) if bone in bones else (0, 0, 0, 1)
-        offset = v_sub(bpos, bind[parent][0])
+        offset = tuple(b - p for b, p in zip(bpos, bind[parent][0]))
         rot[bone] = q_norm(q_mul(rot[parent], local))
         pos[bone] = v_add(pos[parent], q_rot(rot[parent], offset))
     return rot, pos
 
 
-# --- GF solve -----------------------------------------------------------------
-
-def _aim_frame(parent_world, bone_dir, hinge_world, hinge_local_sign):
-    """World rotation for a GF limb node: -Z along bone_dir, X on the hinge."""
-    z_axis = v_normalize(tuple(-c for c in bone_dir))
-    x_axis = tuple(hinge_local_sign * c for c in hinge_world)
-    x_axis = v_normalize(v_sub(x_axis, tuple(v_dot(x_axis, z_axis) * c for c in z_axis)))
-    if v_len(x_axis) < 1e-6:
-        fallback = q_rot(parent_world, (1.0, 0.0, 0.0))
-        x_axis = v_normalize(v_sub(fallback, tuple(v_dot(fallback, z_axis) * c
-                                                   for c in z_axis)))
-    y_axis = v_cross(z_axis, x_axis)
-    return q_from_matrix((x_axis, y_axis, z_axis))
-
-
-def _solve_chain(parent_world_q, p_a, p_b, p_c, hinge_local_sign):
-    """A 2-bone chain (thigh/knee or shoulder/elbow) from world positions.
-
-    Returns (upper local quat, hinge local quat, upper world quat, hinge world quat).
-    The hinge rotates about local X * hinge_local_sign by the bend angle.
-    """
-    d_upper = v_normalize(v_sub(p_b, p_a))
-    d_lower = v_normalize(v_sub(p_c, p_b))
-    hinge = v_cross(d_upper, d_lower)
-    if v_len(hinge) < 1e-6:
-        hinge = q_rot(parent_world_q, (1.0, 0.0, 0.0))
-    hinge = v_normalize(hinge)
-
-    upper_world = _aim_frame(parent_world_q, d_upper, hinge, hinge_local_sign)
-    upper_local = q_norm(q_mul(q_conj(parent_world_q), upper_world))
-
-    # the aim frame put the world hinge on local X*sign, so the +bend rotation
-    # from upper to lower reads as sign*bend about local +X: +bend for knees,
-    # -bend for elbows -- exactly GF's conventions.
-    bend = math.acos(max(-1.0, min(1.0, v_dot(d_upper, d_lower))))
-    hinge_local = q_axis_angle((1.0, 0.0, 0.0), hinge_local_sign * bend)
-    hinge_world = q_norm(q_mul(upper_world, hinge_local))
-    return upper_local, hinge_local, upper_world, hinge_world
-
-
-def solve_gf(rot, pos):
-    """PES world pose -> GF node local quaternions + player root."""
-    out = {}
-
-    # world orientations in GF coords
-    w = {bone: map_quat(q) for bone, q in rot.items()}
-    p = {bone: map_vec(v) for bone, v in pos.items()}
-
-    body = q_norm(w["dsk_hip"])
-    out["body"] = body
-    out["middle"] = q_norm(q_mul(q_conj(body), w["sk_chest"]))
-    out["neck"] = q_norm(q_mul(q_conj(w["sk_chest"]), w["sk_neck"]))
-    out["head"] = q_norm(q_mul(q_conj(w["sk_neck"]), w["sk_head"]))
-
-    for side, sign in (("left", "l"), ("right", "r")):
-        # legs: thigh aims at the knee, knee is a +X hinge, ankle matches the
-        # foot's world orientation
-        thigh_l, knee_l, _, knee_w = _solve_chain(
-            body, p["sk_thigh_" + sign], p["sk_leg_" + sign],
-            p["sk_foot_" + sign], +1.0)
-        out[side + "_thigh"] = thigh_l
-        out[side + "_knee"] = knee_l
-        out[side + "_ankle"] = q_norm(q_mul(q_conj(knee_w), w["sk_foot_" + sign]))
-
-        # arms: GF's shoulder node is the upper-arm pivot (parent: middle);
-        # elbows hinge on -X; hands match the PES wrist orientation
-        parent = q_norm(q_mul(body, out["middle"]))
-        shoulder_l, elbow_l, _, elbow_w = _solve_chain(
-            parent, p["sk_upperarm_" + sign], p["sk_forearm_" + sign],
-            p["sk_hand_" + sign], -1.0)
-        out[side + "_shoulder"] = shoulder_l
-        out[side + "_elbow"] = elbow_l
-        out[side + "_hand"] = q_norm(q_mul(q_conj(elbow_w),
-                                           w["sk_hand_" + sign]))
-
-    hip = p["motion"]
-    return out, hip
-
-
 # --- .anim writing ------------------------------------------------------------
 
-GF_NODES = ["body", "middle", "neck", "head",
-            "left_shoulder", "left_elbow", "left_hand",
-            "right_shoulder", "right_elbow", "right_hand",
-            "left_thigh", "left_knee", "left_ankle",
-            "right_thigh", "right_knee", "right_ankle"]
+GF_NODES = list(retarget.GF_JOINT_ORDER)
 
 
 def convert(blob, anim_type="movement", key_step=2, strip_root=False,
             pos_scale=None):
-    """gani bytes -> .anim text.
+    """gani bytes -> .anim text, 1:1 onto the native rig.
 
-    `pos_scale` is metres per raw position unit (see fk_pose); match
+    `pos_scale` is metres per raw position unit (see sample_root); match
     animation wants retarget.PES_POS_TO_M_GAMEPLAY.
     """
     g = gani.parse(blob)
@@ -331,20 +223,27 @@ def convert(blob, anim_type="movement", key_step=2, strip_root=False,
     duration_ms = g.frame_count * PES_FRAME_MS
     gf_frames = max(2, int(round(duration_ms / GF_FRAME_MS)))
 
+    body_offset = retarget.GF_BIND["body"][0]
+
     keys = {node: [] for node in GF_NODES}
     player = []
     origin = None
     for f in range(0, gf_frames + 1, key_step):
         t = min(f * GF_FRAME_MS / PES_FRAME_MS, float(g.frame_count))
-        rot, pos = fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root,
-                           pos_scale)
-        locals_, hip = solve_gf(rot, pos)
+        body_q, body_p = sample_root(bones, root_q, root_p, mot_q, mot_p, t,
+                                     strip_root, pos_scale)
+        p = map_vec(body_p)
+        root = tuple(a - b for a, b in zip(p, body_offset))
         if origin is None:
-            origin = (hip[0], hip[1])
-        player.append((f, hip[0] - origin[0], hip[1] - origin[1],
-                       hip[2] - retarget.GF_BODY_HEIGHT))
+            origin = (root[0], root[1])
+        player.append((f, root[0] - origin[0], root[1] - origin[1], root[2]))
+        keys["body"].append((f,) + map_quat(q_norm(body_q)))
         for node in GF_NODES:
-            keys[node].append((f,) + locals_[node])
+            if node == "body":
+                continue
+            bone = retarget.PES_OF_GF[node]
+            local = bones[bone].quat(t) if bone in bones else (0.0, 0.0, 0.0, 1.0)
+            keys[node].append((f,) + map_quat(q_norm(local)))
 
     lines = []
     lines.append("player," + ",".join(
@@ -362,7 +261,7 @@ def root_sampler(g):
     """RIG_ROOT world motion of a parsed gani, in Fox space.
 
     Returns a function of PES frame time -> (x_m, z_m, yaw_rad): the root
-    translation in metres and its yaw about +Y. This is the part fk_pose
+    translation in metres and its yaw about +Y. This is the part convert()
     removes under strip_root, so an external mover can re-apply it.
     """
     _, root_q, root_p, _, _ = build_samplers(g)
