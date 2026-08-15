@@ -173,15 +173,25 @@ def build_bind_alignment(fmdl, normalize_proportions=True):
     return transforms
 
 
-def align_vertex(pos_gf, joints, transforms):
-    """Blend the per-joint bind alignments for one vertex ((x,y,z) GF coords)."""
+def align_vertex(pos_gf, joints, transforms, translate_only=False):
+    """Blend the per-joint bind alignments for one vertex ((x,y,z) GF coords).
+
+    translate_only skips the limb rotation and scale and just re-anchors the
+    vertex. Trailing geometry (hair, a cape) sits far from the joint it hangs
+    off, and turning it by that limb's bind rotation swings it out into the
+    long flat shards the model viewer shows.
+    """
     out = [0.0, 0.0, 0.0]
     total = 0.0
     for joint_id, weight in joints:
         joint = GF_JOINT_ORDER[joint_id]
         pivot_pes, rotation, scale, pivot_gf = transforms[joint]
-        local = tuple((p - q) * scale for p, q in zip(pos_gf, pivot_pes))
-        rotated = _mat_vec(rotation, local)
+        if translate_only:
+            local = tuple(p - q for p, q in zip(pos_gf, pivot_pes))
+            rotated = local
+        else:
+            local = tuple((p - q) * scale for p, q in zip(pos_gf, pivot_pes))
+            rotated = _mat_vec(rotation, local)
         for c in range(3):
             out[c] += weight * (rotated[c] + pivot_gf[c])
         total += weight
@@ -433,6 +443,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     pos = (vertex.position.x, -vertex.position.z,
                            vertex.position.y)
                     if transforms:
+                        # NB: the bind transform must be uniform across a mesh.
+                        # Treating re-bound vertices differently (rotation
+                        # skipped, or a different joint) tears the geometry
+                        # into flat shards - seen twice in the model viewer.
                         pos = align_vertex(pos, joints, transforms)
                     vertices.append((pos, uv, color))
                 tri.append(index[key])
