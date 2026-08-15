@@ -289,8 +289,16 @@ would have him throwing the ball at an incoming shot.
 - **Inspect clips in the viewer.** `src/onthepitch/modelviewer.hpp` cycles the
   collection past an orbiting camera; `debug_model_viewer_anim` filters by
   clip path, so `sliding/sprint/pes` walks just the imported slides.
-  `data/menu_smoke_animview_slide.config` does that. Note the engine opens a
-  real window on the desktop display (`SDL_VIDEODRIVER=x11`, `DISPLAY=:0`) and
-  the window manager places it wherever it likes, so a capture has to read the
-  rectangle out of `xwininfo -root -tree | grep "Gameplay Football"` rather
-  than assume the top-left corner.
+  `data/menu_smoke_animview_slide.config` does that, and the viewer's own
+  `[Match::ModelViewer]` log line names each clip as it comes up.
+
+  **Capturing it is the hard part on a Wayland desktop.** Left alone the
+  engine opens a real window on `:0` through XWayland, and `ffmpeg -f x11grab`
+  reads the XWayland root, which does not contain that window's rendered
+  surface: every frame comes back a uniform blank ~4 kB PNG. Reading the
+  window rectangle out of `xwininfo -root -tree | grep "Gameplay Football"`
+  fixes the *offset* (the window manager does not place it at the origin) but
+  not the blankness. What has produced real frames is running under
+  `xvfb-run` and letting the game and ffmpeg share the `$DISPLAY` xvfb-run
+  exports -- never overriding `DISPLAY` inside, which puts the game back on
+  the desktop server while ffmpeg grabs the virtual one.
