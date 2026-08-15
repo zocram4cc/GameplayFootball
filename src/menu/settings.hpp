@@ -208,9 +208,13 @@ public:
 
 protected:
   void SetResolution(int resIndex);
+  // the in-match radar overlay is a matter of taste, so it lives here
+  std::string GetRadarButtonText() const;
+  void ToggleRadar();
 
   std::vector<Resolution> resolutions;
 
+  Gui2Button* radarButton = nullptr;
   Gui2Frame* bg;
   Gui2Caption *restartCaption1, *restartCaption2, *restartCaption3;
   Gui2CaptureKey* captureKey;

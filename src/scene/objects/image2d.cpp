@@ -276,7 +276,9 @@ void Image2D::SetAlpha(float alpha) {
   image->resourceMutex.unlock();
   subjectMutex.unlock();
 
-  // OnChange();
+  // the surface pixels changed, so observers have to re-upload it - without
+  // this the new alpha never reaches the screen
+  OnChange();
 }
 
 void Image2D::Resize(int w, int h) {
