@@ -82,6 +82,73 @@ def _gf_world_positions():
     return out
 
 
+def _quat_mul(a, b):
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw,
+            aw * bw - ax * bx - ay * by - az * bz)
+
+
+def _quat_rot(q, v):
+    x, y, z, w = q
+    vx, vy, vz = v
+    tx, ty, tz = 2.0 * (y * vz - z * vy), 2.0 * (z * vx - x * vz), 2.0 * (x * vy - y * vx)
+    return (vx + w * tx + y * tz - z * ty,
+            vy + w * ty + z * tx - x * tz,
+            vz + w * tz + x * ty - y * tx)
+
+
+def gf_base_pose(base_anim=None, want_rotations=False):
+    """GF joint -> world position in the pose the ENGINE measures joints in.
+
+    HumanoidBase applies base.anim.util before recording each joint's origPos,
+    and that pose is far from the raw bind: the shoulders turn ~40 degrees, the
+    elbows ~62, the knees ~69. Placing imported geometry against the straight
+    bind instead leaves every limb's vertices hanging off the wrong pivot, and
+    the engine's rigid per-joint skinning then flings them apart - the shards
+    the model viewer shows. Falls back to the plain bind if the file is absent.
+    """
+    local = {}
+    if base_anim is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        for candidate in ("data/media/animations/base.anim.util",
+                          "media/animations/base.anim.util",
+                          os.path.join(here, "..", "..", "data", "media",
+                                       "animations", "base.anim.util")):
+            if os.path.exists(candidate):
+                base_anim = candidate
+                break
+    if base_anim is None:
+        bind = _gf_world_positions()
+        identity = {n: (0.0, 0.0, 0.0, 1.0) for n in GF_JOINT_ORDER}
+        return (bind, identity) if want_rotations else bind
+    try:
+        for line in open(base_anim):
+            parts = line.strip().split(",")
+            if len(parts) < 6 or parts[0] == "player":
+                continue
+            name = parts[0]
+            if name in JOINT_ID:
+                local[name] = tuple(float(x) for x in parts[2:6])   # qx,qy,qz,qw
+    except OSError:
+        return _gf_world_positions()
+
+    pos = {}
+    rot = {}
+    for name in GF_JOINT_ORDER:
+        offset, parent = retarget.GF_BIND[name]
+        q = local.get(name, (0.0, 0.0, 0.0, 1.0))
+        if parent is None:
+            pos[name] = offset
+            rot[name] = q
+        else:
+            pos[name] = tuple(p + o for p, o in zip(pos[parent], _quat_rot(rot[parent], offset)))
+            rot[name] = _quat_mul(rot[parent], q)
+    return (pos, rot) if want_rotations else pos
+
+
 def _rotation_between(a, b):
     """3x3 rotation matrix taking unit vector a to unit vector b."""
     import math
@@ -163,7 +230,7 @@ def build_bind_alignment(fmdl, normalize_proportions=True):
             return (p[0], -p[2], p[1])
         return (0.0, 0.0, 1.0)
 
-    gf_pos = _gf_world_positions()
+    gf_pos = gf_base_pose()
     transforms = {}
     for joint, (bone, direction_child) in JOINT_PES_BONES.items():
         pivot_pes = pes_pos(bone)
@@ -229,6 +296,41 @@ def align_vertex(pos_gf, joints, transforms, translate_only=False):
     if total <= 0:
         return pos_gf
     return (out[0] / total, out[1] / total, out[2] / total)
+
+
+def to_joint_local(position, joint, base_pos, base_rot):
+    """Express a world position as the engine expects to store it.
+
+    HumanoidBase skins with
+
+        (vertex - joint.origPos) rotated by joint.orientation + joint.position
+
+    using the joint's ABSOLUTE orientation rather than the change since bind,
+    so the stored offset has to be in the joint's base-pose local frame or the
+    base rotation gets applied twice. That error is negligible at the ankle
+    (2 degrees) and ruinous at the elbow (62), which is why imported legs
+    survived while arms tore apart.
+    """
+    qx, qy, qz, qw = base_rot[joint]
+    offset = tuple(p - o for p, o in zip(position, base_pos[joint]))
+    local = _quat_rot((-qx, -qy, -qz, qw), offset)      # inverse rotation
+    return tuple(o + l for o, l in zip(base_pos[joint], local))
+
+
+def skin_joints_for_position(position, joints, joint_positions):
+    """Skin weights for a vertex at its FINAL position.
+
+    Keeps the rig's own weights when the joint driving the vertex is close
+    enough to actually drive it; otherwise binds to the joints the vertex sits
+    among. GF skins rigidly per joint, so a vertex left bound to a joint half a
+    metre away swings like a flail.
+    """
+    if not joint_positions:
+        return joints
+    dominant = GF_JOINT_ORDER[joints[0][0]]
+    if math.dist(position, joint_positions[dominant]) <= FAR_BIND_METRES:
+        return joints
+    return nearest_joints(position, joint_positions, count=3)
 
 
 def vertex_skin_joints(vertex, joints, joint_positions):
@@ -436,7 +538,7 @@ MATERIAL_BLOCK = (
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             max_tris=None, align_bind=True, normalize_proportions=True,
-            max_edge=0.2):
+            max_edge=0.2, only_meshes=None, force_joint=None):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -451,10 +553,13 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # coverage first (a body for every limb) and biggest meshes second
     # bind positions of the GF joints: unweighted costume geometry binds to
     # whichever joints it sits near, rather than to one fixed fallback
-    joint_positions = _gf_world_positions()
+    joint_positions, base_rotations = gf_base_pose(want_rotations=True)
     # stylised exports come at their own scale; fit the model to the rig first
     fit = model_fit_scale(fmdl)
     meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map, joint_positions)
+    if only_meshes is not None:
+        # bisecting which piece of a model misbehaves
+        meshes = [m for i, m in enumerate(meshes) if i in only_meshes]
     transforms = None
     if align_bind:
         transforms = build_bind_alignment(fmdl, normalize_proportions)
@@ -472,16 +577,32 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     # runtime skin weight is free to differ: trailing
                     # geometry follows the joint it sits on instead.
                     joints = vertex_joints(vertex, pes_to_gf_map)
-                    skin = vertex_skin_joints(vertex, joints, joint_positions)
-                    color = encode_color(skin)
+                    if force_joint is not None:
+                        skin = [(force_joint, 1.0)]
+
                     pos = (vertex.position.x * fit, -vertex.position.z * fit,
                            vertex.position.y * fit)
                     if transforms:
+                        # Blend the bind transforms by DISTANCE to the joints,
+                        # not by the rig's skin weights. Weights can jump from
+                        # one joint to another between neighbouring vertices,
+                        # and where the two transforms differ (the shoulder
+                        # carries a 47 degree rotation here) that jump rips the
+                        # surface open. Distance varies smoothly, so the seam
+                        # closes.
+                        align_joints = nearest_joints(pos, joint_positions,
+                                                      count=3, falloff=0.18)
                         # NB: the bind transform must be uniform across a mesh.
                         # Treating re-bound vertices differently (rotation
                         # skipped, or a different joint) tears the geometry
                         # into flat shards - seen twice in the model viewer.
-                        pos = align_vertex(pos, joints, transforms)
+                        pos = align_vertex(pos, align_joints, transforms)
+                    # The PES rig's own weights, kept whole. The engine blends
+                    # influences properly now (it rotates by each joint's change
+                    # since the base pose), so nothing has to be flattened onto
+                    # a single joint to survive skinning.
+                    skin = joints
+                    color = encode_color(skin)
                     vertices.append((pos, uv, color))
                 tri.append(index[key])
             faces.append(tri)
@@ -610,6 +731,10 @@ if __name__ == "__main__":
                         help="skip bind-pose alignment onto GF joints")
     parser.add_argument("--keep-proportions", action="store_true",
                         help="do not normalize limb lengths to GF's skeleton")
+    parser.add_argument("--force-joint", type=int, default=None,
+                        help="debug: bind every vertex to this joint id")
+    parser.add_argument("--only-meshes", default="",
+                        help="comma-separated mesh indices to keep (after dedupe)")
     parser.add_argument("--max-edge", type=float, default=0.2,
                         help="drop triangles with an edge longer than this "
                              "(metres, 0 disables); they are stretched artefacts")
@@ -618,6 +743,9 @@ if __name__ == "__main__":
                            args.base, args.max_tris,
                            align_bind=not args.no_align,
                            normalize_proportions=not args.keep_proportions,
-                           max_edge=args.max_edge)
+                           max_edge=args.max_edge,
+                           only_meshes=({int(x) for x in args.only_meshes.split(",") if x.strip()}
+                                        if args.only_meshes else None),
+                           force_joint=args.force_joint)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))

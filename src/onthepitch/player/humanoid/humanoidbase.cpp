@@ -267,6 +267,7 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
     Joint joint;
     joint.node = jointsVec[i];
     joint.origPos = jointsVec[i]->GetDerivedPosition();
+    joint.origOrientation = jointsVec[i]->GetDerivedRotation();
     joints.push_back(joint);
   }
 
