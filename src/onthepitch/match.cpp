@@ -1100,7 +1100,11 @@ Player* Match::PickModelViewerSubject(const std::string& filter) {
 
 void Match::UpdateModelViewerPlayback() {
   const ModelViewerSettings settings = LoadModelViewerSettings();
-  if (!ModelViewerIsRunning(settings, actualTime_ms) || !modelViewerSubject) return;
+  if (!ModelViewerIsRunning(settings, actualTime_ms)) return;
+  // picked here, on the game thread: the camera runs on its own and must not
+  // hand a humanoid across to be posed
+  Player* subject = PickModelViewerSubject(settings.playerFilter);
+  if (!subject) return;
   // posing a player re-derives his geometry offsets, which read the ball and
   // the mental images - neither exists in the opening moments of a match
   if (actualTime_ms < 2000 || !ball || mentalImages.empty()) return;
@@ -1119,9 +1123,9 @@ void Match::UpdateModelViewerPlayback() {
         "clip " + int_to_str(slot + 1) + "/" + int_to_str((int)playlist.size()) + ": " +
             clip->GetName());
   }
-  modelViewerSubject->CastHumanoid()->SetChoreoPose(
+  subject->CastHumanoid()->SetChoreoPose(
       clip, ModelViewerClipFrame(settings, actualTime_ms, clip->GetFrameCount()),
-      modelViewerSubject->GetPosition(), 0.0f);
+      subject->GetPosition(), 0.0f);
 }
 
 void Match::LoadCutsceneChoreo(const std::string& category, const std::string& dir) {
@@ -2030,7 +2034,6 @@ void Match::UpdateIngameCamera() {
       IsInPlay() && !mentalImages.empty()) {
     Player* subject = PickModelViewerSubject(viewer.playerFilter);
     if (subject) {
-      modelViewerSubject = subject;
       const Vector3 centre = subject->GetPosition() + Vector3(0, 0, 0.95f);
       const Vector3 camPos = ModelViewerCameraPosition(viewer, centre, actualTime_ms);
       CamTrackFrame frame;
@@ -2123,7 +2126,12 @@ void Match::Process() {
     teams[1]->UpdateSwitch();
     UpdateEntranceChoreo();
     UpdateCutsceneChoreo();
-    UpdateModelViewerPlayback();
+    // Posing a player who is still taking part in the match fights his own
+// animation machinery and corrupts it (isolated by bisection: camera-only
+// runs clean, this path segfaults in the put). Off until the bench can
+// pose a player outside the live squad.
+    if (GetConfiguration()->GetBool("debug_model_viewer_playback", false))
+      UpdateModelViewerPlayback();
     teams[0]->Process();
     teams[1]->Process();
     officials->Process();
