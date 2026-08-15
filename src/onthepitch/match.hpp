@@ -25,6 +25,7 @@
 #include "base/circular_buffer.hpp"
 #include "coachmode.hpp"
 #include "matchprogression.hpp"
+#include "modelviewer.hpp"
 #include "framework/scheduler.hpp"
 #include "officials.hpp"
 #include "penaltyshootoutcontroller.hpp"
@@ -434,6 +435,15 @@ protected:
     Animation* clip;
   };
   std::vector<OfficialCastMember> cutsceneOfficialCast;
+  // model viewer: drives the inspected player through the animation
+  // collection so imported clips can be judged pose by pose
+  // debug bench; the maths lives in modelviewer.{hpp,cpp}
+  ModelViewerSettings LoadModelViewerSettings() const;
+  Player* PickModelViewerSubject(const std::string& filter);
+  void UpdateModelViewerPlayback();
+  Player* modelViewerSubject = nullptr;
+  int modelViewerAnimIndex = -1;
+
   void LoadCutsceneChoreo(const std::string& category, const std::string& dir);
   void StartCutsceneChoreo(const std::string& category);
   void UpdateCutsceneChoreo();

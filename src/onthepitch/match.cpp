@@ -24,6 +24,7 @@
 #include "scene/resources/soundbuffer.hpp"
 #include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/directoryparser.hpp"
+#include "modelviewer.hpp"
 #include "utils/playermodelmap.hpp"
 #include "utils/splitgeometry.hpp"
 
@@ -1056,6 +1057,60 @@ void Match::UpdateEntranceChoreo() {
   }
 }
 
+ModelViewerSettings Match::LoadModelViewerSettings() const {
+  ModelViewerSettings settings;
+  settings.seconds = GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
+  settings.playerFilter = GetConfiguration()->Get("debug_model_viewer_player", "");
+  settings.animFilter = GetConfiguration()->Get("debug_model_viewer_anim", "");
+  settings.clipSeconds =
+      GetConfiguration()->GetReal("debug_model_viewer_clip_seconds", 4.0f);
+  settings.radius = GetConfiguration()->GetReal("debug_model_viewer_radius", 3.4f);
+  return settings;
+}
+
+Player* Match::PickModelViewerSubject(const std::string& filter) {
+  Player* fallback = nullptr;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* candidate : squad) {
+      if (!fallback) fallback = candidate;
+      if (filter.empty()) return fallback;
+      const std::string modelDir =
+          GetPlayerModelDir(candidate->GetPlayerData()->GetDatabaseID());
+      if (!modelDir.empty() && modelDir.find(filter) != std::string::npos)
+        return candidate;
+    }
+  }
+  return fallback;
+}
+
+void Match::UpdateModelViewerPlayback() {
+  const ModelViewerSettings settings = LoadModelViewerSettings();
+  if (!ModelViewerIsRunning(settings, actualTime_ms) || !modelViewerSubject) return;
+  // posing a player re-derives his geometry offsets, which read the ball and
+  // the mental images - neither exists in the opening moments of a match
+  if (actualTime_ms < 2000 || !ball || mentalImages.empty()) return;
+
+  std::vector<Animation*> playlist;
+  for (Animation* anim : anims->GetAnimations())
+    if (ModelViewerAccepts(settings.animFilter, anim->GetName()))
+      playlist.push_back(anim);
+
+  const int slot = ModelViewerClipIndex(settings, actualTime_ms, (int)playlist.size());
+  if (slot < 0) return;
+  Animation* clip = playlist[slot];
+  if (slot != modelViewerAnimIndex) {
+    modelViewerAnimIndex = slot;
+    Log(e_Notice, "Match", "ModelViewer",
+        "clip " + int_to_str(slot + 1) + "/" + int_to_str((int)playlist.size()) + ": " +
+            clip->GetName());
+  }
+  modelViewerSubject->CastHumanoid()->SetChoreoPose(
+      clip, ModelViewerClipFrame(settings, actualTime_ms, clip->GetFrameCount()),
+      modelViewerSubject->GetPosition(), 0.0f);
+}
+
 void Match::LoadCutsceneChoreo(const std::string& category, const std::string& dir) {
   std::error_code ec;
   for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
@@ -1934,39 +1989,14 @@ void Match::UpdateIngameCamera() {
     }
   }
 
-  // Model viewer ("debug_model_viewer_seconds"): orbits a chosen player at
-  // full-body framing so imported models can be inspected in the engine that
-  // actually skins them - bad joints show up as bent or detached limbs.
-  // "debug_model_viewer_player" picks him: a shirt number, or a substring of
-  // the model directory from playermodels.cfg ("2hug_k1858"). Empty means the
-  // first player of team 1.
-  float viewerSeconds =
-      GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
-  if (viewerSeconds > 0.0f &&
-      actualTime_ms < (unsigned long)(viewerSeconds * 1000.0f)) {
-    const std::string wanted =
-        GetConfiguration()->Get("debug_model_viewer_player", "");
-    Player* subject = nullptr;
-    for (int t = 0; t < 2 && !subject; t++) {
-      std::vector<Player*> activePlayers;
-      teams[t]->GetActivePlayers(activePlayers);
-      for (Player* candidate : activePlayers) {
-        if (!subject) subject = candidate;  // the fallback
-        if (wanted.empty()) break;
-        const std::string modelDir =
-            GetPlayerModelDir(candidate->GetPlayerData()->GetDatabaseID());
-        if (!modelDir.empty() && modelDir.find(wanted) != std::string::npos) {
-          subject = candidate;
-          break;
-        }
-      }
-    }
+  // Model viewer: debug tooling, so the bench itself lives in modelviewer.cpp
+  const ModelViewerSettings viewer = LoadModelViewerSettings();
+  if (ModelViewerIsRunning(viewer, actualTime_ms)) {
+    Player* subject = PickModelViewerSubject(viewer.playerFilter);
     if (subject) {
-      // a slow orbit at chest height, close enough to read the legs
-      const float t = actualTime_ms * 0.0004f;
+      modelViewerSubject = subject;
       const Vector3 centre = subject->GetPosition() + Vector3(0, 0, 0.95f);
-      const float radius = GetConfiguration()->GetReal("debug_model_viewer_radius", 3.4f);
-      Vector3 camPos = centre + Vector3(std::sin(t) * radius, -std::cos(t) * radius, 0.35f);
+      const Vector3 camPos = ModelViewerCameraPosition(viewer, centre, actualTime_ms);
       CamTrackFrame frame;
       frame.position = {camPos.coords[0], camPos.coords[1], camPos.coords[2]};
       frame.fov = 32.0f;
@@ -2057,6 +2087,7 @@ void Match::Process() {
     teams[1]->UpdateSwitch();
     UpdateEntranceChoreo();
     UpdateCutsceneChoreo();
+    UpdateModelViewerPlayback();
     teams[0]->Process();
     teams[1]->Process();
     officials->Process();

@@ -94,6 +94,20 @@ target_link_libraries(gameplayfootball_entrancechoreo_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_entrancechoreo_tests DISCOVERY_MODE PRE_TEST)
 
+# Model viewer bench maths (debug tooling, engine-free)
+add_executable(gameplayfootball_modelviewer_tests
+  onthepitch/modelviewer_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/modelviewer.cpp
+)
+target_include_directories(gameplayfootball_modelviewer_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_modelviewer_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_modelviewer_tests DISCOVERY_MODE PRE_TEST)
+
 # Replay/cutscene wipe overlay manifest unit tests
 add_executable(gameplayfootball_wipeoverlay_tests
   base/wipeoverlay_test.cpp
