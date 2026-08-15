@@ -1183,7 +1183,17 @@ void Match::ExecutePendingSubstitutions() {
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
     AddLostTime(MatchProgression::e_Stoppage_Substitution);
-    StartCutscene("change", 5.0f);
+    // A substitution always announces itself on the HUD; the tunnel cutscene
+    // is the exception rather than the rule, as PES only cuts away now and
+    // then ("substitution_cutscene_chance", 0..1).
+    std::string out = sub.playerOut ? sub.playerOut->GetPlayerData()->GetLastName() : "";
+    std::string in = sub.playerIn ? sub.playerIn->GetPlayerData()->GetLastName() : "";
+    SpamMessage(team->GetTeamData()->GetShortName() + " SUB: " + in +
+                    (out.empty() ? "" : " for " + out),
+                4000);
+    if (random(0.0f, 1.0f) <
+        GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f))
+      StartCutscene("change", 5.0f);
   }
 }
 
@@ -1320,8 +1330,16 @@ void Match::AnnounceInstructions(int teamID) {
   Team* team = GetTeam(teamID);
   // Take effect at once, and show the manager what he just did.
   team->GetController()->UpdateTactics();
+  // The banner names whoever the viewer is watching - the man on the ball, or
+  // the selected player when nobody is carrying it - rather than a fixed name.
+  std::string subject;
+  Player* focus = team->GetDesignatedTeamPossessionPlayer();
+  if (!focus || focus->GetTeam() != team) focus = team->GetLastTouchPlayer();
+  if (focus && focus->GetPlayerData())
+    subject = " (" + focus->GetPlayerData()->GetLastName() + ")";
   SpamMessage(team->GetTeamData()->GetShortName() + ": " +
-                  TeamInstructions::Describe(team->GetController()->GetInstructions()),
+                  TeamInstructions::Describe(team->GetController()->GetInstructions()) +
+                  subject,
               3500);
 }
 
