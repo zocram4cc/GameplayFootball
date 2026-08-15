@@ -97,8 +97,6 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
                       std::shared_ptr<AnimCollection> animCollection) {
   assert(!isActive);
 
-  isActive = true;
-
   humanoid = new Humanoid(this, humanoidSourceNode, fullbodySourceNode, colorCoords, animCollection,
                           GetTeam()->GetSceneNode(), kit, GetTeam()->GetID());
 
@@ -121,6 +119,12 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
   debugCaption = new Gui2Caption(GetMenuTask()->GetWindowManager(),
                                  "game_player_debug_" + int_to_str(id), 0, 0, 1, 1.6, "debug");
   GetMenuTask()->GetWindowManager()->GetRoot()->AddView(debugCaption);
+
+  // only advertise the player as active once his humanoid and captions exist:
+  // anything that polls IsActive() from another thread (a mid-substitution
+  // graphics put dereferenced a null humanoid here once) must never see the
+  // flag before the objects behind it
+  isActive = true;
 
   CastHumanoid()->ResetPosition(
       GetFormationEntry().position * 25 * Vector3(-team->GetSide(), -team->GetSide(), 0),

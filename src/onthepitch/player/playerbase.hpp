@@ -43,7 +43,12 @@ public:
   inline int GetFrameCount() { return humanoid->GetFrameCount(); }
 
   inline Vector3 GetPosition() const { return humanoid->GetPosition(); }
-  inline Vector3 GetGeomPosition() const { return humanoid->GetGeomPosition(); }
+  // defense-in-depth: the graphics put once caught a substitute mid-Activate
+  // (isActive already true, humanoid not yet built) and crashed here; the
+  // substitution lock now prevents that, but never dereference a null humanoid
+  inline Vector3 GetGeomPosition() const {
+    return humanoid ? humanoid->GetGeomPosition() : Vector3(0);
+  }
   inline Vector3 GetDirectionVec() const { return humanoid->GetDirectionVec(); }
   inline Vector3 GetBodyDirectionVec() const { return humanoid->GetBodyDirectionVec(); }
   inline Vector3 GetMovement() const { return humanoid->GetMovement(); }

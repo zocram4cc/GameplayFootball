@@ -6,6 +6,8 @@
 #ifndef _HPP_FOOTBALL_GAMETASK
 #define _HPP_FOOTBALL_GAMETASK
 
+#include <shared_mutex>
+
 #include "hid/gamepad.hpp"
 #include "hid/keyboard.hpp"
 #include "menu/menuscene.hpp"
@@ -90,6 +92,15 @@ protected:
   MenuScene* menuScene;
 
   std::timed_mutex matchPutBufferMutex;
+
+  // A substitution rebuilds a player's humanoid scene nodes, replaces his
+  // captions, reorders the team's player list and rebuilds the replay
+  // spatials -- all state that PutPhase walks on the graphics thread outside
+  // matchPutBufferMutex (Match::Put, Put2D, the fullbody model update).
+  // PutPhase holds this shared for its whole match section; ProcessPhase
+  // takes it exclusively for the frame that actually executes a substitution.
+  std::shared_mutex matchSubstitutionMutex;
+
   std::mutex menuSceneLifetimeMutex;
 
   std::shared_ptr<Scene3D> scene3D;
