@@ -302,3 +302,9 @@ would have him throwing the ball at an incoming shot.
   `xvfb-run` and letting the game and ffmpeg share the `$DISPLAY` xvfb-run
   exports -- never overriding `DISPLAY` inside, which puts the game back on
   the desktop server while ffmpeg grabs the virtual one.
+
+  A blank frame on the xvfb path means something else again: the engine is
+  still loading. Startup with the imported set runs well over a minute, so a
+  capture loop that begins too early records nothing and looks identical to a
+  broken grab. Wait on the `[Match::ModelViewer]` log line rather than on a
+  timer.
