@@ -27,24 +27,76 @@ import canm_to_camtrack
 # the entrance has its own competition-aware exporter
 DEFAULT_CATEGORIES = ["goal", "foul", "change", "timeup", "pk", "result", "end", "mode"]
 
+# A referee's decision is not one cutscene: PES names each foul pack after what
+# the official actually did, so the packs sort into pools the engine can pick
+# from once it knows the sanction. The card letter is the strongest signal
+# (card_y yellow, card_r red, card_w a spoken warning, card_n no card at all);
+# the surrounding words say what the incident was.
+FOUL_SUBCATEGORIES = [
+    # (subdirectory, [tokens that must all appear in the stem])
+    ("card_red", ["card_r"]),
+    ("card_yellow", ["card_y"]),
+    ("warning", ["card_w"]),         # told off, no card shown
+    ("injury", ["injury"]),
+    ("protest", ["bejudged"]),       # the player pleads his case
+    ("referee_run", ["referee_oncoming"]),
+    ("no_card", ["card_n"]),
+]
+
+# Offside is signalled by the assistant, and PES files those shots with the
+# goal camerawork rather than the fouls.
+GOAL_SUBCATEGORIES = [
+    ("offside", ["offside"]),
+    ("disallowed", ["flag_up"]),
+]
+
+SUBCATEGORIES = {"foul": FOUL_SUBCATEGORIES, "goal": GOAL_SUBCATEGORIES}
+
 
 def is_camera_pack(name):
-    """Camera variants carry a _cam token; _pl and _mob packs must not match."""
+    """Camera variants carry a _cam token; _pl and _mob packs must not match.
+
+    Only the entrance packs are consistently tagged that way. Elsewhere a pack
+    is a camera pack unless it is explicitly one of the other kinds, so the
+    decision shots (foul_card_y01 and friends) are not filtered away.
+    """
     stem = os.path.splitext(name)[0]
-    return any(part.startswith("cam") for part in stem.split("_"))
+    parts = stem.split("_")
+    if any(part.startswith("cam") for part in parts):
+        return True
+    return not any(part.startswith(("pl", "mob")) for part in parts)
 
 
-def export_category(cut_dir, dest_dir, max_per_category=0):
+def classify(category, name):
+    """Subdirectory for one pack, or None to leave it in the category root."""
+    stem = os.path.splitext(name)[0].lower()
+    for subdirectory, tokens in SUBCATEGORIES.get(category, []):
+        if all(token in stem for token in tokens):
+            return subdirectory
+    return None
+
+
+def export_category(cut_dir, dest_dir, max_per_category=0, category=""):
     if not os.path.isdir(cut_dir):
         return 0, 0
     names = [n for n in sorted(os.listdir(cut_dir))
              if n.endswith(".fdc") and is_camera_pack(n)]
+    # the cap applies per pool, so a big category does not starve its subpools
     if max_per_category > 0:
-        names = names[:max_per_category]
+        per_pool = {}
+        kept = []
+        for name in names:
+            pool = classify(category, name) or ""
+            per_pool[pool] = per_pool.get(pool, 0) + 1
+            if per_pool[pool] <= max_per_category:
+                kept.append(name)
+        names = kept
     written = skipped = 0
     for name in names:
-        os.makedirs(dest_dir, exist_ok=True)
-        dest = os.path.join(dest_dir, os.path.splitext(name)[0] + ".camtrack")
+        subdirectory = classify(category, name)
+        target_dir = os.path.join(dest_dir, subdirectory) if subdirectory else dest_dir
+        os.makedirs(target_dir, exist_ok=True)
+        dest = os.path.join(target_dir, os.path.splitext(name)[0] + ".camtrack")
         try:
             canm_to_camtrack.export(os.path.join(cut_dir, name), dest)
             written += 1
@@ -59,7 +111,7 @@ def export(fixdemo_dir, out_dir, categories=None, max_per_category=0):
     for category in categories or DEFAULT_CATEGORIES:
         cut_dir = os.path.join(fixdemo_dir, category, "cut_data")
         written, skipped = export_category(
-            cut_dir, os.path.join(out_dir, category), max_per_category)
+            cut_dir, os.path.join(out_dir, category), max_per_category, category)
         if written or skipped:
             print("%-7s %4d tracks (%d skipped)" % (category, written, skipped))
         total_written += written
