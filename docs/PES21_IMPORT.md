@@ -89,6 +89,17 @@ python3 tools/pes21_import/build_pes21_pack.py "/path/to/PES21/Data" \
 python3 tools/pes21_import/fmdl_to_ase.py model.fmdl out.ase \
     --fmdl-lib "<4cc Blender pack>/scripts/addons/pes-fmdl"
 
+# 6b. Convert a skinned player fmdl into the engine's fullbody format
+#     (dedupes the doubled 4cc meshes; the triangle budget keeps joint
+#     coverage first, so bodies never lose their limbs to a big hat)
+python3 tools/pes21_import/fmdl_to_fullbody.py boots.fmdl \
+    data/media/players/custom/<dir> --fmdl-lib "<pes-fmdl dir>" \
+    --texture "media/players/custom/<dir>/body.png" --max-tris 40000
+
+# 6c. Offline sanity check for installed fullbody models (joint IDs vs the
+#     16-joint table, engine assert conditions, exploded/floating meshes)
+python3 tools/pes21_import/validate_fullbody.py data/media/players/custom/*
+
 # 7. Package portraits / adboards / chants into a pack
 python3 tools/pes21_import/package_assets.py --export "HDG VGL26 AET" --pack data/imports/hdg
 ```

@@ -155,7 +155,9 @@ def build_bind_alignment(fmdl, normalize_proportions=True):
                     tuple(c / len_pes for c in d_pes),
                     tuple(c / len_gf for c in d_gf))
                 if normalize_proportions:
-                    scale = len_gf / len_pes
+                    # clamped: chibi/stylized rigs have tiny limbs, and an
+                    # unclamped ratio balloons them into giants
+                    scale = max(0.5, min(2.0, len_gf / len_pes))
         transforms[joint] = (pivot_pes, rotation, scale, pivot_gf)
 
     # leaves ride their parent limb's rotation/scale, anchored at their own pivots
@@ -212,6 +214,72 @@ def encode_color(joints):
     return channels
 
 
+def _mesh_signature(mesh):
+    """Duplicate-detection key: 4cc fmdls carry every mesh twice."""
+    sig = [len(mesh.faces), len(mesh.vertices)]
+    for vertex in mesh.vertices[:64]:
+        p = vertex.position
+        sig.append((round(p.x, 4), round(p.y, 4), round(p.z, 4)))
+    return tuple(sig)
+
+
+def _mesh_joints(mesh, pes_to_gf_map):
+    """Set of GF joint IDs a mesh's skin weights reference."""
+    joints = set()
+    for vertex in mesh.vertices:
+        for joint_id, _ in vertex_joints(vertex, pes_to_gf_map):
+            joints.add(joint_id)
+    return joints
+
+
+def select_meshes(meshes, max_tris, pes_to_gf_map):
+    """Dedupe identical meshes, then pick within the triangle budget.
+
+    The old biggest-first fill let one huge decorative mesh exhaust the
+    budget and drop the body ("floating hat" players). Selection is now
+    coverage-first: greedy set-cover over the GF joints the skin references
+    (so every limb keeps geometry), then remaining budget fills biggest-first.
+    """
+    seen = set()
+    unique = []
+    for mesh in meshes:
+        sig = _mesh_signature(mesh)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        unique.append(mesh)
+    if not max_tris:
+        return unique
+
+    joints_of = {id(m): _mesh_joints(m, pes_to_gf_map) for m in unique}
+    kept, used = [], 0
+    covered = set()
+    remaining = sorted(unique, key=lambda m: -len(m.faces))
+    # coverage pass: repeatedly take the mesh adding most uncovered joints
+    # (ties: biggest) while it fits the budget
+    while True:
+        best, best_new = None, 0
+        for m in remaining:
+            new = len(joints_of[id(m)] - covered)
+            if new > best_new and used + len(m.faces) <= max_tris:
+                best, best_new = m, new
+        if best is None:
+            break
+        kept.append(best)
+        used += len(best.faces)
+        covered |= joints_of[id(best)]
+        remaining.remove(best)
+    # fill pass: biggest remaining meshes that still fit
+    for m in remaining:
+        if used + len(m.faces) <= max_tris:
+            kept.append(m)
+            used += len(m.faces)
+    # keep the original draw order for deterministic output
+    order = {id(m): i for i, m in enumerate(unique)}
+    kept.sort(key=lambda m: order[id(m)])
+    return kept
+
+
 MATERIAL_BLOCK = (
     '\t\t*MATERIAL_NAME "fullbody"\n\t\t*MATERIAL_CLASS "Standard"\n'
     "\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n"
@@ -238,17 +306,9 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     vertices = []       # (pos, uv, color)
     faces = []
     index = {}
-    # keep the biggest meshes within the triangle budget: the engine's
-    # fullbody preparation is quadratic in vertex count, so huge imports
-    # must be capped (decorative meshes drop first)
-    meshes = sorted(fmdl.meshes, key=lambda m: -len(m.faces))
-    if max_tris:
-        kept, used = [], 0
-        for m in meshes:
-            if used + len(m.faces) <= max_tris:
-                kept.append(m)
-                used += len(m.faces)
-        meshes = kept
+    # duplicate meshes are dropped, then the triangle budget keeps joint
+    # coverage first (a body for every limb) and biggest meshes second
+    meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map)
     transforms = None
     if align_bind:
         transforms = build_bind_alignment(fmdl, normalize_proportions)
