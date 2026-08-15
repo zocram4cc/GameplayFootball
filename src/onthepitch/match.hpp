@@ -293,7 +293,13 @@ public:
   float GetMatchDifficulty() const { return matchDifficulty; }
 
   std::vector<Vector3>& GetAnimPositionCache(Animation* anim) {
-    return animPositionCache.find(anim)->second;
+    // The cache is built from the animation collection, so a clip that never
+    // joined it - an imported cutscene clip, say - has no entry. Dereferencing
+    // end() here used to take the process down.
+    auto cached = animPositionCache.find(anim);
+    if (cached != animPositionCache.end()) return cached->second;
+    static std::vector<Vector3> empty;
+    return empty;
   }
 
   void UploadGoalNetting();
@@ -421,9 +427,29 @@ protected:
   std::map<std::string, std::shared_ptr<Animation>> cutsceneClips;
   const EntranceChoreo* activeCutsceneChoreo = nullptr;
   std::vector<EntranceCastMember> cutsceneCast;
+  // the referee is not one of the 22, so his marks are held separately
+  struct OfficialCastMember {
+    PlayerOfficial* official;
+    const ChoreoSlot* slot;
+    Animation* clip;
+  };
+  std::vector<OfficialCastMember> cutsceneOfficialCast;
   void LoadCutsceneChoreo(const std::string& category, const std::string& dir);
   void StartCutsceneChoreo(const std::string& category);
   void UpdateCutsceneChoreo();
+
+public:
+  // The people an incident involved, so its cutscene can be cast with them:
+  // the booked player takes the primary mark, the man he fouled the opponent
+  // mark, and the referee the official's. Cleared once the cutscene ends.
+  void SetCutsceneParticipants(Player* primary, Player* opponent) {
+    cutscenePrimary = primary;
+    cutsceneOpponent = opponent;
+  }
+
+protected:
+  Player* cutscenePrimary = nullptr;
+  Player* cutsceneOpponent = nullptr;
   void BuildEntranceCast();
   void UpdateEntranceChoreo();
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each

@@ -306,6 +306,7 @@ void Referee::IssueDeferredCards() {
   const std::vector<CardBook::DeferredCard> cards = CardBook::Drain(cardBook);
   bool anyCardShown = false;
   bool anyRedShown = false;
+  Player* lastDeferredPlayer = nullptr;
   for (const CardBook::DeferredCard& card : cards) {
     if (!card.player)
       continue;
@@ -321,6 +322,7 @@ void Referee::IssueDeferredCards() {
       printf("referee: deferred card issued (type %i)\n", card.foulType);
     match->AddLostTime(MatchProgression::e_Stoppage_Card);
     anyCardShown = true;
+    lastDeferredPlayer = card.player;
   }
 
   if (anyCardShown) {
@@ -328,6 +330,7 @@ void Referee::IssueDeferredCards() {
     // directly-whistled card path does.
     buffer.prepareTime += 6000;
     buffer.startTime = buffer.prepareTime + 2000;
+    if (lastDeferredPlayer) match->SetCutsceneParticipants(lastDeferredPlayer, nullptr);
     match->StartCutscene(anyRedShown ? "foul/card_red" : "foul/card_yellow", 5.0f);
   }
 }
@@ -629,6 +632,8 @@ bool Referee::CheckFoul() {
     }
     // The camerawork follows the decision: a booking, a sending off, or - for
     // a foul the referee waves away with a word - the telling-off shots.
+    // the offender and the man he fouled play themselves in the cutscene
+    match->SetCutsceneParticipants(foul.foulPlayer, foul.foulVictim);
     if (foul.foulType >= 2) {
       match->AddLostTime(MatchProgression::e_Stoppage_Card);
       match->StartCutscene(foul.foulType == 3 ? "foul/card_red" : "foul/card_yellow", 5.0f);

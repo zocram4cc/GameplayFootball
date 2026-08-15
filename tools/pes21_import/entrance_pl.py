@@ -75,6 +75,25 @@ def collect(directory, ids=None):
     return found
 
 
+def actor_role(slot, stem):
+    """Who this staged actor is meant to be.
+
+    PES puts the parts in the clip name and the team in the slot number: a
+    "_judge" clip is the official, slots 22+ are the match officials, slots
+    0-10 the home XI and 11-21 the away XI. In an incident pack the base clip
+    (no _sub suffix) is the player the moment is about - the booked man, the
+    scorer - and an actor from the other side is his counterpart, the one he
+    fouled. Anyone else is an extra.
+    """
+    lowered = stem.lower()
+    if slot >= 22 or "judge" in lowered or "referee" in lowered:
+        return "official"
+    if "_sub" in lowered:
+        # a supporting actor: on the opposite side he is the other party
+        return "opponent" if slot >= 11 else "extra"
+    return "primary" if slot <= 10 else "opponent"
+
+
 def convert_clip(gani_path, dest):
     """Root-stripped clip conversion; returns the clip's GF frame count."""
     blob = open(gani_path, "rb").read()
@@ -135,8 +154,8 @@ def export_pack(fdc_path, anims_dir, out_dir, clip_cache):
         phase_frames = int(round(actor.phase_ticks * PES_FRAME_MS / GF_FRAME_MS))
         phase_frames %= cycle
         keys, cycle = bake_track(actor, g)
-        lines.append("slot %d anims/%s.anim phase %d loop 1"
-                     % (actor.slot, stem, phase_frames))
+        lines.append("slot %d anims/%s.anim role %s phase %d loop 1"
+                     % (actor.slot, stem, actor_role(actor.slot, stem), phase_frames))
         for k in keys:
             lines.append("k %d %.4f %.4f %.5f" % k)
         exported += 1
