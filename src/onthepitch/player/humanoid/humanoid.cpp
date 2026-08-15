@@ -104,6 +104,9 @@ bool _PassFiddlingEnabled() {
 }
 
 void Humanoid::Process() {
+  // match entrance: a fed choreography pose owns the tick
+  if (ProcessChoreo()) return;
+
   _cache_AgilityFactor =
       GetConfiguration()->GetReal("gameplay_agilityfactor", _default_AgilityFactor);
   _cache_AccelerationFactor =

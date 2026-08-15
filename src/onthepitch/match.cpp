@@ -239,6 +239,42 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     std::ifstream trackFile(introTrack);
     if (trackFile.good() && introCamTrack.Load(trackFile) && introSeconds <= 0.0f)
       introSeconds = introCamTrack.GetDurationSeconds();
+
+    // The family's player choreography: PES ships the entrance actors as _pl
+    // packs next to the camera packs (exported to .chor + in-place .anim
+    // clips by tools/pes21_import/entrance_pl.py). Any .chor in the family
+    // directory stages the same entrance, so pick one like the camerawork
+    // was picked. With none installed the scripted walk still runs.
+    {
+      const size_t slash = introTrack.find_last_of('/');
+      const std::string familyDir =
+          slash == std::string::npos ? std::string(".") : introTrack.substr(0, slash);
+      std::vector<std::string> chors;
+      std::error_code chorEc;
+      for (const auto& entry : std::filesystem::directory_iterator(familyDir, chorEc))
+        if (entry.path().extension() == ".chor") chors.push_back(entry.path().string());
+      std::sort(chors.begin(), chors.end());
+      if (!chors.empty()) {
+        const std::string& pick =
+            chors[(unsigned int)floor(random(0.0f, chors.size() - 0.001f))];
+        std::ifstream chorFile(pick);
+        if (chorFile.good() && entranceChoreo.Load(chorFile)) {
+          for (const auto& slot : entranceChoreo.GetSlots()) {
+            if (entranceClips.count(slot.animFile)) continue;
+            const std::string clipPath = familyDir + "/" + slot.animFile;
+            if (!std::filesystem::exists(clipPath)) continue;
+            auto clip = std::make_shared<Animation>();
+            clip->Load(clipPath);
+            if (clip->GetFrameCount() >= 2) entranceClips[slot.animFile] = clip;
+          }
+          Log(e_Notice, "Match", "Match",
+              "entrance choreography: " + pick + " (" +
+                  int_to_str((int)entranceChoreo.GetSlots().size()) +
+                  " actors, " + int_to_str((int)entranceClips.size()) +
+                  " clips)");
+        }
+      }
+    }
   }
 
   // PES goal camerawork pool: any .camtrack in the goal cutscene directory
@@ -937,6 +973,51 @@ void Match::GetEntranceSlot(const Player* player, Vector3& position, Vector3& lo
   position = Vector3(-rowWidth * 0.5f + spacing * slot, rowY, 0.0f);
   // Facing the main stand, i.e. down the negative-y touchline.
   lookAt = position + Vector3(0.0f, -30.0f, 0.0f);
+}
+
+void Match::BuildEntranceCast() {
+  // PES actor slots: 0-10 the home XI with the keeper on 0, 11-21 the away
+  // XI likewise, 22+ the officials (not cast yet). Players whose slot the
+  // .chor does not stage keep the scripted walk.
+  for (int teamID = 0; teamID < 2; teamID++) {
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    const int base = teamID * 11;
+    std::vector<Player*> ordered;
+    Player* keeper = nullptr;
+    for (auto player : squad) {
+      if (!keeper && player->GetFormationEntry().role == e_PlayerRole_GK)
+        keeper = player;
+      else
+        ordered.push_back(player);
+    }
+    if (keeper) ordered.insert(ordered.begin(), keeper);
+    for (unsigned int i = 0; i < ordered.size() && i < 11; i++) {
+      const ChoreoSlot* slot = entranceChoreo.GetSlot(base + (int)i);
+      if (!slot) continue;
+      auto clip = entranceClips.find(slot->animFile);
+      if (clip == entranceClips.end()) continue;
+      entranceCast.push_back({ordered[i], slot, clip->second.get()});
+    }
+  }
+}
+
+void Match::UpdateEntranceChoreo() {
+  if (!entranceChoreo.IsLoaded() || !IsInEntrance()) return;
+  if (!entranceCastBuilt) {
+    BuildEntranceCast();
+    entranceCastBuilt = true;
+  }
+  const unsigned long start_ms = introCutsceneEnd_ms - introCutsceneDuration_ms;
+  const float elapsedFrame = (actualTime_ms - start_ms) * 0.1f;  // 10 ms frames
+  for (auto& cast : entranceCast) {
+    Vector3 position;
+    radian yaw = 0;
+    int animFrame = 0;
+    entranceChoreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position,
+                                               yaw);
+  }
 }
 
 void Match::ResetSituation(const Vector3& focusPos) {
@@ -1651,6 +1732,7 @@ void Match::Process() {
 
     teams[0]->UpdateSwitch();
     teams[1]->UpdateSwitch();
+    UpdateEntranceChoreo();
     teams[0]->Process();
     teams[1]->Process();
     officials->Process();

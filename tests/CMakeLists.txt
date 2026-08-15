@@ -80,6 +80,20 @@ target_link_libraries(gameplayfootball_camtrack_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_camtrack_tests DISCOVERY_MODE PRE_TEST)
 
+# Entrance choreography loader unit tests (imported PES _pl packs)
+add_executable(gameplayfootball_entrancechoreo_tests
+  base/entrancechoreo_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/entrancechoreo.cpp
+)
+target_include_directories(gameplayfootball_entrancechoreo_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_entrancechoreo_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_entrancechoreo_tests DISCOVERY_MODE PRE_TEST)
+
 # FaceRig data/blend unit tests
 add_executable(gameplayfootball_facerig_tests
   base/facerig_test.cpp

@@ -165,6 +165,7 @@ set(LOADERS_HEADERS
         src/utils/faceanim.hpp
         src/utils/facerigdata.hpp
         src/utils/camtrack.hpp
+        src/utils/entrancechoreo.hpp
         src/onthepitch/player/humanoid/facerig.hpp
         src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
@@ -179,6 +180,7 @@ set(LOADERS_SOURCES
         src/utils/faceanim.cpp
         src/utils/facerigdata.cpp
         src/utils/camtrack.cpp
+        src/utils/entrancechoreo.cpp
         src/onthepitch/player/humanoid/facerig.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp

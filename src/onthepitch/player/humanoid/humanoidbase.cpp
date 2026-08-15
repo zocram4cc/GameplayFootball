@@ -661,7 +661,69 @@ void HumanoidBase::UploadFullbodyModel() {
 }
 */
 
+void HumanoidBase::SetChoreoPose(Animation* anim, int animFrame,
+                                 const Vector3& position, radian angle) {
+  choreoAnim = anim;
+  choreoFrame = animFrame;
+  choreoPosition = position.Get2D();
+  choreoAngle = angle;
+  choreoPending = true;
+}
+
+bool HumanoidBase::ProcessChoreo() {
+  if (!choreoPending) {
+    if (choreoActive) {
+      // the feed stopped: hand control back to the regular anim machinery
+      // from where the choreography left the player
+      choreoActive = false;
+      choreoAnim = nullptr;
+      ResetPosition(choreoPosition,
+                    choreoPosition + Vector3(0, -1, 0).GetRotated2D(choreoAngle));
+    }
+    return false;
+  }
+  choreoPending = false;
+  choreoActive = true;
+
+  if (!currentMentalImage) currentMentalImage = match->GetMentalImage(0);
+
+  const Vector3 dirVec = Vector3(0, -1, 0).GetRotated2D(choreoAngle);
+
+  // keep the spatial state everybody else reads (AI, camera, collisions)
+  // in step with the kinematic playback
+  spatialState.movement = (choreoPosition - spatialState.position) * 100.0f;
+  spatialState.floatVelocity = spatialState.movement.GetLength();
+  spatialState.enumVelocity = FloatToEnumVelocity(spatialState.floatVelocity);
+  spatialState.position = choreoPosition;
+  spatialState.angle = choreoAngle;
+  spatialState.directionVec = dirVec;
+  spatialState.bodyDirectionVec = dirVec;
+  spatialState.bodyAngle = choreoAngle;
+  spatialState.relBodyDirectionVec = Vector3(0, -1, 0);
+  spatialState.relBodyAngle = 0;
+  spatialState.positionOffsetMovement = Vector3(0);
+  previousPosition2D = choreoPosition;
+
+  startPos = choreoPosition;
+  startAngle = choreoAngle;
+  nextStartPos = choreoPosition;
+  nextStartAngle = choreoAngle;
+  interruptAnim = e_InterruptAnim_None;
+
+  animApplyBuffer.anim = choreoAnim;
+  animApplyBuffer.frameNum = choreoFrame;
+  animApplyBuffer.smooth = true;
+  animApplyBuffer.smoothFactor = 1.0f;
+  animApplyBuffer.position = choreoPosition;
+  animApplyBuffer.orientation = choreoAngle;
+  animApplyBuffer.noPos = true;
+  animApplyBuffer.offsets = offsets;
+  return true;
+}
+
 void HumanoidBase::Process() {
+  if (ProcessChoreo()) return;
+
   // imported faces: pick the expression from what the body is doing
   if (faceRig.IsActive() && currentAnim && currentAnim->anim) {
     e_FaceExpression expression = e_FaceExpression::Neutral;

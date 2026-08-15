@@ -235,6 +235,16 @@ public:
 
   Vector3 GetGeomPosition() { return humanoidNode->GetPosition(); }
 
+  // Match entrance choreography (imported PES _pl packs, see
+  // src/utils/entrancechoreo.hpp): while a pose is fed each 10 ms tick, the
+  // humanoid plays the given clip frame at the given world transform,
+  // kinematically, instead of running its usual anim selection. When the
+  // feed stops, control returns to the regular machinery from wherever the
+  // choreography left the player.
+  void SetChoreoPose(Animation* anim, int animFrame, const Vector3& position,
+                     radian angle);
+  bool InChoreo() const { return choreoActive; }
+
   int GetIdleMovementAnimID();
   void ResetPosition(const Vector3& newPos, const Vector3& focusPos);
   void OffsetPosition(const Vector3& offset);
@@ -276,6 +286,7 @@ protected:
   virtual bool SelectAnim(
       const PlayerCommand& command, e_InterruptAnim localInterruptAnim,
       bool preferPassAndShot = false);  // returns false on no applicable anim found
+  bool ProcessChoreo();  // plays a fed choreo pose; true = tick consumed
   void CalculatePredictedSituation(Vector3& predictedPos, radian& predictedAngle);
   Vector3 CalculateOutgoingMovement(const std::vector<Vector3>& positions) const;
 
@@ -389,6 +400,14 @@ protected:
   int reQueueDelayFrames;
   int tripType;
   Vector3 tripDirection;
+
+  // entrance choreography playback state (SetChoreoPose / ProcessChoreo)
+  Animation* choreoAnim = nullptr;
+  int choreoFrame = 0;
+  Vector3 choreoPosition;
+  radian choreoAngle = 0;
+  bool choreoPending = false;
+  bool choreoActive = false;
 
   Vector3 decayingPositionOffset;
   float decayingDifficultyFactor;

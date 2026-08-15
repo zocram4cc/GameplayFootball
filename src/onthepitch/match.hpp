@@ -9,6 +9,7 @@
 #include <fstream>
 #include <mutex>
 #include "utils/camtrack.hpp"
+#include "utils/entrancechoreo.hpp"
 #include <iostream>
 #include <memory>
 
@@ -391,6 +392,23 @@ protected:
   // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
   // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
   CamTrack introCamTrack;
+  // imported PES player choreography for the entrance: a .chor exported from
+  // the family's _pl packs (tools/pes21_import/entrance_pl.py), picked from
+  // the same directory as the camerawork, plus its in-place .anim clips.
+  // While it plays, the cast players are driven kinematically
+  // (HumanoidBase::SetChoreoPose); players without a slot fall back to the
+  // scripted walk (AddEntranceCommands).
+  EntranceChoreo entranceChoreo;
+  std::map<std::string, std::shared_ptr<Animation>> entranceClips;
+  struct EntranceCastMember {
+    Player* player;
+    const ChoreoSlot* slot;
+    Animation* clip;
+  };
+  std::vector<EntranceCastMember> entranceCast;
+  bool entranceCastBuilt = false;
+  void BuildEntranceCast();
+  void UpdateEntranceChoreo();
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
   // track's authored goal side (+1/-1 from its mean x) for mirroring
   std::vector<CamTrack> goalCamTracks;
