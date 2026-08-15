@@ -225,10 +225,22 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     const std::vector<std::string>& pick =
         stadiumMatches.empty() ? candidates : stadiumMatches;
     if (!pick.empty()) {
-      introTrack = pick[(unsigned int)floor(random(0.0f, pick.size() - 0.001f))];
+      // PES cuts an entrance together from every shot the family authored, so
+      // play them all in order rather than picking one.
+      std::vector<std::string> shots = pick;
+      std::sort(shots.begin(), shots.end());
+      if (!entranceID.empty() || !stadiumMatches.empty()) {
+        for (const std::string& shot : shots) {
+          std::ifstream shotFile(shot);
+          CamTrack track;
+          if (shotFile.good() && track.Load(shotFile) && track.GetFrameCount() > 0)
+            introShots.push_back(track);
+        }
+      }
+      introTrack = shots.front();
       Log(e_Notice, "Match", "Match",
           "entrance " + (entranceID.empty() ? std::string("(default)") : entranceID) +
-              ": " + introTrack +
+              ": " + int_to_str(introShots.size()) + " shot(s), first " + introTrack +
               (stadiumMatches.empty() ? " (no shot for this stadium)" : ""));
     } else {
       Log(e_Warning, "Match", "Match", "no entrance camerawork in " + entranceRoot);
@@ -239,6 +251,12 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     std::ifstream trackFile(introTrack);
     if (trackFile.good() && introCamTrack.Load(trackFile) && introSeconds <= 0.0f)
       introSeconds = introCamTrack.GetDurationSeconds();
+    // a multi-shot entrance runs for as long as all its shots together
+    if (introShots.size() > 1 &&
+        GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f) <= 0.0f) {
+      introSeconds = 0.0f;
+      for (const CamTrack& shot : introShots) introSeconds += shot.GetDurationSeconds();
+    }
 
     // The family's player choreography: PES ships the entrance actors as _pl
     // packs next to the camera packs (exported to .chor + in-place .anim
@@ -1472,9 +1490,26 @@ void Match::UpdateIngameCamera() {
     if (now < introCutsceneEnd_ms) {
       float t = 1.0f - (introCutsceneEnd_ms - now) /
                            (float)introCutsceneDuration_ms;
-      if (introCamTrack.GetFrameCount() > 0) {
-        CamTrackFrame frame =
-            introCamTrack.Sample(t * (introCamTrack.GetFrameCount() - 1));
+      // Several authored shots cut back to back: walk the elapsed time along
+      // the sequence and sample whichever shot is on air.
+      const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
+      float shotT = t;
+      if (introShots.size() > 1) {
+        float total = 0.0f;
+        for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
+        float elapsed = t * total;
+        for (const CamTrack& s : introShots) {
+          const float duration = s.GetDurationSeconds();
+          if (elapsed <= duration || &s == &introShots.back()) {
+            shot = &s;
+            shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
+            break;
+          }
+          elapsed -= duration;
+        }
+      }
+      if (shot->GetFrameCount() > 0) {
+        CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
         cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                      frame.position[2]);
         cameraNodeOrientation = QUATERNION_IDENTITY;
