@@ -15,4 +15,14 @@ bool ShouldSnapshot(bool inPlay, bool restartQueued, e_SetPiece queuedRestart) {
   return true;
 }
 
+bool IsDeliberatePlay(e_TouchType touchType) {
+  return touchType == e_TouchType_Intentional_Kicked;
+}
+
+bool TouchResetsPhase(bool opponentOfFlagged, e_TouchType touchType) {
+  if (!opponentOfFlagged)
+    return true;
+  return IsDeliberatePlay(touchType);
+}
+
 }  // namespace OffsideRule

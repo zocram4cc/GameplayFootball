@@ -32,6 +32,14 @@ enum e_SetPiece {
   e_SetPiece_Penalty,
 };
 
+enum e_TouchType {
+  e_TouchType_Intentional_Kicked,     // goalies can't touch this
+  e_TouchType_Intentional_Nonkicked,  // headers and such
+  e_TouchType_Accidental,             // collisions
+  e_TouchType_None,
+  e_TouchType_SIZE
+};
+
 enum e_MatchPhase {
   e_MatchPhase_PreMatch,
   e_MatchPhase_1stHalf,

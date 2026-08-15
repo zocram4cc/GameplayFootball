@@ -382,6 +382,19 @@ void Referee::BallTouched() {
     }
   }
 
+  // Law 11: a deliberate play by a defender resets the offside phase and makes
+  // a previously offside attacker onside; a deflection or a save does not. A
+  // touch by the flagged players' own team always starts a fresh phase, judged
+  // at this touch.
+  Player* toucher = match->GetTeam(lastTouchTeamID)->GetLastTouchPlayer();
+  const bool opponentOfFlagged =
+      !offsidePlayers.empty() &&
+      offsidePlayers.begin()->first->GetTeam()->GetID() != lastTouchTeamID;
+  const e_TouchType touchType =
+      toucher ? toucher->GetLastTouchType() : e_TouchType_Intentional_Kicked;
+  if (!OffsideRule::TouchResetsPhase(opponentOfFlagged, touchType))
+    return;  // the flagged attackers stay flagged; no new snapshot is taken
+
   offsidePlayers.clear();
 
   // Law 11: a goal kick, throw-in or corner can never put its receivers

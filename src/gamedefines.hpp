@@ -94,15 +94,8 @@ enum e_FunctionType {
   e_FunctionType_Special
 };
 
-enum e_TouchType {
-  e_TouchType_Intentional_Kicked,     // goalies can't touch this
-  e_TouchType_Intentional_Nonkicked,  // headers and such
-  e_TouchType_Accidental,             // collisions
-  e_TouchType_None,
-  e_TouchType_SIZE
-};
-
-// e_SetPiece lives in gametypes.hpp so the SDL-free rule modules can see it.
+// e_SetPiece and e_TouchType live in gametypes.hpp so the SDL-free rule
+// modules can see them.
 
 enum e_PlayerCommandModifier {
   e_PlayerCommandModifier_None = 0,

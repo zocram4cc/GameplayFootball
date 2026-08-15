@@ -19,6 +19,21 @@ bool CanCreateOffside(e_SetPiece restart);
 // (RefereeBuffer::active), `queuedRestart` which one.
 bool ShouldSnapshot(bool inPlay, bool restartQueued, e_SetPiece queuedRestart);
 
+// Law 11: a deliberate play is a controlled action on the ball. GF's touch
+// vocabulary makes a controlled kick the only touch that clearly qualifies: a
+// collision deflection is never deliberate, and a non-kicked touch cannot be
+// told apart from a save, which must never reset the phase.
+bool IsDeliberatePlay(e_TouchType touchType);
+
+// Whether a touch ends the current offside phase, releasing the players
+// flagged at the previous teammate touch. A touch by the flagged players' own
+// team always starts a new phase (a fresh judgement is taken at that touch);
+// an opponent's touch only resets when it is a deliberate play — a deflection
+// or a save keeps the previously flagged attackers offside.
+// `opponentOfFlagged` is whether the toucher opposes the flagged players; pass
+// false when nobody is flagged.
+bool TouchResetsPhase(bool opponentOfFlagged, e_TouchType touchType);
+
 }  // namespace OffsideRule
 
 #endif

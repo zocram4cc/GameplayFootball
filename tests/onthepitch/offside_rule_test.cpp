@@ -43,3 +43,35 @@ TEST(OffsideRuleTest, NothingIsSnapshottedOutOfPlay) {
   EXPECT_FALSE(OffsideRule::ShouldSnapshot(false, false, e_SetPiece_None));
   EXPECT_FALSE(OffsideRule::ShouldSnapshot(false, true, e_SetPiece_FreeKick));
 }
+
+// Law 11: an attacker in an offside position becomes onside again when an
+// opponent deliberately plays the ball (a controlled pass or clearance). A
+// deflection, or a deliberate save, does not reset the offside phase.
+
+TEST(OffsideRuleTest, OnlyAControlledKickIsADeliberatePlay) {
+  EXPECT_TRUE(OffsideRule::IsDeliberatePlay(e_TouchType_Intentional_Kicked));
+  // A collision-driven deflection is never a deliberate play.
+  EXPECT_FALSE(OffsideRule::IsDeliberatePlay(e_TouchType_Accidental));
+  // GF cannot tell a save from a deliberate header, and a save must never
+  // reset the phase, so non-kicked touches conservatively keep it.
+  EXPECT_FALSE(OffsideRule::IsDeliberatePlay(e_TouchType_Intentional_Nonkicked));
+  EXPECT_FALSE(OffsideRule::IsDeliberatePlay(e_TouchType_None));
+}
+
+TEST(OffsideRuleTest, ATeammateTouchAlwaysStartsANewPhase) {
+  // The flagged players' own team playing the ball is a fresh judgement, no
+  // matter how the ball was touched.
+  EXPECT_TRUE(OffsideRule::TouchResetsPhase(false, e_TouchType_Intentional_Kicked));
+  EXPECT_TRUE(OffsideRule::TouchResetsPhase(false, e_TouchType_Intentional_Nonkicked));
+  EXPECT_TRUE(OffsideRule::TouchResetsPhase(false, e_TouchType_Accidental));
+}
+
+TEST(OffsideRuleTest, ADefendersDeliberatePlayResetsThePhase) {
+  EXPECT_TRUE(OffsideRule::TouchResetsPhase(true, e_TouchType_Intentional_Kicked));
+}
+
+TEST(OffsideRuleTest, ADefendersDeflectionOrSaveKeepsThePhaseAlive) {
+  EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_Accidental));
+  EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_Intentional_Nonkicked));
+  EXPECT_FALSE(OffsideRule::TouchResetsPhase(true, e_TouchType_None));
+}
