@@ -205,8 +205,23 @@ triple-confirmed (penalty cameras at exactly x=52.5, Maya-exact FOVs,
 unit-norm quats). `tools/pes21_import/camera_cut.py` parses all 4,804
 files with zero errors; `docs/PES21_CAMERA_TRACE.md` documents the
 formats and the GF mapping (one +90° X basis rotation; FOV copies
-unchanged; clamp near to ≥0.1). Next milestone: play imported .canm
-tracks in the engine's cutscene camera.
+unchanged; clamp near to ≥0.1). The camera side plays in-engine
+(`.camtrack`, `export_entrances.py`).
+
+The **player side of the entrances is decoded and playing too**: the
+`ent_*_pl*.fdc` packs stage each actor slot (0–10 home XI, 11–21 away,
+22–24 officials) with a spawn transform, a loose FixDemo `.gani` clip and
+a phase offset (tag-0x04 records, `camera_cut.ActorCut`). The clips are
+near-in-place (≤ ~3 m of RIG_ROOT motion — PES entrances are placements
+plus camera cuts, not long baked walks).
+`tools/pes21_import/entrance_pl.py` exports a family to text `.chor`
+files (per-slot baked world root tracks) plus root-stripped in-place
+`.anim` clips under `data/media/cutscenes/ent/<id>/`; the engine picks a
+`.chor` alongside the entrance camtrack and drives the cast players
+kinematically through it (`src/utils/entrancechoreo.cpp`,
+`Match::UpdateEntranceChoreo`, `HumanoidBase::SetChoreoPose`), falling
+back to the scripted walk for players without a slot or families without
+`_pl` data. Family `ent_020` ships converted in the repo.
 
 ## Menu / in-match UI art (REVERSED — dt11_x64.cpk)
 

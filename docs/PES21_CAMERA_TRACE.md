@@ -112,7 +112,7 @@ record type — and the type fixes the record size exactly. Verified across all
 | `0x01` | `0x09c` | 1 399 | scene object ref (`*.xml` under `common/demo/fixdemoobj/`) |
 | `0x02` | `0x05c` | 3 447 | ? |
 | `0x03` | `0x0bc` | 5 850 | ? |
-| `0x04` | `0x16c` | 6 274 | actor animation cut (`*.gani`) |
+| `0x04` | `0x16c` | 6 274 | actor animation cut (`*.gani`) — **decoded, section 3.1** |
 | `0x05` | `0x1bc` | 4 973 | model / skeleton ref (`*.fpk`, `*.skl`) |
 | **`0x06`** | **`0x11c`** | **9 031** | **camera cut (`*.canm`)** |
 | `0x07` | `0x144` | 626 | ? |
@@ -140,6 +140,70 @@ The cut table is therefore the **shot list**: it says at which demo frame each
 shot starts, which clip it plays, and what clipping planes to use. Several cuts
 can reference the same clip (a cut back to an earlier camera), and clips may be
 referenced out of order.
+
+### 3.1 Actor cut record, tag `0x04`, 364 bytes — the `_pl` player packs
+
+The `*_pl*.fdc` variants of a family (`ent_020_order01_pl.fdc`,
+`ent_009_st000_south_pl_home.fdc`, ...) hold no cameras: their cut table is a
+list of tag-`0x04` records, one per **actor slot**, staging the players of the
+entrance/warm-up/anthem scene. Parsed by `camera_cut.ActorCut`; verified
+across the `ent` category (all 109 actor records of the `ent_020` /
+`ent_007_passage01` / `ent_009_st000` packs decode to on-pitch placements):
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | u16 | **actor slot**: 0–10 home XI (0 = keeper), 11–21 away XI, 22–24 officials |
+| `+0x02` | u16 | `1` in every observed record |
+| `+0x04` | f32[3] | **spawn position** `(x, y, z)`, Fox metres, Y up, centre-spot origin |
+| `+0x10` | f32 | **spawn yaw, degrees** about +Y; 0 faces +Z, 90 faces +X (the `ent_020_order02` keeper at `(-40, 0, 0)` yaw 90 faces the centre spot) |
+| `+0x14` | char[0x80] | **gani path** (`.../FoxAnim/FixDemo/Animations/dml_ent_*.gani`). The fdc carries the same path as a 4-byte stub leaf; the real gani ships loose in dt12 under that path (5 484 files, standard GZ ganis — same decoder as the mtar bodies, frame = 1/59.94 s) |
+| `+0x94` | char[0x80] | **seq path**, same stem. The `.seq` leaves *do* have content (200–1100 bytes): u16 frame windows and sync markers — an event table, **not** motion |
+| `+0x114` | f32 | **phase offset into the clip, gani ticks.** The clip loops over the demo; 107 of 109 offsets are less than the clip length, the rest wrap (980 on a 931-frame clip), and one is negative (−60) |
+| `+0x118` | u32 | flags: 0 / 1 / 256 observed |
+| `+0x120` | u8[] | small flag bytes (`01 04 0a 00 ...`) |
+
+**Where the walk is.** The clips are near-in-place: over all 375 `dml_ent_*`
+ganis the RIG_ROOT translation spans at most **2.9 m** (`walk` clips carry a
+metre or two of genuine shuffle, `warmup`/`idle`/`anth` clips less). PES
+stages an entrance as *placements plus near-in-place clips*, re-placing the
+actors between packs (tunnel → walk-on → line-up) and hiding every reposition
+behind a camera cut. There is no long baked walk path anywhere in the data —
+the "walk-out" is spawn transforms composed with a few metres of authored
+root motion per shot.
+
+Example — `ent_020_order01_pl.fdc` (the family the engine's smoke config
+plays): 22 records, slots 0–21, both XIs scattered around their own halves in
+`dml_ent_kickoff*_warmup/stretch/jog` clips with staggered phase offsets so
+nobody claps in sync; `ent_020_order02_pl.fdc` stages the same 22 with the
+keepers on their goal lines and a passer/receiver pair
+(`kickoff02_center06_passer/receiver`, both phase 30) knocking a ball about
+the centre spot.
+
+### 3.2 Exporting and playing the choreography
+
+`tools/pes21_import/entrance_pl.py` converts a family's `_pl` packs to open
+text formats next to the exported camerawork:
+
+```
+python3 entrance_pl.py <cut_data-dir> <FixDemo/Animations-dir> \
+        data/media/cutscenes/ent --ids 020
+  data/media/cutscenes/ent/020/ent_020_order01_pl.chor   (per-slot root tracks)
+  data/media/cutscenes/ent/020/anims/dml_ent_*.anim      (in-place clips)
+```
+
+Each clip is converted with the root motion **stripped** (`gani_to_anim.py
+--strip-root`: the RIG_ROOT yaw+translation are removed, any root tilt
+kept), and the `.chor` carries per slot the spawn transform composed
+with the clip's own root motion as a baked world-space track — GF space,
+10 ms frames, one clip cycle, phase pre-applied — plus the phase for the clip
+frame itself. Engine side (`src/utils/entrancechoreo.cpp`,
+`Match::UpdateEntranceChoreo`, `HumanoidBase::SetChoreoPose`): while the
+entrance runs, cast players are driven kinematically — the fed world
+transform goes into `animApplyBuffer.position/orientation` with the in-place
+clip on `noPos`, exactly the seams `Animation::Apply` already has — and when
+the feed stops the humanoid hands control back through `ResetPosition` from
+wherever the choreography left it. Players without a slot (and, for now, the
+officials' slots 22+) keep the scripted walk fallback.
 
 ---
 

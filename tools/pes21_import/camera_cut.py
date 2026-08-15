@@ -49,6 +49,30 @@ no exceptions):
   0x07 0x144     626  ?
   0x08 0x060       3  ?
 
+Actor cut record (tag 0x04, 364 bytes) — the per-actor choreography of the
+_pl (player) and _mob (crowd/staff) packs, one record per actor slot:
+  +0x00 u16    actor slot. In ent _pl packs: 0-10 home XI, 11-21 away XI,
+               22-24 the officials (referee + assistants)
+  +0x02 u16    1 in every observed record
+  +0x04 f32[3] spawn position (x, y, z), Fox metres, Y up, pitch-centre origin
+  +0x10 f32    spawn yaw, DEGREES about +Y; 0 faces +Z, 90 faces +X
+               (verified: the GK at (-40, 0, 0) yaw 90 faces the centre spot)
+  +0x14 char[0x80] gani path ("cpk_dat/common/demo/anime/FoxAnim/FixDemo/
+               Animations/dml_ent_kickoff02_idle08.gani"); the fdc carries the
+               same path as a 4-byte stub entry — the real gani ships loose in
+               dt12 under that path
+  +0x94 char[0x80] seq path (same stem, .seq: a small event/marker table -
+               u16 frame windows, sync points; NOT motion data)
+  +0x114 f32   phase offset into the clip, gani ticks (1/59.94 s). The clip
+               loops over the demo; offsets beyond the clip length wrap, and
+               -60 appears once (start 60 ticks before the demo clock)
+  +0x118 u32   flags (0 / 1 / 256 observed)
+  +0x120 u8[]  small flag bytes (01 04 0a 00 ... / 01 04 00 00 ...)
+The walk/warmup motion itself is bind-relative root motion inside the gani
+(RIG_ROOT XZ+yaw, max ~3 m over any ent clip): entrances are staged as
+placements + near-in-place clips, with the camera cuts hiding repositions
+between the packs of a family.
+
 Camera cut record (tag 0x06, 284 bytes):
   +0x00 u32    startFrame        (frame in the demo timeline where this shot begins;
                                  records ascend, typically in 0/10/100/110/200/... pairs)
@@ -159,6 +183,7 @@ RECORD_SIZES = {
     0x07: 0x144,
     0x08: 0x060,
 }
+TAG_ACTOR_CUT = 0x04
 TAG_CAMERA_CUT = 0x06
 
 # canm channel indices
@@ -415,11 +440,44 @@ class CameraCut:
             self.start_frame, self.near, self.far, self.canm_name)
 
 
+class ActorCut:
+    """One tag-0x04 record: where an actor spawns and which clip he plays.
+
+    The _pl packs place the 22 players (slots 0-10 home, 11-21 away) and the
+    officials (22-24); position/yaw are Fox space (Y up, metres, degrees).
+    """
+
+    def __init__(self, data):
+        self.slot, self.unknown02 = struct.unpack_from("<HH", data, 0)
+        self.position = struct.unpack_from("<3f", data, 4)
+        self.yaw_deg = struct.unpack_from("<f", data, 0x10)[0]
+        self.gani_path = _cstr(data, 0x14, 0x80)
+        self.seq_path = _cstr(data, 0x94, 0x80)
+        self.phase_ticks = struct.unpack_from("<f", data, 0x114)[0]
+        self.flags = struct.unpack_from("<I", data, 0x118)[0]
+
+    @property
+    def gani_name(self):
+        return os.path.basename(self.gani_path)
+
+    def __repr__(self):
+        return "ActorCut(slot=%d pos=(%.2f, %.2f, %.2f) yaw=%.1f phase=%g %s)" % (
+            (self.slot,) + self.position + (self.yaw_deg, self.phase_ticks, self.gani_name))
+
+
+def _cstr(data, offset, maxlen):
+    end = data.find(b"\0", offset)
+    if end < 0 or end > offset + maxlen:
+        end = offset + maxlen
+    return data[offset:end].decode("ascii", "replace")
+
+
 class Fdc:
     def __init__(self, path=""):
         self.path = path
         self.cpk_path = ""       # the file's own path as recorded inside it
         self.cuts = []           # CameraCut, in table order
+        self.actors = []         # ActorCut, in table order
         self.cameras = []        # Canm, in file order
         self.records = {}        # tag -> [Entry] of the cut table
         self.assets = []         # (name, size) of leaf refs (*.gani, *.seq, *.ask)
@@ -460,6 +518,8 @@ def parse_fdc(blob, path=""):
             fdc.records.setdefault(rec.tag, []).append(rec)
             if rec.tag == TAG_CAMERA_CUT and rec.size == RECORD_SIZES[TAG_CAMERA_CUT]:
                 fdc.cuts.append(CameraCut(rec.data))
+            elif rec.tag == TAG_ACTOR_CUT and rec.size == RECORD_SIZES[TAG_ACTOR_CUT]:
+                fdc.actors.append(ActorCut(rec.data))
     fdc.cuts.sort(key=lambda c: c.start_frame)
     return fdc
 
@@ -608,6 +668,15 @@ def _dump(path, args):
         print("      start %5d  kind %d  near %-8g far %-8g  %s"
               % (cut.start_frame, cut.kind, cut.near, cut.far,
                  cut.canm_name or "(no clip)"))
+
+    if fdc.actors:
+        print("\n   -- actor placements (tag 0x04 records) --")
+        for actor in fdc.actors:
+            print("      slot %2d  pos (%8.3f, %6.3f, %8.3f)  yaw %7.2f  "
+                  "phase %6g  %s"
+                  % (actor.slot, actor.position[0], actor.position[1],
+                     actor.position[2], actor.yaw_deg, actor.phase_ticks,
+                     actor.gani_name))
 
     for canm in fdc.cameras:
         print("\n   -- %s --" % (canm.name or "<unnamed>"))

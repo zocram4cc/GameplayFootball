@@ -179,8 +179,19 @@ def build_samplers(g):
 
 # --- FK over the PES skeleton -------------------------------------------------
 
-def fk_pose(bones, root_q, root_p, mot_q, mot_p, t):
-    """World rotation+position per PES bone at PES frame t (Fox coords)."""
+def root_yaw(q):
+    """Yaw of a Fox root quaternion about +Y (0 faces +Z, pi/2 faces +X)."""
+    f = q_rot(q, (0.0, 0.0, 1.0))
+    return math.atan2(f[0], f[2])
+
+
+def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False):
+    """World rotation+position per PES bone at PES frame t (Fox coords).
+
+    With strip_root the RIG_ROOT translation and yaw are removed (the pose
+    stays in place, facing +Z, keeping any root tilt) — for clips whose world
+    placement is driven externally, like the fixdemo entrance choreography.
+    """
     rot = {}
     pos = {}
     bind = retarget.PES_BIND
@@ -188,6 +199,9 @@ def fk_pose(bones, root_q, root_p, mot_q, mot_p, t):
 
     rq = q_norm(root_q.quat(t)) if root_q else (0, 0, 0, 1)
     rp = tuple(c * scale for c in root_p.vec(t)) if root_p else (0.0, 0.0, 0.0)
+    if strip_root:
+        rq = q_mul(q_axis_angle((0.0, 1.0, 0.0), -root_yaw(rq)), rq)
+        rp = (0.0, 0.0, 0.0)
 
     mq = q_norm(mot_q.quat(t)) if mot_q else (0, 0, 0, 1)
     mp = tuple(c * scale for c in mot_p.vec(t)) if mot_p else (0.0, 0.0, 0.0)
@@ -297,7 +311,7 @@ GF_NODES = ["body", "middle", "neck", "head",
             "right_thigh", "right_knee", "right_ankle"]
 
 
-def convert(blob, anim_type="movement", key_step=2):
+def convert(blob, anim_type="movement", key_step=2, strip_root=False):
     """gani bytes -> .anim text."""
     g = gani.parse(blob)
     bones, root_q, root_p, mot_q, mot_p = build_samplers(g)
@@ -310,7 +324,7 @@ def convert(blob, anim_type="movement", key_step=2):
     origin = None
     for f in range(0, gf_frames + 1, key_step):
         t = min(f * GF_FRAME_MS / PES_FRAME_MS, float(g.frame_count))
-        rot, pos = fk_pose(bones, root_q, root_p, mot_q, mot_p, t)
+        rot, pos = fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root)
         locals_, hip = solve_gf(rot, pos)
         if origin is None:
             origin = (hip[0], hip[1])
@@ -331,6 +345,24 @@ def convert(blob, anim_type="movement", key_step=2):
     return "\n".join(lines) + "\n", g
 
 
+def root_sampler(g):
+    """RIG_ROOT world motion of a parsed gani, in Fox space.
+
+    Returns a function of PES frame time -> (x_m, z_m, yaw_rad): the root
+    translation in metres and its yaw about +Y. This is the part fk_pose
+    removes under strip_root, so an external mover can re-apply it.
+    """
+    _, root_q, root_p, _, _ = build_samplers(g)
+    scale = retarget.PES_POS_TO_M
+
+    def sample(t):
+        yaw = root_yaw(q_norm(root_q.quat(t))) if root_q else 0.0
+        p = root_p.vec(t) if root_p else (0.0, 0.0, 0.0)
+        return (p[0] * scale, p[2] * scale, yaw)
+
+    return sample
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("src", help=".gani file, or a directory with --batch")
@@ -339,10 +371,14 @@ def main():
     parser.add_argument("--type", default="movement")
     parser.add_argument("--key-step", type=int, default=2,
                         help="GF frames between keys (2 = every 20ms)")
+    parser.add_argument("--strip-root", action="store_true",
+                        help="remove RIG_ROOT yaw+translation (in-place clip "
+                             "for externally driven playback, e.g. .chor)")
     args = parser.parse_args()
 
     if not args.batch:
-        text, g = convert(open(args.src, "rb").read(), args.type, args.key_step)
+        text, g = convert(open(args.src, "rb").read(), args.type, args.key_step,
+                          args.strip_root)
         open(args.dest, "w").write(text)
         print("wrote %s (%d PES frames -> %d bytes)"
               % (args.dest, g.frame_count, len(text)))
@@ -355,7 +391,7 @@ def main():
             continue
         try:
             text, _ = convert(open(os.path.join(args.src, name), "rb").read(),
-                              args.type, args.key_step)
+                              args.type, args.key_step, args.strip_root)
             out = os.path.join(args.dest, os.path.splitext(name)[0] + ".anim")
             open(out, "w").write(text)
             done += 1

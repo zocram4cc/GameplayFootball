@@ -5,7 +5,7 @@ PES picks a match entrance by competition: the cut data ships as families
 each family being one entrance presentation. Within a family the variants are
 
   ``*_cam*.fdc``   camera cuts       -> what this script exports
-  ``*_pl*.fdc``    player animation packs (see extract_entrance_anims.py)
+  ``*_pl*.fdc``    player animation packs (see entrance_pl.py)
   ``*_mob*.fdc``   crowd
 
 The engine selects at runtime on the "entrance_id" config key plus the stadium,
