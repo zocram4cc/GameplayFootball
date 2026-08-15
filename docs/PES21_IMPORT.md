@@ -231,9 +231,75 @@ containers, all decoded by `tools/pes21_import/txp2.py`:
 PNGs. Key packages: `general/game2d.bin` (in-match HUD), `general/
 gamePlan*.bin` (tactics screens), `licence/game2d*.bin` (competition
 scoreboard skins), `general/topModeSelect*Bg_*` (menu backgrounds).
-Fonts (`font/*_fnt.bin`) are a separate `WFNT` format, not yet decoded
-(`match_fnt`, `numMatch_fnt` = scoreboard faces — worth reversing for a
-PES-style scoreboard theme).
+Fonts (`font/*_fnt.bin`) are a separate `WFNT` format — see the next
+section.
+
+## Fonts (WFNT — REVERSED)
+
+The menu/match fonts (`common/menu/font/*_fnt.bin` in dt11) are
+pre-rasterized bitmap fonts, decoded end-to-end by
+`tools/pes21_import/wfnt.py`. Same outer containers as everything else:
+WESYS wrapper + named `.o` archive; each archived payload is one `WFNT`
+face. Most bins hold a single face; `edit_fnt.bin` holds ten
+(`e00.obj`..`e09.obj`, the edit-mode lettering styles). No TXP2/TXDT/LZSS
+involved — glyph bitmaps are stored raw.
+
+WFNT payload (little-endian):
+
+```
++0x00  "WFNT", u32 version = 1
++0x08  u8  bpp          4 = paletted alpha, 32 = raw RGBA8888 (ext only)
++0x09  u8  line_height  == ascent + descent in every shipped font
++0x0a  u8  ascent       top of line -> baseline
++0x0b  u8  descent
++0x0c  u32 glyph_count
++0x10  u32 palette_offset  (0x20; == table_offset when bpp == 32)
++0x14  u32 table_offset
++0x18  u32[2] zero (unk_18/unk_1c — zero in all 23 shipped faces)
+```
+
+bpp 4 palette: 16 RGBA8 entries; every shipped font uses white with a
+linear alpha ramp (`FF FF FF 00/11/../FF`), i.e. 4-bit antialiased
+coverage. `ext_fnt` (bpp 32, U+E000..U+E0F6 private-use area) is the
+color icon face — controller buttons, arrows, HUD pictograms — with no
+palette and straight RGBA8888 pixels.
+
+Glyph table: `glyph_count` × 16 bytes, sorted by charcode:
+
+```
++0x00  u32 charcode   the character's UTF-8 bytes packed into a u32
+                      (0x41 'A', 0xefbfa5 U+FFE5 fullwidth yen)
++0x04  u8  cell_w     power-of-two cell >= bitmap (GPU glyph-cache cell;
++0x05  u8  cell_h      exact rounding rule not pinned down — only unknown)
++0x06  u8  width      bitmap size in pixels
++0x07  u8  height
++0x08  u8  bearing_x  pen -> left edge
++0x09  u8  bearing_y  baseline -> top edge (FreeType horiBearingY;
+                      digits overshoot the baseline by 1px as expected)
++0x0a  u8  advance
++0x0b  u8  zero
++0x0c  u32 pixel data offset from start of WFNT
+```
+
+Pixels: rows top-down; bpp 4 packs two pixels per byte, high nibble
+first, stride `ceil(w/2)`; bpp 32 is `w*4` bytes per row. Each glyph
+blob is 16-byte aligned; blobs are consecutive and the last ends exactly
+at the payload end (verified on all 23 faces).
+
+```
+python3 wfnt.py list    <font_fnt.bin>...
+python3 wfnt.py extract <font_fnt.bin>... -o <out>
+```
+
+`extract` shelf-packs each face into `<out>/<font>/[<face>/]atlasN.png`
+(white-on-transparent RGBA, max 4096²) + `glyphs.json` (per glyph: char,
+codepoint, atlas page + rect, bearings, advance, cell dims; plus face
+line metrics and palette). Faces: `match`/`matchBold` (in-match HUD),
+`numMatch`/`numMid`/`numSml`/`numCard`/`numXl`/`numExt` (scoreboard/
+clock digit strips, `+ - 0-9 %`), `pes` (psm, base menu face), `LPsm`/
+`XLPsm` (large menu), `plname` (player-name face, 8,030 glyphs), `ext`
+(icons), `edit` (10 styles). The JP faces carry the full charset:
+14,734 glyphs covering ASCII, kana, JIS kanji, cyrillic, latin extended.
 
 ## Open problems, in priority order
 
