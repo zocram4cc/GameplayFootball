@@ -26,3 +26,6 @@ data/media/animations/**/pes_*.anim
 data/media/objects/stadiums/pes_*/
 data/media/players/custom/
 2HUG Aesthetics VGL26/
+
+# 4cc Blender Starter Pack: external tooling (pes-fmdl addon), not ours
+/4cc Blender Starter Pack/

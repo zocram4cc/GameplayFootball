@@ -24,6 +24,7 @@ geometry and vertex colors are carried over verbatim.
 """
 
 import argparse
+import math
 import os
 import sys
 
@@ -36,6 +37,10 @@ GF_JOINT_ORDER = ["body", "middle", "neck", "head",
                   "left_thigh", "left_knee", "left_ankle",
                   "right_thigh", "right_knee", "right_ankle"]
 JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
+
+# how far a vertex may sit from the joint that drives it before the bind is
+# treated as trailing geometry and re-anchored (metres, GF scale)
+FAR_BIND_METRES = 0.55
 
 # each GF joint's PES anchor bone and the bone whose bind position defines
 # the limb direction (None = axial joint, translation-only)
@@ -185,22 +190,92 @@ def align_vertex(pos_gf, joints, transforms):
     return (out[0] / total, out[1] / total, out[2] / total)
 
 
-def vertex_joints(vertex, pes_to_gf_map):
-    """-> [(jointID, weight)] top-3, normalized, engine-encodable."""
-    weights = {}
-    if not vertex.boneMapping:
+def vertex_skin_joints(vertex, joints, joint_positions):
+    """Runtime skin weights for a vertex, given its bind-pose joints.
+
+    PES bends long trailing geometry (hair down the back, capes, skirts) with
+    extra bones GF does not have, so those vertices arrive bound a metre from
+    the joint that drives them and flail when it turns. Their skin weight is
+    moved to the joint they actually sit on; the bind alignment is left alone,
+    so the mesh keeps its shape.
+    """
+    if not joint_positions:
+        return joints
+    p = vertex.position
+    position = (p.x, -p.z, p.y)          # fox -> GF
+    dominant = GF_JOINT_ORDER[joints[0][0]]
+    if math.dist(position, joint_positions[dominant]) <= FAR_BIND_METRES:
+        return joints
+    return nearest_joints(position, joint_positions, count=1)
+
+
+def nearest_joints(position, joint_positions, count=3, falloff=0.35):
+    """-> [(jointID, weight)] for geometry that carries no skin weights.
+
+    4cc exports ship hats, hair, capes and skirts as rigid props with an empty
+    bone mapping. Welding those to one fixed joint drags them across the body
+    (the "floating head" look); binding them to the joints they actually sit
+    near follows the skeleton instead. Weights fall off with distance, so a
+    hat is head-bound while hair down the back blends head into neck.
+    """
+    ordered = sorted(
+        ((name, math.dist(position, pos)) for name, pos in joint_positions.items()),
+        key=lambda pair: pair[1])[:count]
+    if not ordered:
         return [(JOINT_ID["middle"], 1.0)]
+    # inverse-distance blending, softened so the nearest joint dominates
+    weights = []
+    for name, distance in ordered:
+        weights.append((JOINT_ID[name], 1.0 / (falloff + distance) ** 2))
+    total = sum(w for _, w in weights)
+    return [(j, w / total) for j, w in weights]
+
+
+def vertex_joints(vertex, pes_to_gf_map, joint_positions=None):
+    """-> [(jointID, weight)] top-3, normalized, engine-encodable.
+
+    `joint_positions` (GF joint name -> bind position) lets unweighted
+    geometry bind to the joints it sits near instead of a fixed fallback.
+    """
+    position = None
+    if joint_positions:
+        p = vertex.position
+        position = (p.x, -p.z, p.y)   # fox -> GF, to match the joint bind
+
+    if not vertex.boneMapping:
+        if position is not None:
+            return nearest_joints(position, joint_positions)
+        return [(JOINT_ID["middle"], 1.0)]
+
+    weights = {}
+    unmapped = 0.0
     for bone, weight in vertex.boneMapping.items():
         gf_node = pes_to_gf_map.get(bone.name)
         if gf_node is None:
-            gf_node = retarget.gf_node_for_bone(bone.name) or "middle"
+            gf_node = retarget.gf_node_for_bone(bone.name)
+        if gf_node is None:
+            # a bone outside the body rig (prop bones on hats and tails)
+            unmapped += weight
+            continue
         joint = JOINT_ID[gf_node]
         weights[joint] = weights.get(joint, 0.0) + weight
+
+    if unmapped > 0.0 and position is not None:
+        for joint, weight in nearest_joints(position, joint_positions):
+            weights[joint] = weights.get(joint, 0.0) + weight * unmapped
+    elif unmapped > 0.0:
+        joint = JOINT_ID["middle"]
+        weights[joint] = weights.get(joint, 0.0) + unmapped
+
     top = sorted(weights.items(), key=lambda kv: -kv[1])[:3]
     total = sum(w for _, w in top)
     if total <= 0:
+        if position is not None:
+            return nearest_joints(position, joint_positions)
         return [(JOINT_ID["middle"], 1.0)]
-    return [(j, w / total) for j, w in top]
+    top = [(j, w / total) for j, w in top]
+
+    return top
 
 
 def encode_color(joints):
@@ -214,6 +289,30 @@ def encode_color(joints):
     return channels
 
 
+def mesh_rebind_joint(mesh, pes_to_gf_map, joint_positions):
+    """-> jointID to bind a whole mesh to, or None to keep its own weights.
+
+    PES bends long trailing geometry with extra bones GF does not have, so a
+    cape rigged to the head arrives as vertices a metre from their joint. Bound
+    per vertex they tear apart; bound as one piece to the joint they sit on,
+    they simply follow it.
+    """
+    positions = []
+    far = 0
+    for vertex in mesh.vertices:
+        p = vertex.position
+        pos = (p.x, -p.z, p.y)          # fox -> GF
+        positions.append(pos)
+        joints = vertex_joints(vertex, pes_to_gf_map)
+        dominant = GF_JOINT_ORDER[joints[0][0]]
+        if math.dist(pos, joint_positions[dominant]) > FAR_BIND_METRES:
+            far += 1
+    if not positions or far < len(positions) * 0.5:
+        return None                      # normal skinned geometry: leave it
+    centre = tuple(sum(c[i] for c in positions) / len(positions) for i in range(3))
+    return nearest_joints(centre, joint_positions, count=1)[0][0]
+
+
 def _mesh_signature(mesh):
     """Duplicate-detection key: 4cc fmdls carry every mesh twice."""
     sig = [len(mesh.faces), len(mesh.vertices)]
@@ -223,16 +322,16 @@ def _mesh_signature(mesh):
     return tuple(sig)
 
 
-def _mesh_joints(mesh, pes_to_gf_map):
+def _mesh_joints(mesh, pes_to_gf_map, joint_positions=None):
     """Set of GF joint IDs a mesh's skin weights reference."""
     joints = set()
     for vertex in mesh.vertices:
-        for joint_id, _ in vertex_joints(vertex, pes_to_gf_map):
+        for joint_id, _ in vertex_joints(vertex, pes_to_gf_map, joint_positions):
             joints.add(joint_id)
     return joints
 
 
-def select_meshes(meshes, max_tris, pes_to_gf_map):
+def select_meshes(meshes, max_tris, pes_to_gf_map, joint_positions=None):
     """Dedupe identical meshes, then pick within the triangle budget.
 
     The old biggest-first fill let one huge decorative mesh exhaust the
@@ -251,7 +350,7 @@ def select_meshes(meshes, max_tris, pes_to_gf_map):
     if not max_tris:
         return unique
 
-    joints_of = {id(m): _mesh_joints(m, pes_to_gf_map) for m in unique}
+    joints_of = {id(m): _mesh_joints(m, pes_to_gf_map, joint_positions) for m in unique}
     kept, used = [], 0
     covered = set()
     remaining = sorted(unique, key=lambda m: -len(m.faces))
@@ -308,7 +407,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     index = {}
     # duplicate meshes are dropped, then the triangle budget keeps joint
     # coverage first (a body for every limb) and biggest meshes second
-    meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map)
+    # bind positions of the GF joints: unweighted costume geometry binds to
+    # whichever joints it sits near, rather than to one fixed fallback
+    joint_positions = _gf_world_positions()
+    meshes = select_meshes(fmdl.meshes, max_tris, pes_to_gf_map, joint_positions)
     transforms = None
     if align_bind:
         transforms = build_bind_alignment(fmdl, normalize_proportions)
@@ -320,8 +422,14 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 if key not in index:
                     index[key] = len(vertices)
                     uv = vertex.uv[0] if vertex.uv else None
+                    # the bind alignment must use the joint the SOURCE rig
+                    # placed the vertex under, or neighbouring vertices bake
+                    # through different transforms and the mesh tears. The
+                    # runtime skin weight is free to differ: trailing
+                    # geometry follows the joint it sits on instead.
                     joints = vertex_joints(vertex, pes_to_gf_map)
-                    color = encode_color(joints)
+                    skin = vertex_skin_joints(vertex, joints, joint_positions)
+                    color = encode_color(skin)
                     pos = (vertex.position.x, -vertex.position.z,
                            vertex.position.y)
                     if transforms:
