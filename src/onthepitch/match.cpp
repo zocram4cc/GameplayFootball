@@ -1682,6 +1682,52 @@ void Match::UpdateIngameCamera() {
       sig_OnExtendedReplayMoment(this);
     }
   }
+
+  // Debug close-up ("debug_face_closeup_seconds" config key, off by
+  // default): parks the camera just in front of a face-rigged player for
+  // the first N seconds of the match, so FaceRig expressions can be
+  // verified visually in a headless capture run.
+  float faceCloseupSeconds =
+      GetConfiguration()->GetReal("debug_face_closeup_seconds", 0.0f);
+  if (faceCloseupSeconds > 0.0f && !IsGoalScored() &&
+      actualTime_ms < (unsigned long)(faceCloseupSeconds * 1000.0f)) {
+    Player* subject = nullptr;
+    Player* fallbackSubject = nullptr;
+    for (int t = 0; t < 2 && !subject; t++) {
+      std::vector<Player*> activePlayers;
+      teams[t]->GetActivePlayers(activePlayers);
+      for (unsigned int i = 0; i < activePlayers.size(); i++) {
+        if (!fallbackSubject) fallbackSubject = activePlayers[i];
+        if (activePlayers[i]->HasActiveFaceRig()) {
+          subject = activePlayers[i];
+          break;
+        }
+      }
+    }
+    if (!subject) subject = fallbackSubject;
+    if (subject) {
+      Vector3 head = subject->GetPosition() + Vector3(0, 0, 1.62f);
+      Vector3 facing =
+          subject->GetDirectionVec().GetNormalized(Vector3(0, -1, 0));
+      Vector3 camPos = head + facing * 1.4f + Vector3(0, 0, 0.05f);
+      CamTrackFrame frame;
+      frame.position = {camPos.coords[0], camPos.coords[1], camPos.coords[2]};
+      frame.fov = 24.0f;
+      frame.near = 0.1f;
+      frame.far = 300.0f;
+      frame = RetargetCamTrackFrame(
+          frame, {head.coords[0], head.coords[1], head.coords[2]}, 1.0f,
+          0.28f);
+      cameraNodePosition = Vector3(frame.position[0], frame.position[1],
+                                   frame.position[2]);
+      cameraNodeOrientation = QUATERNION_IDENTITY;
+      cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
+                            frame.rotation[2], frame.rotation[3]);
+      cameraFOV = frame.fov;
+      cameraNearCap = frame.near;
+      cameraFarCap = frame.far;
+    }
+  }
 }
 
 // THE SPICE

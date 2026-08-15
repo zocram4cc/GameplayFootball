@@ -206,6 +206,10 @@ public:
                boost::intrusive_ptr<Resource<Surface>> kit, int bodyUpdatePhaseOffset);
   virtual ~HumanoidBase();
 
+  // whether this humanoid's model carries a bound FaceRig (used by the
+  // "debug_face_closeup_seconds" camera to find a face worth filming)
+  bool HasActiveFaceRig() const { return faceRig.IsActive(); }
+
   void PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords);
   void UpdateFullbodyNodes();
   bool NeedsModelUpdate();
