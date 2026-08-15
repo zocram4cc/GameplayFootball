@@ -114,12 +114,29 @@ thighs/shoulders, pure hinge angles for knees (+X) and elbows (−X).
 
 Converted animations join the live game via
 `tools/pes21_import/install_anims.py`, which copies a pack `.anim` into the
-anim collection with the metadata the target class needs. First wired class:
-celebrations (`--class happy_normal|happy_extreme|sad_normal` →
-`<type>special` + the specialvar pair the controller queries). Installed
-files are named `pes_*.anim` and git-ignored. Verified: the full-match
-headless smoke loads all installed PES anims into the collection and plays a
-match with a goal, no errors.
+anim collection with the metadata the target class needs. Installed files are
+named `pes_*.anim` and git-ignored.
+
+*Presentation* classes need only a `<type>` and the variables the controller
+queries: celebrations (`--class happy_normal|happy_extreme|sad_normal` →
+`<type>special` + a specialvar pair) and entrances.
+
+*Match* classes have to survive the animation selector, which reads velocity
+and body angles off the root curve and refuses any non-movement clip without
+a ball keyframe. `tools/pes21_import/anim_metrics.py` measures all of that
+from the converted curves — velocity buckets, the pose the clip ends in,
+where and when a foot or a glove is on the ball — and
+`--class sliding|interfere|keeper` installs accordingly.
+**[docs/PES21_ANIMS.md](PES21_ANIMS.md) documents the selector filter by
+filter and what each family must declare.**
+
+That work also corrected the position-track scale: match animation uses
+`retarget.PES_POS_TO_M_GAMEPLAY` (1/20480, measured by
+`calibrate_pos_scale.py`) rather than the 1/128000 above, which put a
+sprinter's feet 15 cm above the pitch and left sliding tackles floating at
+standing height. The legacy constant is still the default so the
+entrance/cutscene export is unaffected; `gani_to_anim.py --gameplay-scale`
+selects the calibrated one.
 
 ## Face expressions (decoded; engine rig designed)
 

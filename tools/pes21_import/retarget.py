@@ -74,9 +74,23 @@ PES_TRACK_MAP = {
 PES_ROOT_UNIT = 0
 PES_MOTION_UNIT = 1
 
-# Position tracks store IEEE half-floats with the exponent rebased +7 (x128),
-# in millimetres: metres = raw / 128 / 1000.
+# Position tracks store IEEE half-floats with the exponent rebased +7 (x128).
+# Reading the result as millimetres (metres = raw / 128 / 1000) is what the
+# entrance/cutscene export was built on, and it is kept here so that content
+# does not move under anyone's feet.
 PES_POS_TO_M = 1.0 / 128000.0
+
+# For match animation that value is demonstrably too small by ~6x: at
+# 1/128000 a sprinter's ankles never come within 15 cm of the pitch and a
+# sliding tackle keeps its pelvis at standing height, swimming through the
+# air. GameplayFootball reads velocity and every ball contact off the root
+# track, so the scale was measured rather than assumed --
+# calibrate_pos_scale.py sweeps it against three properties any human
+# animation has (stance feet do not slide, ankles reach the grass and no
+# further, a player lying down has his pelvis ~0.14 m up). Those three agree
+# on a shallow optimum around 1/20000; 1/20480 = 2^11 * 10 sits inside it and
+# is the kind of constant an engine actually stores.
+PES_POS_TO_M_GAMEPLAY = 1.0 / 20480.0
 
 # Bind pose (Fox coords: Y up, +Z forward, metres), harvested from HDG
 # full-body .fmdl bone tables; frames are world-aligned (identity bind
