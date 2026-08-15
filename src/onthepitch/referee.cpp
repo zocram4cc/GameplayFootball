@@ -305,6 +305,7 @@ void Referee::Process() {
 void Referee::IssueDeferredCards() {
   const std::vector<CardBook::DeferredCard> cards = CardBook::Drain(cardBook);
   bool anyCardShown = false;
+  bool anyRedShown = false;
   for (const CardBook::DeferredCard& card : cards) {
     if (!card.player)
       continue;
@@ -314,6 +315,7 @@ void Referee::IssueDeferredCards() {
     } else if (card.foulType == 3) {
       match->SpamMessage("red card (advantage played)!!!");
       card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
+      anyRedShown = true;
     }
     if (Verbose())
       printf("referee: deferred card issued (type %i)\n", card.foulType);
@@ -326,7 +328,7 @@ void Referee::IssueDeferredCards() {
     // directly-whistled card path does.
     buffer.prepareTime += 6000;
     buffer.startTime = buffer.prepareTime + 2000;
-    match->StartCutscene("foul", 5.0f);
+    match->StartCutscene(anyRedShown ? "foul/card_red" : "foul/card_yellow", 5.0f);
   }
 }
 
@@ -377,6 +379,8 @@ void Referee::BallTouched() {
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
           match->SpamMessage("offside!");
+          // the assistant's flag: PES files those shots with the goal cameras
+          match->StartCutscene("goal/offside", 4.0f);
           if (Verbose())
             printf("referee: offside\n");
           break;
@@ -623,9 +627,13 @@ bool Referee::CheckFoul() {
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
+    // The camerawork follows the decision: a booking, a sending off, or - for
+    // a foul the referee waves away with a word - the telling-off shots.
     if (foul.foulType >= 2) {
       match->AddLostTime(MatchProgression::e_Stoppage_Card);
-      match->StartCutscene("foul", 5.0f);
+      match->StartCutscene(foul.foulType == 3 ? "foul/card_red" : "foul/card_yellow", 5.0f);
+    } else {
+      match->StartCutscene("foul/warning", 3.5f);
     }
     match->SpamMessage(spamMessage);
     // The statistic counts whistles, not collisions: it used to be incremented

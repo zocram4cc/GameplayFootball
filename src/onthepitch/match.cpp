@@ -326,12 +326,22 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
          {"timeup", "change", "foul", "pk", "result", "end"}) {
       std::string dir = std::string("media/cutscenes/") + category;
       std::error_code ec;
-      for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+      // A referee's decision is not one shot: the fouls are exported into
+      // subdirectories by what the official did (card_yellow, card_red,
+      // warning, protest, referee_run, injury, no_card), and goals keep an
+      // offside pool. Each subdirectory becomes its own pool named
+      // "<category>/<sub>", while the category pool holds everything, so a
+      // caller can ask for the precise moment and still fall back.
+      for (const auto& entry :
+           std::filesystem::recursive_directory_iterator(dir, ec)) {
         if (entry.path().extension() != ".camtrack") continue;
         std::ifstream file(entry.path());
         CamTrack track;
-        if (file.good() && track.Load(file))
-          cutscenePools[category].push_back(track);
+        if (!file.good() || !track.Load(file)) continue;
+        cutscenePools[category].push_back(track);
+        const std::string parent = entry.path().parent_path().filename().string();
+        if (parent != category)
+          cutscenePools[std::string(category) + "/" + parent].push_back(track);
       }
       if (!cutscenePools[category].empty()) loadedPools++;
     }
@@ -1078,6 +1088,12 @@ void Match::ResetSituation(const Vector3& focusPos) {
 void Match::StartCutscene(const std::string& category, float capSeconds) {
   if (activeCutscene) return;
   auto pool = cutscenePools.find(category);
+  // "foul/card_yellow" asks for the shots of a booking; if none were imported,
+  // fall back to the category's whole pool rather than showing nothing.
+  if (pool == cutscenePools.end() || pool->second.empty()) {
+    const size_t slash = category.find('/');
+    if (slash != std::string::npos) pool = cutscenePools.find(category.substr(0, slash));
+  }
   if (pool == cutscenePools.end() || pool->second.empty()) return;
   const CamTrack& track =
       pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
