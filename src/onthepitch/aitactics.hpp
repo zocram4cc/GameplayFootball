@@ -62,6 +62,18 @@ inline unsigned int GetZonePressureDuration_ms(float pressure) {
   return 700U + static_cast<unsigned int>(ClampSetting(pressure) * 1600.0f);
 }
 
+// The turnover reaction. For a counter-pressing side (TeamPhilosophy::
+// PressesOnPossessionLoss - Gegenpressing's defining switch), losing the ball
+// is itself the trigger and the selectivity gates are bypassed; every other
+// side keeps the selective zone-pressure trigger above.
+inline bool ShouldStartZonePressureOnLoss(bool pressesOnPossessionLoss, float pressure,
+                                          float attackingTerritory,
+                                          float primaryDefenderDistance) {
+  if (pressesOnPossessionLoss)
+    return true;
+  return ShouldStartZonePressure(pressure, attackingTerritory, primaryDefenderDistance);
+}
+
 // Counterattacking is a tendency, not a switch: the chance of springing a
 // runner at a turnover, shaped by how committed the opponent is and by the
 // counter_attack tactic. `attackingTerritory` is -1 at our goal, +1 at theirs.

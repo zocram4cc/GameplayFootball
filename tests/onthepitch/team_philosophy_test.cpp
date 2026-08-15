@@ -5,6 +5,7 @@
 
 #include "base/properties.hpp"
 #include "gametypes.hpp"
+#include "onthepitch/aitactics.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 
 using blunted::Properties;
@@ -117,6 +118,22 @@ TEST(TeamPhilosophyBehaviorTest, OnlyGegenpressingCounterPressesOnPossessionLoss
   EXPECT_TRUE(TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_Gegenpressing));
   EXPECT_FALSE(TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_Balanced));
   EXPECT_FALSE(TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_TikiTaka));
+}
+
+TEST(TeamPhilosophyBehaviorTest, CounterPressSwitchReachesTheZonePressureTrigger) {
+  // The Gegenpressing switch must actually drive the turnover reaction: fed
+  // into the zone-pressure-on-loss trigger it presses even where the selective
+  // gates decline (own territory, distant primary defender); the other
+  // archetypes keep the selective trigger.
+  EXPECT_TRUE(AITactics::ShouldStartZonePressureOnLoss(
+      TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_Gegenpressing), 0.5f,
+      -0.8f, 30.0f));
+  EXPECT_FALSE(AITactics::ShouldStartZonePressureOnLoss(
+      TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_Balanced), 0.5f, -0.8f,
+      30.0f));
+  EXPECT_TRUE(AITactics::ShouldStartZonePressureOnLoss(
+      TeamPhilosophy::PressesOnPossessionLoss(TeamPhilosophy::e_Philosophy_Balanced), 0.5f, 0.2f,
+      10.0f));
 }
 
 TEST(TeamPhilosophyBehaviorTest, GegenpressingCostsTwentyPercentExtraStamina) {

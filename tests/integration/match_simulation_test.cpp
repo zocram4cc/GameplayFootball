@@ -45,6 +45,19 @@ TEST(AITacticsTest, AttackingRunsAreAutomatedBelowTwoHumans) {
   EXPECT_FALSE(AITactics::ShouldAutomateAttackingRuns(3));
 }
 
+// Gegenpressing's defining switch: losing the ball is itself the pressing
+// trigger. For a counter-pressing side the selectivity gates (territory,
+// primary-defender distance) are bypassed; everyone else keeps them.
+TEST(AITacticsTest, CounterPressOnLossBypassesTheSelectivityGates) {
+  // Deep in the team's own territory with the nearest defender far away: the
+  // selective trigger declines, the counter-press does not.
+  EXPECT_TRUE(AITactics::ShouldStartZonePressureOnLoss(true, 0.5f, -0.8f, 30.0f));
+  EXPECT_FALSE(AITactics::ShouldStartZonePressureOnLoss(false, 0.5f, -0.8f, 30.0f));
+  // Without the switch, the outcome matches the selective trigger exactly.
+  EXPECT_TRUE(AITactics::ShouldStartZonePressureOnLoss(false, 0.5f, 0.2f, 10.0f));
+  EXPECT_FALSE(AITactics::ShouldStartZonePressureOnLoss(false, 0.0f, 1.0f, 1.0f));
+}
+
 TEST(AITacticsTest, TerritoryUsesTheTeamsAttackingDirection) {
   EXPECT_FLOAT_EQ(AITactics::GetAttackingTerritory(-52.5f, 1, 52.5f), 1.0f);
   EXPECT_FLOAT_EQ(AITactics::GetAttackingTerritory(52.5f, -1, 52.5f), 1.0f);

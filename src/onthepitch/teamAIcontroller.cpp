@@ -274,7 +274,11 @@ void TeamAIController::Process() {
           liveTeamTactics.GetReal("team_pressure", 0.5f);
       const float territory =
           AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
-      if (AITactics::ShouldStartZonePressure(pressureSetting, territory, primaryDistance))
+      // Gegenpressing counter-presses on the loss itself; ApplyTeamPressure
+      // then also keeps hunting longer via GetTeamPressureDurationBonus_ms.
+      if (AITactics::ShouldStartZonePressureOnLoss(
+              TeamPhilosophy::PressesOnPossessionLoss(philosophy), pressureSetting, territory,
+              primaryDistance))
         ApplyZonePressure();
     }
 
