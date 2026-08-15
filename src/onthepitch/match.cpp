@@ -118,12 +118,25 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Loading fullbody object");
 
+  // the default player body: the imported PES 2021 base model (kit shirt,
+  // shorts, socks, arms, face - see tools/pes21_import/pes_base_body.py).
+  // "player_body" selects another <name>.object / models/<name>.ase pair;
+  // "fullbody" is the migrated legacy low-poly body, and also the fallback
+  // when the configured body's files are absent.
+  std::string bodyName = GetConfiguration()->Get("player_body", "fullbody_pes");
+  if (!std::filesystem::exists("media/objects/players/" + bodyName + ".object")) {
+    Log(e_Warning, "Match", "Match",
+        "player_body '" + bodyName + "' not found, using 'fullbody'");
+    bodyName = "fullbody";
+  }
+
   ObjectLoader loader;
-  fullbodyNode = loader.LoadObject(GetScene3D(), "media/objects/players/fullbody.object");
+  fullbodyNode = loader.LoadObject(
+      GetScene3D(), "media/objects/players/" + bodyName + ".object");
 
   Log(e_Notice, "Match", "Match", "Fullbody object: getting vertex colors");
 
-  GetVertexColors(colorCoords);
+  GetVertexColors(colorCoords, "media/objects/players/models/" + bodyName + ".ase");
 
   designatedPossessionPlayer = 0;
 
@@ -1104,6 +1117,8 @@ Player* Match::PickModelViewerSubject(const std::string& filter) {
       if (filter.empty()) return fallback;
       const std::string modelDir =
           GetPlayerModelDir(candidate->GetPlayerData()->GetDatabaseID());
+      // "default" benches a player on the shared default body
+      if (filter == "default" && modelDir.empty()) return candidate;
       if (!modelDir.empty() && modelDir.find(filter) != std::string::npos)
         return candidate;
     }

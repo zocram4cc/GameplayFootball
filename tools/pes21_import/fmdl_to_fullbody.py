@@ -226,7 +226,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     color = encode_color(skin)
                     vertices.append((pos, uv, color))
                 tri.append(index[key])
-            faces.append(tri)
+            # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse.
+            # (4cc exports double every mesh so they hid this; Konami's
+            # single-sided originals do not.)
+            faces.append((tri[0], tri[2], tri[1]))
 
     if max_edge > 0.0:
         kept = []
