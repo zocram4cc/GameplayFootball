@@ -1308,7 +1308,10 @@ void Animation::Load(const std::string& filename) {
     iter++;
   }
 
-  cache_AnimType = variableCache.find("type")->second;
+  // an animation without a <type> block (or one that failed to parse) must not
+  // dereference end(): that read garbage and threw bad_alloc on the copy
+  const auto typeIter = variableCache.find("type");
+  cache_AnimType = typeIter != variableCache.end() ? typeIter->second : "";
 
   ConvertToStartFacingForwardIfIdle();
 }

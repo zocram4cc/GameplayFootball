@@ -145,7 +145,6 @@ std::string StripString(const std::string& input) {
 }
 
 std::string file_to_string(const std::string& filename) {
-  char line[1024];
   std::ifstream file;
 
   file.open(filename.c_str(), std::ios::in);
@@ -153,8 +152,11 @@ std::string file_to_string(const std::string& filename) {
   if (file.fail())
     Log(e_FatalError, "utils", "file_to_vector", "file not found or empty: " + filename);
 
+  // no bounded getline into a fixed buffer here: a line longer than the buffer
+  // sets failbit and silently truncates the file (see file_to_vector)
   std::string source;
-  while (file.getline(line, 1024)) {
+  std::string line;
+  while (std::getline(file, line)) {
     source.append(line);
   }
 
@@ -167,7 +169,6 @@ std::string file_to_string(const std::string& filename) {
 }
 
 void file_to_vector(const std::string& filename, std::vector<std::string>& destination) {
-  char line[32767];
   std::ifstream file;
 
   file.open(filename.c_str(), std::ios::in);
@@ -175,9 +176,12 @@ void file_to_vector(const std::string& filename, std::vector<std::string>& desti
   if (file.fail())
     Log(e_FatalError, "utils", "file_to_vector", "file not found or empty: " + filename);
 
-  while (file.getline(line, 32767)) {
-    std::string line_str;
-    line_str.assign(line);
+  // this used to be file.getline() into a char[32767]: a longer line (the
+  // PES-imported entrance .anim clips carry whole animation channels on one
+  // line) set failbit and silently dropped the rest of the file, leaving
+  // callers to parse a truncated asset
+  std::string line_str;
+  while (std::getline(file, line_str)) {
     // remove possible windows CR
     line_str.erase(std::remove(line_str.begin(), line_str.end(), '\r'), line_str.end());
     destination.push_back(line_str);
