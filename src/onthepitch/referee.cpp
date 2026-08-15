@@ -310,11 +310,13 @@ void Referee::IssueDeferredCards() {
   for (const CardBook::DeferredCard& card : cards) {
     if (!card.player)
       continue;
+    const std::string playerName =
+        card.player->GetPlayerData() ? card.player->GetPlayerData()->GetLastName() : "";
     if (card.foulType == 2) {
-      match->SpamMessage("yellow card (advantage played)");
+      match->ShowBanner(card.player->GetTeamID(), "Yellow Card", playerName + " (advantage played)");
       card.player->GiveYellowCard(match->GetActualTime_ms() + 4000);
     } else if (card.foulType == 3) {
-      match->SpamMessage("red card (advantage played)!!!");
+      match->ShowBanner(card.player->GetTeamID(), "Red Card", playerName + " (advantage played)");
       card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
       anyRedShown = true;
     }
@@ -381,7 +383,11 @@ void Referee::BallTouched() {
               OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
-          match->SpamMessage("offside!");
+          {
+            PlayerData* offsidePlayerData = playerIter->first->GetPlayerData();
+            match->ShowBanner(lastTouchTeamID, "Offside",
+                             offsidePlayerData ? offsidePlayerData->GetLastName() : "");
+          }
           // the assistant's flag: PES files those shots with the goal cameras
           match->StartCutscene("goal/offside", 4.0f);
           if (Verbose())
@@ -619,14 +625,14 @@ bool Referee::CheckFoul() {
     }
     buffer.teamID = foul.foulVictim->GetTeam()->GetID();
     buffer.active = true;
-    std::string spamMessage = "foul!";
+    std::string bannerTitle = "Foul";
     if (foul.foulType == 2) {
-      spamMessage.append(" yellow card");
+      bannerTitle = "Yellow Card";
       foul.foulPlayer->GiveYellowCard(match->GetActualTime_ms() +
                                       6000);  // need to find out proper moment
     }
     if (foul.foulType == 3) {
-      spamMessage.append(" red card!!!");
+      bannerTitle = "Red Card";
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
@@ -640,7 +646,11 @@ bool Referee::CheckFoul() {
     } else {
       match->StartCutscene("foul/warning", 3.5f);
     }
-    match->SpamMessage(spamMessage);
+    {
+      PlayerData* foulPlayerData = foul.foulPlayer->GetPlayerData();
+      match->ShowBanner(foul.foulPlayer->GetTeamID(), bannerTitle,
+                       foulPlayerData ? foulPlayerData->GetLastName() : "");
+    }
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.
     match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());
