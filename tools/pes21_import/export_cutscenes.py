@@ -98,7 +98,14 @@ def export_category(cut_dir, dest_dir, max_per_category=0, category=""):
         os.makedirs(target_dir, exist_ok=True)
         dest = os.path.join(target_dir, os.path.splitext(name)[0] + ".camtrack")
         try:
-            canm_to_camtrack.export(os.path.join(cut_dir, name), dest)
+            _cuts, frames = canm_to_camtrack.export(os.path.join(cut_dir, name), dest)
+            # Actor packs carry choreography, not camerawork (entrance_pl.py and
+            # export_actors.py handle those). They parse cleanly but yield no
+            # camera frames, so they must not leave an empty track behind.
+            if frames == 0:
+                os.remove(dest)
+                skipped += 1
+                continue
             written += 1
         except Exception as exc:  # a pack with no usable camera stream
             print("SKIP %s/%s: %s" % (os.path.basename(cut_dir), name, exc))

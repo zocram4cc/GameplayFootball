@@ -343,6 +343,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         if (parent != category)
           cutscenePools[std::string(category) + "/" + parent].push_back(track);
       }
+      // The people in shot: PES stages actors alongside the camera, so any
+      // .chor exported next to the camerawork joins a matching pool.
+      LoadCutsceneChoreo(category, dir);
       if (!cutscenePools[category].empty()) loadedPools++;
     }
     if (loadedPools > 0)
@@ -1052,6 +1055,96 @@ void Match::UpdateEntranceChoreo() {
   }
 }
 
+void Match::LoadCutsceneChoreo(const std::string& category, const std::string& dir) {
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
+    if (entry.path().extension() != ".chor") continue;
+    std::ifstream file(entry.path());
+    EntranceChoreo choreo;
+    if (!file.good() || !choreo.Load(file)) continue;
+    // the clips sit in an anims/ directory next to the choreography
+    const std::string base = entry.path().parent_path().string();
+    bool complete = true;
+    for (const auto& slot : choreo.GetSlots()) {
+      if (cutsceneClips.count(slot.animFile)) continue;
+      const std::string clipPath = base + "/" + slot.animFile;
+      if (!std::filesystem::exists(clipPath)) {
+        complete = false;
+        continue;
+      }
+      auto clip = std::make_shared<Animation>();
+      clip->Load(clipPath);
+      if (clip->GetFrameCount() >= 2) cutsceneClips[slot.animFile] = clip;
+    }
+    if (!complete) continue;
+    cutsceneChoreoPools[category].push_back(choreo);
+    const std::string parent = entry.path().parent_path().filename().string();
+    if (parent != category)
+      cutsceneChoreoPools[category + "/" + parent].push_back(choreo);
+  }
+}
+
+void Match::StartCutsceneChoreo(const std::string& category) {
+  activeCutsceneChoreo = nullptr;
+  cutsceneCast.clear();
+  auto pool = cutsceneChoreoPools.find(category);
+  if (pool == cutsceneChoreoPools.end() || pool->second.empty()) {
+    const size_t slash = category.find('/');
+    if (slash == std::string::npos) return;
+    pool = cutsceneChoreoPools.find(category.substr(0, slash));
+    if (pool == cutsceneChoreoPools.end() || pool->second.empty()) return;
+  }
+  activeCutsceneChoreo =
+      &pool->second[(actualTime_ms / 10) % pool->second.size()];
+
+  // Cast the players nearest each staged mark, so the referee's slot gets the
+  // referee-like actor and the celebration goes to whoever is closest to it.
+  std::vector<Player*> available;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* player : squad) available.push_back(player);
+  }
+  for (const auto& slot : activeCutsceneChoreo->GetSlots()) {
+    auto clip = cutsceneClips.find(slot.animFile);
+    if (clip == cutsceneClips.end() || available.empty()) continue;
+    Vector3 mark;
+    radian yaw = 0;
+    int animFrame = 0;
+    activeCutsceneChoreo->Sample(slot, 0.0f, mark, yaw, animFrame);
+    auto nearest = available.begin();
+    float bestDistance = (*nearest)->GetPosition().GetDistance(mark);
+    for (auto iter = available.begin(); iter != available.end(); iter++) {
+      const float distance = (*iter)->GetPosition().GetDistance(mark);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nearest = iter;
+      }
+    }
+    cutsceneCast.push_back({*nearest, &slot, clip->second.get()});
+    available.erase(nearest);
+  }
+}
+
+void Match::UpdateCutsceneChoreo() {
+  if (!activeCutsceneChoreo || !activeCutscene) {
+    if (!activeCutscene) {
+      activeCutsceneChoreo = nullptr;
+      cutsceneCast.clear();
+    }
+    return;
+  }
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  const float elapsedFrame = (now - cutsceneStart_ms) * 0.1f;  // 10 ms frames
+  for (auto& cast : cutsceneCast) {
+    Vector3 position;
+    radian yaw = 0;
+    int animFrame = 0;
+    activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
+  }
+}
+
 void Match::ResetSituation(const Vector3& focusPos) {
   camPos.clear();
   SetBallRetainer(nullptr);
@@ -1100,6 +1193,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
                    pool->second.size()];
   activeCutscene = &track;
   cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  StartCutsceneChoreo(category);
   float seconds = std::min(capSeconds, track.GetDurationSeconds());
   cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
   Log(e_Notice, "Match", "StartCutscene",
@@ -1873,6 +1967,7 @@ void Match::Process() {
     teams[0]->UpdateSwitch();
     teams[1]->UpdateSwitch();
     UpdateEntranceChoreo();
+    UpdateCutsceneChoreo();
     teams[0]->Process();
     teams[1]->Process();
     officials->Process();

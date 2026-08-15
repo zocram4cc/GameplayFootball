@@ -413,6 +413,17 @@ protected:
   };
   std::vector<EntranceCastMember> entranceCast;
   bool entranceCastBuilt = false;
+
+  // The same staging for stoppage cutscenes: a category's .chor files put the
+  // referee, the scorer and whoever else PES staged on their marks while the
+  // imported camerawork films them. Keyed by pool name, like the cameras.
+  std::map<std::string, std::vector<EntranceChoreo>> cutsceneChoreoPools;
+  std::map<std::string, std::shared_ptr<Animation>> cutsceneClips;
+  const EntranceChoreo* activeCutsceneChoreo = nullptr;
+  std::vector<EntranceCastMember> cutsceneCast;
+  void LoadCutsceneChoreo(const std::string& category, const std::string& dir);
+  void StartCutsceneChoreo(const std::string& category);
+  void UpdateCutsceneChoreo();
   void BuildEntranceCast();
   void UpdateEntranceChoreo();
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
