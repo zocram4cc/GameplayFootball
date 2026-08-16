@@ -256,7 +256,8 @@ def export_textures(fmdl_path, out_dir, names, prefix):
 
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
-            max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0):
+            max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0,
+            drop_base_parts=None):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -353,6 +354,25 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
         geom_at = base_text.find("*GEOMOBJECT {")
         base_head = base_text[:geom_at]
         base_geoms = base_text[geom_at:]
+
+        # A face-slot import brings its own head. Left in place, the stock
+        # body's face, scalp, hair and eyes sit inside it and fight it for
+        # depth, which reads as a dark, doubled head. Drop them.
+        if drop_base_parts:
+            kept_geoms = []
+            for block in base_geoms.split("*GEOMOBJECT {"):
+                if not block.strip():
+                    continue
+                name_match = re.search(r'\*NODE_NAME "([^"]*)"', block)
+                name = name_match.group(1) if name_match else ""
+                if name in drop_base_parts:
+                    continue
+                kept_geoms.append("*GEOMOBJECT {" + block)
+            dropped = base_geoms.count("*GEOMOBJECT {") - len(kept_geoms)
+            base_geoms = "".join(kept_geoms)
+            if dropped:
+                print("dropped %d base part(s): %s"
+                      % (dropped, ", ".join(sorted(drop_base_parts))))
         count_match = re.search(r"\*MATERIAL_COUNT\s+(\d+)", base_head)
         material_ref = int(count_match.group(1))
         base_head = base_head.replace(
@@ -464,6 +484,10 @@ if __name__ == "__main__":
                         help="debug: bind every vertex to this joint id")
     parser.add_argument("--only-meshes", default="",
                         help="comma-separated mesh indices to keep (after dedupe)")
+    parser.add_argument("--drop-base-parts", default="",
+                        help="comma-separated NODE_NAMEs to omit from --base; "
+                             "a face-slot import wants eyes,face,scalp,hair "
+                             "gone or the stock head fights the imported one")
     parser.add_argument("--max-edge", type=float, default=0.15,
                         help="drop triangles with an edge longer than this "
                              "(metres, 0 disables). On by default: a source "
@@ -477,6 +501,8 @@ if __name__ == "__main__":
                            only_meshes=({int(x) for x in args.only_meshes.split(",") if x.strip()}
                                         if args.only_meshes else None),
                            force_joint=args.force_joint,
-                           max_edge=args.max_edge)
+                           max_edge=args.max_edge,
+                           drop_base_parts=set(
+                               x.strip() for x in args.drop_base_parts.split(",") if x.strip()))
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))
