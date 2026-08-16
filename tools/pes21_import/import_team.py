@@ -53,6 +53,36 @@ def install_dir(game_dir, prefix, export_id):
                         "%s_%s" % (prefix, export_id))
 
 
+def install_kit_texture(pack_dir, dest):
+    """Puts the team's outfield kit in the model directory as body.png.
+
+    A 4cc character model carries its own textures for hair, dress and so on,
+    but the mesh wearing the actual football kit still points at the shared
+    PES kit map (u0XXXp0), which no pack ships - the kit itself lives under
+    Kit Textures as u0<team>p1. Without it that one mesh has nothing to
+    sample and the loader stops on a missing file.
+    """
+    kit_dir = os.path.join(pack_dir, "Kit Textures")
+    if not os.path.isdir(kit_dir):
+        return False
+    names = [n for n in sorted(os.listdir(kit_dir)) if n.lower().endswith((".dds", ".png"))]
+    outfield = [n for n in names if "p1" in n.lower()] or names
+    if not outfield:
+        return False
+    try:
+        from PIL import Image
+        image = Image.open(os.path.join(kit_dir, outfield[0]))
+        image.load()
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        os.makedirs(dest, exist_ok=True)
+        image.save(os.path.join(dest, "body.png"))
+        return True
+    except Exception as error:
+        print("  kit texture failed: %s" % error)
+        return False
+
+
 def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
@@ -103,6 +133,8 @@ def main():
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
         status = "dry-run"
         if not args.dry_run:
+            install_kit_texture(args.pack_dir, dest)
+            install_kit_texture(args.pack_dir, dest)
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge)
         print("%-6s %-28s %-34s %s" % (export_id, name[:28], rel, status))
