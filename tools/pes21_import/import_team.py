@@ -83,7 +83,8 @@ def install_kit_texture(pack_dir, dest):
         return False
 
 
-def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15):
+def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15,
+                  base_ase=None):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
         return "exists"
@@ -94,6 +95,13 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
                fmdl, dest, "--fmdl-lib", fmdl_lib,
                "--texture", texture_rel, "--max-tris", str(max_tris),
                "--max-edge", str(max_edge)]
+    if base_ase:
+        # A face-slot model is a head and hair, nothing else. Imported on its
+        # own it is a head floating where the body should be; it has to be
+        # composited over a skinned body.
+        command += ["--base", base_ase,
+                    # the stock head would otherwise sit inside the imported one
+                    "--drop-base-parts", "eyes,face,scalp,hair"]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return "FAILED: " + (result.stderr.strip().splitlines() or ["?"])[-1]
@@ -115,6 +123,9 @@ def main():
     parser.add_argument("--max-edge", type=float, default=0.15,
                         help="drop triangles with an edge longer than this "
                              "(metres); see fmdl_to_fullbody")
+    parser.add_argument("--base", default="",
+                        help="stock fullbody .ase to composite the import over; "
+                             "required for face-slot models, which carry no body")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -136,7 +147,8 @@ def main():
             install_kit_texture(args.pack_dir, dest)
             install_kit_texture(args.pack_dir, dest)
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", args.force, args.max_edge)
+                                   rel + "/body.png", args.force, args.max_edge,
+                                   args.base or None)
         print("%-6s %-28s %-34s %s" % (export_id, name[:28], rel, status))
         if db_id is not None:
             lines.append("%d %s" % (db_id, rel))
