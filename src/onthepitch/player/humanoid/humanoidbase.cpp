@@ -219,6 +219,7 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   ResetPosition(Vector3(0), Vector3(0));
 
   currentMentalImage = 0;
+  heldMentalImage.reset();
 }
 
 HumanoidBase::~HumanoidBase() {
@@ -729,7 +730,10 @@ bool HumanoidBase::ProcessChoreo() {
   choreoPending = false;
   choreoActive = true;
 
-  if (!currentMentalImage) currentMentalImage = match->GetMentalImage(0);
+  if (!currentMentalImage) {
+    heldMentalImage = match->GetMentalImageOwned(0);
+    currentMentalImage = heldMentalImage.get();
+  }
 
   const Vector3 dirVec = Vector3(0, -1, 0).GetRotated2D(choreoAngle);
 
@@ -794,7 +798,8 @@ void HumanoidBase::Process() {
   assert(match);
 
   if (!currentMentalImage) {
-    currentMentalImage = match->GetMentalImage(0);
+    heldMentalImage = match->GetMentalImageOwned(0);
+    currentMentalImage = heldMentalImage.get();
   }
 
   CalculateSpatialState();
@@ -1353,6 +1358,7 @@ void HumanoidBase::SetKit(boost::intrusive_ptr<Resource<Surface>> newKit) {
 
 void HumanoidBase::ResetSituation(const Vector3& focusPos) {
   currentMentalImage = 0;
+  heldMentalImage.reset();
 
   ResetPosition(spatialState.position, focusPos);
 }

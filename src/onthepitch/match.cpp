@@ -1059,6 +1059,17 @@ void Match::GetOfficialPlayers(std::vector<PlayerBase*>& players) {
   officials->GetPlayers(players);
 }
 
+std::shared_ptr<const MentalImage> Match::GetMentalImageOwned(int history_ms) {
+  if (mentalImages.empty()) return nullptr;
+
+  int index = int(round((float)history_ms / 10.0));
+  if (index >= (signed int)mentalImages.size()) index = mentalImages.size() - 1;
+  if (index < 0) index = 0;
+
+  mentalImages.at(index)->SetTimeStampNeg_ms(index * 10.0f);
+  return mentalImages.at(index);
+}
+
 const MentalImage* Match::GetMentalImage(int history_ms) {
   // No images yet (the first frames of a match) or none left (teardown): the
   // clamp below would ask for element -1 and hand back a bogus image, whose
