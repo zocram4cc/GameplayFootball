@@ -85,7 +85,11 @@ public:
   virtual void Hide();
   virtual void HideAllChildren();
 
-  void SetRecursiveZPriority(int prio);
+  // Gui2Task flattens the whole tree back to one priority every frame (see
+  // guitask.cpp), which leaves draw order equal to insertion order. A view
+  // that needs a stacking order of its own - a background plate underneath
+  // its own content, say - overrides this to re-apply that order afterwards.
+  virtual void SetRecursiveZPriority(int prio);
   virtual void SetZPriority(int prio);
   virtual int GetZPriority() const { return zPriority; }
   void PrintTree(int depth);

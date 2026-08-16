@@ -570,8 +570,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Gui2Root* root = menuTask->GetWindowManager()->GetRoot();
 
+  // Bottom right, not bottom centre: centred, it sat underneath the pre-match
+  // formation panel and on top of the version caption. Broadcast HUDs keep
+  // the middle of the lower third clear for banners anyway (spec section 4).
   radar = std::make_unique<Gui2Radar>(
-      menuTask->GetWindowManager(), "game_radar", 38, 78, 24, 18, this,
+      menuTask->GetWindowManager(), "game_radar", 74.5f, 79, 24, 18, this,
       matchData->GetTeamData(0)->GetColor1(), matchData->GetTeamData(0)->GetColor2(),
       matchData->GetTeamData(1)->GetColor1(), matchData->GetTeamData(1)->GetColor2());
   root->AddView(radar.get());
@@ -615,7 +618,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   statsOverlay = std::make_unique<Gui2StatsOverlay>(menuTask->GetWindowManager(), this);
   root->AddView(statsOverlay.get());
-  statsOverlay->Hide();
+  // Normally toggled with TAB (see gamepage.cpp). "debug_stats_overlay_always"
+  // holds it up from kickoff instead, so its layout can be judged in a
+  // headless capture without having to land a keypress - the same affordance
+  // "debug_formation_graphic_always" gives the pre-match panel.
+  if (GetConfiguration()->GetBool("debug_stats_overlay_always", false)) {
+    statsOverlay->UpdateStats();
+    statsOverlay->Show();
+  } else {
+    statsOverlay->Hide();
+  }
 
   // Pre-match formation graphic (docs/PRESENTATION_SPEC.md 1.1) and in-match
   // lower-third banner (section 4). Both drive their own visibility/fade off
