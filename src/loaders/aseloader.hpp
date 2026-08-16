@@ -6,6 +6,10 @@
 #ifndef _HPP_LOADERS_ASE
 #define _HPP_LOADERS_ASE
 
+#include <array>
+#include <string>
+#include <vector>
+
 #include "base/utils.hpp"
 #include "defines.hpp"
 #include "managers/resourcemanager.hpp"
@@ -36,7 +40,20 @@ public:
   void BuildTriangleMesh(const s_tree* data, boost::intrusive_ptr<Resource<GeometryData>> resource,
                          const std::vector<s_Material>& materialList);
 
+  // The four map paths of each mesh, in the order the meshes were added.
+  //
+  // A material's texture resource cannot say where its file lives: the
+  // resource manager registers surfaces under their BASENAME (see
+  // ResourceManager::Fetch), so a stadium's 'ass.png' is all that survives of
+  // 'media/objects/stadiums/pes_st060/textures/ass.png'. The geometry cache
+  // has to be able to fetch the same file again on a cold start, so the paths
+  // the parse saw are kept here for it.
+  const std::vector<std::array<std::string, 4>>& GetTexturePaths() const {
+    return texturePaths;
+  }
+
 protected:
+  std::vector<std::array<std::string, 4>> texturePaths;
   int triangleCount;
 };
 
