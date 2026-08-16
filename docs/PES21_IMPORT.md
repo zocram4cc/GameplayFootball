@@ -435,3 +435,37 @@ data/imports/<pack>/
   adboards/<name>.png
   chants/<name>.ogg
 ```
+
+## Importing a 4cc team straight from the game's own archives
+
+The AET packs are convenient but partial. A team that only exists inside the
+installed game can be pulled out of the CPKs instead — this is how /a/ was
+imported.
+
+The player-to-team mapping is *not* in `EDIT00000000`: that file is
+encrypted and has no readable strings. It is in the mod's base archive:
+
+    python3 tools/pes21_import/cpk.py <...>/download/4cc_01_base.cpk /tmp/pesdb \
+        --filter=pesdb
+
+`common/etc/pesdb/Team.bin` is plaintext, 70-byte records with the team id as
+a `u32` at offset 0 and the name at offset 20; a team occupies twenty
+consecutive records, one per language slot. `PlayerAssignment.bin` is
+16-byte records of `(id, playerId, teamId, shirtNumber)`. Between them,
+`/a/` is team **702** — and the 4cc convention is that its players are
+`teamId * 100 + n`, so 70201-70223.
+
+That is all the faces archive needs, because it is indexed by player id:
+
+    python3 tools/pes21_import/cpk.py <...>/download/4cc_40_faces.cpk /tmp/a_team \
+        --filter=face/real/702
+
+Each player is `face/real/<id>/#Win/face.fpk` (unpack with `fpk.py`, giving
+`face_high.fmdl` and `hair_high.fmdl` — for a custom character the whole
+model is in `hair_high`) plus `sourceimages/#windx11/*.ftex` (decode with
+`ftex.py`). Stage those as `<pack>/Boots/<kNNNN - Name>/boots.fmdl` with the
+decoded PNGs beside them and `import_team.py` takes it from there.
+
+Where a character lives differs by pack, and it is worth checking rather
+than assuming: in the 2HUG AET pack the whole character is `Boots/*/
+boots.fmdl` and `Faces/` holds only a `face_diff.bin`, no model at all.
