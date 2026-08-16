@@ -53,7 +53,7 @@ def install_dir(game_dir, prefix, export_id):
                         "%s_%s" % (prefix, export_id))
 
 
-def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False):
+def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
         return "exists"
@@ -62,7 +62,8 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False):
                os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "fmdl_to_fullbody.py"),
                fmdl, dest, "--fmdl-lib", fmdl_lib,
-               "--texture", texture_rel, "--max-tris", str(max_tris)]
+               "--texture", texture_rel, "--max-tris", str(max_tris),
+               "--max-edge", str(max_edge)]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return "FAILED: " + (result.stderr.strip().splitlines() or ["?"])[-1]
@@ -81,6 +82,9 @@ def main():
     parser.add_argument("--db-ids", default="",
                         help="explicit comma-separated database ids, in export order")
     parser.add_argument("--max-tris", type=int, default=20000)
+    parser.add_argument("--max-edge", type=float, default=0.15,
+                        help="drop triangles with an edge longer than this "
+                             "(metres); see fmdl_to_fullbody")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -100,7 +104,7 @@ def main():
         status = "dry-run"
         if not args.dry_run:
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", args.force)
+                                   rel + "/body.png", args.force, args.max_edge)
         print("%-6s %-28s %-34s %s" % (export_id, name[:28], rel, status))
         if db_id is not None:
             lines.append("%d %s" % (db_id, rel))
