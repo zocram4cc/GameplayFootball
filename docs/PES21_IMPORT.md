@@ -249,15 +249,76 @@ fullbody + its own vertex-color map per player.
 PES composes its match player from parts; `pes_base_body.py` assembles them
 into the engine's default model (`media/objects/players/fullbody_pes.*`,
 config key `player_body`, falls back to the migrated legacy `fullbody`):
-the runtime-kit shirt (`parts/undershirt` `torso_mat` — its empty diffuse
-slot is what PES fills with the team kit), kit shorts + socks, bare
-arms/thighs/hands/neck, boots, and a real face with scalp and hair.
+the runtime-kit shirt (`parts/undershirt`), kit shorts + socks, bare
+arms/thighs/hands/neck, eyeballs, boots, and a real face with scalp and hair.
 Sources: the PRISTINE `dt00_x64.cpk.bak` (the live dt00 is 4CC-edited for
 kit-body transparency), `dt32_g4` (parts), a boots fpk, a `dt36` face.
-Kit pieces are re-UV'd onto GF's kit template (IDW transfer from the stock
-body's own position→UV pairs; analytic sleeve flaps), so every existing
-team kit PNG keeps working; skin pieces reference `skin.jpg` for the
-engine's per-player flat tones; skin under garments is inset 4 mm.
+Skin pieces reference `skin.jpg` for the engine's per-player flat tones.
+
+### Composing PES parts
+
+PES parts are not a kit of pieces that simply drop together, and every one
+of these cost a visible defect before it was understood:
+
+- **The shirt is BOTH of undershirt.fmdl's materials.** `torso_mat` — the
+  slot PES leaves empty for the runtime kit — is only the SLEEVES; the
+  shirt's body, waist hem to collar, rides the `undershirt` material.
+  Taking only `torso_mat` shipped a default player with *no torso at all*.
+- **…but the sleeve is authored twice.** 1,396 of the shirt sleeve's
+  vertices sit exactly on `arm.fmdl`'s surface and another 363 within 6 mm
+  of it; the remaining 1,116 — the shoulder cap bridging torso (|x| ≤ 0.188)
+  to arm (|x| ≥ 0.233) — are all more than 20 mm clear. Faces whose every
+  vertex is within `DUPLICATE_SURFACE_M` of the other part are dropped;
+  exact-match de-duplication was not enough, and the millimetre-apart
+  remainder z-fought its way up the arm as stripes of kit and skin.
+- **Skin a garment wraps is not shipped at all.** 460 of the bare leg's
+  vertices sit within 8 mm of the sock, so a few millimetres of inset could
+  not stop the leg poking through in patches. `covered_ranges()` gives the
+  height bands the socks and shorts hide, stopping short of each hem so the
+  seam still closes.
+- **Slot parts are authored against their own skeleton.** The stock boots'
+  `sk_foot_l` is at Fox x 0.0898 where the player's foot bone is at 0.194,
+  so as-authored the boots float ~10 cm inboard of the ankles.
+  `part_rebind()` reads the part's `.skl` and re-anchors it per bone (Fox
+  rigs are world-aligned, so the bind difference is the whole transform).
+- **`eye.fmdl` is shared; heads are not.** The generic eyeball sits ~16 mm
+  below this face's socket and pushed a bare eyeball out through the cheek.
+  The face mesh leaves the socket open, so its border loop *is* the socket:
+  `eye_socket_shift()` matches the eyeball's centre to it.
+
+### Kit UVs
+
+Kit pieces are re-UV'd onto GF's kit template so every existing team kit PNG
+keeps working. The mapping is **analytic**, read off the template layout
+measured from the shipped art rather than transferred from the stock body:
+
+```
+front column   body u 0.105..0.394, full width (with sleeves) 0.004..0.495
+back  column   body u 0.605..0.894, full width            0.504..0.995
+waist seam v 0.590   shorts hem v 0.432   collar v 0.988   flap from v 0.86
+```
+
+A garment is a tube and the template is that tube unrolled, so height gives
+`v` within the garment's own band and the angle about the body gives `u`
+within its column — the front and back columns are mirror images. Sleeves
+map along/around the arm onto the corner flaps, blended into the body chart
+over the sleeve's length so the shoulder is continuous. Socks are the same
+unwrap into their two rectangles.
+
+Two rules the earlier stock-body transfer broke, both worth keeping:
+
+- **The template is not one continuous chart.** Body panel, each sleeve flap
+  and the front/back columns are separate islands. An island is chosen per
+  FACE and corners are duplicated along the seams; a triangle with corners
+  in two islands stretches across the whole sheet, which tore black and
+  green streaks down the flanks and around the shoulders.
+- **Stay `UV_MARGIN` clear of every printed edge.** Sitting exactly on it is
+  not enough — filtering and mipmaps reach past the border and pull in the
+  black gap between the columns, drawing a dark line down each flank and a
+  stripe down every sock.
+
+Measured against a real kit PNG, no shirt, shorts or sock vertex lands
+within 2 px of unprinted texture.
 Legacy hairstyles auto-disable on bodies that ship hair
 (`player_hairstyles`). Every default-body player also gets the imported
 face rig (`media/objects/players/faceweights.txt` + `expressions/`).
