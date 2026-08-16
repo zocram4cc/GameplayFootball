@@ -25,18 +25,19 @@
 # match picks it up automatically, or name one with "presentation_timeline".
 # Unknown keys are ignored, so a file may carry more than this build reads.
 
-beat stadium_card       13.0  camera=orbit
-beat tunnel             13.5  camera=entrance shot=passage01
-beat emerge             11.0  camera=entrance shot=passage02
+beat stadium_card       12.0  camera=orbit
 
-beat line_up            26.0  camera=entrance shot=cmn
-beat anthems            24.0  camera=entrance shot=anth
+# The walk-on: ent_009's per-stadium packs start the squads outside the
+# touchline and bring them in. The tunnel packs (ent_007 passage*) stage a
+# three-metre corridor because PES plays them inside tunnel geometry - without
+# that set they are a column of players walking up an empty pitch.
+beat walk_on            22.0  camera=entrance shot=ent_009
+beat line_up            16.0  camera=walkout  shot=ent_009
+beat anthems            20.0  camera=entrance shot=anth
 
 beat wide_home           9.0  camera=aerial   overlay=formation_home
 beat wide                4.0  camera=aerial
 beat wide_away           9.0  camera=aerial   overlay=formation_away
 
-beat team_picture_home   8.0  camera=entrance shot=circle_home
-beat team_picture_away   8.0  camera=entrance shot=center
-
+beat team_picture       10.0  camera=entrance shot=circle_home
 beat to_kickoff          6.0  camera=entrance shot=aerial

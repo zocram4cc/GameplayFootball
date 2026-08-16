@@ -1118,6 +1118,9 @@ void Match::LoadPrematchShots(const std::string& stadiumToken) {
     CamTrack track;
     if (!file.good() || !track.Load(file) || track.GetFrameCount() == 0) continue;
 
+    // The whole stem is a key as well, so a beat can name a specific pack
+    // ("ent_009_st002_cmn_cam") when a shared token would be ambiguous.
+    prematchShots.emplace(name, track);
     for (const std::string& token : words) {
       if (token == "ent" || token == "cam" || token.empty()) continue;
       if (token.size() <= 2) continue;              // family numbers
@@ -1164,6 +1167,12 @@ void Match::LoadPrematchStagingIndex(const std::string& stadiumToken) {
         word += c;
       }
     }
+    {
+      PrematchStaging whole;
+      whole.path = path;
+      whole.directory = std::filesystem::path(path).parent_path().string();
+      prematchStagings.emplace(name, whole);
+    }
     for (const std::string& token : words) {
       if (token == "ent" || token == "pl" || token.size() <= 2) continue;
       if (token.rfind("st", 0) == 0) continue;
@@ -1183,6 +1192,14 @@ void Match::LoadPrematchStagingIndex(const std::string& stadiumToken) {
 Match::PrematchStaging* Match::AcquirePrematchStaging(const std::string& shot) {
   if (shot.empty()) return nullptr;
   auto found = prematchStagings.find(shot);
+  if (found == prematchStagings.end()) {
+    for (auto entry = prematchStagings.begin(); entry != prematchStagings.end(); ++entry) {
+      if (entry->first.find(shot) != std::string::npos) {
+        found = entry;
+        break;
+      }
+    }
+  }
   if (found == prematchStagings.end()) return nullptr;
   PrematchStaging& staging = found->second;
   if (!staging.loaded) {
@@ -1208,7 +1225,12 @@ Match::PrematchStaging* Match::AcquirePrematchStaging(const std::string& shot) {
 const CamTrack* Match::FindPrematchShot(const std::string& shot) const {
   if (shot.empty()) return nullptr;
   auto found = prematchShots.find(shot);
-  return found == prematchShots.end() ? nullptr : &found->second;
+  if (found != prematchShots.end()) return &found->second;
+  // Fall back to a substring of the pack name, so a beat can ask for
+  // "ent_009" and take whichever of that family this stadium installed.
+  for (const auto& entry : prematchShots)
+    if (entry.first.find(shot) != std::string::npos) return &entry.second;
+  return nullptr;
 }
 
 PrematchTimeline::Timeline Match::LoadPrematchTimeline() const {
@@ -1394,12 +1416,30 @@ void Match::UpdateEntranceChoreo() {
         (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
             ? prematchTimeline.beats[beat.beatIndex].shot
             : std::string();
-    PrematchStaging* staging = AcquirePrematchStaging(shot);
+    std::string wanted = shot;
+    if (wanted.empty()) {
+      // A beat with no staging of its own: before anything has been staged,
+      // borrow the first pack the sequence will use and hold its opening
+      // frame, so the establishing shots look out over a pitch the squads
+      // have not walked onto yet.
+      for (const auto& other : prematchTimeline.beats)
+        if (!other.shot.empty()) {
+          if (!activeStaging) wanted = other.shot;
+          break;
+        }
+    }
+    PrematchStaging* staging = AcquirePrematchStaging(wanted);
+    const bool holdOpeningFrame = shot.empty() && !wanted.empty();
     // A beat with no staging of its own keeps the previous one standing
     // rather than dropping everyone back to the scripted walk mid-sequence.
     if (staging) {
       activeStaging = staging;
-      stagingStartSeconds = GetEntranceElapsedSeconds();
+      // Holding the opening frame: park the clock on it rather than letting
+      // the pack play out under a shot that is not looking at it.
+      stagingStartSeconds =
+          holdOpeningFrame ? GetEntranceElapsedSeconds() * 2.0f : GetEntranceElapsedSeconds();
+      if (holdOpeningFrame) stagingStartSeconds = GetEntranceElapsedSeconds();
+      stagingHoldsOpeningFrame = holdOpeningFrame;
       BuildEntranceCast();
     } else if (!activeStaging && entranceChoreo.IsLoaded()) {
       BuildEntranceCast();
@@ -1409,7 +1449,9 @@ void Match::UpdateEntranceChoreo() {
   if (entranceCast.empty()) return;
 
   const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
-  const float elapsedFrame = (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
+  const float elapsedFrame =
+      stagingHoldsOpeningFrame ? 0.0f
+                               : (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
   for (auto& cast : entranceCast) {
     Vector3 position;
     radian yaw = 0;

@@ -95,16 +95,14 @@ Timeline Default() {
   // reference spends between its title card and the first whistle.
   Timeline timeline;
   timeline.beats = {
-      MakeBeat("stadium_card", 13.0f, Camera::Orbit, Overlay::None),
-      MakeBeat("tunnel", 13.5f, Camera::Entrance, Overlay::None, "passage01"),
-      MakeBeat("emerge", 11.0f, Camera::Entrance, Overlay::None, "passage02"),
-      MakeBeat("line_up", 26.0f, Camera::Entrance, Overlay::None, "cmn"),
-      MakeBeat("anthems", 24.0f, Camera::Entrance, Overlay::None, "anth"),
+      MakeBeat("stadium_card", 12.0f, Camera::Orbit, Overlay::None),
+      MakeBeat("walk_on", 22.0f, Camera::Entrance, Overlay::None, "ent_009"),
+      MakeBeat("line_up", 16.0f, Camera::Walkout, Overlay::None, "ent_009"),
+      MakeBeat("anthems", 20.0f, Camera::Entrance, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
       MakeBeat("wide_away", 9.0f, Camera::Aerial, Overlay::FormationAway),
-      MakeBeat("team_picture_home", 8.0f, Camera::Entrance, Overlay::None, "circle_home"),
-      MakeBeat("team_picture_away", 8.0f, Camera::Entrance, Overlay::None, "center"),
+      MakeBeat("team_picture", 10.0f, Camera::Entrance, Overlay::None, "circle_home"),
       MakeBeat("to_kickoff", 6.0f, Camera::Entrance, Overlay::None, "aerial"),
   };
   return timeline;

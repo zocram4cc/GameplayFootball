@@ -124,9 +124,9 @@ TEST(PrematchTimelineDefaultTest, RunsLongEnoughToReadAsABroadcastOpening) {
 
 TEST(PrematchTimelineDefaultTest, FollowsTheReferenceRunningOrder) {
   // VGL 26 Day 3 from 14:35: a stadium establishing wide under the
-  // competition card, the tunnel walkout, the players emerging, a long hold
-  // on the line, the wides the lineup graphics sit over, the team pictures,
-  // and away to kickoff.
+  // competition card, the walk-on from outside the touchline, a hold on the
+  // line, the anthems, the wides the lineup graphics sit over, the team
+  // picture, and away to kickoff.
   const Timeline timeline = Default();
   ASSERT_GE(timeline.beats.size(), 8u);
 
@@ -136,19 +136,19 @@ TEST(PrematchTimelineDefaultTest, FollowsTheReferenceRunningOrder) {
     return -1;
   };
   const int card = indexOf("stadium_card");
-  const int tunnel = indexOf("tunnel");
+  const int walkOn = indexOf("walk_on");
   const int line = indexOf("line_up");
   const int wideHome = indexOf("wide_home");
-  const int picture = indexOf("team_picture_home");
+  const int picture = indexOf("team_picture");
 
   ASSERT_GE(card, 0);
-  ASSERT_GE(tunnel, 0);
+  ASSERT_GE(walkOn, 0);
   ASSERT_GE(line, 0);
   ASSERT_GE(wideHome, 0);
   ASSERT_GE(picture, 0);
 
   EXPECT_EQ(card, 0);
-  EXPECT_LT(tunnel, line);
+  EXPECT_LT(walkOn, line);
   EXPECT_LT(line, wideHome);
   EXPECT_LT(wideHome, picture);
 
@@ -320,13 +320,17 @@ TEST(PrematchTimelineParseTest, ABeatCanNameTheAuthoredShotItWants) {
 
 TEST(PrematchTimelineDefaultTest, EachStagedBeatAsksForItsOwnPesShot) {
   // Each ent_<id> family is a different shot, not a variant of one entrance:
-  // the tunnel and the anthems each name theirs.
+  // the walk-on, the anthems and the team picture each name theirs.
   const Timeline timeline = Default();
-  std::string tunnelShot, anthemShot;
+  std::string walkOnShot, anthemShot, pictureShot;
   for (const auto& beat : timeline.beats) {
-    if (beat.name == "tunnel") tunnelShot = beat.shot;
+    if (beat.name == "walk_on") walkOnShot = beat.shot;
     if (beat.name == "anthems") anthemShot = beat.shot;
+    if (beat.name == "team_picture") pictureShot = beat.shot;
   }
-  EXPECT_EQ(tunnelShot, "passage01");
+  // ent_009's packs start the squads outside the touchline; the tunnel packs
+  // need geometry no venue here provides, so they are deliberately unused.
+  EXPECT_EQ(walkOnShot, "ent_009");
   EXPECT_EQ(anthemShot, "anth");
+  EXPECT_EQ(pictureShot, "circle_home");
 }

@@ -466,6 +466,7 @@ protected:
   PrematchStaging* activeStaging = nullptr;
   int stagedBeatIndex = -2;
   float stagingStartSeconds = 0.0f;
+  bool stagingHoldsOpeningFrame = false;
   void RememberPrematchCamera();
   // Hides/shows the persistent in-match HUD (scoreboard, radar).
   void ShowMatchHud(bool visible);
