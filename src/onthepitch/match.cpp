@@ -422,7 +422,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     std::string stadiumObject = GetConfiguration()->Get(
         "stadium_object", "media/objects/stadiums/test/test.object");
     tmpStadiumNode = loader.LoadObject(GetScene3D(), stadiumObject);
+    Log(e_Notice, "Match", "Match", "stadium object loaded");
     RandomizeAdboards(tmpStadiumNode);
+    Log(e_Notice, "Match", "Match", "adboards randomized");
   }
   if (SuperDebug())
     tmpStadiumNode =
@@ -443,6 +445,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
     iter++;
   }
+  Log(e_Notice, "Match", "Match", "stadium geometry split");
   tmpStadiumNode->Exit();
   tmpStadiumNode.reset();
 
@@ -953,6 +956,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
     std::vector<MaterializedTriangleMesh>& tmesh =
         adboardGeom->GetResource()->GetTriangleMeshesRef();
 
+    bool replacedAny = false;
     for (unsigned int i = 0; i < tmesh.size(); i++) {
       if (tmesh.at(i).material.diffuseTexture != boost::intrusive_ptr<Resource<Surface>>()) {
         std::string identString = tmesh.at(i).material.diffuseTexture->GetIdentString();
@@ -962,6 +966,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
               adboardSurfaces.at(int(floor(random(0, adboardSurfaces.size() - 1.001f))));
           tmesh.at(i).material.specular_amount = 0.2f;
           tmesh.at(i).material.shininess = 0.1f;
+          replacedAny = true;
         }
       } else if (Verbose())
         printf("no diffuse texture\n");
@@ -969,7 +974,12 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
 
     adboardGeom->resourceMutex.unlock();
 
-    geomObject->OnUpdateGeometryData();
+    // Only the geometry that actually got a new hoarding needs re-uploading.
+    // This ran for every object in the stadium whether or not it held an
+    // adboard at all; an imported stadium has few adboard meshes and a great
+    // many others, so most of those re-uploads were asking the graphics
+    // system to redo work for an unchanged mesh.
+    if (replacedAny) geomObject->OnUpdateGeometryData();
 
     stadiumGeomsIter++;
   }

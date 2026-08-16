@@ -7,6 +7,7 @@
 
 #include "asecache.hpp"
 
+#include <chrono>
 #include <fstream>
 #include <vector>
 
@@ -29,18 +30,32 @@ ASELoader::~ASELoader() {}
 void ASELoader::Load(const std::string& filename,
                      boost::intrusive_ptr<Resource<GeometryData>> resource) {
   triangleCount = 0;
+  texturePaths.clear();
 
   // Prefer the prebuilt binary cache: an imported stadium is tens of megabytes
   // of text, and parsing it is by far the most expensive thing a scene load
   // does. Caches are produced during import and ship with the content, so a
   // player never pays for the parse; if one is missing or stale (the .ase is
   // editable) we parse and leave a cache behind for next time.
-  if (LoadGeometryCache(filename, resource)) return;
+  const auto started = std::chrono::steady_clock::now();
+  auto elapsedMs = [&started]() {
+    return (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - started)
+        .count();
+  };
+
+  if (LoadGeometryCache(filename, resource)) {
+    Log(e_Notice, "ASELoader", "Load",
+        filename + ": from cache in " + int_to_str(elapsedMs()) + " ms");
+    return;
+  }
 
   s_tree* data = tree_load(filename);
   Build(data, resource);
   delete data;
-  SaveGeometryCache(filename, resource);
+  Log(e_Notice, "ASELoader", "Load",
+      filename + ": parsed in " + int_to_str(elapsedMs()) + " ms");
+  SaveGeometryCache(filename, resource, texturePaths);
   // printf("%s: %i total triangles\n", filename.c_str(), triangleCount);
 }
 
@@ -454,6 +469,15 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
     material.specular_amount = atof(materialList.at(material_reference).specular_amount.c_str());
     material.self_illumination = materialList.at(material_reference).self_illumination;
   }
+
+  // Recorded in step with AddTriangleMesh below, so the cache can pair each
+  // mesh with the files its textures actually came from - the material's own
+  // resources only remember their basenames (see GetTexturePaths).
+  std::array<std::string, 4> meshTexturePaths;
+  if (material_reference != -1)
+    for (int i = 0; i < 4; i++)
+      meshTexturePaths[i] = materialList.at(material_reference).maps[i];
+  texturePaths.push_back(meshTexturePaths);
 
   resource->resourceMutex.lock();
   std::vector<unsigned int> indices;

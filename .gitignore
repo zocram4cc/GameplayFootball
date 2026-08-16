@@ -29,3 +29,7 @@ data/media/players/custom/
 
 # 4cc Blender Starter Pack: external tooling (pes-fmdl addon), not ours
 /4cc Blender Starter Pack/
+
+# Derived geometry caches: built from the .ase on first load, rebuilt
+# whenever it changes. Never a source - see src/loaders/asecache.hpp.
+*.geomcache
