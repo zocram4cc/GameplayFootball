@@ -393,7 +393,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   if (introSeconds > 0.0f) {
     entranceSeconds = introSeconds;
     entranceActive = true;
-    entranceRealStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    // Started on the first Process(), not here: the rest of the match load -
+    // the stadium above all - still has to happen, and timing the
+    // presentation from the constructor would spend most of it behind a
+    // loading screen with nothing on the pitch to look at.
+    entranceRealStart_ms = 0;
     introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
     // Held one tick ahead and pushed forward every Process() while the
     // entrance runs; the referee latches it as the kickoff's prepare time.
@@ -1110,6 +1114,7 @@ void Match::RememberPrematchCamera() {
 
 float Match::GetEntranceElapsedSeconds() const {
   if (!entranceActive) return entranceSeconds;
+  if (entranceRealStart_ms == 0) return 0.0f;  // not ticking yet
   const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
   if (now <= entranceRealStart_ms) return 0.0f;
   return (now - entranceRealStart_ms) * 0.001f;
@@ -1959,10 +1964,12 @@ void Match::UpdateIngameCamera() {
       }
 
       // Orbit: a slow authored sweep of the stands, one full circle across
-      // however many beats ask for it.
+      // however many beats ask for it. Set back and high enough to hold the
+      // whole venue in frame - closer in it looked past the stands at open
+      // sky, which is a poor way to open a broadcast.
       const float a = t * 2.0f * pi;
-      const float radius = 42.0f;
-      const float camHeight = 16.0f;
+      const float radius = 78.0f;
+      const float camHeight = 30.0f;
       cameraNodePosition = Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
       cameraNodeOrientation.SetAngleAxis(a, Vector3(0, 0, 1));
       cameraOrientation.SetAngleAxis(0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
@@ -2255,6 +2262,12 @@ void Match::Process() {
   // The presentation runs on real seconds (see Match::IsInEntrance). Until
   // its budget is spent, keep the kickoff one tick out of reach.
   if (entranceActive) {
+    // The presentation's clock starts the first time the match is processed,
+    // which is the first moment anything of it can actually be on screen.
+    if (entranceRealStart_ms == 0) {
+      entranceRealStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+      Log(e_Notice, "Match", "Process", "pre-match presentation starts");
+    }
     if (GetEntranceElapsedSeconds() >= entranceSeconds) {
       entranceActive = false;
       Log(e_Notice, "Match", "Process",
