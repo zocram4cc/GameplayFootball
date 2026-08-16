@@ -71,28 +71,56 @@ _T_RE = re.compile(r"\*MESH_TVERT\s+(\d+)\t([-\d.e]+)\t([-\d.e]+)")
 _F_RE = re.compile(r"\*MESH_FACE\s+(\d+):\s+A:\s+(\d+)\s+B:\s+(\d+)\s+C:\s+(\d+)")
 _TF_RE = re.compile(r"\*MESH_TFACE\s+(\d+)\t(\d+)\t(\d+)\t(\d+)")
 
-# GF kit template layout (ASE v runs bottom-up): one continuous body suit
-# per column - shirt with the shorts painted directly below it - front
-# column u < 0.5, back column u > 0.5, with the sleeves on T-flaps at the
-# top corners; the two mid-left rectangles are the SOCKS (the stock socks
-# map there). Measured off kit_UVWnormal.png.
-SLEEVE_FLAPS = {
-    # (front/back, left/right of the TEXTURE column): (u0, u1)
-    ("front", "outer_l"): (0.012, 0.105),
-    ("front", "outer_r"): (0.313, 0.410),
-    ("back", "outer_l"): (0.586, 0.684),
-    ("back", "outer_r"): (0.889, 0.986),
+# GF kit template layout (ASE v runs bottom-up), MEASURED off the shipped
+# kit art rather than eyeballed: one continuous body suit per column - the
+# shirt with the shorts painted directly below it - front column u < 0.5,
+# back column u > 0.5, sleeves on T-flaps at the top corners, socks on the
+# two mid-left rectangles.
+#
+#   front column   body u 0.105..0.394, full width (with sleeves) 0.004..0.495
+#   back  column   body u 0.605..0.894, full width            0.504..0.995
+#   waist seam v 0.590   shorts hem v 0.432   collar v 0.988
+#   the sleeve flap starts where the column widens, v ~0.86
+#
+# Both columns are 0.1445 wide either side of their centre, so the body
+# panel and the sleeve flap MEET exactly at the column's body edge - which
+# is what keeps the shoulder continuous instead of jumping across the sheet.
+COLUMN_CENTRE = {"front": 0.2495, "back": 0.7495}
+# Every island is held UV_MARGIN clear of the printed edge. Sitting exactly
+# on it is not enough: bilinear filtering and mipmaps reach past the border
+# and pull in the black gap between the two columns, which drew a dark line
+# down each flank and a stripe down every sock.
+UV_MARGIN = 0.004
+BODY_HALF_U = 0.1445 - UV_MARGIN
+# which way u runs with the player's +x: the back column is a mirror
+COLUMN_X_SIGN = {"front": 1.0, "back": -1.0}
+# each garment's own band of the column
+GARMENT_V = {"shirt": (0.594, 0.988 - UV_MARGIN),
+             "shorts": (0.440 + UV_MARGIN, 0.588)}
+# the template's shirt-hem / shorts-waist seam, in ASE v
+KIT_WAIST_V = 0.590
+# Sleeve flaps, (u at the top of the arm -> u at the bottom). The first
+# value is the column's body edge, so the sleeve continues the body panel.
+# The old table had the right-hand flaps at 0.313..0.410 / 0.586..0.684,
+# INSIDE the body panel, so each sleeve was painted with a strip of chest.
+SLEEVE_FLAP_U = {
+    ("front", True): (0.2495 + BODY_HALF_U, 0.495 - UV_MARGIN),
+    ("front", False): (0.2495 - BODY_HALF_U, 0.004 + UV_MARGIN),
+    ("back", True): (0.7495 - BODY_HALF_U, 0.504 + UV_MARGIN),
+    ("back", False): (0.7495 + BODY_HALF_U, 0.995 - UV_MARGIN),
 }
-SLEEVE_V_TOP = 0.97      # shoulder end of the flap (ASE v)
-# Sleeve hem. The flap is a T, not a rectangle: measured off the template,
-# its full width only reaches down to v ~0.86 and there is nothing below
-# v 0.80, so a hem at 0.80 ran the sleeve off the printed fabric and
-# rendered black wedges along the arms.
-SLEEVE_V_BOTTOM = 0.86
+# hem .. shoulder end of the flap. The flap is a T, not a rectangle: the
+# column only reaches full width above v ~0.86, so a lower hem ran the
+# sleeve off the printed fabric and rendered black wedges along the arms.
+SLEEVE_V = (0.86 + UV_MARGIN, 0.988 - UV_MARGIN)
 SLEEVE_LENGTH_M = 0.30   # arm length the flap covers; longer sleeves clamp
-# the template's shirt-hem / shorts-waist seam, in ASE v (measured off
-# kit_UVWnormal.png: the horizontal seam across both body columns)
-KIT_WAIST_V = 0.59
+# the two sock rectangles, (u0, u1, v0, v1); left is the right-hand pair
+SOCK_RECT = {
+    "left": (0.277 + UV_MARGIN, 0.537 - UV_MARGIN, 0.251 + UV_MARGIN,
+             0.428 - UV_MARGIN),
+    "right": (0.006 + UV_MARGIN, 0.266 - UV_MARGIN, 0.251 + UV_MARGIN,
+              0.428 - UV_MARGIN),
+}
 # shirt vertices these joints drive belong on the template's sleeve flaps
 SLEEVE_JOINTS = frozenset((
     "left_shoulder", "left_elbow", "left_hand",
@@ -273,74 +301,223 @@ def idw_uv(pos, samples, k=4, power=2.0):
     return (num_u / den, num_v / den)
 
 
-def sleeve_uv(pos, normal_y):
-    """Analytic flap mapping for sleeve vertices (the stock body has no
-    sleeves to learn from). Along-arm distance -> flap v; the around-arm
-    angle -> flap u, front and back hemispheres on their own flaps."""
-    sign = 1 if pos[0] > 0 else -1
+def _arm_frame(sign):
+    """(shoulder, unit axis) of one arm in the bind pose."""
     sh, el = _SHOULDER[sign], _ELBOW[sign]
     axis = tuple(e - s for e, s in zip(el, sh))
-    alen = math.sqrt(sum(c * c for c in axis))
-    axis = tuple(c / alen for c in axis)
+    length = math.sqrt(sum(c * c for c in axis))
+    return sh, tuple(c / length for c in axis)
+
+
+def arm_param(pos):
+    """Sleeve vertex -> (x sign, along-arm 0..1, around-arm angle).
+
+    The angle is measured in the plane across the arm from the arm's own
+    UP direction, so it stays well defined all the way to the shoulder;
+    the old `perp[2] / |perp|` collapsed there, which is what fanned the
+    sleeve into those long spikes across the template.
+    """
+    sign = 1 if pos[0] > 0 else -1
+    sh, axis = _arm_frame(sign)
     rel = tuple(p - s for p, s in zip(pos, sh))
-    t = max(0.0, sum(r * a for r, a in zip(rel, axis)))
-    v = SLEEVE_V_TOP - min(t / SLEEVE_LENGTH_M, 1.0) * (SLEEVE_V_TOP - SLEEVE_V_BOTTOM)
-    # around-arm: project out the axis, measure the up-ness across the flap
-    perp = tuple(r - t * a for r, a in zip(rel, axis))
-    plen = math.sqrt(sum(c * c for c in perp)) or 1.0
-    upness = perp[2] / plen                      # -1 under arm .. +1 on top
-    side = "front" if normal_y < 0.0 else "back"
-    u0, u1 = SLEEVE_FLAPS[(side, "outer_l" if sign > 0 else "outer_r")]
-    frac = 0.5 + 0.5 * upness
-    if sign < 0:
-        frac = 1.0 - frac
-    return (u0 + frac * (u1 - u0), v)
+    along = sum(r * a for r, a in zip(rel, axis))
+    perp = tuple(r - along * a for r, a in zip(rel, axis))
+    plen = math.sqrt(sum(c * c for c in perp))
+    if plen < 1e-5:
+        return sign, max(0.0, along) / SLEEVE_LENGTH_M, 0.0
+    # arm-local up (world +z with the axis projected out) and the direction
+    # across it; with the arm along +/-x this puts +angle on the player's front
+    up = (-axis[2] * axis[0], -axis[2] * axis[1], 1.0 - axis[2] * axis[2])
+    ulen = math.sqrt(sum(c * c for c in up)) or 1.0
+    up = tuple(c / ulen for c in up)
+    across = (axis[1] * up[2] - axis[2] * up[1],
+              axis[2] * up[0] - axis[0] * up[2],
+              axis[0] * up[1] - axis[1] * up[0])
+    angle = math.atan2(sum(p * c for p, c in zip(perp, across)),
+                       sum(p * u for p, u in zip(perp, up)))
+    return sign, max(0.0, along) / SLEEVE_LENGTH_M, angle
+
+
+def sleeve_uv(pos, side, frame, garment):
+    """UV on the template's sleeve flap: along the arm -> v, around it -> u.
+
+    Blended into the body chart over the length of the sleeve. The flap and
+    the body panel meet at the column's body edge, but they run in different
+    directions along that edge - one around the arm, one around the chest -
+    so butting them together left a torn line across each shoulder. At the
+    shoulder itself (along = 0) this returns the body chart exactly, and it
+    reaches the pure flap only at the sleeve's end.
+    """
+    sign, along, angle = arm_param(pos)
+    v_hem, v_shoulder = SLEEVE_V
+    v = v_shoulder - min(along, 1.0) * (v_shoulder - v_hem)
+    u0, u1 = SLEEVE_FLAP_U[(side, sign > 0)]
+    frac = min(abs(angle) / math.pi, 1.0)      # 0 on top of the arm, 1 under
+    u = u0 + frac * (u1 - u0)
+    w = min(max(along, 0.0), 1.0)
+    u_body, v_body = body_uv(pos, frame, side, garment)
+    return ((1.0 - w) * u_body + w * u, (1.0 - w) * v_body + w * v)
+
+
+def body_uv(pos, frame, side, garment):
+    """UV on the template's body panel: height -> v, angle around -> u.
+
+    A garment is a tube around the body and the template is that tube
+    unrolled, so both coordinates are read straight off the geometry. The
+    earlier version interpolated UVs from the stock body's own vertices,
+    which is only as smooth as that (very low poly, differently
+    proportioned) mesh - the resulting chart was a tangle.
+    """
+    z_lo, z_hi, y_centre = frame
+    t = (pos[2] - z_lo) / (z_hi - z_lo) if z_hi > z_lo else 0.0
+    v_lo, v_hi = GARMENT_V[garment]
+    v = v_lo + min(max(t, 0.0), 1.0) * (v_hi - v_lo)
+
+    phi = math.atan2(pos[0], -(pos[1] - y_centre))
+    if side == "front":
+        around = phi
+    else:                                   # signed angle from the back centre
+        around = (math.pi - phi) if phi > 0 else (-math.pi - phi)
+    around = min(max(around / (math.pi * 0.5), -1.0), 1.0)
+    u = COLUMN_CENTRE[side] + COLUMN_X_SIGN[side] * around * BODY_HALF_U
+    return (u, v)
+
+
+def boundary_loops(mesh):
+    """-> [[(x, y, z)]] the mesh's open borders, as connected vertex groups."""
+    import collections
+    edges = collections.Counter()
+    position = {}
+    adjacency = collections.defaultdict(set)
+    for face in mesh.faces:
+        ids = [id(v) for v in face.vertices]
+        for v in face.vertices:
+            position[id(v)] = (v.position.x, v.position.y, v.position.z)
+        for a, b in ((0, 1), (1, 2), (2, 0)):
+            edges[tuple(sorted((ids[a], ids[b])))] += 1
+    border = [e for e, count in edges.items() if count == 1]
+    for a, b in border:
+        adjacency[a].add(b)
+        adjacency[b].add(a)
+    seen, loops = set(), []
+    for start in adjacency:
+        if start in seen:
+            continue
+        stack, group = [start], []
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            group.append(position[node])
+            stack.extend(adjacency[node] - seen)
+        loops.append(group)
+    return loops
+
+
+def eye_socket_shift(face_fmdl, eye_fmdl):
+    """-> (dx, dy, dz) in GF coords seating the eyeballs in THIS face.
+
+    `eye.fmdl` is shared by every player while the head is not, so the stock
+    eyeball sits wherever the generic head's socket was - about 16 mm below
+    this face's, which pushed a bare eyeball out through the cheek. The face
+    mesh leaves the socket open, so its border loop is the socket: match the
+    eyeball's centre to it (mirroring both sides onto x > 0, the two are
+    symmetric and only one side is always a separate loop).
+    """
+    faces = piece_meshes(face_fmdl, {"fox_skin_mat"}, True)
+    if not faces:
+        return (0.0, 0.0, 0.0)
+    sockets = []
+    for loop in boundary_loops(faces[0]):
+        if len(loop) < 8:
+            continue
+        cx = sum(p[0] for p in loop) / len(loop)
+        cy = sum(p[1] for p in loop) / len(loop)
+        cz = sum(p[2] for p in loop) / len(loop)
+        span = max(max(p[k] for p in loop) - min(p[k] for p in loop)
+                   for k in range(3))
+        # an eye socket: small, at eye height, off the midline
+        if span < 0.06 and 1.60 < cy < 1.80 and 0.01 < abs(cx) < 0.07:
+            sockets.append((abs(cx), cy, cz))
+    if not sockets:
+        return (0.0, 0.0, 0.0)
+    socket = [sum(s[k] for s in sockets) / len(sockets) for k in range(3)]
+    balls = [(v.position.x, v.position.y, v.position.z)
+             for mesh in eye_fmdl.meshes for v in mesh.vertices
+             if v.position.x > 0]
+    if not balls:
+        return (0.0, 0.0, 0.0)
+    ball = [sum(b[k] for b in balls) / len(balls) for k in range(3)]
+    d = [socket[k] - ball[k] for k in range(3)]
+    return (0.0, -d[2], d[1])          # Fox -> GF, x kept symmetric
+
+
+def sock_frames(meshes):
+    """-> {side: (z_lo, z_hi, x_centre, y_centre)} for the sock tubes."""
+    out = {}
+    for side, keep in (("left", lambda x: x > 0), ("right", lambda x: x <= 0)):
+        pts = [(v.position.x, -v.position.z, v.position.y)
+               for mesh in meshes for v in mesh.vertices if keep(v.position.x)]
+        if not pts:
+            continue
+        zs = [p[2] for p in pts]
+        out[side] = (min(zs), max(zs),
+                     sum(p[0] for p in pts) / len(pts),
+                     sum(p[1] for p in pts) / len(pts))
+    return out
+
+
+def sock_uv(pos, side, frames):
+    """A sock is a tube up the shin; its rectangle is that tube unrolled."""
+    frame = frames.get(side)
+    u0, u1, v0, v1 = SOCK_RECT[side]
+    if not frame:
+        return ((u0 + u1) * 0.5, (v0 + v1) * 0.5)
+    z_lo, z_hi, x_c, y_c = frame
+    t = (pos[2] - z_lo) / (z_hi - z_lo) if z_hi > z_lo else 0.0
+    v = v0 + min(max(t, 0.0), 1.0) * (v1 - v0)
+    phi = math.atan2(pos[0] - x_c, -(pos[1] - y_c))     # -pi..pi around the leg
+    u = u0 + (phi / (2.0 * math.pi) + 0.5) * (u1 - u0)
+    return (u, v)
+
+
+def garment_side(pos, frame):
+    """front/back half of the body a torso vertex sits on."""
+    phi = math.atan2(pos[0], -(pos[1] - frame[2]))
+    return "front" if abs(phi) <= math.pi * 0.5 else "back"
 
 
 def vertex_island(pos, normal_y, kind, panels, garment, z_span, joint):
     """Which UV island of the kit template a vertex belongs to.
 
-    The template is not one continuous chart: the shirt body, each sleeve
+    The template is not one continuous chart: the body panel, each sleeve
     flap and the front/back columns are separate islands, far apart in UV.
     A triangle whose corners land in two of them stretches right across the
-    texture - that is what tore the black and green streaks down the flanks
-    and around the shoulders. Faces are assigned an island as a whole and
-    their corners are duplicated along the seams (see gather_piece).
+    texture. Faces are assigned an island as a whole and their corners are
+    duplicated along the seams (see gather_piece).
     """
     if kind == "sock":
         return ("sock", "left" if pos[0] > 0 else "right")
-    frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
-    # front/back by where the vertex sits AROUND the body, not by its normal:
-    # on the flank the normal is side-on and flips face to face.
-    phi = math.atan2(pos[0], -(pos[1] - frame[2]))
-    side = "front" if abs(phi) <= math.pi * 0.5 else "back"
     # the sleeve is what the ARM drives - the shirt's own shoulder seam, and
-    # the line the template's T-flap is drawn along.
+    # the line the template's T-flap is drawn along
     if joint in SLEEVE_JOINTS:
-        return ("sleeve", side)
-    return ("body", side)
+        _, _, angle = arm_param(pos)
+        return ("sleeve", "front" if angle >= 0.0 else "back")
+    frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
+    return ("body", garment_side(pos, frame))
 
 
 def kit_uv(pos, normal_y, kind, panels, garment=None, z_span=None, island=None):
-    """UV on the GF kit template for a PES vertex (GF coords), in `island`.
-
-    The stock body the template was drawn for is a different build from PES's
-    - its waist seam sits at z ~0.95 where the PES shirt hem is at ~1.06 - so
-    torso vertices are matched by their position ON the garment (angle around
-    the body, fraction of the garment's height) rather than in space. Matching
-    in 3D slid the whole kit across the seams: shorts wore the shirt's lower
-    panel and the chest wore the waist.
-    """
+    """UV on the GF kit template for a PES vertex (GF coords), in `island`."""
     chart, side = island
     if chart == "sock":
-        return idw_uv(pos, panels["sock_" + side])
+        return sock_uv(pos, side, z_span or {})
     if chart == "sleeve":
-        return sleeve_uv(pos, -1.0 if side == "front" else 1.0)
-    panel = "body_%s_%s" % (garment or "shirt", side)
-    # measure the vertex against ITS OWN garment (z_span carries the PES
-    # piece's extent), then read the stock panel at the same fraction
+        frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
+        return sleeve_uv(pos, side, frame, garment or "shirt")
     frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
-    return panel_uv(pos, panels[panel], frame, side)
+    return body_uv(pos, frame, side, garment or "shirt")
 
 
 # --- assembly -------------------------------------------------------------------
@@ -388,14 +565,42 @@ def part_rebind(skl_path):
     return deltas
 
 
-def vertex_key(position):
-    return (round(position.x, 4), round(position.y, 4), round(position.z, 4))
+# A sleeve vertex this close to the arm surface is the SAME surface authored
+# twice. Measured on the stock parts, the two populations are cleanly
+# separated: 1,759 of the shirt sleeve's vertices sit within 6 mm of the arm
+# (1,396 of them exactly on it) and the remaining 1,116 - the shoulder cap
+# that bridges torso to arm - are all more than 20 mm away.
+DUPLICATE_SURFACE_M = 0.006
+_GRID = 0.01
 
 
-def surface_keys(fmdl, keep_materials):
-    """Vertex keys of a part's meshes, for de-duplicating another part."""
-    return {vertex_key(v.position)
-            for m in piece_meshes(fmdl, keep_materials) for v in m.vertices}
+def surface_grid(fmdl, keep_materials):
+    """Spatial hash of a part's vertices, for de-duplicating another part."""
+    import collections
+    grid = collections.defaultdict(list)
+    for mesh in piece_meshes(fmdl, keep_materials):
+        for v in mesh.vertices:
+            p = (v.position.x, v.position.y, v.position.z)
+            grid[tuple(int(c / _GRID) for c in p)].append(p)
+    return grid
+
+
+def on_surface(grid, position, eps=DUPLICATE_SURFACE_M):
+    """Is this vertex sitting on the hashed surface?
+
+    Exact vertex matching was not enough: the two sleeves are only partly
+    coincident, and the millimetre-apart remainder z-fought its way up the
+    arm as alternating stripes of kit and skin.
+    """
+    p = (position.x, position.y, position.z)
+    cell = tuple(int(c / _GRID) for c in p)
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            for dz in (-1, 0, 1):
+                for q in grid.get((cell[0] + dx, cell[1] + dy, cell[2] + dz), ()):
+                    if math.dist(p, q) <= eps:
+                        return True
+    return False
 
 
 def torso_frame(meshes):
@@ -410,8 +615,23 @@ def torso_frame(meshes):
     return min(zs), max(zs), sum(p[1] for p in torso) / len(torso)
 
 
+def covered_ranges(garment_meshes, margin=0.015):
+    """Height bands (PES y) in which a garment hides the skin underneath.
+
+    A few millimetres of inset is not enough clearance for skin that a
+    garment wraps: 460 of the bare leg's vertices sit within 8 mm of the
+    sock, so the leg pokes through it in patches. Skin the garment covers
+    is not visible at all, so it is simply not shipped - the band stops
+    `margin` short of the garment's hem so the seam still closes.
+    """
+    ys = [v.position.y for mesh in garment_meshes for v in mesh.vertices]
+    if not ys:
+        return []
+    return (min(ys) + margin, max(ys) - margin)
+
+
 def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
-                 rebind=None, dedupe=None):
+                 rebind=None, dedupe=None, shift=None, hidden=None):
     """-> (vertices [(pos, uv, color, normal)], faces) in GF coords.
 
     inset pushes vertices along their inverse normal (metres): skin pieces
@@ -421,10 +641,17 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
     rebind: {gf_node: delta} from part_rebind(), applied per vertex through
     the joint it rides, for parts authored against their own .skl.
     dedupe: vertex keys owned by another part - faces entirely inside it are
-    dropped as duplicate surface."""
+    dropped as duplicate surface.
+    shift: a fixed translation for the whole piece, in GF coords.
+    hidden: [(y_lo, y_hi)] bands another garment covers - faces wholly
+    inside one are dropped."""
     bone_to_joint = build_bone_map(fmdl)
     joint_positions = retarget.gf_world_bind()
-    z_span = torso_frame(meshes) if garment else None
+    z_span = None
+    if kit_kind == "sock":
+        z_span = sock_frames(meshes)
+    elif garment:
+        z_span = torso_frame(meshes)
     vertices = []
     faces = []
     index = {}
@@ -434,8 +661,12 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
             # arm part are the SAME surface, and shipping both z-fights.
             # Faces whose every vertex is on the other part are the duplicate;
             # faces straddling the boundary stay, so the seam still closes.
-            if dedupe and all(vertex_key(v.position) in dedupe
+            if dedupe and all(on_surface(dedupe, v.position)
                               for v in face.vertices):
+                continue
+            if hidden and any(all(lo <= v.position.y <= hi
+                                  for v in face.vertices)
+                              for lo, hi in hidden):
                 continue
             # ONE island per face. A face is a single patch of fabric, so all
             # three corners read the same chart; corners on a seam are emitted
@@ -477,6 +708,8 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
                         delta = rebind.get(node)
                         if delta:
                             pos = tuple(c + d for c, d in zip(pos, delta))
+                    if shift:
+                        pos = tuple(c + d for c, d in zip(pos, shift))
                     vertices.append((pos, uv, encode_color(skin), normal))
                 tri.append(index[key])
             # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse
@@ -638,8 +871,18 @@ def assemble(args):
         out.write("}\n")
 
         # the shirt's sleeve and the arm part are one surface authored twice
-        arm_surface = surface_keys(load_fmdl(C("arm.fmdl"), args.fmdl_lib),
+        arm_surface = surface_grid(load_fmdl(C("arm.fmdl"), args.fmdl_lib),
                                    {"arm_mat"})
+        # bare legs are hidden inside the socks and the shorts
+        sock_band = covered_ranges(
+            piece_meshes(load_fmdl(C("socks_middle.fmdl"), args.fmdl_lib)))
+        shorts_band = covered_ranges(
+            piece_meshes(load_fmdl(C("pants_out_sub.fmdl"), args.fmdl_lib)))
+        leg_hidden = [(-10.0, sock_band[1]), (shorts_band[0], 10.0)]
+        # the shared eyeballs have to be seated in THIS face's sockets
+        eye_shift = eye_socket_shift(load_fmdl(args.face, args.fmdl_lib),
+                                     load_fmdl(C("eye.fmdl"), args.fmdl_lib))
+        print("  eye socket shift: %.4f %.4f %.4f" % eye_shift)
 
         total_v = total_f = 0
         for name, path, keep, biggest, kit_kind, material, inset, garment, skl \
@@ -649,7 +892,9 @@ def assemble(args):
             vertices, faces = gather_piece(fmdl, meshes, kit_kind, panels, inset,
                                           garment,
                                           part_rebind(skl) if skl else None,
-                                          arm_surface if name == "shirt" else None)
+                                          arm_surface if name == "shirt" else None,
+                                          eye_shift if name == "eyes" else None,
+                                          leg_hidden if name == "thighs" else None)
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
