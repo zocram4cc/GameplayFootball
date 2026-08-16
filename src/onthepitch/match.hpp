@@ -446,6 +446,26 @@ protected:
   std::map<std::string, CamTrack> prematchShots;
   void LoadPrematchShots(const std::string& stadiumToken);
   const CamTrack* FindPrematchShot(const std::string& shot) const;
+
+  // The player staging that goes with each shot. PES authors both together -
+  // the tunnel pack walks the squads out, the anthem pack stands them on the
+  // line, the circle pack puts them in the team photo - so a beat that names
+  // a shot gets that shot's choreography as well as its camera. Indexed by
+  // the same tokens as prematchShots; the packs are read lazily, since there
+  // are seventy of them and a match plays a handful.
+  struct PrematchStaging {
+    std::string path;  // the .chor, empty once loaded
+    std::string directory;
+    EntranceChoreo choreo;
+    std::map<std::string, std::shared_ptr<Animation>> clips;
+    bool loaded = false;
+  };
+  std::map<std::string, PrematchStaging> prematchStagings;
+  void LoadPrematchStagingIndex(const std::string& stadiumToken);
+  PrematchStaging* AcquirePrematchStaging(const std::string& shot);
+  PrematchStaging* activeStaging = nullptr;
+  int stagedBeatIndex = -2;
+  float stagingStartSeconds = 0.0f;
   void RememberPrematchCamera();
   // Hides/shows the persistent in-match HUD (scoreboard, radar).
   void ShowMatchHud(bool visible);

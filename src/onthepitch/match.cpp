@@ -388,9 +388,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       // for the stadium being played wins over one that is not.
       const std::string stadiumPath = GetConfiguration()->Get("stadium_object", "");
       const size_t at = stadiumPath.find("st");
-      LoadPrematchShots(at != std::string::npos && at + 5 <= stadiumPath.size()
-                            ? stadiumPath.substr(at, 5)
-                            : std::string());
+      const std::string token = at != std::string::npos && at + 5 <= stadiumPath.size()
+                                    ? stadiumPath.substr(at, 5)
+                                    : std::string();
+      LoadPrematchShots(token);
+      LoadPrematchStagingIndex(token);
     }
     prematchTimeline = LoadPrematchTimeline();
     const float configured = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
@@ -1134,6 +1136,75 @@ void Match::LoadPrematchShots(const std::string& stadiumToken) {
           int_to_str((int)paths.size()) + " track(s)");
 }
 
+void Match::LoadPrematchStagingIndex(const std::string& stadiumToken) {
+  // Same tokenisation as the camerawork, so "passage01" finds both
+  // ent_007_passage01_cmn_cam.camtrack and ent_007_passage01_cmn_pl.chor.
+  const std::string root =
+      GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
+  std::error_code ec;
+  std::vector<std::string> paths;
+  for (const auto& dir : std::filesystem::directory_iterator(root, ec)) {
+    if (!dir.is_directory()) continue;
+    for (const auto& entry : std::filesystem::directory_iterator(dir.path(), ec))
+      if (entry.path().extension() == ".chor") paths.push_back(entry.path().string());
+  }
+  std::sort(paths.begin(), paths.end());
+
+  for (const std::string& path : paths) {
+    const std::string name = std::filesystem::path(path).stem().string();
+    const bool matchesStadium =
+        !stadiumToken.empty() && name.find(stadiumToken) != std::string::npos;
+    std::vector<std::string> words;
+    std::string word;
+    for (char c : name + "_") {
+      if (c == '_') {
+        if (!word.empty()) words.push_back(word);
+        word.clear();
+      } else {
+        word += c;
+      }
+    }
+    for (const std::string& token : words) {
+      if (token == "ent" || token == "pl" || token.size() <= 2) continue;
+      if (token.rfind("st", 0) == 0) continue;
+      auto existing = prematchStagings.find(token);
+      if (existing != prematchStagings.end() && !matchesStadium) continue;
+      PrematchStaging staging;
+      staging.path = path;
+      staging.directory = std::filesystem::path(path).parent_path().string();
+      prematchStagings[token] = staging;
+    }
+  }
+  Log(e_Notice, "Match", "LoadPrematchStagingIndex",
+      int_to_str((int)prematchStagings.size()) + " named staging(s) from " +
+          int_to_str((int)paths.size()) + " pack(s)");
+}
+
+Match::PrematchStaging* Match::AcquirePrematchStaging(const std::string& shot) {
+  if (shot.empty()) return nullptr;
+  auto found = prematchStagings.find(shot);
+  if (found == prematchStagings.end()) return nullptr;
+  PrematchStaging& staging = found->second;
+  if (!staging.loaded) {
+    staging.loaded = true;
+    std::ifstream file(staging.path);
+    if (file.good() && staging.choreo.Load(file)) {
+      for (const auto& slot : staging.choreo.GetSlots()) {
+        if (staging.clips.count(slot.animFile)) continue;
+        const std::string clipPath = staging.directory + "/" + slot.animFile;
+        if (!std::filesystem::exists(clipPath)) continue;
+        auto clip = std::make_shared<Animation>();
+        clip->Load(clipPath);
+        staging.clips[slot.animFile] = clip;
+      }
+      Log(e_Notice, "Match", "AcquirePrematchStaging",
+          shot + ": " + int_to_str((int)staging.choreo.GetSlots().size()) + " actors, " +
+              int_to_str((int)staging.clips.size()) + " clips");
+    }
+  }
+  return staging.choreo.IsLoaded() ? &staging : nullptr;
+}
+
 const CamTrack* Match::FindPrematchShot(const std::string& shot) const {
   if (shot.empty()) return nullptr;
   auto found = prematchShots.find(shot);
@@ -1277,6 +1348,12 @@ void Match::BuildEntranceCast() {
   // PES actor slots: 0-10 the home XI with the keeper on 0, 11-21 the away
   // XI likewise, 22+ the officials (not cast yet). Players whose slot the
   // .chor does not stage keep the scripted walk.
+  entranceCast.clear();
+  const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  const std::map<std::string, std::shared_ptr<Animation>>& clips =
+      activeStaging ? activeStaging->clips : entranceClips;
+  if (!choreo.IsLoaded()) return;
+
   for (int teamID = 0; teamID < 2; teamID++) {
     std::vector<Player*> squad;
     teams[teamID]->GetActivePlayers(squad);
@@ -1291,10 +1368,10 @@ void Match::BuildEntranceCast() {
     }
     if (keeper) ordered.insert(ordered.begin(), keeper);
     for (unsigned int i = 0; i < ordered.size() && i < 11; i++) {
-      const ChoreoSlot* slot = entranceChoreo.GetSlot(base + (int)i);
+      const ChoreoSlot* slot = choreo.GetSlot(base + (int)i);
       if (!slot) continue;
-      auto clip = entranceClips.find(slot->animFile);
-      if (clip == entranceClips.end()) continue;
+      auto clip = clips.find(slot->animFile);
+      if (clip == clips.end()) continue;
       entranceCast.push_back({ordered[i], slot, clip->second.get()});
     }
   }
@@ -1304,32 +1381,47 @@ void Match::UpdateEntranceChoreo() {
   // "entrance_choreography" "false" falls back to the scripted walk.
   static const bool choreographyEnabled =
       GetConfiguration()->GetBool("entrance_choreography", true);
-  if (!choreographyEnabled) return;
-  if (!entranceChoreo.IsLoaded() || !IsInEntrance()) return;
-  if (!entranceCastBuilt) {
-    BuildEntranceCast();
-    entranceCastBuilt = true;
+  if (!choreographyEnabled || !IsInEntrance()) return;
+
+  // Each beat brings its own staging: the tunnel pack walks the squads out,
+  // the anthem pack stands them on the line, the circle pack poses them for
+  // the team photo. Swapping it restages the cast and restarts its clock, so
+  // every pack plays from its own first frame when its beat begins.
+  const PrematchTimeline::State beat = GetPrematchState();
+  if (beat.beatIndex != stagedBeatIndex) {
+    stagedBeatIndex = beat.beatIndex;
+    const std::string shot =
+        (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+            ? prematchTimeline.beats[beat.beatIndex].shot
+            : std::string();
+    PrematchStaging* staging = AcquirePrematchStaging(shot);
+    // A beat with no staging of its own keeps the previous one standing
+    // rather than dropping everyone back to the scripted walk mid-sequence.
+    if (staging) {
+      activeStaging = staging;
+      stagingStartSeconds = GetEntranceElapsedSeconds();
+      BuildEntranceCast();
+    } else if (!activeStaging && entranceChoreo.IsLoaded()) {
+      BuildEntranceCast();
+    }
   }
-  // On the presentation's own clock. This used to derive a start time by
-  // subtracting the duration from introCutsceneEnd_ms, which is now rolled
-  // forward every tick to hold the kickoff - so the subtraction underflowed
-  // and fed the sampler a different garbage frame every tick, which is what
-  // had the whole cast flickering around the pitch.
-  const float elapsedFrame = GetEntranceElapsedSeconds() * 100.0f;  // 10 ms frames
+
+  if (entranceCast.empty()) return;
+
+  const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  const float elapsedFrame = (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
   for (auto& cast : entranceCast) {
     Vector3 position;
     radian yaw = 0;
     int animFrame = 0;
-    entranceChoreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    choreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
     // Sample wraps the frame against the SLOT's cycle - the length of that
-    // actor's path through the staging, up to sixteen seconds - but the clip
-    // it plays is its own, much shorter loop. Indexing a 750-frame walk cycle
-    // at frame 1500 read off the end of the animation and dropped the whole
-    // cast flat onto the pitch; the clip has to be wrapped on its own length.
+    // actor's path through the staging - but the clip it plays is its own,
+    // much shorter loop. Indexing a 750-frame walk cycle at frame 1500 read
+    // off the end of the animation and dropped the cast flat onto the pitch.
     const int clipFrames = cast.clip ? cast.clip->GetFrameCount() : 0;
     if (clipFrames > 0) animFrame %= clipFrames;
-    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position,
-                                               yaw);
+    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
   }
 }
 
