@@ -12,7 +12,18 @@ is either never picked or picked in situations it looks ridiculous in.
 
 This document is the map of that matcher, written while importing PES
 tackling and keeper animation. Companion documents:
-[PES21_IMPORT.md](PES21_IMPORT.md) for the decode/retarget pipeline.
+[PES21_IMPORT.md](PES21_IMPORT.md) for the decode pipeline.
+
+Since the native-rig migration the engine's skeleton is the PES animated
+rig 1:1, so a converted clip's curves are the PES curves (coordinate
+conjugation only) — nothing here changed though: the selector reads the
+`player` root line, the `body` quaternion, the ball keys and the metadata
+tail, and that contract is skeleton-independent. One measurable side
+effect: the FK-vs-stock-ball-keyframe median in `test_anim_metrics.py`
+moved 0.12 → 0.22 m because the STOCK clips' hand-authored ball keys still
+assume the legacy proportions (shoulders 12 cm higher); in-engine the
+smuggle allowances still connect those contacts, and imported clips place
+their contacts with the same FK that measures them.
 
 ## The shape of a selection
 
