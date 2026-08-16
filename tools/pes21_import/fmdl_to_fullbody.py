@@ -358,9 +358,13 @@ if __name__ == "__main__":
                         help="debug: bind every vertex to this joint id")
     parser.add_argument("--only-meshes", default="",
                         help="comma-separated mesh indices to keep (after dedupe)")
-    parser.add_argument("--max-edge", type=float, default=0.0,
+    parser.add_argument("--max-edge", type=float, default=0.15,
                         help="drop triangles with an edge longer than this "
-                             "(metres, 0 disables) - a lint for broken exports")
+                             "(metres, 0 disables). On by default: a source "
+                             "mesh routinely carries a few triangles joining "
+                             "far-apart vertices, and on a 1.8 m body they "
+                             "render as metre-long shards. A real body "
+                             "triangle is centimetres; the median is under 2 cm.")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
                            args.base, args.max_tris,
