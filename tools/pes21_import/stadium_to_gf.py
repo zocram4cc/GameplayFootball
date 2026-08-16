@@ -142,15 +142,32 @@ def split_faces(faces, max_verts):
     return chunks
 
 
+def mesh_extent(mesh):
+    """Largest horizontal span of a mesh, in metres."""
+    xs = [v.position.x for v in mesh.vertices]
+    ys = [v.position.z for v in mesh.vertices]
+    if not xs:
+        return 0.0
+    return max(max(xs) - min(xs), max(ys) - min(ys))
+
+
 def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
-              max_verts_per_geom=None):
+              max_verts_per_geom=None, max_extent=None):
     converted = {}
     ftex_index = build_ftex_index(tex_dirs)
     materials = []          # (material name, bitmap path or None)
     geoms = []              # (geom name, material index, faces)
 
     budget = max_tris if max_tris else float("inf")
+    # A PES stadium package models its surroundings too - the car park, the
+    # asphalt apron, the ground plane - as a handful of enormous flat quads
+    # spanning half a kilometre. They are cheap enough to always fit the
+    # triangle budget while the stands they surround get skipped, and seen
+    # edge-on from pitch level they streak across the sky. Keep the bowl.
+    extent_limit = max_extent if max_extent else float("inf")
     used = 0
+    skipped_budget = 0
+    skipped_extent = 0
     for label, fmdl in fmdls:
         # biggest meshes first so a budget keeps the structural shell and
         # drops decorative detail last-to-first
@@ -158,7 +175,11 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
                        key=lambda i: -len(fmdl.meshes[i].faces))
         for i in order:
             mesh = fmdl.meshes[i]
+            if mesh_extent(mesh) > extent_limit:
+                skipped_extent += 1
+                continue
             if used + len(mesh.faces) > budget:
+                skipped_budget += 1
                 continue
             used += len(mesh.faces)
             tex = _mesh_base_texture(mesh)
@@ -171,6 +192,11 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
                 if len(chunks) > 1:
                     geom_name += "_p%02d" % part
                 geoms.append((geom_name, mat_index, faces))
+
+    if skipped_budget or skipped_extent:
+        print("  skipped %d mesh(es) over the %s-triangle budget, "
+              "%d beyond the %sm extent limit"
+              % (skipped_budget, max_tris, skipped_extent, max_extent))
 
     ase_path = os.path.join(out_dir, name + ".ase")
     with open(ase_path, "w") as out:
@@ -298,7 +324,7 @@ OBJECT_TEMPLATE = """<object>
 
 
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
-            max_tris=None, max_verts_per_geom=None):
+            max_tris=None, max_verts_per_geom=None, max_extent=None):
     os.makedirs(out_dir, exist_ok=True)
     tex_dirs = find_texture_dirs(*tex_dirs)
     print("texture dirs: %s" % (tex_dirs or "none found"))
@@ -308,7 +334,8 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
         fmdls.append((label, _load_fmdl(extra, fmdl_lib)))
 
     ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
-                                                max_tris, max_verts_per_geom)
+                                                max_tris, max_verts_per_geom,
+                                                max_extent)
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(OBJECT_TEMPLATE % {"name": name})
@@ -332,6 +359,9 @@ if __name__ == "__main__":
                              "of it (repeatable)")
     parser.add_argument("--name", default=None)
     parser.add_argument("--extra", action="append", default=[])
+    parser.add_argument("--max-extent", type=float, default=260.0,
+                        help="drop meshes spanning more than this many metres "
+                             "(the surrounding car park/apron; 0 disables)")
     parser.add_argument("--max-tris", type=int, default=None,
                         help="triangle budget; largest meshes kept first")
     parser.add_argument("--max-verts-per-geom", type=int, default=None,
@@ -342,5 +372,6 @@ if __name__ == "__main__":
     name = args.name or "pes_" + os.path.splitext(os.path.basename(args.fmdl))[0]
     ase_path, geoms, textures = convert(args.fmdl, args.out_dir, args.fmdl_lib,
                                         args.textures, name, args.extra,
-                                        args.max_tris, args.max_verts_per_geom)
+                                        args.max_tris, args.max_verts_per_geom,
+                                        args.max_extent)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))

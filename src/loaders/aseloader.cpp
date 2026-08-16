@@ -5,6 +5,8 @@
 
 #include "aseloader.hpp"
 
+#include "asecache.hpp"
+
 #include <fstream>
 #include <vector>
 
@@ -27,9 +29,18 @@ ASELoader::~ASELoader() {}
 void ASELoader::Load(const std::string& filename,
                      boost::intrusive_ptr<Resource<GeometryData>> resource) {
   triangleCount = 0;
+
+  // Prefer the prebuilt binary cache: an imported stadium is tens of megabytes
+  // of text, and parsing it is by far the most expensive thing a scene load
+  // does. Caches are produced during import and ship with the content, so a
+  // player never pays for the parse; if one is missing or stale (the .ase is
+  // editable) we parse and leave a cache behind for next time.
+  if (LoadGeometryCache(filename, resource)) return;
+
   s_tree* data = tree_load(filename);
   Build(data, resource);
   delete data;
+  SaveGeometryCache(filename, resource);
   // printf("%s: %i total triangles\n", filename.c_str(), triangleCount);
 }
 
