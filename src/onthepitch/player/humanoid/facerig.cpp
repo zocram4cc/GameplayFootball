@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "base/geometry/trianglemeshutils.hpp"
 #include "utils/faceanim.hpp"
 
 namespace blunted {
@@ -52,7 +53,11 @@ void FaceRig::Bind(boost::intrusive_ptr<Geometry> geometry) {
   for (size_t v = 0; v < data.vertices.size(); v++) {
     const auto& p = data.vertices[v].position;
     for (size_t sub = 0; sub < tmesh.size(); sub++) {
-      int elements = tmesh[sub].verticesDataSize;
+      // POSITIONS ONLY. A triangle mesh stores position, normal, texcoord,
+      // tangent and bitangent as consecutive blocks; walking the whole array
+      // also compared - and then wrote face offsets into - normals and
+      // tangents, which tore stray geometry off the head.
+      int elements = tmesh[sub].verticesDataSize / GetTriangleMeshElementCount();
       for (int e = 0; e + 2 < elements; e += 3) {
         float* vp = &tmesh[sub].vertices[e];
         if (std::fabs(vp[0] - p[0]) < epsilon &&

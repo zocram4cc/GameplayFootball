@@ -6,14 +6,11 @@ then re-encode it here against the ORIGINAL gani as a structural template
 (same units, segment types, bit sizes and frame count; only the curves are
 replaced).
 
-Inverse retarget (mirrors gani_to_anim.solve_gf):
-  body        -> dsk_hip local (RIG_ROOT / motion node quats identity)
-  middle      -> sk_belly (sk_chest identity)
-  neck        -> sk_head (sk_neck identity)
-  thigh/knee  -> shortest-arc world rotations reproducing the limb
-                 directions; ankle -> sk_foot orientation
-  shoulder/elbow -> sk_upperarm / sk_forearm (clavicle+hand keep identity)
-  player line -> RIG_ROOT XZ + motion-node Y positions
+Since the native-rig migration the mapping is 1:1: every GF node IS a PES
+bone (retarget.GF_NODES), so each node's local quaternion converts back by
+the inverse coordinate conjugation (x, y, z) -> (x, z, -y). The body node
+splits into RIG_ROOT (its yaw) and the motion node (the remainder); the
+player line splits into RIG_ROOT XZ + motion-node Y positions.
 
 Curve encoding is the engine's: quantized quaternions (halfTheta/x/y at the
 template's ComponentBitSize + 3 sign bits, L1-renormalized) and AnimHalf
@@ -31,8 +28,7 @@ import gani
 import retarget
 from anim_preview import parse_anim
 from gani_to_anim import (GF_NODES, PES_FRAME_MS, GF_FRAME_MS,
-                          q_mul, q_conj, q_norm, q_rot, q_nlerp,
-                          v_sub, v_normalize)
+                          q_mul, q_conj, q_norm, q_rot, q_nlerp)
 
 
 # --- GF-side sampling ---------------------------------------------------------
@@ -69,75 +65,29 @@ def unmap_vec(v):
     return (v[0], v[2], -v[1])
 
 
-def shortest_arc(a, b):
-    """Quaternion rotating unit vector a onto unit vector b."""
-    d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-    if d > 0.999999:
-        return (0.0, 0.0, 0.0, 1.0)
-    if d < -0.999999:
-        axis = (1.0, 0.0, 0.0) if abs(a[0]) < 0.9 else (0.0, 1.0, 0.0)
-        c = (a[1] * axis[2] - a[2] * axis[1],
-             a[2] * axis[0] - a[0] * axis[2],
-             a[0] * axis[1] - a[1] * axis[0])
-        c = v_normalize(c)
-        return (c[0], c[1], c[2], 0.0)
-    c = (a[1] * b[2] - a[2] * b[1],
-         a[2] * b[0] - a[0] * b[2],
-         a[0] * b[1] - a[1] * b[0])
-    q = (c[0], c[1], c[2], 1.0 + d)
-    return q_norm(q)
-
-
-def _bind_dir(child, parent):
-    return v_normalize(v_sub(retarget.PES_BIND[child][0],
-                             retarget.PES_BIND[parent][0]))
+def _yaw_quat(q):
+    """Pure-yaw (about fox +Y) component of a fox quaternion."""
+    f = q_rot(q, (0.0, 0.0, 1.0))
+    yaw = math.atan2(f[0], f[2])
+    return (0.0, math.sin(yaw / 2.0), 0.0, math.cos(yaw / 2.0))
 
 
 def solve_pes(player_pos, gf_local):
-    """GF node locals at one frame -> PES bone local quats + root positions."""
-    # GF world orientations
-    w = {}
-    for node in GF_NODES:
-        parent = retarget.GF_BIND[node][1]
-        q = gf_local.get(node, (0, 0, 0, 1))
-        w[node] = q if parent is None else q_norm(q_mul(w[parent], q))
+    """GF node locals at one frame -> PES bone local quats + root positions.
 
-    down = (0.0, 0.0, -1.0)
+    1:1 on the native rig: every node's local IS its PES bone's local in GF
+    coordinates; unmap and done. The body node carries RIG_ROOT o motion;
+    RIG_ROOT takes the yaw, the motion node the remainder.
+    """
     locals_fox = {}
-
-    hip = unmap_quat(w["body"])
-    locals_fox["dsk_hip"] = hip
-    chest_w = unmap_quat(w["middle"])                    # = belly (chest id)
-    locals_fox["sk_belly"] = chest_w
-    locals_fox["sk_chest"] = (0, 0, 0, 1)
-    neck_w = unmap_quat(w["neck"])
-    locals_fox["sk_neck"] = q_norm(q_mul(q_conj(chest_w), neck_w))
-    head_w = unmap_quat(w.get("head", w["neck"]))
-    locals_fox["sk_head"] = q_norm(q_mul(q_conj(neck_w), head_w))
-
-    for side, sign in (("left", "l"), ("right", "r")):
-        thigh_dir = unmap_vec(q_rot(w[side + "_thigh"], down))
-        shin_dir = unmap_vec(q_rot(w[side + "_knee"], down))
-        thigh_w = shortest_arc(_bind_dir("sk_leg_" + sign, "sk_thigh_" + sign),
-                               thigh_dir)
-        leg_w = shortest_arc(_bind_dir("sk_foot_" + sign, "sk_leg_" + sign),
-                             shin_dir)
-        locals_fox["sk_thigh_" + sign] = q_norm(q_mul(q_conj(hip), thigh_w))
-        locals_fox["sk_leg_" + sign] = q_norm(q_mul(q_conj(thigh_w), leg_w))
-        foot_w = unmap_quat(w[side + "_ankle"])
-        locals_fox["sk_foot_" + sign] = q_norm(q_mul(q_conj(leg_w), foot_w))
-
-        up_dir = unmap_vec(q_rot(w[side + "_shoulder"], down))
-        fore_dir = unmap_vec(q_rot(w[side + "_elbow"], down))
-        up_w = shortest_arc(_bind_dir("sk_forearm_" + sign, "sk_upperarm_" + sign),
-                            up_dir)
-        fore_w = shortest_arc(_bind_dir("sk_hand_" + sign, "sk_forearm_" + sign),
-                              fore_dir)
-        locals_fox["sk_shoulder_" + sign] = (0, 0, 0, 1)
-        locals_fox["sk_upperarm_" + sign] = q_norm(q_mul(q_conj(chest_w), up_w))
-        locals_fox["sk_forearm_" + sign] = q_norm(q_mul(q_conj(up_w), fore_w))
-        hand_w = unmap_quat(w.get(side + "_hand", w[side + "_elbow"]))
-        locals_fox["sk_hand_" + sign] = q_norm(q_mul(q_conj(fore_w), hand_w))
+    body_fox = q_norm(unmap_quat(gf_local.get("body", (0, 0, 0, 1))))
+    root_q = _yaw_quat(body_fox)
+    locals_fox["RIG_ROOT"] = root_q
+    locals_fox["motion"] = q_norm(q_mul(q_conj(root_q), body_fox))
+    for node, bone, _parent in retarget.GF_NODES:
+        if node == "body":
+            continue
+        locals_fox[bone] = q_norm(unmap_quat(gf_local.get(node, (0, 0, 0, 1))))
 
     # root: player (x, y) horizontal + z above GF body height
     px, py, pz = player_pos
@@ -253,11 +203,11 @@ def build(anim_path, template_path, out_path):
                     for node in GF_NODES if node in nodes}
         ppos = sample_vec(player, gf_frame)
         locals_fox, rig_pos, motion_pos = solve_pes(ppos, gf_local)
+        root_q.append(locals_fox.pop("RIG_ROOT"))
+        mot_q.append(locals_fox.pop("motion"))
         for bone, q in locals_fox.items():
             per_bone.setdefault(bone, []).append(q)
-        root_q.append((0.0, 0.0, 0.0, 1.0))
         root_p.append(rig_pos)
-        mot_q.append((0.0, 0.0, 0.0, 1.0))
         mot_p.append(motion_pos)
 
     # encode every segment following the template's structure

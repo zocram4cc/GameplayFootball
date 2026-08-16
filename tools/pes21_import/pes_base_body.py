@@ -12,6 +12,9 @@ come from (proprietary sources stay under the PES install):
       common/thigh_short.fmdl     bare thighs      ("thigh_mat")
       common/hand_l/r.fmdl        hands            ("arm_mat")
       common/neck.fmdl            neck skin        ("skin_head")
+      common/eye.fmdl             eyeballs         ("eye_mat" - the face
+                                  mesh has an open socket, so without these
+                                  you see straight through the head)
   dt32_g4.cpk  Asset/model/character/parts/undershirt/scenes/#Win/
       undershirt.fmdl             kit shirt        ("torso_mat" meshes -
                                   PES fills their empty diffuse slot with
@@ -57,6 +60,7 @@ import sys
 import ase_util
 import retarget
 import face_weights
+import pes_skl
 from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
 
 
@@ -80,11 +84,41 @@ SLEEVE_FLAPS = {
     ("back", "outer_r"): (0.889, 0.986),
 }
 SLEEVE_V_TOP = 0.97      # shoulder end of the flap (ASE v)
-SLEEVE_V_BOTTOM = 0.80   # sleeve hem
+# Sleeve hem. The flap is a T, not a rectangle: measured off the template,
+# its full width only reaches down to v ~0.86 and there is nothing below
+# v 0.80, so a hem at 0.80 ran the sleeve off the printed fabric and
+# rendered black wedges along the arms.
+SLEEVE_V_BOTTOM = 0.86
 SLEEVE_LENGTH_M = 0.30   # arm length the flap covers; longer sleeves clamp
+# the template's shirt-hem / shorts-waist seam, in ASE v (measured off
+# kit_UVWnormal.png: the horizontal seam across both body columns)
+KIT_WAIST_V = 0.59
+# shirt vertices these joints drive belong on the template's sleeve flaps
+SLEEVE_JOINTS = frozenset((
+    "left_shoulder", "left_elbow", "left_hand",
+    "right_shoulder", "right_elbow", "right_hand"))
 # the arm frame (GF coords, bind pose)
 _SHOULDER = {1: (0.195, -0.0335, 1.4671), -1: (-0.195, -0.0335, 1.4671)}
 _ELBOW = {1: (0.3991, -0.0138, 1.262), -1: (-0.3991, -0.0138, 1.262)}
+
+
+# subdivision of each stock triangle when harvesting UV samples
+STOCK_SUBDIV = 4
+
+
+def barycentric_samples(corners, n=STOCK_SUBDIV):
+    """Corner (pos, uv) triples -> the triangle's lattice of (pos, uv)."""
+    (p0, t0), (p1, t1), (p2, t2) = corners
+    out = []
+    for i in range(n + 1):
+        for j in range(n + 1 - i):
+            k = n - i - j
+            a, b, c = i / n, j / n, k / n
+            out.append((
+                tuple(a * p0[d] + b * p1[d] + c * p2[d] for d in range(3)),
+                tuple(a * t0[d] + b * t1[d] + c * t2[d] for d in range(2)),
+            ))
+    return out
 
 
 def harvest_stock_kit(stock_ase):
@@ -109,14 +143,119 @@ def harvest_stock_kit(stock_ase):
         faces = [tuple(int(m.group(i)) for i in (2, 3, 4)) for m in _F_RE.finditer(g)]
         tfaces = [tuple(int(m.group(i)) for i in (2, 3, 4)) for m in _TF_RE.finditer(g)]
         for f, tf in zip(faces, tfaces):
-            for vi, ti in zip(f, tf):
-                pos, (u, v) = verts[vi], tverts[ti]
+            # The stock body is low-poly - under fifty vertices per shirt
+            # panel - and interpolating a 25k-vertex PES body off corners
+            # alone left the kit blocky and its seams ragged. Sample each
+            # stock triangle's interior too: position and UV are both linear
+            # across it, so the extra samples are exact, not invented.
+            corners = [(verts[vi], tverts[ti]) for vi, ti in zip(f, tf)]
+            for pos, (u, v) in barycentric_samples(corners):
                 if name.startswith("sock"):
-                    panel = "sock_left" if name.endswith("left") else "sock_right"
+                    panel = ("sock_left" if name.endswith("left")
+                             else "sock_right")
                 else:
-                    panel = "body_front" if u < 0.5 else "body_back"
+                    # The stock suit is ONE surface, but the PES body wears a
+                    # separate shirt and shorts that overlap at the waist, so
+                    # each garment has to learn from its own half of the
+                    # template - otherwise a shorts vertex sitting where the
+                    # stock body still wore shirt takes shirt UVs.
+                    garment = "shirt" if v >= KIT_WAIST_V else "shorts"
+                    side = "front" if u < 0.5 else "back"
+                    panel = "body_%s_%s" % (garment, side)
                 panels.setdefault(panel, []).append((pos, (u, v)))
+
+    # body panels also carry their own (around, up) parametrization, so a
+    # PES vertex can be matched by where it sits ON the garment rather than
+    # by where it sits in space
+    for garment in ("shirt", "shorts"):
+        names = ["body_%s_%s" % (garment, side) for side in ("front", "back")]
+        if not all(n in panels for n in names):
+            continue
+        # ONE frame per garment: front and back are two halves of the same
+        # wrap, so they have to share the axis they are measured around
+        frame = panel_frame(panels[names[0]] + panels[names[1]])
+        for name, side in zip(names, ("front", "back")):
+            panels[name] = [(pos, uv, surface_param(pos, frame, side))
+                            for pos, uv in panels[name]]
+        panels["body_%s_frame" % garment] = frame
     return panels
+
+
+def panel_z_range(samples):
+    zs = [pos[2] for pos, _ in samples]
+    return min(zs), max(zs)
+
+
+def panel_frame(samples):
+    """-> (z_lo, z_hi, y_centre) describing a garment panel's own extent."""
+    z_lo, z_hi = panel_z_range(samples)
+    ys = [pos[1] for pos, _ in samples]
+    return z_lo, z_hi, sum(ys) / len(ys)
+
+
+def surface_param(pos, frame, side):
+    """Body-relative (around, up) coordinates of a garment vertex.
+
+    The kit template is a cylindrical unwrap of the torso: `up` is the
+    fraction of the garment's own height, `around` the angle about the body
+    axis measured from that side's centre line. Matching in these two
+    numbers instead of raw 3D makes the transfer independent of how tall or
+    how deep the two bodies are - the stock body is a different build from
+    PES's, and 3D-nearest matching smeared the kit across the seams.
+    """
+    z_lo, z_hi, y_c = frame
+    up = (pos[2] - z_lo) / (z_hi - z_lo) if z_hi > z_lo else 0.0
+    depth = pos[1] - y_c
+    around = math.atan2(pos[0], -depth if side == "front" else depth)
+    return around, up
+
+
+# an angle this far around the body counts as far as the full garment height
+_AROUND_SCALE = 1.0 / (math.pi * 0.5)
+
+
+_UP_BINS = 24
+_panel_index = {}
+
+
+def panel_bins(samples):
+    """Bucket a panel's samples by `up` so the IDW search stays local."""
+    index = _panel_index.get(id(samples))
+    if index is None:
+        index = {}
+        for sample in samples:
+            index.setdefault(int(sample[2][1] * _UP_BINS), []).append(sample)
+        _panel_index[id(samples)] = index
+    return index
+
+
+def panel_uv(pos, samples, frame, side, k=4, power=2.0):
+    """UV for a torso vertex, IDW over the stock panel in (around, up)."""
+    a, t = surface_param(pos, frame, side)
+
+    def key(sample):
+        sa, st = sample[2]
+        return ((a - sa) * _AROUND_SCALE) ** 2 + (t - st) ** 2
+
+    index = panel_bins(samples)
+    home = int(t * _UP_BINS)
+    near = []
+    span = 1
+    while not near and span < _UP_BINS * 2:
+        near = [s for b in range(home - span, home + span + 1)
+                for s in index.get(b, ())]
+        span += 1
+    scored = sorted(near or samples, key=key)[:k]
+    num_u = num_v = den = 0.0
+    for sample in scored:
+        d2 = key(sample)
+        if d2 < 1e-12:
+            return sample[1]
+        w = 1.0 / d2 ** (power * 0.5)
+        num_u += sample[1][0] * w
+        num_v += sample[1][1] * w
+        den += w
+    return (num_u / den, num_v / den)
 
 
 def idw_uv(pos, samples, k=4, power=2.0):
@@ -158,20 +297,50 @@ def sleeve_uv(pos, normal_y):
     return (u0 + frac * (u1 - u0), v)
 
 
-def kit_uv(pos, normal_y, kind, panels):
-    """UV on the GF kit template for a PES vertex (GF coords).
+def vertex_island(pos, normal_y, kind, panels, garment, z_span, joint):
+    """Which UV island of the kit template a vertex belongs to.
 
-    kind: body (shirt+shorts, one continuous suit panel per column, sleeves
-    on their flaps) | sock. Front/back by the normal's GF Y (the character
-    faces -Y); socks pick their side by X.
+    The template is not one continuous chart: the shirt body, each sleeve
+    flap and the front/back columns are separate islands, far apart in UV.
+    A triangle whose corners land in two of them stretches right across the
+    texture - that is what tore the black and green streaks down the flanks
+    and around the shoulders. Faces are assigned an island as a whole and
+    their corners are duplicated along the seams (see gather_piece).
     """
     if kind == "sock":
-        panel = "sock_left" if pos[0] > 0 else "sock_right"
-        return idw_uv(pos, panels[panel])
-    if abs(pos[0]) > 0.24 and pos[2] > 1.0:      # sleeve, past the torso
-        return sleeve_uv(pos, normal_y)
-    panel = "body_front" if normal_y < 0.0 else "body_back"
-    return idw_uv(pos, panels[panel])
+        return ("sock", "left" if pos[0] > 0 else "right")
+    frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
+    # front/back by where the vertex sits AROUND the body, not by its normal:
+    # on the flank the normal is side-on and flips face to face.
+    phi = math.atan2(pos[0], -(pos[1] - frame[2]))
+    side = "front" if abs(phi) <= math.pi * 0.5 else "back"
+    # the sleeve is what the ARM drives - the shirt's own shoulder seam, and
+    # the line the template's T-flap is drawn along.
+    if joint in SLEEVE_JOINTS:
+        return ("sleeve", side)
+    return ("body", side)
+
+
+def kit_uv(pos, normal_y, kind, panels, garment=None, z_span=None, island=None):
+    """UV on the GF kit template for a PES vertex (GF coords), in `island`.
+
+    The stock body the template was drawn for is a different build from PES's
+    - its waist seam sits at z ~0.95 where the PES shirt hem is at ~1.06 - so
+    torso vertices are matched by their position ON the garment (angle around
+    the body, fraction of the garment's height) rather than in space. Matching
+    in 3D slid the whole kit across the seams: shorts wore the shirt's lower
+    panel and the chest wore the waist.
+    """
+    chart, side = island
+    if chart == "sock":
+        return idw_uv(pos, panels["sock_" + side])
+    if chart == "sleeve":
+        return sleeve_uv(pos, -1.0 if side == "front" else 1.0)
+    panel = "body_%s_%s" % (garment or "shirt", side)
+    # measure the vertex against ITS OWN garment (z_span carries the PES
+    # piece's extent), then read the stock panel at the same fraction
+    frame = z_span or panels["body_%s_frame" % (garment or "shirt")]
+    return panel_uv(pos, panels[panel], frame, side)
 
 
 # --- assembly -------------------------------------------------------------------
@@ -194,22 +363,99 @@ def piece_meshes(fmdl, keep_materials=None, biggest_only=False):
     return meshes
 
 
-def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0):
+def part_rebind(skl_path):
+    """-> {gf_node: (dx, dy, dz) in GF coords} moving a part authored against
+    its OWN .skl onto the body rig's bind.
+
+    Slot parts (boots, gloves) ship a skeleton of just the bones they ride,
+    and PES does not author them at the body rig's bind: the stock boots'
+    `sk_foot_l` sits at Fox x 0.0898 where the player's foot bone is at
+    0.194, so dropping the mesh in as-authored leaves the boots ~10 cm
+    inboard of the ankles - floating beside the feet. Each bone's bind
+    difference is the translation that re-anchors it (Fox rigs are
+    world-aligned, so a translation is the whole transform).
+    """
+    deltas = {}
+    for bone in pes_skl.parse_file(skl_path):
+        target = retarget.PES_BIND.get(bone.name)
+        if not target:
+            continue
+        node = retarget.resolve_bone(bone.name)
+        if not node:
+            continue
+        d = tuple(t - s for t, s in zip(target[0], bone.position))
+        deltas[node] = (d[0], -d[2], d[1])          # Fox -> GF
+    return deltas
+
+
+def vertex_key(position):
+    return (round(position.x, 4), round(position.y, 4), round(position.z, 4))
+
+
+def surface_keys(fmdl, keep_materials):
+    """Vertex keys of a part's meshes, for de-duplicating another part."""
+    return {vertex_key(v.position)
+            for m in piece_meshes(fmdl, keep_materials) for v in m.vertices}
+
+
+def torso_frame(meshes):
+    """(z_lo, z_hi, y_centre) of a garment's TORSO vertices in GF coords -
+    sleeves excluded, they go on the template's flaps, not up the body."""
+    torso = [(v.position.x, -v.position.z, v.position.y)
+             for mesh in meshes for v in mesh.vertices
+             if not (abs(v.position.x) > 0.24 and v.position.y > 1.0)]
+    if not torso:
+        return None
+    zs = [p[2] for p in torso]
+    return min(zs), max(zs), sum(p[1] for p in torso) / len(torso)
+
+
+def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
+                 rebind=None, dedupe=None):
     """-> (vertices [(pos, uv, color, normal)], faces) in GF coords.
 
     inset pushes vertices along their inverse normal (metres): skin pieces
     that live under garments (arms in sleeves, thighs in shorts) get a few
-    millimetres of clearance so they cannot poke through in animation."""
+    millimetres of clearance so they cannot poke through in animation.
+
+    rebind: {gf_node: delta} from part_rebind(), applied per vertex through
+    the joint it rides, for parts authored against their own .skl.
+    dedupe: vertex keys owned by another part - faces entirely inside it are
+    dropped as duplicate surface."""
     bone_to_joint = build_bone_map(fmdl)
     joint_positions = retarget.gf_world_bind()
+    z_span = torso_frame(meshes) if garment else None
     vertices = []
     faces = []
     index = {}
     for mesh in meshes:
         for face in mesh.faces:
+            # PES ships the sleeve twice - the shirt's long sleeve and the
+            # arm part are the SAME surface, and shipping both z-fights.
+            # Faces whose every vertex is on the other part are the duplicate;
+            # faces straddling the boundary stay, so the seam still closes.
+            if dedupe and all(vertex_key(v.position) in dedupe
+                              for v in face.vertices):
+                continue
+            # ONE island per face. A face is a single patch of fabric, so all
+            # three corners read the same chart; corners on a seam are emitted
+            # once per island they take part in (the key below), which is what
+            # keeps a triangle from stretching across the whole template.
+            island = None
+            if kit_kind:
+                votes = {}
+                for vertex in face.vertices:
+                    skin = vertex_joints(vertex, bone_to_joint, joint_positions)
+                    p = vertex.position
+                    cand = vertex_island((p.x, -p.z, p.y), 0.0, kit_kind, panels,
+                                         garment, z_span,
+                                         retarget.GF_JOINT_ORDER[skin[0][0]])
+                    votes[cand] = votes.get(cand, 0) + 1
+                island = max(votes.items(), key=lambda kv: kv[1])[0]
+
             tri = []
             for vertex in face.vertices:
-                key = id(vertex)
+                key = (id(vertex), island)
                 if key not in index:
                     index[key] = len(vertices)
                     p = vertex.position
@@ -218,13 +464,19 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0):
                     normal = (n.x, -n.z, n.y) if n is not None else None
                     if inset and normal is not None:
                         pos = tuple(c - inset * nc for c, nc in zip(pos, normal))
+                    skin = vertex_joints(vertex, bone_to_joint, joint_positions)
                     if kit_kind:
                         ny = -vertex.normal.z if vertex.normal else -1.0
-                        uv = kit_uv(pos, ny, kit_kind, panels)
+                        uv = kit_uv(pos, ny, kit_kind, panels, garment, z_span,
+                                    island)
                     else:
                         uv0 = vertex.uv[0] if vertex.uv else None
                         uv = (uv0.u, 1.0 - uv0.v) if uv0 else (0.0, 0.0)
-                    skin = vertex_joints(vertex, bone_to_joint, joint_positions)
+                    if rebind:
+                        node = retarget.GF_JOINT_ORDER[skin[0][0]]
+                        delta = rebind.get(node)
+                        if delta:
+                            pos = tuple(c + d for c, d in zip(pos, delta))
                     vertices.append((pos, uv, encode_color(skin), normal))
                 tri.append(index[key])
             # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse
@@ -317,25 +569,48 @@ def assemble(args):
     def C(name):
         return os.path.join(args.common, name)
 
-    # (geom name, fmdl path, keep_materials, biggest, kit kind, material, inset)
+    # (geom name, fmdl path, keep_materials, biggest, kit kind, material,
+    #  inset, garment, skl)
     pieces = []
-    pieces.append(("shirt", args.undershirt, {"torso_mat"}, False, "body", "kit", 0.0))
-    pieces.append(("shorts", C("pants_out_sub.fmdl"), None, False, "body", "kit", 0.0))
-    pieces.append(("socks", C("socks_middle.fmdl"), None, False, "sock", "kit", 0.0))
+    # The shirt is BOTH materials of undershirt.fmdl and dropping either one
+    # leaves a hole: "torso_mat" (the slot PES leaves empty for the runtime
+    # kit) is only the SLEEVES, and the shirt's body - waist hem to collar -
+    # rides the "undershirt" material. Keeping just torso_mat shipped a
+    # default player with no torso at all.
+    pieces.append(("shirt", args.undershirt, {"torso_mat", "undershirt"},
+                   False, "body", "kit", 0.0, "shirt", None))
+    pieces.append(("shorts", C("pants_out_sub.fmdl"), None, False, "body", "kit",
+                   0.0, "shorts", None))
+    pieces.append(("socks", C("socks_middle.fmdl"), None, False, "sock", "kit",
+                   0.0, None, None))
     # skin under garments gets clearance so it cannot poke through in motion
-    pieces.append(("arms", C("arm.fmdl"), {"arm_mat"}, False, None, "skin", 0.004))
-    pieces.append(("thighs", C("thigh_short.fmdl"), {"thigh_mat"}, False, None, "skin", 0.004))
-    pieces.append(("hand_l", C("hand_l.fmdl"), {"arm_mat"}, False, None, "skin", 0.0))
-    pieces.append(("hand_r", C("hand_r.fmdl"), {"arm_mat"}, False, None, "skin", 0.0))
-    pieces.append(("neck", C("neck.fmdl"), {"skin_head"}, False, None, "skin", 0.0))
-    pieces.append(("face", args.face, {"fox_skin_mat"}, True, None, "face", 0.0))
+    pieces.append(("arms", C("arm.fmdl"), {"arm_mat"}, False, None, "skin", 0.004,
+                   None, None))
+    pieces.append(("thighs", C("thigh_short.fmdl"), {"thigh_mat"}, False, None,
+                   "skin", 0.004, None, None))
+    pieces.append(("hand_l", C("hand_l.fmdl"), {"arm_mat"}, False, None, "skin", 0.0,
+                   None, None))
+    pieces.append(("hand_r", C("hand_r.fmdl"), {"arm_mat"}, False, None, "skin", 0.0,
+                   None, None))
+    pieces.append(("neck", C("neck.fmdl"), {"skin_head"}, False, None, "skin", 0.0,
+                   None, None))
+    pieces.append(("eyes", C("eye.fmdl"), {"eye_mat"}, False, None, "eye", 0.0,
+                   None, None))
+    pieces.append(("face", args.face, {"fox_skin_mat"}, True, None, "face", 0.0,
+                   None, None))
     if args.hair:
         # the scalp/cranium ride the hair fmdl (fox_head_shell_mat) - a bare
         # face fmdl has no top of head
         pieces.append(("scalp", args.hair,
-                       {"fox_skin_mat", "fox_head_shell_mat"}, False, None, "face", 0.0))
-        pieces.append(("hair", args.hair, {"fox_hair_mat"}, False, None, "hair", 0.0))
-    pieces.append(("boots", args.boots, None, False, None, "boots", 0.0))
+                       {"fox_skin_mat", "fox_head_shell_mat"}, False, None,
+                       "face", 0.0, None, None))
+        pieces.append(("hair", args.hair, {"fox_hair_mat"}, False, None, "hair", 0.0,
+                   None, None))
+    # a slot part: authored against its own boots.skl, not the body bind
+    boots_skl = args.boots_skl or os.path.join(os.path.dirname(args.boots),
+                                               "boots.skl")
+    pieces.append(("boots", args.boots, None, False, None, "boots", 0.0, None,
+                   boots_skl if os.path.isfile(boots_skl) else None))
 
     materials = [
         ("kit", "media/objects/players/textures/kit_template.png"),
@@ -343,6 +618,7 @@ def assemble(args):
         ("face", args.face_texture_ref),
         ("hair", args.hair_texture_ref),
         ("boots", args.boots_texture_ref),
+        ("eye", args.eye_texture_ref),
     ]
     mat_index = {name: i for i, (name, _) in enumerate(materials)}
 
@@ -361,11 +637,19 @@ def assemble(args):
             out.write(MATERIAL_TMPL % {"idx": i, "name": name, "texture": tex})
         out.write("}\n")
 
+        # the shirt's sleeve and the arm part are one surface authored twice
+        arm_surface = surface_keys(load_fmdl(C("arm.fmdl"), args.fmdl_lib),
+                                   {"arm_mat"})
+
         total_v = total_f = 0
-        for name, path, keep, biggest, kit_kind, material, inset in pieces:
+        for name, path, keep, biggest, kit_kind, material, inset, garment, skl \
+                in pieces:
             fmdl = load_fmdl(path, args.fmdl_lib)
             meshes = piece_meshes(fmdl, keep, biggest)
-            vertices, faces = gather_piece(fmdl, meshes, kit_kind, panels, inset)
+            vertices, faces = gather_piece(fmdl, meshes, kit_kind, panels, inset,
+                                          garment,
+                                          part_rebind(skl) if skl else None,
+                                          arm_surface if name == "shirt" else None)
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
@@ -393,6 +677,8 @@ def main():
                         help="extracted common_package .../character/common dir")
     parser.add_argument("--undershirt", required=True, help="undershirt.fmdl")
     parser.add_argument("--boots", required=True, help="a boots.fmdl")
+    parser.add_argument("--boots-skl", default=None,
+                        help="the boots' own .skl (default: next to the fmdl)")
     parser.add_argument("--face", required=True, help="a face_high.fmdl")
     parser.add_argument("--hair", default=None,
                         help="the matching hair_high.fmdl (scalp + hair)")
@@ -405,6 +691,8 @@ def main():
                         default="media/objects/players/textures/pes_base_hair.png")
     parser.add_argument("--boots-texture-ref",
                         default="media/objects/players/textures/pes_base_boots.png")
+    parser.add_argument("--eye-texture-ref",
+                        default="media/objects/players/textures/pes_base_eye.png")
     args = parser.parse_args()
     assemble(args)
 
