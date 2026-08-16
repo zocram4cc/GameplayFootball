@@ -60,6 +60,16 @@ struct Beat {
   float seconds = 0.0f;
   Camera camera = Camera::Entrance;
   Overlay overlay = Overlay::None;
+  // Which piece of authored PES camerawork this beat is filmed with, as a
+  // token matched against the camtrack file names under the entrance root.
+  //
+  // PES does not ship one entrance camera per competition: each ent_<id>
+  // family is a different SHOT, and the file names say which - passage01 is
+  // the tunnel, anth the anthems, circle_home and center the team picture,
+  // aerial the wide. A beat names the shot it wants and gets the authored
+  // camerawork for it; empty means run the family's shots in order, as
+  // before.
+  std::string shot;
 };
 
 struct Timeline {

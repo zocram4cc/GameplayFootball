@@ -440,6 +440,12 @@ protected:
   // see prematchtimeline.hpp for the lookup and the file format.
   PrematchTimeline::Timeline prematchTimeline;
   PrematchTimeline::Timeline LoadPrematchTimeline() const;
+  // Every piece of authored entrance camerawork installed, keyed by the shot
+  // token in its file name (passage01, anth, circle_home, ...). A beat names
+  // the shot it wants; see PrematchTimeline::Beat::shot.
+  std::map<std::string, CamTrack> prematchShots;
+  void LoadPrematchShots(const std::string& stadiumToken);
+  const CamTrack* FindPrematchShot(const std::string& shot) const;
   void RememberPrematchCamera();
   // Hides/shows the persistent in-match HUD (scoreboard, radar).
   void ShowMatchHud(bool visible);
@@ -454,6 +460,12 @@ protected:
   float heldCameraNear = 2.0f;
   float heldCameraFar = 400.0f;
   bool heldCameraValid = false;
+  // The cast-framed shots are derived from where the players are, which moves
+  // every tick; the eye and its target are eased towards that rather than
+  // snapped to it, or the shot shakes with the squad's bounding box.
+  Vector3 smoothedCamEye;
+  Vector3 smoothedCamTarget;
+  bool smoothedCamValid = false;
   // imported PES player choreography for the entrance: a .chor exported from
   // the family's _pl packs (tools/pes21_import/entrance_pl.py), picked from
   // the same directory as the camerawork, plus its in-place .anim clips.

@@ -122,21 +122,39 @@ TEST(PrematchTimelineDefaultTest, RunsLongEnoughToReadAsABroadcastOpening) {
   EXPECT_GT(Default().TotalSeconds(), 60.0f);
 }
 
-TEST(PrematchTimelineDefaultTest, OpensOnTheWalkoutAndEndsHeadingForKickoff) {
-  // The order the reference stages it in: walk the players out first, hold
-  // on the line for the anthems, and only then go wide for the graphics.
+TEST(PrematchTimelineDefaultTest, FollowsTheReferenceRunningOrder) {
+  // VGL 26 Day 3 from 14:35: a stadium establishing wide under the
+  // competition card, the tunnel walkout, the players emerging, a long hold
+  // on the line, the wides the lineup graphics sit over, the team pictures,
+  // and away to kickoff.
   const Timeline timeline = Default();
-  ASSERT_FALSE(timeline.beats.empty());
-  EXPECT_EQ(timeline.beats.front().camera, Camera::Walkout);
+  ASSERT_GE(timeline.beats.size(), 8u);
 
-  int firstWide = -1, lastLine = -1;
-  for (size_t i = 0; i < timeline.beats.size(); i++) {
-    if (timeline.beats[i].camera == Camera::Aerial && firstWide < 0) firstWide = (int)i;
-    if (timeline.beats[i].camera == Camera::Lineup) lastLine = (int)i;
-  }
-  ASSERT_GE(firstWide, 0);
-  EXPECT_LT(timeline.beats.front().seconds, 30.0f);  // a walkout, not a hold
-  EXPECT_GT(lastLine, firstWide);                    // team pictures come after the wides
+  auto indexOf = [&](const std::string& name) {
+    for (size_t i = 0; i < timeline.beats.size(); i++)
+      if (timeline.beats[i].name == name) return (int)i;
+    return -1;
+  };
+  const int card = indexOf("stadium_card");
+  const int tunnel = indexOf("tunnel");
+  const int line = indexOf("line_up");
+  const int wideHome = indexOf("wide_home");
+  const int picture = indexOf("team_picture_home");
+
+  ASSERT_GE(card, 0);
+  ASSERT_GE(tunnel, 0);
+  ASSERT_GE(line, 0);
+  ASSERT_GE(wideHome, 0);
+  ASSERT_GE(picture, 0);
+
+  EXPECT_EQ(card, 0);
+  EXPECT_LT(tunnel, line);
+  EXPECT_LT(line, wideHome);
+  EXPECT_LT(wideHome, picture);
+
+  // The reference holds on the line far longer than on any establishing
+  // shot; that hold is the heart of the sequence.
+  EXPECT_GT(timeline.beats[line].seconds, timeline.beats[card].seconds);
 }
 
 TEST(PrematchTimelineParseTest, ReadsTheCastFramingCameras) {
@@ -289,4 +307,26 @@ TEST(PrematchEntranceProgressTest, AFinishedOrEmptyStateIsClampedNotUndefined) {
   EXPECT_LE(past, 1.0f);
   Timeline empty;
   EXPECT_NEAR(PrematchTimeline::EntranceProgress(empty, At(empty, 1.0f)), 0.0f, 0.001f);
+}
+
+TEST(PrematchTimelineParseTest, ABeatCanNameTheAuthoredShotItWants) {
+  const Timeline timeline = ParseText(
+      "beat walkout 16 camera=entrance shot=passage01\n"
+      "beat wide 6 camera=aerial\n");
+  ASSERT_EQ(timeline.beats.size(), 2u);
+  EXPECT_EQ(timeline.beats[0].shot, "passage01");
+  EXPECT_TRUE(timeline.beats[1].shot.empty());
+}
+
+TEST(PrematchTimelineDefaultTest, EachStagedBeatAsksForItsOwnPesShot) {
+  // Each ent_<id> family is a different shot, not a variant of one entrance:
+  // the tunnel and the anthems each name theirs.
+  const Timeline timeline = Default();
+  std::string tunnelShot, anthemShot;
+  for (const auto& beat : timeline.beats) {
+    if (beat.name == "tunnel") tunnelShot = beat.shot;
+    if (beat.name == "anthems") anthemShot = beat.shot;
+  }
+  EXPECT_EQ(tunnelShot, "passage01");
+  EXPECT_EQ(anthemShot, "anth");
 }
