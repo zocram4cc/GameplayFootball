@@ -24,12 +24,14 @@ Overlay ParseOverlay(const std::string& value) {
   return Overlay::None;
 }
 
-Beat MakeBeat(const std::string& name, float seconds, Camera camera, Overlay overlay) {
+Beat MakeBeat(const std::string& name, float seconds, Camera camera, Overlay overlay,
+              const std::string& shot = std::string()) {
   Beat beat;
   beat.name = name;
   beat.seconds = seconds;
   beat.camera = camera;
   beat.overlay = overlay;
+  beat.shot = shot;
   return beat;
 }
 
@@ -73,6 +75,8 @@ bool Parse(std::istream& in, Timeline& timeline) {
         beat.camera = ParseCamera(value);
       else if (key == "overlay")
         beat.overlay = ParseOverlay(value);
+      else if (key == "shot")
+        beat.shot = value;
     }
 
     timeline.beats.push_back(beat);
@@ -82,21 +86,26 @@ bool Parse(std::istream& in, Timeline& timeline) {
 }
 
 Timeline Default() {
-  // The running order of a PES pre-match: the choreographed walkout first,
-  // following the players out; the anthems on the line; then the wide shots
-  // that the lineup graphics sit over; the team pictures; and away to
-  // kickoff. Durations are sized to the imported choreography, whose walkout
-  // cycle runs about sixteen seconds.
+  // Timed against the reference broadcast (VGL 26 Day 3, from 14:35): a
+  // stadium wide under the competition card for about thirteen seconds, the
+  // tunnel walkout, the players emerging onto the pitch, then a long hold on
+  // the line - the reference runs that for over a minute, tracking slowly
+  // along the row - the wides the lineup graphics sit over, the team
+  // pictures, and away to kickoff. Roughly 130 s in all, which is what the
+  // reference spends between its title card and the first whistle.
   Timeline timeline;
   timeline.beats = {
-      MakeBeat("walkout", 16.0f, Camera::Walkout, Overlay::None),
-      MakeBeat("anthems", 14.0f, Camera::Lineup, Overlay::None),
+      MakeBeat("stadium_card", 13.0f, Camera::Orbit, Overlay::None),
+      MakeBeat("tunnel", 13.5f, Camera::Entrance, Overlay::None, "passage01"),
+      MakeBeat("emerge", 11.0f, Camera::Entrance, Overlay::None, "cmn"),
+      MakeBeat("line_up", 26.0f, Camera::Walkout, Overlay::None),
+      MakeBeat("anthems", 24.0f, Camera::Entrance, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
       MakeBeat("wide_away", 9.0f, Camera::Aerial, Overlay::FormationAway),
-      MakeBeat("team_picture_home", 7.0f, Camera::Lineup, Overlay::None),
-      MakeBeat("team_picture_away", 7.0f, Camera::Lineup, Overlay::None),
-      MakeBeat("to_kickoff", 6.0f, Camera::Entrance, Overlay::None),
+      MakeBeat("team_picture_home", 8.0f, Camera::Entrance, Overlay::None, "circle_home"),
+      MakeBeat("team_picture_away", 8.0f, Camera::Entrance, Overlay::None, "center"),
+      MakeBeat("to_kickoff", 6.0f, Camera::Entrance, Overlay::None, "aerial"),
   };
   return timeline;
 }

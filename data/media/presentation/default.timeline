@@ -25,14 +25,18 @@
 # match picks it up automatically, or name one with "presentation_timeline".
 # Unknown keys are ignored, so a file may carry more than this build reads.
 
-beat walkout            16.0  camera=walkout
-beat anthems            14.0  camera=lineup
+beat stadium_card       13.0  camera=orbit
+beat tunnel             13.5  camera=entrance shot=passage01
+beat emerge             11.0  camera=entrance shot=cmn
+
+beat line_up            26.0  camera=walkout
+beat anthems            24.0  camera=entrance shot=anth
 
 beat wide_home           9.0  camera=aerial   overlay=formation_home
 beat wide                4.0  camera=aerial
 beat wide_away           9.0  camera=aerial   overlay=formation_away
 
-beat team_picture_home   7.0  camera=lineup
-beat team_picture_away   7.0  camera=lineup
+beat team_picture_home   8.0  camera=entrance shot=circle_home
+beat team_picture_away   8.0  camera=entrance shot=center
 
-beat to_kickoff          6.0  camera=entrance
+beat to_kickoff          6.0  camera=entrance shot=aerial

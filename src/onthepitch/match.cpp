@@ -383,6 +383,15 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   // PES holds a stadium shot or a lineup graphic for as long as the
   // presentation says, independent of how much camera track happens to exist.
   if (!entranceDisabled) {
+    {
+      // "media/objects/stadiums/pes_st060/..." -> "st060", so a shot authored
+      // for the stadium being played wins over one that is not.
+      const std::string stadiumPath = GetConfiguration()->Get("stadium_object", "");
+      const size_t at = stadiumPath.find("st");
+      LoadPrematchShots(at != std::string::npos && at + 5 <= stadiumPath.size()
+                            ? stadiumPath.substr(at, 5)
+                            : std::string());
+    }
     prematchTimeline = LoadPrematchTimeline();
     const float configured = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
     if (configured > 0.0f)
@@ -401,7 +410,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
     // Held one tick ahead and pushed forward every Process() while the
     // entrance runs; the referee latches it as the kickoff's prepare time.
-    introCutsceneEnd_ms = actualTime_ms + 10;
+    introCutsceneEnd_ms = actualTime_ms + 1000;
     Log(e_Notice, "Match", "Match",
         "pre-match presentation: " + int_to_str((int)prematchTimeline.beats.size()) +
             " beat(s), holding kickoff for " + int_to_str((int)introSeconds) + "s of real time");
@@ -1070,6 +1079,67 @@ void Match::UpdateLatestMentalImageBallPredictions() {
     mentalImages.at(0)->UpdateBallPredictions();
 }
 
+void Match::LoadPrematchShots(const std::string& stadiumToken) {
+  // PES ships each entrance shot as its own ent_<id> family, and the file
+  // name says which shot it is. Index them all by the words in the name so a
+  // beat can ask for "passage01" (the tunnel) or "anth" (the anthems) and get
+  // the camerawork that was authored for it, whichever family it lives in.
+  const std::string root =
+      GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
+  std::error_code ec;
+  std::vector<std::string> paths;
+  for (const auto& dir : std::filesystem::directory_iterator(root, ec)) {
+    if (!dir.is_directory()) continue;
+    for (const auto& entry : std::filesystem::directory_iterator(dir.path(), ec))
+      if (entry.path().extension() == ".camtrack") paths.push_back(entry.path().string());
+  }
+  std::sort(paths.begin(), paths.end());
+
+  for (const std::string& path : paths) {
+    std::string name = std::filesystem::path(path).stem().string();
+    // "ent_007_passage01_cmn_cam" -> the words between the family number and
+    // the trailing "cam".
+    std::vector<std::string> words;
+    std::string word;
+    for (char c : name + "_") {
+      if (c == '_') {
+        if (!word.empty()) words.push_back(word);
+        word.clear();
+      } else {
+        word += c;
+      }
+    }
+    const bool matchesStadium =
+        !stadiumToken.empty() && name.find(stadiumToken) != std::string::npos;
+
+    std::ifstream file(path);
+    CamTrack track;
+    if (!file.good() || !track.Load(file) || track.GetFrameCount() == 0) continue;
+
+    for (const std::string& token : words) {
+      if (token == "ent" || token == "cam" || token.empty()) continue;
+      if (token.size() <= 2) continue;              // family numbers
+      if (token.rfind("st", 0) == 0) continue;      // stadium tags
+      // A shot authored for the stadium being played wins over one that is
+      // not; otherwise first in sorted order.
+      auto existing = prematchShots.find(token);
+      if (existing == prematchShots.end())
+        prematchShots.emplace(token, track);
+      else if (matchesStadium)
+        existing->second = track;
+    }
+  }
+  Log(e_Notice, "Match", "LoadPrematchShots",
+      int_to_str((int)prematchShots.size()) + " named entrance shot(s) from " +
+          int_to_str((int)paths.size()) + " track(s)");
+}
+
+const CamTrack* Match::FindPrematchShot(const std::string& shot) const {
+  if (shot.empty()) return nullptr;
+  auto found = prematchShots.find(shot);
+  return found == prematchShots.end() ? nullptr : &found->second;
+}
+
 PrematchTimeline::Timeline Match::LoadPrematchTimeline() const {
   // Explicit file wins; otherwise the competition's own entrance family names
   // one ("entrance_id" 020 -> 020.timeline), then the shipped default. With
@@ -1231,14 +1301,9 @@ void Match::BuildEntranceCast() {
 }
 
 void Match::UpdateEntranceChoreo() {
-  // The imported PES entrance clips (media/cutscenes/ent/<id>/anims/, exported
-  // by tools/pes21_import/entrance_pl.py) still target the pre-migration
-  // skeleton: played on the native rig they collapse the cast flat onto the
-  // pitch. Until they are re-exported, the walkout runs on the scripted walk
-  // instead, which puts the players on their marks upright and walking.
-  // "entrance_choreography" "true" plays them anyway.
+  // "entrance_choreography" "false" falls back to the scripted walk.
   static const bool choreographyEnabled =
-      GetConfiguration()->GetBool("entrance_choreography", false);
+      GetConfiguration()->GetBool("entrance_choreography", true);
   if (!choreographyEnabled) return;
   if (!entranceChoreo.IsLoaded() || !IsInEntrance()) return;
   if (!entranceCastBuilt) {
@@ -1256,6 +1321,13 @@ void Match::UpdateEntranceChoreo() {
     radian yaw = 0;
     int animFrame = 0;
     entranceChoreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    // Sample wraps the frame against the SLOT's cycle - the length of that
+    // actor's path through the staging, up to sixteen seconds - but the clip
+    // it plays is its own, much shorter loop. Indexing a 750-frame walk cycle
+    // at frame 1500 read off the end of the animation and dropped the whole
+    // cast flat onto the pitch; the clip has to be wrapped on its own length.
+    const int clipFrames = cast.clip ? cast.clip->GetFrameCount() : 0;
+    if (clipFrames > 0) animFrame %= clipFrames;
     cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position,
                                                yaw);
   }
@@ -1972,6 +2044,27 @@ void Match::UpdateIngameCamera() {
         return;
       }
 
+      // A beat that names an authored shot plays exactly that, across its own
+      // duration - this is what puts the tunnel walkout, the anthems and the
+      // team picture on screen rather than one family's tracks end to end.
+      const CamTrack* namedShot =
+          (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+              ? FindPrematchShot(prematchTimeline.beats[beat.beatIndex].shot)
+              : nullptr;
+      if (namedShot && namedShot->GetFrameCount() > 0) {
+        const CamTrackFrame frame =
+            namedShot->Sample(beat.beatT * (namedShot->GetFrameCount() - 1));
+        cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+        cameraNodeOrientation = QUATERNION_IDENTITY;
+        cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                              frame.rotation[3]);
+        cameraFOV = frame.fov;
+        cameraNearCap = std::max(0.1f, frame.near);
+        cameraFarCap = frame.far;
+        RememberPrematchCamera();
+        return;
+      }
+
       if (want == PrematchTimeline::Camera::Entrance) {
         // The imported shots are spread across the entrance beats only, so a
         // lineup graphic holding the picture does not eat into the walkout's
@@ -2028,9 +2121,11 @@ void Match::UpdateIngameCamera() {
             // Pan slowly along the row, holding on the players as they pass -
             // the shot the reference broadcast uses for a walkout.
             target.coords[0] = castCentre.coords[0] + (beat.beatT * 2.0f - 1.0f) * lineHalf;
-            distance = 11.0f;
-            camHeight = 2.6f;
-            fov = 40.0f;
+            // The reference holds the camera right on the line - the players
+            // fill the frame - rather than watching from across the pitch.
+            distance = 6.5f;
+            camHeight = 2.0f;
+            fov = 46.0f;
           } else {
             // Head-on and wide enough to hold the whole line: the anthem and
             // team-picture shot.
@@ -2042,9 +2137,22 @@ void Match::UpdateIngameCamera() {
 
           // Kept off the touchline, and off the goal lines, so the camera
           // never ends up inside the stadium's own geometry.
-          const Vector3 eye(clamp(target.coords[0], -44.0f, 44.0f),
-                            clamp(castCentre.coords[1] + side * distance, -30.0f, 30.0f),
-                            camHeight);
+          Vector3 eye(clamp(target.coords[0], -44.0f, 44.0f),
+                      clamp(castCentre.coords[1] + side * distance, -30.0f, 30.0f),
+                      camHeight);
+
+          // Ease towards the framing rather than snapping to it. Both the eye
+          // and the target are computed from the squads' bounding box, which
+          // shifts every tick as they walk - taken raw, the shot judders.
+          if (smoothedCamValid) {
+            const float ease = 0.06f;
+            eye = smoothedCamEye + (eye - smoothedCamEye) * ease;
+            target = smoothedCamTarget + (target - smoothedCamTarget) * ease;
+          }
+          smoothedCamEye = eye;
+          smoothedCamTarget = target;
+          smoothedCamValid = true;
+
           const Vector3 toTarget = target - eye;
           const float flat = std::sqrt(toTarget.coords[0] * toTarget.coords[0] +
                                        toTarget.coords[1] * toTarget.coords[1]);
@@ -2396,7 +2504,13 @@ void Match::Process() {
           "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
               "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
     } else {
-      introCutsceneEnd_ms = actualTime_ms + 10;
+      // A full second ahead, not one tick. The referee defers the kickoff to
+      // this value every tick and re-prepares the set piece the moment
+      // actualTime_ms reaches it (referee.cpp) - kept only one tick out, that
+      // condition came true on every single tick and teleported all
+      // twenty-two players back onto their kickoff marks each frame, which is
+      // what had them flickering.
+      introCutsceneEnd_ms = actualTime_ms + 1000;
     }
   }
 
