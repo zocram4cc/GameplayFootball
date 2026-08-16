@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "../surfacescale.hpp"
 #include "../windowmanager.hpp"
 #include "base/log.hpp"
 #include "base/sdl_surface.hpp"
@@ -175,7 +176,26 @@ void Gui2BitmapText::Redraw() {
       double zoom = static_cast<double>(h) / rowHeight;
       if (rowWidth * zoom > w)
         zoom = static_cast<double>(w) / rowWidth;
-      SDL_Surface* scaledRow = zoomSurface(row, zoom, zoom, SMOOTHING_ON);
+      // zoomSurface interpolates from a 2x2 neighbourhood, which skips whole
+      // source rows once the row is shrunk past half size - the scoreboard
+      // shrinks a 52px row to about 9px at 640x360, and the '4' lost its
+      // diagonal and read as a '6' (the clock showed 65:00 at 45:00). Average
+      // over the covered area instead whenever this is a shrink.
+      SDL_Surface* scaledRow = nullptr;
+      const int scaledW = static_cast<int>(rowWidth * zoom + 0.5);
+      const int scaledH = static_cast<int>(rowHeight * zoom + 0.5);
+      if (zoom < 1.0 && scaledW >= 1 && scaledH >= 1) {
+        scaledRow = CreateSDLSurface(scaledW, scaledH);
+        if (scaledRow &&
+            !DownscaleAverageRGBA(static_cast<const unsigned char*>(row->pixels), row->w, row->h,
+                                  row->pitch, static_cast<unsigned char*>(scaledRow->pixels),
+                                  scaledRow->w, scaledRow->h, scaledRow->pitch)) {
+          SDL_FreeSurface(scaledRow);
+          scaledRow = nullptr;
+        }
+      }
+      if (!scaledRow)
+        scaledRow = zoomSurface(row, zoom, zoom, SMOOTHING_ON);
       SDL_FreeSurface(row);
       if (scaledRow) {
         SDL_Rect dst;

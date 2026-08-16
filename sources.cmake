@@ -364,6 +364,7 @@ set(UTILS_GUI2_WIDGETS_HEADERS
 
 set(UTILS_GUI2_SOURCES
         src/utils/gui2/style.cpp
+        src/utils/gui2/surfacescale.cpp
         src/utils/gui2/widgets/bitmaptext.cpp
         src/utils/gui2/widgets/caption.cpp
         src/utils/gui2/widgets/menu.cpp

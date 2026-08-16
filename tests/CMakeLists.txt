@@ -95,6 +95,19 @@ target_link_libraries(gameplayfootball_entrancechoreo_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_entrancechoreo_tests DISCOVERY_MODE PRE_TEST)
 
+# Glyph-row downscaling (why the match clock read 65:00 for 45:00)
+add_executable(gameplayfootball_surfacescale_tests
+  base/surfacescale_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/gui2/surfacescale.cpp
+)
+target_include_directories(gameplayfootball_surfacescale_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_surfacescale_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_surfacescale_tests DISCOVERY_MODE PRE_TEST)
+
 # Model viewer bench maths (debug tooling, engine-free)
 add_executable(gameplayfootball_modelviewer_tests
   onthepitch/modelviewer_test.cpp
