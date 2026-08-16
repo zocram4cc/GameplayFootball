@@ -286,6 +286,9 @@ public:
   }
 
   int GetReplaySize_ms();
+  // How far back the next scripted replay should start, in ms before now.
+  // Zero means "whatever is in the buffer".
+  unsigned long GetReplayStartOffset_ms() const { return replayStartOffset_ms; }
   int GetReplayCamCount();
 
   void ProcessReplayMessages();
@@ -431,6 +434,7 @@ protected:
   // as the entrance runs: the referee defers the kickoff to it every tick
   // (see referee.cpp), so when the entrance finishes the value it last
   // latched is immediately reachable and the restart arms at once.
+  unsigned long replayStartOffset_ms = 0;
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
   bool entranceActive = false;

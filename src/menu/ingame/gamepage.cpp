@@ -122,7 +122,11 @@ void GamePage::GoExtendedReplayPage() {
       windowManager->GetPageFactory()->CreatePage((int)e_PageID_Replay, properties, 0));
 
   // todo: use properties instead?
-  int replayHistoryOffset_ms = match->GetReplaySize_ms();
+  // A scripted replay says how far back it wants to start (a goal replay
+  // reaches past its own celebration); anything else takes the whole buffer.
+  int replayHistoryOffset_ms = match->GetReplayStartOffset_ms() > 0
+                                   ? (int)match->GetReplayStartOffset_ms()
+                                   : match->GetReplaySize_ms();
   bool stayInReplay = true;
   replayPage->Autorun(replayHistoryOffset_ms, stayInReplay);
 
