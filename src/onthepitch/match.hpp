@@ -135,6 +135,12 @@ public:
   std::shared_ptr<AnimCollection> GetAnimCollection() { return anims; }
 
   const MentalImage* GetMentalImage(int history_ms);
+  // As above, but keeps the image alive for as long as the caller holds it.
+  // Anyone who CACHES an image across frames has to take this: the vector is
+  // emptied on every reset (half time, a restart, teardown) and a raw pointer
+  // into it dangles the moment that happens, on whichever thread got there
+  // first.
+  std::shared_ptr<const MentalImage> GetMentalImageOwned(int history_ms);
   void UpdateLatestMentalImageBallPredictions();
 
   void ResetSituation(const Vector3& focusPos);
