@@ -13,6 +13,8 @@ Camera ParseCamera(const std::string& value) {
   if (value == "aerial") return Camera::Aerial;
   if (value == "hold") return Camera::Hold;
   if (value == "entrance") return Camera::Entrance;
+  if (value == "walkout") return Camera::Walkout;
+  if (value == "lineup") return Camera::Lineup;
   return Camera::Entrance;  // unknown: the imported camerawork is the safe default
 }
 
@@ -80,22 +82,21 @@ bool Parse(std::istream& in, Timeline& timeline) {
 }
 
 Timeline Default() {
-  // The shot list from docs/PRESENTATION_SPEC.md section 1, at roughly the
-  // durations observed there (video t~3185-3300): two stadium establishing
-  // shots, both walkouts, a lineup graphic per side with a wide pitch hold
-  // between them, then the close-ups that lead into kickoff.
+  // The running order of a PES pre-match: the choreographed walkout first,
+  // following the players out; the anthems on the line; then the wide shots
+  // that the lineup graphics sit over; the team pictures; and away to
+  // kickoff. Durations are sized to the imported choreography, whose walkout
+  // cycle runs about sixteen seconds.
   Timeline timeline;
   timeline.beats = {
-      MakeBeat("stadium_reveal", 4.5f, Camera::Orbit, Overlay::None),
-      MakeBeat("stadium_reveal_2", 4.5f, Camera::Orbit, Overlay::None),
-      MakeBeat("walkout_home", 22.0f, Camera::Entrance, Overlay::None),
-      MakeBeat("walkout_away", 22.0f, Camera::Entrance, Overlay::None),
-      MakeBeat("lineup_home", 8.5f, Camera::Aerial, Overlay::FormationHome),
-      MakeBeat("wide_pitch", 4.5f, Camera::Aerial, Overlay::None),
-      MakeBeat("lineup_away", 7.5f, Camera::Aerial, Overlay::FormationAway),
-      MakeBeat("dissolve", 3.0f, Camera::Aerial, Overlay::None),
-      MakeBeat("closeups", 10.0f, Camera::Entrance, Overlay::None),
-      MakeBeat("referee", 4.0f, Camera::Entrance, Overlay::None),
+      MakeBeat("walkout", 16.0f, Camera::Walkout, Overlay::None),
+      MakeBeat("anthems", 14.0f, Camera::Lineup, Overlay::None),
+      MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
+      MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
+      MakeBeat("wide_away", 9.0f, Camera::Aerial, Overlay::FormationAway),
+      MakeBeat("team_picture_home", 7.0f, Camera::Lineup, Overlay::None),
+      MakeBeat("team_picture_away", 7.0f, Camera::Lineup, Overlay::None),
+      MakeBeat("to_kickoff", 6.0f, Camera::Entrance, Overlay::None),
   };
   return timeline;
 }

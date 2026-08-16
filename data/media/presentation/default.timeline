@@ -6,10 +6,13 @@
 #
 # Format:  beat <name> <seconds> [camera=...] [overlay=...]
 #
+#   camera=walkout    low broadcast angle panning along the line of players,
+#                     framed off the choreography itself
+#   camera=lineup     static and head-on, holding the whole line in frame
 #   camera=entrance   the imported PES entrance camerawork for this
-#                     competition's family and this stadium. Spread across
-#                     the entrance beats only, so a graphic holding the
-#                     picture does not eat camera track it is not showing.
+#                     competition's family and this stadium. Authored per
+#                     stadium, so it films the wrong place in a venue it was
+#                     not made for - the two above work anywhere.
 #   camera=orbit      a slow authored sweep of the stands
 #   camera=aerial     the high wide the live game is played on, held still
 #   camera=hold       stay wherever the previous beat left the camera
@@ -22,16 +25,14 @@
 # match picks it up automatically, or name one with "presentation_timeline".
 # Unknown keys are ignored, so a file may carry more than this build reads.
 
-beat stadium_reveal    4.5   camera=orbit
-beat stadium_reveal_2  4.5   camera=orbit
+beat walkout            16.0  camera=walkout
+beat anthems            14.0  camera=lineup
 
-beat walkout_home     22.0   camera=entrance
-beat walkout_away     22.0   camera=entrance
+beat wide_home           9.0  camera=aerial   overlay=formation_home
+beat wide                4.0  camera=aerial
+beat wide_away           9.0  camera=aerial   overlay=formation_away
 
-beat lineup_home       8.5   camera=aerial   overlay=formation_home
-beat wide_pitch        4.5   camera=aerial
-beat lineup_away       7.5   camera=aerial   overlay=formation_away
-beat dissolve          3.0   camera=aerial
+beat team_picture_home   7.0  camera=lineup
+beat team_picture_away   7.0  camera=lineup
 
-beat closeups         10.0   camera=entrance
-beat referee           4.0   camera=entrance
+beat to_kickoff          6.0  camera=entrance

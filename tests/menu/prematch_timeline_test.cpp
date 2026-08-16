@@ -122,6 +122,32 @@ TEST(PrematchTimelineDefaultTest, RunsLongEnoughToReadAsABroadcastOpening) {
   EXPECT_GT(Default().TotalSeconds(), 60.0f);
 }
 
+TEST(PrematchTimelineDefaultTest, OpensOnTheWalkoutAndEndsHeadingForKickoff) {
+  // The order the reference stages it in: walk the players out first, hold
+  // on the line for the anthems, and only then go wide for the graphics.
+  const Timeline timeline = Default();
+  ASSERT_FALSE(timeline.beats.empty());
+  EXPECT_EQ(timeline.beats.front().camera, Camera::Walkout);
+
+  int firstWide = -1, lastLine = -1;
+  for (size_t i = 0; i < timeline.beats.size(); i++) {
+    if (timeline.beats[i].camera == Camera::Aerial && firstWide < 0) firstWide = (int)i;
+    if (timeline.beats[i].camera == Camera::Lineup) lastLine = (int)i;
+  }
+  ASSERT_GE(firstWide, 0);
+  EXPECT_LT(timeline.beats.front().seconds, 30.0f);  // a walkout, not a hold
+  EXPECT_GT(lastLine, firstWide);                    // team pictures come after the wides
+}
+
+TEST(PrematchTimelineParseTest, ReadsTheCastFramingCameras) {
+  const Timeline timeline = ParseText(
+      "beat walkout 8 camera=walkout\n"
+      "beat anthems 6 camera=lineup\n");
+  ASSERT_EQ(timeline.beats.size(), 2u);
+  EXPECT_EQ(timeline.beats[0].camera, Camera::Walkout);
+  EXPECT_EQ(timeline.beats[1].camera, Camera::Lineup);
+}
+
 TEST(PrematchTimelineDefaultTest, ShowsTheHomeSideBeforeTheAwaySide) {
   const Timeline timeline = Default();
   int homeAt = -1, awayAt = -1;
