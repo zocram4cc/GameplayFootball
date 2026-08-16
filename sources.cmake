@@ -474,6 +474,7 @@ set(GAME_HEADERS
    src/onthepitch/ball.hpp
    src/onthepitch/team.hpp
    src/onthepitch/match.hpp
+   src/onthepitch/prematchtimeline.hpp
    src/onthepitch/AIsupport/AIfunctions.hpp
    src/onthepitch/AIsupport/mentalimage.hpp
    src/onthepitch/teamAIcontroller.hpp
@@ -503,6 +504,7 @@ set(GAME_SOURCES
    src/onthepitch/humangamer.cpp
    src/onthepitch/ball.cpp
    src/onthepitch/match.cpp
+   src/onthepitch/prematchtimeline.cpp
    src/onthepitch/referee.cpp
    src/onthepitch/AIsupport/mentalimage.cpp
    src/onthepitch/AIsupport/AIfunctions.cpp

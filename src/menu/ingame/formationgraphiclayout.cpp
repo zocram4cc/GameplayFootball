@@ -16,12 +16,6 @@ constexpr float kMaxPercent = 92.0f;
 constexpr float kSpan = (kMaxPercent - kMinPercent) * 0.5f;  // 42
 constexpr float kMid = (kMaxPercent + kMinPercent) * 0.5f;   // 50
 
-// Entrance schedule timing (see ComputeDisplayState).
-constexpr unsigned long kHold_ms = 5000;
-constexpr unsigned long kFade_ms = 600;
-constexpr unsigned long kGap_ms = 400;
-constexpr unsigned long kTailClear_ms = 2500;
-constexpr unsigned long kMinLeadIn_ms = 2000;
 
 // --- Panel proportions, as fractions of the panel itself ---
 constexpr float kPanelHeightPercent = 86.0f;
@@ -313,36 +307,6 @@ std::vector<Connection> BuildConnections(const std::vector<PanelPoint>& points) 
     if (best != -1) connections.push_back({i, best});
   }
   return connections;
-}
-
-DisplayState ComputeDisplayState(unsigned long elapsed_ms, unsigned long entranceDuration_ms) {
-  const unsigned long perTeam = kHold_ms;  // fade in/out happen inside this window
-  const unsigned long needed = kMinLeadIn_ms + perTeam + kGap_ms + perTeam + kTailClear_ms;
-  if (entranceDuration_ms < needed || elapsed_ms >= entranceDuration_ms)
-    return DisplayState{-1, 0.0f};
-
-  // Anchor both windows against the end of the entrance, leaving
-  // kTailClear_ms free for the final live-pitch/referee shots.
-  const unsigned long team1End = entranceDuration_ms - kTailClear_ms;
-  const unsigned long team1Start = team1End - perTeam;
-  const unsigned long team0End = team1Start - kGap_ms;
-  const unsigned long team0Start = team0End - perTeam;
-
-  auto windowAlpha = [&](unsigned long start, unsigned long end) -> float {
-    if (elapsed_ms < start || elapsed_ms > end) return -1.0f;  // outside
-    const unsigned long sinceStart = elapsed_ms - start;
-    const unsigned long untilEnd = end - elapsed_ms;
-    float a = 1.0f;
-    if (sinceStart < kFade_ms) a = std::min(a, sinceStart / (float)kFade_ms);
-    if (untilEnd < kFade_ms) a = std::min(a, untilEnd / (float)kFade_ms);
-    return clamp(a, 0.0f, 1.0f);
-  };
-
-  float a = windowAlpha(team0Start, team0End);
-  if (a >= 0.0f) return DisplayState{0, a};
-  a = windowAlpha(team1Start, team1End);
-  if (a >= 0.0f) return DisplayState{1, a};
-  return DisplayState{-1, 0.0f};
 }
 
 }  // namespace FormationGraphicLayout

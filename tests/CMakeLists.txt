@@ -265,8 +265,10 @@ gtest_discover_tests(gameplayfootball_simulation_tests DISCOVERY_MODE PRE_TEST)
 add_executable(gameplayfootball_presentation_tests
   menu/formation_graphic_layout_test.cpp
   menu/banner_presentation_test.cpp
+  menu/prematch_timeline_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/formationgraphiclayout.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/bannerpresentation.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/prematchtimeline.cpp
 )
 
 target_include_directories(gameplayfootball_presentation_tests PRIVATE
