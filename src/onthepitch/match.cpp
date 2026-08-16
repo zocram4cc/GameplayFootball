@@ -28,7 +28,14 @@
 #include "utils/playermodelmap.hpp"
 #include "utils/splitgeometry.hpp"
 
-const unsigned int replaySize_ms = 10000;
+// Long enough that a replay fired AFTER the celebration can still reach back
+// past the goal to the build-up. At ten seconds the two were mutually
+// exclusive: cut the celebration short, or replay the celebration.
+const unsigned int replaySize_ms = 22000;
+// How long the celebration holds before the replay takes over, and how far
+// before the goal the replay starts.
+const unsigned long kGoalCelebrationLength_ms = 9000;
+const unsigned long kGoalReplayLeadIn_ms = 7000;
 const unsigned int camPosSize = 150;           // 180; //130
 const float excitementEventDecayRate = 0.99f;  // per 10ms tick
 const float crowdGainUpdateThreshold = 0.001f;
@@ -2529,10 +2536,19 @@ void Match::UpdateIngameCamera() {
       teamChant[lastGoalTeamID]->SetGain(
           0.9f * (1.0f - NormalizedClamp(goalScoredTimer, 6000, 9000)));
 
-    // Fire the replay shortly after the goal: the 10s buffer then covers the
-    // buildup and the finish. Firing at six seconds meant the replay was mostly
-    // the celebration.
-    if (goalScoredTimer == 2500) {
+    // Goal, celebration, replay, kickoff - in that order. The celebration is
+    // allowed to play out first; the replay then reaches back past it to a few
+    // seconds before the goal, which is what the longer buffer above is for.
+    // It used to fire at 2.5 s, which cut the celebration off mid-wheel and
+    // then dropped back into it afterwards.
+    // "when the celebration is done and no sooner": if a goal cutscene is
+    // playing, wait for it to finish rather than cutting into it.
+    const bool celebrationOver =
+        cutsceneEnd_ms > 0 ? actualTime_ms >= cutsceneEnd_ms
+                           : goalScoredTimer >= kGoalCelebrationLength_ms;
+    if (celebrationOver && replayStartOffset_ms == 0 &&
+        goalScoredTimer >= kGoalCelebrationLength_ms) {
+      replayStartOffset_ms = goalScoredTimer + kGoalReplayLeadIn_ms;
       pause = true;
       sig_OnExtendedReplayMoment(this);
     }
@@ -2772,6 +2788,7 @@ void Match::Process() {
           if (teamChant[t]) teamChant[t]->SetGain(0.0f);
       }
       goalScoredTimer = 0;
+      replayStartOffset_ms = 0;  // armed again for the next goal
     }
 
     if (IsInPlay() && !IsInSetPiece())
