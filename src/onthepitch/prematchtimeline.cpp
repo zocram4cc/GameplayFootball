@@ -97,8 +97,8 @@ Timeline Default() {
   timeline.beats = {
       MakeBeat("stadium_card", 13.0f, Camera::Orbit, Overlay::None),
       MakeBeat("tunnel", 13.5f, Camera::Entrance, Overlay::None, "passage01"),
-      MakeBeat("emerge", 11.0f, Camera::Entrance, Overlay::None, "cmn"),
-      MakeBeat("line_up", 26.0f, Camera::Walkout, Overlay::None),
+      MakeBeat("emerge", 11.0f, Camera::Entrance, Overlay::None, "passage02"),
+      MakeBeat("line_up", 26.0f, Camera::Entrance, Overlay::None, "cmn"),
       MakeBeat("anthems", 24.0f, Camera::Entrance, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
