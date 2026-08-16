@@ -441,6 +441,11 @@ protected:
   PrematchTimeline::Timeline prematchTimeline;
   PrematchTimeline::Timeline LoadPrematchTimeline() const;
   void RememberPrematchCamera();
+  // Hides/shows the persistent in-match HUD (scoreboard, radar).
+  void ShowMatchHud(bool visible);
+  // Bounding box of the choreographed entrance cast, for the shots that
+  // frame the players rather than the stadium. False when nothing is staged.
+  bool GetEntranceCastBounds(Vector3& centre, Vector3& extent) const;
   // Camera::Hold keeps whatever the previous beat left on screen.
   Vector3 heldCameraPosition;
   Quaternion heldCameraOrientation;

@@ -1100,6 +1100,55 @@ PrematchTimeline::Timeline Match::LoadPrematchTimeline() const {
   return PrematchTimeline::Default();
 }
 
+bool Match::GetEntranceCastBounds(Vector3& centre, Vector3& extent) const {
+  // Where the two squads currently stand. The imported camerawork is authored
+  // per stadium and films the wrong place in any other, so the walkout and
+  // lineup shots frame the players themselves - whether they were put on
+  // their marks by the choreography or by the scripted walk.
+  bool any = false;
+  float minX = 0, maxX = 0, minY = 0, maxY = 0;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (!teams[teamID]) continue;
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* player : squad) {
+      if (!player) continue;
+      const Vector3 position = player->GetPosition();
+      if (!any) {
+        minX = maxX = position.coords[0];
+        minY = maxY = position.coords[1];
+        any = true;
+      } else {
+        minX = std::min(minX, position.coords[0]);
+        maxX = std::max(maxX, position.coords[0]);
+        minY = std::min(minY, position.coords[1]);
+        maxY = std::max(maxY, position.coords[1]);
+      }
+    }
+  }
+  if (!any) return false;
+  centre = Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0.0f);
+  extent = Vector3(maxX - minX, maxY - minY, 0.0f);
+  return true;
+}
+
+void Match::ShowMatchHud(bool visible) {
+  // The persistent in-match chrome, hidden for the pre-match presentation
+  // and brought back at kickoff.
+  if (scoreboard) {
+    if (visible)
+      scoreboard->Show();
+    else
+      scoreboard->Hide();
+  }
+  if (radar) {
+    if (visible)
+      radar->Show();
+    else
+      radar->Hide();
+  }
+}
+
 void Match::RememberPrematchCamera() {
   // Camera::Hold shows whatever the beat before it left on screen, so every
   // other beat records where it put the camera.
@@ -1182,13 +1231,26 @@ void Match::BuildEntranceCast() {
 }
 
 void Match::UpdateEntranceChoreo() {
+  // The imported PES entrance clips (media/cutscenes/ent/<id>/anims/, exported
+  // by tools/pes21_import/entrance_pl.py) still target the pre-migration
+  // skeleton: played on the native rig they collapse the cast flat onto the
+  // pitch. Until they are re-exported, the walkout runs on the scripted walk
+  // instead, which puts the players on their marks upright and walking.
+  // "entrance_choreography" "true" plays them anyway.
+  static const bool choreographyEnabled =
+      GetConfiguration()->GetBool("entrance_choreography", false);
+  if (!choreographyEnabled) return;
   if (!entranceChoreo.IsLoaded() || !IsInEntrance()) return;
   if (!entranceCastBuilt) {
     BuildEntranceCast();
     entranceCastBuilt = true;
   }
-  const unsigned long start_ms = introCutsceneEnd_ms - introCutsceneDuration_ms;
-  const float elapsedFrame = (actualTime_ms - start_ms) * 0.1f;  // 10 ms frames
+  // On the presentation's own clock. This used to derive a start time by
+  // subtracting the duration from introCutsceneEnd_ms, which is now rolled
+  // forward every tick to hold the kickoff - so the subtraction underflowed
+  // and fed the sampler a different garbage frame every tick, which is what
+  // had the whole cast flickering around the pitch.
+  const float elapsedFrame = GetEntranceElapsedSeconds() * 100.0f;  // 10 ms frames
   for (auto& cast : entranceCast) {
     Vector3 position;
     radian yaw = 0;
@@ -1948,6 +2010,61 @@ void Match::UpdateIngameCamera() {
         }
       }
 
+      if (want == PrematchTimeline::Camera::Walkout ||
+          want == PrematchTimeline::Camera::Lineup) {
+        Vector3 castCentre, castExtent;
+        if (GetEntranceCastBounds(castCentre, castExtent)) {
+          // Stand off on the side the players face - they walk out towards
+          // the middle of the pitch - and look back at the line.
+          const float side = castCentre.coords[1] <= 0.0f ? 1.0f : -1.0f;
+          // Clamped so the shot stays inside the bowl. Before kickoff the two
+          // squads can be spread the width of the pitch, and a standoff scaled
+          // straight off that put the camera through the back of a stand.
+          const float lineHalf = clamp(castExtent.coords[0] * 0.5f, 6.0f, 18.0f);
+
+          Vector3 target = castCentre;
+          float distance, camHeight, fov;
+          if (want == PrematchTimeline::Camera::Walkout) {
+            // Pan slowly along the row, holding on the players as they pass -
+            // the shot the reference broadcast uses for a walkout.
+            target.coords[0] = castCentre.coords[0] + (beat.beatT * 2.0f - 1.0f) * lineHalf;
+            distance = 11.0f;
+            camHeight = 2.6f;
+            fov = 40.0f;
+          } else {
+            // Head-on and wide enough to hold the whole line: the anthem and
+            // team-picture shot.
+            distance = clamp(lineHalf * 1.7f, 15.0f, 24.0f);
+            camHeight = 4.5f;
+            fov = 38.0f;
+          }
+          target.coords[2] = 1.1f;
+
+          // Kept off the touchline, and off the goal lines, so the camera
+          // never ends up inside the stadium's own geometry.
+          const Vector3 eye(clamp(target.coords[0], -44.0f, 44.0f),
+                            clamp(castCentre.coords[1] + side * distance, -30.0f, 30.0f),
+                            camHeight);
+          const Vector3 toTarget = target - eye;
+          const float flat = std::sqrt(toTarget.coords[0] * toTarget.coords[0] +
+                                       toTarget.coords[1] * toTarget.coords[1]);
+
+          cameraNodePosition = eye;
+          cameraNodeOrientation.SetAngleAxis(std::atan2(-toTarget.coords[0], toTarget.coords[1]),
+                                             Vector3(0, 0, 1));
+          cameraOrientation.SetAngleAxis(0.5f * pi + std::atan2(toTarget.coords[2], flat),
+                                         Vector3(1, 0, 0));
+          cameraFOV = fov;
+          cameraNearCap = 0.5f;
+          cameraFarCap = 400.0f;
+          RememberPrematchCamera();
+          return;
+        }
+        // Nothing staged (no choreography installed): fall through to the
+        // wide, which at least shows the pitch.
+        want = PrematchTimeline::Camera::Aerial;
+      }
+
       if (want == PrematchTimeline::Camera::Aerial) {
         // The high, steeply-tilted wide the live game is played on (spec
         // section 5), held still - what the lineup graphics sit over.
@@ -2267,9 +2384,14 @@ void Match::Process() {
     if (entranceRealStart_ms == 0) {
       entranceRealStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
       Log(e_Notice, "Match", "Process", "pre-match presentation starts");
+      // Nothing of the in-match HUD belongs over a broadcast opening: the
+      // scoreboard bug and the radar only appear at kickoff (spec section 1,
+      // shot 15 - the scoreboard arrives *with* the first whistle).
+      ShowMatchHud(false);
     }
     if (GetEntranceElapsedSeconds() >= entranceSeconds) {
       entranceActive = false;
+      ShowMatchHud(true);
       Log(e_Notice, "Match", "Process",
           "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
               "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");

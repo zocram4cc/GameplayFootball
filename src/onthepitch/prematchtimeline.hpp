@@ -41,6 +41,11 @@ enum class Camera {
   Orbit,     // the authored slow orbit of the stands
   Aerial,    // the live-play aerial camera, held still
   Hold,      // stay wherever the previous beat left the camera
+  // Both of these frame the choreographed cast rather than the stadium, so
+  // they work in any venue - the imported camerawork is authored per stadium
+  // and simply films the wrong place in one it was not made for.
+  Walkout,   // low broadcast angle, panning along the line of players
+  Lineup,    // static, head-on, holding the whole line in frame
 };
 
 // What is drawn over it.
