@@ -174,7 +174,9 @@ set(LOADERS_HEADERS
 
 set(LOADERS_SOURCES
         src/loaders/imageloader.cpp
-        src/loaders/aseloader.cpp
+        src/loaders/asecache.cpp
+   src/loaders/asecache.hpp
+   src/loaders/aseloader.cpp
         src/loaders/oggdecoder.cpp
         src/utils/playermodelmap.cpp
         src/utils/faceanim.cpp

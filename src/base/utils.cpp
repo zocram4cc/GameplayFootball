@@ -39,45 +39,39 @@ s_tree* tree_readblock(std::ifstream& datafile) {
 
   bool quit = false;
 
-  while (!datafile.eof() && quit == false) {
-    char tmp[2048];
-    datafile.getline(tmp, 2048);
-    std::string line;
-    line.assign(tmp);
-    std::vector<std::string> tokens;
+  // Hot path: a converted stadium is tens of megabytes and hundreds of
+  // thousands of lines, and this used to allocate a std::string for the line,
+  // two more for the leading-whitespace chomps, and one per token, for every
+  // one of them. tokenize() already skips leading delimiters, so the chomps
+  // were redundant; the line buffer and token vector are now reused across
+  // lines and the token strings are moved into the entry rather than copied.
+  std::string line;
+  std::vector<std::string> tokens;
 
-    // delete CR character, if it's there
-    size_t ln = strlen(line.c_str()) - 1;
-    if (ln > 0) {
-      if (line.c_str()[ln] == '\r')
-        line = line.substr(0, line.length() - 1);
-    }
+  while (!quit && std::getline(datafile, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
 
-    line = stringchomp(line, '\t');
-    line = stringchomp(line, ' ');
+    tokens.clear();
     tokenize(line, tokens, " \t");
+    if (tokens.empty()) continue;
 
-    if (tokens.size() > 0) {
-      if (tokens.at(0).compare("}") == 0) {
-        quit = true;
-      } else {
-        s_treeentry* entry = new s_treeentry();
-        if (tokens.at(0).substr(0, 1).compare("*") == 0) {
-          entry->name = tokens.at(0).substr(1);
-        } else {
-          entry->name = tokens.at(0);
-        }
-        for (unsigned int i = 1; i < tokens.size(); i++) {
-          entry->values.push_back(tokens.at(i));
-        }
-
-        if (tokens.at(tokens.size() - 1).compare("{") == 0) {  // iterate
-          entry->values.pop_back();
-          entry->subtree = tree_readblock(datafile);
-        }
-        content->entries.push_back(entry);
-      }
+    if (tokens.front() == "}") {
+      quit = true;
+      continue;
     }
+
+    s_treeentry* entry = new s_treeentry();
+    entry->name = (tokens.front()[0] == '*') ? tokens.front().substr(1) : tokens.front();
+
+    // a trailing "{" opens a subtree and is not one of the entry's values
+    const bool opens = (tokens.back() == "{");
+    const size_t valueEnd = opens ? tokens.size() - 1 : tokens.size();
+    if (valueEnd > 1) entry->values.reserve(valueEnd - 1);
+    for (size_t i = 1; i < valueEnd; i++) entry->values.push_back(std::move(tokens[i]));
+
+    if (opens) entry->subtree = tree_readblock(datafile);
+
+    content->entries.push_back(entry);
   }
 
   return content;
