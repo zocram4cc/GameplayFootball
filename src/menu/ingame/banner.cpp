@@ -6,6 +6,7 @@
 #include "../../onthepitch/match.hpp"
 #include "../../onthepitch/team.hpp"
 #include "bannerpresentation.hpp"
+#include "captionfit.hpp"
 #include "main.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
@@ -61,24 +62,26 @@ void Gui2Banner::BuildSlot(int index, float x, float width, bool /*alignRight*/)
   this->AddView(slot.accent);
   slot.accent->Show();
 
-  const float textX = x + kAccentWidth + 1.2f;
-  const float textWidth = width - kAccentWidth - 2.4f;
+  const float textX = x + kAccentWidth + width * 0.045f;
+  const float textWidth = width - kAccentWidth - width * 0.09f;
+  slot.textX = textX;
+  slot.textWidth = textWidth;
 
   slot.teamTag = new Gui2Caption(windowManager, "banner_teamtag" + int_to_str(index), textX,
-                                y + height * 0.10f, textWidth, height * 0.28f, "");
+                                y + height * 0.11f, textWidth, height * 0.22f, "");
   slot.teamTag->SetOutlineColor(Vector3(4, 4, 6));
   this->AddView(slot.teamTag);
   slot.teamTag->Show();
 
   slot.title = new Gui2Caption(windowManager, "banner_title" + int_to_str(index), textX,
-                              y + height * 0.36f, textWidth, height * 0.32f, "");
+                              y + height * 0.36f, textWidth, height * 0.30f, "");
   slot.title->SetColor(Vector3(255, 255, 255));
   slot.title->SetOutlineColor(Vector3(4, 4, 6));
   this->AddView(slot.title);
   slot.title->Show();
 
   slot.subtitle = new Gui2Caption(windowManager, "banner_subtitle" + int_to_str(index), textX,
-                                 y + height * 0.68f, textWidth, height * 0.26f, "");
+                                 y + height * 0.70f, textWidth, height * 0.21f, "");
   slot.subtitle->SetColor(Vector3(235, 190, 90));  // gold/orange, per spec section 4
   slot.subtitle->SetOutlineColor(Vector3(4, 4, 6));
   this->AddView(slot.subtitle);
@@ -103,16 +106,29 @@ void Gui2Banner::Show(int teamID, const std::string& title, const std::string& s
   slot.accent->GetImage2D()->DrawRectangle(0, 0, aw, ah, accentColor, 235);
   slot.accent->GetImage2D()->OnChange();
 
+  const float bannerHeight = windowManager->GetHeightPercentForWidth(kSlotWidth, kBannerAspect);
+
   slot.teamTagVisible = (teamID == 0 || teamID == 1);
   if (slot.teamTagVisible) {
     slot.teamTag->SetCaption(match->GetTeam(teamID)->GetTeamData()->GetShortName());
     slot.teamTag->SetColor(accentColor);
+    FitAndLeftAlignCaption(slot.teamTag, slot.textX, slot.textWidth, bannerHeight * 0.22f,
+                           bannerHeight * 0.13f);
   }
 
+  // Player names come out of a squad file and can be arbitrarily long: fit
+  // them to the panel rather than letting Gui2Caption resize itself out past
+  // the artwork (see captionfit.hpp).
   slot.title->SetCaption(title);
+  FitAndLeftAlignCaption(slot.title, slot.textX, slot.textWidth, bannerHeight * 0.30f,
+                         bannerHeight * 0.17f);
 
   slot.subtitleVisible = !subtitle.empty();
-  if (slot.subtitleVisible) slot.subtitle->SetCaption(subtitle);
+  if (slot.subtitleVisible) {
+    slot.subtitle->SetCaption(subtitle);
+    FitAndLeftAlignCaption(slot.subtitle, slot.textX, slot.textWidth, bannerHeight * 0.21f,
+                           bannerHeight * 0.12f);
+  }
 
   slot.shownAt_ms = match->GetActualTime_ms();
   slot.hideAt_ms = slot.shownAt_ms + (unsigned long)std::max(0, time_ms);
@@ -151,6 +167,22 @@ void Gui2Banner::Process() {
                                                        kFadeOut_ms);
     ApplySlotAlpha(slot, alpha);
   }
+}
+
+void Gui2Banner::ApplyZOrder() {
+  const int base = GetZPriority();
+  for (Slot& slot : slots) {
+    if (slot.panel) slot.panel->SetZPriority(base);
+    if (slot.accent) slot.accent->SetZPriority(base + 1);
+    if (slot.teamTag) slot.teamTag->SetZPriority(base + 2);
+    if (slot.title) slot.title->SetZPriority(base + 2);
+    if (slot.subtitle) slot.subtitle->SetZPriority(base + 2);
+  }
+}
+
+void Gui2Banner::SetRecursiveZPriority(int prio) {
+  Gui2View::SetRecursiveZPriority(prio);
+  ApplyZOrder();
 }
 
 }  // namespace blunted

@@ -36,8 +36,9 @@ GamePage::GamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageDat
   betaSign->SetColor(Vector3(180, 180, 180));
   betaSign->SetTransparency(0.3f);
   this->AddView(betaSign);
-  float w = betaSign->GetTextWidthPercent();
-  betaSign->SetPosition(50 - w * 0.5f, 97.0f);
+  // Bottom left corner, out of the lower third's middle where the banners and
+  // the pre-match formation panel live.
+  betaSign->SetPosition(1.5f, 97.0f);
   betaSign->Show();
 
   this->Show();
