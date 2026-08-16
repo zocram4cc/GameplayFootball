@@ -154,18 +154,6 @@ std::vector<Connection> BuildConnections(const std::vector<blunted::Vector3>& da
 // so that a line always ends on the icon it points at.
 std::vector<Connection> BuildConnections(const std::vector<PanelPoint>& points);
 
-// Pre-match entrance schedule: which team's graphic (if any) should be on
-// screen at a given point in the entrance, and its cross-fade alpha (0..1).
-// Returns teamID -1 when nothing should be showing (including when the
-// entrance is too short to fit both graphics comfortably).
-struct DisplayState {
-  int teamID = -1;
-  float alpha = 0.0f;
-};
-
-DisplayState ComputeDisplayState(unsigned long elapsedSinceEntranceStart_ms,
-                                 unsigned long entranceDuration_ms);
-
 }  // namespace FormationGraphicLayout
 
 #endif

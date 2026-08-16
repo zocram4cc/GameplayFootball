@@ -14,7 +14,6 @@
 using blunted::Vector3;
 using FormationGraphicLayout::ArrangeFormation;
 using FormationGraphicLayout::BuildConnections;
-using FormationGraphicLayout::ComputeDisplayState;
 using FormationGraphicLayout::ComputePanelGeometry;
 using FormationGraphicLayout::ComputeSubsLayout;
 using FormationGraphicLayout::FitTextHeight;
@@ -162,72 +161,6 @@ TEST(FormationGraphicLayoutTest, ConnectionsNeverSelfLoopOrGoOutOfRange) {
     EXPECT_GE(c.toIndex, 0);
     EXPECT_LT(c.toIndex, (int)positions.size());
   }
-}
-
-// --- Entrance display schedule ---
-
-TEST(FormationGraphicDisplayScheduleTest, TooShortAnEntranceShowsNothing) {
-  const auto s = ComputeDisplayState(0, 5000);
-  EXPECT_EQ(s.teamID, -1);
-}
-
-TEST(FormationGraphicDisplayScheduleTest, Team0ShowsBeforeTeam1) {
-  // A generous 30s entrance: team0's window should land before team1's.
-  const unsigned long duration = 30000;
-  int firstTeamSeen = -1;
-  for (unsigned long t = 0; t < duration; t += 100) {
-    const auto s = ComputeDisplayState(t, duration);
-    if (s.teamID != -1) {
-      firstTeamSeen = s.teamID;
-      break;
-    }
-  }
-  EXPECT_EQ(firstTeamSeen, 0);
-
-  bool sawTeam1AfterTeam0 = false;
-  bool sawTeam0 = false;
-  for (unsigned long t = 0; t < duration; t += 100) {
-    const auto s = ComputeDisplayState(t, duration);
-    if (s.teamID == 0) sawTeam0 = true;
-    if (s.teamID == 1 && sawTeam0) sawTeam1AfterTeam0 = true;
-  }
-  EXPECT_TRUE(sawTeam1AfterTeam0);
-}
-
-TEST(FormationGraphicDisplayScheduleTest, NothingShowsDuringTheTailClearBeforeKickoff) {
-  const unsigned long duration = 30000;
-  const auto s = ComputeDisplayState(duration - 500, duration);
-  EXPECT_EQ(s.teamID, -1);
-}
-
-TEST(FormationGraphicDisplayScheduleTest, AlphaRampsUpThenDownAcrossAWindow) {
-  const unsigned long duration = 30000;
-  // Find team0's window by scanning.
-  unsigned long start = 0, end = 0;
-  bool inWindow = false;
-  for (unsigned long t = 0; t < duration; t += 50) {
-    const auto s = ComputeDisplayState(t, duration);
-    if (s.teamID == 0 && !inWindow) {
-      start = t;
-      inWindow = true;
-    }
-    if (s.teamID != 0 && inWindow) {
-      end = t - 50;
-      break;
-    }
-  }
-  ASSERT_GT(end, start);
-  const float alphaAtStart = ComputeDisplayState(start, duration).alpha;
-  const float alphaMiddle = ComputeDisplayState((start + end) / 2, duration).alpha;
-  const float alphaAtEnd = ComputeDisplayState(end, duration).alpha;
-  EXPECT_LT(alphaAtStart, alphaMiddle);
-  EXPECT_LT(alphaAtEnd, alphaMiddle);
-  EXPECT_NEAR(alphaMiddle, 1.0f, 0.01f);
-}
-
-TEST(FormationGraphicDisplayScheduleTest, PastTheEntranceShowsNothing) {
-  const auto s = ComputeDisplayState(40000, 30000);
-  EXPECT_EQ(s.teamID, -1);
 }
 
 // --- Panel geometry ---

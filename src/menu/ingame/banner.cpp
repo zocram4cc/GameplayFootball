@@ -139,11 +139,18 @@ void Gui2Banner::ApplySlotAlpha(Slot& slot, float alpha) {
   if (alpha == slot.currentAlpha) return;
   slot.currentAlpha = alpha;
 
-  // See Gui2FormationGraphic::ApplyAlpha for why images use a binary
-  // threshold instead of a continuous fade.
-  const float imageAlpha = alpha > 0.02f ? 1.0f : 0.0f;
-  slot.panel->GetImage2D()->SetAlpha(imageAlpha);
-  slot.accent->GetImage2D()->SetAlpha(imageAlpha);
+  // Shown or hidden, never faded: Surface::SetAlpha multiplies into the
+  // alpha channel (sdl_setsurfacealpha), so taking an image down to zero
+  // erases its transparency for good and bringing it back up restores
+  // nothing. See Gui2FormationGraphic::ApplyAlpha.
+  const bool visible = alpha > 0.02f;
+  if (visible) {
+    slot.panel->Show();
+    slot.accent->Show();
+  } else {
+    slot.panel->Hide();
+    slot.accent->Hide();
+  }
   slot.teamTag->SetTransparency(1.0f - (slot.teamTagVisible ? alpha : 0.0f));
   slot.title->SetTransparency(1.0f - alpha);
   slot.subtitle->SetTransparency(1.0f - (slot.subtitleVisible ? alpha : 0.0f));

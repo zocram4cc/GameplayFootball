@@ -43,6 +43,33 @@ re-applies its own order — see `Gui2FormationGraphic::ApplyZOrder()`,
 `Gui2StatsOverlay::ApplyZOrder()`, `Gui2Banner::ApplyZOrder()`. Setting
 priorities at construction time alone does not work.
 
+## Trap 3: image alpha is destructive
+
+`Surface::SetAlpha` does not set an alpha *level*; `sdl_setsurfacealpha`
+**multiplies** it into every pixel's alpha byte:
+
+    p[3] = p[3] * alpha
+
+So taking an image down to alpha 0 erases its transparency permanently — a
+later `SetAlpha(1.0)` multiplies zero by one and the image never comes back.
+It also flattens a PNG's own per-pixel alpha (rounded corners, the jersey
+silhouette's cut-out) the first time it is faded at all.
+
+That is why the formation panel's artwork and jersey icons went missing the
+moment the presentation timeline started fading the panel in and out, while
+its captions carried on drawing perfectly.
+
+**Images are shown and hidden (`Show()` / `Hide()`), never faded.** Captions
+cross-fade normally, because `SetTransparency` re-renders the text from
+scratch each time. See `Gui2FormationGraphic::ApplyAlpha` and
+`Gui2Banner::ApplySlotAlpha`.
+
+A related consequence: an image created after the scene has started
+rendering never reaches the screen, whatever its position, size and
+visibility. Both together mean a widget must create every image it will ever
+need up front and only re-point them afterwards — which is what
+`Gui2FormationGraphic::BuildImages` does, with `FillForTeam` moving them.
+
 ## Text never clips — it overflows
 
 `Gui2Caption::Redraw()` renders the text at whatever width it needs and, if

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <mutex>
 #include "utils/camtrack.hpp"
+#include "prematchtimeline.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
 #include <memory>
@@ -151,10 +152,22 @@ public:
 
   // The match entrance: teams walking out and lining up before the kickoff.
   // While this is true the kickoff is held and no football is played.
-  bool IsInEntrance() const {
-    return introCutsceneEnd_ms > 0 && actualTime_ms < introCutsceneEnd_ms;
-  }
+  //
+  // Timed on the wall clock, not on actualTime_ms. The match's own clock
+  // advances a fixed 10 ms per simulation tick, and the tick rate is whatever
+  // the machine can manage - on a fast or headless run that is many times
+  // real time, which is what made a ninety-second presentation play out in
+  // about five seconds. A presentation is measured in seconds the viewer
+  // actually sits through.
+  bool IsInEntrance() const { return entranceActive; }
+  // How far into the presentation we are, in real seconds.
+  float GetEntranceElapsedSeconds() const;
   unsigned long GetEntranceEndTime_ms() const { return introCutsceneEnd_ms; }
+  // Which beat of the pre-match presentation is on air, and what it wants
+  // drawn over it (docs/PRESENTATION_SPEC.md section 1). The formation
+  // graphic reads its cue from here rather than working out its own
+  // schedule, so a competition's timeline file governs both.
+  PrematchTimeline::State GetPrematchState() const;
   // Where this player stands in the pre-kickoff line-up, and which way he
   // faces. Both teams line up along the halfway line facing the main stand.
   void GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const;
@@ -408,14 +421,34 @@ protected:
   // walked out and lined up. Measured on the match's own 10 ms clock so the
   // referee's set-piece timing and this agree exactly.
   // ("intro_cutscene_seconds" / "entrance_id" config keys)
+  // introCutsceneEnd_ms is kept one tick ahead of actualTime_ms for as long
+  // as the entrance runs: the referee defers the kickoff to it every tick
+  // (see referee.cpp), so when the entrance finishes the value it last
+  // latched is immediately reachable and the restart arms at once.
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
+  bool entranceActive = false;
+  unsigned long entranceRealStart_ms = 0;
+  float entranceSeconds = 0.0f;
   // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
   // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
   // PES stages an entrance as several authored shots cut back to back; they
   // play in order, each one filling its own slice of the entrance
   CamTrack introCamTrack;
   std::vector<CamTrack> introShots;
+  // The beat list this entrance is staged against, picked per competition -
+  // see prematchtimeline.hpp for the lookup and the file format.
+  PrematchTimeline::Timeline prematchTimeline;
+  PrematchTimeline::Timeline LoadPrematchTimeline() const;
+  void RememberPrematchCamera();
+  // Camera::Hold keeps whatever the previous beat left on screen.
+  Vector3 heldCameraPosition;
+  Quaternion heldCameraOrientation;
+  Quaternion heldCameraNodeOrientation;
+  float heldCameraFOV = 35.0f;
+  float heldCameraNear = 2.0f;
+  float heldCameraFar = 400.0f;
+  bool heldCameraValid = false;
   // imported PES player choreography for the entrance: a .chor exported from
   // the family's _pl packs (tools/pes21_import/entrance_pl.py), picked from
   // the same directory as the camerawork, plus its in-place .anim clips.

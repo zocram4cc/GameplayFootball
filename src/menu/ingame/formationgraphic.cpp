@@ -5,6 +5,7 @@
 
 #include "../../data/teamdata.hpp"
 #include "../../onthepitch/match.hpp"
+#include "../../onthepitch/prematchtimeline.hpp"
 #include "../../onthepitch/team.hpp"
 #include "captionfit.hpp"
 #include "formationgraphiclayout.hpp"
@@ -104,18 +105,98 @@ void Gui2FormationGraphic::Init() {
   this->AddView(subsHeaderCaption);
   subsHeaderCaption->Show();
 
-  // Everything above stays Show()n for the widget's entire lifetime; only
-  // alpha conveys visibility (see ApplyAlpha/Process).
+  BuildImages();
+
+  // Captions convey visibility through transparency, which re-renders and is
+  // reversible. Images cannot: see ApplyAlpha.
   ApplyAlpha(0.0f);
 
   this->Show();
+}
+
+void Gui2FormationGraphic::BuildImages() {
+  if (imagesBuilt) return;
+  imagesBuilt = true;
+
+  // Every Gui2Image the panel will ever need is created here, before the
+  // first frame is drawn, and is only re-pointed afterwards. Two engine
+  // behaviours force this:
+  //
+  //  - Surface::SetAlpha MULTIPLIES into the alpha channel
+  //    (sdl_setsurfacealpha), so fading an image to 0 erases its
+  //    transparency for good; bringing the alpha back up restores nothing.
+  //    Images are therefore hidden with Hide(), never with alpha.
+  //  - An image created after the scene has started rendering never reaches
+  //    the screen, however correct its position, size and visibility.
+  //
+  // Captions have neither problem (SetTransparency re-renders from the text),
+  // which is why the substitutes list is still built per team.
+  panelBg = new Gui2Image(windowManager, "formationgraphic_panel", 0, 0, geometry.panelWidth,
+                          geometry.panelHeight);
+  this->AddView(panelBg);
+  panelBg->LoadImage("media/ui/pes/formation_panel.png");
+  panelBg->Show();
+
+  headerBg = new Gui2Image(windowManager, "formationgraphic_header", 0, 0, geometry.panelWidth,
+                           geometry.headerHeight);
+  this->AddView(headerBg);
+  headerBg->LoadImage("media/ui/pes/formation_header.png");
+  headerBg->Show();
+
+  const float crestHeight = geometry.headerHeight * 0.72f;
+  const float crestWidth = windowManager->GetWidthPercentForHeight(crestHeight, 1.0f);
+  const float crestMargin = geometry.panelWidth * 0.02f;
+  for (int i = 0; i < 2; i++) {
+    crest[i] = new Gui2Image(windowManager, "formationgraphic_crest" + int_to_str(i), crestMargin,
+                             (geometry.headerHeight - crestHeight) * 0.5f, crestWidth, crestHeight);
+    this->AddView(crest[i]);
+    crest[i]->LoadImage(match->GetTeam(i)->GetTeamData()->GetLogoUrl());
+    crest[i]->Show();
+  }
+
+  pitchLines = new Gui2Image(windowManager, "formationgraphic_pitchlines", geometry.pitchX,
+                             geometry.pitchY, geometry.pitchWidth, geometry.pitchHeight);
+  this->AddView(pitchLines);
+  pitchLines->Show();
+
+  // The eleven jersey icons and their numbers. Their size does not depend on
+  // the team - it comes off the tightest row spacing the arrangement is
+  // allowed to produce - so it can be settled now and only the positions
+  // change per side.
+  const float gapWidth =
+      FormationGraphicLayout::kMinIconGapPercent * 0.01f * geometry.pitchWidth;
+  float iconWidth = gapWidth * kIconOfGap;
+  const float maxIconHeight = geometry.pitchHeight * kIconOfPitchHeight;
+  iconWidth = std::min(iconWidth, windowManager->GetWidthPercentForHeight(maxIconHeight, 1.0f));
+  const float iconHeight = windowManager->GetHeightPercentForWidth(iconWidth, 1.0f);
+
+  for (int i = 0; i < 11; i++) {
+    StarterWidgets sw;
+    sw.icon = new Gui2Image(windowManager, "formationgraphic_icon" + int_to_str(i), 0, 0, iconWidth,
+                            iconHeight);
+    this->AddView(sw.icon);
+    sw.icon->LoadImage("media/ui/pes/jersey_icon.png");
+    sw.icon->Show();
+
+    sw.number = new Gui2BitmapText(windowManager, "formationgraphic_number" + int_to_str(i), 0, 0,
+                                   iconWidth * 0.60f, iconHeight * 0.46f,
+                                   "media/ui/pes/num_mid.fnt");
+    sw.number->SetText("");
+    this->AddView(sw.number);
+    sw.number->Show();
+
+    starters.push_back(sw);
+  }
+
+  ApplyZOrder();
 }
 
 void Gui2FormationGraphic::ApplyZOrder() {
   const int base = GetZPriority();
   if (panelBg) panelBg->SetZPriority(base + kZPanel);
   if (headerBg) headerBg->SetZPriority(base + kZHeader);
-  if (crest) crest->SetZPriority(base + kZContent);
+  for (int i = 0; i < 2; i++)
+    if (crest[i]) crest[i]->SetZPriority(base + kZContent);
   if (teamTagCaption) teamTagCaption->SetZPriority(base + kZContent);
   if (subsHeaderCaption) subsHeaderCaption->SetZPriority(base + kZContent);
   if (pitchLines) pitchLines->SetZPriority(base + kZContent);
@@ -134,40 +215,14 @@ void Gui2FormationGraphic::SetRecursiveZPriority(int prio) {
   ApplyZOrder();
 }
 
-void Gui2FormationGraphic::ClearDynamicViews() {
-  if (pitchLines) {
-    pitchLines->Exit();
-    delete pitchLines;
-    pitchLines = nullptr;
-  }
-
-  for (StarterWidgets& s : starters) {
-    if (s.icon) {
-      s.icon->Exit();
-      delete s.icon;
-    }
-    if (s.number) {
-      s.number->Exit();
-      delete s.number;
-    }
-    if (s.nickname) {
-      s.nickname->Exit();
-      delete s.nickname;
-    }
-  }
-  starters.clear();
-
+void Gui2FormationGraphic::ClearTextViews() {
+  // Only captions are torn down and rebuilt per team; every image the panel
+  // owns lives for its whole lifetime (see BuildImages).
   for (Gui2Caption* c : subLines) {
     c->Exit();
     delete c;
   }
   subLines.clear();
-
-  if (crest) {
-    crest->Exit();
-    delete crest;
-    crest = nullptr;
-  }
 
   if (formationLabel) {
     formationLabel->Exit();
@@ -181,21 +236,16 @@ void Gui2FormationGraphic::ClearDynamicViews() {
   }
 }
 
-void Gui2FormationGraphic::BuildForTeam(int teamID) {
-  ClearDynamicViews();
+void Gui2FormationGraphic::FillForTeam(int teamID) {
+  ClearTextViews();
 
   TeamData* teamData = match->GetTeam(teamID)->GetTeamData();
 
-  // --- header: crest, then the team tag centred in what is left of the bar
+  // --- header: this side's crest, then the team tag centred in what is left
+  shownCrest = teamID;
   const float crestHeight = geometry.headerHeight * 0.72f;
   const float crestWidth = windowManager->GetWidthPercentForHeight(crestHeight, 1.0f);
   const float crestMargin = geometry.panelWidth * 0.02f;
-  crest = new Gui2Image(windowManager, "formationgraphic_crest", crestMargin,
-                        (geometry.headerHeight - crestHeight) * 0.5f, crestWidth, crestHeight);
-  this->AddView(crest);
-  crest->LoadImage(teamData->GetLogoUrl());
-  crest->Show();
-
   const float tagLeft = crestMargin + crestWidth;
   teamTagCaption->SetCaption(teamData->GetShortName());
   blunted::FitAndCentreCaption(teamTagCaption, (tagLeft + geometry.panelWidth - crestMargin) * 0.5f,
@@ -221,10 +271,9 @@ void Gui2FormationGraphic::BuildForTeam(int teamID) {
   windowManager->GetCoordinates(geometry.pitchX, geometry.pitchY, geometry.pitchWidth,
                                 geometry.pitchHeight, x, y, w, h);
 
-  pitchLines = new Gui2Image(windowManager, "formationgraphic_pitchlines", geometry.pitchX,
-                             geometry.pitchY, geometry.pitchWidth, geometry.pitchHeight);
-  this->AddView(pitchLines);
-  pitchLines->Show();
+  // The shape is redrawn into the image built in BuildImages, wiping the
+  // previous side's lines first.
+  pitchLines->GetImage2D()->DrawRectangle(0, 0, w, h, Vector3(0, 0, 0), 0);
 
   auto toPixel = [&](const PanelPoint& p) -> Vector3 {
     return Vector3(p.xPercent * 0.01f * w, p.yPercent * 0.01f * h, 0.0f);
@@ -280,47 +329,40 @@ void Gui2FormationGraphic::BuildForTeam(int teamID) {
 
   // --- jersey icons + squad numbers + nicknames
   //
-  // Both the icon and the width a nickname may occupy come off the tightest
-  // gap the arrangement produced, so neither can ever collide with its
-  // neighbour however the formation is shaped.
+  // The icons already exist (BuildImages); this points them at this side's
+  // rows. The width a nickname may occupy comes off the tightest gap the
+  // arrangement produced, so names can never collide however the formation
+  // is shaped.
   const float gapPercent = FormationGraphicLayout::MinHorizontalGap(arranged);
   const float gapWidth = gapPercent * 0.01f * geometry.pitchWidth;
-  float iconWidth = gapWidth * kIconOfGap;
-  const float maxIconHeight = geometry.pitchHeight * kIconOfPitchHeight;
-  iconWidth = std::min(iconWidth, windowManager->GetWidthPercentForHeight(maxIconHeight, 1.0f));
-  const float iconHeight = windowManager->GetHeightPercentForWidth(iconWidth, 1.0f);
+  float iconWidth = 0.0f, iconHeight = 0.0f;
+  if (!starters.empty() && starters[0].icon) starters[0].icon->GetSize(iconWidth, iconHeight);
 
-  for (int i = 0; i < 11; i++) {
+  for (int i = 0; i < 11 && i < (int)starters.size(); i++) {
     const float px = geometry.pitchX + arranged[i].xPercent * 0.01f * geometry.pitchWidth;
     const float py = geometry.pitchY + arranged[i].yPercent * 0.01f * geometry.pitchHeight;
 
-    StarterWidgets sw;
-    sw.icon = new Gui2Image(windowManager, "formationgraphic_icon" + int_to_str(i),
-                            px - iconWidth * 0.5f, py - iconHeight * 0.5f, iconWidth, iconHeight);
-    this->AddView(sw.icon);
-    sw.icon->LoadImage("media/ui/pes/jersey_icon.png");
-    sw.icon->Show();
-
+    StarterWidgets& sw = starters[i];
+    sw.icon->SetPosition(px - iconWidth * 0.5f, py - iconHeight * 0.5f);
     // The number sits on the jersey's chest, which is the lower two thirds
     // of the silhouette (the top third is collar and shoulders).
-    sw.number = new Gui2BitmapText(windowManager, "formationgraphic_number" + int_to_str(i),
-                                   px - iconWidth * 0.30f, py - iconHeight * 0.14f,
-                                   iconWidth * 0.60f, iconHeight * 0.46f,
-                                   "media/ui/pes/num_mid.fnt");
+    sw.number->SetPosition(px - iconWidth * 0.30f, py - iconHeight * 0.14f);
     sw.number->SetText(int_to_str(FormationGraphicLayout::SquadNumberForSlot(i)));
-    this->AddView(sw.number);
-    sw.number->Show();
 
+    if (sw.nickname) {
+      sw.nickname->Exit();
+      delete sw.nickname;
+    }
     sw.nickname = new Gui2Caption(
         windowManager, "formationgraphic_nick" + int_to_str(i), px - gapWidth * 0.5f,
-        py + iconHeight * 0.56f, gapWidth, kNicknameHeight, teamData->GetPlayerData(i)->GetLastName());
+        py + iconHeight * 0.56f, gapWidth, kNicknameHeight,
+        teamData->GetPlayerData(i)->GetLastName());
     sw.nickname->SetColor(kTextColor);
     sw.nickname->SetOutlineColor(kOutlineColor);
     this->AddView(sw.nickname);
     sw.nickname->Show();
-    blunted::FitAndCentreCaption(sw.nickname, px, gapWidth * 0.96f, kNicknameHeight, kNicknameMinHeight);
-
-    starters.push_back(sw);
+    blunted::FitAndCentreCaption(sw.nickname, px, gapWidth * 0.96f, kNicknameHeight,
+                                 kNicknameMinHeight);
   }
 
   // --- substitutes: a numbered list down the left column
@@ -391,45 +433,42 @@ void Gui2FormationGraphic::BuildForTeam(int teamID) {
   ApplyZOrder();
 }
 
-void Gui2FormationGraphic::BuildBackgrounds() {
-  if (panelBg) return;
-
-  panelBg = new Gui2Image(windowManager, "formationgraphic_panel", 0, 0, geometry.panelWidth,
-                          geometry.panelHeight);
-  this->AddView(panelBg);
-  panelBg->LoadImage("media/ui/pes/formation_panel.png");
-  panelBg->Show();
-
-  headerBg = new Gui2Image(windowManager, "formationgraphic_header", 0, 0, geometry.panelWidth,
-                           geometry.headerHeight);
-  this->AddView(headerBg);
-  headerBg->LoadImage("media/ui/pes/formation_header.png");
-  headerBg->Show();
-
-  currentAlpha = -1.0f;  // the new images need their alpha applied
-  ApplyZOrder();
-}
-
 void Gui2FormationGraphic::ApplyAlpha(float alpha) {
   if (alpha == currentAlpha) return;
   currentAlpha = alpha;
 
-  if (panelBg) panelBg->GetImage2D()->SetAlpha(alpha);
-  if (headerBg) headerBg->GetImage2D()->SetAlpha(alpha);
-  if (crest) crest->GetImage2D()->SetAlpha(alpha);
-  teamTagCaption->SetTransparency(1.0f - alpha);
-  subsHeaderCaption->SetTransparency(1.0f - alpha);
+  // Images are shown or hidden, never faded. Surface::SetAlpha multiplies
+  // into the alpha channel (see sdl_setsurfacealpha), so fading a panel or a
+  // jersey icon down to zero would erase its transparency permanently and it
+  // would never come back - which is exactly how the panel artwork went
+  // missing while its captions still drew. Captions cross-fade normally,
+  // because SetTransparency re-renders the text from scratch each time.
+  const bool visible = alpha > 0.02f;
+  auto setVisible = [visible](Gui2View* view) {
+    if (!view) return;
+    if (visible)
+      view->Show();
+    else
+      view->Hide();
+  };
 
+  setVisible(panelBg);
+  setVisible(headerBg);
+  setVisible(pitchLines);
+  for (int i = 0; i < 2; i++) setVisible(crest[i] && i == shownCrest ? crest[i] : nullptr);
+  for (int i = 0; i < 2; i++)
+    if (crest[i] && i != shownCrest) crest[i]->Hide();
   for (StarterWidgets& s : starters) {
-    if (s.icon) s.icon->GetImage2D()->SetAlpha(alpha);
-    if (s.number) s.number->SetAlpha(alpha);
+    setVisible(s.icon);
+    setVisible(s.number);
     if (s.nickname) s.nickname->SetTransparency(1.0f - alpha);
   }
+
+  teamTagCaption->SetTransparency(1.0f - alpha);
+  subsHeaderCaption->SetTransparency(1.0f - alpha);
   for (Gui2Caption* c : subLines) c->SetTransparency(1.0f - alpha);
   if (formationLabel) formationLabel->SetTransparency(1.0f - alpha);
   if (formationShape) formationShape->SetTransparency(1.0f - alpha);
-
-  if (pitchLines) pitchLines->GetImage2D()->SetAlpha(alpha);
 }
 
 void Gui2FormationGraphic::Process() {
@@ -441,11 +480,9 @@ void Gui2FormationGraphic::Process() {
   // in seconds. "debug_formation_graphic_always" "true".
   static const bool alwaysShow =
       GetConfiguration()->GetBool("debug_formation_graphic_always", false);
-  BuildBackgrounds();
-
   if (alwaysShow) {
     if (builtForTeamID != 0) {
-      BuildForTeam(0);
+      FillForTeam(0);
       builtForTeamID = 0;
       currentAlpha = -1.0f;
     }
@@ -454,38 +491,33 @@ void Gui2FormationGraphic::Process() {
   }
 
   if (!match->IsInEntrance()) {
-    if (entranceStart_ms != 0 || builtForTeamID != -2) {
-      entranceStart_ms = 0;
-      entranceDuration_ms = 0;
+    if (builtForTeamID != -2) {
       builtForTeamID = -2;
-      ClearDynamicViews();
       ApplyAlpha(0.0f);
+      ClearTextViews();
     }
     return;
   }
 
-  if (entranceStart_ms == 0) {
-    entranceStart_ms = match->GetActualTime_ms();
-    entranceDuration_ms = match->GetEntranceEndTime_ms() > entranceStart_ms
-                              ? match->GetEntranceEndTime_ms() - entranceStart_ms
-                              : 0;
-  }
+  // Which side's lineup is on air, and how far up its cross-fade, is the
+  // presentation timeline's call - a competition's own .timeline file decides
+  // where (and whether) these graphics appear. See prematchtimeline.hpp.
+  const PrematchTimeline::State beat = match->GetPrematchState();
+  int teamID = -1;
+  if (beat.overlay == PrematchTimeline::Overlay::FormationHome) teamID = 0;
+  else if (beat.overlay == PrematchTimeline::Overlay::FormationAway) teamID = 1;
 
-  const unsigned long elapsed = match->GetActualTime_ms() - entranceStart_ms;
-  const FormationGraphicLayout::DisplayState state =
-      FormationGraphicLayout::ComputeDisplayState(elapsed, entranceDuration_ms);
-
-  if (state.teamID != builtForTeamID) {
-    if (state.teamID == -1) {
-      ClearDynamicViews();
+  if (teamID != builtForTeamID) {
+    if (teamID == -1) {
+      ClearTextViews();
     } else {
-      BuildForTeam(state.teamID);
+      FillForTeam(teamID);
     }
     currentAlpha = -1.0f;  // force a fresh ApplyAlpha (team/content just changed)
-    builtForTeamID = state.teamID;
+    builtForTeamID = teamID;
   }
 
-  ApplyAlpha(state.teamID == -1 ? 0.0f : state.alpha);
+  ApplyAlpha(teamID == -1 ? 0.0f : beat.overlayAlpha);
 }
 
 }  // namespace blunted

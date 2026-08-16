@@ -377,12 +377,30 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
     if (viewerSeconds > 0.0f) introSeconds = std::max(introSeconds, viewerSeconds);
   }
+  // The presentation timeline: which beats this competition stages before
+  // kickoff, and how long each holds (docs/PRESENTATION_SPEC.md section 1).
+  // It governs the entrance's length, not the camerawork's own running time -
+  // PES holds a stadium shot or a lineup graphic for as long as the
+  // presentation says, independent of how much camera track happens to exist.
+  if (!entranceDisabled) {
+    prematchTimeline = LoadPrematchTimeline();
+    const float configured = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
+    if (configured > 0.0f)
+      prematchTimeline = PrematchTimeline::Rescale(prematchTimeline, configured);
+    if (!prematchTimeline.beats.empty()) introSeconds = prematchTimeline.TotalSeconds();
+  }
+
   if (introSeconds > 0.0f) {
-    // Rounded to the match's 10 ms tick: the referee compares its set-piece
-    // times for equality against actualTime_ms, so an odd millisecond would
-    // never match and the kickoff would never come.
-    introCutsceneDuration_ms = ((unsigned long)(introSeconds * 1000.0f) / 10) * 10;
-    introCutsceneEnd_ms = actualTime_ms + introCutsceneDuration_ms;
+    entranceSeconds = introSeconds;
+    entranceActive = true;
+    entranceRealStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
+    // Held one tick ahead and pushed forward every Process() while the
+    // entrance runs; the referee latches it as the kickoff's prepare time.
+    introCutsceneEnd_ms = actualTime_ms + 10;
+    Log(e_Notice, "Match", "Match",
+        "pre-match presentation: " + int_to_str((int)prematchTimeline.beats.size()) +
+            " beat(s), holding kickoff for " + int_to_str((int)introSeconds) + "s of real time");
   }
 
   cameraUserZoom = GetConfiguration()->GetReal("camera_zoom", _default_CameraZoom);
@@ -1036,6 +1054,64 @@ const MentalImage* Match::GetMentalImage(int history_ms) {
 void Match::UpdateLatestMentalImageBallPredictions() {
   if (mentalImages.size() > 0)
     mentalImages.at(0)->UpdateBallPredictions();
+}
+
+PrematchTimeline::Timeline Match::LoadPrematchTimeline() const {
+  // Explicit file wins; otherwise the competition's own entrance family names
+  // one ("entrance_id" 020 -> 020.timeline), then the shipped default. With
+  // none of those installed the built-in sequence is used, so a bare checkout
+  // still gets the full pre-match rather than a two-second cut to kickoff.
+  const std::string root =
+      GetConfiguration()->Get("presentation_dir", "media/presentation");
+  std::vector<std::string> candidates;
+  const std::string explicitFile = GetConfiguration()->Get("presentation_timeline", "");
+  if (!explicitFile.empty()) candidates.push_back(explicitFile);
+  const std::string entranceID = GetConfiguration()->Get("entrance_id", "");
+  if (!entranceID.empty() && entranceID != "none")
+    candidates.push_back(root + "/" + entranceID + ".timeline");
+  candidates.push_back(root + "/default.timeline");
+
+  for (const std::string& path : candidates) {
+    std::ifstream file(path);
+    PrematchTimeline::Timeline timeline;
+    if (file.good() && PrematchTimeline::Parse(file, timeline)) {
+      Log(e_Notice, "Match", "LoadPrematchTimeline",
+          path + ": " + int_to_str((int)timeline.beats.size()) + " beat(s), " +
+              int_to_str((int)timeline.TotalSeconds()) + "s");
+      return timeline;
+    }
+  }
+
+  Log(e_Notice, "Match", "LoadPrematchTimeline", "no timeline file; using the built-in sequence");
+  return PrematchTimeline::Default();
+}
+
+void Match::RememberPrematchCamera() {
+  // Camera::Hold shows whatever the beat before it left on screen, so every
+  // other beat records where it put the camera.
+  heldCameraPosition = cameraNodePosition;
+  heldCameraNodeOrientation = cameraNodeOrientation;
+  heldCameraOrientation = cameraOrientation;
+  heldCameraFOV = cameraFOV;
+  heldCameraNear = cameraNearCap;
+  heldCameraFar = cameraFarCap;
+  heldCameraValid = true;
+}
+
+float Match::GetEntranceElapsedSeconds() const {
+  if (!entranceActive) return entranceSeconds;
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  if (now <= entranceRealStart_ms) return 0.0f;
+  return (now - entranceRealStart_ms) * 0.001f;
+}
+
+PrematchTimeline::State Match::GetPrematchState() const {
+  if (!entranceActive) {
+    PrematchTimeline::State done;
+    done.finished = true;
+    return done;
+  }
+  return PrematchTimeline::At(prematchTimeline, GetEntranceElapsedSeconds());
 }
 
 void Match::GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const {
@@ -1790,51 +1866,100 @@ void Match::UpdateIngameCamera() {
   const bool modelViewerHolding =
       GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f) > 0.0f;
   if (introCutsceneEnd_ms > 0 && !modelViewerHolding) {
-    unsigned long now = actualTime_ms;
-    if (now < introCutsceneEnd_ms) {
-      float t = 1.0f - (introCutsceneEnd_ms - now) /
-                           (float)introCutsceneDuration_ms;
-      // Several authored shots cut back to back: walk the elapsed time along
-      // the sequence and sample whichever shot is on air.
-      const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
-      float shotT = t;
-      if (introShots.size() > 1) {
-        float total = 0.0f;
-        for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
-        float elapsed = t * total;
-        for (const CamTrack& s : introShots) {
-          const float duration = s.GetDurationSeconds();
-          if (elapsed <= duration || &s == &introShots.back()) {
-            shot = &s;
-            shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
-            break;
-          }
-          elapsed -= duration;
-        }
-      }
-      if (shot->GetFrameCount() > 0) {
-        CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
-        cameraNodePosition = Vector3(frame.position[0], frame.position[1],
-                                     frame.position[2]);
-        cameraNodeOrientation = QUATERNION_IDENTITY;
-        cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
-                              frame.rotation[2], frame.rotation[3]);
-        cameraFOV = frame.fov;
-        cameraNearCap = std::max(0.1f, frame.near);
-        cameraFarCap = frame.far;
+    // The presentation owns the camera for as long as it is running, which is
+    // a real-time question now rather than an actualTime_ms one.
+    if (entranceActive) {
+      const float t = entranceSeconds > 0.0f
+                          ? clamp(GetEntranceElapsedSeconds() / entranceSeconds, 0.0f, 1.0f)
+                          : 0.0f;
+      const PrematchTimeline::State beat = GetPrematchState();
+
+      // Each beat of the presentation asks for its own kind of shot; a
+      // timeline with no beats at all falls back to running the imported
+      // camerawork straight through, which is what this used to do.
+      PrematchTimeline::Camera want =
+          prematchTimeline.beats.empty() ? PrematchTimeline::Camera::Entrance : beat.camera;
+      if (want == PrematchTimeline::Camera::Hold && !heldCameraValid)
+        want = PrematchTimeline::Camera::Aerial;
+      if (want == PrematchTimeline::Camera::Entrance && introShots.empty() &&
+          introCamTrack.GetFrameCount() == 0)
+        want = PrematchTimeline::Camera::Orbit;  // nothing imported to play
+
+      if (want == PrematchTimeline::Camera::Hold) {
+        cameraNodePosition = heldCameraPosition;
+        cameraNodeOrientation = heldCameraNodeOrientation;
+        cameraOrientation = heldCameraOrientation;
+        cameraFOV = heldCameraFOV;
+        cameraNearCap = heldCameraNear;
+        cameraFarCap = heldCameraFar;
         return;
       }
-      float a = t * 2.0f * pi;
+
+      if (want == PrematchTimeline::Camera::Entrance) {
+        // The imported shots are spread across the entrance beats only, so a
+        // lineup graphic holding the picture does not eat into the walkout's
+        // camerawork.
+        const float entranceProgress =
+            prematchTimeline.beats.empty()
+                ? t
+                : PrematchTimeline::EntranceProgress(prematchTimeline, beat);
+        const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
+        float shotT = entranceProgress;
+        if (introShots.size() > 1) {
+          float total = 0.0f;
+          for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
+          float elapsed = entranceProgress * total;
+          for (const CamTrack& s : introShots) {
+            const float duration = s.GetDurationSeconds();
+            if (elapsed <= duration || &s == &introShots.back()) {
+              shot = &s;
+              shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
+              break;
+            }
+            elapsed -= duration;
+          }
+        }
+        if (shot->GetFrameCount() > 0) {
+          CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
+          cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+          cameraNodeOrientation = QUATERNION_IDENTITY;
+          cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                                frame.rotation[3]);
+          cameraFOV = frame.fov;
+          cameraNearCap = std::max(0.1f, frame.near);
+          cameraFarCap = frame.far;
+          RememberPrematchCamera();
+          return;
+        }
+      }
+
+      if (want == PrematchTimeline::Camera::Aerial) {
+        // The high, steeply-tilted wide the live game is played on (spec
+        // section 5), held still - what the lineup graphics sit over.
+        const float camHeight = 62.0f;
+        const float back = 34.0f;
+        cameraNodePosition = Vector3(0, -back, camHeight);
+        cameraNodeOrientation = QUATERNION_IDENTITY;
+        cameraOrientation.SetAngleAxis(0.5f * pi - std::atan2(camHeight, back), Vector3(1, 0, 0));
+        cameraFOV = 32.0f;
+        cameraNearCap = 2.0f;
+        cameraFarCap = 400.0f;
+        RememberPrematchCamera();
+        return;
+      }
+
+      // Orbit: a slow authored sweep of the stands, one full circle across
+      // however many beats ask for it.
+      const float a = t * 2.0f * pi;
       const float radius = 42.0f;
       const float camHeight = 16.0f;
-      cameraNodePosition =
-          Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
+      cameraNodePosition = Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
       cameraNodeOrientation.SetAngleAxis(a, Vector3(0, 0, 1));
-      cameraOrientation.SetAngleAxis(
-          0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
+      cameraOrientation.SetAngleAxis(0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
       cameraFOV = 35.0f;
       cameraNearCap = 2.0f;
       cameraFarCap = 400.0f;
+      RememberPrematchCamera();
       return;
     }
     introCutsceneEnd_ms = 0;
@@ -2115,6 +2240,19 @@ void Match::Process() {
   if (UserEventManager::GetInstance().GetKeyboardState(SDLK_F1)) {
     SetRandomSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
+  }
+
+  // The presentation runs on real seconds (see Match::IsInEntrance). Until
+  // its budget is spent, keep the kickoff one tick out of reach.
+  if (entranceActive) {
+    if (GetEntranceElapsedSeconds() >= entranceSeconds) {
+      entranceActive = false;
+      Log(e_Notice, "Match", "Process",
+          "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
+              "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
+    } else {
+      introCutsceneEnd_ms = actualTime_ms + 10;
+    }
   }
 
   ProcessTacticalHotkeys();
