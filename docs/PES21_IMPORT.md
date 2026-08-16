@@ -469,3 +469,26 @@ decoded PNGs beside them and `import_team.py` takes it from there.
 Where a character lives differs by pack, and it is worth checking rather
 than assuming: in the 2HUG AET pack the whole character is `Boots/*/
 boots.fmdl` and `Faces/` holds only a `face_diff.bin`, no model at all.
+
+### Names: decrypting the EDIT file
+
+`EDIT00000000` is encrypted, but not opaquely so - the4chancup's
+[pesXdecrypter](https://github.com/the4chancup/pesxdecrypter) opens it:
+
+    gcc -O2 -fcommon -DUSE_PES21_MASTER_KEY -o dec21 \
+        src/decrypter.c src/crypt.c src/masterkey.c src/mt19937ar.c -I src
+    ./dec21 <...>/EDIT00000000 <outdir>
+
+(`-fcommon` matters: the sources declare `MasterKeyZero` in a header without
+`extern`, which modern GCC rejects. Without `-DUSE_PES21_MASTER_KEY` it
+builds and runs but decrypts to nothing at all, silently.)
+
+`data.dat` then holds the player records in the clear. A player's display
+name is a NUL-terminated ASCII string at **+54** from its `u32` player id -
+the byte immediately before it is a small binary field, which is printable
+often enough to glue itself onto the front of the name if you go looking for
+the longest printable run instead of using the fixed offset.
+
+That is where /a/'s real roster came from: ACCELERATOR, W I D E F A C E,
+SMUG ANIME FACE, INFERNO COP, TRUCK-KUN and the rest, rather than the
+placeholder names the import invented.
