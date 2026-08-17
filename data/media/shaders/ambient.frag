@@ -179,6 +179,19 @@ void main(void) {
   SSAO /= SSAO_kernelSize * 1.0f;
   SSAO = 1.0f - SSAO;
   //SSAO = SSAO * 2.0f - 1.0f; // exaggerate effect
+  // Ambient occlusion is a contact effect - the sample radius above is 18 cm -
+  // and past a few tens of metres it can contribute nothing that survives a
+  // pixel. It can still contribute noise: the view position it works from comes
+  // out of cameraClip.y / (depth - cameraClip.x), and when the far plane is out
+  // at the 700 m a stadium whose surroundings are the view needs, that
+  // subtraction cancels away most of its significant digits. The result flipped
+  // frame to frame across the distant terrain, and since this term both
+  // multiplies the frame and drives its saturation downstream, single frames came
+  // out pale - the background "flickering from white to green" during the flyover.
+  // So it fades out where it cannot help.
+  float aoViewDistance = -viewPosition.z;
+  SSAO = mix(SSAO, 1.0f, clamp((aoViewDistance - 40.0f) / 60.0f, 0.0f, 1.0f));
+
   SSAO = SSAO * ssaoStrength * 1.5f - 0.5f * ssaoStrength; // exaggerate effect
   //SSAO *= SSAO; // exaggerate effect
   SSAO = clamp(SSAO, 0.0f, 1.0f);
