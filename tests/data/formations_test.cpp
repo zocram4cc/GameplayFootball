@@ -289,3 +289,50 @@ TEST(FormationsCustomTest, ClampingKeepsAUserEditWithinTenPlayers) {
   const Formations::Shape empty = Formations::MakeShapeClamped(0, 0, 0);
   EXPECT_TRUE(Formations::IsValidShape(empty));
 }
+
+// The shape a team is actually lined up in has to be readable from the lineup
+// itself. TeamAIController used to take it from a "formation" string in the
+// tactics properties - but tactics_xml is parsed with atof, so that property can
+// only ever hold a number, and the shape came out 4-4-2 for every team however
+// they were really set up. A side loaded as a 5-4-1 was reshaped by an AI that
+// believed it was a 4-4-2.
+
+TEST(FormationsShapeFromRoles, ReadsAFourThreeThree) {
+  const std::vector<e_PlayerRole> roles = {
+      e_PlayerRole_GK, e_PlayerRole_LB, e_PlayerRole_CB, e_PlayerRole_CB, e_PlayerRole_RB,
+      e_PlayerRole_LM, e_PlayerRole_CM, e_PlayerRole_RM,
+      e_PlayerRole_CF, e_PlayerRole_CF, e_PlayerRole_CF};
+  const Formations::Shape shape = Formations::ShapeFromRoles(roles);
+  EXPECT_EQ(Formations::ShapeName(shape), "4-3-3");
+}
+
+TEST(FormationsShapeFromRoles, ReadsAFiveFourOne) {
+  const std::vector<e_PlayerRole> roles = {
+      e_PlayerRole_GK, e_PlayerRole_LB, e_PlayerRole_CB, e_PlayerRole_CB, e_PlayerRole_CB,
+      e_PlayerRole_RB, e_PlayerRole_LM, e_PlayerRole_CM, e_PlayerRole_CM, e_PlayerRole_RM,
+      e_PlayerRole_CF};
+  EXPECT_EQ(Formations::ShapeName(Formations::ShapeFromRoles(roles)), "5-4-1");
+}
+
+TEST(FormationsShapeFromRoles, CountsDefensiveAndAttackingMidfieldersAsMidfield) {
+  const std::vector<e_PlayerRole> roles = {
+      e_PlayerRole_GK, e_PlayerRole_LB, e_PlayerRole_CB, e_PlayerRole_CB, e_PlayerRole_RB,
+      e_PlayerRole_DM, e_PlayerRole_CM, e_PlayerRole_AM, e_PlayerRole_LM,
+      e_PlayerRole_CF, e_PlayerRole_CF};
+  EXPECT_EQ(Formations::ShapeName(Formations::ShapeFromRoles(roles)), "4-4-2");
+}
+
+TEST(FormationsShapeFromRoles, IgnoresTheKeeperWhereverHeAppears) {
+  std::vector<e_PlayerRole> roles = {
+      e_PlayerRole_LB, e_PlayerRole_CB, e_PlayerRole_CB, e_PlayerRole_RB,
+      e_PlayerRole_LM, e_PlayerRole_CM, e_PlayerRole_RM,
+      e_PlayerRole_CF, e_PlayerRole_CF, e_PlayerRole_CF, e_PlayerRole_GK};
+  EXPECT_EQ(Formations::ShapeName(Formations::ShapeFromRoles(roles)), "4-3-3");
+}
+
+// A lineup that does not add up to ten outfielders still has to yield a legal
+// shape rather than something the layout code will trip over.
+TEST(FormationsShapeFromRoles, AnIncompleteLineupStillGivesALegalShape) {
+  const std::vector<e_PlayerRole> roles = {e_PlayerRole_GK, e_PlayerRole_CB, e_PlayerRole_CF};
+  EXPECT_TRUE(Formations::IsValidShape(Formations::ShapeFromRoles(roles)));
+}

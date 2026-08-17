@@ -111,8 +111,15 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
 
   offensivenessBias = 0.5f;
   philosophy = TeamPhilosophy::e_Philosophy_Balanced;
-  formationShape = Formations::ParseShape(
-      team->GetTeamData()->GetTactics().userProperties.Get("formation", "4-4-2"));
+  // The shape the team is actually lined up in, read off the lineup. This used
+  // to come from a "formation" string in the tactics properties, but tactics_xml
+  // is parsed with atof, so that property can only ever hold a number - every
+  // team came out a 4-4-2 however it was really set up, and a side loaded as a
+  // 5-4-1 got reshaped by an AI that thought it was a flat four.
+  formationShape = TeamFormationShape();
+  Log(e_Notice, "TeamAIController", "TeamAIController",
+      "team " + int_to_str(team->GetID()) + " lined up as " +
+          Formations::ShapeName(formationShape));
   mentality = MatchMentality::e_Mentality_Normal;
 
   UpdateTactics();
@@ -1317,6 +1324,14 @@ void TeamAIController::ApplyFormation(Formations::e_Formation newFormation) {
   ApplyFormationShape(Formations::GetShape(newFormation));
 }
 
+Formations::Shape TeamAIController::TeamFormationShape() const {
+  std::vector<e_PlayerRole> roles;
+  TeamData* teamData = team->GetTeamData();
+  for (int i = 0; i < playerNum; i++)
+    roles.push_back(teamData->GetFormationEntry(i).role);
+  return Formations::ShapeFromRoles(roles);
+}
+
 void TeamAIController::ApplyFormationShape(const Formations::Shape& shape) {
   const std::vector<Formations::Slot> layout = Formations::GetLayoutForShape(shape);
   TeamData* teamData = team->GetTeamData();
@@ -1358,8 +1373,8 @@ void TeamAIController::UpdateTactics() {
   const TeamPhilosophy::e_Philosophy preferredPhilosophy =
       TeamPhilosophy::Parse(teamTactics.userProperties.Get(
           "philosophy", teamTactics.factoryProperties.Get("philosophy", "balanced")));
-  const Formations::Shape preferredShape = Formations::ParseShape(teamTactics.userProperties.Get(
-      "formation", teamTactics.factoryProperties.Get("formation", "4-4-2")));
+  // Likewise the shape to hold: the lineup, not an unreadable property.
+  const Formations::Shape preferredShape = TeamFormationShape();
 
   // The set philosophy and shape stand unless the CPU manager runs this team.
   // In coach mode it runs neither, so both sides play the tactics their
