@@ -5,7 +5,9 @@
 
 #include "matchoptions.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 #include "../pagefactory.hpp"
 #include "main.hpp"
@@ -18,6 +20,13 @@ using namespace blunted;
 namespace {
 
 constexpr unsigned long kMenuSmokeAdvanceDelay_ms = 250;
+
+// How long the smoke test lingers here before confirming. Long enough to
+// photograph the screen when something on it needs checking.
+unsigned long MenuSmokeAdvanceDelay_ms() {
+  return static_cast<unsigned long>(GetConfiguration()->GetInt(
+      "menu_smoke_matchoptions_delay_ms", (int)kMenuSmokeAdvanceDelay_ms));
+}
 
 bool MenuSmokeQuickMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_quick_match", false);
@@ -52,6 +61,26 @@ std::string TimeOfDayKey(float value) {
   if (value < 0.66f)
     return "time_of_day_evening";
   return "time_of_day_night";
+}
+
+// Discovery lives here; the shaping of the lists is in prematchchoices.hpp.
+std::vector<std::string> FilesUnder(const std::string& root, const std::string& extension,
+                                    bool directoriesInstead) {
+  std::vector<std::string> found;
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(root, ec)) {
+    if (directoriesInstead) {
+      if (entry.is_directory()) found.push_back(entry.path().filename().string());
+      continue;
+    }
+    if (entry.is_directory()) {
+      for (const auto& inner : std::filesystem::directory_iterator(entry.path(), ec))
+        if (inner.path().extension() == extension) found.push_back(inner.path().string());
+    } else if (entry.path().extension() == extension) {
+      found.push_back(entry.path().filename().string());
+    }
+  }
+  return found;
 }
 
 int KitNumFromSlider(float value) {
@@ -116,6 +145,45 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   UpdateTimeOfDayCaption();
   timeOfDaySlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateTimeOfDayCaption(); });
 
+  // Where the match is played, and what plays around it.
+  stadiumChoices = PrematchChoices::Stadiums(
+      FilesUnder("media/objects/stadiums", ".object", false));
+  entranceChoices = PrematchChoices::Entrances(
+      FilesUnder(GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent"), "", true));
+  resultCutsceneChoices = PrematchChoices::ResultCutscenes(
+      FilesUnder("media/cutscenes/result", ".camtrack", false));
+
+  stadiumSlider = new Gui2Slider(windowManager, "matchoptions_slider_stadium", 0, 0, 29, 6,
+                                 TR("match_stadium"));
+  stadiumSlider->SetQuantization(std::max<int>(1, stadiumChoices.size()));
+  stadiumSlider->SetValue(PrematchChoices::SliderFromIndex(
+      PrematchChoices::IndexOfValue(stadiumChoices,
+                                    GetConfiguration()->Get("stadium_object", "")),
+      stadiumChoices.size()));
+  UpdateStadiumCaption();
+  stadiumSlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateStadiumCaption(); });
+
+  entranceSlider = new Gui2Slider(windowManager, "matchoptions_slider_entrance", 0, 0, 29, 6,
+                                  TR("match_entrance"));
+  entranceSlider->SetQuantization(std::max<int>(1, entranceChoices.size()));
+  entranceSlider->SetValue(PrematchChoices::SliderFromIndex(
+      PrematchChoices::IndexOfValue(entranceChoices,
+                                    GetConfiguration()->Get("entrance_id", "")),
+      entranceChoices.size()));
+  UpdateEntranceCaption();
+  entranceSlider->sig_OnChange.connect([this](Gui2Slider*) { UpdateEntranceCaption(); });
+
+  resultCutsceneSlider = new Gui2Slider(windowManager, "matchoptions_slider_resultcutscene", 0, 0,
+                                        29, 6, TR("match_result_cutscene"));
+  resultCutsceneSlider->SetQuantization(std::max<int>(1, resultCutsceneChoices.size()));
+  resultCutsceneSlider->SetValue(PrematchChoices::SliderFromIndex(
+      PrematchChoices::IndexOfValue(resultCutsceneChoices,
+                                    GetConfiguration()->Get("result_cutscene_id", "")),
+      resultCutsceneChoices.size()));
+  UpdateResultCutsceneCaption();
+  resultCutsceneSlider->sig_OnChange.connect(
+      [this](Gui2Slider*) { UpdateResultCutsceneCaption(); });
+
   for (int teamID = 0; teamID < 2; teamID++) {
     kitSlider[teamID] = new Gui2Slider(
         windowManager, "matchoptions_slider_kit_" + int_to_str(teamID), 0, 0, 29, 6, "");
@@ -139,6 +207,9 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(matchDurationSlider, row++, 0);
   grid->AddView(weatherSlider, row++, 0);
   grid->AddView(timeOfDaySlider, row++, 0);
+  grid->AddView(stadiumSlider, row++, 0);
+  grid->AddView(entranceSlider, row++, 0);
+  grid->AddView(resultCutsceneSlider, row++, 0);
   grid->AddView(kitSlider[0], row++, 0);
   grid->AddView(kitSlider[1], row++, 0);
   grid->AddView(buttonGamePlan1, row++, 0);
@@ -168,6 +239,34 @@ void MatchOptionsPage::UpdateWeatherCaption() {
 void MatchOptionsPage::UpdateTimeOfDayCaption() {
   timeOfDaySlider->SetCaption(TR("match_time_of_day") + ": " +
                               TR(TimeOfDayKey(timeOfDaySlider->GetValue())));
+}
+
+void MatchOptionsPage::UpdateStadiumCaption() {
+  if (stadiumChoices.empty()) {
+    stadiumSlider->SetCaption(TR("match_stadium"));
+    return;
+  }
+  const int index =
+      PrematchChoices::IndexFromSlider(stadiumSlider->GetValue(), stadiumChoices.size());
+  stadiumSlider->SetCaption(TRF("match_stadium_named", {stadiumChoices.at(index).label}));
+}
+
+void MatchOptionsPage::UpdateEntranceCaption() {
+  const int index =
+      PrematchChoices::IndexFromSlider(entranceSlider->GetValue(), entranceChoices.size());
+  // "Automatic" and "None" are translated; a family is its own number.
+  const std::string& label = entranceChoices.at(index).label;
+  entranceSlider->SetCaption(TRF("match_entrance_named",
+                                {label == "entrance_any" || label == "entrance_none" ? TR(label)
+                                                                                    : label}));
+}
+
+void MatchOptionsPage::UpdateResultCutsceneCaption() {
+  const int index = PrematchChoices::IndexFromSlider(resultCutsceneSlider->GetValue(),
+                                                     resultCutsceneChoices.size());
+  const std::string& label = resultCutsceneChoices.at(index).label;
+  resultCutsceneSlider->SetCaption(
+      TRF("match_result_cutscene_named", {label == "cutscene_any" ? TR(label) : label}));
 }
 
 void MatchOptionsPage::UpdateKitCaptions() {
@@ -210,7 +309,7 @@ void MatchOptionsPage::Process() {
 
   if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
-          pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
+          pageCreatedTime_ms + MenuSmokeAdvanceDelay_ms()) {
     autoAdvanceTriggered = true;
     printf("[menu-smoke] Match options confirmed, starting match load\n");
     GoLoadingMatchPage();
@@ -226,6 +325,23 @@ void MatchOptionsPage::GoLoadingMatchPage() {
     GetConfiguration()->Set(("team" + int_to_str(teamID + 1) + "_kit").c_str(),
                             static_cast<float>(kitSlider[teamID]->GetValue()));
   }
+  if (!stadiumChoices.empty()) {
+    GetConfiguration()->Set(
+        "stadium_object",
+        stadiumChoices
+            .at(PrematchChoices::IndexFromSlider(stadiumSlider->GetValue(), stadiumChoices.size()))
+            .value);
+  }
+  GetConfiguration()->Set(
+      "entrance_id",
+      entranceChoices
+          .at(PrematchChoices::IndexFromSlider(entranceSlider->GetValue(), entranceChoices.size()))
+          .value);
+  GetConfiguration()->Set("result_cutscene_id",
+                          resultCutsceneChoices
+                              .at(PrematchChoices::IndexFromSlider(
+                                  resultCutsceneSlider->GetValue(), resultCutsceneChoices.size()))
+                              .value);
   GetConfiguration()->Set("match_difficulty", difficultySlider->GetValue());
   GetConfiguration()->Set("match_duration_minutes",
                           MatchDurationMinutesFromSlider(matchDurationSlider->GetValue()));
