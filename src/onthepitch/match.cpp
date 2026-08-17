@@ -5,6 +5,8 @@
 
 #include "match.hpp"
 
+#include <fstream>
+
 #include "../data/playertraits.hpp"
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
@@ -17,6 +19,7 @@
 #include "matchduration.hpp"
 #include "menu/pagefactory.hpp"
 #include "menu/startmatch/loadingmatch.hpp"
+#include "onthepitch/pitchturf.hpp"
 #include "player/playerofficial.hpp"
 #include "proceduralpitch.hpp"
 #include "scene/objectfactory.hpp"
@@ -516,10 +519,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
 
+  // A converted PES stadium ships its own ground colour beside its .object, so
+  // Planet Namek plays on teal blue rather than on GF's green.
+  const std::string stadiumObject = GetConfiguration()->Get("stadium_object", "");
+  const std::string turfCandidate = PitchTurf::TurfCandidate(stadiumObject);
+  bool hasOwnTurf = false;
+  if (!turfCandidate.empty()) {
+    std::ifstream probe(turfCandidate.c_str(), std::ios::in | std::ios::binary);
+    hasOwnTurf = probe.good();
+  }
+  const std::string grassTexture = PitchTurf::GrassTexturePath(stadiumObject, hasOwnTurf);
+  if (hasOwnTurf)
+    Log(e_Notice, "Match", "Match", "pitch turf: " + grassTexture);
+
   if (IsReleaseVersion()) {
-    GeneratePitch(2048, 1024, 1024, 512, 2048, 1024);
+    GeneratePitch(2048, 1024, 1024, 512, 2048, 1024, grassTexture);
   } else {
-    GeneratePitch(1024, 512, 1024, 512, 2048, 1024);
+    GeneratePitch(1024, 512, 1024, 512, 2048, 1024, grassTexture);
   }
 
   // sun
