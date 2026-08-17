@@ -370,6 +370,22 @@ kinematically through it (`src/utils/entrancechoreo.cpp`,
 back to the scripted walk for players without a slot or families without
 `_pl` data. Family `ent_020` ships converted in the repo.
 
+**The root track has to be unwrapped.** PES's walk clips carry forward root
+motion — about 2.4 m per cycle in `ent_009` — and `bake_track` originally sampled
+the root at `t % frame_count`, which returns the actor to his spawn point every
+cycle. The symptom is a squad marching on the spot for the whole presentation
+instead of walking out of the tunnel, and it is visible in the exported data
+without running anything: every walk slot's track advances with a median step of
+7 mm for ~2.4 m and then jumps back in a single 2.4 m step, netting 3 mm. The
+per-cycle advance is now accumulated, measured to the last frame and extended by
+one more step rather than scaled up to the whole cycle — scaling amplifies the
+one-frame shortfall into a drift that slides clips which only sway.
+
+To check an exported pack, compare each slot's path length against its
+start-to-finish displacement; a walk whose displacement is near zero is wrapped.
+Re-exporting is required after fixing this: the `.chor` files already installed
+keep whatever tracks they were written with.
+
 ## Menu / in-match UI art (REVERSED — dt11_x64.cpk)
 
 The Flash-derived UI stores its art in `common/menu/**/*.bin`. Chain of
