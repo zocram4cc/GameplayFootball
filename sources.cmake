@@ -481,6 +481,7 @@ set(GAME_HEADERS
    src/onthepitch/AIsupport/AIfunctions.hpp
    src/onthepitch/AIsupport/mentalimage.hpp
    src/onthepitch/teamAIcontroller.hpp
+   src/onthepitch/pitchturf.hpp
    src/onthepitch/proceduralpitch.hpp
 )
 
@@ -515,6 +516,7 @@ set(GAME_SOURCES
    src/onthepitch/referee.cpp
    src/onthepitch/AIsupport/mentalimage.cpp
    src/onthepitch/AIsupport/AIfunctions.cpp
+   src/onthepitch/pitchturf.cpp
    src/onthepitch/proceduralpitch.cpp
    src/onthepitch/team.cpp
    src/onthepitch/teamAIcontroller.cpp

@@ -5,6 +5,8 @@
 
 #include "proceduralpitch.hpp"
 
+#include "onthepitch/pitchturf.hpp"
+
 #include <cmath>
 
 #include "../gamedefines.hpp"
@@ -21,6 +23,10 @@ int perlinTexH;
 Vector3* seamlessTex;
 int seamlessTexW;
 int seamlessTexH;
+// A stadium can supply its own turf (pitchturf.hpp); when it does, the pitch is
+// that turf's colour rather than GF's built-in green.
+Vector3 seamlessMean;
+bool usingStadiumTurf = false;
 
 Vector3* overlayTex;
 float* overlay_alphaTex;
@@ -58,12 +64,12 @@ Uint32 GetPitchDiffuseColor(SDL_Surface* pitchSurf, float xCoord, float yCoord) 
 
   float r, g, b;
 
-  float contrast = 0.4f;  // g <=> rb contrast. lower = less saturation, higher = greener
-  float rToB = GetConfiguration()->GetReal("graphics_pitchredtoblueratio", 0.5f) *
-               2.0f;  // 0 .. 2, higher is more red, lower is more blue
-  r = ((35 - contrast * 10) * rToB) * brightness;
-  g = 46 * brightness;
-  b = ((25 - contrast * 10) * (2.0f - rToB)) * brightness;
+  const PitchTurf::Colour base = PitchTurf::BaseColour(
+      usingStadiumTurf, seamlessMean.coords[0], seamlessMean.coords[1], seamlessMean.coords[2],
+      GetConfiguration()->GetReal("graphics_pitchredtoblueratio", 0.5f));
+  r = base.r;
+  g = base.g;
+  b = base.b;
 
   float seamlessX = ((xCoord / pitchFullHalfW) * 0.5f + 0.5f) * seamlessTexW * 18.0f * texScale;
   float seamlessY = ((yCoord / pitchFullHalfH) * 0.5f + 0.5f) * seamlessTexH * 12.0f * texScale;
@@ -452,21 +458,33 @@ void CreateChunk(int i, int resX, int resY, int resSpecularX, int resSpecularY, 
 }
 
 void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int resNormalX,
-                   int resNormalY) {
-  SDL_Surface* seamless = IMG_Load("media/textures/pitch/seamlessgrass08.png");
+                   int resNormalY, const std::string& grassTexture) {
+  SDL_Surface* seamless = IMG_Load(grassTexture.c_str());
+  if (!seamless && grassTexture != PitchTurf::kStockGrassTexture) {
+    // A stadium's own turf that will not load must not take the pitch with it.
+    Log(e_Warning, "ProceduralPitch", "GeneratePitch",
+        "could not load " + grassTexture + "; falling back to the stock grass");
+    seamless = IMG_Load(PitchTurf::kStockGrassTexture);
+    usingStadiumTurf = false;
+  } else {
+    usingStadiumTurf = grassTexture != PitchTurf::kStockGrassTexture;
+  }
   SDL_PixelFormat seamlessFormat = *seamless->format;
   seamlessTexW = seamless->w;
   seamlessTexH = seamless->h;
   seamlessTex = new Vector3[seamlessTexW * seamlessTexH];
+  Vector3 total(0.0f);
   for (int x = 0; x < seamlessTexW; x++) {
     for (int y = 0; y < seamlessTexH; y++) {
       Uint32 pixel = sdl_getpixel(seamless, x, y);
       Uint8 r, g, b;
       SDL_GetRGB(pixel, &seamlessFormat, &r, &g, &b);
       seamlessTex[y * seamless->w + x] = Vector3(r, g, b);
+      total += Vector3(r, g, b);
     }
   }
   SDL_FreeSurface(seamless);
+  seamlessMean = total / (float)(seamlessTexW * seamlessTexH);
 
   SDL_Surface* overlay = IMG_Load("media/textures/pitch/overlay.png");
   SDL_PixelFormat overlayFormat = *overlay->format;

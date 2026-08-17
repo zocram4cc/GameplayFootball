@@ -50,6 +50,17 @@ target_link_libraries(gameplayfootball_skinning_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_skinning_tests DISCOVERY_MODE PRE_TEST)
 
+# Which grass tile the procedural pitch is generated from
+add_executable(gameplayfootball_pitchturf_tests
+  onthepitch/pitch_turf_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/pitchturf.cpp
+)
+target_include_directories(gameplayfootball_pitchturf_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_pitchturf_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_pitchturf_tests DISCOVERY_MODE PRE_TEST)
+
 # Velocity state machine unit tests (task 2.5)
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp

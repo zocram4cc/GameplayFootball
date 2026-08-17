@@ -23,6 +23,7 @@ every .ftex-holding directory underneath what you pass is searched.
 
 import argparse
 import os
+import re
 import sys
 
 import ase_util
@@ -378,6 +379,51 @@ OBJECT_TEMPLATE = """<object>
 """
 
 
+# PES names a stadium's ground colour <stadium>_turf000_bsm: _bsm is the base
+# map, _nrm the normal map, _srm the specular. "grassfin" is the standing blades
+# of the 3D turf, not the ground.
+TURF_BASE_HINTS = ("turf",)
+TURF_EXCLUDE = ("grassfin",)
+
+
+class _NamedTexture(object):
+    """The shape _texture_png wants, for a texture chosen by name rather than
+    reached through a mesh's material."""
+
+    def __init__(self, filename):
+        self.filename = filename
+        self.name = filename
+
+
+def _all_texture_names(tex_dirs):
+    """Every texture the pack ships, by file name."""
+    return sorted(os.path.basename(path) for path in build_ftex_index(tex_dirs).values())
+
+
+def find_turf_texture(names):
+    """The pack's own turf base map, or None.
+
+    Prefers a name carrying the stadium's number, so a pack that ships both its
+    own turf and a generic one gets its own.
+    """
+    candidates = []
+    for name in names:
+        stem = str(name).replace("\\", "/").split("/")[-1].rsplit(".", 1)[0].lower()
+        if any(x in stem for x in TURF_EXCLUDE):
+            continue
+        if not any(h in stem for h in TURF_BASE_HINTS):
+            continue
+        if not stem.endswith("_bsm") and "_bsm_" not in stem and not stem.endswith("_bsm_alp"):
+            continue  # _nrm/_srm would paint the pitch with a normal map
+        candidates.append(name)
+    if not candidates:
+        return None
+    # a stadium-specific name ("st017_turf000_bsm") beats a generic one ("turf_bsm")
+    candidates.sort(key=lambda n: (0 if "turf000" in str(n).lower() else 1, str(n)))
+    return candidates[0]
+
+
+TURF_FILENAME = "turf.png"
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
             max_tris=None, max_verts_per_geom=None, max_extent=None):
     os.makedirs(out_dir, exist_ok=True)
@@ -395,12 +441,28 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(OBJECT_TEMPLATE % {"name": name})
 
-    # GF draws its own grass: reuse the stock pitch geometry
+    # GF's pitch geometry carries the line markings and the physics, so it is
+    # kept as it is. Its *colour* is generated at match start by
+    # proceduralpitch.cpp from a seamless grass tile, and the engine prefers a
+    # turf.png sitting beside the stadium object over its own green grass (see
+    # src/onthepitch/pitchturf.hpp) - so the pack's ground colour goes there.
+    # Repointing the pitch materials instead does not work: the generator
+    # overwrites the texture resources by the names pitch_0N.png, and with those
+    # names gone the match dies as soon as the bitmaps are built.
     import shutil
     stock = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                          "..", "..", "data", "media", "objects", "stadiums",
                          "test", "pitch.ase")
     shutil.copy(stock, os.path.join(out_dir, "pitch.ase"))
+
+    turf = find_turf_texture(_all_texture_names(tex_dirs))
+    if turf:
+        png = _texture_png(_NamedTexture(turf), build_ftex_index(tex_dirs), out_dir, {})
+        if png:
+            shutil.copy(os.path.join(out_dir, png), os.path.join(out_dir, TURF_FILENAME))
+            print("  pitch turf: %s -> %s" % (turf, TURF_FILENAME))
+        else:
+            print("  pitch turf %s could not be converted; keeping GF's grass" % turf)
     return ase_path, geom_count, tex_count
 
 
