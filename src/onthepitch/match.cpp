@@ -26,16 +26,14 @@
 #include "utils/directoryparser.hpp"
 #include "modelviewer.hpp"
 #include "utils/playermodelmap.hpp"
+#include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
 
 // Long enough that a replay fired AFTER the celebration can still reach back
-// past the goal to the build-up. At ten seconds the two were mutually
-// exclusive: cut the celebration short, or replay the celebration.
-const unsigned int replaySize_ms = 22000;
-// How long the celebration holds before the replay takes over, and how far
-// before the goal the replay starts.
-const unsigned long kGoalCelebrationLength_ms = 9000;
-const unsigned long kGoalReplayLeadIn_ms = 7000;
+// past the goal to the build-up. See onthepitch/goalsequence.hpp, which owns
+// this and the referee's matching restart delay - they were separate once, and
+// the goal state was being cleared before the replay could fire.
+const unsigned int replaySize_ms = GoalSequence::kReplayBuffer_ms;
 const unsigned int camPosSize = 150;           // 180; //130
 const float excitementEventDecayRate = 0.99f;  // per 10ms tick
 const float crowdGainUpdateThreshold = 0.001f;
@@ -2536,19 +2534,21 @@ void Match::UpdateIngameCamera() {
       teamChant[lastGoalTeamID]->SetGain(
           0.9f * (1.0f - NormalizedClamp(goalScoredTimer, 6000, 9000)));
 
-    // Goal, celebration, replay, kickoff - in that order. The celebration is
-    // allowed to play out first; the replay then reaches back past it to a few
-    // seconds before the goal, which is what the longer buffer above is for.
-    // It used to fire at 2.5 s, which cut the celebration off mid-wheel and
-    // then dropped back into it afterwards.
-    // "when the celebration is done and no sooner": if a goal cutscene is
-    // playing, wait for it to finish rather than cutting into it.
-    const bool celebrationOver =
-        cutsceneEnd_ms > 0 ? actualTime_ms >= cutsceneEnd_ms
-                           : goalScoredTimer >= kGoalCelebrationLength_ms;
-    if (celebrationOver && replayStartOffset_ms == 0 &&
-        goalScoredTimer >= kGoalCelebrationLength_ms) {
-      replayStartOffset_ms = goalScoredTimer + kGoalReplayLeadIn_ms;
+    // Goal, celebration, replay, kickoff - in that order. The celebration plays
+    // out first and the replay then reaches back past it to the build-up, which
+    // is what the long buffer is for. A goal cutscene running past the plain
+    // celebration wins: "when the celebration is done and no sooner".
+    //
+    // The referee schedules the kickoff off the same timings, because preparing
+    // it calls ResetSituation, which clears the goal state and with it
+    // goalScoredTimer - do that first and the trigger below is never reached.
+    const unsigned long goalTime_ms = actualTime_ms - goalScoredTimer;
+    if (replayStartOffset_ms == 0 &&
+        actualTime_ms >= GoalSequence::ReplayFiresAt_ms(goalTime_ms, cutsceneEnd_ms)) {
+      replayStartOffset_ms = GoalSequence::ReplayStartOffset_ms(goalScoredTimer);
+      Log(e_Notice, "Match", "UpdateIngameCamera",
+          "goal replay: celebration ran " + int_to_str((int)goalScoredTimer) +
+              " ms, replay reaches " + int_to_str((int)replayStartOffset_ms) + " ms back");
       pause = true;
       sig_OnExtendedReplayMoment(this);
     }
