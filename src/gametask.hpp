@@ -101,6 +101,19 @@ protected:
   // takes it exclusively for the frame that actually executes a substitution.
   std::shared_mutex matchSubstitutionMutex;
 
+  // The geometry uploads PutPhase enqueued but has not collected yet. Nothing
+  // ever waited on these, so a worker could still be inside
+  // OnUpdateGeometryData for a humanoid's body while the match that owns that
+  // humanoid was being deleted - which is the heap abort at shutdown, right
+  // after "exiting humanoidbase". They are collected at the top of the next
+  // put phase, so waiting for them costs a frame of slack rather than stalling
+  // this one, and drained outright before a match or menu scene goes away.
+  std::vector<boost::intrusive_ptr<UploadFullbodyModel>> pendingUploads;
+  // PutPhase runs on the graphics thread and Action() on the thread that starts
+  // and stops matches, so the list itself needs guarding.
+  std::mutex pendingUploadsMutex;
+  void DrainPendingUploads();
+
   std::mutex menuSceneLifetimeMutex;
 
   std::shared_ptr<Scene3D> scene3D;
