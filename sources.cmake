@@ -341,6 +341,7 @@ set(UTILS_GUI2_HEADERS
         src/utils/gui2/page.hpp
         src/utils/gui2/style.hpp
         src/utils/gui2/guitask.hpp
+        src/utils/gui2/fontlock.hpp
         src/utils/gui2/view.hpp
         )
 
@@ -366,6 +367,7 @@ set(UTILS_GUI2_WIDGETS_HEADERS
 
 set(UTILS_GUI2_SOURCES
         src/utils/gui2/style.cpp
+        src/utils/gui2/fontlock.cpp
         src/utils/gui2/surfacescale.cpp
         src/utils/gui2/widgets/bitmaptext.cpp
         src/utils/gui2/widgets/caption.cpp
