@@ -61,6 +61,17 @@ target_include_directories(gameplayfootball_pitchturf_tests PRIVATE
 target_link_libraries(gameplayfootball_pitchturf_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_pitchturf_tests DISCOVERY_MODE PRE_TEST)
 
+# Which player body loads, and surviving its absence
+add_executable(gameplayfootball_playerbody_tests
+  onthepitch/player_body_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/playerbody.cpp
+)
+target_include_directories(gameplayfootball_playerbody_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_playerbody_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_playerbody_tests DISCOVERY_MODE PRE_TEST)
+
 # Velocity state machine unit tests (task 2.5)
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp

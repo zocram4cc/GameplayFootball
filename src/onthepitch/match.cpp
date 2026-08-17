@@ -20,6 +20,7 @@
 #include "menu/pagefactory.hpp"
 #include "menu/startmatch/loadingmatch.hpp"
 #include "onthepitch/pitchturf.hpp"
+#include "onthepitch/playerbody.hpp"
 #include "player/playerofficial.hpp"
 #include "proceduralpitch.hpp"
 #include "scene/objectfactory.hpp"
@@ -136,12 +137,21 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   // "player_body" selects another <name>.object / models/<name>.ase pair;
   // "fullbody" is the migrated legacy low-poly body, and also the fallback
   // when the configured body's files are absent.
-  std::string bodyName = GetConfiguration()->Get("player_body", "fullbody_pes");
-  if (!std::filesystem::exists("media/objects/players/" + bodyName + ".object")) {
+  // Both files have to be there: the .object is only a wrapper, and a missing
+  // models/<name>.ase is fatal inside the ASE loader rather than something the
+  // loader reports back. None of the converted PES assets ship with the
+  // repository, so this is the path a fresh clone takes.
+  const std::string configuredBody =
+      GetConfiguration()->Get("player_body", PlayerBody::kDefaultBody);
+  playerBodyName = PlayerBody::Resolve(
+      configuredBody, std::filesystem::exists(PlayerBody::ObjectPath(configuredBody)),
+      std::filesystem::exists(PlayerBody::ModelPath(configuredBody)));
+  if (playerBodyName != configuredBody) {
     Log(e_Warning, "Match", "Match",
-        "player_body '" + bodyName + "' not found, using 'fullbody'");
-    bodyName = "fullbody";
+        "player_body '" + configuredBody + "' is incomplete (see docs/ASSETS.md), using '" +
+            playerBodyName + "'");
   }
+  const std::string& bodyName = playerBodyName;
 
   ObjectLoader loader;
   fullbodyNode = loader.LoadObject(

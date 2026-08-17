@@ -10,6 +10,7 @@
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../humanspeed.hpp"
 #include "../../match.hpp"
+#include "../../playerbody.hpp"
 #include "../playerbase.hpp"
 #include "humanoid.hpp"
 #include "humanoid_utils.hpp"
@@ -180,8 +181,9 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   const std::string hairMode =
       GetConfiguration()->Get("player_hairstyles", "auto");
   if (hairMode == "auto") {
-    hairstyleActive =
-        GetConfiguration()->Get("player_body", "fullbody_pes") == "fullbody";
+    // the body that loaded, not the one that was configured: an incomplete PES
+    // body falls back to the legacy one, which does need these meshes
+    hairstyleActive = PlayerBody::UsesLegacyHairstyles(match->GetPlayerBodyName());
   } else {
     hairstyleActive = (hairMode == "true");
   }
