@@ -19,7 +19,9 @@ public:
   virtual ~ReplayPage();
 
   void OnClose();
-  void Autorun(int replayHistoryOffset_ms, bool stayInReplay);
+  // `camera` is one of Match::SetReplayCamera's modes: a goal replay opens
+  // behind the goal, a foul on the close view.
+  void Autorun(int replayHistoryOffset_ms, bool stayInReplay, int camera = 1);
 
 protected:
   Match* match;
