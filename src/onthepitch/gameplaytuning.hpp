@@ -53,9 +53,9 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // than by whether they bother.
 inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
   const float sharpness =
-      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.95f), 0.2f, 1.0f);
+      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.88f), 0.2f, 1.0f);
   const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
-  return blunted::clamp(sharpness * (0.85f + reaction * 0.15f), 0.05f, 0.99f);
+  return blunted::clamp(sharpness * (0.80f + reaction * 0.20f), 0.05f, 0.99f);
 }
 
 // Distance remains the primary fatigue input. This workload factor makes

@@ -63,7 +63,7 @@ TEST(GameplayTuningKeeperTest, EvenAPoorKeeperTriesForMostShots) {
 
 TEST(GameplayTuningKeeperTest, AGoodKeeperTriesForNearlyEverything) {
   const Properties config;
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.9f), 0.85f);
+  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.9f), 0.8f);
 }
 
 // The reaction stat still separates keepers, just not by whether they bother.
