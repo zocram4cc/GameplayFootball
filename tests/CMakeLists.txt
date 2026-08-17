@@ -61,6 +61,17 @@ target_include_directories(gameplayfootball_pitchturf_tests PRIVATE
 target_link_libraries(gameplayfootball_pitchturf_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_pitchturf_tests DISCOVERY_MODE PRE_TEST)
 
+# How far the camera has to see for a given stadium
+add_executable(gameplayfootball_stadiumfar_tests
+  onthepitch/stadium_far_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/stadiumfar.cpp
+)
+target_include_directories(gameplayfootball_stadiumfar_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_stadiumfar_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_stadiumfar_tests DISCOVERY_MODE PRE_TEST)
+
 # Which player body loads, and surviving its absence
 add_executable(gameplayfootball_playerbody_tests
   onthepitch/player_body_test.cpp

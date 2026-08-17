@@ -645,6 +645,8 @@ protected:
   bool pause;
   // the body Match actually loaded (see playerbody.hpp)
   std::string playerBodyName;
+  // how far this stadium's geometry reaches, from farplane.txt (stadiumfar.hpp)
+  float stadiumFarNeeded = 0.0f;
   e_MatchPhase matchPhase;  // 0 - first half; 1 - second half; 2 - 1st extra time; 3 - 2nd extra
                             // time; 4 - penalties
   bool inPlay;
