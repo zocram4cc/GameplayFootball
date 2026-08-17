@@ -314,6 +314,9 @@ public:
   // Whether a human may open the tactics menu for this team.
   bool CanCoachTeam(int teamID) const { return CoachMode::CanEditTactics(coachSetup, teamID); }
   Substitutions::State& GetSubstitutionState() { return substitutionState; }
+  // Play stopped, in a match that has actually started. Not the same thing as
+  // !IsInPlay(), which is also true throughout the pre-match presentation.
+  bool IsSubstitutionWindow() const;
   // Requests a substitution for `teamID`; returns the rule check result and
   // performs the swap when it is accepted.
   Substitutions::e_Result RequestSubstitution(int teamID, Player* playerOut, Player* playerIn);

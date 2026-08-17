@@ -1805,12 +1805,19 @@ void Match::AddExcitementBoost(float amount, int duration_ms) {
     excitementEventTimer_ms = duration_ms;
 }
 
+bool Match::IsSubstitutionWindow() const {
+  // Not merely "play is stopped": before kick-off play is stopped too, and the
+  // pre-match presentation is no moment to be making substitutions in.
+  return Substitutions::IsSubstitutionWindow(IsInPlay(), matchPhase != e_MatchPhase_PreMatch,
+                                             IsInEntrance());
+}
+
 Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
                                                    Player* playerIn) {
   Team* team = GetTeam(teamID);
   const Substitutions::SquadView squad = team->DescribeSwap(playerOut, playerIn);
   const Substitutions::e_Result result =
-      Substitutions::Validate(substitutionState, teamID, squad, !IsInPlay());
+      Substitutions::Validate(substitutionState, teamID, squad, IsSubstitutionWindow());
   if (result != Substitutions::e_Result_Accepted)
     return result;
 
@@ -1838,7 +1845,7 @@ void Match::ExecutePendingSubstitutions() {
     const Substitutions::SquadView squad =
         team->DescribeSwap(sub.playerOut, sub.playerIn);
     if (Substitutions::Validate(substitutionState, sub.teamID, squad,
-                                !IsInPlay()) != Substitutions::e_Result_Accepted)
+                                IsSubstitutionWindow()) != Substitutions::e_Result_Accepted)
       continue;
     if (!team->Substitute(sub.playerOut, sub.playerIn))
       continue;
@@ -1851,6 +1858,8 @@ void Match::ExecutePendingSubstitutions() {
     std::string in = sub.playerIn ? sub.playerIn->GetPlayerData()->GetLastName() : "";
     ShowBanner(sub.teamID, "Substitution",
               "IN: " + in + (out.empty() ? "" : "   OUT: " + out), 4000);
+    Log(e_Notice, "Match", "ExecutePendingSubstitutions",
+        "substitution, team " + int_to_str(sub.teamID) + ": in " + in + ", out " + out);
     if (random(0.0f, 1.0f) <
         GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f))
       StartCutscene("change", 5.0f);
@@ -1859,8 +1868,9 @@ void Match::ExecutePendingSubstitutions() {
 
 void Match::ProcessAutoSubstitutions() {
   // Only at stoppages during normal play, and no more than one decision per
-  // second. A shootout is not a stoppage to make substitutions in.
-  if (IsInPlay() || actualTime_ms % 1000 != 0)
+  // second. A shootout is not a stoppage to make substitutions in, and neither
+  // is anything before kick-off.
+  if (!IsSubstitutionWindow() || actualTime_ms % 1000 != 0)
     return;
   if (matchPhase == e_MatchPhase_Penalties || gameOver)
     return;
