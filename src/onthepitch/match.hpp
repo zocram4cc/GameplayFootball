@@ -19,6 +19,7 @@
 #include "../menu/ingame/banner.hpp"
 #include "../menu/ingame/formationgraphic.hpp"
 #include "../menu/ingame/radar.hpp"
+#include "../menu/ingame/playerhud.hpp"
 #include "../menu/ingame/scoreboard.hpp"
 #include "../menu/ingame/statsoverlay.hpp"
 #include "../menu/ingame/tacticsdebug.hpp"
@@ -622,6 +623,8 @@ protected:
       mentalImages;  // [index] == index * 10 ms ago ([0] == now)
 
   std::unique_ptr<Gui2ScoreBoard> scoreboard;
+  // The bottom-corner player indicators, one per side (see playerhud.hpp).
+  std::unique_ptr<Gui2PlayerHUD> playerHUD[2];
   std::unique_ptr<Gui2Radar> radar;
   std::unique_ptr<Gui2TacticsDebug> tacticsDebug;
   std::unique_ptr<Gui2FormationGraphic> formationGraphic;

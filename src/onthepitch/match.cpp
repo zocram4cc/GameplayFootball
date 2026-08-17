@@ -661,11 +661,13 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Gui2Root* root = menuTask->GetWindowManager()->GetRoot();
 
-  // Bottom right, not bottom centre: centred, it sat underneath the pre-match
-  // formation panel and on top of the version caption. Broadcast HUDs keep
-  // the middle of the lower third clear for banners anyway (spec section 4).
+  // Bottom centre, with the two player indicators either side of it: home lower
+  // left, away lower right, the way the PES reference lays the lower third out.
+  // It used to sit bottom right to stay clear of the pre-match formation panel
+  // and the version caption; the panel only shows before kickoff, and the whole
+  // match HUD is hidden for the presentation anyway (ShowMatchHud).
   radar = std::make_unique<Gui2Radar>(
-      menuTask->GetWindowManager(), "game_radar", 74.5f, 79, 24, 18, this,
+      menuTask->GetWindowManager(), "game_radar", 38.0f, 79, 24, 18, this,
       matchData->GetTeamData(0)->GetColor1(), matchData->GetTeamData(0)->GetColor2(),
       matchData->GetTeamData(1)->GetColor1(), matchData->GetTeamData(1)->GetColor2());
   root->AddView(radar.get());
@@ -674,6 +676,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   radar->SetTransparentOpacity(GetConfiguration()->GetReal("radar_opacity", 0.55f));
   radar->SetMode(
       Gui2Radar::ParseMode(GetConfiguration()->Get("radar_mode", "transparent")));
+
+  // The player indicators sit in the bottom corners, the way a broadcast puts
+  // them: the user's side on the left, the other mirrored on the right.
+  for (int side = 0; side < 2; side++) {
+    playerHUD[side] = std::make_unique<Gui2PlayerHUD>(
+        menuTask->GetWindowManager(), "game_playerhud_" + int_to_str(side),
+        side == 0 ? 1.0f : 63.0f, 92.0f, 36.0f, 5.5f, this, side, side == 1);
+    root->AddView(playerHUD[side].get());
+    playerHUD[side]->Show();
+  }
 
   tacticsDebug = nullptr;
   if (1 == 2) {
@@ -1375,6 +1387,13 @@ void Match::ShowMatchHud(bool visible) {
       radar->Show();
     else
       radar->Hide();
+  }
+  for (int side = 0; side < 2; side++) {
+    if (!playerHUD[side]) continue;
+    if (visible)
+      playerHUD[side]->Show();
+    else
+      playerHUD[side]->Hide();
   }
 }
 
@@ -2795,6 +2814,11 @@ void Match::UpdateIngameCamera() {
 void Match::Get() {}
 
 void Match::Process() {
+  // The player indicators follow whoever is being watched and whatever the
+  // manager has set, so they are refreshed with the rest of the match state.
+  for (int side = 0; side < 2; side++)
+    if (playerHUD[side]) playerHUD[side]->Refresh();
+
   unsigned long time_ms =
       EnvironmentManager::GetInstance().GetTime_ms() - gameSequenceInfo.startTime_ms;
   timeSincePreviousProcess_ms = time_ms - GetPreviousProcessTime_ms();
