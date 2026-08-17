@@ -74,10 +74,51 @@ play; set `entrance_id none` to go straight to kickoff.
 
 ## 4. Stadiums
 
-    python3 tools/pes21_import/stadium_to_gf.py <stadium fmdl> \
-        data/media/objects/stadiums/pes_st002
+A 4cc stadium pack is a directory named `<slot> - <name>`, with the scene model
+under `#Win/st<slot>_fpk_extracted/` and the textures under
+`sourceimages/tga/#windx11/`:
 
-Then point `stadium_object` at it in your config.
+    python3 tools/pes21_import/stadium_to_gf.py \
+        "017 - planet namek/#Win/st017_fpk_extracted/center1.fmdl" \
+        data/media/objects/stadiums/pes_st017 \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --textures "017 - planet namek/sourceimages/tga/#windx11" \
+        --name pes_st017 --max-extent 1300
+
+Then point `stadium_object` at the `.object` it writes.
+
+`--max-extent` drops meshes spanning more than that many metres. The default of
+260 keeps the bowl and throws away the surrounding apron, which is right for a
+real stadium; a pack whose setting *is* the view - Namek's terrain is 276 m and
+its sky dome 1154 m across - needs it raised or the vista disappears.
+
+Three things about these conversions are worth knowing, because each one produced
+a stadium that looked broken in a way that had nothing to do with the pack:
+
+* **Outlines.** PES draws cel-shaded outlines as an inverted hull: the mesh again,
+  pushed out along its normals a few centimetres, front faces culled. Half of
+  Namek's materials are that pass. Written with the source winding into an engine
+  that culls back faces, each shell covers the mesh it was meant to outline, and
+  the whole stadium reads as flat grey. The converter reverses their winding, and
+  their normals with it, so they render as the outlines they are.
+* **The pitch.** Its colour is generated at match start by `proceduralpitch.cpp`,
+  which overwrites the texture resources named `pitch_0N.png` - so a stadium
+  cannot point its pitch materials at its own turf without killing the match. The
+  converter drops the pack's turf beside the `.object` as `turf.png`, which the
+  engine prefers over its own grass, and takes it at its own colour
+  (`src/onthepitch/pitchturf.hpp`). GF still draws the lines and the mow striping.
+* **Adboards.** Not in the stadium pack at all. PES keeps them in a common
+  package, `4cc_15_billboard.cpk` (`Asset/model/bg/common/bill/`): one shared
+  board model plus a few hundred `bill_NNN_bsm` panels. The engine has its own
+  randomiser, which replaces the diffuse of any stadium mesh whose texture ident
+  begins with `ad_placeholder` with a random PNG from
+  `media/textures/adboards/`. Not yet imported.
+
+Still unsolved: a pack's sky dome is culled, because the camera is inside it and
+its faces point outward. `skydome_object` exists for exactly this and nothing
+currently uses it; imported dome geometry comes out of the lighting pipeline
+washed out, which is what the constant-normal trick in
+`ase_util.write_mesh_normals` is for.
 
 ## 5. Scoreboard and formation-panel theme
 
