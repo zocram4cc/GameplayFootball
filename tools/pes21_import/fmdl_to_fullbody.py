@@ -97,11 +97,35 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
     return [(j, w / total) for j, w in top]
 
 
+# An influence this small is noise: the engine drops any channel decoding to
+# <= 0.01 anyway, and keeping it costs one of the three slots.
+MIN_INFLUENCE = 0.02
+
+
 def encode_color(joints):
-    """[(jointID, weight)] -> three 0..1 floats (ASE color channels)."""
+    """[(jointID, weight)] -> three 0..1 floats (ASE color channels).
+
+    The engine decodes each channel as jointID*10 + weight*9, renormalises the
+    three so they sum to 1, skips any decoding to <= 0.01, and asserts the
+    first is non-zero (humanoidbase.cpp).
+
+    Negligible influences are dropped rather than raised to meet that assert.
+    Clamping them up instead - which is what this did - turned a vertex 99% on
+    one bone with two traces into 79/10.5/10.5 once the engine renormalised,
+    dragging shoulder and hip vertices toward bones they barely belong to.
+    What survives is renormalised here so the authored proportions come back
+    out the other side.
+    """
+    kept = [(j, w) for j, w in joints if w > MIN_INFLUENCE]
+    kept.sort(key=lambda jw: -jw[1])       # channel 0 carries the strongest
+    kept = kept[:3]
+    if not kept:
+        # Every vertex must ride something: the engine asserts on channel 0.
+        kept = [(joints[0][0] if joints else 0, 1.0)]
+    total = sum(w for _, w in kept)
     channels = []
-    for j, w in joints[:3]:
-        w = max(0.12, min(1.0, w))          # engine skips <=0.01, asserts >0
+    for j, w in kept:
+        w = min(1.0, max(MIN_INFLUENCE, w / total))
         channels.append((j * 10 + w * 9.0) / 255.0)
     while len(channels) < 3:
         channels.append(0.0)

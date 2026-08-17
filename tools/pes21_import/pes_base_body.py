@@ -64,6 +64,33 @@ import pes_skl
 from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
 
 
+def source_uv(vertex_uv):
+    """The UV a PES vertex was authored with, in ASE convention.
+
+    PES counts v downward and the ASE upward, so the flip is the whole
+    conversion. Skin pieces have always used this; kit pieces do too now that
+    PES's uniform layout is the one the engine maps to.
+    """
+    return (vertex_uv.u, 1.0 - vertex_uv.v) if vertex_uv is not None else (0.0, 0.0)
+
+
+def kit_vertex_uv(mode, vertex_uv, synthesise):
+    """UV for a kit vertex: the authored one, or one built for GF's template.
+
+    "native" is the standard - a team's u0<team>p<n> sheet is laid out for
+    PES's own mapping, so keeping the authored UVs is what puts an imported
+    kit's front panel on the front of the shirt. Under the template mapping
+    the shirt sampled the sleeve regions instead, and the synthesised sleeve
+    flaps distorted the shoulders into the bargain.
+
+    `synthesise` is only called in template mode; building a template UV is
+    the expensive part of the build and there is no reason to pay for it.
+    """
+    if mode == "native":
+        return source_uv(vertex_uv)
+    return synthesise()
+
+
 # --- stock kit UV harvest -----------------------------------------------------
 
 _V_RE = re.compile(r"\*MESH_VERTEX\s+(\d+)\t([-\d.e]+)\t([-\d.e]+)\t([-\d.e]+)")
@@ -411,7 +438,7 @@ def torso_frame(meshes):
 
 
 def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
-                 rebind=None, dedupe=None):
+                 rebind=None, dedupe=None, kit_uv_mode="native"):
     """-> (vertices [(pos, uv, color, normal)], faces) in GF coords.
 
     inset pushes vertices along their inverse normal (metres): skin pieces
@@ -465,13 +492,15 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
                     if inset and normal is not None:
                         pos = tuple(c - inset * nc for c, nc in zip(pos, normal))
                     skin = vertex_joints(vertex, bone_to_joint, joint_positions)
+                    uv0 = vertex.uv[0] if vertex.uv else None
                     if kit_kind:
                         ny = -vertex.normal.z if vertex.normal else -1.0
-                        uv = kit_uv(pos, ny, kit_kind, panels, garment, z_span,
-                                    island)
+                        uv = kit_vertex_uv(
+                            kit_uv_mode, uv0,
+                            lambda: kit_uv(pos, ny, kit_kind, panels, garment,
+                                           z_span, island))
                     else:
-                        uv0 = vertex.uv[0] if vertex.uv else None
-                        uv = (uv0.u, 1.0 - uv0.v) if uv0 else (0.0, 0.0)
+                        uv = source_uv(uv0)
                     if rebind:
                         node = retarget.GF_JOINT_ORDER[skin[0][0]]
                         delta = rebind.get(node)
@@ -649,7 +678,8 @@ def assemble(args):
             vertices, faces = gather_piece(fmdl, meshes, kit_kind, panels, inset,
                                           garment,
                                           part_rebind(skl) if skl else None,
-                                          arm_surface if name == "shirt" else None)
+                                          arm_surface if name == "shirt" else None,
+                                          args.kit_uv)
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
@@ -685,6 +715,11 @@ def main():
     parser.add_argument("--stock", required=True,
                         help="the migrated stock fullbody.ase (kit UV source)")
     parser.add_argument("--fmdl-lib", required=True)
+    parser.add_argument("--kit-uv", choices=("native", "template"), default="native",
+                        help="native (default): kit pieces keep the UVs PES "
+                             "authored them with, so a team's own u0<team>p<n> "
+                             "sheet maps correctly. template: re-UV onto GF's "
+                             "kit_template layout, for kits drawn against it.")
     parser.add_argument("--face-texture-ref",
                         default="media/objects/players/textures/pes_base_face.png")
     parser.add_argument("--hair-texture-ref",
