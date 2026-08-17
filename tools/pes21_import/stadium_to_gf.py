@@ -96,6 +96,52 @@ def build_ftex_index(tex_dirs):
     return index
 
 
+# media/shaders/simple.frag discards anything below this alpha.
+ALPHA_DISCARD_THRESHOLD = 0.12
+
+
+def alpha_is_a_cutout(minimum, maximum):
+    """Whether an alpha channel shapes the mesh, given its darkest and brightest.
+
+    Kept when something is transparent and something else survives the shader's
+    discard; dropped when the channel says nothing (uniformly opaque) or when
+    honouring it would erase the mesh (uniformly, or nearly, transparent).
+    """
+    if maximum <= ALPHA_DISCARD_THRESHOLD * 255.0:
+        return False
+    return minimum < 255
+
+
+def png_mode_for(source_mode, alpha_extrema):
+    """"RGBA" when the source carries a cutout, otherwise "RGB"."""
+    if "A" not in source_mode or not alpha_extrema:
+        return "RGB"
+    return "RGBA" if alpha_is_a_cutout(alpha_extrema[0], alpha_extrema[1]) else "RGB"
+
+
+def _save_with_alpha_if_useful(image, out_path):
+    """Writes `image` as a PNG, keeping its alpha only when it is a cutout."""
+    alpha_extrema = image.getchannel("A").getextrema() if "A" in image.mode else None
+    image.convert(png_mode_for(image.mode, alpha_extrema)).save(out_path)
+
+
+def _drop_useless_alpha(path):
+    """Rewrites an already-converted PNG if its alpha channel says nothing.
+
+    Converted in place, so the flattened copy is made before the file is written
+    again - Pillow reads lazily, and saving over a still-open image truncates it.
+    """
+    from PIL import Image
+    with Image.open(path) as image:
+        if "A" not in image.mode:
+            return
+        mode = png_mode_for(image.mode, image.getchannel("A").getextrema())
+        if mode == image.mode:
+            return
+        flattened = image.convert(mode)
+    flattened.save(path)
+
+
 def _texture_png(texture, ftex_index, out_dir, converted):
     """Converts the mesh's base ftex to png; returns the bitmap path."""
     base = _tex_stem(texture.filename)
@@ -108,13 +154,19 @@ def _texture_png(texture, ftex_index, out_dir, converted):
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         try:
             if src.lower().endswith(".dds"):
-                # Pillow reads the DXT formats these packs use; a stadium shell
-                # wants plain RGB anyway, so flatten and drop the alpha.
+                # Pillow reads the DXT formats these packs use. Keep the alpha
+                # channel when it shapes the mesh - Namek's clouds, houses, ships
+                # and pods are flat quads cut out entirely in alpha, and the
+                # geometry shader honours that (simple.frag discards below 0.12).
                 from PIL import Image
                 with Image.open(src) as image:
-                    image.convert("RGB").save(out_path)
+                    _save_with_alpha_if_useful(image, out_path)
             else:
                 ftex.convert(src, out_path)
+                # ftex.convert keeps whatever channels the texture had, which can
+                # be an alpha that would discard the whole mesh; judge it the same
+                # way.
+                _drop_useless_alpha(out_path)
             converted[base] = png_rel
             return png_rel
         except Exception as err:
@@ -212,6 +264,41 @@ def is_sky_dome(span_x, span_y, top_z, contains_origin):
     return top_z >= SKY_MIN_TOP
 
 
+def sample_sky_colours(png_path):
+    """(zenith rgb, horizon rgb) from a sky dome's texture, each 0..1.
+
+    A PES sky texture runs from the zenith at the top of the image to the horizon at
+    the bottom, so the two ends are averaged over a band rather than a single row -
+    clouds and moons live in the middle and must not drag either end.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        print("  sky: needs Pillow to sample the dome's colours")
+        return None
+    try:
+        image = Image.open(png_path).convert("RGB")
+    except Exception as exc:
+        print("  sky: could not read %s: %s" % (os.path.basename(png_path), exc))
+        return None
+    # Averaged over bands, a tenth of the image each, so clouds and moons cannot
+    # drag a single row. The zenith is the top of the texture; the horizon is the
+    # brightest band, which is where a sky is brightest and where PES puts it -
+    # namekbackground's yellow-green band sits nearer the middle than the bottom,
+    # and taking the bottom row gave the dark ground below it instead.
+    bands = 10
+    band = max(1, image.height // bands)
+    strips = []
+    for i in range(bands):
+        top_y = i * band
+        strip = image.crop((0, top_y, image.width, min(top_y + band, image.height)))
+        strips.append(strip.resize((1, 1), Image.BOX).getpixel((0, 0)))
+    zenith = strips[0]
+    horizon = max(strips, key=lambda rgb: 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2])
+    to_unit = lambda rgb: tuple(c / 255.0 for c in rgb)
+    return to_unit(zenith), to_unit(horizon)
+
+
 def geom_label(label, index):
     return "%s_%02d" % (label, index)
 
@@ -258,6 +345,8 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
     # frustum opened up or the sky is simply clipped away (see
     # src/onthepitch/stadiumfar.hpp).
     reach = 0.0
+    sky_texture = None  # the converted texture of the tallest dome
+    sky_top = 0.0
     for label, fmdl in fmdls:
         # biggest meshes first so a budget keeps the structural shell and
         # drops decorative detail last-to-first
@@ -290,6 +379,10 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             if sky:
                 print("  sky dome: %s (%.0f x %.0f m, %.0f m up)"
                       % (geom_label(label, i), span_x, span_y, top_z))
+                # the tallest dome is the sky proper; a lower one is the clouds
+                if bitmap and top_z > sky_top:
+                    sky_top = top_z
+                    sky_texture = bitmap
             chunks = split_faces(mesh.faces, max_verts_per_geom)
             for part, faces in enumerate(chunks):
                 geom_name = "%s_%02d" % (label, i)
@@ -302,57 +395,100 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
               "%d beyond the %sm extent limit"
               % (skipped_budget, max_tris, skipped_extent, max_extent))
 
+    # The sky the stadium wants painted behind it. Its dome is imported, but the
+    # gradient in postprocess.frag is what actually draws, so the dome's own colours
+    # are sampled here and written for the engine to paint with
+    # (src/onthepitch/stadiumsky.hpp).
+    if sky_texture:
+        colours = sample_sky_colours(os.path.join(out_dir, sky_texture))
+        if colours:
+            zenith, horizon = colours
+            with open(os.path.join(out_dir, "sky.txt"), "w") as skyfile:
+                skyfile.write("zenith %.4f %.4f %.4f\n" % zenith)
+                skyfile.write("horizon %.4f %.4f %.4f\n" % horizon)
+            print("  sky: zenith %.2f %.2f %.2f, horizon %.2f %.2f %.2f (from %s)"
+                  % (zenith + horizon + (sky_texture,)))
+
     if reach > 0.0:
         with open(os.path.join(out_dir, "farplane.txt"), "w") as far:
             far.write("%.0f\n" % (reach * 1.05))  # a little past the furthest vertex
         print("  geometry reaches %.0f m; wrote farplane.txt" % reach)
 
+    # A dome the camera stands inside cannot live in the stadium's own object: the
+    # engine splits that node's geometry into 24 m grid cells for culling and a
+    # 1154 m dome does not survive it - it was never rasterised, which is why the sky
+    # was the engine's fallback gradient and the clouds and moons were missing. The
+    # engine loads <stadium>/sky/sky.object separately and keeps it out of the shadow
+    # map, so that is where the domes are written.
+    sky_geoms = [g for g in geoms if g[4]]
+    if sky_geoms:
+        sky_dir = os.path.join(out_dir, "sky")
+        os.makedirs(sky_dir, exist_ok=True)
+        with open(os.path.join(sky_dir, "sky.ase"), "w") as out:
+            _write_ase_header(out, "sky")
+            out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(sky_geoms))
+            for new_index, (_, mat_index, _, _, _) in enumerate(sky_geoms):
+                _write_material(out, new_index, materials[mat_index][0], materials[mat_index][1],
+                                name, fallback_bitmap)
+            out.write("}\n")
+            for new_index, (geom_name, _, faces, _, _) in enumerate(sky_geoms):
+                # inside-out, because the camera is inside it, and unlit, or its own
+                # colour is lost to the lighting
+                _write_geomobject(out, geom_name, new_index, faces, True, True)
+        open(os.path.join(sky_dir, "sky.object"), "w").write(object_text("sky", with_pitch=False))
+        print("  %d sky dome(s) -> sky/sky.object (inside-out, unlit)" % len(sky_geoms))
+
     ase_path = os.path.join(out_dir, name + ".ase")
     with open(ase_path, "w") as out:
-        out.write("*3DSMAX_ASCIIEXPORT\t200\n")
-        out.write('*COMMENT "converted from PES stadium by tools/pes21_import"\n')
-        out.write("*SCENE {\n\t*SCENE_FILENAME \"%s\"\n" % name)
-        out.write("\t*SCENE_FIRSTFRAME 0\n\t*SCENE_LASTFRAME 100\n")
-        out.write("\t*SCENE_FRAMESPEED 30\n\t*SCENE_TICKSPERFRAME 160\n")
-        out.write("\t*SCENE_BACKGROUND_STATIC 0.000\t0.000\t0.000\n")
-        out.write("\t*SCENE_AMBIENT_STATIC 0.000\t0.000\t0.000\n}\n")
+        _write_ase_header(out, name)
         out.write("*MATERIAL_LIST {\n")
         out.write("\t*MATERIAL_COUNT %d\n" % len(materials))
         for m, (mat_name, bitmap) in enumerate(materials):
-            out.write("\t*MATERIAL %d {\n" % m)
-            out.write('\t\t*MATERIAL_NAME "%s"\n' % mat_name)
-            out.write('\t\t*MATERIAL_CLASS "Standard"\n')
-            out.write("\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n")
-            out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
-            out.write("\t\t*MATERIAL_SPECULAR 0.000\t0.000\t0.000\n")
-            out.write("\t\t*MATERIAL_SHINE 0.010\n")
-            out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
-            out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
-            out.write('\t\t*MATERIAL_SHADING Blinn\n')
-            # every material needs a diffuse map: the engine's ASE loader
-            # falls back to a stock "orange.jpg" that does not ship, and a
-            # missing image file is fatal to the loader
-            path = ("media/objects/stadiums/%s/%s" % (name, bitmap) if bitmap
-                    else (fallback_bitmap or FALLBACK_BITMAP))
-            out.write("\t\t*MAP_DIFFUSE {\n")
-            out.write('\t\t\t*MAP_NAME "%s"\n' % mat_name)
-            out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
-            out.write('\t\t\t*BITMAP "%s"\n' % path)
-            out.write("\t\t\t*MAP_TYPE Screen\n\t\t}\n")
-            out.write("\t}\n")
+            _write_material(out, m, mat_name, bitmap, name, fallback_bitmap)
         out.write("}\n")
 
         outlines = 0
-        skies = 0
         for geom_name, mat_index, faces, outline, sky in geoms:
-            _write_geomobject(out, geom_name, mat_index, faces, outline or sky, sky)
+            if sky:
+                continue  # the domes go to their own object, below
+            _write_geomobject(out, geom_name, mat_index, faces, outline, False)
             outlines += 1 if outline else 0
-            skies += 1 if sky else 0
         if outlines:
             print("  %d outline shell(s) written with reversed winding" % outlines)
-        if skies:
-            print("  %d sky dome(s) written inside-out and unlit" % skies)
     return ase_path, len(geoms), sum(1 for _, b in materials if b)
+
+
+def _write_ase_header(out, name):
+    out.write("*3DSMAX_ASCIIEXPORT\t200\n")
+    out.write('*COMMENT "converted from PES stadium by tools/pes21_import"\n')
+    out.write("*SCENE {\n\t*SCENE_FILENAME \"%s\"\n" % name)
+    out.write("\t*SCENE_FIRSTFRAME 0\n\t*SCENE_LASTFRAME 100\n")
+    out.write("\t*SCENE_FRAMESPEED 30\n\t*SCENE_TICKSPERFRAME 160\n")
+    out.write("\t*SCENE_BACKGROUND_STATIC 0.000\t0.000\t0.000\n")
+    out.write("\t*SCENE_AMBIENT_STATIC 0.000\t0.000\t0.000\n}\n")
+
+
+def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap):
+    out.write("\t*MATERIAL %d {\n" % index)
+    out.write('\t\t*MATERIAL_NAME "%s"\n' % mat_name)
+    out.write('\t\t*MATERIAL_CLASS "Standard"\n')
+    out.write("\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n")
+    out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
+    out.write("\t\t*MATERIAL_SPECULAR 0.000\t0.000\t0.000\n")
+    out.write("\t\t*MATERIAL_SHINE 0.010\n")
+    out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
+    out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
+    out.write('\t\t*MATERIAL_SHADING Blinn\n')
+    # every material needs a diffuse map: the engine's ASE loader falls back to a
+    # stock "orange.jpg" that does not ship, and a missing image file is fatal
+    path = ("media/objects/stadiums/%s/%s" % (stadium_name, bitmap) if bitmap
+            else (fallback_bitmap or FALLBACK_BITMAP))
+    out.write("\t\t*MAP_DIFFUSE {\n")
+    out.write('\t\t\t*MAP_NAME "%s"\n' % mat_name)
+    out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
+    out.write('\t\t\t*BITMAP "%s"\n' % path)
+    out.write("\t\t\t*MAP_TYPE Screen\n\t\t}\n")
+    out.write("\t}\n")
 
 
 def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
