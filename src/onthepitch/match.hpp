@@ -150,6 +150,11 @@ public:
 
   void Pause(bool doPause) { pause = doPause; }
   bool GetPause() { return pause; }
+
+  // The body that actually loaded, which is not necessarily the configured one:
+  // an incomplete body falls back to the legacy one, and what follows from the
+  // choice - the hairstyle meshes - has to follow the body in use.
+  const std::string& GetPlayerBodyName() const { return playerBodyName; }
   void SetMatchPhase(e_MatchPhase newMatchPhase);
   e_MatchPhase GetMatchPhase() const { return matchPhase; }
 
@@ -635,6 +640,8 @@ protected:
   unsigned long goalScoredTimer;
 
   bool pause;
+  // the body Match actually loaded (see playerbody.hpp)
+  std::string playerBodyName;
   e_MatchPhase matchPhase;  // 0 - first half; 1 - second half; 2 - 1st extra time; 3 - 2nd extra
                             // time; 4 - penalties
   bool inPlay;
