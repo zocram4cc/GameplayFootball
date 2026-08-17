@@ -137,14 +137,22 @@ def unwrapped_root(sample, frame_count, t):
     return (x, z, yaw)
 
 
-def bake_track(actor, g, key_step=2):
-    """[(gf_frame, x, y, yaw)] world root track over one clip cycle, GF space."""
+def bake_track(actor, g, key_step=2, cycles=4):
+    """[(gf_frame, x, y, yaw)] world root track, GF space.
+
+    `cycles` clip cycles are baked, not one. The engine loops whatever track it is
+    given, so a single cycle sends the actor back to his starting point every few
+    seconds however well the root is unwrapped: a walk of 2.4 m, then a jump back,
+    then the same 2.4 m again. Four cycles of a typical entrance walk is around ten
+    metres, which carries a squad out of the tunnel and onto the pitch.
+    """
     sample = gani_to_anim.root_sampler(g)
     theta = math.radians(actor.yaw_deg)
     cos_t, sin_t = math.cos(theta), math.sin(theta)
     spawn_x, _, spawn_z = actor.position
 
     cycle = max(2, int(round(g.frame_count * PES_FRAME_MS / GF_FRAME_MS)))
+    cycle = cycle * max(1, cycles)
     keys = []
     prev_yaw = None
     for f in range(0, cycle + 1, key_step):
