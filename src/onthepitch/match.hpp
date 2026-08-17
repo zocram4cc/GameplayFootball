@@ -37,6 +37,7 @@
 #include "scene/objects/camera.hpp"
 #include "scene/objects/light.hpp"
 #include "scene/objects/sound.hpp"
+#include "cutsceneviewer.hpp"
 #include "substitutions.hpp"
 #include "team.hpp"
 #include "types/command.hpp"
@@ -571,6 +572,14 @@ public:
 
 protected:
   Player* cutscenePrimary = nullptr;
+  // Where the running cutscene's camerawork is authored: PES's foul shots are
+  // authored about the incident and have to be placed at it, the rest are in
+  // stadium coordinates and are used as they are. Measured when the cutscene
+  // starts (onthepitch/cutsceneviewer.hpp) rather than assumed per category.
+  CutsceneViewer::Anchoring activeCutsceneAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
+  // The incident an incident-local cutscene is placed at.
+  Vector3 CutsceneAnchorPosition() const;
+  bool cutsceneShotTaken = false;
   Player* cutsceneOpponent = nullptr;
   void BuildEntranceCast();
   void UpdateEntranceChoreo();

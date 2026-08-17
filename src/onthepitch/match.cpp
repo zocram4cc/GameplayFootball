@@ -26,6 +26,7 @@
 #include "utils/directoryparser.hpp"
 #include "modelviewer.hpp"
 #include "utils/playermodelmap.hpp"
+#include "cutscenereport.hpp"
 #include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
@@ -378,6 +379,13 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       Log(e_Notice, "Match", "Match",
           "Loaded stoppage cutscene pools for " + int_to_str(loadedPools) +
               " categories");
+    // What each pool actually holds, measured rather than assumed
+    // ("debug_cutscene_report"). See onthepitch/cutsceneviewer.hpp - camerawork
+    // and actor choreography have been confused for one another more than once.
+    if (GetConfiguration()->GetBool("debug_cutscene_report", false)) {
+      for (const std::string& line : CutsceneViewer::Report(cutscenePools, cutsceneChoreoPools))
+        Log(e_Notice, "Match", "CutsceneReport", line);
+    }
   }
   // The model viewer is a bench, not a match: hold the kickoff for as long as
   // it runs. That is the same hold the entrance uses, and posing a player is
@@ -1753,12 +1761,20 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   const bool haveCamera = pool != cutscenePools.end() && !pool->second.empty();
   cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
   float seconds = capSeconds;
+  activeCutsceneAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
+  cutsceneShotTaken = false;
   if (haveCamera) {
     const CamTrack& track =
         pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
                      pool->second.size()];
     activeCutscene = &track;
     seconds = std::min(capSeconds, track.GetDurationSeconds());
+    // PES's foul shots are a static camera five metres from the origin: they
+    // are authored about the incident, not the stadium. Used as world positions
+    // they filmed every foul from beside the centre spot, whatever corner the
+    // challenge happened in. Measure the track and place it accordingly.
+    activeCutsceneAnchoring =
+        CutsceneViewer::ClassifyAnchoring(CutsceneViewer::MeasureTrack(track));
   }
   StartCutsceneChoreo(category);
   // Some incidents are staged but not filmed: PES ships no camera pack at all
@@ -2192,6 +2208,14 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
   cameraUserAngleFactor = angleFactor;
 }
 
+Vector3 Match::CutsceneAnchorPosition() const {
+  // The offender if the referee named one, otherwise wherever the ball stopped:
+  // at a stoppage that is the incident.
+  if (cutscenePrimary)
+    return cutscenePrimary->GetPosition();
+  return ball ? ball->Predict(0).Get2D() : Vector3(0, 0, 0);
+}
+
 void Match::UpdateIngameCamera() {
   // stoppage cutscene: play until it ends or the ball is back in play
   if (activeCutscene) {
@@ -2199,6 +2223,16 @@ void Match::UpdateIngameCamera() {
     if (now < cutsceneEnd_ms && !IsInPlay()) {
       CamTrackFrame frame =
           activeCutscene->Sample((now - cutsceneStart_ms) * 0.03f);
+      if (activeCutsceneAnchoring == CutsceneViewer::Anchoring::IncidentLocal) {
+        // Place the authored rig at the incident, then re-aim it there: the
+        // authored rotation assumed its subject at the origin, so once the
+        // camera has moved the aim has to follow.
+        const Vector3 anchor = CutsceneAnchorPosition();
+        frame.position[0] += anchor.coords[0];
+        frame.position[1] += anchor.coords[1];
+        frame = RetargetCamTrackFrame(
+            frame, {anchor.coords[0], anchor.coords[1], anchor.coords[2] + 1.2f}, 1.5f, 1.1f);
+      }
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;
@@ -2207,6 +2241,19 @@ void Match::UpdateIngameCamera() {
       cameraFOV = frame.fov;
       cameraNearCap = std::max(0.1f, frame.near);
       cameraFarCap = frame.far;
+      // Where the camera ended up relative to the incident it is filming. The
+      // one number that says whether an incident-local shot was placed at the
+      // challenge or left sitting by the centre spot ("debug_cutscene_report").
+      if (!cutsceneShotTaken && now >= cutsceneStart_ms + 900 &&
+          GetConfiguration()->GetBool("debug_cutscene_report", false)) {
+        cutsceneShotTaken = true;
+        const Vector3 anchor = CutsceneAnchorPosition();
+        Log(e_Notice, "Match", "CutsceneReport",
+            std::string("shot ") + CutsceneViewer::AnchoringName(activeCutsceneAnchoring) +
+                ": incident at " + int_to_str((int)anchor.coords[0]) + "," +
+                int_to_str((int)anchor.coords[1]) + ", camera " +
+                int_to_str((int)(cameraNodePosition - anchor).GetLength()) + " m from it");
+      }
       return;
     }
     activeCutscene = nullptr;

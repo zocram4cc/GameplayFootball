@@ -504,6 +504,8 @@ set(GAME_SOURCES
    src/onthepitch/player/controller/strategies/offtheball/goalie_default.cpp
    src/onthepitch/humangamer.cpp
    src/onthepitch/ball.cpp
+   src/onthepitch/cutscenereport.cpp
+   src/onthepitch/cutsceneviewer.cpp
    src/onthepitch/foulsequence.cpp
    src/onthepitch/goalsequence.cpp
    src/onthepitch/match.cpp
