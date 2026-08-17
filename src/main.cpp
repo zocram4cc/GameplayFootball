@@ -593,9 +593,18 @@ int main(int argc, const char** argv) {
 
   GetScheduler()->RegisterTaskSequence(graphicsSequence);
 
+  // Recording a run: every presented frame goes to this path (a fifo, with an
+  // encoder on the far end). Grabbing the game's window instead is not reliable
+  // - see StartFrameRecording - so this is how a showcase gets recorded.
+  StartFrameRecording(config->Get("frame_recording_path", ""));
+
   // fire!
 
   Run();
+
+  // Closes the recording stream, which is what gives the encoder on the far end
+  // of the fifo its end-of-file.
+  StopFrameRecording();
 
   // exit
 

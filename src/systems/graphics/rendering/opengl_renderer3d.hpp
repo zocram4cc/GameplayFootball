@@ -156,12 +156,19 @@ protected:
   SDL_Window* window;
   int context_width, context_height, context_bpp;
   void WriteScreenshot(const std::string& filename);
+  void WriteRecordedFrame();
   bool contextIsActive;
 
   float cameraNear;
   float cameraFar;
 
   int noiseTexID;
+  // PES's colour grading strip, if it was imported (scenegrade.hpp,
+  // tools/pes21_import/lut_strip.py). -1 and a zero size when it was not, which
+  // is what tells postprocess.frag to leave the picture ungraded.
+  int lutTexID;
+  int lutSize;
+  int lutBands;
 
   float FOV;
 
@@ -190,6 +197,19 @@ protected:
 
 // Saves the next presented frame as a BMP. Safe to call from any thread.
 void RequestScreenshot(const std::string& filename);
+
+// Writes every presented frame, raw, to `path` - normally a fifo with ffmpeg on
+// the other end ("frame_recording_path"). An empty path records nothing.
+//
+// This exists because grabbing the game's window is not reliable: under
+// gamescope's headless backend the X11 pixmap behind the window goes stale once
+// the compositor hands the game a direct scanout, so a captured video freezes
+// for seconds and only moves again when the scene changes. Frames straight from
+// the back buffer cannot go stale, and cost nothing when unused.
+//
+// Frames are 4 bytes per pixel, RGBA, top row first, at the context's size.
+void StartFrameRecording(const std::string& path);
+void StopFrameRecording();
 
 #ifdef WIN32
 static SDL_SysWMinfo wmInfo;

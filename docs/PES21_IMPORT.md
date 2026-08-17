@@ -170,6 +170,42 @@ standing height. The legacy constant is still the default so the
 entrance/cutscene export is unaffected; `gani_to_anim.py --gameplay-scale`
 selects the calibrated one.
 
+## Colour grading (the reason imports looked flat)
+
+`Asset/model/bg/common/lut` holds sixteen grading tables - ftex pixel format 12,
+which is a 33x33x33 volume of half floats, not a picture. `ftex.py` already
+decoded that format; what was missing was somewhere to put a volume, since there
+is no PNG for one and no 3D-texture path through this renderer.
+
+`lut_strip.py` unrolls them: the blue axis becomes 33 slices laid left to right,
+each slice 33 across (red) by 33 down (green), and the conditions stack as bands
+down the same file, so `media/textures/lut/grade.png` is one 1089x132 image that
+anyone can open. `src/systems/graphics/scenegrade.hpp` picks the band the way PES
+picks the table (time of day, then weather), and `postprocess.frag` samples it
+with the red and green axes interpolating in hardware and blue interpolated
+between the two slices either side.
+
+Why it matters, measured against the VGL26 broadcast at the same stadium:
+
+| | reference | ours, before |
+|---|---|---|
+| median | 124 | 74 |
+| pitch RGB | 32/139/197 | 26/92/110 |
+| pixels above 90% | 0.16% | 0.24% |
+| pixels below 10% | 0.11% | 1.48% |
+
+Our highlights were already hotter than the reference's and our shadows 13x more
+crushed, with the midtones 1.68x low - the signature of a missing tone curve
+rather than a missing light. PES's day table maps mid grey 0.5 to 0.616 and rolls
+0.75..1.0 into 0.666..0.689; run our own pitch pixel through it and 26/92/110
+becomes 19/132/152.
+
+Two traps. The `h_` tables are the HDR pair and the `s_` ones grade an 8-bit
+frame, which is what this renderer wants. And the table's white output is 0.689,
+not 1.0: that is PES's shoulder, and normalising it back to white overshoots the
+reference's midtones by a wide margin, so the table is applied exactly as
+authored.
+
 ## Face expressions (decoded; engine rig designed)
 
 - `face_skel.frig` parses with `frig.py` (works for both rigs — magic is

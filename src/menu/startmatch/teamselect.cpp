@@ -7,8 +7,11 @@
 
 #include <filesystem>
 
+#include <algorithm>
+
 #include "../../main.hpp"
 #include "../pagefactory.hpp"
+#include "fixturerequest.hpp"
 #include "utils/database.hpp"
 #include "utils/localization.hpp"
 
@@ -44,7 +47,27 @@ bool MenuSmokeAutoQuickMatchEnabled() {
   return MenuSmokeQuickMatchEnabled() || MenuSmokeFullMatchEnabled();
 }
 
-int AddCompetitions(Gui2IconSelector* selector) {
+// The fixture this run was asked to play, side 1 or 2 (see fixturerequest.hpp).
+// Only a plain database id is accepted; it is about to be concatenated into a
+// query, and anything else is a config typo rather than a team.
+std::string RequestedTeam(int side) {
+  const std::string id =
+      GetConfiguration()->Get(("showcase_team" + int_to_str(side)).c_str(), "");
+  if (id.empty() || !std::all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; }))
+    return "";
+  return id;
+}
+
+// Which competition to open on, so a requested team is reachable even when it
+// does not play in the first league.
+std::string LeagueOfTeam(const std::string& teamID) {
+  if (teamID.empty()) return "";
+  auto result = GetDB()->Query("select league_id from teams where id = " + teamID);
+  if (result->data.empty()) return "";
+  return result->data.at(0).at(0);
+}
+
+int AddCompetitions(Gui2IconSelector* selector, const std::string& wantedLeagueID = "") {
   /*
   selector->AddEntry("1", "National teams",
   "databases/default/images_competitions/nationalteams.png"); selector->AddEntry("2", "Premier
@@ -57,6 +80,7 @@ int AddCompetitions(Gui2IconSelector* selector) {
   */
   auto result = GetDB()->Query("select id, name, logo_url from leagues");
   int competitionCount = 0;
+  std::vector<std::string> entryIDs;
 
   for (unsigned int r = 0; r < result->data.size(); r++) {
     int id = atoi(result->data.at(r).at(0).c_str());
@@ -67,6 +91,7 @@ int AddCompetitions(Gui2IconSelector* selector) {
     if (!std::filesystem::exists(logoPath))
       logoPath = kSelectorFallbackImage;
     selector->AddEntry(int_to_str(id), name, logoPath);
+    entryIDs.push_back(int_to_str(id));
     competitionCount++;
   }
 
@@ -74,10 +99,14 @@ int AddCompetitions(Gui2IconSelector* selector) {
     selector->AddEntry("", "No competitions found", kSelectorFallbackImage);
   }
 
+  const int wanted = FixtureRequest::EntryIndexForTeam(entryIDs, wantedLeagueID);
+  if (wanted >= 0) selector->SetSelectedEntryIndex(wanted);
+
   return competitionCount;
 }
 
-int AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
+int AddTeams(Gui2IconSelector* selector, const std::string& competition_id,
+             const std::string& wantedTeamID = "") {
   if (competition_id.empty()) {
     selector->AddEntry("", "No teams found", kSelectorFallbackImage);
     return 0;
@@ -87,6 +116,7 @@ int AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
       GetDB()->Query("select id, name, logo_url from teams where league_id = " + competition_id +
                      " order by name");
   int teamCount = 0;
+  std::vector<std::string> entryIDs;
 
   for (unsigned int r = 0; r < result->data.size(); r++) {
     int id = atoi(result->data.at(r).at(0).c_str());
@@ -97,12 +127,16 @@ int AddTeams(Gui2IconSelector* selector, const std::string& competition_id) {
     if (!std::filesystem::exists(logoPath))
       logoPath = kSelectorFallbackImage;
     selector->AddEntry(int_to_str(id), name, logoPath);
+    entryIDs.push_back(int_to_str(id));
     teamCount++;
   }
 
   if (teamCount == 0) {
     selector->AddEntry("", "No teams found", kSelectorFallbackImage);
   }
+
+  const int wanted = FixtureRequest::EntryIndexForTeam(entryIDs, wantedTeamID);
+  if (wanted >= 0) selector->SetSelectedEntryIndex(wanted);
 
   selector->Show();
   return teamCount;
@@ -169,7 +203,7 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   grid1->UpdateLayout(0.5);
   grid1->Show();
 
-  AddCompetitions(competitionSelect1);
+  AddCompetitions(competitionSelect1, LeagueOfTeam(RequestedTeam(1)));
   SetupTeamSelect1();
 
   frame2->AddView(p2);
@@ -179,7 +213,7 @@ TeamSelectPage::TeamSelectPage(Gui2WindowManager* windowManager, const Gui2PageD
   grid2->AddView(buttonStart2, 2, 0);
   grid2->UpdateLayout(0.5);
 
-  AddCompetitions(competitionSelect2);
+  AddCompetitions(competitionSelect2, LeagueOfTeam(RequestedTeam(2)));
   SetupTeamSelect2();
 
   competitionSelect1->SetFocus();
@@ -276,14 +310,19 @@ void TeamSelectPage::FocusStart2() {
 
 void TeamSelectPage::SetupTeamSelect1() {
   teamSelect1->ClearEntries();
-  AddTeams(teamSelect1, competitionSelect1->GetSelectedEntryID());
+  AddTeams(teamSelect1, competitionSelect1->GetSelectedEntryID(), RequestedTeam(1));
   UpdateReadyButtons();
 }
 
 void TeamSelectPage::SetupTeamSelect2() {
   teamSelect2->ClearEntries();
-  const int teamCount = AddTeams(teamSelect2, competitionSelect2->GetSelectedEntryID());
-  if (teamCount > 1 && teamSelect2->GetSelectedEntryID() == teamSelect1->GetSelectedEntryID()) {
+  const std::string requested = RequestedTeam(2);
+  const int teamCount =
+      AddTeams(teamSelect2, competitionSelect2->GetSelectedEntryID(), requested);
+  // Nudging the CPU side off the home team's entry would undo an explicitly
+  // requested fixture, so only do it when nothing was asked for.
+  if (requested.empty() && teamCount > 1 &&
+      teamSelect2->GetSelectedEntryID() == teamSelect1->GetSelectedEntryID()) {
     teamSelect2->SetSelectedEntryIndex(1);
   }
   UpdateReadyButtons();

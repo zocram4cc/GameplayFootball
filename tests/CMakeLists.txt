@@ -83,6 +83,17 @@ target_include_directories(gameplayfootball_stadiumsky_tests PRIVATE
 target_link_libraries(gameplayfootball_stadiumsky_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_stadiumsky_tests DISCOVERY_MODE PRE_TEST)
 
+# Which of PES's colour grading tables a match is graded through
+add_executable(gameplayfootball_scenegrade_tests
+  onthepitch/scene_grade_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/systems/graphics/scenegrade.cpp
+)
+target_include_directories(gameplayfootball_scenegrade_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_scenegrade_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_scenegrade_tests DISCOVERY_MODE PRE_TEST)
+
 # Which player body loads, and surviving its absence
 add_executable(gameplayfootball_playerbody_tests
   onthepitch/player_body_test.cpp
@@ -367,8 +378,10 @@ add_executable(gameplayfootball_presentation_tests
   menu/formation_graphic_layout_test.cpp
   menu/banner_presentation_test.cpp
   menu/prematch_timeline_test.cpp
+  menu/fixture_request_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/formationgraphiclayout.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/bannerpresentation.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/startmatch/fixturerequest.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/prematchtimeline.cpp
 )
 
