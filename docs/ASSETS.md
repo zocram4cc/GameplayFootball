@@ -90,7 +90,10 @@ Then point `stadium_object` at the `.object` it writes.
 `--max-extent` drops meshes spanning more than that many metres. The default of
 260 keeps the bowl and throws away the surrounding apron, which is right for a
 real stadium; a pack whose setting *is* the view - Namek's terrain is 276 m and
-its sky dome 1154 m across - needs it raised or the vista disappears.
+its sky dome 1154 m across, benuldys has backdrop pieces 4.7 km across - needs
+it raised or the vista disappears. `convert_stadiums.sh` passes 6000, at which
+the pieces that would have been dropped are recognised as backdrop and go to the
+sky object rather than into the scene.
 
 Three things about these conversions are worth knowing, because each one produced
 a stadium that looked broken in a way that had nothing to do with the pack:
