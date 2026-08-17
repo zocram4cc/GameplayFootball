@@ -103,3 +103,45 @@ TEST(CoachModeDeriveTest, CoachModeDoesNotStealTeamsFromPlayingHumans) {
   EXPECT_EQ(setup.control[0], CoachMode::e_TeamControl_HumanPlayers);
   EXPECT_EQ(setup.control[1], CoachMode::e_TeamControl_HumanCoach);
 }
+
+// "When coach mode is on, only the user(s) make tactical changes; the AI
+// manager is completely disabled." Sparing only the human-coached team was not
+// enough: the AI manager went on reshaping the other bench, so a manager duel
+// was really one manager against a CPU that kept second-guessing him.
+
+TEST(CoachModeTest, TheAIManagerRunsAnOrdinaryCPUTeam) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers, CoachMode::e_TeamControl_AI);
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
+}
+
+TEST(CoachModeTest, TheAIManagerNeverRunsATeamAHumanIsOnTheSticksFor) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers, CoachMode::e_TeamControl_AI);
+  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 0));
+}
+
+TEST(CoachModeTest, CoachModeDisablesTheAIManagerForBothTeams) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
+  ASSERT_TRUE(CoachMode::IsCoachMode(setup));
+  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 0)) << "the coached team is the human's";
+  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 1))
+      << "and nothing on the other bench second-guesses him";
+}
+
+TEST(CoachModeTest, AManagerDuelLeavesBothBenchesToTheHumans) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_HumanCoach);
+  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 0));
+  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 1));
+}
+
+TEST(CoachModeTest, APlainAIvsAIMatchStillHasItsManagers) {
+  // No humans at all and coach mode off: nothing has changed for these.
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_AI, CoachMode::e_TeamControl_AI);
+  ASSERT_FALSE(CoachMode::IsCoachMode(setup));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 0));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
+}

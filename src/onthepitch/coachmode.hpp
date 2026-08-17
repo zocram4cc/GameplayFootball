@@ -42,6 +42,14 @@ bool ControlsPlayersOnPitch(const Setup& setup, int teamID);
 // Whether a human may open the game plan / tactics menu for this team.
 bool CanEditTactics(const Setup& setup, int teamID);
 
+// May the AI manager adapt this team's philosophy, shape and bench?
+//
+// In coach mode it may not, for either team. Sparing only the human-coached
+// side left the CPU reshaping the other bench, so a manager duel was really one
+// manager against a CPU that kept second-guessing him. Coach mode means the
+// touchline belongs to the humans and the AI manager is off entirely.
+bool AIManagerRuns(const Setup& setup, int teamID);
+
 }  // namespace CoachMode
 
 #endif

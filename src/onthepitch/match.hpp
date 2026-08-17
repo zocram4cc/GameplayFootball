@@ -313,6 +313,11 @@ public:
   const CoachMode::Setup& GetCoachSetup() const { return coachSetup; }
   // Whether a human may open the tactics menu for this team.
   bool CanCoachTeam(int teamID) const { return CoachMode::CanEditTactics(coachSetup, teamID); }
+  // Whether the CPU manager may adapt this team's tactics and use its bench.
+  // Off for both teams in coach mode - see CoachMode::AIManagerRuns.
+  bool AIManagerRunsTeam(int teamID) const {
+    return CoachMode::AIManagerRuns(coachSetup, teamID);
+  }
   Substitutions::State& GetSubstitutionState() { return substitutionState; }
   // Play stopped, in a match that has actually started. Not the same thing as
   // !IsInPlay(), which is also true throughout the pre-match presentation.

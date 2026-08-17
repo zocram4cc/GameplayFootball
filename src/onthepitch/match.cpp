@@ -1876,8 +1876,9 @@ void Match::ProcessAutoSubstitutions() {
     return;
 
   for (int teamID = 0; teamID < 2; teamID++) {
-    // A human manager makes his own calls.
-    if (CoachMode::CanEditTactics(coachSetup, teamID))
+    // A human manager makes his own calls - and in coach mode the CPU manager
+    // makes none at all, for either team.
+    if (!AIManagerRunsTeam(teamID))
       continue;
     if (Substitutions::GetRemaining(substitutionState, teamID) <= 0)
       continue;
