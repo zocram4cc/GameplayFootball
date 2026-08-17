@@ -69,6 +69,8 @@ void GameTask::Action(e_GameTaskMessage message) {
         printf("*gametaskmessage: stopping match\n");
 
       GetGraphicsSystem()->getPhaseMutex.lock();
+      // before the humanoids these uploads point into are deleted
+      DrainPendingUploads();
       matchLifetimeMutex.lock();
       matchPutBufferMutex.lock();
       // assert(match);
@@ -100,6 +102,7 @@ void GameTask::Action(e_GameTaskMessage message) {
         printf("*gametaskmessage: stopping menu scene\n");
 
       GetGraphicsSystem()->getPhaseMutex.lock();
+      DrainPendingUploads();
       menuSceneLifetimeMutex.lock();
       // assert(menuScene);
       if (menuScene) {
@@ -152,7 +155,22 @@ void GameTask::ProcessPhase() {
   }
 }
 
+void GameTask::DrainPendingUploads() {
+  std::vector<boost::intrusive_ptr<UploadFullbodyModel>> collected;
+  {
+    std::lock_guard<std::mutex> lock(pendingUploadsMutex);
+    collected.swap(pendingUploads);
+  }
+  // Waited on outside the lock: a worker finishing one of these does not need to
+  // queue behind whoever is draining.
+  for (unsigned int i = 0; i < collected.size(); i++) {
+    collected.at(i)->Wait();
+  }
+}
+
 void GameTask::PutPhase() {
+  // Collect last frame's uploads before touching anything they hold.
+  DrainPendingUploads();
   std::vector<boost::intrusive_ptr<UpdateFullbodyModel>> updateFullbodyModels;
   std::vector<boost::intrusive_ptr<UploadFullbodyModel>> uploadFullbodyModels;
   std::vector<PlayerBase*> playersToProcess;
@@ -240,6 +258,12 @@ void GameTask::PutPhase() {
     }
 
   }  // !match
+
+  // Held until the next put phase collects them; see pendingUploads.
+  {
+    std::lock_guard<std::mutex> lock(pendingUploadsMutex);
+    pendingUploads = uploadFullbodyModels;
+  }
 
   matchSubstitutionMutex.unlock_shared();
   matchLifetimeMutex.unlock();
