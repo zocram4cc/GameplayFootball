@@ -13,8 +13,9 @@
 # enclosing the whole stadium needs.
 #
 # --max-extent has to be large for packs whose surroundings *are* the view (Namek's
-# terrain is 276 m across and its dome 1154 m); the 260 m default is meant for a
-# real stadium's car park.
+# terrain is 276 m across and its dome 1154 m; benuldys has backdrop pieces
+# 4.7 km across); stadium_to_gf.py's own 260 m default is meant for a real
+# stadium's car park.
 #
 #   convert_stadiums.sh <packs dir> [<fmdl-lib>] [<out root>]
 set -u
@@ -22,7 +23,11 @@ PACKS=${1:?usage: convert_stadiums.sh <packs dir> [fmdl-lib] [out root]}
 FMDL_LIB=${2:-/home/z/Code/GameplayFootball/4cc Blender Starter Pack/scripts/addons/pes-fmdl}
 OUT_ROOT=${3:-/home/z/Code/GameplayFootball/data/media/objects/stadiums}
 HERE=$(cd "$(dirname "$0")" && pwd)
-MAX_EXTENT=${MAX_EXTENT:-1300}
+# Large by default. A mesh over the limit is dropped, and on a pack whose
+# surroundings are the view that throws the view away: benuldys lost seventeen
+# meshes at 1300 m, every one of which is recognised as a backdrop dome at 6000
+# and goes to sky/sky.object, where the engine draws it out of the shadow map.
+MAX_EXTENT=${MAX_EXTENT:-6000}
 
 converted=0
 skipped=0
