@@ -144,8 +144,12 @@ def main():
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
         status = "dry-run"
         if not args.dry_run:
-            install_kit_texture(args.pack_dir, dest)
-            install_kit_texture(args.pack_dir, dest)
+            # Only a whole-character pack needs the kit dropped in beside it:
+            # its own mesh wears the kit. A face-slot import is a head, and the
+            # body it is composited onto keeps the engine's kit slot, which the
+            # team's kit is swapped into at run time (Team::FetchKit).
+            if not args.base:
+                install_kit_texture(args.pack_dir, dest)
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge,
                                    args.base or None)

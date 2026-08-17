@@ -255,6 +255,42 @@ def export_textures(fmdl_path, out_dir, names, prefix):
     return written
 
 
+# The engine's kit slot: HumanoidBase::SetKit replaces every mesh whose diffuse
+# texture is this one with the team's kit (Team::FetchKit).
+KIT_SLOT_TEXTURE = "media/objects/players/textures/kit_template.png"
+
+
+def unresolved_group_texture(base_ase, fallback_texture):
+    """Texture for a mesh whose own texture the pack does not ship.
+
+    4cc models point their kit mesh at the shared PES kit map (u0XXXp0), which
+    no pack contains. A whole-character import gets that kit dropped in beside
+    it (import_team.install_kit_texture) and uses it directly. A face-slot
+    import composited onto a base body has no such file - and the mesh is kit,
+    so it belongs in the engine's kit slot, where the team's own kit is swapped
+    in per match instead of being baked to one strip.
+    """
+    return KIT_SLOT_TEXTURE if base_ase else fallback_texture
+
+
+def base_material_plan(base_material_count, group_textures, fallback_texture):
+    """Materials to append for the imported groups, and each group's ref.
+
+    Compositing onto a base body (--base) keeps the base's material list
+    verbatim, so the imported meshes have to be numbered *after* it. Numbering
+    them from zero instead hands them the base's own material 0 - the shirt,
+    whose texture is kit_template.png, which is the slot
+    HumanoidBase::SetKit swaps the team kit into. That is how /a/'s squad
+    ended up wearing the jersey on their faces.
+
+    Returns (appended_textures, refs), one entry each per group, and always at
+    least one so a groupless import still has a material to point at.
+    """
+    textures = [t or fallback_texture for t in group_textures] or [fallback_texture]
+    refs = [base_material_count + i for i in range(len(textures))]
+    return textures, refs
+
+
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0,
             drop_base_parts=None):
@@ -337,7 +373,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     def group_texture_path(name):
         if name and name in exported:
             return "%s/%s" % (texture_rel, exported[name]) if texture_rel else exported[name]
-        return texture
+        return unresolved_group_texture(base_ase, texture)
 
     # the engine's resource cache keys geometry by BASENAME, so every model
     # needs a unique ase filename or it collides with the stock fullbody.ase
@@ -346,7 +382,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
 
     # --base: carry the stock body (materials, geometry, skin colors) over
     # verbatim; the import becomes an extra subgeom with its own material
-    material_ref = 0
+    group_refs = None  # set when compositing onto a base body
     base_head = base_geoms = None
     if base_ase:
         import re
@@ -374,13 +410,20 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 print("dropped %d base part(s): %s"
                       % (dropped, ", ".join(sorted(drop_base_parts))))
         count_match = re.search(r"\*MATERIAL_COUNT\s+(\d+)", base_head)
-        material_ref = int(count_match.group(1))
+        base_material_count = int(count_match.group(1))
+        appended, group_refs = base_material_plan(
+            base_material_count,
+            [group_texture_path(group[0]) for group in groups],
+            texture)
         base_head = base_head.replace(
-            count_match.group(0), "*MATERIAL_COUNT %d" % (material_ref + 1))
+            count_match.group(0),
+            "*MATERIAL_COUNT %d" % (base_material_count + len(appended)))
         close_at = base_head.rstrip().rfind("}")
-        plate_material = ("\t*MATERIAL %d {\n%s\t}\n"
-                          % (material_ref, MATERIAL_BLOCK % {"texture": texture}))
-        base_head = base_head[:close_at] + plate_material + base_head[close_at:]
+        plate_materials = "".join(
+            "\t*MATERIAL %d {\n%s\t}\n" % (base_material_count + i,
+                                           MATERIAL_BLOCK % {"texture": tex})
+            for i, tex in enumerate(appended))
+        base_head = base_head[:close_at] + plate_materials + base_head[close_at:]
 
     with open(ase_path, "w") as out:
         if base_ase:
@@ -456,7 +499,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
             out.write("\t}\n")
             out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
-            out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF %d\n}\n" % slot)
+            out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF %d\n}\n"
+                      % (group_refs[slot] if group_refs else slot))
 
     object_path = os.path.join(out_dir, "fullbody.object")
     open(object_path, "w").write(
