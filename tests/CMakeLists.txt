@@ -83,6 +83,17 @@ target_include_directories(gameplayfootball_prematchchoices_tests PRIVATE
 target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
 
+# What the in-play player indicator says
+add_executable(gameplayfootball_hudindicators_tests
+  menu/hud_indicators_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/ingame/hudindicators.cpp
+)
+target_include_directories(gameplayfootball_hudindicators_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_hudindicators_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_hudindicators_tests DISCOVERY_MODE PRE_TEST)
+
 # Velocity state machine unit tests (task 2.5)
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp
