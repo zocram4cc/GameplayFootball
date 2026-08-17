@@ -30,6 +30,15 @@ struct SquadView {
   bool playerInHasPlayed = false;
 };
 
+// Is this a moment a substitution may be made in?
+//
+// "Not in play" is not enough on its own: before kick-off the match is not in
+// play either, so a plain !IsInPlay() test made the pre-match presentation a
+// substitution window - the AI manager swapped players during the walkout,
+// HUD banner and tunnel cutscene included, before a ball had been kicked. A
+// substitution needs play stopped *within a match that has started*.
+bool IsSubstitutionWindow(bool isInPlay, bool hasKickedOff, bool isInEntrance);
+
 int GetRemaining(const State& state, int teamID);
 
 e_Result Validate(const State& state, int teamID, const SquadView& squad, bool isStoppage);
