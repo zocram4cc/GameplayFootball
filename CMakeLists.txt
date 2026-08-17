@@ -21,6 +21,18 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Export compile commands for IDE/tooling support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Without this, configuring with a bare "cmake ." leaves CMAKE_BUILD_TYPE empty,
+# which means no -O flag at all. That is not a slightly slower build: the engine
+# skins 22 bodies on the CPU every frame, and an unoptimised binary spent 49.7 ms
+# a frame in the put phase against 2.9 ms for the same code at -O3 - the
+# difference between 20 fps and a locked 60. build.sh always passes a type; this
+# is for every other way the build gets configured.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  message(STATUS "No build type was given; defaulting to Release. "
+                 "An unoptimised build of this engine does not run at frame rate.")
+endif()
+
 if(UNIX)
    # The legacy engine keeps compatibility parameters in virtual interfaces
    # and dormant diagnostic calculations alongside active code. Keep the

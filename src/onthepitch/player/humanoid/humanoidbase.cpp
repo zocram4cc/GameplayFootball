@@ -579,6 +579,13 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
     Skinning::JointTransform blended;
     Vector3 result;
 
+    // The tangent frame only reaches the picture through a normal map: without
+    // one simple.frag sets bump to (0, 0, 1), which multiplies the tangent and
+    // the bitangent by zero and leaves the shading normal exactly as it is. The
+    // PES bodies are diffuse-only, so skinning those two was half the per-vertex
+    // work thrown away.
+    const int directionCount = materializedTriangleMeshes[subgeom].material.normalTexture ? 3 : 1;
+
     for (int v = 0; v < uniqueVertexCount; v++) {
       const std::vector<WeightedBone>& bones = weightedVertices[v].bones;
       const bool blendedInfluences = bones.size() > 1;
@@ -597,7 +604,7 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
       if (updateSrc) memcpy(&uniqueMesh.data[at], result.coords, 3 * sizeof(float));
       memcpy(&target[at], result.coords, 3 * sizeof(float));
 
-      for (int d = 0; d < 3; d++) {
+      for (int d = 0; d < directionCount; d++) {
         const int atDirection = at + uniqueElementOffset * directionOffsets[d];
         Skinning::TransformDirection(blended, &uniqueMesh.data[atDirection], result.coords);
         // A single influence is a pure rotation and keeps its length; a blend of
