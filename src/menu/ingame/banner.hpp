@@ -1,9 +1,16 @@
-// In-match lower-third banner (docs/PRESENTATION_SPEC.md section 4): a
-// team-colour-accented panel used for tactical instruction changes,
-// substitutions, and referee decisions (booking/sending-off/offside). Three
-// independent slots (left/team0, right/team1, center/neutral - see
-// bannerpresentation.hpp) so e.g. a substitution banner for one side never
-// clobbers a tactics banner for the other.
+// The in-match notification strip (docs/PRESENTATION_SPEC.md section 4): a
+// small team-colour-accented panel under the scoreboard, used for tactical
+// instruction changes, substitutions, and referee decisions
+// (booking/sending-off/offside).
+//
+// There is one of these, not three. It used to be a set of lower-thirds along
+// the bottom edge - team 0 left, team 1 right, neutral centre - but that edge
+// is now the PES-style furniture: the player indicator sits bottom-left, its
+// opposite number bottom-right, the radar bottom-centre. A banner there covers
+// them, and a substitution drew two at once (the team-tagged card over the
+// indicator plus the centre strip over the radar). The panel is also sized to
+// its text rather than fixed, so a two-name substitution is no longer cut off
+// mid-word.
 //
 // Owned by Match like Gui2ScoreBoard; Match::SpamMessage routes here (see
 // match.cpp) so existing call sites (referee.cpp bookings/offside, the
@@ -31,8 +38,8 @@ public:
   Gui2Banner(Gui2WindowManager* windowManager, const std::string& name, Match* match);
   virtual ~Gui2Banner();
 
-  // Builds the three slots' images/captions. Call once, right after this
-  // view has been added to its final parent (root->AddView(...)) - see
+  // Builds the panel's images/captions. Call once, right after this view has
+  // been added to its final parent (root->AddView(...)) - see
   // Gui2FormationGraphic::Init() for why that ordering matters.
   void Init();
 
@@ -43,37 +50,26 @@ public:
   // Gui2View::SetRecursiveZPriority.
   virtual void SetRecursiveZPriority(int prio);
 
-  // teamID -1 for a team-less message (referee/commentary cue, centered);
-  // 0/1 for a team-tagged message (bottom-left/bottom-right, that team's
-  // colour accent and short name).
+  // teamID -1 for a team-less message (referee/commentary cue); 0/1 for a
+  // team-tagged one, which adds that team's colour accent and short name.
   void Show(int teamID, const std::string& title, const std::string& subtitle, int time_ms);
 
 protected:
-  static constexpr int kSlotCount = 3;  // BannerPresentation::Slot: Left, Center, Right
-
-  struct Slot {
-    Gui2Image* panel = nullptr;
-    Gui2Image* accent = nullptr;
-    Gui2Caption* teamTag = nullptr;
-    Gui2Caption* title = nullptr;
-    Gui2Caption* subtitle = nullptr;
-    bool teamTagVisible = false;
-    bool subtitleVisible = false;
-    unsigned long hideAt_ms = 0;
-    unsigned long shownAt_ms = 0;
-    float currentAlpha = -1.0f;
-    // Text column, kept so Show() can refit each caption to the panel.
-    float textX = 0.0f;
-    float textWidth = 0.0f;
-  };
-
-  void BuildSlot(int index, float x, float width, bool alignRight);
   void ApplyZOrder();
-  void ApplySlotAlpha(Slot& slot, float alpha);
-  float ComputeAlpha(const Slot& slot, unsigned long now_ms) const;
+  void ApplyAlpha(float alpha);
 
   Match* match;
-  Slot slots[kSlotCount];
+
+  Gui2Image* panel = nullptr;
+  Gui2Image* accent = nullptr;
+  Gui2Caption* teamTag = nullptr;
+  Gui2Caption* title = nullptr;
+  Gui2Caption* subtitle = nullptr;
+  bool teamTagVisible = false;
+  bool subtitleVisible = false;
+  unsigned long hideAt_ms = 0;
+  unsigned long shownAt_ms = 0;
+  float currentAlpha = -1.0f;
 };
 
 }  // namespace blunted

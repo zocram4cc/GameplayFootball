@@ -4,10 +4,19 @@
 
 namespace BannerPresentation {
 
-Slot SlotForTeam(int teamID) {
-  if (teamID == 0) return Slot::Left;
-  if (teamID == 1) return Slot::Right;
-  return Slot::Center;
+Rect NotificationRect(float scoreboardX, float scoreboardY, float scoreboardHeight,
+                      float widestLineWidth, int lineCount, float lineHeight) {
+  constexpr float kGapBelowScoreboard = 0.9f;
+  constexpr float kVerticalPadding = 0.5f;  // above and below the text block
+
+  Rect rect;
+  rect.x = scoreboardX;
+  rect.y = scoreboardY + scoreboardHeight + kGapBelowScoreboard;
+  rect.width = std::max(kNotificationMinWidth,
+                        std::min(kNotificationMaxWidth,
+                                 std::max(0.0f, widestLineWidth) + kNotificationChromeWidth));
+  rect.height = std::max(0, lineCount) * lineHeight + 2.0f * kVerticalPadding;
+  return rect;
 }
 
 blunted::Vector3 AccentColor(int teamID, const blunted::Vector3& team0Color,

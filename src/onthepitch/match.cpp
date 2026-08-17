@@ -22,6 +22,7 @@
 #include "menu/prematchchoices.hpp"
 #include "onthepitch/pitchturf.hpp"
 #include "onthepitch/stadiumfar.hpp"
+#include "onthepitch/stadiumsky.hpp"
 #include "onthepitch/playerbody.hpp"
 #include "player/playerofficial.hpp"
 #include "proceduralpitch.hpp"
@@ -540,7 +541,21 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   // sky is a view-direction gradient in postprocess.frag (no geometry needed),
   // as imported geometry runs through the full lighting pipeline and comes out
   // fogged/desaturated (see docs/TECHNICAL_ROADMAP notes on self-illumination)
+  // A converted stadium installs its own dome at <stadium>/sky/sky.object. It has
+  // to come through here rather than inside the stadium node: the node's geometry is
+  // split into 24 m grid cells for culling, and a 1154 m dome does not survive that
+  // - it was never rasterised, which is why the sky was the fallback gradient and
+  // the clouds and moons were missing. Loaded here it draws, and it is kept out of
+  // the shadow map below.
   std::string skydomeObject = GetConfiguration()->Get("skydome_object", "");
+  if (skydomeObject.empty()) {
+    const std::string stadiumForSky = GetConfiguration()->Get("stadium_object", "");
+    const std::string::size_type slash = stadiumForSky.find_last_of("/\\");
+    if (slash != std::string::npos) {
+      const std::string candidate = stadiumForSky.substr(0, slash + 1) + "sky/sky.object";
+      if (std::filesystem::exists(candidate)) skydomeObject = candidate;
+    }
+  }
   if (skydomeObject != "" && !SuperDebug() &&
       std::filesystem::exists(skydomeObject)) {
     skydomeNode = loader.LoadObject(GetScene3D(), skydomeObject);
@@ -567,6 +582,32 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     hasOwnTurf = probe.good();
   }
   const std::string grassTexture = PitchTurf::GrassTexturePath(stadiumObject, hasOwnTurf);
+
+  // The stadium's own sky, if the converter sampled it: the gradient in
+  // postprocess.frag is painted with these, and the band below the horizon with the
+  // horizon colour, so the ground gap stops being a white void (stadiumsky.hpp).
+  {
+    const std::string skyPath = StadiumSky::SidecarPath(stadiumObject);
+    std::string contents;
+    if (!skyPath.empty()) {
+      std::ifstream file(skyPath.c_str());
+      if (file.good())
+        contents.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    const StadiumSky::Colours sky = StadiumSky::Parse(contents);
+    const float* fog = StadiumSky::FogColour(sky);
+    GetConfiguration()->Set("sky_zenith_r", sky.zenith[0]);
+    GetConfiguration()->Set("sky_zenith_g", sky.zenith[1]);
+    GetConfiguration()->Set("sky_zenith_b", sky.zenith[2]);
+    GetConfiguration()->Set("sky_horizon_r", sky.horizon[0]);
+    GetConfiguration()->Set("sky_horizon_g", sky.horizon[1]);
+    GetConfiguration()->Set("sky_horizon_b", sky.horizon[2]);
+    GetConfiguration()->Set("sky_fog_r", fog[0]);
+    GetConfiguration()->Set("sky_fog_g", fog[1]);
+    GetConfiguration()->Set("sky_fog_b", fog[2]);
+    if (sky.valid)
+      Log(e_Notice, "Match", "Match", "stadium sky: zenith and horizon from " + skyPath);
+  }
 
   // How far this stadium's own geometry reaches, if the converter measured it.
   {
@@ -2029,13 +2070,13 @@ void Match::ExecutePendingSubstitutions() {
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
     AddLostTime(MatchProgression::e_Stoppage_Substitution);
-    // A substitution always announces itself on the HUD; the tunnel cutscene
-    // is the exception rather than the rule, as PES only cuts away now and
-    // then ("substitution_cutscene_chance", 0..1).
+    // A substitution announces itself once, from Team::Substitute ("<TEAM>: X
+    // on for Y") - there used to be a second, team-tagged banner here, and both
+    // fired for every change. The tunnel cutscene is the exception rather than
+    // the rule, as PES only cuts away now and then
+    // ("substitution_cutscene_chance", 0..1).
     std::string out = sub.playerOut ? sub.playerOut->GetPlayerData()->GetLastName() : "";
     std::string in = sub.playerIn ? sub.playerIn->GetPlayerData()->GetLastName() : "";
-    ShowBanner(sub.teamID, "Substitution",
-              "IN: " + in + (out.empty() ? "" : "   OUT: " + out), 4000);
     Log(e_Notice, "Match", "ExecutePendingSubstitutions",
         "substitution, team " + int_to_str(sub.teamID) + ": in " + in + ", out " + out);
     if (random(0.0f, 1.0f) <
