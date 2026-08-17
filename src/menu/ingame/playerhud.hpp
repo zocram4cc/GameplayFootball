@@ -19,6 +19,7 @@
 #define _HPP_GUI2_VIEW_PLAYERHUD
 
 #include <string>
+#include <vector>
 
 #include "scene/objects/image2d.hpp"
 #include "utils/gui2/view.hpp"
@@ -28,6 +29,7 @@
 using namespace blunted;
 
 class Match;
+class Player;
 
 class Gui2PlayerHUD : public Gui2View {
 public:
@@ -71,6 +73,9 @@ protected:
 
   // Only touch a widget when its value actually moves; these are HUD elements
   // redrawn every frame otherwise.
+  // Reused rather than allocated per tick: Refresh runs with the match process,
+  // a hundred times a second, twice.
+  std::vector<Player*> activePlayers;
   std::string lastPlateText;
   int lastHumanControlled = -1;
   int lastMentality = -1;

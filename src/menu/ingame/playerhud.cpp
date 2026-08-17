@@ -137,7 +137,7 @@ void Gui2PlayerHUD::Refresh() {
   // Whoever the viewer is watching on this side: the man the user has, or the
   // one on the ball when the side is run by the computer.
   Player* subject = nullptr;
-  std::vector<Player*> activePlayers;
+  activePlayers.clear();
   team->GetActivePlayers(activePlayers);
   for (unsigned int i = 0; i < activePlayers.size(); i++) {
     if (team->IsHumanControlled(activePlayers.at(i)->GetID())) {
