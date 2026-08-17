@@ -112,6 +112,9 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   float playerHeight = player->GetPlayerData()->GetHeight();
   zMultiplier = (1.0f / defaultPlayerHeight) * playerHeight;
 
+  halveDistantBodyRate =
+      GetConfiguration()->GetBool("animation_halve_distant_bodies", false);
+
   boost::intrusive_ptr<Node> bla(new Node(*humanoidSourceNode.get(), "", GetScene3D()));
   humanoidNode = bla;
   humanoidNode->SetLocalMode(e_LocalMode_Absolute);
@@ -537,23 +540,31 @@ void HumanoidBase::UpdateFullbodyNodes() {
 }
 
 bool HumanoidBase::NeedsModelUpdate() {
-  if (buf_LowDetailMode && buf_bodyUpdatePhase != 1 - buf_bodyUpdatePhaseOffset)
-    return false;
-  else
-    return true;
+  return Skinning::BodyNeedsSkinning(buf_LowDetailMode, halveDistantBodyRate, buf_bodyUpdatePhase,
+                                     buf_bodyUpdatePhaseOffset);
 }
 
 void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
-  int uploadVertices = true;
-  int uploadNormals = true;
-  int uploadTangents = true;
-  int uploadBitangents = true;
-
   boost::intrusive_ptr<Resource<GeometryData>> fullbodyGeometryData =
       boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->GetGeometryData();
   fullbodyGeometryData->resourceMutex.lock();
   std::vector<MaterializedTriangleMesh>& materializedTriangleMeshes =
       fullbodyGeometryData->GetResource()->GetTriangleMeshesRef();
+
+  // Each joint's transform, built once for the whole body. The per-influence
+  // form rotated every vertex, normal, tangent and bitangent separately, so a
+  // two-bone vertex cost eight quaternion rotations and every joint's rotation
+  // was recomputed for each vertex weighted to it. Blending the transforms and
+  // applying one of them is the same arithmetic - skinning.hpp explains why -
+  // and it is what makes the native PES body affordable to skin.
+  if (jointTransforms.size() != joints.size()) jointTransforms.resize(joints.size());
+  for (unsigned int j = 0; j < joints.size(); j++) {
+    jointTransforms[j] = Skinning::MakeJointTransform(joints[j].orientation, joints[j].origPos,
+                                                      joints[j].position, zMultiplier);
+  }
+
+  // normal, tangent and bitangent, as multiples of the attribute stride
+  static const int directionOffsets[3] = {1, 3, 4};
 
   for (unsigned int subgeom = 0; subgeom < fullbodySubgeomCount; subgeom++) {
     FloatArray& uniqueMesh = uniqueFullbodyMesh.at(subgeom);
@@ -564,135 +575,37 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
 
     int uniqueElementOffset = uniqueMesh.size / GetTriangleMeshElementCount();
 
-    Vector3 origVertex;
-    Vector3 origNormal;
-    Vector3 origTangent;
-    Vector3 origBitangent;
-    Vector3 resultVertex;
-    Vector3 resultNormal;
-    Vector3 resultTangent;
-    Vector3 resultBitangent;
-    Vector3 adaptedVertex;
-    Vector3 adaptedNormal;
-    Vector3 adaptedTangent;
-    Vector3 adaptedBitangent;
+    float* target = materializedTriangleMeshes[subgeom].vertices;
+    Skinning::JointTransform blended;
+    Vector3 result;
 
     for (int v = 0; v < uniqueVertexCount; v++) {
-      if (uploadVertices)
-        memcpy(origVertex.coords, &uniqueMesh.data[weightedVertices[v].vertexID * 3],
-               3 * sizeof(float));  // was: uniqueFullbodyMeshSrc
-      if (uploadNormals)
-        memcpy(origNormal.coords,
-               &uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset],
-               3 * sizeof(float));
-      if (uploadTangents)
-        memcpy(origTangent.coords,
-               &uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 3],
-               3 * sizeof(float));
-      if (uploadBitangents)
-        memcpy(origBitangent.coords,
-               &uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 4],
-               3 * sizeof(float));
+      const std::vector<WeightedBone>& bones = weightedVertices[v].bones;
+      const bool blendedInfluences = bones.size() > 1;
 
-      if (weightedVertices[v].bones.size() == 1) {
-        if (uploadVertices) {
-          resultVertex = origVertex;
-          resultVertex -= joints[weightedVertices[v].bones[0].jointID].origPos * zMultiplier;
-          resultVertex.Rotate(joints[weightedVertices[v].bones[0].jointID].orientation);
-          resultVertex += joints[weightedVertices[v].bones[0].jointID].position * zMultiplier;
-        }
-
-        if (uploadNormals) {
-          resultNormal = origNormal;
-          resultNormal.Rotate(joints[weightedVertices[v].bones[0].jointID].orientation);
-        }
-
-        if (uploadTangents) {
-          resultTangent = origTangent;
-          resultTangent.Rotate(joints[weightedVertices[v].bones[0].jointID].orientation);
-        }
-
-        if (uploadBitangents) {
-          resultBitangent = origBitangent;
-          resultBitangent.Rotate(joints[weightedVertices[v].bones[0].jointID].orientation);
-        }
-
+      if (blendedInfluences) {
+        Skinning::ZeroTransform(blended);
+        for (unsigned int b = 0; b < bones.size(); b++)
+          Skinning::AddWeighted(blended, jointTransforms[bones[b].jointID], bones[b].weight);
       } else {
-        if (uploadVertices)
-          resultVertex.Set(0);
-        if (uploadNormals)
-          resultNormal.Set(0);
-        if (uploadTangents)
-          resultTangent.Set(0);
-        if (uploadBitangents)
-          resultBitangent.Set(0);
-
-        for (unsigned int b = 0; b < weightedVertices[v].bones.size(); b++) {
-          if (uploadVertices) {
-            adaptedVertex = origVertex;
-            adaptedVertex -= joints[weightedVertices[v].bones[b].jointID].origPos * zMultiplier;
-            adaptedVertex.Rotate(joints[weightedVertices[v].bones[b].jointID].orientation);
-            adaptedVertex += joints[weightedVertices[v].bones[b].jointID].position * zMultiplier;
-            resultVertex += adaptedVertex * weightedVertices[v].bones[b].weight;
-          }
-
-          if (uploadNormals) {
-            adaptedNormal = origNormal;
-            adaptedNormal.Rotate(joints[weightedVertices[v].bones[b].jointID].orientation);
-            resultNormal += adaptedNormal * weightedVertices[v].bones[b].weight;
-          }
-
-          if (uploadTangents) {
-            adaptedTangent = origTangent;
-            adaptedTangent.Rotate(joints[weightedVertices[v].bones[b].jointID].orientation);
-            resultTangent += adaptedTangent * weightedVertices[v].bones[b].weight;
-          }
-
-          if (uploadBitangents) {
-            adaptedBitangent = origBitangent;
-            adaptedBitangent.Rotate(joints[weightedVertices[v].bones[b].jointID].orientation);
-            resultBitangent += adaptedBitangent * weightedVertices[v].bones[b].weight;
-          }
-        }
-
-        if (uploadNormals)
-          resultNormal.FastNormalize();
-        if (uploadTangents)
-          resultTangent.FastNormalize();
-        if (uploadBitangents)
-          resultBitangent.FastNormalize();
+        blended = jointTransforms[bones[0].jointID];
       }
 
-      if (updateSrc) {
-        if (uploadVertices)
-          memcpy(&uniqueMesh.data[weightedVertices[v].vertexID * 3], resultVertex.coords,
-                 3 * sizeof(float));
-        if (uploadNormals)
-          memcpy(&uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset],
-                 resultNormal.coords, 3 * sizeof(float));
-        if (uploadTangents)
-          memcpy(&uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 3],
-                 resultTangent.coords, 3 * sizeof(float));
-        if (uploadBitangents)
-          memcpy(&uniqueMesh.data[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 4],
-                 resultBitangent.coords, 3 * sizeof(float));
-      }
+      const int at = weightedVertices[v].vertexID * 3;
 
-      if (uploadVertices)
-        memcpy(&materializedTriangleMeshes[subgeom].vertices[weightedVertices[v].vertexID * 3],
-               resultVertex.coords, 3 * sizeof(float));
-      if (uploadNormals)
-        memcpy(&materializedTriangleMeshes[subgeom]
-                    .vertices[weightedVertices[v].vertexID * 3 + uniqueElementOffset],
-               resultNormal.coords, 3 * sizeof(float));
-      if (uploadTangents)
-        memcpy(&materializedTriangleMeshes[subgeom]
-                    .vertices[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 3],
-               resultTangent.coords, 3 * sizeof(float));
-      if (uploadBitangents)
-        memcpy(&materializedTriangleMeshes[subgeom]
-                    .vertices[weightedVertices[v].vertexID * 3 + uniqueElementOffset * 4],
-               resultBitangent.coords, 3 * sizeof(float));
+      Skinning::TransformPoint(blended, &uniqueMesh.data[at], result.coords);
+      if (updateSrc) memcpy(&uniqueMesh.data[at], result.coords, 3 * sizeof(float));
+      memcpy(&target[at], result.coords, 3 * sizeof(float));
+
+      for (int d = 0; d < 3; d++) {
+        const int atDirection = at + uniqueElementOffset * directionOffsets[d];
+        Skinning::TransformDirection(blended, &uniqueMesh.data[atDirection], result.coords);
+        // A single influence is a pure rotation and keeps its length; a blend of
+        // rotations does not, which is where the engine has always renormalised.
+        if (blendedInfluences) result.FastNormalize();
+        if (updateSrc) memcpy(&uniqueMesh.data[atDirection], result.coords, 3 * sizeof(float));
+        memcpy(&target[atDirection], result.coords, 3 * sizeof(float));
+      }
     }
 
   }  // subgeom

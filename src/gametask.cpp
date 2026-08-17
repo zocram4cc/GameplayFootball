@@ -10,6 +10,7 @@
 #include "main.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "managers/taskmanager.hpp"
+#include "onthepitch/player/humanoid/skinning.hpp"
 
 void UploadFullbodyModel::Update() {
   for (unsigned int i = 0; i < geometryToUpload.size(); i++) {
@@ -184,8 +185,11 @@ void GameTask::PutPhase() {
       playersToProcess.push_back(officials.at(i));
     }
 
-    // printf("%i players, %i threads.\n", playersToProcess.size(), threadCount);
-    unsigned int playersPerThread = 7;
+    // Spread the bodies over the whole worker pool. This was a hardcoded 7,
+    // which on any machine with more than four cores left most of the pool idle
+    // while a handful of workers skinned seven bodies each in turn.
+    unsigned int playersPerThread = Skinning::BatchSize(
+        playersToProcess.size(), TaskManager::GetInstance().GetWorkerThreadCount());
     unsigned int playerStartIndex = 0;
     while (playerStartIndex < playersToProcess.size()) {
       std::vector<PlayerBase*> playersToProcessInThread;
@@ -213,7 +217,8 @@ void GameTask::PutPhase() {
   }
 
   if (match) {
-    unsigned int playersPerThread = 7;
+    unsigned int playersPerThread = Skinning::BatchSize(
+        playersToProcess.size(), TaskManager::GetInstance().GetWorkerThreadCount());
     unsigned int playerStartIndex = 0;
     while (playerStartIndex < playersToProcess.size()) {
       std::vector<boost::intrusive_ptr<Geometry>> geometryToUploadInThread;

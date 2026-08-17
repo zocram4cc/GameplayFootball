@@ -167,6 +167,7 @@ set(LOADERS_HEADERS
         src/utils/camtrack.hpp
         src/utils/entrancechoreo.hpp
         src/onthepitch/player/humanoid/facerig.hpp
+        src/onthepitch/player/humanoid/skinning.hpp
         src/loaders/oggloader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
@@ -184,6 +185,7 @@ set(LOADERS_SOURCES
         src/utils/camtrack.cpp
         src/utils/entrancechoreo.cpp
         src/onthepitch/player/humanoid/facerig.cpp
+        src/onthepitch/player/humanoid/skinning.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )

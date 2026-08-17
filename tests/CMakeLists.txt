@@ -34,6 +34,22 @@ target_link_libraries(gameplayfootball_math_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_math_tests DISCOVERY_MODE PRE_TEST)
 
+# Skinning-as-affine-transform tests: the fast per-vertex path has to agree with
+# the engine's per-influence quaternion arithmetic, or players deform wrongly.
+add_executable(gameplayfootball_skinning_tests
+  onthepitch/skinning_transform_test.cpp
+  onthepitch/skinning_batch_test.cpp
+  onthepitch/skinning_rate_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinning.cpp
+)
+
+target_link_libraries(gameplayfootball_skinning_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_skinning_tests DISCOVERY_MODE PRE_TEST)
+
 # Velocity state machine unit tests (task 2.5)
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp

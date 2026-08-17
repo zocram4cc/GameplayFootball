@@ -8,6 +8,7 @@
 
 #include "../../../gamedefines.hpp"
 #include "onthepitch/player/humanoid/facerig.hpp"
+#include "onthepitch/player/humanoid/skinning.hpp"
 #include "../../../utils.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "animcollection.hpp"
@@ -359,6 +360,9 @@ protected:
   unsigned int fullbodySubgeomCount;
   std::vector<int*> uniqueIndicesVec;
   std::vector<Joint> joints;
+  // one affine transform per joint, rebuilt at the top of every skinning pass
+  // and kept here so the pass allocates nothing
+  std::vector<Skinning::JointTransform> jointTransforms;
   // index into joints of the "neck" node (hair attachment); joint order is
   // the player.object DFS order, so never hardcode it
   unsigned int neckJointIndex = 0;
@@ -390,6 +394,11 @@ protected:
   bool buf_LowDetailMode;
   int buf_bodyUpdatePhase;
   int buf_bodyUpdatePhaseOffset;
+  // "animation_halve_distant_bodies": skin bodies away from the action on
+  // alternate frames only. Off by default - it is visible as juddering animation
+  // on everyone but the player on the ball, and skinning is no longer the cost
+  // it was when this was written.
+  bool halveDistantBodyRate = false;
 
   AnimApplyBuffer fetchedbuf_animApplyBuffer;
 
