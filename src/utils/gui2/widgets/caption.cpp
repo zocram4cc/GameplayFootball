@@ -86,8 +86,35 @@ void Gui2Caption::Redraw() {
   float zoomy;
   renderedTextHeightPix = (float)textOutlineSurfTmp->h;
   zoomy = (float)(h - y_margin * 2) / renderedTextHeightPix;
-  SDL_Surface* textOutlineSurf = zoomSurface(textOutlineSurfTmp, zoomy, zoomy, 1);
-  SDL_Surface* textSurf = zoomSurface(textSurfTmp, zoomy, zoomy, 1);
+
+  // Compose the fill onto the outline at the size they were rendered at, then
+  // scale once.
+  //
+  // Scaling the two layers separately gave them different effective factors -
+  // an outline 43 px tall going to 22 is 0.5116, the fill's 39 to 20 is 0.5128 -
+  // so at overlay sizes they stopped registering, and the outline showed through
+  // where the fill should be. Letters with fine horizontal detail lost it first:
+  // an E, three thin bars and two gaps inside twenty pixels, came out a solid
+  // dark block, which is what "the E looks cancelled, black on black" was.
+  SDL_Surface* composed = CreateSDLSurface(textOutlineSurfTmp->w, textOutlineSurfTmp->h);
+  if (composed) {
+    SDL_Rect at;
+    at.x = 0;
+    at.y = 0;
+    at.w = 10000;
+    at.h = 10000;
+    SDL_BlitSurface(textOutlineSurfTmp, nullptr, composed, &at);
+    // the fill sits exactly outlineWidth inside the outline, in unscaled pixels
+    at.x = outlineWidth;
+    at.y = outlineWidth;
+    at.w = 10000;
+    at.h = 10000;
+    SDL_BlitSurface(textSurfTmp, nullptr, composed, &at);
+  }
+  SDL_Surface* textOutlineSurf =
+      zoomSurface(composed ? composed : textOutlineSurfTmp, zoomy, zoomy, 1);
+  SDL_Surface* textSurf = nullptr;
+  if (composed) SDL_FreeSurface(composed);
   SDL_FreeSurface(textOutlineSurfTmp);
   SDL_FreeSurface(textSurfTmp);
 
@@ -117,17 +144,15 @@ void Gui2Caption::Redraw() {
   dstRect.y = 0;
   dstRect.w = 10000;
   dstRect.h = 10000;
+  // One layer now: outline and fill are already composed and in register.
   SDL_BlitSurface(textOutlineSurf, nullptr, surface, &dstRect);
-  dstRect.x = round(outlineWidth * zoomy);
-  dstRect.y = round(outlineWidth * zoomy);
-  SDL_BlitSurface(textSurf, nullptr, surface, &dstRect);
   if (transparency > 0.0f) {
     sdl_setsurfacealpha(surface, (1.0f - transparency) * 255);
   }
   surfaceRes->resourceMutex.unlock();
 
   SDL_FreeSurface(textOutlineSurf);
-  SDL_FreeSurface(textSurf);
+  if (textSurf) SDL_FreeSurface(textSurf);
 
   image->OnChange();
 }
