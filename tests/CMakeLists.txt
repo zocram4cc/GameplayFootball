@@ -238,6 +238,8 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/match_progression_test.cpp
   onthepitch/goal_sequence_test.cpp
   onthepitch/foul_sequence_test.cpp
+  onthepitch/cutscene_viewer_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneviewer.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/foulsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
