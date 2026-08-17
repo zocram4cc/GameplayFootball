@@ -42,6 +42,15 @@ BANNER_DARK = ((14, 16, 22), (6, 7, 11), 205)
 JERSEY_FILL = (150, 205, 245, 255)
 JERSEY_OUTLINE = (235, 245, 255, 255)
 
+# The panel and its header are baked at exactly the proportions the widget
+# lays out at, so Gui2Image's scale-to-fit never has to distort a rounded
+# corner. Keep these in step with kPanelPixelAspect / kHeaderFraction in
+# src/menu/ingame/formationgraphiclayout.hpp:
+#   panel  = 1.16 (width / height)
+#   header = panel width / (panel height * 0.085) = 13.65
+PANEL_PX = (928, 800)
+HEADER_PX = (1092, 80)
+
 
 def heighten(img, target_h, cap_h):
     """Vertical analogue of widen(): stretch a rounded panel taller, keeping
@@ -97,16 +106,17 @@ def main():
     # tall while keeping those caps crisp.
     panel = bake_panel(load_region(skin, 14), PANEL_NAVY)
     panel = panel.transpose(Image.ROTATE_90)
-    panel = heighten(panel, 1400, 90)
-    panel = panel.resize((440, panel.size[1]), Image.LANCZOS)
+    panel = heighten(panel, PANEL_PX[1], 90)
+    panel = panel.resize(PANEL_PX, Image.LANCZOS)
     panel.save(os.path.join(out_dir, "formation_panel.png"))
     print("wrote formation_panel.png %dx%d" % panel.size)
 
     # Same source region, unrotated and re-paletted brighter: the header
-    # strip the team tag sits on. Downscaled (not widen()'d - that only
-    # enlarges) to match the panel's final width at a short strip height.
+    # strip the team tag sits on. widen()'d rather than plain-resized so the
+    # rounded ends keep their radius across a strip this wide.
     header = bake_panel(load_region(skin, 14), HEADER_BLUE)
-    header = header.resize((440, 90), Image.LANCZOS)
+    header = widen(header, HEADER_PX[0], 90)
+    header = header.resize(HEADER_PX, Image.LANCZOS)
     header.save(os.path.join(out_dir, "formation_header.png"))
     print("wrote formation_header.png %dx%d" % header.size)
 

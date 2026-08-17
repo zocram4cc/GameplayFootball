@@ -22,10 +22,15 @@ Gui2ScoreBoard::Gui2ScoreBoard(Gui2WindowManager* windowManager, Match* match)
   goalCount[1] = 0;
 
   pesTheme = GetConfiguration()->Get("scoreboard_theme", "default") == std::string("pes");
-  if (pesTheme)
+  if (pesTheme) {
+    // The PES bug is a left-aligned strip rather than a full-width bar
+    // (spec section 4: "Scoreboard (top-left, persistent)"), and a touch
+    // taller than the default theme's so the 3-letter tags stay legible.
+    height_percent = 4.6f;
     ConstructPesTheme();
-  else
+  } else {
     ConstructDefaultTheme();
+  }
 
   SetGoalCount(0, 0);
   SetGoalCount(1, 0);
@@ -125,60 +130,79 @@ void Gui2ScoreBoard::ConstructDefaultTheme() {
 }
 
 void Gui2ScoreBoard::ConstructPesTheme() {
-  // Compact centered top bar ([logo] NAME 0-0 NAME [logo]) with a clock pill
-  // on its left, in the PES21 licence-skin art (data/media/ui/pes/, exported
-  // by tools/pes21_import/export_scoreboard_theme.py).
+  // The PES21 licence-skin bug (data/media/ui/pes/, exported by
+  // tools/pes21_import/export_scoreboard_theme.py), laid out left to right
+  // exactly as spec section 4 describes it: league crest, clock pill, then
+  // the blue [logo] TAG 0-0 TAG [logo] bar. Everything is measured off the
+  // bar's height and chained off a single running x, so the strip stays one
+  // piece at any window shape instead of drifting apart at wide aspects.
   const Vector3 textColor = 255;
   const Vector3 textOutlineColor = Vector3(8, 12, 24);
 
   constexpr float kBarAspect = 2000.0f / 197.0f;
   constexpr float kClockAspect = 160.0f / 41.0f;
   constexpr float kChipAspect = 150.0f / 41.0f;
+  constexpr float kGap = 0.7f;
 
-  const float barHeight = height_percent;  // 4%
+  const float barHeight = height_percent;
   const float barWidth = windowManager->GetWidthPercentForHeight(barHeight, kBarAspect);
-  const float barX = (width_percent - barWidth) * 0.5f;
-  const float centerX = width_percent * 0.5f;
+
+  float cursorX = 0.0f;
+
+  // league crest, leading the strip
+  const float leagueHeight = barHeight * 0.92f;
+  const float leagueWidth = windowManager->GetWidthPercentForHeight(leagueHeight, 1.0f);
+  leagueLogo = new Gui2Image(windowManager, "game_scoreboard_leaguelogo", cursorX,
+                             (barHeight - leagueHeight) * 0.5f, leagueWidth, leagueHeight);
+  this->AddView(leagueLogo);
+  leagueLogo->LoadImage("media/menu/league.png");
+  leagueLogo->Show();
+  cursorX += leagueWidth + kGap;
+
+  // clock pill
+  const float clockHeight = barHeight * 0.78f;
+  const float clockWidth = windowManager->GetWidthPercentForHeight(clockHeight, kClockAspect);
+  const float clockX = cursorX;
+  const float clockY = (barHeight - clockHeight) * 0.5f;
+  clockPanel = new Gui2Image(windowManager, "game_scoreboard_pes_clockpanel", clockX, clockY,
+                             clockWidth, clockHeight);
+  clockPanel->LoadImage("media/ui/pes/clock_panel.png");
+  this->AddView(clockPanel);
+  clockPanel->Show();
+
+  const float clockTextHeight = clockHeight * 0.52f;
+  clockText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_clock", clockX + 0.3f,
+                                 clockY + (clockHeight - clockTextHeight) * 0.5f, clockWidth - 0.6f,
+                                 clockTextHeight, "media/ui/pes/num_mid.fnt");
+  clockText->SetText("00:00");
+  this->AddView(clockText);
+  clockText->Show();
+  cursorX += clockWidth + kGap;
+
+  const float barX = cursorX;
+  const float centerX = barX + barWidth * 0.5f;
 
   barImage = new Gui2Image(windowManager, "game_scoreboard_pes_bar", barX, 0, barWidth, barHeight);
   barImage->LoadImage("media/ui/pes/scoreboard_bar.png");
   this->AddView(barImage);
   barImage->Show();
 
-  // score digits, dead center
-  const float scoreHeight = 2.4f;
-  const float scoreWidth = 7.0f;
-  scoreText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_score", centerX - scoreWidth * 0.5f,
-                                 (barHeight - scoreHeight) * 0.5f, scoreWidth, scoreHeight,
-                                 "media/ui/pes/num_match.fnt");
+  // score digits, dead centre of the bar
+  const float scoreHeight = barHeight * 0.58f;
+  const float scoreWidth = barWidth * 0.26f;
+  scoreText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_score",
+                                 centerX - scoreWidth * 0.5f, (barHeight - scoreHeight) * 0.5f,
+                                 scoreWidth, scoreHeight, "media/ui/pes/num_match.fnt");
   scoreText->SetText("0-0");
   this->AddView(scoreText);
   scoreText->Show();
 
-  // 3-letter team codes either side of the score
-  const float nameHeight = 2.0f;
-  const float nameCenterOffset = 5.6f;
-  for (int i = 0; i < 2; i++) {
-    teamNameCaption[i] = new Gui2Caption(windowManager,
-                                         i == 0 ? "game_scoreboard_team1name" : "game_scoreboard_team2name",
-                                         0, (barHeight - nameHeight) * 0.5f, 8, nameHeight,
-                                         match->GetTeam(i)->GetTeamData()->GetShortName());
-    teamNameCaption[i]->SetColor(textColor);
-    teamNameCaption[i]->SetOutlineColor(textOutlineColor);
-    const float nameCenter = centerX + (i == 0 ? -nameCenterOffset : nameCenterOffset);
-    teamNameCaption[i]->SetPosition(nameCenter - teamNameCaption[i]->GetTextWidthPercent() * 0.5f,
-                                    (barHeight - nameHeight) * 0.5f);
-    this->AddView(teamNameCaption[i]);
-    teamNameCaption[i]->Show();
-  }
-
   // team logos tucked into the bar's rounded ends
-  const float logoHeight = 2.6f;
+  const float logoHeight = barHeight * 0.74f;
   const float logoWidth = windowManager->GetWidthPercentForHeight(logoHeight, 1.0f);
-  const float logoMargin = 1.0f;
+  const float logoMargin = barWidth * 0.035f;
   for (int i = 0; i < 2; i++) {
-    const float logoX =
-        i == 0 ? barX + logoMargin : barX + barWidth - logoMargin - logoWidth;
+    const float logoX = i == 0 ? barX + logoMargin : barX + barWidth - logoMargin - logoWidth;
     teamLogo[i] = new Gui2Image(windowManager,
                                 i == 0 ? "game_scoreboard_team1logo" : "game_scoreboard_team2logo",
                                 logoX, (barHeight - logoHeight) * 0.5f, logoWidth, logoHeight);
@@ -187,36 +211,40 @@ void Gui2ScoreBoard::ConstructPesTheme() {
     teamLogo[i]->Show();
   }
 
-  // clock pill left of the bar
-  const float clockHeight = 3.0f;
-  const float clockWidth = windowManager->GetWidthPercentForHeight(clockHeight, kClockAspect);
-  const float clockX = barX - clockWidth - 0.8f;
-  const float clockY = (barHeight - clockHeight) * 0.5f;
-  clockPanel = new Gui2Image(windowManager, "game_scoreboard_pes_clockpanel", clockX, clockY,
-                             clockWidth, clockHeight);
-  clockPanel->LoadImage("media/ui/pes/clock_panel.png");
-  this->AddView(clockPanel);
-  clockPanel->Show();
-
-  const float clockTextHeight = 1.7f;
-  clockText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_clock", clockX + 0.3f,
-                                 clockY + (clockHeight - clockTextHeight) * 0.5f, clockWidth - 0.6f,
-                                 clockTextHeight, "media/ui/pes/num_mid.fnt");
-  clockText->SetText("00:00");
-  this->AddView(clockText);
-  clockText->Show();
+  // 3-letter team codes, centred in the space between each crest and the
+  // score rather than at a fixed offset that could collide with either.
+  const float nameHeight = barHeight * 0.46f;
+  const float scoreLeft = centerX - scoreWidth * 0.5f;
+  const float scoreRight = centerX + scoreWidth * 0.5f;
+  const float crestInnerLeft = barX + logoMargin + logoWidth;
+  const float crestInnerRight = barX + barWidth - logoMargin - logoWidth;
+  for (int i = 0; i < 2; i++) {
+    teamNameCaption[i] = new Gui2Caption(
+        windowManager, i == 0 ? "game_scoreboard_team1name" : "game_scoreboard_team2name", 0,
+        (barHeight - nameHeight) * 0.5f, barWidth * 0.3f, nameHeight,
+        match->GetTeam(i)->GetTeamData()->GetShortName());
+    teamNameCaption[i]->SetColor(textColor);
+    teamNameCaption[i]->SetOutlineColor(textOutlineColor);
+    const float nameCenter = i == 0 ? (crestInnerLeft + scoreLeft) * 0.5f
+                                    : (scoreRight + crestInnerRight) * 0.5f;
+    teamNameCaption[i]->SetPosition(nameCenter - teamNameCaption[i]->GetTextWidthPercent() * 0.5f,
+                                    (barHeight - nameHeight) * 0.5f);
+    this->AddView(teamNameCaption[i]);
+    teamNameCaption[i]->Show();
+  }
+  cursorX += barWidth + kGap;
 
   // added-time chip, only visible while the clock holds ("45:00 +0:12")
-  const float chipHeight = 2.6f;
+  const float chipHeight = barHeight * 0.68f;
   const float chipWidth = windowManager->GetWidthPercentForHeight(chipHeight, kChipAspect);
-  const float chipX = clockX - chipWidth - 0.5f;
+  const float chipX = cursorX;
   const float chipY = (barHeight - chipHeight) * 0.5f;
   addedTimePanel = new Gui2Image(windowManager, "game_scoreboard_pes_addedpanel", chipX, chipY,
                                  chipWidth, chipHeight);
   addedTimePanel->LoadImage("media/ui/pes/addedtime_panel.png");
   this->AddView(addedTimePanel);
 
-  const float chipTextHeight = 1.5f;
+  const float chipTextHeight = chipHeight * 0.55f;
   addedTimeText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_addedtime", chipX + 0.3f,
                                      chipY + (chipHeight - chipTextHeight) * 0.5f, chipWidth - 0.6f,
                                      chipTextHeight, "media/ui/pes/num_mid.fnt");

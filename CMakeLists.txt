@@ -372,6 +372,14 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   endif()
   add_custom_command(TARGET gameplayfootball POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:gameplayfootball>/data
+    # The source data/ directory is a working run tree - it holds the imported
+    # kits, stadiums and animations that are far too large to copy per build,
+    # so runs happen there rather than in the build directory. Push the binary
+    # back into it, otherwise `./data/gameplayfootball` is whatever was last
+    # copied by hand and a "verified" run silently tests stale code.
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_FILE:gameplayfootball>
+      ${PROJECT_SOURCE_DIR}/data/gameplayfootball
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${PROJECT_SOURCE_DIR}/data/football.config
       $<TARGET_FILE_DIR:gameplayfootball>/football.config

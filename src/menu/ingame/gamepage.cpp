@@ -31,13 +31,13 @@ bool MenuSmokeFullMatchEnabled() {
 
 GamePage::GamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData), match(0), matchReadyTime_ms(0), autoQuitTriggered(false) {
-  Gui2Caption* betaSign =
-      new Gui2Caption(windowManager, "caption_betasign", 0, 0, 0, 2, "League-Soccer v0.4.0");
+  betaSign = new Gui2Caption(windowManager, "caption_betasign", 0, 0, 0, 2, "League-Soccer v0.4.0");
   betaSign->SetColor(Vector3(180, 180, 180));
   betaSign->SetTransparency(0.3f);
   this->AddView(betaSign);
-  float w = betaSign->GetTextWidthPercent();
-  betaSign->SetPosition(50 - w * 0.5f, 97.0f);
+  // Bottom left corner, out of the lower third's middle where the banners and
+  // the pre-match formation panel live.
+  betaSign->SetPosition(1.5f, 97.0f);
   betaSign->Show();
 
   this->Show();
@@ -62,6 +62,19 @@ GamePage::~GamePage() {
 
 void GamePage::Process() {
   Gui2Page::Process();
+
+  // The version watermark is in-match chrome too: it has no business sitting
+  // over a broadcast opening (see Match::ShowMatchHud).
+  if (betaSign && match) {
+    const bool inEntrance = match->IsInEntrance();
+    if (inEntrance != betaSignHidden) {
+      betaSignHidden = inEntrance;
+      if (inEntrance)
+        betaSign->Hide();
+      else
+        betaSign->Show();
+    }
+  }
 
   if (!match) {
     GetGameTask()->matchLifetimeMutex.lock();
@@ -109,7 +122,11 @@ void GamePage::GoExtendedReplayPage() {
       windowManager->GetPageFactory()->CreatePage((int)e_PageID_Replay, properties, 0));
 
   // todo: use properties instead?
-  int replayHistoryOffset_ms = match->GetReplaySize_ms();
+  // A scripted replay says how far back it wants to start (a goal replay
+  // reaches past its own celebration); anything else takes the whole buffer.
+  int replayHistoryOffset_ms = match->GetReplayStartOffset_ms() > 0
+                                   ? (int)match->GetReplayStartOffset_ms()
+                                   : match->GetReplaySize_ms();
   bool stayInReplay = true;
   replayPage->Autorun(replayHistoryOffset_ms, stayInReplay);
 

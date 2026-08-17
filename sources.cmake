@@ -364,6 +364,7 @@ set(UTILS_GUI2_WIDGETS_HEADERS
 
 set(UTILS_GUI2_SOURCES
         src/utils/gui2/style.cpp
+        src/utils/gui2/surfacescale.cpp
         src/utils/gui2/widgets/bitmaptext.cpp
         src/utils/gui2/widgets/caption.cpp
         src/utils/gui2/widgets/menu.cpp
@@ -474,6 +475,7 @@ set(GAME_HEADERS
    src/onthepitch/ball.hpp
    src/onthepitch/team.hpp
    src/onthepitch/match.hpp
+   src/onthepitch/prematchtimeline.hpp
    src/onthepitch/AIsupport/AIfunctions.hpp
    src/onthepitch/AIsupport/mentalimage.hpp
    src/onthepitch/teamAIcontroller.hpp
@@ -502,7 +504,9 @@ set(GAME_SOURCES
    src/onthepitch/player/controller/strategies/offtheball/goalie_default.cpp
    src/onthepitch/humangamer.cpp
    src/onthepitch/ball.cpp
+   src/onthepitch/goalsequence.cpp
    src/onthepitch/match.cpp
+   src/onthepitch/prematchtimeline.cpp
    src/onthepitch/referee.cpp
    src/onthepitch/AIsupport/mentalimage.cpp
    src/onthepitch/AIsupport/AIfunctions.cpp
@@ -590,6 +594,7 @@ set(MENU_HEADERS
    src/menu/ingame/radar.hpp
    src/menu/ingame/matchhistorypage.hpp
    src/menu/ingame/setpieceeditor.hpp
+   src/menu/ingame/captionfit.hpp
    src/menu/ingame/formationgraphic.hpp
    src/menu/ingame/formationgraphiclayout.hpp
    src/menu/ingame/banner.hpp
@@ -643,6 +648,7 @@ set(MENU_SOURCES
    src/menu/ingame/playerhud.cpp
    src/menu/ingame/matchhistorypage.cpp
    src/menu/ingame/setpieceeditor.cpp
+   src/menu/ingame/captionfit.cpp
    src/menu/ingame/formationgraphic.cpp
    src/menu/ingame/formationgraphiclayout.cpp
    src/menu/ingame/banner.cpp

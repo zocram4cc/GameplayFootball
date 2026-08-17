@@ -64,6 +64,33 @@ import pes_skl
 from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
 
 
+def source_uv(vertex_uv):
+    """The UV a PES vertex was authored with, in ASE convention.
+
+    PES counts v downward and the ASE upward, so the flip is the whole
+    conversion. Skin pieces have always used this; kit pieces do too now that
+    PES's uniform layout is the one the engine maps to.
+    """
+    return (vertex_uv.u, 1.0 - vertex_uv.v) if vertex_uv is not None else (0.0, 0.0)
+
+
+def kit_vertex_uv(mode, vertex_uv, synthesise):
+    """UV for a kit vertex: the authored one, or one built for GF's template.
+
+    "native" is the standard - a team's u0<team>p<n> sheet is laid out for
+    PES's own mapping, so keeping the authored UVs is what puts an imported
+    kit's front panel on the front of the shirt. Under the template mapping
+    the shirt sampled the sleeve regions instead, and the synthesised sleeve
+    flaps distorted the shoulders into the bargain.
+
+    `synthesise` is only called in template mode; building a template UV is
+    the expensive part of the build and there is no reason to pay for it.
+    """
+    if mode == "native":
+        return source_uv(vertex_uv)
+    return synthesise()
+
+
 # --- stock kit UV harvest -----------------------------------------------------
 
 _V_RE = re.compile(r"\*MESH_VERTEX\s+(\d+)\t([-\d.e]+)\t([-\d.e]+)\t([-\d.e]+)")
@@ -631,7 +658,8 @@ def covered_ranges(garment_meshes, margin=0.015):
 
 
 def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
-                 rebind=None, dedupe=None, shift=None, hidden=None):
+                 rebind=None, dedupe=None, shift=None, hidden=None,
+                 kit_uv_mode="native"):
     """-> (vertices [(pos, uv, color, normal)], faces) in GF coords.
 
     inset pushes vertices along their inverse normal (metres): skin pieces
@@ -696,13 +724,15 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
                     if inset and normal is not None:
                         pos = tuple(c - inset * nc for c, nc in zip(pos, normal))
                     skin = vertex_joints(vertex, bone_to_joint, joint_positions)
+                    uv0 = vertex.uv[0] if vertex.uv else None
                     if kit_kind:
                         ny = -vertex.normal.z if vertex.normal else -1.0
-                        uv = kit_uv(pos, ny, kit_kind, panels, garment, z_span,
-                                    island)
+                        uv = kit_vertex_uv(
+                            kit_uv_mode, uv0,
+                            lambda: kit_uv(pos, ny, kit_kind, panels, garment,
+                                           z_span, island))
                     else:
-                        uv0 = vertex.uv[0] if vertex.uv else None
-                        uv = (uv0.u, 1.0 - uv0.v) if uv0 else (0.0, 0.0)
+                        uv = source_uv(uv0)
                     if rebind:
                         node = retarget.GF_JOINT_ORDER[skin[0][0]]
                         delta = rebind.get(node)
@@ -805,12 +835,20 @@ def assemble(args):
     # (geom name, fmdl path, keep_materials, biggest, kit kind, material,
     #  inset, garment, skl)
     pieces = []
-    # The shirt is BOTH materials of undershirt.fmdl and dropping either one
-    # leaves a hole: "torso_mat" (the slot PES leaves empty for the runtime
-    # kit) is only the SLEEVES, and the shirt's body - waist hem to collar -
-    # rides the "undershirt" material. Keeping just torso_mat shipped a
-    # default player with no torso at all.
-    pieces.append(("shirt", args.undershirt, {"torso_mat", "undershirt"},
+    # The shirt is a torso and a pair of sleeves, and they come from different
+    # parts. "torso_mat" in undershirt.fmdl reaches out to |x| 0.60 - it is
+    # the SLEEVES. The body next to it, on the "undershirt" material, is the
+    # undergarment: its chest maps to u 0.24 and its back to u 0.73, a
+    # left/right two-column chart, where a PES uniform sheet is a centred
+    # cross. Dressed in a team kit it put the sponsor print on the ribs.
+    #
+    # The torso that IS uniform-mapped rides "mod_latest_uni_shirts": its
+    # chest lands on (0.51, 0.66) and its back on (0.49, 0.33), the front and
+    # back panels of the sheet. It carries no sleeves of its own, which is why
+    # both parts are needed.
+    pieces.append(("shirt", args.shirt_body, {"mod_latest_uni_shirts"},
+                   False, "body", "kit", 0.0, "shirt", None))
+    pieces.append(("sleeves", args.undershirt, {"torso_mat"},
                    False, "body", "kit", 0.0, "shirt", None))
     pieces.append(("shorts", C("pants_out_sub.fmdl"), None, False, "body", "kit",
                    0.0, "shorts", None))
@@ -894,7 +932,8 @@ def assemble(args):
                                           part_rebind(skl) if skl else None,
                                           arm_surface if name == "shirt" else None,
                                           eye_shift if name == "eyes" else None,
-                                          leg_hidden if name == "thighs" else None)
+                                          leg_hidden if name == "thighs" else None,
+                                          args.kit_uv)
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
@@ -920,7 +959,12 @@ def main():
     parser.add_argument("out_dir")
     parser.add_argument("--common", required=True,
                         help="extracted common_package .../character/common dir")
-    parser.add_argument("--undershirt", required=True, help="undershirt.fmdl")
+    parser.add_argument("--undershirt", required=True,
+                        help="undershirt.fmdl - its torso_mat meshes are the "
+                             "shirt's SLEEVES")
+    parser.add_argument("--shirt-body", required=True,
+                        help="the uniform-mapped shirt torso: the part whose "
+                             "material is mod_latest_uni_shirts (bibs.fmdl)")
     parser.add_argument("--boots", required=True, help="a boots.fmdl")
     parser.add_argument("--boots-skl", default=None,
                         help="the boots' own .skl (default: next to the fmdl)")
@@ -930,6 +974,11 @@ def main():
     parser.add_argument("--stock", required=True,
                         help="the migrated stock fullbody.ase (kit UV source)")
     parser.add_argument("--fmdl-lib", required=True)
+    parser.add_argument("--kit-uv", choices=("native", "template"), default="native",
+                        help="native (default): kit pieces keep the UVs PES "
+                             "authored them with, so a team's own u0<team>p<n> "
+                             "sheet maps correctly. template: re-UV onto GF's "
+                             "kit_template layout, for kits drawn against it.")
     parser.add_argument("--face-texture-ref",
                         default="media/objects/players/textures/pes_base_face.png")
     parser.add_argument("--hair-texture-ref",

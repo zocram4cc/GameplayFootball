@@ -95,6 +95,19 @@ target_link_libraries(gameplayfootball_entrancechoreo_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_entrancechoreo_tests DISCOVERY_MODE PRE_TEST)
 
+# Glyph-row downscaling (why the match clock read 65:00 for 45:00)
+add_executable(gameplayfootball_surfacescale_tests
+  base/surfacescale_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/gui2/surfacescale.cpp
+)
+target_include_directories(gameplayfootball_surfacescale_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_surfacescale_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_surfacescale_tests DISCOVERY_MODE PRE_TEST)
+
 # Model viewer bench maths (debug tooling, engine-free)
 add_executable(gameplayfootball_modelviewer_tests
   onthepitch/modelviewer_test.cpp
@@ -223,6 +236,8 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/substitutions_test.cpp
   onthepitch/ai_manager_test.cpp
   onthepitch/match_progression_test.cpp
+  onthepitch/goal_sequence_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
@@ -265,8 +280,10 @@ gtest_discover_tests(gameplayfootball_simulation_tests DISCOVERY_MODE PRE_TEST)
 add_executable(gameplayfootball_presentation_tests
   menu/formation_graphic_layout_test.cpp
   menu/banner_presentation_test.cpp
+  menu/prematch_timeline_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/formationgraphiclayout.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/bannerpresentation.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/prematchtimeline.cpp
 )
 
 target_include_directories(gameplayfootball_presentation_tests PRIVATE

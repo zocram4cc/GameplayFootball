@@ -9,6 +9,7 @@
 #include <fstream>
 #include <mutex>
 #include "utils/camtrack.hpp"
+#include "prematchtimeline.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
 #include <memory>
@@ -134,6 +135,12 @@ public:
   std::shared_ptr<AnimCollection> GetAnimCollection() { return anims; }
 
   const MentalImage* GetMentalImage(int history_ms);
+  // As above, but keeps the image alive for as long as the caller holds it.
+  // Anyone who CACHES an image across frames has to take this: the vector is
+  // emptied on every reset (half time, a restart, teardown) and a raw pointer
+  // into it dangles the moment that happens, on whichever thread got there
+  // first.
+  std::shared_ptr<const MentalImage> GetMentalImageOwned(int history_ms);
   void UpdateLatestMentalImageBallPredictions();
 
   void ResetSituation(const Vector3& focusPos);
@@ -151,10 +158,22 @@ public:
 
   // The match entrance: teams walking out and lining up before the kickoff.
   // While this is true the kickoff is held and no football is played.
-  bool IsInEntrance() const {
-    return introCutsceneEnd_ms > 0 && actualTime_ms < introCutsceneEnd_ms;
-  }
+  //
+  // Timed on the wall clock, not on actualTime_ms. The match's own clock
+  // advances a fixed 10 ms per simulation tick, and the tick rate is whatever
+  // the machine can manage - on a fast or headless run that is many times
+  // real time, which is what made a ninety-second presentation play out in
+  // about five seconds. A presentation is measured in seconds the viewer
+  // actually sits through.
+  bool IsInEntrance() const { return entranceActive; }
+  // How far into the presentation we are, in real seconds.
+  float GetEntranceElapsedSeconds() const;
   unsigned long GetEntranceEndTime_ms() const { return introCutsceneEnd_ms; }
+  // Which beat of the pre-match presentation is on air, and what it wants
+  // drawn over it (docs/PRESENTATION_SPEC.md section 1). The formation
+  // graphic reads its cue from here rather than working out its own
+  // schedule, so a competition's timeline file governs both.
+  PrematchTimeline::State GetPrematchState() const;
   // Where this player stands in the pre-kickoff line-up, and which way he
   // faces. Both teams line up along the halfway line facing the main stand.
   void GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const;
@@ -267,6 +286,9 @@ public:
   }
 
   int GetReplaySize_ms();
+  // How far back the next scripted replay should start, in ms before now.
+  // Zero means "whatever is in the buffer".
+  unsigned long GetReplayStartOffset_ms() const { return replayStartOffset_ms; }
   int GetReplayCamCount();
 
   void ProcessReplayMessages();
@@ -291,7 +313,15 @@ public:
   const CoachMode::Setup& GetCoachSetup() const { return coachSetup; }
   // Whether a human may open the tactics menu for this team.
   bool CanCoachTeam(int teamID) const { return CoachMode::CanEditTactics(coachSetup, teamID); }
+  // Whether the CPU manager may adapt this team's tactics and use its bench.
+  // Off for both teams in coach mode - see CoachMode::AIManagerRuns.
+  bool AIManagerRunsTeam(int teamID) const {
+    return CoachMode::AIManagerRuns(coachSetup, teamID);
+  }
   Substitutions::State& GetSubstitutionState() { return substitutionState; }
+  // Play stopped, in a match that has actually started. Not the same thing as
+  // !IsInPlay(), which is also true throughout the pre-match presentation.
+  bool IsSubstitutionWindow() const;
   // Requests a substitution for `teamID`; returns the rule check result and
   // performs the swap when it is accepted.
   Substitutions::e_Result RequestSubstitution(int teamID, Player* playerOut, Player* playerIn);
@@ -408,14 +438,73 @@ protected:
   // walked out and lined up. Measured on the match's own 10 ms clock so the
   // referee's set-piece timing and this agree exactly.
   // ("intro_cutscene_seconds" / "entrance_id" config keys)
+  // introCutsceneEnd_ms is kept one tick ahead of actualTime_ms for as long
+  // as the entrance runs: the referee defers the kickoff to it every tick
+  // (see referee.cpp), so when the entrance finishes the value it last
+  // latched is immediately reachable and the restart arms at once.
+  unsigned long replayStartOffset_ms = 0;
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
+  bool entranceActive = false;
+  unsigned long entranceRealStart_ms = 0;
+  float entranceSeconds = 0.0f;
   // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
   // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
   // PES stages an entrance as several authored shots cut back to back; they
   // play in order, each one filling its own slice of the entrance
   CamTrack introCamTrack;
   std::vector<CamTrack> introShots;
+  // The beat list this entrance is staged against, picked per competition -
+  // see prematchtimeline.hpp for the lookup and the file format.
+  PrematchTimeline::Timeline prematchTimeline;
+  PrematchTimeline::Timeline LoadPrematchTimeline() const;
+  // Every piece of authored entrance camerawork installed, keyed by the shot
+  // token in its file name (passage01, anth, circle_home, ...). A beat names
+  // the shot it wants; see PrematchTimeline::Beat::shot.
+  std::map<std::string, CamTrack> prematchShots;
+  void LoadPrematchShots(const std::string& stadiumToken);
+  const CamTrack* FindPrematchShot(const std::string& shot) const;
+
+  // The player staging that goes with each shot. PES authors both together -
+  // the tunnel pack walks the squads out, the anthem pack stands them on the
+  // line, the circle pack puts them in the team photo - so a beat that names
+  // a shot gets that shot's choreography as well as its camera. Indexed by
+  // the same tokens as prematchShots; the packs are read lazily, since there
+  // are seventy of them and a match plays a handful.
+  struct PrematchStaging {
+    std::string path;  // the .chor, empty once loaded
+    std::string directory;
+    EntranceChoreo choreo;
+    std::map<std::string, std::shared_ptr<Animation>> clips;
+    bool loaded = false;
+  };
+  std::map<std::string, PrematchStaging> prematchStagings;
+  void LoadPrematchStagingIndex(const std::string& stadiumToken);
+  PrematchStaging* AcquirePrematchStaging(const std::string& shot);
+  PrematchStaging* activeStaging = nullptr;
+  int stagedBeatIndex = -2;
+  float stagingStartSeconds = 0.0f;
+  bool stagingHoldsOpeningFrame = false;
+  void RememberPrematchCamera();
+  // Hides/shows the persistent in-match HUD (scoreboard, radar).
+  void ShowMatchHud(bool visible);
+  // Bounding box of the choreographed entrance cast, for the shots that
+  // frame the players rather than the stadium. False when nothing is staged.
+  bool GetEntranceCastBounds(Vector3& centre, Vector3& extent) const;
+  // Camera::Hold keeps whatever the previous beat left on screen.
+  Vector3 heldCameraPosition;
+  Quaternion heldCameraOrientation;
+  Quaternion heldCameraNodeOrientation;
+  float heldCameraFOV = 35.0f;
+  float heldCameraNear = 2.0f;
+  float heldCameraFar = 400.0f;
+  bool heldCameraValid = false;
+  // The cast-framed shots are derived from where the players are, which moves
+  // every tick; the eye and its target are eased towards that rather than
+  // snapped to it, or the shot shakes with the squad's bounding box.
+  Vector3 smoothedCamEye;
+  Vector3 smoothedCamTarget;
+  bool smoothedCamValid = false;
   // imported PES player choreography for the entrance: a .chor exported from
   // the family's _pl packs (tools/pes21_import/entrance_pl.py), picked from
   // the same directory as the camerawork, plus its in-place .anim clips.

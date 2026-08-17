@@ -12,6 +12,10 @@ int ValidTeam(int teamID) {
 
 }  // namespace
 
+bool IsSubstitutionWindow(bool isInPlay, bool hasKickedOff, bool isInEntrance) {
+  return !isInPlay && hasKickedOff && !isInEntrance;
+}
+
 int GetRemaining(const State& state, int teamID) {
   return std::max(0, maxSubstitutions - state.used[ValidTeam(teamID)]);
 }

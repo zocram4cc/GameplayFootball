@@ -86,4 +86,10 @@ bool CanEditTactics(const Setup& setup, int teamID) {
   return control == e_TeamControl_HumanCoach || control == e_TeamControl_HumanPlayers;
 }
 
+bool AIManagerRuns(const Setup& setup, int teamID) {
+  // A human's own team is never managed for him, and in coach mode nothing is
+  // managed by the CPU at all - not even the side the humans play against.
+  return !IsCoachMode(setup) && !CanEditTactics(setup, teamID);
+}
+
 }  // namespace CoachMode

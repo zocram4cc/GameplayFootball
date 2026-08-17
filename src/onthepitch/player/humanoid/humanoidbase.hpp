@@ -250,7 +250,10 @@ public:
   // choreography left the player.
   // The match owns its mental images and throws them away at every restart,
   // so anyone holding one has to be told before the memory goes.
-  void InvalidateMentalImage() { currentMentalImage = nullptr; }
+  void InvalidateMentalImage() {
+    currentMentalImage = nullptr;
+    heldMentalImage.reset();
+  }
 
   void SetChoreoPose(Animation* anim, int animFrame, const Vector3& position,
                      radian angle);
@@ -445,6 +448,11 @@ protected:
   mutable float predicate_NumericVariableValue;
 
   const MentalImage* currentMentalImage;
+  // Keeps whatever currentMentalImage points at alive. Match empties its
+  // image vector on every reset, and PreparePutBuffers reads this from a
+  // worker thread - without an owning reference the two race and the read
+  // lands in freed memory (crash at the second-half kickoff).
+  std::shared_ptr<const MentalImage> heldMentalImage;
 
   float _cache_AgilityFactor;
   float _cache_AccelerationFactor;
