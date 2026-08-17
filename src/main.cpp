@@ -641,8 +641,22 @@ int main(int argc, const char** argv) {
   }
   controllers.clear();
 
-  TTF_CloseFont(defaultFont);         // todo: better timed closefont?
-  TTF_CloseFont(defaultOutlineFont);  // todo: better timed closefont?
+  // The fonts are deliberately not closed.
+  //
+  // TTF_CloseFont aborts the process on the way out, intermittently, with
+  // "free(): invalid pointer". AddressSanitizer names it exactly: TTF_CloseFont
+  // attempts to free an address 15 bytes inside a 940-byte region that was
+  // allocated - through SDL_ttf - by libSDL3. On this system libSDL2-2.0.so.0 is
+  // sdl2-compat, an SDL2 API over SDL3, so SDL_ttf's allocations go through
+  // SDL3's allocator, which hands back an offset pointer for its aligned
+  // allocations; freeing that through the plain path is the mismatch. It is a
+  // fault in that library stack, not here, and it only ever bites at teardown.
+  //
+  // Closing a font microseconds before the process exits buys nothing: the OS
+  // reclaims the memory either way. Every font opened for the lifetime of the
+  // program is simply left to it.
+  (void)defaultFont;
+  (void)defaultOutlineFont;
 
   delete db;
   delete config;

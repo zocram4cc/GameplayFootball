@@ -5,6 +5,10 @@
 
 #include "caption.hpp"
 
+#include <mutex>
+
+#include "utils/gui2/fontlock.hpp"
+
 #include <cmath>
 
 #include "../windowmanager.hpp"
@@ -73,15 +77,31 @@ void Gui2Caption::Redraw() {
                                    Uint8(textOutlineColor.coords[1]),
                                    Uint8(textOutlineColor.coords[2]), 255};
 
-  SDL_Surface* textSurfTmp = TTF_RenderUTF8_Blended(
-      windowManager->GetStyle()->GetFont(e_TextType_Caption), caption.c_str(), textColorSDL);
-  SDL_Surface* textOutlineSurfTmp =
-      TTF_RenderUTF8_Blended(windowManager->GetStyle()->GetFont(e_TextType_DefaultOutline),
-                             caption.c_str(), textOutlineColorSDL);
+  // A TTF_Font carries a mutable glyph cache, so two threads rendering from the
+  // same font corrupt it. The engine hands each sequence's phases to a shared
+  // worker pool, so this is reachable from more than one thread at a time - see
+  // utils/gui2/fontlock.hpp.
+  SDL_Surface* textSurfTmp = nullptr;
+  SDL_Surface* textOutlineSurfTmp = nullptr;
+  int resW = 0, resH = 0;
+  {
+    std::lock_guard<std::mutex> fontLock(FontMutex());
+    textSurfTmp = TTF_RenderUTF8_Blended(
+        windowManager->GetStyle()->GetFont(e_TextType_Caption), caption.c_str(), textColorSDL);
+    textOutlineSurfTmp =
+        TTF_RenderUTF8_Blended(windowManager->GetStyle()->GetFont(e_TextType_DefaultOutline),
+                               caption.c_str(), textOutlineColorSDL);
+    TTF_SizeUTF8(windowManager->GetStyle()->GetFont(e_TextType_DefaultOutline), caption.c_str(),
+                 &resW, &resH);
+  }
 
-  int resW, resH;
-  TTF_SizeUTF8(windowManager->GetStyle()->GetFont(e_TextType_DefaultOutline), caption.c_str(),
-               &resW, &resH);
+  // A render can fail - it did, and the null went straight into ->h below.
+  if (!textOutlineSurfTmp || !textSurfTmp) {
+    if (textSurfTmp) SDL_FreeSurface(textSurfTmp);
+    if (textOutlineSurfTmp) SDL_FreeSurface(textOutlineSurfTmp);
+    Log(e_Warning, "Gui2Caption", "Redraw", "could not render \"" + caption + "\"");
+    return;
+  }
 
   float zoomy;
   renderedTextHeightPix = (float)textOutlineSurfTmp->h;

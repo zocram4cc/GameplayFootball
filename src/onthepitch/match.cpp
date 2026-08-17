@@ -898,6 +898,16 @@ void Match::Exit() {
 
   radar->Exit();
   radar.reset();
+
+  // Exit() is what detaches a view from the GUI root and deletes its children;
+  // the destructor does nothing. Resetting the pointer without it leaves the root
+  // holding a dangling view, and tearing the root down later aborts inside
+  // Gui2View's destructor.
+  for (int side = 0; side < 2; side++) {
+    if (!playerHUD[side]) continue;
+    playerHUD[side]->Exit();
+    playerHUD[side].reset();
+  }
   if (tacticsDebug) {
     tacticsDebug->Exit();
     tacticsDebug.reset();

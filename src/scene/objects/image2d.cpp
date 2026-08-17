@@ -5,6 +5,10 @@
 
 #include "image2d.hpp"
 
+#include <mutex>
+
+#include "utils/gui2/fontlock.hpp"
+
 #include "base/log.hpp"
 #include "systems/isystemobject.hpp"
 
@@ -301,11 +305,19 @@ void Image2D::DrawSimpleText(const std::string& caption, int x, int y, TTF_Font*
 
   SDL_Color sdlColor = {(unsigned char)(color.coords[0]), (unsigned char)(color.coords[1]),
                         (unsigned char)(color.coords[2]), 0};
-  SDL_Surface* sdlText = TTF_RenderUTF8_Blended(font, caption.c_str(), sdlColor);
+  // Shared with every other text renderer: a font's glyph cache is mutable, so
+  // rendering the same font from two threads corrupts it (utils/gui2/fontlock.hpp).
+  SDL_Surface* sdlText = nullptr;
+  {
+    std::lock_guard<std::mutex> fontLock(FontMutex());
+    sdlText = TTF_RenderUTF8_Blended(font, caption.c_str(), sdlColor);
+  }
+  if (!sdlText) {
+    Log(e_Warning, "Image2D", "DrawSimpleText", "could not render \"" + caption + "\"");
+    return;
+  }
   if (alpha != 255)
     sdl_setsurfacealpha(sdlText, alpha);
-
-  assert(sdlText);
 
   subjectMutex.lock();
   image->resourceMutex.lock();
