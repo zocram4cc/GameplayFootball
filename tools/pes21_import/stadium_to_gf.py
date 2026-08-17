@@ -124,6 +124,31 @@ def _texture_png(texture, ftex_index, out_dir, converted):
     return None
 
 
+OUTLINE_TEXTURE = "outline"
+
+
+def is_outline_pass(texture_name):
+    """Whether a texture marks one of PES's cel-shading outline shells.
+
+    An outline is the mesh again, pushed out along its normals a few centimetres
+    - about 4 cm on Planet Namek - and drawn with its front faces culled, so only
+    the far side survives and it reads as a line around the silhouette. Matched on
+    whole words only: "outlined_turf" is artwork, and inverting real geometry by
+    accident is worse than missing an outline.
+    """
+    if not texture_name:
+        return False
+    stem = str(texture_name).replace("\\", "/").split("/")[-1].rsplit(".", 1)[0].lower()
+    words = [w for w in stem.replace("-", "_").split("_") if w]
+    return OUTLINE_TEXTURE in words
+
+
+def face_winding(a, b, c, reverse):
+    """A face's indices, reversed for an outline shell so the engine - which culls
+    back faces - culls the same side PES does."""
+    return (c, b, a) if reverse else (a, b, c)
+
+
 def _mesh_base_texture(mesh):
     textures = mesh.materialInstance.textures
     items = textures.items() if hasattr(textures, "items") else list(textures)
@@ -205,12 +230,15 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             bitmap = _texture_png(tex, ftex_index, out_dir, converted) if tex else None
             materials.append(("%s_m%d" % (label, i), bitmap))
             mat_index = len(materials) - 1
+            # Shells are written with reversed winding rather than dropped, so
+            # the cel-shaded outline PES draws survives the import.
+            outline = is_outline_pass(bitmap) or is_outline_pass(getattr(tex, "name", None))
             chunks = split_faces(mesh.faces, max_verts_per_geom)
             for part, faces in enumerate(chunks):
                 geom_name = "%s_%02d" % (label, i)
                 if len(chunks) > 1:
                     geom_name += "_p%02d" % part
-                geoms.append((geom_name, mat_index, faces))
+                geoms.append((geom_name, mat_index, faces, outline))
 
     if skipped_budget or skipped_extent:
         print("  skipped %d mesh(es) over the %s-triangle budget, "
@@ -252,12 +280,16 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             out.write("\t}\n")
         out.write("}\n")
 
-        for geom_name, mat_index, faces in geoms:
-            _write_geomobject(out, geom_name, mat_index, faces)
+        outlines = 0
+        for geom_name, mat_index, faces, outline in geoms:
+            _write_geomobject(out, geom_name, mat_index, faces, outline)
+            outlines += 1 if outline else 0
+        if outlines:
+            print("  %d outline shell(s) written with reversed winding" % outlines)
     return ase_path, len(geoms), sum(1 for _, b in materials if b)
 
 
-def _write_geomobject(out, name, mat_index, faces):
+def _write_geomobject(out, name, mat_index, faces, outline=False):
     vertex_index = {}
     vertices = []
     uvs = []
@@ -286,7 +318,7 @@ def _write_geomobject(out, name, mat_index, faces):
     out.write("\t\t}\n")
     out.write("\t\t*MESH_FACE_LIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = [vertex_index[id(v)] for v in face.vertices]
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
         out.write("\t\t\t*MESH_FACE %d: A: %d B: %d C: %d "
                   "AB: 1 BC: 1 CA: 1 *MESH_SMOOTHING 1 *MESH_MTLID 0\n"
                   % (i, a, b, c))
@@ -300,11 +332,15 @@ def _write_geomobject(out, name, mat_index, faces):
     out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
     out.write("\t\t*MESH_TFACELIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = [vertex_index[id(v)] for v in face.vertices]
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
     out.write("\t\t}\n")
     gf_verts = [(pos.x, -pos.z, pos.y) for pos in vertices]
-    tri_faces = [tuple(vertex_index[id(v)] for v in face.vertices)
+    # The normals are derived from the winding, so they have to be derived from
+    # the winding that was actually written: an outline shell whose faces were
+    # reversed but whose normals were not has its visible side lit as though it
+    # faced away, which is how the shells came out flat grey.
+    tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
                  for face in faces]
     ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False)
     out.write("\t}\n")
