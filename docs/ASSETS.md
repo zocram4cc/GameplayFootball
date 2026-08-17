@@ -112,13 +112,40 @@ a stadium that looked broken in a way that had nothing to do with the pack:
   board model plus a few hundred `bill_NNN_bsm` panels. The engine has its own
   randomiser, which replaces the diffuse of any stadium mesh whose texture ident
   begins with `ad_placeholder` with a random PNG from
-  `media/textures/adboards/`. Not yet imported.
+  `media/textures/adboards/`.
+* **The sky.** A pack's sky dome is culled by default, because the camera is
+  inside it and its faces point outward, and forcing it visible blows it out
+  because it is lit like any other surface. Both are fixed on import - reversed
+  winding, constant normals via `ase_util.write_mesh_normals` - but the dome
+  still has to leave the stadium node: `SplitGeometry` buckets stadium meshes
+  into 24 m grid cells, and a 1154 m dome never rasterises there. The converter
+  writes it to `sky/sky.ase` + `sky.object` instead, and `Match` loads that
+  through the engine's own `skydome_object` path (which also keeps it out of the
+  shadow map and floors the far plane), so the clouds and moons arrive with it.
+  The colours are sampled into `sky.txt` as well, for the postprocess gradient
+  behind everything the dome does not cover.
 
-Still unsolved: a pack's sky dome is culled, because the camera is inside it and
-its faces point outward. `skydome_object` exists for exactly this and nothing
-currently uses it; imported dome geometry comes out of the lighting pipeline
-washed out, which is what the constant-normal trick in
-`ase_util.write_mesh_normals` is for.
+### The assets every ground shares
+
+PES keeps one copy of what is the same everywhere in `Asset/model/bg/common`, and
+the fork follows the same pattern - these install into the engine's shared media
+folders, so every converted stadium gets them:
+
+    python3 tools/pes21_import/import_common_stadium_assets.py \
+        /path/to/4cc_15_billboard.cpk --out data --net x_netPat04
+
+That brings in the hoarding faces (into the randomiser's pool), the net
+patterns, the pitch detail maps, the crowd's banner art, and the colour grading
+tables. The grading is the one that changes the whole picture: PES runs every
+frame through a 33-cubed lookup table chosen by time of day and weather, and
+without it an imported stadium comes out flat. Measured against the VGL26
+broadcast our midtones sat 1.68x low (median 74 against 124) while our
+highlights were already hotter and our shadows 13x more crushed - a missing tone
+curve, not a missing light. The tables are half-float volumes rather than
+pictures, so `lut_strip.py` unrolls the set into one ordinary PNG
+(`media/textures/lut/grade.png`: 33 blue slices across, one band per condition
+down) and `postprocess.frag` samples it. `graphics_lut_strength` mixes it in;
+`0` turns it off.
 
 ## 5. Scoreboard and formation-panel theme
 
