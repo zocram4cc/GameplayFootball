@@ -125,6 +125,20 @@ a stadium that looked broken in a way that had nothing to do with the pack:
   The colours are sampled into `sky.txt` as well, for the postprocess gradient
   behind everything the dome does not cover.
 
+### The ground's own lighting
+
+A pack also ships how PES lights it, as readable XML:
+
+    python3 tools/pes21_import/stadium_lighting.py "017 - planet namek" \
+        --out data/media/objects/stadiums/pes_st017
+
+light/#Win/light_st<slot>_af_fpkd_extracted/*.fox2.xml gives a place, a date and
+a time - Planet Namek is lit as Buenos Aires on 8 April 2019 at noon, with the
+ground turned 96 degrees off north, under a 150000 lux sun - which fixes the sun
+to the degree. The engine otherwise rolls dice for it at every kickoff, so its
+shadows fall a different way in every match. The converter does the astronomy
+and writes `lighting.txt` beside the stadium; the engine reads a direction.
+
 ### The assets every ground shares
 
 PES keeps one copy of what is the same everywhere in `Asset/model/bg/common`, and
