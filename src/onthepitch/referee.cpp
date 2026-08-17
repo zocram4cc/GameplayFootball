@@ -8,6 +8,7 @@
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "foulseverity.hpp"
+#include "goalsequence.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
 #include "matchprogression.hpp"
@@ -167,8 +168,12 @@ void Referee::Process() {
           match->AddLostTime(MatchProgression::e_Stoppage_Goal);
           buffer.desiredSetPiece = e_SetPiece_KickOff;
           buffer.stopTime = match->GetActualTime_ms();
-          buffer.prepareTime = match->GetActualTime_ms() + 6000;
-          buffer.startTime = buffer.prepareTime + 2000;
+          // Preparing the restart calls Match::ResetSituation, which clears the
+          // goal state the replay trigger waits on - so it has to come after the
+          // replay has fired. GoalSequence owns both timings for that reason;
+          // the six seconds this used to wait killed the goal replay outright.
+          buffer.prepareTime = GoalSequence::RestartPrepareAt_ms(match->GetActualTime_ms());
+          buffer.startTime = GoalSequence::RestartKickOffAt_ms(match->GetActualTime_ms());
           buffer.restartPos = Vector3(0, 0, 0);
           buffer.teamID = abs(match->GetLastGoalTeamID() - 1);
 

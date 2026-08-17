@@ -1,0 +1,43 @@
+# Pre-match presentation, shot for shot.
+#
+# The sequence PES stages between the loading screen and kickoff, transcribed
+# from the reference broadcast in docs/PRESENTATION_SPEC.md section 1
+# (video t~3185-3300). The kickoff is held until the whole thing has run.
+#
+# Format:  beat <name> <seconds> [camera=...] [overlay=...]
+#
+#   camera=walkout    low broadcast angle panning along the line of players,
+#                     framed off the choreography itself
+#   camera=lineup     static and head-on, holding the whole line in frame
+#   camera=entrance   the imported PES entrance camerawork for this
+#                     competition's family and this stadium. Authored per
+#                     stadium, so it films the wrong place in a venue it was
+#                     not made for - the two above work anywhere.
+#   camera=orbit      a slow authored sweep of the stands
+#   camera=aerial     the high wide the live game is played on, held still
+#   camera=hold       stay wherever the previous beat left the camera
+#
+#   overlay=formation_home / formation_away
+#                     the TV-style lineup panel for that side
+#                     (spec section 1.1)
+#
+# Competitions differ: drop <entrance_id>.timeline next to this file and the
+# match picks it up automatically, or name one with "presentation_timeline".
+# Unknown keys are ignored, so a file may carry more than this build reads.
+
+beat stadium_card       12.0  camera=orbit
+
+# The walk-on: ent_009's per-stadium packs start the squads outside the
+# touchline and bring them in. The tunnel packs (ent_007 passage*) stage a
+# three-metre corridor because PES plays them inside tunnel geometry - without
+# that set they are a column of players walking up an empty pitch.
+beat walk_on            22.0  camera=entrance shot=ent_009
+beat line_up            16.0  camera=walkout  shot=ent_009
+beat anthems            20.0  camera=entrance shot=anth
+
+beat wide_home           9.0  camera=aerial   overlay=formation_home
+beat wide                4.0  camera=aerial
+beat wide_away           9.0  camera=aerial   overlay=formation_away
+
+beat team_picture       10.0  camera=entrance shot=circle_home
+beat to_kickoff          6.0  camera=entrance shot=aerial

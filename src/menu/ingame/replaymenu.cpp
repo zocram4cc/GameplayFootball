@@ -37,24 +37,27 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   stayInReplay = true;
   closeWhenAutorunCompletes = false;
 
-  Gui2Frame* header = new Gui2Frame(windowManager, "frame_replay_header", 36, 2, 28, 7, true);
+  // Under the scoreboard rather than across it: the PES bug runs to roughly
+  // 40% of the width at the very top of frame (see scoreboard.cpp).
+  Gui2Frame* header = new Gui2Frame(windowManager, "frame_replay_header", 36, 8.5f, 28, 5.5f, true);
   this->AddView(header);
   header->Show();
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_replay_title", 2, 2, 24, 3, "INSTANT REPLAY");
+      new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "INSTANT REPLAY");
   header->AddView(title);
   title->Show();
 
-  Gui2Frame* footer = new Gui2Frame(windowManager, "frame_replay_footer", 20, 89, 60, 9, true);
+  // Stops short of the radar in the bottom right corner (see match.cpp).
+  Gui2Frame* footer = new Gui2Frame(windowManager, "frame_replay_footer", 21, 88.5f, 56, 9.5f, true);
   this->AddView(footer);
   footer->Show();
   Gui2Caption* help = new Gui2Caption(
-      windowManager, "caption_replay_help", 2, 1, 56, 2,
+      windowManager, "caption_replay_help", 2, 1.6f, 52, 2.2f,
       "Left/Right: scrub | Up/Down: camera | Pass: change camera | Shoot: play/pause");
   footer->AddView(help);
   help->Show();
 
-  timeLabel = new Gui2Caption(windowManager, "caption_replay_time", 2, 4, 56, 3, "");
+  timeLabel = new Gui2Caption(windowManager, "caption_replay_time", 2, 4.8f, 52, 2.8f, "");
   footer->AddView(timeLabel);
   timeLabel->Show();
   UpdateTimeLabel();

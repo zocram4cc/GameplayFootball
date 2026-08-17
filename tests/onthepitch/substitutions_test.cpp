@@ -102,3 +102,29 @@ TEST(SubstitutionsTest, TheStoppageRuleIsCheckedBeforeSquadDetails) {
   EXPECT_EQ(Substitutions::Validate(Substitutions::State(), 0, squad, false),
             Substitutions::e_Result_NotAStoppage);
 }
+
+// Before kick-off the match is not "in play" either, so a plain !IsInPlay()
+// test treated the pre-match presentation as a substitution window: the AI
+// manager made its swaps during the walkout, banner and tunnel cutscene and
+// all, before a ball had been kicked.
+
+TEST(SubstitutionsTest, PlayRunningIsNotASubstitutionWindow) {
+  EXPECT_FALSE(Substitutions::IsSubstitutionWindow(/*isInPlay=*/true,
+                                                   /*hasKickedOff=*/true,
+                                                   /*isInEntrance=*/false));
+}
+
+TEST(SubstitutionsTest, AStoppageDuringTheMatchIsASubstitutionWindow) {
+  EXPECT_TRUE(Substitutions::IsSubstitutionWindow(false, true, false));
+}
+
+TEST(SubstitutionsTest, BeforeKickOffIsNotASubstitutionWindow) {
+  EXPECT_FALSE(Substitutions::IsSubstitutionWindow(false, /*hasKickedOff=*/false, false));
+}
+
+TEST(SubstitutionsTest, ThePreMatchPresentationIsNotASubstitutionWindow) {
+  // Belt and braces: the entrance runs before the phase advances, but a
+  // presentation still playing is never a moment to make a substitution.
+  EXPECT_FALSE(Substitutions::IsSubstitutionWindow(false, /*hasKickedOff=*/true,
+                                                   /*isInEntrance=*/true));
+}

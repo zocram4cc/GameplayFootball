@@ -38,6 +38,11 @@ public:
 
   virtual void Process();
 
+  // The accent stripe and the text must stay above the panel plate even
+  // though Gui2Task flattens the tree's z-priority every frame - see
+  // Gui2View::SetRecursiveZPriority.
+  virtual void SetRecursiveZPriority(int prio);
+
   // teamID -1 for a team-less message (referee/commentary cue, centered);
   // 0/1 for a team-tagged message (bottom-left/bottom-right, that team's
   // colour accent and short name).
@@ -57,9 +62,13 @@ protected:
     unsigned long hideAt_ms = 0;
     unsigned long shownAt_ms = 0;
     float currentAlpha = -1.0f;
+    // Text column, kept so Show() can refit each caption to the panel.
+    float textX = 0.0f;
+    float textWidth = 0.0f;
   };
 
   void BuildSlot(int index, float x, float width, bool alignRight);
+  void ApplyZOrder();
   void ApplySlotAlpha(Slot& slot, float alpha);
   float ComputeAlpha(const Slot& slot, unsigned long now_ms) const;
 

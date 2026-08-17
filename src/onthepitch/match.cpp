@@ -26,9 +26,14 @@
 #include "utils/directoryparser.hpp"
 #include "modelviewer.hpp"
 #include "utils/playermodelmap.hpp"
+#include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
 
-const unsigned int replaySize_ms = 10000;
+// Long enough that a replay fired AFTER the celebration can still reach back
+// past the goal to the build-up. See onthepitch/goalsequence.hpp, which owns
+// this and the referee's matching restart delay - they were separate once, and
+// the goal state was being cleared before the replay could fire.
+const unsigned int replaySize_ms = GoalSequence::kReplayBuffer_ms;
 const unsigned int camPosSize = 150;           // 180; //130
 const float excitementEventDecayRate = 0.99f;  // per 10ms tick
 const float crowdGainUpdateThreshold = 0.001f;
@@ -377,12 +382,45 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f);
     if (viewerSeconds > 0.0f) introSeconds = std::max(introSeconds, viewerSeconds);
   }
+  // The presentation timeline: which beats this competition stages before
+  // kickoff, and how long each holds (docs/PRESENTATION_SPEC.md section 1).
+  // It governs the entrance's length, not the camerawork's own running time -
+  // PES holds a stadium shot or a lineup graphic for as long as the
+  // presentation says, independent of how much camera track happens to exist.
+  if (!entranceDisabled) {
+    {
+      // "media/objects/stadiums/pes_st060/..." -> "st060", so a shot authored
+      // for the stadium being played wins over one that is not.
+      const std::string stadiumPath = GetConfiguration()->Get("stadium_object", "");
+      const size_t at = stadiumPath.find("st");
+      const std::string token = at != std::string::npos && at + 5 <= stadiumPath.size()
+                                    ? stadiumPath.substr(at, 5)
+                                    : std::string();
+      LoadPrematchShots(token);
+      LoadPrematchStagingIndex(token);
+    }
+    prematchTimeline = LoadPrematchTimeline();
+    const float configured = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
+    if (configured > 0.0f)
+      prematchTimeline = PrematchTimeline::Rescale(prematchTimeline, configured);
+    if (!prematchTimeline.beats.empty()) introSeconds = prematchTimeline.TotalSeconds();
+  }
+
   if (introSeconds > 0.0f) {
-    // Rounded to the match's 10 ms tick: the referee compares its set-piece
-    // times for equality against actualTime_ms, so an odd millisecond would
-    // never match and the kickoff would never come.
-    introCutsceneDuration_ms = ((unsigned long)(introSeconds * 1000.0f) / 10) * 10;
-    introCutsceneEnd_ms = actualTime_ms + introCutsceneDuration_ms;
+    entranceSeconds = introSeconds;
+    entranceActive = true;
+    // Started on the first Process(), not here: the rest of the match load -
+    // the stadium above all - still has to happen, and timing the
+    // presentation from the constructor would spend most of it behind a
+    // loading screen with nothing on the pitch to look at.
+    entranceRealStart_ms = 0;
+    introCutsceneDuration_ms = (unsigned long)(introSeconds * 1000.0f);
+    // Held one tick ahead and pushed forward every Process() while the
+    // entrance runs; the referee latches it as the kickoff's prepare time.
+    introCutsceneEnd_ms = actualTime_ms + 1000;
+    Log(e_Notice, "Match", "Match",
+        "pre-match presentation: " + int_to_str((int)prematchTimeline.beats.size()) +
+            " beat(s), holding kickoff for " + int_to_str((int)introSeconds) + "s of real time");
   }
 
   cameraUserZoom = GetConfiguration()->GetReal("camera_zoom", _default_CameraZoom);
@@ -404,7 +442,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     std::string stadiumObject = GetConfiguration()->Get(
         "stadium_object", "media/objects/stadiums/test/test.object");
     tmpStadiumNode = loader.LoadObject(GetScene3D(), stadiumObject);
+    Log(e_Notice, "Match", "Match", "stadium object loaded");
     RandomizeAdboards(tmpStadiumNode);
+    Log(e_Notice, "Match", "Match", "adboards randomized");
   }
   if (SuperDebug())
     tmpStadiumNode =
@@ -425,6 +465,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
     iter++;
   }
+  Log(e_Notice, "Match", "Match", "stadium geometry split");
   tmpStadiumNode->Exit();
   tmpStadiumNode.reset();
 
@@ -570,8 +611,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Gui2Root* root = menuTask->GetWindowManager()->GetRoot();
 
+  // Bottom right, not bottom centre: centred, it sat underneath the pre-match
+  // formation panel and on top of the version caption. Broadcast HUDs keep
+  // the middle of the lower third clear for banners anyway (spec section 4).
   radar = std::make_unique<Gui2Radar>(
-      menuTask->GetWindowManager(), "game_radar", 38, 78, 24, 18, this,
+      menuTask->GetWindowManager(), "game_radar", 74.5f, 79, 24, 18, this,
       matchData->GetTeamData(0)->GetColor1(), matchData->GetTeamData(0)->GetColor2(),
       matchData->GetTeamData(1)->GetColor1(), matchData->GetTeamData(1)->GetColor2());
   root->AddView(radar.get());
@@ -615,7 +659,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   statsOverlay = std::make_unique<Gui2StatsOverlay>(menuTask->GetWindowManager(), this);
   root->AddView(statsOverlay.get());
-  statsOverlay->Hide();
+  // Normally toggled with TAB (see gamepage.cpp). "debug_stats_overlay_always"
+  // holds it up from kickoff instead, so its layout can be judged in a
+  // headless capture without having to land a keypress - the same affordance
+  // "debug_formation_graphic_always" gives the pre-match panel.
+  if (GetConfiguration()->GetBool("debug_stats_overlay_always", false)) {
+    statsOverlay->UpdateStats();
+    statsOverlay->Show();
+  } else {
+    statsOverlay->Hide();
+  }
 
   // Pre-match formation graphic (docs/PRESENTATION_SPEC.md 1.1) and in-match
   // lower-third banner (section 4). Both drive their own visibility/fade off
@@ -923,6 +976,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
     std::vector<MaterializedTriangleMesh>& tmesh =
         adboardGeom->GetResource()->GetTriangleMeshesRef();
 
+    bool replacedAny = false;
     for (unsigned int i = 0; i < tmesh.size(); i++) {
       if (tmesh.at(i).material.diffuseTexture != boost::intrusive_ptr<Resource<Surface>>()) {
         std::string identString = tmesh.at(i).material.diffuseTexture->GetIdentString();
@@ -932,6 +986,7 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
               adboardSurfaces.at(int(floor(random(0, adboardSurfaces.size() - 1.001f))));
           tmesh.at(i).material.specular_amount = 0.2f;
           tmesh.at(i).material.shininess = 0.1f;
+          replacedAny = true;
         }
       } else if (Verbose())
         printf("no diffuse texture\n");
@@ -939,7 +994,12 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
 
     adboardGeom->resourceMutex.unlock();
 
-    geomObject->OnUpdateGeometryData();
+    // Only the geometry that actually got a new hoarding needs re-uploading.
+    // This ran for every object in the stadium whether or not it held an
+    // adboard at all; an imported stadium has few adboard meshes and a great
+    // many others, so most of those re-uploads were asking the graphics
+    // system to redo work for an unchanged mesh.
+    if (replacedAny) geomObject->OnUpdateGeometryData();
 
     stadiumGeomsIter++;
   }
@@ -1004,6 +1064,17 @@ void Match::GetOfficialPlayers(std::vector<PlayerBase*>& players) {
   officials->GetPlayers(players);
 }
 
+std::shared_ptr<const MentalImage> Match::GetMentalImageOwned(int history_ms) {
+  if (mentalImages.empty()) return nullptr;
+
+  int index = int(round((float)history_ms / 10.0));
+  if (index >= (signed int)mentalImages.size()) index = mentalImages.size() - 1;
+  if (index < 0) index = 0;
+
+  mentalImages.at(index)->SetTimeStampNeg_ms(index * 10.0f);
+  return mentalImages.at(index);
+}
+
 const MentalImage* Match::GetMentalImage(int history_ms) {
   // No images yet (the first frames of a match) or none left (teardown): the
   // clamp below would ask for element -1 and hand back a bogus image, whose
@@ -1024,6 +1095,266 @@ const MentalImage* Match::GetMentalImage(int history_ms) {
 void Match::UpdateLatestMentalImageBallPredictions() {
   if (mentalImages.size() > 0)
     mentalImages.at(0)->UpdateBallPredictions();
+}
+
+void Match::LoadPrematchShots(const std::string& stadiumToken) {
+  // PES ships each entrance shot as its own ent_<id> family, and the file
+  // name says which shot it is. Index them all by the words in the name so a
+  // beat can ask for "passage01" (the tunnel) or "anth" (the anthems) and get
+  // the camerawork that was authored for it, whichever family it lives in.
+  const std::string root =
+      GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
+  std::error_code ec;
+  std::vector<std::string> paths;
+  for (const auto& dir : std::filesystem::directory_iterator(root, ec)) {
+    if (!dir.is_directory()) continue;
+    for (const auto& entry : std::filesystem::directory_iterator(dir.path(), ec))
+      if (entry.path().extension() == ".camtrack") paths.push_back(entry.path().string());
+  }
+  std::sort(paths.begin(), paths.end());
+
+  for (const std::string& path : paths) {
+    std::string name = std::filesystem::path(path).stem().string();
+    // "ent_007_passage01_cmn_cam" -> the words between the family number and
+    // the trailing "cam".
+    std::vector<std::string> words;
+    std::string word;
+    for (char c : name + "_") {
+      if (c == '_') {
+        if (!word.empty()) words.push_back(word);
+        word.clear();
+      } else {
+        word += c;
+      }
+    }
+    const bool matchesStadium =
+        !stadiumToken.empty() && name.find(stadiumToken) != std::string::npos;
+
+    std::ifstream file(path);
+    CamTrack track;
+    if (!file.good() || !track.Load(file) || track.GetFrameCount() == 0) continue;
+
+    // The whole stem is a key as well, so a beat can name a specific pack
+    // ("ent_009_st002_cmn_cam") when a shared token would be ambiguous.
+    prematchShots.emplace(name, track);
+    for (const std::string& token : words) {
+      if (token == "ent" || token == "cam" || token.empty()) continue;
+      if (token.size() <= 2) continue;              // family numbers
+      if (token.rfind("st", 0) == 0) continue;      // stadium tags
+      // A shot authored for the stadium being played wins over one that is
+      // not; otherwise first in sorted order.
+      auto existing = prematchShots.find(token);
+      if (existing == prematchShots.end())
+        prematchShots.emplace(token, track);
+      else if (matchesStadium)
+        existing->second = track;
+    }
+  }
+  Log(e_Notice, "Match", "LoadPrematchShots",
+      int_to_str((int)prematchShots.size()) + " named entrance shot(s) from " +
+          int_to_str((int)paths.size()) + " track(s)");
+}
+
+void Match::LoadPrematchStagingIndex(const std::string& stadiumToken) {
+  // Same tokenisation as the camerawork, so "passage01" finds both
+  // ent_007_passage01_cmn_cam.camtrack and ent_007_passage01_cmn_pl.chor.
+  const std::string root =
+      GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
+  std::error_code ec;
+  std::vector<std::string> paths;
+  for (const auto& dir : std::filesystem::directory_iterator(root, ec)) {
+    if (!dir.is_directory()) continue;
+    for (const auto& entry : std::filesystem::directory_iterator(dir.path(), ec))
+      if (entry.path().extension() == ".chor") paths.push_back(entry.path().string());
+  }
+  std::sort(paths.begin(), paths.end());
+
+  for (const std::string& path : paths) {
+    const std::string name = std::filesystem::path(path).stem().string();
+    const bool matchesStadium =
+        !stadiumToken.empty() && name.find(stadiumToken) != std::string::npos;
+    std::vector<std::string> words;
+    std::string word;
+    for (char c : name + "_") {
+      if (c == '_') {
+        if (!word.empty()) words.push_back(word);
+        word.clear();
+      } else {
+        word += c;
+      }
+    }
+    {
+      PrematchStaging whole;
+      whole.path = path;
+      whole.directory = std::filesystem::path(path).parent_path().string();
+      prematchStagings.emplace(name, whole);
+    }
+    for (const std::string& token : words) {
+      if (token == "ent" || token == "pl" || token.size() <= 2) continue;
+      if (token.rfind("st", 0) == 0) continue;
+      auto existing = prematchStagings.find(token);
+      if (existing != prematchStagings.end() && !matchesStadium) continue;
+      PrematchStaging staging;
+      staging.path = path;
+      staging.directory = std::filesystem::path(path).parent_path().string();
+      prematchStagings[token] = staging;
+    }
+  }
+  Log(e_Notice, "Match", "LoadPrematchStagingIndex",
+      int_to_str((int)prematchStagings.size()) + " named staging(s) from " +
+          int_to_str((int)paths.size()) + " pack(s)");
+}
+
+Match::PrematchStaging* Match::AcquirePrematchStaging(const std::string& shot) {
+  if (shot.empty()) return nullptr;
+  auto found = prematchStagings.find(shot);
+  if (found == prematchStagings.end()) {
+    for (auto entry = prematchStagings.begin(); entry != prematchStagings.end(); ++entry) {
+      if (entry->first.find(shot) != std::string::npos) {
+        found = entry;
+        break;
+      }
+    }
+  }
+  if (found == prematchStagings.end()) return nullptr;
+  PrematchStaging& staging = found->second;
+  if (!staging.loaded) {
+    staging.loaded = true;
+    std::ifstream file(staging.path);
+    if (file.good() && staging.choreo.Load(file)) {
+      for (const auto& slot : staging.choreo.GetSlots()) {
+        if (staging.clips.count(slot.animFile)) continue;
+        const std::string clipPath = staging.directory + "/" + slot.animFile;
+        if (!std::filesystem::exists(clipPath)) continue;
+        auto clip = std::make_shared<Animation>();
+        clip->Load(clipPath);
+        staging.clips[slot.animFile] = clip;
+      }
+      Log(e_Notice, "Match", "AcquirePrematchStaging",
+          shot + ": " + int_to_str((int)staging.choreo.GetSlots().size()) + " actors, " +
+              int_to_str((int)staging.clips.size()) + " clips");
+    }
+  }
+  return staging.choreo.IsLoaded() ? &staging : nullptr;
+}
+
+const CamTrack* Match::FindPrematchShot(const std::string& shot) const {
+  if (shot.empty()) return nullptr;
+  auto found = prematchShots.find(shot);
+  if (found != prematchShots.end()) return &found->second;
+  // Fall back to a substring of the pack name, so a beat can ask for
+  // "ent_009" and take whichever of that family this stadium installed.
+  for (const auto& entry : prematchShots)
+    if (entry.first.find(shot) != std::string::npos) return &entry.second;
+  return nullptr;
+}
+
+PrematchTimeline::Timeline Match::LoadPrematchTimeline() const {
+  // Explicit file wins; otherwise the competition's own entrance family names
+  // one ("entrance_id" 020 -> 020.timeline), then the shipped default. With
+  // none of those installed the built-in sequence is used, so a bare checkout
+  // still gets the full pre-match rather than a two-second cut to kickoff.
+  const std::string root =
+      GetConfiguration()->Get("presentation_dir", "media/presentation");
+  std::vector<std::string> candidates;
+  const std::string explicitFile = GetConfiguration()->Get("presentation_timeline", "");
+  if (!explicitFile.empty()) candidates.push_back(explicitFile);
+  const std::string entranceID = GetConfiguration()->Get("entrance_id", "");
+  if (!entranceID.empty() && entranceID != "none")
+    candidates.push_back(root + "/" + entranceID + ".timeline");
+  candidates.push_back(root + "/default.timeline");
+
+  for (const std::string& path : candidates) {
+    std::ifstream file(path);
+    PrematchTimeline::Timeline timeline;
+    if (file.good() && PrematchTimeline::Parse(file, timeline)) {
+      Log(e_Notice, "Match", "LoadPrematchTimeline",
+          path + ": " + int_to_str((int)timeline.beats.size()) + " beat(s), " +
+              int_to_str((int)timeline.TotalSeconds()) + "s");
+      return timeline;
+    }
+  }
+
+  Log(e_Notice, "Match", "LoadPrematchTimeline", "no timeline file; using the built-in sequence");
+  return PrematchTimeline::Default();
+}
+
+bool Match::GetEntranceCastBounds(Vector3& centre, Vector3& extent) const {
+  // Where the two squads currently stand. The imported camerawork is authored
+  // per stadium and films the wrong place in any other, so the walkout and
+  // lineup shots frame the players themselves - whether they were put on
+  // their marks by the choreography or by the scripted walk.
+  bool any = false;
+  float minX = 0, maxX = 0, minY = 0, maxY = 0;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (!teams[teamID]) continue;
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* player : squad) {
+      if (!player) continue;
+      const Vector3 position = player->GetPosition();
+      if (!any) {
+        minX = maxX = position.coords[0];
+        minY = maxY = position.coords[1];
+        any = true;
+      } else {
+        minX = std::min(minX, position.coords[0]);
+        maxX = std::max(maxX, position.coords[0]);
+        minY = std::min(minY, position.coords[1]);
+        maxY = std::max(maxY, position.coords[1]);
+      }
+    }
+  }
+  if (!any) return false;
+  centre = Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0.0f);
+  extent = Vector3(maxX - minX, maxY - minY, 0.0f);
+  return true;
+}
+
+void Match::ShowMatchHud(bool visible) {
+  // The persistent in-match chrome, hidden for the pre-match presentation
+  // and brought back at kickoff.
+  if (scoreboard) {
+    if (visible)
+      scoreboard->Show();
+    else
+      scoreboard->Hide();
+  }
+  if (radar) {
+    if (visible)
+      radar->Show();
+    else
+      radar->Hide();
+  }
+}
+
+void Match::RememberPrematchCamera() {
+  // Camera::Hold shows whatever the beat before it left on screen, so every
+  // other beat records where it put the camera.
+  heldCameraPosition = cameraNodePosition;
+  heldCameraNodeOrientation = cameraNodeOrientation;
+  heldCameraOrientation = cameraOrientation;
+  heldCameraFOV = cameraFOV;
+  heldCameraNear = cameraNearCap;
+  heldCameraFar = cameraFarCap;
+  heldCameraValid = true;
+}
+
+float Match::GetEntranceElapsedSeconds() const {
+  if (!entranceActive) return entranceSeconds;
+  if (entranceRealStart_ms == 0) return 0.0f;  // not ticking yet
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  if (now <= entranceRealStart_ms) return 0.0f;
+  return (now - entranceRealStart_ms) * 0.001f;
+}
+
+PrematchTimeline::State Match::GetPrematchState() const {
+  if (!entranceActive) {
+    PrematchTimeline::State done;
+    done.finished = true;
+    return done;
+  }
+  return PrematchTimeline::At(prematchTimeline, GetEntranceElapsedSeconds());
 }
 
 void Match::GetEntranceSlot(const Player* player, Vector3& position, Vector3& lookAt) const {
@@ -1055,6 +1386,12 @@ void Match::BuildEntranceCast() {
   // PES actor slots: 0-10 the home XI with the keeper on 0, 11-21 the away
   // XI likewise, 22+ the officials (not cast yet). Players whose slot the
   // .chor does not stage keep the scripted walk.
+  entranceCast.clear();
+  const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  const std::map<std::string, std::shared_ptr<Animation>>& clips =
+      activeStaging ? activeStaging->clips : entranceClips;
+  if (!choreo.IsLoaded()) return;
+
   for (int teamID = 0; teamID < 2; teamID++) {
     std::vector<Player*> squad;
     teams[teamID]->GetActivePlayers(squad);
@@ -1069,30 +1406,80 @@ void Match::BuildEntranceCast() {
     }
     if (keeper) ordered.insert(ordered.begin(), keeper);
     for (unsigned int i = 0; i < ordered.size() && i < 11; i++) {
-      const ChoreoSlot* slot = entranceChoreo.GetSlot(base + (int)i);
+      const ChoreoSlot* slot = choreo.GetSlot(base + (int)i);
       if (!slot) continue;
-      auto clip = entranceClips.find(slot->animFile);
-      if (clip == entranceClips.end()) continue;
+      auto clip = clips.find(slot->animFile);
+      if (clip == clips.end()) continue;
       entranceCast.push_back({ordered[i], slot, clip->second.get()});
     }
   }
 }
 
 void Match::UpdateEntranceChoreo() {
-  if (!entranceChoreo.IsLoaded() || !IsInEntrance()) return;
-  if (!entranceCastBuilt) {
-    BuildEntranceCast();
-    entranceCastBuilt = true;
+  // "entrance_choreography" "false" falls back to the scripted walk.
+  static const bool choreographyEnabled =
+      GetConfiguration()->GetBool("entrance_choreography", true);
+  if (!choreographyEnabled || !IsInEntrance()) return;
+
+  // Each beat brings its own staging: the tunnel pack walks the squads out,
+  // the anthem pack stands them on the line, the circle pack poses them for
+  // the team photo. Swapping it restages the cast and restarts its clock, so
+  // every pack plays from its own first frame when its beat begins.
+  const PrematchTimeline::State beat = GetPrematchState();
+  if (beat.beatIndex != stagedBeatIndex) {
+    stagedBeatIndex = beat.beatIndex;
+    const std::string shot =
+        (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+            ? prematchTimeline.beats[beat.beatIndex].shot
+            : std::string();
+    std::string wanted = shot;
+    if (wanted.empty()) {
+      // A beat with no staging of its own: before anything has been staged,
+      // borrow the first pack the sequence will use and hold its opening
+      // frame, so the establishing shots look out over a pitch the squads
+      // have not walked onto yet.
+      for (const auto& other : prematchTimeline.beats)
+        if (!other.shot.empty()) {
+          if (!activeStaging) wanted = other.shot;
+          break;
+        }
+    }
+    PrematchStaging* staging = AcquirePrematchStaging(wanted);
+    const bool holdOpeningFrame = shot.empty() && !wanted.empty();
+    // A beat with no staging of its own keeps the previous one standing
+    // rather than dropping everyone back to the scripted walk mid-sequence.
+    if (staging) {
+      activeStaging = staging;
+      // Holding the opening frame: park the clock on it rather than letting
+      // the pack play out under a shot that is not looking at it.
+      stagingStartSeconds =
+          holdOpeningFrame ? GetEntranceElapsedSeconds() * 2.0f : GetEntranceElapsedSeconds();
+      if (holdOpeningFrame) stagingStartSeconds = GetEntranceElapsedSeconds();
+      stagingHoldsOpeningFrame = holdOpeningFrame;
+      BuildEntranceCast();
+    } else if (!activeStaging && entranceChoreo.IsLoaded()) {
+      BuildEntranceCast();
+    }
   }
-  const unsigned long start_ms = introCutsceneEnd_ms - introCutsceneDuration_ms;
-  const float elapsedFrame = (actualTime_ms - start_ms) * 0.1f;  // 10 ms frames
+
+  if (entranceCast.empty()) return;
+
+  const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  const float elapsedFrame =
+      stagingHoldsOpeningFrame ? 0.0f
+                               : (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
   for (auto& cast : entranceCast) {
     Vector3 position;
     radian yaw = 0;
     int animFrame = 0;
-    entranceChoreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
-    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position,
-                                               yaw);
+    choreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    // Sample wraps the frame against the SLOT's cycle - the length of that
+    // actor's path through the staging - but the clip it plays is its own,
+    // much shorter loop. Indexing a 750-frame walk cycle at frame 1500 read
+    // off the end of the animation and dropped the cast flat onto the pitch.
+    const int clipFrames = cast.clip ? cast.clip->GetFrameCount() : 0;
+    if (clipFrames > 0) animFrame %= clipFrames;
+    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
   }
 }
 
@@ -1418,12 +1805,19 @@ void Match::AddExcitementBoost(float amount, int duration_ms) {
     excitementEventTimer_ms = duration_ms;
 }
 
+bool Match::IsSubstitutionWindow() const {
+  // Not merely "play is stopped": before kick-off play is stopped too, and the
+  // pre-match presentation is no moment to be making substitutions in.
+  return Substitutions::IsSubstitutionWindow(IsInPlay(), matchPhase != e_MatchPhase_PreMatch,
+                                             IsInEntrance());
+}
+
 Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
                                                    Player* playerIn) {
   Team* team = GetTeam(teamID);
   const Substitutions::SquadView squad = team->DescribeSwap(playerOut, playerIn);
   const Substitutions::e_Result result =
-      Substitutions::Validate(substitutionState, teamID, squad, !IsInPlay());
+      Substitutions::Validate(substitutionState, teamID, squad, IsSubstitutionWindow());
   if (result != Substitutions::e_Result_Accepted)
     return result;
 
@@ -1451,7 +1845,7 @@ void Match::ExecutePendingSubstitutions() {
     const Substitutions::SquadView squad =
         team->DescribeSwap(sub.playerOut, sub.playerIn);
     if (Substitutions::Validate(substitutionState, sub.teamID, squad,
-                                !IsInPlay()) != Substitutions::e_Result_Accepted)
+                                IsSubstitutionWindow()) != Substitutions::e_Result_Accepted)
       continue;
     if (!team->Substitute(sub.playerOut, sub.playerIn))
       continue;
@@ -1464,6 +1858,8 @@ void Match::ExecutePendingSubstitutions() {
     std::string in = sub.playerIn ? sub.playerIn->GetPlayerData()->GetLastName() : "";
     ShowBanner(sub.teamID, "Substitution",
               "IN: " + in + (out.empty() ? "" : "   OUT: " + out), 4000);
+    Log(e_Notice, "Match", "ExecutePendingSubstitutions",
+        "substitution, team " + int_to_str(sub.teamID) + ": in " + in + ", out " + out);
     if (random(0.0f, 1.0f) <
         GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f))
       StartCutscene("change", 5.0f);
@@ -1472,15 +1868,17 @@ void Match::ExecutePendingSubstitutions() {
 
 void Match::ProcessAutoSubstitutions() {
   // Only at stoppages during normal play, and no more than one decision per
-  // second. A shootout is not a stoppage to make substitutions in.
-  if (IsInPlay() || actualTime_ms % 1000 != 0)
+  // second. A shootout is not a stoppage to make substitutions in, and neither
+  // is anything before kick-off.
+  if (!IsSubstitutionWindow() || actualTime_ms % 1000 != 0)
     return;
   if (matchPhase == e_MatchPhase_Penalties || gameOver)
     return;
 
   for (int teamID = 0; teamID < 2; teamID++) {
-    // A human manager makes his own calls.
-    if (CoachMode::CanEditTactics(coachSetup, teamID))
+    // A human manager makes his own calls - and in coach mode the CPU manager
+    // makes none at all, for either team.
+    if (!AIManagerRunsTeam(teamID))
       continue;
     if (Substitutions::GetRemaining(substitutionState, teamID) <= 0)
       continue;
@@ -1778,51 +2176,193 @@ void Match::UpdateIngameCamera() {
   const bool modelViewerHolding =
       GetConfiguration()->GetReal("debug_model_viewer_seconds", 0.0f) > 0.0f;
   if (introCutsceneEnd_ms > 0 && !modelViewerHolding) {
-    unsigned long now = actualTime_ms;
-    if (now < introCutsceneEnd_ms) {
-      float t = 1.0f - (introCutsceneEnd_ms - now) /
-                           (float)introCutsceneDuration_ms;
-      // Several authored shots cut back to back: walk the elapsed time along
-      // the sequence and sample whichever shot is on air.
-      const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
-      float shotT = t;
-      if (introShots.size() > 1) {
-        float total = 0.0f;
-        for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
-        float elapsed = t * total;
-        for (const CamTrack& s : introShots) {
-          const float duration = s.GetDurationSeconds();
-          if (elapsed <= duration || &s == &introShots.back()) {
-            shot = &s;
-            shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
-            break;
-          }
-          elapsed -= duration;
-        }
+    // The presentation owns the camera for as long as it is running, which is
+    // a real-time question now rather than an actualTime_ms one.
+    if (entranceActive) {
+      const float t = entranceSeconds > 0.0f
+                          ? clamp(GetEntranceElapsedSeconds() / entranceSeconds, 0.0f, 1.0f)
+                          : 0.0f;
+      const PrematchTimeline::State beat = GetPrematchState();
+
+      // Each beat of the presentation asks for its own kind of shot; a
+      // timeline with no beats at all falls back to running the imported
+      // camerawork straight through, which is what this used to do.
+      PrematchTimeline::Camera want =
+          prematchTimeline.beats.empty() ? PrematchTimeline::Camera::Entrance : beat.camera;
+      if (want == PrematchTimeline::Camera::Hold && !heldCameraValid)
+        want = PrematchTimeline::Camera::Aerial;
+      if (want == PrematchTimeline::Camera::Entrance && introShots.empty() &&
+          introCamTrack.GetFrameCount() == 0)
+        want = PrematchTimeline::Camera::Orbit;  // nothing imported to play
+
+      if (want == PrematchTimeline::Camera::Hold) {
+        cameraNodePosition = heldCameraPosition;
+        cameraNodeOrientation = heldCameraNodeOrientation;
+        cameraOrientation = heldCameraOrientation;
+        cameraFOV = heldCameraFOV;
+        cameraNearCap = heldCameraNear;
+        cameraFarCap = heldCameraFar;
+        return;
       }
-      if (shot->GetFrameCount() > 0) {
-        CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
-        cameraNodePosition = Vector3(frame.position[0], frame.position[1],
-                                     frame.position[2]);
+
+      // A beat that names an authored shot plays exactly that, across its own
+      // duration - this is what puts the tunnel walkout, the anthems and the
+      // team picture on screen rather than one family's tracks end to end.
+      const CamTrack* namedShot =
+          (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+              ? FindPrematchShot(prematchTimeline.beats[beat.beatIndex].shot)
+              : nullptr;
+      if (namedShot && namedShot->GetFrameCount() > 0) {
+        const CamTrackFrame frame =
+            namedShot->Sample(beat.beatT * (namedShot->GetFrameCount() - 1));
+        cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
         cameraNodeOrientation = QUATERNION_IDENTITY;
-        cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
-                              frame.rotation[2], frame.rotation[3]);
+        cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                              frame.rotation[3]);
         cameraFOV = frame.fov;
         cameraNearCap = std::max(0.1f, frame.near);
         cameraFarCap = frame.far;
+        RememberPrematchCamera();
         return;
       }
-      float a = t * 2.0f * pi;
-      const float radius = 42.0f;
-      const float camHeight = 16.0f;
-      cameraNodePosition =
-          Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
+
+      if (want == PrematchTimeline::Camera::Entrance) {
+        // The imported shots are spread across the entrance beats only, so a
+        // lineup graphic holding the picture does not eat into the walkout's
+        // camerawork.
+        const float entranceProgress =
+            prematchTimeline.beats.empty()
+                ? t
+                : PrematchTimeline::EntranceProgress(prematchTimeline, beat);
+        const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
+        float shotT = entranceProgress;
+        if (introShots.size() > 1) {
+          float total = 0.0f;
+          for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
+          float elapsed = entranceProgress * total;
+          for (const CamTrack& s : introShots) {
+            const float duration = s.GetDurationSeconds();
+            if (elapsed <= duration || &s == &introShots.back()) {
+              shot = &s;
+              shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
+              break;
+            }
+            elapsed -= duration;
+          }
+        }
+        if (shot->GetFrameCount() > 0) {
+          CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
+          cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+          cameraNodeOrientation = QUATERNION_IDENTITY;
+          cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                                frame.rotation[3]);
+          cameraFOV = frame.fov;
+          cameraNearCap = std::max(0.1f, frame.near);
+          cameraFarCap = frame.far;
+          RememberPrematchCamera();
+          return;
+        }
+      }
+
+      if (want == PrematchTimeline::Camera::Walkout ||
+          want == PrematchTimeline::Camera::Lineup) {
+        Vector3 castCentre, castExtent;
+        if (GetEntranceCastBounds(castCentre, castExtent)) {
+          // Stand off on the side the players face - they walk out towards
+          // the middle of the pitch - and look back at the line.
+          const float side = castCentre.coords[1] <= 0.0f ? 1.0f : -1.0f;
+          // Clamped so the shot stays inside the bowl. Before kickoff the two
+          // squads can be spread the width of the pitch, and a standoff scaled
+          // straight off that put the camera through the back of a stand.
+          const float lineHalf = clamp(castExtent.coords[0] * 0.5f, 6.0f, 18.0f);
+
+          Vector3 target = castCentre;
+          float distance, camHeight, fov;
+          if (want == PrematchTimeline::Camera::Walkout) {
+            // Pan slowly along the row, holding on the players as they pass -
+            // the shot the reference broadcast uses for a walkout.
+            target.coords[0] = castCentre.coords[0] + (beat.beatT * 2.0f - 1.0f) * lineHalf;
+            // The reference holds the camera right on the line - the players
+            // fill the frame - rather than watching from across the pitch.
+            distance = 6.5f;
+            camHeight = 2.0f;
+            fov = 46.0f;
+          } else {
+            // Head-on and wide enough to hold the whole line: the anthem and
+            // team-picture shot.
+            distance = clamp(lineHalf * 1.7f, 15.0f, 24.0f);
+            camHeight = 4.5f;
+            fov = 38.0f;
+          }
+          target.coords[2] = 1.1f;
+
+          // Kept off the touchline, and off the goal lines, so the camera
+          // never ends up inside the stadium's own geometry.
+          Vector3 eye(clamp(target.coords[0], -44.0f, 44.0f),
+                      clamp(castCentre.coords[1] + side * distance, -30.0f, 30.0f),
+                      camHeight);
+
+          // Ease towards the framing rather than snapping to it. Both the eye
+          // and the target are computed from the squads' bounding box, which
+          // shifts every tick as they walk - taken raw, the shot judders.
+          if (smoothedCamValid) {
+            const float ease = 0.06f;
+            eye = smoothedCamEye + (eye - smoothedCamEye) * ease;
+            target = smoothedCamTarget + (target - smoothedCamTarget) * ease;
+          }
+          smoothedCamEye = eye;
+          smoothedCamTarget = target;
+          smoothedCamValid = true;
+
+          const Vector3 toTarget = target - eye;
+          const float flat = std::sqrt(toTarget.coords[0] * toTarget.coords[0] +
+                                       toTarget.coords[1] * toTarget.coords[1]);
+
+          cameraNodePosition = eye;
+          cameraNodeOrientation.SetAngleAxis(std::atan2(-toTarget.coords[0], toTarget.coords[1]),
+                                             Vector3(0, 0, 1));
+          cameraOrientation.SetAngleAxis(0.5f * pi + std::atan2(toTarget.coords[2], flat),
+                                         Vector3(1, 0, 0));
+          cameraFOV = fov;
+          cameraNearCap = 0.5f;
+          cameraFarCap = 400.0f;
+          RememberPrematchCamera();
+          return;
+        }
+        // Nothing staged (no choreography installed): fall through to the
+        // wide, which at least shows the pitch.
+        want = PrematchTimeline::Camera::Aerial;
+      }
+
+      if (want == PrematchTimeline::Camera::Aerial) {
+        // The high, steeply-tilted wide the live game is played on (spec
+        // section 5), held still - what the lineup graphics sit over.
+        const float camHeight = 62.0f;
+        const float back = 34.0f;
+        cameraNodePosition = Vector3(0, -back, camHeight);
+        cameraNodeOrientation = QUATERNION_IDENTITY;
+        cameraOrientation.SetAngleAxis(0.5f * pi - std::atan2(camHeight, back), Vector3(1, 0, 0));
+        cameraFOV = 32.0f;
+        cameraNearCap = 2.0f;
+        cameraFarCap = 400.0f;
+        RememberPrematchCamera();
+        return;
+      }
+
+      // Orbit: a slow authored sweep of the stands, one full circle across
+      // however many beats ask for it. Set back and high enough to hold the
+      // whole venue in frame - closer in it looked past the stands at open
+      // sky, which is a poor way to open a broadcast.
+      const float a = t * 2.0f * pi;
+      const float radius = 78.0f;
+      const float camHeight = 30.0f;
+      cameraNodePosition = Vector3(std::sin(a) * radius, -std::cos(a) * radius, camHeight);
       cameraNodeOrientation.SetAngleAxis(a, Vector3(0, 0, 1));
-      cameraOrientation.SetAngleAxis(
-          0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
+      cameraOrientation.SetAngleAxis(0.5f * pi - std::atan2(camHeight, radius), Vector3(1, 0, 0));
       cameraFOV = 35.0f;
       cameraNearCap = 2.0f;
       cameraFarCap = 400.0f;
+      RememberPrematchCamera();
       return;
     }
     introCutsceneEnd_ms = 0;
@@ -2005,10 +2545,21 @@ void Match::UpdateIngameCamera() {
       teamChant[lastGoalTeamID]->SetGain(
           0.9f * (1.0f - NormalizedClamp(goalScoredTimer, 6000, 9000)));
 
-    // Fire the replay shortly after the goal: the 10s buffer then covers the
-    // buildup and the finish. Firing at six seconds meant the replay was mostly
-    // the celebration.
-    if (goalScoredTimer == 2500) {
+    // Goal, celebration, replay, kickoff - in that order. The celebration plays
+    // out first and the replay then reaches back past it to the build-up, which
+    // is what the long buffer is for. A goal cutscene running past the plain
+    // celebration wins: "when the celebration is done and no sooner".
+    //
+    // The referee schedules the kickoff off the same timings, because preparing
+    // it calls ResetSituation, which clears the goal state and with it
+    // goalScoredTimer - do that first and the trigger below is never reached.
+    const unsigned long goalTime_ms = actualTime_ms - goalScoredTimer;
+    if (replayStartOffset_ms == 0 &&
+        actualTime_ms >= GoalSequence::ReplayFiresAt_ms(goalTime_ms, cutsceneEnd_ms)) {
+      replayStartOffset_ms = GoalSequence::ReplayStartOffset_ms(goalScoredTimer);
+      Log(e_Notice, "Match", "UpdateIngameCamera",
+          "goal replay: celebration ran " + int_to_str((int)goalScoredTimer) +
+              " ms, replay reaches " + int_to_str((int)replayStartOffset_ms) + " ms back");
       pause = true;
       sig_OnExtendedReplayMoment(this);
     }
@@ -2103,6 +2654,36 @@ void Match::Process() {
   if (UserEventManager::GetInstance().GetKeyboardState(SDLK_F1)) {
     SetRandomSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
+  }
+
+  // The presentation runs on real seconds (see Match::IsInEntrance). Until
+  // its budget is spent, keep the kickoff one tick out of reach.
+  if (entranceActive) {
+    // The presentation's clock starts the first time the match is processed,
+    // which is the first moment anything of it can actually be on screen.
+    if (entranceRealStart_ms == 0) {
+      entranceRealStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+      Log(e_Notice, "Match", "Process", "pre-match presentation starts");
+      // Nothing of the in-match HUD belongs over a broadcast opening: the
+      // scoreboard bug and the radar only appear at kickoff (spec section 1,
+      // shot 15 - the scoreboard arrives *with* the first whistle).
+      ShowMatchHud(false);
+    }
+    if (GetEntranceElapsedSeconds() >= entranceSeconds) {
+      entranceActive = false;
+      ShowMatchHud(true);
+      Log(e_Notice, "Match", "Process",
+          "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
+              "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
+    } else {
+      // A full second ahead, not one tick. The referee defers the kickoff to
+      // this value every tick and re-prepares the set piece the moment
+      // actualTime_ms reaches it (referee.cpp) - kept only one tick out, that
+      // condition came true on every single tick and teleported all
+      // twenty-two players back onto their kickoff marks each frame, which is
+      // what had them flickering.
+      introCutsceneEnd_ms = actualTime_ms + 1000;
+    }
   }
 
   ProcessTacticalHotkeys();
@@ -2218,6 +2799,7 @@ void Match::Process() {
           if (teamChant[t]) teamChant[t]->SetGain(0.0f);
       }
       goalScoredTimer = 0;
+      replayStartOffset_ms = 0;  // armed again for the next goal
     }
 
     if (IsInPlay() && !IsInSetPiece())

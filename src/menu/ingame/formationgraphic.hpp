@@ -17,6 +17,7 @@
 
 #include <vector>
 
+#include "formationgraphiclayout.hpp"
 #include "scene/objects/image2d.hpp"
 #include "utils/gui2/view.hpp"
 #include "utils/gui2/widgets/bitmaptext.hpp"
@@ -42,6 +43,11 @@ public:
 
   virtual void Process();
 
+  // Gui2Task resets the whole tree's z-priority every frame, so the panel's
+  // own stacking (plates behind content, numbers over icons) has to be
+  // re-applied on top of that reset - see Gui2View::SetRecursiveZPriority.
+  virtual void SetRecursiveZPriority(int prio);
+
 protected:
   struct StarterWidgets {
     Gui2Image* icon = nullptr;
@@ -49,21 +55,19 @@ protected:
     Gui2Caption* nickname = nullptr;
   };
 
-  // (Re)builds the whole content for one team's XI + substitutes. Cheap
-  // enough to call once per team switch (twice per entrance), not per frame.
-  void BuildForTeam(int teamID);
-  void ClearDynamicViews();
-  // built on the first Process(); see the note in Init()
-  void BuildBackgrounds();
+  // Every image the panel will ever show is created once, up front, and only
+  // ever re-pointed afterwards - see the note in Init() on why an image
+  // cannot be created later, nor faded down and back up.
+  void BuildImages();
+  // Points the existing widgets at one team's XI and bench. Cheap enough to
+  // call on a team switch (twice per entrance), not per frame.
+  void FillForTeam(int teamID);
+  void ClearTextViews();
+  void ApplyZOrder();
   void ApplyAlpha(float alpha);
 
   Match* match;
   bool enabled;
-
-  // Entrance timing: captured lazily the first time the entrance is seen, so
-  // no extra Match accessor is needed for "when did the entrance start".
-  unsigned long entranceStart_ms = 0;
-  unsigned long entranceDuration_ms = 0;
 
   int builtForTeamID = -2;  // -2: nothing built yet (distinct from the -1 "no team" state)
   float currentAlpha = -1.0f;
@@ -71,18 +75,24 @@ protected:
   // static chrome (position fixed regardless of which team is showing)
   Gui2Image* panelBg = nullptr;
   Gui2Image* headerBg = nullptr;
+  Gui2Image* crest[2] = {nullptr, nullptr};  // one per side; only one is shown
   Gui2Caption* teamTagCaption = nullptr;
   Gui2Caption* subsHeaderCaption = nullptr;
 
-  // per-team dynamic content, rebuilt on team switch
   Gui2Image* pitchLines = nullptr;  // tactical-shape lines/goal box/forward arc
-  std::vector<StarterWidgets> starters;
+  std::vector<StarterWidgets> starters;  // eleven, created once
+
+  // captions, which unlike images can be created and destroyed at any time
+  Gui2Caption* formationLabel = nullptr;
+  Gui2Caption* formationShape = nullptr;
   std::vector<Gui2Caption*> subLines;
 
-  // layout, computed once from the widget's own size
-  float headerHeight = 0.0f;
-  float subsColumnWidth = 0.0f;
-  float bodyX = 0.0f, bodyY = 0.0f, bodyWidth = 0.0f, bodyHeight = 0.0f;
+  bool imagesBuilt = false;
+  int shownCrest = -1;
+
+  // Panel/pitch/substitutes-column boxes, computed once against the screen's
+  // aspect ratio - see FormationGraphicLayout::ComputePanelGeometry.
+  FormationGraphicLayout::PanelGeometry geometry;
 };
 
 }  // namespace blunted

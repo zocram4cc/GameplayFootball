@@ -53,7 +53,38 @@ def install_dir(game_dir, prefix, export_id):
                         "%s_%s" % (prefix, export_id))
 
 
-def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False):
+def install_kit_texture(pack_dir, dest):
+    """Puts the team's outfield kit in the model directory as body.png.
+
+    A 4cc character model carries its own textures for hair, dress and so on,
+    but the mesh wearing the actual football kit still points at the shared
+    PES kit map (u0XXXp0), which no pack ships - the kit itself lives under
+    Kit Textures as u0<team>p1. Without it that one mesh has nothing to
+    sample and the loader stops on a missing file.
+    """
+    kit_dir = os.path.join(pack_dir, "Kit Textures")
+    if not os.path.isdir(kit_dir):
+        return False
+    names = [n for n in sorted(os.listdir(kit_dir)) if n.lower().endswith((".dds", ".png"))]
+    outfield = [n for n in names if "p1" in n.lower()] or names
+    if not outfield:
+        return False
+    try:
+        from PIL import Image
+        image = Image.open(os.path.join(kit_dir, outfield[0]))
+        image.load()
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        os.makedirs(dest, exist_ok=True)
+        image.save(os.path.join(dest, "body.png"))
+        return True
+    except Exception as error:
+        print("  kit texture failed: %s" % error)
+        return False
+
+
+def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15,
+                  base_ase=None):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
         return "exists"
@@ -62,7 +93,15 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False):
                os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "fmdl_to_fullbody.py"),
                fmdl, dest, "--fmdl-lib", fmdl_lib,
-               "--texture", texture_rel, "--max-tris", str(max_tris)]
+               "--texture", texture_rel, "--max-tris", str(max_tris),
+               "--max-edge", str(max_edge)]
+    if base_ase:
+        # A face-slot model is a head and hair, nothing else. Imported on its
+        # own it is a head floating where the body should be; it has to be
+        # composited over a skinned body.
+        command += ["--base", base_ase,
+                    # the stock head would otherwise sit inside the imported one
+                    "--drop-base-parts", "eyes,face,scalp,hair"]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return "FAILED: " + (result.stderr.strip().splitlines() or ["?"])[-1]
@@ -81,6 +120,12 @@ def main():
     parser.add_argument("--db-ids", default="",
                         help="explicit comma-separated database ids, in export order")
     parser.add_argument("--max-tris", type=int, default=20000)
+    parser.add_argument("--max-edge", type=float, default=0.15,
+                        help="drop triangles with an edge longer than this "
+                             "(metres); see fmdl_to_fullbody")
+    parser.add_argument("--base", default="",
+                        help="stock fullbody .ase to composite the import over; "
+                             "required for face-slot models, which carry no body")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -99,8 +144,15 @@ def main():
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
         status = "dry-run"
         if not args.dry_run:
+            # Only a whole-character pack needs the kit dropped in beside it:
+            # its own mesh wears the kit. A face-slot import is a head, and the
+            # body it is composited onto keeps the engine's kit slot, which the
+            # team's kit is swapped into at run time (Team::FetchKit).
+            if not args.base:
+                install_kit_texture(args.pack_dir, dest)
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", args.force)
+                                   rel + "/body.png", args.force, args.max_edge,
+                                   args.base or None)
         print("%-6s %-28s %-34s %s" % (export_id, name[:28], rel, status))
         if db_id is not None:
             lines.append("%d %s" % (db_id, rel))

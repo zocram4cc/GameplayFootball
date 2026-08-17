@@ -9,6 +9,7 @@
 #include <boost/signals2.hpp>
 
 #include "utils/gui2/page.hpp"
+#include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 class Match;
@@ -33,6 +34,8 @@ public:
   void OnCreatedMatch();
 
 protected:
+  blunted::Gui2Caption* betaSign = nullptr;
+  bool betaSignHidden = false;
   Match* match;
   unsigned long matchReadyTime_ms;
   bool gamePlanShotTriggered = false;

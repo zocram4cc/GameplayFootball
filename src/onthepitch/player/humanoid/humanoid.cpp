@@ -163,15 +163,16 @@ void Humanoid::Process() {
   assert(match);
 
   if (!currentMentalImage) {
-    currentMentalImage =
-        match->GetMentalImage(0);  // first-time run (todo: ehh, why this specific branch?)
+    // first-time run (todo: ehh, why this specific branch?)
+    heldMentalImage = match->GetMentalImageOwned(0);
   } else {
     bool instaDoorheb = false;
     if (match->GetLastTouchTeamID() == team->GetID())
       instaDoorheb = true;
-    currentMentalImage = match->GetMentalImage(
+    heldMentalImage = match->GetMentalImageOwned(
         instaDoorheb ? 0 : CastPlayer()->GetController()->GetReactionTime_ms());
   }
+  currentMentalImage = heldMentalImage.get();
   // the match has no mental images yet; nothing below can decide anything
   if (!currentMentalImage) return;
 
