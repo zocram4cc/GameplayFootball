@@ -187,6 +187,46 @@ def split_faces(faces, max_verts):
     return chunks
 
 
+# A stadium's own sky is a mesh the camera stands inside, so it needs the same
+# treatment as an outline shell (reversed winding, because its faces point
+# outward) plus normals that leave it unlit - lit like a wall, Planet Namek's green
+# sky comes out a white blowout. Thresholds are set to take the domes and nothing
+# else: Namek's sky is 1154 m across and reaches 624 m, its cloud dome 1123 m and
+# 440 m, while its terrain is 276 x 143 m and 13 m tall.
+SKY_MIN_SPAN = 300.0  # metres across, both ways
+SKY_MIN_TOP = 50.0    # metres above the pitch
+SKY_CONSTANT_NORMAL = (0.0, 0.0, -1.0)  # away from the sun, as the engine's own sky.ase does
+
+
+def is_sky_dome(span_x, span_y, top_z, contains_origin):
+    """Whether a mesh of this size and position is a sky the camera is inside.
+
+    Both spans have to be large: a wide flat apron is not a sky, and neither is a
+    floodlight mast that is merely tall. It also has to surround the pitch - a
+    backdrop off to one side is seen from outside and must keep its winding.
+    """
+    if not contains_origin:
+        return False
+    if span_x < SKY_MIN_SPAN or span_y < SKY_MIN_SPAN:
+        return False
+    return top_z >= SKY_MIN_TOP
+
+
+def geom_label(label, index):
+    return "%s_%02d" % (label, index)
+
+
+def mesh_bounds(mesh):
+    """(span_x, span_y, top_z, contains_origin) in GF space, for is_sky_dome."""
+    xs = [v.position.x for v in mesh.vertices]
+    ys = [-v.position.z for v in mesh.vertices]  # GF y is -z in Fox space
+    zs = [v.position.y for v in mesh.vertices]   # GF z (up) is Fox y
+    if not xs:
+        return (0.0, 0.0, 0.0, False)
+    contains = min(xs) <= 0.0 <= max(xs) and min(ys) <= 0.0 <= max(ys)
+    return (max(xs) - min(xs), max(ys) - min(ys), max(zs), contains)
+
+
 def mesh_extent(mesh):
     """Largest horizontal span of a mesh, in metres."""
     xs = [v.position.x for v in mesh.vertices]
@@ -213,6 +253,11 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
     used = 0
     skipped_budget = 0
     skipped_extent = 0
+    # The furthest any kept vertex sits from the pitch centre. The engine's
+    # gameplay far plane is 200-250 m; a pack whose sky is its own mesh needs the
+    # frustum opened up or the sky is simply clipped away (see
+    # src/onthepitch/stadiumfar.hpp).
+    reach = 0.0
     for label, fmdl in fmdls:
         # biggest meshes first so a budget keeps the structural shell and
         # drops decorative detail last-to-first
@@ -227,6 +272,10 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
                 skipped_budget += 1
                 continue
             used += len(mesh.faces)
+            for v in mesh.vertices:
+                distance = (v.position.x ** 2 + v.position.y ** 2 + v.position.z ** 2) ** 0.5
+                if distance > reach:
+                    reach = distance
             tex = _mesh_base_texture(mesh)
             bitmap = _texture_png(tex, ftex_index, out_dir, converted) if tex else None
             materials.append(("%s_m%d" % (label, i), bitmap))
@@ -234,17 +283,29 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             # Shells are written with reversed winding rather than dropped, so
             # the cel-shaded outline PES draws survives the import.
             outline = is_outline_pass(bitmap) or is_outline_pass(getattr(tex, "name", None))
+            # The camera stands inside a sky, so it is inverted like a shell - and
+            # drawn unlit, or its own colour is lost to the lighting.
+            span_x, span_y, top_z, contains_origin = mesh_bounds(mesh)
+            sky = is_sky_dome(span_x, span_y, top_z, contains_origin)
+            if sky:
+                print("  sky dome: %s (%.0f x %.0f m, %.0f m up)"
+                      % (geom_label(label, i), span_x, span_y, top_z))
             chunks = split_faces(mesh.faces, max_verts_per_geom)
             for part, faces in enumerate(chunks):
                 geom_name = "%s_%02d" % (label, i)
                 if len(chunks) > 1:
                     geom_name += "_p%02d" % part
-                geoms.append((geom_name, mat_index, faces, outline))
+                geoms.append((geom_name, mat_index, faces, outline, sky))
 
     if skipped_budget or skipped_extent:
         print("  skipped %d mesh(es) over the %s-triangle budget, "
               "%d beyond the %sm extent limit"
               % (skipped_budget, max_tris, skipped_extent, max_extent))
+
+    if reach > 0.0:
+        with open(os.path.join(out_dir, "farplane.txt"), "w") as far:
+            far.write("%.0f\n" % (reach * 1.05))  # a little past the furthest vertex
+        print("  geometry reaches %.0f m; wrote farplane.txt" % reach)
 
     ase_path = os.path.join(out_dir, name + ".ase")
     with open(ase_path, "w") as out:
@@ -282,15 +343,19 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
         out.write("}\n")
 
         outlines = 0
-        for geom_name, mat_index, faces, outline in geoms:
-            _write_geomobject(out, geom_name, mat_index, faces, outline)
+        skies = 0
+        for geom_name, mat_index, faces, outline, sky in geoms:
+            _write_geomobject(out, geom_name, mat_index, faces, outline or sky, sky)
             outlines += 1 if outline else 0
+            skies += 1 if sky else 0
         if outlines:
             print("  %d outline shell(s) written with reversed winding" % outlines)
+        if skies:
+            print("  %d sky dome(s) written inside-out and unlit" % skies)
     return ase_path, len(geoms), sum(1 for _, b in materials if b)
 
 
-def _write_geomobject(out, name, mat_index, faces, outline=False):
+def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
     vertex_index = {}
     vertices = []
     uvs = []
@@ -343,7 +408,13 @@ def _write_geomobject(out, name, mat_index, faces, outline=False):
     # faced away, which is how the shells came out flat grey.
     tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
                  for face in faces]
-    ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False)
+    if sky:
+        # One normal everywhere, pointing away from the sun: the dome keeps its
+        # own colour instead of being lit like a wall.
+        ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False,
+                                    constant=SKY_CONSTANT_NORMAL)
+    else:
+        ase_util.write_mesh_normals(out, gf_verts, tri_faces, smooth=False)
     out.write("\t}\n")
     out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
     out.write("\t*PROP_RECVSHADOW 1\n")

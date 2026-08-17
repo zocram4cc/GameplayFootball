@@ -21,6 +21,7 @@
 #include "menu/startmatch/loadingmatch.hpp"
 #include "menu/prematchchoices.hpp"
 #include "onthepitch/pitchturf.hpp"
+#include "onthepitch/stadiumfar.hpp"
 #include "onthepitch/playerbody.hpp"
 #include "player/playerofficial.hpp"
 #include "proceduralpitch.hpp"
@@ -549,6 +550,20 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     hasOwnTurf = probe.good();
   }
   const std::string grassTexture = PitchTurf::GrassTexturePath(stadiumObject, hasOwnTurf);
+
+  // How far this stadium's own geometry reaches, if the converter measured it.
+  {
+    const std::string sidecar = StadiumFar::SidecarPath(stadiumObject);
+    if (!sidecar.empty()) {
+      std::ifstream file(sidecar.c_str());
+      std::string contents;
+      if (file.good()) std::getline(file, contents);
+      stadiumFarNeeded = StadiumFar::ParseDistance(contents);
+      if (stadiumFarNeeded > 0.0f)
+        Log(e_Notice, "Match", "Match",
+            "stadium reaches " + int_to_str((int)stadiumFarNeeded) + " m; far plane raised");
+    }
+  }
   if (hasOwnTurf)
     Log(e_Notice, "Match", "Match", "pitch turf: " + grassTexture);
 
@@ -3291,6 +3306,10 @@ void Match::Put() {
   // predate it; floor the far plane so the sky is never clipped away
   float farCap = fetchedbuf_cameraFarCap;
   if (skydomeNode) farCap = std::max(farCap, 500.0f);
+  // A stadium that carries its own sky needs the same room: Namek's dome reaches
+  // 625 m and was falling outside the frustum entirely, so the engine's fallback
+  // gradient showed instead of a green sky (see stadiumfar.hpp).
+  farCap = StadiumFar::ChooseFarCap(farCap, stadiumFarNeeded);
   camera->SetCapping(fetchedbuf_cameraNearCap, farCap);
 
   if (!GetPause()) {
