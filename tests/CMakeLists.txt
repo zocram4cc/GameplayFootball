@@ -72,6 +72,17 @@ target_include_directories(gameplayfootball_stadiumfar_tests PRIVATE
 target_link_libraries(gameplayfootball_stadiumfar_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_stadiumfar_tests DISCOVERY_MODE PRE_TEST)
 
+# A stadium's own sky colours
+add_executable(gameplayfootball_stadiumsky_tests
+  onthepitch/stadium_sky_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/stadiumsky.cpp
+)
+target_include_directories(gameplayfootball_stadiumsky_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_stadiumsky_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_stadiumsky_tests DISCOVERY_MODE PRE_TEST)
+
 # Which player body loads, and surviving its absence
 add_executable(gameplayfootball_playerbody_tests
   onthepitch/player_body_test.cpp

@@ -1,5 +1,14 @@
-// Lower-third banner slot/colour selection (docs/PRESENTATION_SPEC.md
-// section 4). Pure logic - see src/menu/ingame/bannerpresentation.hpp.
+// The in-match notification strip (docs/PRESENTATION_SPEC.md section 4). Pure
+// logic - see src/menu/ingame/bannerpresentation.hpp.
+//
+// This used to be three lower-thirds along the bottom of the screen, one per
+// team plus a centre one. The bottom of the screen now belongs to the PES-style
+// furniture - the player indicator bottom-left, its opposite number
+// bottom-right, the radar bottom-centre - so a banner down there sat on top of
+// them, and a substitution announced itself twice: once as a team-tagged card
+// over the indicator, once as the centre strip over the radar. There is one
+// notification now, under the scoreboard in the top-left corner, and it is only
+// as wide as the message so nothing gets cut off.
 
 #include <gtest/gtest.h>
 
@@ -9,16 +18,74 @@
 using blunted::Vector3;
 using BannerPresentation::AccentColor;
 using BannerPresentation::FadeAlpha;
-using BannerPresentation::Slot;
-using BannerPresentation::SlotForTeam;
+using BannerPresentation::NotificationRect;
+using BannerPresentation::Rect;
 
-TEST(BannerPresentationTest, TeamsGetOppositeSlotsMatchingTheHudConvention) {
-  EXPECT_EQ(SlotForTeam(0), Slot::Left);
-  EXPECT_EQ(SlotForTeam(1), Slot::Right);
+namespace {
+
+// the PES-themed scoreboard: x 2, y 2, 4.6 tall (see scoreboard.cpp)
+constexpr float kBoardX = 2.0f;
+constexpr float kBoardY = 2.0f;
+constexpr float kBoardHeight = 4.6f;
+
+Rect UnderTheBoard(float textWidth, int lines, float lineHeight) {
+  return NotificationRect(kBoardX, kBoardY, kBoardHeight, textWidth, lines, lineHeight);
 }
 
-TEST(BannerPresentationTest, TeamlessMessagesGoCenter) {
-  EXPECT_EQ(SlotForTeam(-1), Slot::Center);
+}  // namespace
+
+TEST(NotificationRectTest, SitsJustUnderTheScoreboardAndSharesItsLeftEdge) {
+  const Rect r = UnderTheBoard(12.0f, 1, 2.4f);
+  EXPECT_FLOAT_EQ(r.x, kBoardX);
+  EXPECT_GT(r.y, kBoardY + kBoardHeight);              // below it, not over it
+  EXPECT_LT(r.y, kBoardY + kBoardHeight + 3.0f);       // tucked under, not adrift
+}
+
+TEST(NotificationRectTest, ClearsThePlayerIndicatorsAndTheRadar) {
+  // The indicators start at y 92 and the radar at y 79 (match.cpp); a two-line
+  // notification must finish well above both, wherever the text takes it.
+  const Rect r = UnderTheBoard(40.0f, 2, 2.4f);
+  EXPECT_LT(r.y + r.height, 79.0f);
+}
+
+TEST(NotificationRectTest, IsOnlyAsWideAsTheMessage) {
+  const Rect shortOne = UnderTheBoard(14.0f, 1, 2.4f);
+  const Rect longOne = UnderTheBoard(32.0f, 1, 2.4f);
+  EXPECT_GT(longOne.width, shortOne.width);
+  // the text plus its chrome, not a fixed panel the text rattles around in
+  EXPECT_NEAR(longOne.width - shortOne.width, 18.0f, 0.001f);
+  EXPECT_GT(longOne.width, 32.0f);  // room for the accent tab and padding
+}
+
+TEST(NotificationRectTest, StaysWideEnoughToReadEvenForOneWord) {
+  const Rect r = UnderTheBoard(0.5f, 1, 2.4f);
+  EXPECT_GE(r.width, BannerPresentation::kNotificationMinWidth);
+}
+
+TEST(NotificationRectTest, WillNotRunOffAcrossTheScreen) {
+  const Rect r = UnderTheBoard(300.0f, 1, 2.4f);
+  EXPECT_FLOAT_EQ(r.width, BannerPresentation::kNotificationMaxWidth);
+  EXPECT_LE(r.x + r.width, 100.0f);
+  // and it must not reach the scoreboard's own right-hand end either
+  EXPECT_LE(BannerPresentation::kNotificationMaxWidth, 50.0f);
+}
+
+TEST(NotificationRectTest, GrowsByALineWhenThereIsASubtitle) {
+  const Rect one = UnderTheBoard(12.0f, 1, 2.4f);
+  const Rect two = UnderTheBoard(12.0f, 2, 2.4f);
+  EXPECT_NEAR(two.height - one.height, 2.4f, 0.001f);
+  EXPECT_GT(one.height, 2.4f);  // padding above and below the line
+}
+
+TEST(NotificationRectTest, IsSmallerThanTheLowerThirdItReplaced) {
+  // The old panel was 27 percent wide and about 11.6 percent tall at 16:9.
+  const Rect r = UnderTheBoard(12.0f, 2, 2.4f);
+  EXPECT_LT(r.height, 11.6f);
+}
+
+TEST(NotificationRectTest, ALineCountOfZeroIsNotANegativePanel) {
+  const Rect r = UnderTheBoard(12.0f, 0, 2.4f);
+  EXPECT_GE(r.height, 0.0f);
 }
 
 TEST(BannerPresentationTest, AccentColorUsesTheTeamsOwnColor) {

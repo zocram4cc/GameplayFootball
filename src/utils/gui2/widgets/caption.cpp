@@ -11,6 +11,7 @@
 
 #include <cmath>
 
+#include "../surfacescale.hpp"
 #include "../windowmanager.hpp"
 #include "SDL2/SDL2_rotozoom.h"
 
@@ -131,8 +132,29 @@ void Gui2Caption::Redraw() {
     at.h = 10000;
     SDL_BlitSurface(textSurfTmp, nullptr, composed, &at);
   }
-  SDL_Surface* textOutlineSurf =
-      zoomSurface(composed ? composed : textOutlineSurfTmp, zoomy, zoomy, 1);
+  // Shrinking past half size needs an area average, not zoomSurface's 2x2 tap:
+  // beyond that, whole source rows fall between the taps and are never read. The
+  // fonts are opened at 32 pt with a 2 px outline, so a glyph arrives about 44 px
+  // tall; anything asking for a line under about 22 px - the in-match
+  // notification strip asks for 19 - lost the thin white fill between its two
+  // dark outline edges and came out grey on black. Same defect as the scoreboard
+  // clock reading 65:00 at 45:00 (see utils/gui2/surfacescale.hpp).
+  SDL_Surface* toScale = composed ? composed : textOutlineSurfTmp;
+  SDL_Surface* textOutlineSurf = nullptr;
+  const int scaledW = (int)(toScale->w * zoomy + 0.5f);
+  const int scaledH = (int)(toScale->h * zoomy + 0.5f);
+  if (zoomy < 1.0f && scaledW >= 1 && scaledH >= 1) {
+    textOutlineSurf = CreateSDLSurface(scaledW, scaledH);
+    if (textOutlineSurf &&
+        !DownscaleAverageRGBA(static_cast<const unsigned char*>(toScale->pixels), toScale->w,
+                              toScale->h, toScale->pitch,
+                              static_cast<unsigned char*>(textOutlineSurf->pixels),
+                              textOutlineSurf->w, textOutlineSurf->h, textOutlineSurf->pitch)) {
+      SDL_FreeSurface(textOutlineSurf);
+      textOutlineSurf = nullptr;
+    }
+  }
+  if (!textOutlineSurf) textOutlineSurf = zoomSurface(toScale, zoomy, zoomy, 1);
   SDL_Surface* textSurf = nullptr;
   if (composed) SDL_FreeSurface(composed);
   SDL_FreeSurface(textOutlineSurfTmp);

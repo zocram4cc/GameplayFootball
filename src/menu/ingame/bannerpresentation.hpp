@@ -11,13 +11,30 @@
 
 namespace BannerPresentation {
 
-// Mirrors the persistent player-HUD convention observed in the reference
-// broadcast (team A bottom-left, team B bottom-right); a team-less message
-// (goal commentary, offside, advantage) takes the bottom-centre slot so it
-// never collides with either team's banner.
-enum class Slot { Left, Center, Right };
+// Every message - team-tagged or not - goes to one notification strip under the
+// scoreboard, top-left. The bottom of the screen is taken: the player indicator
+// bottom-left, its opposite number bottom-right, the radar bottom-centre. The
+// three lower-thirds that used to live there sat on top of all of it, and a
+// substitution drew two of them at once.
+struct Rect {
+  float x = 0.0f;
+  float y = 0.0f;
+  float width = 0.0f;
+  float height = 0.0f;
+};
 
-Slot SlotForTeam(int teamID);  // -1 => Center, 0 => Left, 1 => Right
+// Room for the accent tab and the padding either side of the text.
+constexpr float kNotificationChromeWidth = 2.2f;
+// A one-word message still needs to read as a panel rather than a blob...
+constexpr float kNotificationMinWidth = 14.0f;
+// ...and a squad file full of long names must not push it across the pitch.
+constexpr float kNotificationMaxWidth = 44.0f;
+
+// Left-aligned with the scoreboard and just below it, sized to its content:
+// `widestLineWidth` is the measured width of the longest line of text, in
+// percent of screen width, and the panel is that plus its chrome (clamped).
+Rect NotificationRect(float scoreboardX, float scoreboardY, float scoreboardHeight,
+                      float widestLineWidth, int lineCount, float lineHeight);
 
 // team0Color/team1Color are used verbatim for teamID 0/1; teamID -1 (no
 // team) gets a fixed neutral gold, matching a referee/commentary cue rather

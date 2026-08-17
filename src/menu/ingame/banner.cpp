@@ -13,12 +13,44 @@
 namespace blunted {
 namespace {
 
-constexpr float kBannerAspect = 620.0f / 150.0f;  // width / height, baked asset
-constexpr float kSlotWidth = 27.0f;
-constexpr float kAccentWidth = 0.9f;
-constexpr float kBottomMargin = 3.0f;
+// The strip is anchored to the scoreboard, which lives at 2, 2 and is 4.6 tall
+// in the PES theme, 4.0 in the default one (see scoreboard.cpp).
+constexpr float kScoreboardX = 2.0f;
+constexpr float kScoreboardY = 2.0f;
+constexpr float kScoreboardHeightPes = 4.6f;
+constexpr float kScoreboardHeightDefault = 4.0f;
+
+constexpr float kAccentWidth = 0.55f;  // the team-colour tab down the left edge
+constexpr float kPadX = 0.8f;          // text inset, left of the text and right of it
+// kAccentWidth + 2 * kPadX; kept in step with BannerPresentation's chrome
+// allowance, which is what sizes the panel around the measured text.
+static_assert(kAccentWidth + 2.0f * kPadX <= BannerPresentation::kNotificationChromeWidth,
+              "the panel must be at least as wide as its own chrome");
+
+// Deliberately small: this is a notification under the scoreboard, not the
+// lower-third it replaced (whose title line alone was around 3.5 percent).
+constexpr float kLineHeight = 2.6f;
+constexpr float kSubtitleHeight = 2.2f;
+constexpr float kMinTextHeight = 1.5f;  // floor before FitCaption starts cutting
+constexpr float kInlineGap = 0.7f;      // between the team tag and the title
+
 constexpr unsigned long kFadeIn_ms = 220;
 constexpr unsigned long kFadeOut_ms = 400;
+
+float ScoreboardHeight() {
+  return GetConfiguration()->Get("scoreboard_theme", "default") == std::string("pes")
+             ? kScoreboardHeightPes
+             : kScoreboardHeightDefault;
+}
+
+// Centres a caption in its line: fitting only ever shrinks a caption, so a
+// long message that had to be scaled down would otherwise hang off the top of
+// its row.
+void PlaceInLine(Gui2Caption* caption, float x, float lineTop, float lineHeight) {
+  float width, height;
+  caption->GetSize(width, height);
+  caption->SetPosition(x, lineTop + std::max(0.0f, (lineHeight - height) * 0.5f));
+}
 
 }  // namespace
 
@@ -31,19 +63,12 @@ Gui2Banner::Gui2Banner(Gui2WindowManager* windowManager, const std::string& name
 Gui2Banner::~Gui2Banner() {}
 
 void Gui2Banner::Init() {
-  // Mirrors the persistent player-HUD convention (team A bottom-left, team B
-  // bottom-right); the centre slot is for team-less messages.
-  BuildSlot(0, 2.0f, kSlotWidth, false);                          // Left  (team 0)
-  BuildSlot(1, (100.0f - kSlotWidth) * 0.5f, kSlotWidth, false);   // Center (no team)
-  BuildSlot(2, 100.0f - kSlotWidth - 2.0f, kSlotWidth, false);     // Right (team 1)
-
-  Gui2View::Show();  // the container itself; slots stay alpha-0 until Show(teamID, ...)
-}
-
-void Gui2Banner::BuildSlot(int index, float x, float width, bool /*alignRight*/) {
-  Slot& slot = slots[index];
-  const float height = windowManager->GetHeightPercentForWidth(width, kBannerAspect);
-  const float y = 100.0f - height - kBottomMargin;
+  // Everything is positioned and sized for real in Show(), which is the only
+  // place the message's width is known; these are placeholders under the
+  // scoreboard so nothing is ever built at a zero size.
+  const float y = kScoreboardY + ScoreboardHeight() + 0.9f;
+  const float width = BannerPresentation::kNotificationMinWidth;
+  const float height = kLineHeight + 1.0f;
 
   // AddView() before LoadImage(): a Gui2Image's Redraw() (called from
   // LoadImage) needs to already be attached to the view tree for its content
@@ -51,140 +76,139 @@ void Gui2Banner::BuildSlot(int index, float x, float width, bool /*alignRight*/)
   // Also, everything below stays Show()n for the widget's whole lifetime:
   // cycling Hide()/Show() on a freshly-created Gui2Image left it permanently
   // blank in testing (see Gui2FormationGraphic::Init()'s comment); visibility
-  // is conveyed by alpha alone (see ApplySlotAlpha/Process).
-  slot.panel = new Gui2Image(windowManager, "banner_panel" + int_to_str(index), x, y, width, height);
-  this->AddView(slot.panel);
-  slot.panel->LoadImage("media/ui/pes/banner_panel.png");
-  slot.panel->Show();
+  // is conveyed by alpha alone (see ApplyAlpha/Process).
+  panel = new Gui2Image(windowManager, "banner_panel", kScoreboardX, y, width, height);
+  this->AddView(panel);
+  panel->LoadImage("media/ui/pes/banner_panel.png");
+  panel->Show();
 
-  slot.accent =
-      new Gui2Image(windowManager, "banner_accent" + int_to_str(index), x, y, kAccentWidth, height);
-  this->AddView(slot.accent);
-  slot.accent->Show();
+  accent = new Gui2Image(windowManager, "banner_accent", kScoreboardX, y, kAccentWidth, height);
+  this->AddView(accent);
+  accent->Show();
 
-  const float textX = x + kAccentWidth + width * 0.045f;
-  const float textWidth = width - kAccentWidth - width * 0.09f;
-  slot.textX = textX;
-  slot.textWidth = textWidth;
+  const float textX = kScoreboardX + kAccentWidth + kPadX;
 
-  slot.teamTag = new Gui2Caption(windowManager, "banner_teamtag" + int_to_str(index), textX,
-                                y + height * 0.11f, textWidth, height * 0.22f, "");
-  slot.teamTag->SetOutlineColor(Vector3(4, 4, 6));
-  this->AddView(slot.teamTag);
-  slot.teamTag->Show();
+  teamTag = new Gui2Caption(windowManager, "banner_teamtag", textX, y, 8.0f, kLineHeight, "");
+  teamTag->SetOutlineColor(Vector3(4, 4, 6));
+  this->AddView(teamTag);
+  teamTag->Show();
 
-  slot.title = new Gui2Caption(windowManager, "banner_title" + int_to_str(index), textX,
-                              y + height * 0.36f, textWidth, height * 0.30f, "");
-  slot.title->SetColor(Vector3(255, 255, 255));
-  slot.title->SetOutlineColor(Vector3(4, 4, 6));
-  this->AddView(slot.title);
-  slot.title->Show();
+  title = new Gui2Caption(windowManager, "banner_title", textX, y, 20.0f, kLineHeight, "");
+  title->SetColor(Vector3(255, 255, 255));
+  title->SetOutlineColor(Vector3(4, 4, 6));
+  this->AddView(title);
+  title->Show();
 
-  slot.subtitle = new Gui2Caption(windowManager, "banner_subtitle" + int_to_str(index), textX,
-                                 y + height * 0.70f, textWidth, height * 0.21f, "");
-  slot.subtitle->SetColor(Vector3(235, 190, 90));  // gold/orange, per spec section 4
-  slot.subtitle->SetOutlineColor(Vector3(4, 4, 6));
-  this->AddView(slot.subtitle);
-  slot.subtitle->Show();
+  subtitle = new Gui2Caption(windowManager, "banner_subtitle", textX, y + kLineHeight, 20.0f,
+                             kSubtitleHeight, "");
+  subtitle->SetColor(Vector3(235, 190, 90));  // gold/orange, per spec section 4
+  subtitle->SetOutlineColor(Vector3(4, 4, 6));
+  this->AddView(subtitle);
+  subtitle->Show();
 
-  ApplySlotAlpha(slot, 0.0f);
+  ApplyAlpha(0.0f);
+
+  Gui2View::Show();  // the container itself; the panel stays alpha-0 until Show(...)
 }
 
-void Gui2Banner::Show(int teamID, const std::string& title, const std::string& subtitle,
+void Gui2Banner::Show(int teamID, const std::string& titleText, const std::string& subtitleText,
                       int time_ms) {
-  const int index = static_cast<int>(BannerPresentation::SlotForTeam(teamID));
-  Slot& slot = slots[index];
-
   const Vector3 team0Color = match->GetTeam(0)->GetTeamData()->GetColor1();
   const Vector3 team1Color = match->GetTeam(1)->GetTeamData()->GetColor1();
   const Vector3 accentColor = BannerPresentation::AccentColor(teamID, team0Color, team1Color);
 
+  // Measure first, then size the panel around what was measured: player names
+  // come out of a squad file and can be arbitrarily long, and a fixed panel
+  // either cuts a substitution off mid-name or leaves "GOAL" adrift in it.
+  const float textMax =
+      BannerPresentation::kNotificationMaxWidth - BannerPresentation::kNotificationChromeWidth;
+
+  teamTagVisible = (teamID == 0 || teamID == 1);
+  float tagWidth = 0.0f;
+  if (teamTagVisible) {
+    teamTag->SetCaption(match->GetTeam(teamID)->GetTeamData()->GetShortName());
+    teamTag->SetColor(accentColor);
+    tagWidth = FitCaption(teamTag, textMax * 0.32f, kLineHeight, kMinTextHeight);
+  }
+
+  const float titleIndent = teamTagVisible ? tagWidth + kInlineGap : 0.0f;
+  title->SetCaption(titleText);
+  const float titleWidth = FitCaption(title, textMax - titleIndent, kLineHeight, kMinTextHeight);
+
+  subtitleVisible = !subtitleText.empty();
+  float subtitleWidth = 0.0f;
+  if (subtitleVisible) {
+    subtitle->SetCaption(subtitleText);
+    subtitleWidth = FitCaption(subtitle, textMax, kSubtitleHeight, kMinTextHeight);
+  }
+
+  const int lineCount = subtitleVisible ? 2 : 1;
+  const BannerPresentation::Rect rect = BannerPresentation::NotificationRect(
+      kScoreboardX, kScoreboardY, ScoreboardHeight(),
+      std::max(titleIndent + titleWidth, subtitleWidth), lineCount, kLineHeight);
+
+  panel->SetPosition(rect.x, rect.y);
+  panel->SetSize(rect.width, rect.height);
+
+  accent->SetPosition(rect.x, rect.y);
+  accent->SetSize(kAccentWidth, rect.height);
   int ax, ay, aw, ah;
-  windowManager->GetCoordinates(0, 0, kAccentWidth,
-                                windowManager->GetHeightPercentForWidth(kSlotWidth, kBannerAspect),
-                                ax, ay, aw, ah);
-  slot.accent->GetImage2D()->DrawRectangle(0, 0, aw, ah, accentColor, 235);
-  slot.accent->GetImage2D()->OnChange();
+  windowManager->GetCoordinates(rect.x, rect.y, kAccentWidth, rect.height, ax, ay, aw, ah);
+  accent->GetImage2D()->DrawRectangle(0, 0, aw, ah, accentColor, 235);
+  accent->GetImage2D()->OnChange();
 
-  const float bannerHeight = windowManager->GetHeightPercentForWidth(kSlotWidth, kBannerAspect);
+  const float textX = rect.x + kAccentWidth + kPadX;
+  const float textTop = rect.y + (rect.height - lineCount * kLineHeight) * 0.5f;
+  if (teamTagVisible) PlaceInLine(teamTag, textX, textTop, kLineHeight);
+  PlaceInLine(title, textX + titleIndent, textTop, kLineHeight);
+  if (subtitleVisible) PlaceInLine(subtitle, textX, textTop + kLineHeight, kSubtitleHeight);
 
-  slot.teamTagVisible = (teamID == 0 || teamID == 1);
-  if (slot.teamTagVisible) {
-    slot.teamTag->SetCaption(match->GetTeam(teamID)->GetTeamData()->GetShortName());
-    slot.teamTag->SetColor(accentColor);
-    FitAndLeftAlignCaption(slot.teamTag, slot.textX, slot.textWidth, bannerHeight * 0.22f,
-                           bannerHeight * 0.13f);
-  }
-
-  // Player names come out of a squad file and can be arbitrarily long: fit
-  // them to the panel rather than letting Gui2Caption resize itself out past
-  // the artwork (see captionfit.hpp).
-  slot.title->SetCaption(title);
-  FitAndLeftAlignCaption(slot.title, slot.textX, slot.textWidth, bannerHeight * 0.30f,
-                         bannerHeight * 0.17f);
-
-  slot.subtitleVisible = !subtitle.empty();
-  if (slot.subtitleVisible) {
-    slot.subtitle->SetCaption(subtitle);
-    FitAndLeftAlignCaption(slot.subtitle, slot.textX, slot.textWidth, bannerHeight * 0.21f,
-                           bannerHeight * 0.12f);
-  }
-
-  slot.shownAt_ms = match->GetActualTime_ms();
-  slot.hideAt_ms = slot.shownAt_ms + (unsigned long)std::max(0, time_ms);
-  slot.currentAlpha = -1.0f;  // force a fresh ApplySlotAlpha on the next Process()
+  shownAt_ms = match->GetActualTime_ms();
+  hideAt_ms = shownAt_ms + (unsigned long)std::max(0, time_ms);
+  currentAlpha = -1.0f;  // force a fresh ApplyAlpha on the next Process()
 }
 
-void Gui2Banner::ApplySlotAlpha(Slot& slot, float alpha) {
-  if (alpha == slot.currentAlpha) return;
-  slot.currentAlpha = alpha;
+void Gui2Banner::ApplyAlpha(float alpha) {
+  if (alpha == currentAlpha) return;
+  currentAlpha = alpha;
 
   // Shown or hidden, never faded: Surface::SetAlpha multiplies into the
   // alpha channel (sdl_setsurfacealpha), so taking an image down to zero
   // erases its transparency for good and bringing it back up restores
   // nothing. See Gui2FormationGraphic::ApplyAlpha.
-  const bool visible = alpha > 0.02f;
-  if (visible) {
-    slot.panel->Show();
-    slot.accent->Show();
+  if (alpha > 0.02f) {
+    panel->Show();
+    accent->Show();
   } else {
-    slot.panel->Hide();
-    slot.accent->Hide();
+    panel->Hide();
+    accent->Hide();
   }
-  slot.teamTag->SetTransparency(1.0f - (slot.teamTagVisible ? alpha : 0.0f));
-  slot.title->SetTransparency(1.0f - alpha);
-  slot.subtitle->SetTransparency(1.0f - (slot.subtitleVisible ? alpha : 0.0f));
+  teamTag->SetTransparency(1.0f - (teamTagVisible ? alpha : 0.0f));
+  title->SetTransparency(1.0f - alpha);
+  subtitle->SetTransparency(1.0f - (subtitleVisible ? alpha : 0.0f));
 }
 
 void Gui2Banner::Process() {
   Gui2View::Process();
-  if (!match) return;
+  if (!match || hideAt_ms == 0) return;  // never shown yet
 
   const unsigned long now = match->GetActualTime_ms();
-  for (Slot& slot : slots) {
-    if (slot.hideAt_ms == 0) continue;  // never shown yet
-
-    if (now >= slot.hideAt_ms) {
-      slot.hideAt_ms = 0;
-      ApplySlotAlpha(slot, 0.0f);
-      continue;
-    }
-    const float alpha = BannerPresentation::FadeAlpha((long)now - (long)slot.shownAt_ms,
-                                                       (long)slot.hideAt_ms - (long)now, kFadeIn_ms,
-                                                       kFadeOut_ms);
-    ApplySlotAlpha(slot, alpha);
+  if (now >= hideAt_ms) {
+    hideAt_ms = 0;
+    ApplyAlpha(0.0f);
+    return;
   }
+  ApplyAlpha(BannerPresentation::FadeAlpha((long)now - (long)shownAt_ms,
+                                          (long)hideAt_ms - (long)now, kFadeIn_ms, kFadeOut_ms));
 }
 
 void Gui2Banner::ApplyZOrder() {
   const int base = GetZPriority();
-  for (Slot& slot : slots) {
-    if (slot.panel) slot.panel->SetZPriority(base);
-    if (slot.accent) slot.accent->SetZPriority(base + 1);
-    if (slot.teamTag) slot.teamTag->SetZPriority(base + 2);
-    if (slot.title) slot.title->SetZPriority(base + 2);
-    if (slot.subtitle) slot.subtitle->SetZPriority(base + 2);
-  }
+  if (panel) panel->SetZPriority(base);
+  if (accent) accent->SetZPriority(base + 1);
+  if (teamTag) teamTag->SetZPriority(base + 2);
+  if (title) title->SetZPriority(base + 2);
+  if (subtitle) subtitle->SetZPriority(base + 2);
 }
 
 void Gui2Banner::SetRecursiveZPriority(int prio) {
