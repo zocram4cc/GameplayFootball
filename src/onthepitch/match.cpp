@@ -1602,6 +1602,12 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   }
   activeCutsceneChoreo =
       &pool->second[(actualTime_ms / 10) % pool->second.size()];
+  // PES stages a foul about the incident: its actors' baked root tracks sit
+  // within a few metres of the origin. Used as world positions they planted the
+  // offender, the man he fouled and the referee on the centre spot, however far
+  // away the challenge actually was.
+  activeStagingAnchoring =
+      CutsceneViewer::ClassifyAnchoring(CutsceneViewer::MeasureChoreography(*activeCutsceneChoreo));
 
   // Cast by role first - the incident's own people take their marks - then
   // fill the remaining marks with whoever stands nearest them.
@@ -1671,19 +1677,28 @@ void Match::UpdateCutsceneChoreo() {
   }
   const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
   const float elapsedFrame = (now - cutsceneStart_ms) * 0.1f;  // 10 ms frames
+  // Staging authored about the incident is played out at the incident. Only the
+  // positions move: the actors' facings are relative to each other within the
+  // authored frame, and the camera is placed in that same frame, so rotating
+  // one without the other would only break the shot.
+  const Vector3 stagingOffset =
+      activeStagingAnchoring == CutsceneViewer::Anchoring::IncidentLocal
+          ? CutsceneAnchorPosition().Get2D()
+          : Vector3(0, 0, 0);
   for (auto& cast : cutsceneCast) {
     Vector3 position;
     radian yaw = 0;
     int animFrame = 0;
     activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
-    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
+    cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position + stagingOffset, yaw);
   }
   for (auto& cast : cutsceneOfficialCast) {
     Vector3 position;
     radian yaw = 0;
     int animFrame = 0;
     activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
-    cast.official->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
+    cast.official->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position + stagingOffset,
+                                                 yaw);
   }
 }
 

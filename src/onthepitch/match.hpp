@@ -577,6 +577,10 @@ protected:
   // stadium coordinates and are used as they are. Measured when the cutscene
   // starts (onthepitch/cutsceneviewer.hpp) rather than assumed per category.
   CutsceneViewer::Anchoring activeCutsceneAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
+  // And where its staging is authored. Measured separately: a category can film
+  // in stadium coordinates while staging its actors about the incident, and the
+  // foul packs do exactly that - actors at 3.3 m from the origin, camera at 5.4.
+  CutsceneViewer::Anchoring activeStagingAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
   // The incident an incident-local cutscene is placed at.
   Vector3 CutsceneAnchorPosition() const;
   bool cutsceneShotTaken = false;
