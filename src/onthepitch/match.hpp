@@ -10,6 +10,7 @@
 #include <mutex>
 #include "utils/camtrack.hpp"
 #include "prematchtimeline.hpp"
+#include "scenelighting.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
 #include <memory>
@@ -508,6 +509,8 @@ protected:
   // Where this staging has to be moved to happen on our pitch rather than in
   // the stadium PES authored it for (staginganchor.hpp).
   Vector3 stagingOffset;
+  // Where this ground's own lighting puts the sun, if it shipped any.
+  SceneLighting::Sun stadiumSun;
   void RememberPrematchCamera();
   // Hides/shows the persistent in-match HUD (scoreboard, radar).
   void ShowMatchHud(bool visible);
