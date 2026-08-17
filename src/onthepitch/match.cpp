@@ -22,6 +22,7 @@
 #include "menu/prematchchoices.hpp"
 #include "onthepitch/pitchturf.hpp"
 #include "onthepitch/stadiumfar.hpp"
+#include "onthepitch/staginganchor.hpp"
 #include "onthepitch/stadiumsky.hpp"
 #include "onthepitch/playerbody.hpp"
 #include "player/playerofficial.hpp"
@@ -1429,6 +1430,15 @@ bool Match::GetEntranceCastBounds(Vector3& centre, Vector3& extent) const {
   // per stadium and films the wrong place in any other, so the walkout and
   // lineup shots frame the players themselves - whether they were put on
   // their marks by the choreography or by the scripted walk.
+  // While a staging is posing them, the choreography's own positions are the
+  // only ones that mean anything: SetChoreoPose moves the model, not the
+  // player, so his GetPosition is still his kickoff mark out on the pitch.
+  if (choreoBoundsValid) {
+    centre = choreoBoundsCentre;
+    extent = choreoBoundsExtent;
+    return true;
+  }
+
   bool any = false;
   float minX = 0, maxX = 0, minY = 0, maxY = 0;
   for (int teamID = 0; teamID < 2; teamID++) {
@@ -1567,6 +1577,30 @@ void Match::BuildEntranceCast() {
   }
 }
 
+Vector3 Match::ComputeStagingOffset() const {
+  // PES authors a walk-on in its own stadium's coordinates, with the cast
+  // starting at its tunnel mouth: ent_009_st000 walks from y -48 to y -38, both
+  // of them past this pitch's touchline at 36. The motion is worth keeping and
+  // only its placement is wrong, so a staging that finishes off the field is
+  // brought in (staginganchor.hpp). Measured from where the cast ends up, which
+  // is where the beat hands over to the next one.
+  if (entranceCast.empty()) return Vector3(0, 0, 0);
+  const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  Vector3 sum(0, 0, 0);
+  int counted = 0;
+  for (const auto& cast : entranceCast) {
+    Vector3 position;
+    radian yaw = 0;
+    int animFrame = 0;
+    // The last frame of that actor's path through the staging.
+    choreo.Sample(*cast.slot, (float)cast.slot->cycleFrames, position, yaw, animFrame);
+    sum += position;
+    counted++;
+  }
+  if (counted == 0) return Vector3(0, 0, 0);
+  return StagingAnchor::OnPitchOffset(sum / (float)counted, pitchHalfW, pitchHalfH);
+}
+
 void Match::UpdateEntranceChoreo() {
   // "entrance_choreography" "false" falls back to the scripted walk.
   static const bool choreographyEnabled =
@@ -1609,14 +1643,20 @@ void Match::UpdateEntranceChoreo() {
       if (holdOpeningFrame) stagingStartSeconds = GetEntranceElapsedSeconds();
       stagingHoldsOpeningFrame = holdOpeningFrame;
       BuildEntranceCast();
+      stagingOffset = ComputeStagingOffset();
     } else if (!activeStaging && entranceChoreo.IsLoaded()) {
       BuildEntranceCast();
     }
   }
 
-  if (entranceCast.empty()) return;
+  if (entranceCast.empty()) {
+    choreoBoundsValid = false;
+    return;
+  }
 
   const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
+  float minX = 0, maxX = 0, minY = 0, maxY = 0;
+  bool anyPosed = false;
   const float elapsedFrame =
       stagingHoldsOpeningFrame ? 0.0f
                                : (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
@@ -1625,6 +1665,7 @@ void Match::UpdateEntranceChoreo() {
     radian yaw = 0;
     int animFrame = 0;
     choreo.Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    position += stagingOffset;
     // Sample wraps the frame against the SLOT's cycle - the length of that
     // actor's path through the staging - but the clip it plays is its own,
     // much shorter loop. Indexing a 750-frame walk cycle at frame 1500 read
@@ -1632,6 +1673,24 @@ void Match::UpdateEntranceChoreo() {
     const int clipFrames = cast.clip ? cast.clip->GetFrameCount() : 0;
     if (clipFrames > 0) animFrame %= clipFrames;
     cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
+
+    // Remembered for the camera: this is where the cast actually is.
+    if (!anyPosed) {
+      minX = maxX = position.coords[0];
+      minY = maxY = position.coords[1];
+      anyPosed = true;
+    } else {
+      minX = std::min(minX, position.coords[0]);
+      maxX = std::max(maxX, position.coords[0]);
+      minY = std::min(minY, position.coords[1]);
+      maxY = std::max(maxY, position.coords[1]);
+    }
+  }
+
+  choreoBoundsValid = anyPosed;
+  if (anyPosed) {
+    choreoBoundsCentre = Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0.0f);
+    choreoBoundsExtent = Vector3(maxX - minX, maxY - minY, 0.0f);
   }
 }
 
@@ -2458,8 +2517,16 @@ void Match::UpdateIngameCamera() {
       // A beat that names an authored shot plays exactly that, across its own
       // duration - this is what puts the tunnel walkout, the anthems and the
       // team picture on screen rather than one family's tracks end to end.
+      //
+      // Only when the beat asked for that camera, though. "shot" names the
+      // staging as well (see AcquirePrematchStaging), and a beat wants its cast
+      // choreographed by PES without being filmed by camerawork authored for
+      // another ground: taken unconditionally, this pushed the lens through the
+      // players at the walk-on and flew outside the stadium at the end, whatever
+      // the timeline asked for.
       const CamTrack* namedShot =
-          (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+          (want == PrematchTimeline::Camera::Entrance && beat.beatIndex >= 0 &&
+           beat.beatIndex < (int)prematchTimeline.beats.size())
               ? FindPrematchShot(prematchTimeline.beats[beat.beatIndex].shot)
               : nullptr;
       if (namedShot && namedShot->GetFrameCount() > 0) {
@@ -2534,7 +2601,10 @@ void Match::UpdateIngameCamera() {
             target.coords[0] = castCentre.coords[0] + (beat.beatT * 2.0f - 1.0f) * lineHalf;
             // The reference holds the camera right on the line - the players
             // fill the frame - rather than watching from across the pitch.
-            distance = 6.5f;
+            // Measured from the near edge of the group rather than its centre:
+            // a standoff from the centre puts whoever is on the near side of it
+            // against the lens.
+            distance = 6.5f + castExtent.coords[1] * 0.5f;
             camHeight = 2.0f;
             fov = 46.0f;
           } else {
@@ -2546,10 +2616,12 @@ void Match::UpdateIngameCamera() {
           }
           target.coords[2] = 1.1f;
 
-          // Kept off the touchline, and off the goal lines, so the camera
-          // never ends up inside the stadium's own geometry.
+          // Kept inside the playing area, so the camera never ends up inside
+          // the stadium's own geometry. The walk-on staging works behind the
+          // goal - PES plays it out of the tunnel - so this has to reach past
+          // the halves of the pitch the live cameras ever use.
           Vector3 eye(clamp(target.coords[0], -44.0f, 44.0f),
-                      clamp(castCentre.coords[1] + side * distance, -30.0f, 30.0f),
+                      clamp(castCentre.coords[1] + side * distance, -48.0f, 48.0f),
                       camHeight);
 
           // Ease towards the framing rather than snapping to it. Both the eye

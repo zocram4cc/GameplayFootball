@@ -83,6 +83,17 @@ target_include_directories(gameplayfootball_stadiumsky_tests PRIVATE
 target_link_libraries(gameplayfootball_stadiumsky_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_stadiumsky_tests DISCOVERY_MODE PRE_TEST)
 
+# Putting an imported entrance staging where our pitch is
+add_executable(gameplayfootball_staginganchor_tests
+  onthepitch/staging_anchor_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/staginganchor.cpp
+)
+target_include_directories(gameplayfootball_staginganchor_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_staginganchor_tests PRIVATE gf_mathlib GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_staginganchor_tests DISCOVERY_MODE PRE_TEST)
+
 # Which of PES's colour grading tables a match is graded through
 add_executable(gameplayfootball_scenegrade_tests
   onthepitch/scene_grade_test.cpp

@@ -10,6 +10,7 @@
 #include "onthepitch/prematchtimeline.hpp"
 
 using PrematchTimeline::At;
+using PrematchTimeline::Beat;
 using PrematchTimeline::Camera;
 using PrematchTimeline::Default;
 using PrematchTimeline::Overlay;
@@ -155,6 +156,29 @@ TEST(PrematchTimelineDefaultTest, FollowsTheReferenceRunningOrder) {
   // The reference holds on the line far longer than on any establishing
   // shot; that hold is the heart of the sequence.
   EXPECT_GT(timeline.beats[line].seconds, timeline.beats[card].seconds);
+}
+
+TEST(PrematchTimelineDefaultTest, EndsOnTheCameraTheMatchItselfStartsOn) {
+  // Kickoff should arrive as a continuation, not a cut. The last beat used to
+  // be PES's own "aerial" entrance shot, which flies the camera outside the
+  // ground looking down, so the first whistle teleported the viewer back to the
+  // broadcast angle. Ending on the live camera makes the handover invisible.
+  const Timeline timeline = Default();
+  ASSERT_FALSE(timeline.beats.empty());
+  const Beat& last = timeline.beats.back();
+  EXPECT_EQ(last.camera, Camera::Aerial);
+  EXPECT_TRUE(last.shot.empty());
+}
+
+TEST(PrematchTimelineDefaultTest, NeedsNoCamerworkAuthoredForOneParticularGround) {
+  // The imported PES entrance tracks are authored per stadium: in a venue they
+  // were not made for they film the wrong place - through the players at the
+  // walk-on, and outside the ground at the end. The default has to work in any
+  // stadium, so it frames the cast instead, with the cameras that are computed
+  // from where the choreography actually put them.
+  for (const Beat& beat : Default().beats) {
+    EXPECT_NE(beat.camera, Camera::Entrance) << "beat " << beat.name;
+  }
 }
 
 TEST(PrematchTimelineParseTest, ReadsTheCastFramingCameras) {

@@ -96,14 +96,17 @@ Timeline Default() {
   Timeline timeline;
   timeline.beats = {
       MakeBeat("stadium_card", 12.0f, Camera::Orbit, Overlay::None),
-      MakeBeat("walk_on", 22.0f, Camera::Entrance, Overlay::None, "ent_009"),
-      MakeBeat("line_up", 16.0f, Camera::Walkout, Overlay::None, "ent_009"),
-      MakeBeat("anthems", 20.0f, Camera::Entrance, Overlay::None, "anth"),
+      MakeBeat("walk_on", 22.0f, Camera::Walkout, Overlay::None, "ent_009"),
+      MakeBeat("line_up", 16.0f, Camera::Lineup, Overlay::None, "ent_009"),
+      MakeBeat("anthems", 20.0f, Camera::Lineup, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
       MakeBeat("wide_away", 9.0f, Camera::Aerial, Overlay::FormationAway),
-      MakeBeat("team_picture", 10.0f, Camera::Entrance, Overlay::None, "circle_home"),
-      MakeBeat("to_kickoff", 6.0f, Camera::Entrance, Overlay::None, "aerial"),
+      MakeBeat("team_picture", 10.0f, Camera::Lineup, Overlay::None, "circle_home"),
+      // Ends on the camera the match itself starts on, so the first whistle is a
+      // continuation rather than a cut, and with no staging of its own so the
+      // cast has left the field to the players by the time it arrives.
+      MakeBeat("to_kickoff", 6.0f, Camera::Aerial, Overlay::None),
   };
   return timeline;
 }
