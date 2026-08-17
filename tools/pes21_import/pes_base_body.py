@@ -601,12 +601,20 @@ def assemble(args):
     # (geom name, fmdl path, keep_materials, biggest, kit kind, material,
     #  inset, garment, skl)
     pieces = []
-    # The shirt is BOTH materials of undershirt.fmdl and dropping either one
-    # leaves a hole: "torso_mat" (the slot PES leaves empty for the runtime
-    # kit) is only the SLEEVES, and the shirt's body - waist hem to collar -
-    # rides the "undershirt" material. Keeping just torso_mat shipped a
-    # default player with no torso at all.
-    pieces.append(("shirt", args.undershirt, {"torso_mat", "undershirt"},
+    # The shirt is a torso and a pair of sleeves, and they come from different
+    # parts. "torso_mat" in undershirt.fmdl reaches out to |x| 0.60 - it is
+    # the SLEEVES. The body next to it, on the "undershirt" material, is the
+    # undergarment: its chest maps to u 0.24 and its back to u 0.73, a
+    # left/right two-column chart, where a PES uniform sheet is a centred
+    # cross. Dressed in a team kit it put the sponsor print on the ribs.
+    #
+    # The torso that IS uniform-mapped rides "mod_latest_uni_shirts": its
+    # chest lands on (0.51, 0.66) and its back on (0.49, 0.33), the front and
+    # back panels of the sheet. It carries no sleeves of its own, which is why
+    # both parts are needed.
+    pieces.append(("shirt", args.shirt_body, {"mod_latest_uni_shirts"},
+                   False, "body", "kit", 0.0, "shirt", None))
+    pieces.append(("sleeves", args.undershirt, {"torso_mat"},
                    False, "body", "kit", 0.0, "shirt", None))
     pieces.append(("shorts", C("pants_out_sub.fmdl"), None, False, "body", "kit",
                    0.0, "shorts", None))
@@ -705,7 +713,12 @@ def main():
     parser.add_argument("out_dir")
     parser.add_argument("--common", required=True,
                         help="extracted common_package .../character/common dir")
-    parser.add_argument("--undershirt", required=True, help="undershirt.fmdl")
+    parser.add_argument("--undershirt", required=True,
+                        help="undershirt.fmdl - its torso_mat meshes are the "
+                             "shirt's SLEEVES")
+    parser.add_argument("--shirt-body", required=True,
+                        help="the uniform-mapped shirt torso: the part whose "
+                             "material is mod_latest_uni_shirts (bibs.fmdl)")
     parser.add_argument("--boots", required=True, help="a boots.fmdl")
     parser.add_argument("--boots-skl", default=None,
                         help="the boots' own .skl (default: next to the fmdl)")
