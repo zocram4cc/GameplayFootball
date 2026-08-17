@@ -128,7 +128,7 @@ void GamePage::GoExtendedReplayPage() {
                                    ? (int)match->GetReplayStartOffset_ms()
                                    : match->GetReplaySize_ms();
   bool stayInReplay = true;
-  replayPage->Autorun(replayHistoryOffset_ms, stayInReplay);
+  replayPage->Autorun(replayHistoryOffset_ms, stayInReplay, match->GetReplayCamera());
 
   delete this;
 }

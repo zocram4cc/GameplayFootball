@@ -8,6 +8,7 @@
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "foulseverity.hpp"
+#include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
@@ -613,18 +614,19 @@ bool Referee::CheckFoul() {
     if (!penalty) {
       buffer.desiredSetPiece = e_SetPiece_FreeKick;
       buffer.stopTime = match->GetActualTime_ms();
-      buffer.prepareTime = match->GetActualTime_ms() + 2000;
-      if (foul.foulType >= 2)
-        buffer.prepareTime += 10000;
-      buffer.startTime = buffer.prepareTime + 2000;
+      // Whistle, cutscene, close-up replay, restart. Preparing the restart
+      // resets the situation, so it has to wait for the replay - the two
+      // seconds this used to allow did not even cover the cutscene.
+      buffer.prepareTime =
+          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
       buffer.restartPos = foul.foulPosition;
     } else {
       buffer.desiredSetPiece = e_SetPiece_Penalty;
       buffer.stopTime = match->GetActualTime_ms();
-      buffer.prepareTime = match->GetActualTime_ms() + 2000;
-      if (foul.foulType >= 2)
-        buffer.prepareTime += 10000;
-      buffer.startTime = buffer.prepareTime + 2000;
+      buffer.prepareTime =
+          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
       buffer.restartPos =
           Vector3((pitchHalfW - 11.0) * foul.foulPlayer->GetTeam()->GetSide(), 0, 0);
     }
@@ -651,6 +653,8 @@ bool Referee::CheckFoul() {
     } else {
       match->StartCutscene("foul/warning", 3.5f);
     }
+    // Then a close-up replay of the challenge, once that cutscene has run.
+    match->RequestFoulReplay(match->GetActualTime_ms(), foul.foulType);
     {
       PlayerData* foulPlayerData = foul.foulPlayer->GetPlayerData();
       match->ShowBanner(foul.foulPlayer->GetTeamID(), bannerTitle,

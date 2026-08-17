@@ -92,10 +92,10 @@ void ReplayPage::OnClose() {
                           // when started from gamepage instead of ingame page
 }
 
-void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay) {
+void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay, int camera) {
   autoRun = true;
   closeWhenAutorunCompletes = true;
-  cam = 1;
+  cam = clamp(camera, 0, replayCamCount - 1);
   modifierValue = 0.0;
   signed long tmp = maxTime_ms - replayHistoryOffset_ms;
   actualTime_ms = clamp(tmp, minTime_ms, maxTime_ms);

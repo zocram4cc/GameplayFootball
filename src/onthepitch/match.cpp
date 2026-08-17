@@ -26,6 +26,7 @@
 #include "utils/directoryparser.hpp"
 #include "modelviewer.hpp"
 #include "utils/playermodelmap.hpp"
+#include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
 
@@ -34,6 +35,9 @@
 // this and the referee's matching restart delay - they were separate once, and
 // the goal state was being cleared before the replay could fire.
 const unsigned int replaySize_ms = GoalSequence::kReplayBuffer_ms;
+// Match::SetReplayCamera's modes, named where they are chosen from.
+const int kReplayCameraBehindGoal = 1;
+const int kReplayCameraCloseUp = 2;
 const unsigned int camPosSize = 150;           // 180; //130
 const float excitementEventDecayRate = 0.99f;  // per 10ms tick
 const float crowdGainUpdateThreshold = 0.001f;
@@ -1695,6 +1699,12 @@ void Match::ResetSituation(const Vector3& focusPos) {
   camPos.clear();
   SetBallRetainer(nullptr);
   SetGoalScored(false);
+  // The situation is over, so any scripted replay belonging to it is spent.
+  // Both sequences schedule their restart behind the replay, so by the time
+  // this runs the replay has already been shown.
+  replayStartOffset_ms = 0;
+  foulReplayDue_ms = 0;
+  replayCamera = kReplayCameraBehindGoal;
   // Players cache the mental image they last read; the vector below is about
   // to be emptied, so drop those pointers before the memory goes. Without
   // this the graphics thread's next put reads a freed image and dies inside
@@ -1810,6 +1820,30 @@ bool Match::IsSubstitutionWindow() const {
   // pre-match presentation is no moment to be making substitutions in.
   return Substitutions::IsSubstitutionWindow(IsInPlay(), matchPhase != e_MatchPhase_PreMatch,
                                              IsInEntrance());
+}
+
+void Match::RequestFoulReplay(unsigned long foulTime_ms, int foulType) {
+  // The referee has just whistled and started its cutscene. The replay waits
+  // for that to finish - showing the challenge rather than the aftermath - and
+  // FoulSequence gives the referee a restart delay that leaves room for it.
+  foulReplayFoulTime_ms = foulTime_ms;
+  foulReplayFoulType = foulType;
+  foulReplayDue_ms = FoulSequence::ReplayFiresAt_ms(foulTime_ms, foulType);
+}
+
+void Match::ProcessFoulReplay() {
+  if (foulReplayDue_ms == 0 || actualTime_ms < foulReplayDue_ms)
+    return;
+  const unsigned long elapsed = actualTime_ms - foulReplayFoulTime_ms;
+  replayStartOffset_ms = FoulSequence::ReplayStartOffset_ms(elapsed);
+  replayCamera = kReplayCameraCloseUp;
+  Log(e_Notice, "Match", "ProcessFoulReplay",
+      "foul replay (type " + int_to_str(foulReplayFoulType) + "): cutscene ran " +
+          int_to_str((int)elapsed) + " ms, replay reaches " +
+          int_to_str((int)replayStartOffset_ms) + " ms back");
+  foulReplayDue_ms = 0;
+  pause = true;
+  sig_OnExtendedReplayMoment(this);
 }
 
 Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
@@ -2557,6 +2591,7 @@ void Match::UpdateIngameCamera() {
     if (replayStartOffset_ms == 0 &&
         actualTime_ms >= GoalSequence::ReplayFiresAt_ms(goalTime_ms, cutsceneEnd_ms)) {
       replayStartOffset_ms = GoalSequence::ReplayStartOffset_ms(goalScoredTimer);
+      replayCamera = kReplayCameraBehindGoal;
       Log(e_Notice, "Match", "UpdateIngameCamera",
           "goal replay: celebration ran " + int_to_str((int)goalScoredTimer) +
               " ms, replay reaches " + int_to_str((int)replayStartOffset_ms) + " ms back");
@@ -2897,6 +2932,7 @@ void Match::Process() {
   }  // end if !pause
 
   ProcessAutoSubstitutions();
+  ProcessFoulReplay();
   UpdateBallHeatmap();
   UpdateCrowdAudio();
 

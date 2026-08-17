@@ -289,6 +289,14 @@ public:
   // How far back the next scripted replay should start, in ms before now.
   // Zero means "whatever is in the buffer".
   unsigned long GetReplayStartOffset_ms() const { return replayStartOffset_ms; }
+  // Which replay camera a scripted replay opens on: the goal replay uses the
+  // behind-goal view, a foul the close one (see Match::SetReplayCamera).
+  int GetReplayCamera() const { return replayCamera; }
+  // Asks for a close-up replay of a foul, once its cutscene has finished.
+  // Scheduled off FoulSequence so the referee's restart cannot pre-empt it.
+  void RequestFoulReplay(unsigned long foulTime_ms, int foulType);
+  // Fires the pending foul replay once its cutscene has run its course.
+  void ProcessFoulReplay();
   int GetReplayCamCount();
 
   void ProcessReplayMessages();
@@ -443,6 +451,11 @@ protected:
   // (see referee.cpp), so when the entrance finishes the value it last
   // latched is immediately reachable and the restart arms at once.
   unsigned long replayStartOffset_ms = 0;
+  int replayCamera = 1;  // behind the goal, which is what a goal replay wants
+  // A foul replay waits for its cutscene; 0 when none is pending.
+  unsigned long foulReplayDue_ms = 0;
+  int foulReplayFoulType = 0;
+  unsigned long foulReplayFoulTime_ms = 0;
   unsigned long introCutsceneEnd_ms = 0;
   unsigned long introCutsceneDuration_ms = 0;
   bool entranceActive = false;

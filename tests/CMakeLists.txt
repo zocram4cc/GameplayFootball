@@ -237,7 +237,9 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/ai_manager_test.cpp
   onthepitch/match_progression_test.cpp
   onthepitch/goal_sequence_test.cpp
+  onthepitch/foul_sequence_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/foulsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
