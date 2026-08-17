@@ -83,6 +83,17 @@ target_include_directories(gameplayfootball_stadiumsky_tests PRIVATE
 target_link_libraries(gameplayfootball_stadiumsky_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_stadiumsky_tests DISCOVERY_MODE PRE_TEST)
 
+# Where a stadium's sun is
+add_executable(gameplayfootball_scenelighting_tests
+  onthepitch/scene_lighting_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/scenelighting.cpp
+)
+target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
+
 # Putting an imported entrance staging where our pitch is
 add_executable(gameplayfootball_staginganchor_tests
   onthepitch/staging_anchor_test.cpp

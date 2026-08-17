@@ -22,6 +22,7 @@
 #include "menu/prematchchoices.hpp"
 #include "onthepitch/pitchturf.hpp"
 #include "onthepitch/stadiumfar.hpp"
+#include "onthepitch/scenelighting.hpp"
 #include "onthepitch/staginganchor.hpp"
 #include "onthepitch/stadiumsky.hpp"
 #include "onthepitch/playerbody.hpp"
@@ -610,6 +611,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       Log(e_Notice, "Match", "Match", "stadium sky: zenith and horizon from " + skyPath);
   }
 
+  // Where this ground's sun is, if the pack said so (scenelighting.hpp). Read
+  // before the sun is placed, which happens in SetRandomSunParams below.
+  {
+    const std::string lightingPath = SceneLighting::SidecarPath(stadiumObject);
+    std::string contents;
+    if (!lightingPath.empty()) {
+      std::ifstream file(lightingPath.c_str());
+      if (file.good())
+        contents.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    stadiumSun = SceneLighting::Parse(contents);
+    if (stadiumSun.valid)
+      Log(e_Notice, "Match", "Match",
+          "stadium sun from " + lightingPath + ": " + real_to_str(stadiumSun.direction[0]) + ", " +
+              real_to_str(stadiumSun.direction[1]) + ", " + real_to_str(stadiumSun.direction[2]));
+  }
+
   // How far this stadium's own geometry reaches, if the converter measured it.
   {
     const std::string sidecar = StadiumFar::SidecarPath(stadiumObject);
@@ -1046,12 +1064,22 @@ void Match::SetRandomSunParams() {
 
   Vector3 sunPos = Vector3(-1.2f, 0.4f, 1.0f);  // sane default
   float averageHeightMultiplier = 1.3f - timeOfDay * 0.9f;
-  sunPos = Vector3(clamp(random(-1.7f, 1.7f), -1.0, 1.0), clamp(random(-1.7f, 1.7f), -1.0, 1.0),
-                   averageHeightMultiplier);
-  sunPos.Normalize();
-  if (random(0, 1) > 0.5f && sunPos.coords[1] > 0.25f)
-    sunPos.coords[1] = -sunPos.coords[1];  // sun more often on (default) camera side (coming from
-                                           // front == clearer lighting on players)
+  // A stadium that shipped its own lighting says where its sun is, and PES's
+  // answer is a place, a date and a time rather than a guess - so its shadows
+  // fall the same way every kickoff, which is what the broadcast looks like.
+  // Without one, the old dice roll.
+  const bool haveStadiumSun = stadiumSun.valid;
+  if (haveStadiumSun) {
+    sunPos = Vector3(stadiumSun.direction[0], stadiumSun.direction[1], stadiumSun.direction[2]);
+    sunPos.Normalize();
+  } else {
+    sunPos = Vector3(clamp(random(-1.7f, 1.7f), -1.0, 1.0), clamp(random(-1.7f, 1.7f), -1.0, 1.0),
+                     averageHeightMultiplier);
+    sunPos.Normalize();
+    if (random(0, 1) > 0.5f && sunPos.coords[1] > 0.25f)
+      sunPos.coords[1] = -sunPos.coords[1];  // sun more often on (default) camera side (coming from
+                                             // front == clearer lighting on players)
+  }
   sunNode->GetObject("sun")->SetPosition(sunPos * 10000.0f);
 
   float defaultRadius = 1000000.0f;
@@ -1068,14 +1096,16 @@ void Match::SetRandomSunParams() {
   noonBias *= 1.0f - timeOfDay;
   Vector3 sunColor = sunColorNoon * noonBias + sunColorDusk * (1.0f - noonBias);
 
-  Vector3 randomAddition(random(-0.1, 0.1), random(-0.1, 0.1), random(-0.1, 0.1));
-  randomAddition *= 1.2f;
-  sunColor += randomAddition;
+  if (!haveStadiumSun) {
+    // The jitter is there to keep randomly-lit matches from all looking alike;
+    // a ground that says how it is lit should look the same every time.
+    Vector3 randomAddition(random(-0.1, 0.1), random(-0.1, 0.1), random(-0.1, 0.1));
+    randomAddition *= 1.2f;
+    sunColor += randomAddition;
+  }
 
   if (Verbose())
-    printf("sunlight noonbias: %f, random addition: ", noonBias);
-  if (Verbose())
-    randomAddition.Print();
+    printf("sunlight noonbias: %f, stadium sun: %s\n", noonBias, haveStadiumSun ? "yes" : "no");
 
   boost::static_pointer_cast<Light>(sunNode->GetObject("sun"))->SetColor(sunColor * brightness);
 }
