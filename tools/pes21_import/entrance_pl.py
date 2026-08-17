@@ -104,6 +104,39 @@ def convert_clip(gani_path, dest):
     return max(2, int(round(duration_ms / GF_FRAME_MS))), g
 
 
+def unwrapped_root(sample, frame_count, t):
+    """The clip's root at time t, with each completed cycle's travel kept.
+
+    A PES entrance walk moves its root forward - about 2.4 m per cycle in
+    ent_009 - and sampling it at `t % frame_count` throws that away: the actor
+    walks the length of one cycle, snaps back to where he started, and marches on
+    the spot for the rest of the presentation. Accumulating the per-cycle advance
+    makes cycle two start where cycle one finished, which is what walking is.
+
+    A clip whose root genuinely returns to its origin has a zero advance and so
+    does not drift.
+    """
+    if frame_count <= 1:
+        return sample(t)
+    cycles = int(t // frame_count)
+    within = t - cycles * frame_count
+    x, z, yaw = sample(within)
+    if cycles:
+        # The advance over one cycle. The sampler is defined below frame_count, so
+        # it is measured to the last frame and extended by one more step rather
+        # than scaled up: scaling amplifies the one-frame shortfall, and on a clip
+        # that only sways it turned that shortfall into a steady drift.
+        last = frame_count - 1.0
+        start_x, start_z, _ = sample(0.0)
+        end_x, end_z, _ = sample(last)
+        prev_x, prev_z, _ = sample(max(0.0, last - 1.0))
+        advance_x = (end_x - start_x) + (end_x - prev_x)
+        advance_z = (end_z - start_z) + (end_z - prev_z)
+        x += cycles * advance_x
+        z += cycles * advance_z
+    return (x, z, yaw)
+
+
 def bake_track(actor, g, key_step=2):
     """[(gf_frame, x, y, yaw)] world root track over one clip cycle, GF space."""
     sample = gani_to_anim.root_sampler(g)
@@ -115,8 +148,8 @@ def bake_track(actor, g, key_step=2):
     keys = []
     prev_yaw = None
     for f in range(0, cycle + 1, key_step):
-        t = (actor.phase_ticks + f * GF_FRAME_MS / PES_FRAME_MS) % g.frame_count
-        rx, rz, ryaw = sample(t)
+        t = actor.phase_ticks + f * GF_FRAME_MS / PES_FRAME_MS
+        rx, rz, ryaw = unwrapped_root(sample, g.frame_count, t)
         # spawn transform: rotate the clip's root by the spawn yaw, then offset
         wx = spawn_x + cos_t * rx + sin_t * rz
         wz = spawn_z - sin_t * rx + cos_t * rz
