@@ -71,6 +71,8 @@ public:
   // Writes a shape's roles and positions into the team's formation slots. Any
   // band split totalling ten is accepted, however unorthodox.
   void ApplyFormationShape(const Formations::Shape& shape);
+  // The shape the team is lined up in, counted off its own roles.
+  Formations::Shape TeamFormationShape() const;
   void ApplyFormation(Formations::e_Formation newFormation);
 
   // Instructions the manager has set from the touchline.

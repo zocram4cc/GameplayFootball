@@ -54,6 +54,16 @@ std::string ShapeName(const Shape& shape);
 // Accepts any "d-m-f" that adds up; anything else gives 4-4-2.
 Shape ParseShape(const std::string& name);
 
+// The shape a lineup is actually in, counted off its roles. The keeper is
+// ignored wherever he appears, and defensive and attacking midfielders count as
+// midfield.
+//
+// This exists because the shape used to be read from a "formation" string in the
+// tactics properties, and tactics_xml is parsed with atof - so that property can
+// only ever hold a number and every team looked like a 4-4-2 whatever it was
+// really lined up as. The lineup is the truth.
+Shape ShapeFromRoles(const std::vector<e_PlayerRole>& roles);
+
 std::vector<Slot> GetLayoutForShape(const Shape& shape);
 std::string BuildFormationXmlForShape(const Shape& shape);
 

@@ -142,6 +142,34 @@ Shape MakeShapeClamped(int defenders, int midfielders, int forwards) {
   return MakeShape(wantedDefenders, wantedMidfielders, remaining);
 }
 
+Shape ShapeFromRoles(const std::vector<e_PlayerRole>& roles) {
+  int defenders = 0, midfielders = 0, forwards = 0;
+  for (e_PlayerRole role : roles) {
+    switch (role) {
+      case e_PlayerRole_GK:
+        break;  // the keeper is not part of the shape, wherever he is listed
+      case e_PlayerRole_CB:
+      case e_PlayerRole_LB:
+      case e_PlayerRole_RB:
+        defenders++;
+        break;
+      case e_PlayerRole_DM:
+      case e_PlayerRole_CM:
+      case e_PlayerRole_LM:
+      case e_PlayerRole_RM:
+      case e_PlayerRole_AM:
+        midfielders++;
+        break;
+      default:
+        forwards++;
+        break;
+    }
+  }
+  // A lineup that does not add up to ten outfielders - a squad still loading, a
+  // team down to nine - still has to give a shape the layout code can use.
+  return MakeShapeClamped(defenders, midfielders, forwards);
+}
+
 std::string ShapeName(const Shape& shape) {
   return std::to_string(shape.defenders) + "-" + std::to_string(shape.midfielders) + "-" +
          std::to_string(shape.forwards);
