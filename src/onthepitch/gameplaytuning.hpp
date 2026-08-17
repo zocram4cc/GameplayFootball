@@ -41,14 +41,21 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
-// Whether a keeper gets across to a shot at all. The stock engine always played
-// the save animation, so almost nothing went in; this makes it his reaction stat
-// against a tunable sharpness.
+// Whether a keeper goes for a shot at all.
+//
+// The stock engine always played the save animation and almost nothing went in,
+// so this roll was introduced to beat him sometimes - but at 0.32 sharpness it
+// meant an average keeper tried for fewer than one shot in four and stood
+// watching the rest, which is not a keeper being beaten, it is a keeper not
+// playing. He goes for nearly everything now; whether he *reaches* it is for the
+// save itself to decide, since the animation search only accepts a save that can
+// actually get to the ball. Reaction still separates keepers, by a shade rather
+// than by whether they bother.
 inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
   const float sharpness =
-      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.32f), 0.2f, 1.0f);
+      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.95f), 0.2f, 1.0f);
   const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
-  return blunted::clamp(sharpness * (0.45f + reaction * 0.55f), 0.05f, 0.97f);
+  return blunted::clamp(sharpness * (0.85f + reaction * 0.15f), 0.05f, 0.99f);
 }
 
 // Distance remains the primary fatigue input. This workload factor makes
