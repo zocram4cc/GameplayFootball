@@ -50,3 +50,27 @@ TEST(GameplayTuningKeeperTest, TheKeeperKnobScalesTheWholeRange) {
   EXPECT_LT(GameplayTuning::GetKeeperSaveChance(generous, 0.7f),
             GameplayTuning::GetKeeperSaveChance(stingy, 0.7f));
 }
+
+// A keeper who only tries for one shot in four does not look like a keeper: he
+// stands and watches, which is what "very disinclined to dive" was. Whether he
+// *reaches* the ball is for the save animation to decide - it only picks one
+// that can get there - so the attempt itself should be close to universal.
+
+TEST(GameplayTuningKeeperTest, EvenAPoorKeeperTriesForMostShots) {
+  const Properties config;
+  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.2f), 0.7f);
+}
+
+TEST(GameplayTuningKeeperTest, AGoodKeeperTriesForNearlyEverything) {
+  const Properties config;
+  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.9f), 0.85f);
+}
+
+// The reaction stat still separates keepers, just not by whether they bother.
+TEST(GameplayTuningKeeperTest, ReactionStillSeparatesKeepersWithoutFreezingThem) {
+  const Properties config;
+  const float poor = GameplayTuning::GetKeeperSaveChance(config, 0.1f);
+  const float great = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
+  EXPECT_GT(great, poor);
+  EXPECT_LT(great - poor, 0.3f) << "the gap should be a shade, not a wall";
+}
