@@ -44,6 +44,8 @@ data/media/objects/stadiums/pes_*/
 data/media/players/custom/
 data/databases/default/images_teams/ateam/
 data/databases/default/images_teams/2hug/
+data/databases/default/images_teams/lcg/
+data/databases/default/images_teams/ink/
 
 # 4cc Blender Starter Pack: external tooling (pes-fmdl addon), not ours
 /4cc Blender Starter Pack/
