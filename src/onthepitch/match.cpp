@@ -19,6 +19,7 @@
 #include "matchduration.hpp"
 #include "menu/pagefactory.hpp"
 #include "menu/startmatch/loadingmatch.hpp"
+#include "menu/prematchchoices.hpp"
 #include "onthepitch/pitchturf.hpp"
 #include "onthepitch/playerbody.hpp"
 #include "player/playerofficial.hpp"
@@ -382,6 +383,15 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         const std::string parent = entry.path().parent_path().filename().string();
         if (parent != category)
           cutscenePools[std::string(category) + "/" + parent].push_back(track);
+        // The post-match pool is flat, with PES's presentation family in the file
+        // name rather than in a directory ("result_001_st000_cam1.camtrack"), so
+        // give each family a pool of its own too. That is what lets the pre-match
+        // screen offer a choice of post-match presentation instead of taking
+        // whatever the pool hands over.
+        const std::string family =
+            PrematchChoices::FamilyFromCamtrackName(entry.path().filename().string());
+        if (!family.empty())
+          cutscenePools[std::string(category) + "/" + family].push_back(track);
       }
       // The people in shot: PES stages actors alongside the camera, so any
       // .chor exported next to the camerawork joins a matching pool.
@@ -1870,7 +1880,12 @@ signed int Match::GetBestPossessionTeamID() {
 
 void Match::GameOver() {
   gameOver = true;
-  StartCutscene("result", 8.0f);
+  // The pre-match screen can pin the post-match presentation to one family;
+  // StartCutscene falls back to the whole pool when that family is not installed.
+  {
+    const std::string family = GetConfiguration()->Get("result_cutscene_id", "");
+    StartCutscene(family.empty() ? "result" : "result/" + family, 8.0f);
+  }
 }
 
 void Match::AddExcitementBoost(float amount, int duration_ms) {

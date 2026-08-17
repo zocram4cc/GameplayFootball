@@ -14,6 +14,7 @@
 #include "utils/gui2/widgets/menu.hpp"
 #include "utils/gui2/widgets/root.hpp"
 #include "utils/gui2/widgets/slider.hpp"
+#include "menu/prematchchoices.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;
@@ -34,6 +35,11 @@ protected:
   void UpdateWeatherCaption();
   void UpdateTimeOfDayCaption();
   void UpdateKitCaptions();
+  // Stadium, entrance and post-match presentation: all three exist in the engine
+  // and were reachable only by editing a config file.
+  void UpdateStadiumCaption();
+  void UpdateEntranceCaption();
+  void UpdateResultCutsceneCaption();
   void GoGamePlan(int teamID);
 
   bool gamePlanShotTriggered = false;
@@ -42,6 +48,12 @@ protected:
   Gui2Slider* weatherSlider;
   Gui2Slider* timeOfDaySlider;
   Gui2Slider* kitSlider[2];
+  Gui2Slider* stadiumSlider;
+  Gui2Slider* entranceSlider;
+  Gui2Slider* resultCutsceneSlider;
+  std::vector<PrematchChoices::Choice> stadiumChoices;
+  std::vector<PrematchChoices::Choice> entranceChoices;
+  std::vector<PrematchChoices::Choice> resultCutsceneChoices;
   Gui2Slider* difficultySlider;
   Gui2Slider* matchDurationSlider;
   unsigned long pageCreatedTime_ms;

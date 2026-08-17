@@ -578,6 +578,7 @@ set(MENU_HEADERS
    src/menu/league/league_forward.hpp
    src/menu/gameplan.hpp
    src/menu/cameramenu.hpp
+   src/menu/prematchchoices.hpp
    src/menu/pagefactory.hpp
    src/menu/widgets/gameplansubmenu.hpp
    src/menu/widgets/planmap.hpp
@@ -639,6 +640,7 @@ set(MENU_SOURCES
    src/menu/startmatch/loadingmatch.cpp
    src/menu/startmatch/matchoptions.cpp
    src/menu/visualoptions.cpp
+   src/menu/prematchchoices.cpp
    src/menu/pagefactory.cpp
    src/menu/menutask.cpp
    src/menu/cameramenu.cpp

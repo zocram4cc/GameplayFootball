@@ -72,6 +72,17 @@ target_include_directories(gameplayfootball_playerbody_tests PRIVATE
 target_link_libraries(gameplayfootball_playerbody_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_playerbody_tests DISCOVERY_MODE PRE_TEST)
 
+# What the pre-match screen can offer
+add_executable(gameplayfootball_prematchchoices_tests
+  menu/prematch_choices_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/prematchchoices.cpp
+)
+target_include_directories(gameplayfootball_prematchchoices_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
+
 # Velocity state machine unit tests (task 2.5)
 add_executable(gameplayfootball_velocity_tests
   onthepitch/velocity_state_test.cpp
