@@ -1361,7 +1361,10 @@ void TeamAIController::UpdateTactics() {
   const Formations::Shape preferredShape = Formations::ParseShape(teamTactics.userProperties.Get(
       "formation", teamTactics.factoryProperties.Get("formation", "4-4-2")));
 
-  if (match->CanCoachTeam(team->GetID())) {
+  // The set philosophy and shape stand unless the CPU manager runs this team.
+  // In coach mode it runs neither, so both sides play the tactics their
+  // managers chose and nothing drifts underneath them.
+  if (!match->AIManagerRunsTeam(team->GetID())) {
     philosophy = preferredPhilosophy;
     // A human manager's shape is his own business, however strange it looks.
     if (Formations::ShapeName(preferredShape) != Formations::ShapeName(formationShape))
