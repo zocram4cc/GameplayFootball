@@ -26,6 +26,7 @@ import os
 
 import camera_cut
 import entrance_pl
+import export_cutscenes
 
 DEFAULT_CATEGORIES = ["goal", "foul", "change", "timeup", "pk", "result", "end"]
 
@@ -39,7 +40,7 @@ def is_actor_pack(path):
     return bool(fdc.actors)
 
 
-def export_category(cut_dir, anims_dir, dest_dir, max_per_category=0):
+def export_category(cut_dir, anims_dir, dest_dir, max_per_category=0, category=""):
     if not os.path.isdir(cut_dir):
         return 0, 0
     names = [n for n in sorted(os.listdir(cut_dir)) if n.endswith(".fdc")]
@@ -50,8 +51,14 @@ def export_category(cut_dir, anims_dir, dest_dir, max_per_category=0):
             break
         path = os.path.join(cut_dir, name)
         try:
-            os.makedirs(dest_dir, exist_ok=True)
-            entrance_pl.export_pack(path, anims_dir, dest_dir, clip_cache)
+            # Same subcategory split the camera pools use: a pack staging an
+            # offside belongs in goal/offside, not loose in goal/. Left flat,
+            # the runtime found goal/offside empty and fell back to the parent
+            # pool - so an offside was choreographed as a goal celebration.
+            subdirectory = export_cutscenes.classify(category, name)
+            target_dir = os.path.join(dest_dir, subdirectory) if subdirectory else dest_dir
+            os.makedirs(target_dir, exist_ok=True)
+            entrance_pl.export_pack(path, anims_dir, target_dir, clip_cache)
             written += 1
         except Exception as exc:
             # camera-only packs and packs whose clips are not installed
@@ -66,7 +73,7 @@ def export(fixdemo_dir, anims_dir, out_dir, categories=None, max_per_category=0)
     for category in categories or DEFAULT_CATEGORIES:
         cut_dir = os.path.join(fixdemo_dir, category, "cut_data")
         written, skipped = export_category(
-            cut_dir, anims_dir, os.path.join(out_dir, category), max_per_category)
+            cut_dir, anims_dir, os.path.join(out_dir, category), max_per_category, category)
         if written or skipped:
             print("%-7s %4d choreographies (%d skipped)" % (category, written, skipped))
         total_written += written

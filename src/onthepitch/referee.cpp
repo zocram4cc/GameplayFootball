@@ -394,8 +394,12 @@ void Referee::BallTouched() {
             match->ShowBanner(lastTouchTeamID, "Offside",
                              offsidePlayerData ? offsidePlayerData->GetLastName() : "");
           }
-          // the assistant's flag: PES files those shots with the goal cameras
-          match->StartCutscene("goal/offside", 4.0f);
+          // The assistant's flag and the disallowed-goal reactions. PES files
+          // these with the goal packs, but an offside is the opposite of a goal
+          // and must never borrow its celebration: under "goal/offside" the
+          // empty pool fell back to the parent and an offside was staged and
+          // filmed as a goal. Its own category has no parent to fall back to.
+          match->StartCutscene("offside", 4.0f);
           if (Verbose())
             printf("referee: offside\n");
           break;
