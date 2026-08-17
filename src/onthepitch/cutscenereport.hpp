@@ -20,8 +20,13 @@ namespace CutsceneViewer {
 // Where every frame of a track sits, so its coordinates can be classified.
 TrackExtent MeasureTrack(const blunted::CamTrack& track);
 
+// Where every key of every slot of a choreography sits, so the staging can be
+// classified the same way the camerawork is. A foul's actors are authored about
+// the incident; an entrance's walk out of a real tunnel in stadium coordinates.
+TrackExtent MeasureChoreography(const blunted::EntranceChoreo& choreography);
+
 // One line per pool: how much camerawork and choreography it holds, and whether
-// that camerawork is authored about the incident or in stadium coordinates.
+// each is authored about the incident or in stadium coordinates.
 std::vector<std::string> Report(
     const std::map<std::string, std::vector<blunted::CamTrack>>& cameraPools,
     const std::map<std::string, std::vector<blunted::EntranceChoreo>>& choreographyPools);

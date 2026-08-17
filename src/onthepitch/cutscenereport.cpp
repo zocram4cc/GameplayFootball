@@ -1,6 +1,7 @@
 #include "cutscenereport.hpp"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace CutsceneViewer {
 
@@ -38,6 +39,28 @@ TrackExtent MeasureTrack(const blunted::CamTrack& track) {
   return extent;
 }
 
+TrackExtent MeasureChoreography(const blunted::EntranceChoreo& choreography) {
+  TrackExtent extent;
+  bool first = true;
+  for (const auto& slot : choreography.GetSlots()) {
+    for (const auto& key : slot.keys) {
+      extent.frames++;
+      if (first) {
+        extent.minX = extent.maxX = key.x;
+        extent.minY = extent.maxY = key.y;
+        first = false;
+        continue;
+      }
+      extent.minX = std::min(extent.minX, key.x);
+      extent.maxX = std::max(extent.maxX, key.x);
+      extent.minY = std::min(extent.minY, key.y);
+      extent.maxY = std::max(extent.maxY, key.y);
+    }
+  }
+  extent.isStatic = extent.SpanX() < 0.01f && extent.SpanY() < 0.01f;
+  return extent;
+}
+
 std::vector<std::string> Report(
     const std::map<std::string, std::vector<blunted::CamTrack>>& cameraPools,
     const std::map<std::string, std::vector<blunted::EntranceChoreo>>& choreographyPools) {
@@ -61,6 +84,13 @@ std::vector<std::string> Report(
     if (cameraCount > 0)
       firstTrack = MeasureTrack(cameras->second.front());
     lines.push_back(DescribePool(category, cameraCount, choreographyCount, firstTrack));
+    if (choreographyCount > 0) {
+      const TrackExtent staging = MeasureChoreography(choreographies->second.front());
+      char buffer[160];
+      snprintf(buffer, sizeof buffer, "%-18s   staging: %s, radius %.1f m",
+               category.c_str(), AnchoringName(ClassifyAnchoring(staging)), staging.MaxRadius());
+      lines.push_back(buffer);
+    }
   }
   return lines;
 }
