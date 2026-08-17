@@ -42,8 +42,15 @@ def _load_fmdl(path, fmdl_lib):
     return f
 
 
+# A stadium's textures arrive as either of these. Konami's own packs ship
+# .ftex; community stadium exports are usually .dds, because that is what the
+# authoring tools write and nobody re-encodes them on the way out. Looking for
+# ftex alone found "texture dirs: none found" on any community stadium.
+TEXTURE_SUFFIXES = (".ftex", ".dds")
+
+
 def find_texture_dirs(*roots):
-    """-> every directory at or under `roots` that holds .ftex files.
+    """-> every directory at or under `roots` holding stadium textures.
 
     Stadium packs put sourceimages in varying subpaths (st060 and st011 both
     ship sourceimages/tga/#windx11, others drop the tga level), so callers can
@@ -56,7 +63,7 @@ def find_texture_dirs(*roots):
         if os.path.isfile(root):
             root = os.path.dirname(root)
         for dirpath, _dirnames, filenames in os.walk(root):
-            if any(f.lower().endswith(".ftex") for f in filenames):
+            if any(f.lower().endswith(TEXTURE_SUFFIXES) for f in filenames):
                 if dirpath not in found:
                     found.append(dirpath)
     return sorted(found)
@@ -69,17 +76,22 @@ def _tex_stem(filename):
 
 
 def build_ftex_index(tex_dirs):
-    """-> {lowercase ftex stem: path}, first directory listed wins."""
+    """-> {lowercase texture stem: path}, first directory listed wins.
+
+    Indexes .ftex and .dds alike; a pack that ships both for the same stem gets
+    the ftex, since that is Konami's own encoding of it.
+    """
     index = {}
-    for tex_dir in tex_dirs:
-        try:
-            entries = sorted(os.listdir(tex_dir))
-        except OSError:
-            continue
-        for entry in entries:
-            if entry.lower().endswith(".ftex"):
-                index.setdefault(os.path.splitext(entry)[0].lower(),
-                                 os.path.join(tex_dir, entry))
+    for suffix in TEXTURE_SUFFIXES:
+        for tex_dir in tex_dirs:
+            try:
+                entries = sorted(os.listdir(tex_dir))
+            except OSError:
+                continue
+            for entry in entries:
+                if entry.lower().endswith(suffix):
+                    index.setdefault(os.path.splitext(entry)[0].lower(),
+                                     os.path.join(tex_dir, entry))
     return index
 
 
@@ -94,13 +106,20 @@ def _texture_png(texture, ftex_index, out_dir, converted):
     if src:
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         try:
-            ftex.convert(src, out_path)
+            if src.lower().endswith(".dds"):
+                # Pillow reads the DXT formats these packs use; a stadium shell
+                # wants plain RGB anyway, so flatten and drop the alpha.
+                from PIL import Image
+                with Image.open(src) as image:
+                    image.convert("RGB").save(out_path)
+            else:
+                ftex.convert(src, out_path)
             converted[base] = png_rel
             return png_rel
         except Exception as err:
-            sys.stderr.write("ftex conversion failed for %s: %s\n" % (src, err))
+            sys.stderr.write("texture conversion failed for %s: %s\n" % (src, err))
     else:
-        sys.stderr.write("no ftex found for texture %r\n" % (texture.filename,))
+        sys.stderr.write("no texture found for %r\n" % (texture.filename,))
     converted[base] = None
     return None
 
