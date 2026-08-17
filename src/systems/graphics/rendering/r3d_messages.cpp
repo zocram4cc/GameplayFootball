@@ -5,7 +5,10 @@
 
 #include "r3d_messages.hpp"
 
+#include "main.hpp"
+
 #include "../resources/texture.hpp"
+#include "../scenegrade.hpp"
 
 namespace blunted {
 
@@ -243,6 +246,34 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   renderer->SetUniformFloat2("postprocess", "cameraClip", depthParamNear, depthParamFar);
   renderer->SetUniformFloat("postprocess", "fogScale",
                             0.8f - NormalizedClamp(buffer.cameraFOV, 20, 100) * 0.6f);
+  // The sky the stadium asked for, or the shader's own if it asked for nothing.
+  // Match reads these off the stadium when it loads it (stadiumsky.hpp).
+  renderer->SetUniformFloat3(
+      "postprocess", "skyZenithColor", GetConfiguration()->GetReal("sky_zenith_r", 0.32f),
+      GetConfiguration()->GetReal("sky_zenith_g", 0.52f),
+      GetConfiguration()->GetReal("sky_zenith_b", 0.78f));
+  renderer->SetUniformFloat3(
+      "postprocess", "skyHorizonColor", GetConfiguration()->GetReal("sky_horizon_r", 0.78f),
+      GetConfiguration()->GetReal("sky_horizon_g", 0.85f),
+      GetConfiguration()->GetReal("sky_horizon_b", 0.93f));
+  renderer->SetUniformFloat("postprocess", "sceneBrightness",
+                            GetConfiguration()->GetReal("graphics_brightness", 1.0f));
+  // PES's grade, chosen the way PES chooses it: by time of day and weather
+  // (scenegrade.hpp). Off unless asked for: the tables are authored against PES's
+  // own exposure, and dropped on top of this pipeline's output they clip and
+  // solarise rather than lifting it - the luminance gap against the broadcast is
+  // not a grading problem. The support is here for grading deliberately; the
+  // renderer also zeroes lutSize when no strip was imported.
+  renderer->SetUniformFloat("postprocess", "lutStrength",
+                            GetConfiguration()->GetReal("graphics_lut_strength", 0.0f));
+  renderer->SetUniformFloat(
+      "postprocess", "lutBand",
+      (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
+                                           GetConfiguration()->GetReal("match_weather", 0.0f)));
+  renderer->SetUniformFloat3(
+      "postprocess", "skyFogColor", GetConfiguration()->GetReal("sky_fog_r", 0.85f),
+      GetConfiguration()->GetReal("sky_fog_g", 0.85f),
+      GetConfiguration()->GetReal("sky_fog_b", 0.90f));
   // the sky gradient needs per-pixel view directions
   renderer->SetUniformMatrix4("postprocess", "inverseProjectionViewMatrix",
                               inverseProjectionViewMatrix);

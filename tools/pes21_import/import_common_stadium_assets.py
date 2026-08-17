@@ -34,6 +34,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import ftex  # noqa: E402
+import lut_strip  # noqa: E402
 
 
 # where each common set lands, relative to the data root
@@ -80,6 +81,36 @@ def import_set(root, out_root, label, pattern, destination, prefix):
             written += 1
     print("%-9s %d file(s) -> %s" % (label + ":", written, destination))
     return written
+
+
+def import_grading_tables(root, out_root):
+    """Unrolls PES's colour grading tables into the strip the engine samples.
+
+    These are 33-cubed volumes of half floats, so there is no PNG to convert them
+    to one at a time; lut_strip.py lays the whole set out as one ordinary image
+    (see its docstring, and src/systems/graphics/scenegrade.hpp).
+    """
+    out = os.path.join(out_root, DESTINATIONS["lut"], "grade.png")
+    volumes = []
+    for band in lut_strip.BAND_ORDER:
+        wanted = lut_strip.table_name(band)
+        matches = gather(root, wanted + ".ftex")
+        if not matches:
+            print("lut:      %s missing" % wanted)
+            if volumes:
+                volumes.append(volumes[-1])
+            continue
+        volume, size = lut_strip.read_table(matches[0])
+        if size != lut_strip.LUT_SIZE:
+            print("lut:      %s is %d cubed, expected %d" % (wanted, size, lut_strip.LUT_SIZE))
+            return 0
+        volumes.append(volume)
+    if not volumes:
+        print("lut:      no grading tables found")
+        return 0
+    lut_strip.write_strip(lut_strip.strip_pixels(volumes, lut_strip.LUT_SIZE), out)
+    print("lut:      %d band(s) -> %s" % (len(volumes), os.path.relpath(out, out_root)))
+    return len(volumes)
 
 
 def install_netting(source, target):
@@ -130,7 +161,7 @@ def main():
                         DESTINATIONS["nets"], "pes_")
     total += import_set(root, args.out, "pitch", "pitch_*.ftex",
                         DESTINATIONS["pitch"], "")
-    total += import_set(root, args.out, "lut", "lut_*.ftex", DESTINATIONS["lut"], "")
+    total += import_grading_tables(root, args.out)
     total += import_set(root, args.out, "banners", "b*_txt_*.ftex",
                         DESTINATIONS["banners"], "")
     total += import_set(root, args.out, "sky", "sample_sky.ftex", DESTINATIONS["sky"], "pes_")

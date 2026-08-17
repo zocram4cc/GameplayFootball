@@ -5,6 +5,7 @@
 uniform sampler2D map_accumulation; // 0
 uniform sampler2D map_modifier;     // 1
 uniform sampler2D map_depth;        // 2
+uniform sampler2D map_lut;          // 3
 
 uniform float contextWidth;
 uniform float contextHeight;
@@ -14,6 +15,27 @@ uniform float contextY;
 uniform vec2 cameraClip;
 
 uniform float fogScale;
+// A stadium can supply its own sky (see src/onthepitch/stadiumsky.hpp); these
+// default to the constants this shader used to hardcode.
+uniform vec3 skyZenithColor;
+uniform vec3 skyHorizonColor;
+uniform vec3 skyFogColor;
+// PES grades its output through a colour lookup table per time of day, which lifts
+// and saturates the whole frame; measured against the VGL26 broadcast our picture
+// comes out about half as bright (its pitch 23/64/84 against our 8/34/41). Until
+// those tables can be decoded (ftex.py cannot read their DXGI format yet), this is
+// the knob that stands in for them: "graphics_brightness", 1 leaves the picture
+// exactly as it was.
+uniform float sceneBrightness;
+// PES's own grading table, unrolled into a strip by
+// tools/pes21_import/lut_strip.py: lutSize blue slices laid left to right, each
+// one lutSize across (red) and lutSize down (green), with lutBands of those
+// stacked downwards - one per time of day. lutStrength 0 leaves the picture
+// ungraded, which is what happens when the strip was never imported.
+uniform float lutSize;
+uniform float lutBands;
+uniform float lutBand;
+uniform float lutStrength;
 uniform mat4 inverseProjectionViewMatrix;
 
 out vec4 stdout;
@@ -44,6 +66,41 @@ vec3 ContrastSaturationBrightness(vec3 color, float brt, float con, float sat) {
 
 vec3 AlternateContrast(vec3 color, float bias) {
   return color * (1.0f - bias) + (-cos(clamp(color, 0.0f, 1.0f) * 3.14159265f) * 0.5f + 0.5f) * bias;
+}
+
+// This shader works in linear light - the framebuffer encodes on write, via
+// glEnable(GL_FRAMEBUFFER_SRGB) - while PES authored its tables against the
+// values that reach the screen. Graded linear, every pixel lands far too low on
+// the curve and the picture comes out darker than it started, so the lookup
+// happens in display space and the result is turned back.
+vec3 LinearToDisplay(vec3 c) {
+  c = clamp(c, 0.0f, 1.0f);
+  return mix(c * 12.92f, 1.055f * pow(c, vec3(1.0f / 2.4f)) - 0.055f, step(vec3(0.0031308f), c));
+}
+
+vec3 DisplayToLinear(vec3 c) {
+  c = clamp(c, 0.0f, 1.0f);
+  return mix(c / 12.92f, pow((c + 0.055f) / 1.055f, vec3(2.4f)), step(vec3(0.04045f), c));
+}
+
+// Look a colour up in the strip. Red and green interpolate for free through the
+// texture's own filtering - both axes stay inside their slice, since a channel of
+// 1 lands on the centre of the last texel rather than its edge - and the blue
+// axis is interpolated here between the two slices either side of it.
+vec3 GradeThroughLut(vec3 color) {
+  color = clamp(color, 0.0f, 1.0f);
+  float last = lutSize - 1.0f;
+  float slice = color.b * last;
+  float slice0 = floor(slice);
+  float slice1 = min(slice0 + 1.0f, last);
+
+  float within = color.r * last + 0.5f;
+  float row = lutBand * lutSize + color.g * last + 0.5f;
+
+  vec2 texel = vec2(1.0f / (lutSize * lutSize), 1.0f / (lutSize * lutBands));
+  vec3 low = texture2D(map_lut, vec2((slice0 * lutSize + within) * texel.x, row * texel.y)).rgb;
+  vec3 high = texture2D(map_lut, vec2((slice1 * lutSize + within) * texel.x, row * texel.y)).rgb;
+  return mix(low, high, slice - slice0);
 }
 
 vec3 Compress(vec3 color, float startThreshold, float endThreshold) {
@@ -120,13 +177,13 @@ void main(void) {
 //  vec3 fogColor = vec3(0.84, 0.98, 1.0);
 //  vec3 fogColor = vec3(1.0, 0.9, 0.86);
 //  vec3 fogColor = vec3(0.85, 0.65, 1.0);
-  vec3 fogColor = vec3(0.85, 0.85, 0.9);
+  vec3 fogColor = skyFogColor;
 
   float fogFactor = clamp(fragDepth * 0.01f * (1.0f - fogScale) - 0.16f * fogScale, 0.0f, 0.25f);
 
   fragColor = fragColor * (1.0f - fogFactor) + fogColor * fogFactor;
 
-  float brightness = 1.0f;
+  float brightness = sceneBrightness;
   float contrastBias = 0.3f;//0.1f; // 0 == normal .. 1 == 'fake hdri'
   float saturation = 0.95f * (0.4f + SSAO * 0.6f); // SSAO shadows are less saturated
 
@@ -147,8 +204,8 @@ void main(void) {
   if (depth > 0.999999f) {
     vec3 viewDir = normalize(GetWorldPosition(texCoord, 1.0f) -
                              GetWorldPosition(texCoord, 0.0f));
-    vec3 skyZenith = vec3(0.32, 0.52, 0.78);
-    vec3 skyHorizon = vec3(0.78, 0.85, 0.93);
+    vec3 skyZenith = skyZenithColor;
+    vec3 skyHorizon = skyHorizonColor;
     float elevation = clamp(viewDir.z, 0.0f, 1.0f);
     vec3 sky = mix(skyHorizon, skyZenith, pow(elevation, 0.55f));
     // below the horizon fade to the graded fog fill so stadium gaps stay hazy
@@ -156,6 +213,15 @@ void main(void) {
         ContrastSaturationBrightness(fogColor, brightness, 1.0f, saturation),
         contrastBias);
     fragColor = mix(gradedFog, sky, smoothstep(-0.06f, 0.02f, viewDir.z));
+  }
+
+  // PES's grade, over the whole picture including the sky - which is where it
+  // goes in PES too. This is the tone curve the engine never had: it lifts the
+  // midtones and rolls the top end off, rather than raising contrast around a
+  // fixed mid grey the way AlternateContrast above does.
+  if (lutStrength > 0.0f && lutSize >= 2.0f) {
+    vec3 graded = DisplayToLinear(GradeThroughLut(LinearToDisplay(fragColor)));
+    fragColor = mix(fragColor, graded, clamp(lutStrength, 0.0f, 1.0f));
   }
 
   // Cinematic Vignette

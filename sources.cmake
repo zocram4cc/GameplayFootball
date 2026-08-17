@@ -60,6 +60,7 @@ set(SYSTEMS_GRAPHICS_HEADERS
         src/systems/graphics/graphics_scene.hpp
         src/systems/graphics/graphics_object.hpp
         src/systems/graphics/graphics_system.hpp
+        src/systems/graphics/scenegrade.hpp
         )
 
 set(SYSTEMS_GRAPHICS_OBJECTS_HEADERS
@@ -89,6 +90,7 @@ set(SYSTEMS_GRAPHICS_SOURCES
         src/systems/graphics/objects/graphics_light.cpp
         src/systems/graphics/objects/graphics_overlay2d.cpp
         src/systems/graphics/graphics_scene.cpp
+        src/systems/graphics/scenegrade.cpp
         src/systems/graphics/resources/vertexbuffer.cpp
         src/systems/graphics/resources/texture.cpp
         src/systems/graphics/rendering/r3d_messages.cpp
@@ -484,8 +486,8 @@ set(GAME_HEADERS
    src/onthepitch/AIsupport/mentalimage.hpp
    src/onthepitch/teamAIcontroller.hpp
    src/onthepitch/playerbody.hpp
-   src/onthepitch/stadiumfar.hpp
    src/onthepitch/stadiumsky.hpp
+   src/onthepitch/stadiumfar.hpp
    src/onthepitch/pitchturf.hpp
    src/onthepitch/proceduralpitch.hpp
 )
@@ -522,8 +524,8 @@ set(GAME_SOURCES
    src/onthepitch/AIsupport/mentalimage.cpp
    src/onthepitch/AIsupport/AIfunctions.cpp
    src/onthepitch/playerbody.cpp
-   src/onthepitch/stadiumfar.cpp
    src/onthepitch/stadiumsky.cpp
+   src/onthepitch/stadiumfar.cpp
    src/onthepitch/pitchturf.cpp
    src/onthepitch/proceduralpitch.cpp
    src/onthepitch/team.cpp
@@ -591,6 +593,7 @@ set(MENU_HEADERS
    src/menu/startmatch/matchoptions.hpp
    src/menu/startmatch/loadingmatch.hpp
    src/menu/startmatch/teamselect.hpp
+   src/menu/startmatch/fixturerequest.hpp
    src/menu/menutask.hpp
    src/menu/settings.hpp
    src/menu/controllerselect.hpp
@@ -644,6 +647,7 @@ set(MENU_SOURCES
    src/menu/widgets/planmap.cpp
    src/menu/widgets/gameplansubmenu.cpp
    src/menu/startmatch/teamselect.cpp
+   src/menu/startmatch/fixturerequest.cpp
    src/menu/startmatch/loadingmatch.cpp
    src/menu/startmatch/matchoptions.cpp
    src/menu/visualoptions.cpp

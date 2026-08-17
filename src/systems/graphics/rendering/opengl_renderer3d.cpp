@@ -18,6 +18,9 @@
 
 #include "opengl_renderer3d.hpp"
 
+#include <algorithm>
+#include <csignal>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <vector>
@@ -43,6 +46,8 @@
 #include "base/sdl_surface.hpp"
 #include "base/utils.hpp"
 #include "managers/environmentmanager.hpp"
+// for the grading strip's path and shape - see postprocess.frag
+#include "systems/graphics/scenegrade.hpp"
 #include "managers/usereventmanager.hpp"
 #include "types/command.hpp"
 
@@ -84,7 +89,13 @@ SDL_Surface* CreateFallbackNoiseSurface() {
 }  // namespace
 
 OpenGLRenderer3D::OpenGLRenderer3D()
-    : context(nullptr), window(nullptr), contextIsActive(true), noiseTexID(-1) {
+    : context(nullptr),
+      window(nullptr),
+      contextIsActive(true),
+      noiseTexID(-1),
+      lutTexID(-1),
+      lutSize(0),
+      lutBands(0) {
   FOV = 45;
   overallBrightness = 128;
 
@@ -103,11 +114,38 @@ namespace {
 std::mutex screenshotMutex;
 std::string requestedScreenshotFilename;
 
+// Frame recording (see StartFrameRecording): the stream is opened on the first
+// frame, because the path is set before there is a context to read pixels from.
+std::mutex frameRecordingMutex;
+std::string frameRecordingPath;
+FILE* frameRecordingStream = nullptr;
+bool frameRecordingGaveUp = false;
+
 }  // namespace
 
 void RequestScreenshot(const std::string& filename) {
   std::lock_guard<std::mutex> lock(screenshotMutex);
   requestedScreenshotFilename = filename;
+}
+
+void StartFrameRecording(const std::string& path) {
+  std::lock_guard<std::mutex> lock(frameRecordingMutex);
+  frameRecordingPath = path;
+  frameRecordingGaveUp = false;
+#ifndef WIN32
+  // The consumer is usually an encoder on the far end of a fifo. If it exits
+  // first, writing to the dead pipe must not take the game down with it.
+  if (!path.empty()) signal(SIGPIPE, SIG_IGN);
+#endif
+}
+
+void StopFrameRecording() {
+  std::lock_guard<std::mutex> lock(frameRecordingMutex);
+  if (frameRecordingStream) {
+    fclose(frameRecordingStream);
+    frameRecordingStream = nullptr;
+  }
+  frameRecordingPath.clear();
 }
 
 void OpenGLRenderer3D::SwapBuffers() {
@@ -122,6 +160,52 @@ void OpenGLRenderer3D::SwapBuffers() {
   }
   if (!filename.empty())
     WriteScreenshot(filename);
+
+  WriteRecordedFrame();
+}
+
+void OpenGLRenderer3D::WriteRecordedFrame() {
+  std::lock_guard<std::mutex> lock(frameRecordingMutex);
+  if (frameRecordingPath.empty() || frameRecordingGaveUp) return;
+
+  const int width = context_width;
+  const int height = context_height;
+  if (width <= 0 || height <= 0) return;
+
+  if (!frameRecordingStream) {
+    // Opening a fifo blocks until the encoder opens its end, which is what we
+    // want: the first frame then lines up with the first frame it encodes.
+    frameRecordingStream = fopen(frameRecordingPath.c_str(), "wb");
+    if (!frameRecordingStream) {
+      Log(e_Warning, "OpenGLRenderer3D", "WriteRecordedFrame",
+          "could not open " + frameRecordingPath + " for frame recording");
+      frameRecordingGaveUp = true;
+      return;
+    }
+    Log(e_Notice, "OpenGLRenderer3D", "WriteRecordedFrame",
+        "recording frames to " + frameRecordingPath + " (" + int_to_str(width) + "x" +
+            int_to_str(height) + " rgba)");
+  }
+
+  const size_t rowBytes = (size_t)width * 4;
+  static std::vector<unsigned char> frame;
+  frame.resize(rowBytes * height);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadBuffer(GL_BACK);
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, frame.data());
+
+  // OpenGL hands back the bottom row first; write top row first so the consumer
+  // needs no flip of its own.
+  for (int y = height - 1; y >= 0; y--) {
+    if (fwrite(frame.data() + rowBytes * y, 1, rowBytes, frameRecordingStream) != rowBytes) {
+      Log(e_Warning, "OpenGLRenderer3D", "WriteRecordedFrame",
+          "frame recording stream closed; stopping");
+      fclose(frameRecordingStream);
+      frameRecordingStream = nullptr;
+      frameRecordingGaveUp = true;
+      return;
+    }
+  }
 }
 
 void OpenGLRenderer3D::WriteScreenshot(const std::string& filename) {
@@ -215,6 +299,12 @@ void OpenGLRenderer3D::RenderOverlay2D() {
 
   SetCullingMode(e_CullingMode_Off);
 
+  // The grading strip belongs to the postprocess pass alone: the ambient pass
+  // renders through here too, and unit 3 is its aux buffer.
+  if (lutTexID != -1 && currentShader != shaders.end() && currentShader->first == "postprocess") {
+    SetTextureUnit(3);
+    BindTexture(lutTexID);
+  }
   SetTextureUnit(4);  // noise
   BindTexture(noiseTexID);
   SetTextureUnit(0);
@@ -638,6 +728,36 @@ bool OpenGLRenderer3D::CreateContext(int width, int height, int bpp, bool fullsc
   UpdateTexture(noiseTexID, noise, false, false);
   SDL_FreeSurface(noise);
 
+  // PES's colour grading tables, unrolled into a strip by
+  // tools/pes21_import/lut_strip.py. Optional: nothing PES-derived is in the
+  // repository, so a fresh checkout has no strip and simply does not grade.
+  SDL_Surface* lut = IMG_Load(SceneGrade::kStripPath);
+  if (lut) {
+    if (SceneGrade::StripDimensions(lut->w, lut->h, lutSize, lutBands)) {
+      lutTexID = CreateTexture(e_InternalPixelFormat_RGB8, e_PixelFormat_RGB, lut->w, lut->h, false,
+                               false /* clamp: a table must not wrap */, false /* no mipmaps */,
+                               true /* filter: red and green interpolate in hardware */, false);
+      UpdateTexture(lutTexID, lut, false, false);
+      Log(e_Notice, "OpenGLRenderer3D", "CreateContext",
+          "colour grading: " + std::string(SceneGrade::kStripPath) + ", " + int_to_str(lutSize) +
+              " cubed, " + int_to_str(lutBands) + " band(s)");
+    } else {
+      Log(e_Warning, "OpenGLRenderer3D", "CreateContext",
+          std::string(SceneGrade::kStripPath) + " is not a grading strip; not grading");
+      lutSize = 0;
+      lutBands = 0;
+    }
+    SDL_FreeSurface(lut);
+  }
+
+  // The strip's shape is fixed for the run, so tell the shader once. lutSize 0
+  // is how postprocess.frag knows there is no table to sample.
+  UseShader("postprocess");
+  SetUniformInt("postprocess", "map_lut", 3);
+  SetUniformFloat("postprocess", "lutSize", (float)lutSize);
+  SetUniformFloat("postprocess", "lutBands", (float)std::max(1, lutBands));
+  UseShader("");
+
   // create buffers for overlay and simple quad rendering to use shaders instead of fixed pipeline
   InitializeOverlayAndQuadBuffers();
 
@@ -654,6 +774,10 @@ void OpenGLRenderer3D::Exit() {
   if (noiseTexID != -1) {
     DeleteTexture(noiseTexID);
     noiseTexID = -1;
+  }
+  if (lutTexID != -1) {
+    DeleteTexture(lutTexID);
+    lutTexID = -1;
   }
 
   auto shaderIter = shaders.begin();
