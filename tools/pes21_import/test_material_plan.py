@@ -76,5 +76,37 @@ class UnresolvedGroupTextureTest(unittest.TestCase):
             "pack/body.png")
 
 
+class NonRenderPassTest(unittest.TestCase):
+    """PES ships passes this engine does not render, as extra copies of the
+    body sitting a hair outside the real one.
+
+    The antiblur copy was already skipped. The outline shell was not, so /a/
+    players carried a second, slightly inflated body - and once its texture was
+    routed to the kit slot it became a team-coloured shell z-fighting the real
+    shirt, which is the torn patchwork on their shoulders. On one player the
+    outline was the only mesh that survived the triangle budget, leaving him
+    with no face at all.
+    """
+
+    def test_antiblur_material_is_skipped(self):
+        self.assertTrue(fmdl_to_fullbody.is_non_render_pass("kit_antiblur", "kit"))
+
+    def test_outline_material_is_skipped(self):
+        self.assertTrue(fmdl_to_fullbody.is_non_render_pass("body_outline", "body"))
+
+    def test_outline_base_texture_is_skipped(self):
+        """The shell is named by its texture, not always by its material."""
+        self.assertTrue(fmdl_to_fullbody.is_non_render_pass("", "outline"))
+
+    def test_ordinary_meshes_are_kept(self):
+        self.assertFalse(fmdl_to_fullbody.is_non_render_pass("face_mat", "face"))
+        self.assertFalse(fmdl_to_fullbody.is_non_render_pass("hair", "hair_col"))
+        self.assertFalse(fmdl_to_fullbody.is_non_render_pass("", ""))
+
+    def test_does_not_match_a_word_that_merely_contains_it(self):
+        """"outlined_crest" is artwork, not a shell pass."""
+        self.assertFalse(fmdl_to_fullbody.is_non_render_pass("", "outlined_crest"))
+
+
 if __name__ == "__main__":
     unittest.main()

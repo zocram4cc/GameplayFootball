@@ -29,6 +29,7 @@ geometry and vertex colors are carried over verbatim.
 import argparse
 import math
 import os
+import re
 import sys
 
 import ase_util
@@ -148,11 +149,11 @@ def select_meshes(meshes, max_tris, bone_to_joint, joint_positions=None):
     seen = set()
     unique = []
     for mesh in meshes:
-        # PES ships each mesh twice: once normally and once on an "antiblur"
-        # material, which is a motion-blur pass this engine does not render.
-        # Keeping both doubles the model and makes the two copies z-fight.
+        # PES ships extra copies of each mesh for passes this engine does not
+        # render - the antiblur pass, and an outline shell sitting just outside
+        # the body. Keeping them doubles the model and the copies z-fight.
         material = getattr(mesh, "materialInstance", None)
-        if "antiblur" in (getattr(material, "name", "") or "").lower():
+        if is_non_render_pass(getattr(material, "name", ""), mesh_base_texture(mesh)):
             continue
         sig = _mesh_signature(mesh)
         if sig in seen:
@@ -258,6 +259,25 @@ def export_textures(fmdl_path, out_dir, names, prefix):
 # The engine's kit slot: HumanoidBase::SetKit replaces every mesh whose diffuse
 # texture is this one with the team's kit (Team::FetchKit).
 KIT_SLOT_TEXTURE = "media/objects/players/textures/kit_template.png"
+
+# Passes PES draws that this engine has no equivalent for. Each is a copy of
+# the body a hair outside the real one - keeping them means two surfaces
+# fighting for the same pixels, which reads as torn patchwork along the seams.
+NON_RENDER_PASSES = ("antiblur", "outline")
+
+
+def is_non_render_pass(material_name, base_texture):
+    """Is this mesh one of PES's extra passes rather than the model itself?
+
+    Matched on whole words in either the material or its base texture: the
+    shell is sometimes named by one and sometimes by the other, but a texture
+    like "outlined_crest" is artwork and has to survive.
+    """
+    for field in (material_name or "", base_texture or ""):
+        for word in re.split(r"[^a-z0-9]+", field.lower()):
+            if word in NON_RENDER_PASSES:
+                return True
+    return False
 
 
 def unresolved_group_texture(base_ase, fallback_texture):
