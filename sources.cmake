@@ -487,6 +487,7 @@ set(GAME_HEADERS
    src/onthepitch/teamAIcontroller.hpp
    src/onthepitch/playerbody.hpp
    src/onthepitch/stadiumsky.hpp
+   src/onthepitch/staginganchor.hpp
    src/onthepitch/stadiumfar.hpp
    src/onthepitch/pitchturf.hpp
    src/onthepitch/proceduralpitch.hpp
@@ -525,6 +526,7 @@ set(GAME_SOURCES
    src/onthepitch/AIsupport/AIfunctions.cpp
    src/onthepitch/playerbody.cpp
    src/onthepitch/stadiumsky.cpp
+   src/onthepitch/staginganchor.cpp
    src/onthepitch/stadiumfar.cpp
    src/onthepitch/pitchturf.cpp
    src/onthepitch/proceduralpitch.cpp

@@ -505,12 +505,16 @@ protected:
   int stagedBeatIndex = -2;
   float stagingStartSeconds = 0.0f;
   bool stagingHoldsOpeningFrame = false;
+  // Where this staging has to be moved to happen on our pitch rather than in
+  // the stadium PES authored it for (staginganchor.hpp).
+  Vector3 stagingOffset;
   void RememberPrematchCamera();
   // Hides/shows the persistent in-match HUD (scoreboard, radar).
   void ShowMatchHud(bool visible);
   // Bounding box of the choreographed entrance cast, for the shots that
   // frame the players rather than the stadium. False when nothing is staged.
   bool GetEntranceCastBounds(Vector3& centre, Vector3& extent) const;
+  Vector3 ComputeStagingOffset() const;
   // Camera::Hold keeps whatever the previous beat left on screen.
   Vector3 heldCameraPosition;
   Quaternion heldCameraOrientation;
@@ -539,6 +543,12 @@ protected:
     Animation* clip;
   };
   std::vector<EntranceCastMember> entranceCast;
+  // Where the choreography last put the cast. A posed player's own position is
+  // still his simulation position - his kickoff mark - so a camera framed off
+  // that films an empty pitch while the squads walk on somewhere else.
+  Vector3 choreoBoundsCentre;
+  Vector3 choreoBoundsExtent;
+  bool choreoBoundsValid = false;
   bool entranceCastBuilt = false;
 
   // The same staging for stoppage cutscenes: a category's .chor files put the
