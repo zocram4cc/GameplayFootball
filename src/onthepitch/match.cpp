@@ -347,7 +347,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   {
     int loadedPools = 0;
     for (const char* category :
-         {"timeup", "change", "foul", "pk", "result", "end"}) {
+         // "offside" is its own category rather than a goal subpool: an
+         // offside must never be able to fall back to a goal celebration.
+         {"timeup", "change", "foul", "pk", "result", "end", "offside"}) {
       std::string dir = std::string("media/cutscenes/") + category;
       std::error_code ec;
       // A referee's decision is not one shot: the fouls are exported into
@@ -1748,17 +1750,26 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
     const size_t slash = category.find('/');
     if (slash != std::string::npos) pool = cutscenePools.find(category.substr(0, slash));
   }
-  if (pool == cutscenePools.end() || pool->second.empty()) return;
-  const CamTrack& track =
-      pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
-                   pool->second.size()];
-  activeCutscene = &track;
+  const bool haveCamera = pool != cutscenePools.end() && !pool->second.empty();
   cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  float seconds = capSeconds;
+  if (haveCamera) {
+    const CamTrack& track =
+        pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
+                     pool->second.size()];
+    activeCutscene = &track;
+    seconds = std::min(capSeconds, track.GetDurationSeconds());
+  }
   StartCutsceneChoreo(category);
-  float seconds = std::min(capSeconds, track.GetDurationSeconds());
+  // Some incidents are staged but not filmed: PES ships no camera pack at all
+  // for an offside, because the assistant's flag and the disallowed-goal
+  // reactions are meant to play out on the live broadcast camera. So a
+  // choreography with no camerawork is a cutscene too - it just does not take
+  // the camera. With nothing at all to show, there is no cutscene.
+  if (!haveCamera && !activeCutsceneChoreo) return;
   cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
   Log(e_Notice, "Match", "StartCutscene",
-      "category " + category + ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
+      "category " + category + (haveCamera ? "" : " (choreography only)") + ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
           int_to_str((matchTime_ms / 1000) % 60) + ", " + int_to_str((int)(seconds * 10)) +
           " ds");
 }
