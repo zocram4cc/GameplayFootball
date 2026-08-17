@@ -481,6 +481,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         "stadium_object", "media/objects/stadiums/test/test.object");
     tmpStadiumNode = loader.LoadObject(GetScene3D(), stadiumObject);
     Log(e_Notice, "Match", "Match", "stadium object loaded");
+
+    // The advertising hoardings are not part of a stadium: PES keeps one ring for
+    // every ground (Asset/model/bg/common/bill) and assigns the faces at run time.
+    // Imported, they come in here the way the goals do - shared furniture every
+    // stadium gets - and their faces carry the ad_placeholder ident, so the
+    // randomiser below paints them from media/textures/adboards.
+    const std::string adboardsObject =
+        GetConfiguration()->Get("adboards_object", "media/objects/stadiums/adboards/adboards.object");
+    if (!adboardsObject.empty() && std::filesystem::exists(adboardsObject)) {
+      boost::intrusive_ptr<Node> boards = loader.LoadObject(GetScene3D(), adboardsObject);
+      if (boards) {
+        boards->SetLocalMode(e_LocalMode_Absolute);
+        tmpStadiumNode->AddNode(boards);
+        Log(e_Notice, "Match", "Match", "adboard ring loaded");
+      }
+    }
+
     RandomizeAdboards(tmpStadiumNode);
     Log(e_Notice, "Match", "Match", "adboards randomized");
   }
@@ -4350,6 +4367,35 @@ void Match::PrepareGoalNetting() {
           ->GetGeometryData()
           ->GetResource()
           ->GetTriangleMeshesRef();
+
+  // PES's own net pattern, if it has been imported. It is swapped in here rather
+  // than written over the engine's goalnetting.png, because that file is part of
+  // the repository and nothing PES-derived belongs in it
+  // (tools/pes21_import/import_common_stadium_assets.py --net).
+  {
+    const std::string netting = GetConfiguration()->Get(
+        "goal_netting_texture", "media/textures/stadium/goalnetting_pes.png");
+    if (!netting.empty() && std::filesystem::exists(netting)) {
+      bool alreadyThere = false;
+      boost::intrusive_ptr<Resource<Surface>> surface =
+          ResourceManagerPool::GetInstance()
+              .GetManager<Surface>(e_ResourceType_Surface)
+              ->Fetch(netting, true, alreadyThere, true);
+      if (surface) {
+        int swapped = 0;
+        for (unsigned int m = 0; m < triangleMesh.size(); m++) {
+          if (!triangleMesh.at(m).material.diffuseTexture) continue;
+          const std::string ident = triangleMesh.at(m).material.diffuseTexture->GetIdentString();
+          if (ident.find("goalnetting") == std::string::npos) continue;
+          triangleMesh.at(m).material.diffuseTexture = surface;
+          swapped++;
+        }
+        if (swapped)
+          Log(e_Notice, "Match", "PrepareGoalNetting",
+              "using " + netting + " for " + int_to_str(swapped) + " netting mesh(es)");
+      }
+    }
+  }
 
   for (unsigned int m = 0; m < triangleMesh.size(); m++) {
     for (int i = 0; i < triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();

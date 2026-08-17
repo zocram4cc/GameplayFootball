@@ -53,3 +53,15 @@ data/databases/default/images_teams/ink/
 # Derived geometry caches: built from the .ase on first load, rebuilt
 # whenever it changes. Never a source - see src/loaders/asecache.hpp.
 *.geomcache
+
+# Imported PES/4cc assets. None of this belongs in the repository - it is produced
+# from a user's own copy of PES 2021 by tools/pes21_import (see docs/ASSETS.md).
+data/media/objects/stadiums/pes_st*/
+data/media/objects/stadiums/adboards/
+data/media/textures/adboards/ad_4cc_*.png
+data/media/textures/stadium/pes_*.png
+data/media/textures/stadium/goalnetting_pes.png
+data/media/textures/pitch/pes/
+data/media/textures/crowd/banners/
+data/media/textures/sky/pes_*.png
+data/media/textures/lut/

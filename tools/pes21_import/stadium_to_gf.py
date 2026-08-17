@@ -237,7 +237,7 @@ def mesh_extent(mesh):
 
 
 def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
-              max_verts_per_geom=None, max_extent=None):
+              max_verts_per_geom=None, max_extent=None, fallback_bitmap=None):
     converted = {}
     ftex_index = build_ftex_index(tex_dirs)
     materials = []          # (material name, bitmap path or None)
@@ -333,7 +333,7 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             # falls back to a stock "orange.jpg" that does not ship, and a
             # missing image file is fatal to the loader
             path = ("media/objects/stadiums/%s/%s" % (name, bitmap) if bitmap
-                    else FALLBACK_BITMAP)
+                    else (fallback_bitmap or FALLBACK_BITMAP))
             out.write("\t\t*MAP_DIFFUSE {\n")
             out.write('\t\t\t*MAP_NAME "%s"\n' % mat_name)
             out.write('\t\t\t*MAP_CLASS "Bitmap"\n')
@@ -422,6 +422,33 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
     out.write("}\n")
 
 
+# Only a stadium gets a pitch. A shared package - the advertising ring, a sky dome -
+# must not declare one: the engine splits every geometry under the stadium node for
+# culling and names the pieces after it, so a second "pitch" collides
+# ("Duplicate key 'pitch gridGeomData @ ...'") and the match dies at load.
+GEOMETRY_ENTRY = """	<geometry>
+		<filename>%(file)s</filename>
+		<name>%(name)s</name>
+		<position>0, 0, 0</position>
+		<rotation>0, 0, 0, 0</rotation>
+		<properties>
+			<physicable>false</physicable>
+			<movable>false</movable>
+		</properties>
+	</geometry>
+"""
+
+
+def object_text(name, with_pitch=True):
+    parts = ["<object>\n\n"]
+    if with_pitch:
+        parts.append(GEOMETRY_ENTRY % {"file": "pitch.ase", "name": "pitch"})
+        parts.append("\n")
+    parts.append(GEOMETRY_ENTRY % {"file": name + ".ase", "name": name})
+    parts.append("\n</object>\n")
+    return "".join(parts)
+
+
 OBJECT_TEMPLATE = """<object>
 
 	<geometry>
@@ -496,7 +523,8 @@ def find_turf_texture(names):
 
 TURF_FILENAME = "turf.png"
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
-            max_tris=None, max_verts_per_geom=None, max_extent=None):
+            max_tris=None, max_verts_per_geom=None, max_extent=None,
+            fallback_bitmap=None, with_pitch=True):
     os.makedirs(out_dir, exist_ok=True)
     tex_dirs = find_texture_dirs(*tex_dirs)
     print("texture dirs: %s" % (tex_dirs or "none found"))
@@ -507,10 +535,13 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
 
     ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
                                                 max_tris, max_verts_per_geom,
-                                                max_extent)
+                                                max_extent, fallback_bitmap)
 
     object_path = os.path.join(out_dir, name + ".object")
-    open(object_path, "w").write(OBJECT_TEMPLATE % {"name": name})
+    open(object_path, "w").write(object_text(name, with_pitch))
+
+    if not with_pitch:
+        return ase_path, geom_count, tex_count
 
     # GF's pitch geometry carries the line markings and the physics, so it is
     # kept as it is. Its *colour* is generated at match start by
@@ -552,6 +583,17 @@ if __name__ == "__main__":
                              "(the surrounding car park/apron; 0 disables)")
     parser.add_argument("--max-tris", type=int, default=None,
                         help="triangle budget; largest meshes kept first")
+    # PES assigns the advertising faces at runtime (bill_anime.json), so the board
+    # models name source art that was never shipped. Pointing those at the engine's
+    # ad_placeholder hands them to GF's own randomiser, which swaps in a panel from
+    # media/textures/adboards - the same thing PES does, by the mechanism this
+    # engine already has.
+    parser.add_argument("--no-pitch", action="store_true",
+                        help="for a shared package rather than a ground: omit the "
+                             "pitch from the .object (two pitches collide at load)")
+    parser.add_argument("--fallback-bitmap", default=None,
+                        help="bitmap for materials whose texture cannot be found "
+                             "(default: a white placeholder)")
     parser.add_argument("--max-verts-per-geom", type=int, default=None,
                         help="split meshes above this vertex count into "
                              "several GEOMOBJECTs sharing one material")
@@ -561,5 +603,6 @@ if __name__ == "__main__":
     ase_path, geoms, textures = convert(args.fmdl, args.out_dir, args.fmdl_lib,
                                         args.textures, name, args.extra,
                                         args.max_tris, args.max_verts_per_geom,
-                                        args.max_extent)
+                                        args.max_extent, args.fallback_bitmap,
+                                        not args.no_pitch)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))
