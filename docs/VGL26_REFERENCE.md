@@ -104,3 +104,35 @@ line under it.
 Top-left carries a compact `⏱ 0:27  DBG 0 0 HBR` clock and score; at kickoff
 that is replaced for a few seconds by the wide centred scoreboard with both
 badges and `/dbg/ 0 0 /hbr/`.
+
+## What the fork looked like against it
+
+Measured rather than eyeballed, and worth keeping because each one was invisible
+until someone put a number on it.
+
+**The walkout.** PES walks both squads out; ours marched on the spot. Every walk
+slot's baked root track advanced smoothly - a median step of 7 mm - for about
+2.4 m and then jumped back to its start in one 2.4 m step, netting 3 mm over the
+cycle. Two faults: the importer sampled the clip's root at `t % frame_count`,
+throwing the forward motion away, and it baked a single cycle for an engine that
+loops whatever track it is given. Both fixed; each actor now covers about ten
+metres. Check an exported pack by comparing a slot's path length with its
+start-to-finish displacement - a walk whose displacement is near zero is wrapped.
+
+**The camerawork.** `ent_020`'s shot is a genuine aerial sweep - 726 m of path,
+236 m net, 12 to 44 m up, tilted 11 degrees down - which is the establishing shot
+at s030. `ent_009`'s roams 188 m of path for a 6 m net at 0.5 to 5.9 m, looking
+slightly up: a camera authored to sit low and let actors walk past it. It was
+sweeping past a line-up that never moved, so judge it again now the walkout works
+before changing any camera.
+
+**The stadium.** Namek's geometry and textures all import; what made it look
+"incomplete" was PES's cel-shading outline shells being drawn over every mesh, and
+GF's green grass instead of the pack's teal turf. Both fixed (see
+docs/ASSETS.md). Still open: the sky dome, the adboards, and flat ground that
+blows out white.
+
+**The HUD.** The indicator described above did not exist at all -
+`Gui2PlayerHUD::Redraw()` was an empty stub. It is drawn now, reading the
+philosophy and the five-rung touchline mentality the match already simulates. The
+tactical pop-ups turned out to exist already.
