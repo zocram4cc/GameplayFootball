@@ -108,3 +108,47 @@ Kits and badges come out of the uniform archive: the badge is already a PNG at
 `<kit_url>_kit_0<n>.png`, with `kit_url` set on the team's row.
 PES21_IMPORT.md covers the staging layout and the `EDIT` decryption for real
 player names.
+
+## Worked example: importing a /vg/ League team
+
+The league's exports page lists, per team, a tactical export (`.ted`), an
+aesthetics export, audio, and sometimes a stadium. `/lcg/` and `/ink/` were
+imported from the VGL 26 page as follows.
+
+The tactical export gives the roster:
+
+    python3 tools/pes21_import/ted.py lcg.ted
+
+`.ted` is not a PES save - pesXdecrypter segfaults on one - so `ted.py` handles
+it: plaintext header, payload under a repeating 32-byte key that each file
+chooses for itself and that is recoverable from the file's own zero padding.
+Note that many roster slots read `PLACEHOLDER`; the names that matter are the
+ones on the models, which the aesthetics pack supplies.
+
+The aesthetics export is an ordinary AET pack - `Boots/`, `Faces/`,
+`Kit Textures/`, `Logo/`, and a note giving the team's colours and sometimes its
+id. Whole characters live in `Boots/<kNNNN - Name>/boots.fmdl`, so:
+
+    python3 tools/pes21_import/import_team.py "<pack>" --prefix lcg \
+        --fmdl-lib <pes-fmdl dir> --game-dir data --max-edge 0.15
+
+Kits and badge come from the pack itself - `Kit Textures/u0XXXp1.dds` and
+`Logo/emblem_0NNN_r.png`. Install them as `<prefix>_kit_0N.png` and
+`<prefix>_logo.png` under `data/databases/default/images_teams/<prefix>/`, and
+set the team's `kit_url` to `images_teams/<prefix>/<prefix>`. Many packs leave
+the id as `XXX` for the organisers to fill in, so do not rely on it; the
+filename is a placeholder but the contents are the kit.
+
+Two things to get right when adding the team rows by hand:
+
+* **`profile_xml` must not be empty.** `PlayerData::GetStat` asserts on a
+  missing stat, and the match dies during `Team::Team` with
+  `Assertion 'exists' failed`.  Copy an existing player's profile and vary it.
+* **`philosophy` and `formation`** go in `tactics_xml` as their own tags; with
+  neither present a team falls back to balanced and 4-4-2. The per-player stats
+  and tactics inside a `.ted` are bit-packed and are not decoded, so anything
+  tactical you set is your choice, not theirs.
+
+A community stadium export converts the same way as a Konami one, but pass
+`--max-extent` generously: the default 260 m drops distant scenery, which on a
+stadium whose setting *is* the distance leaves an empty white backdrop.
