@@ -594,6 +594,29 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     Log(e_Notice, "Match", "Match", "touchline staff: " + staffObject);
   }
 
+  // The furniture around it: corner flags, the fourth official's board, the
+  // television cameras, the barrier at the tunnel mouth, the paramedics. A stadium
+  // pack ships none of it either - PES keeps one set and gives it to every ground -
+  // so it is imported the same way and lands as props/props.object
+  // (tools/pes21_import/stadium_props.py). Outside the stadium node for the same
+  // reason as the staff: pieces scattered round the whole pitch belong to no one
+  // 24 m cell.
+  std::string propsObject = GetConfiguration()->Get("props_object", "");
+  if (propsObject.empty()) {
+    const std::string stadiumForProps = GetConfiguration()->Get("stadium_object", "");
+    const std::string::size_type slash = stadiumForProps.find_last_of("/\\");
+    if (slash != std::string::npos) {
+      const std::string candidate = stadiumForProps.substr(0, slash + 1) + "props/props.object";
+      if (std::filesystem::exists(candidate)) propsObject = candidate;
+    }
+  }
+  if (!propsObject.empty() && !SuperDebug() && std::filesystem::exists(propsObject)) {
+    propsNode = loader.LoadObject(GetScene3D(), propsObject);
+    propsNode->SetLocalMode(e_LocalMode_Absolute);
+    GetScene3D()->AddNode(propsNode);
+    Log(e_Notice, "Match", "Match", "pitch furniture: " + propsObject);
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -1013,6 +1036,7 @@ void Match::Exit() {
   scene3D->DeleteNode(goalsNode);
   if (skydomeNode) scene3D->DeleteNode(skydomeNode);
   if (staffNode) scene3D->DeleteNode(staffNode);
+  if (propsNode) scene3D->DeleteNode(propsNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
