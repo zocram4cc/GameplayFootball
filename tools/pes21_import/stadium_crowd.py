@@ -107,6 +107,24 @@ def palette_offset(variant_index, variant_count):
     return (0.0, (variant_index % variant_count) / float(variant_count))
 
 
+# How often a flag is held up among the spectators.
+FLAG_EVERY = 60
+
+
+def flag_places(seats, every=FLAG_EVERY):
+    """-> the seats that hold a flag, spread through the crowd.
+
+    PES's stand flags (mob_prop_teamflag_home01..05, away01) are props among the
+    spectators rather than one per seat, and dt19 animates them waving; imported
+    static they belong scattered the same way.
+    """
+    if not seats:
+        return []
+    step = max(1, int(every))
+    places = seats[::step]
+    return places if places else [seats[0]]
+
+
 def _palette_png(stem, ftex_index, out_dir, converted):
     """-> the palette converted to a PNG beside the crowd, or None if it is absent."""
     class _Named(object):
@@ -139,6 +157,10 @@ def main():
     parser.add_argument("--asset-dir", default=None,
                         help="where this will be installed under media/objects/stadiums, "
                              "for the .ase's own texture paths (e.g. pes_st060/crowd)")
+    parser.add_argument("--flags", default=None,
+                        help="a directory holding PES's stand flags "
+                             "(common/demo/prop/mob_prop_teamflag_*), scattered through "
+                             "the crowd one seat in %d" % FLAG_EVERY)
     parser.add_argument("--variants", type=int, default=6,
                         help="how many of PES's spectators to seat")
     args = parser.parse_args()
@@ -209,6 +231,42 @@ def main():
                          "%s: %d seat(s) of %s" % (name, len(share), os.path.basename(model)))
         entries.append((name, len(share)))
         print("  %s: %s over %d seat(s)" % (name, os.path.basename(model), len(share)))
+
+    # The flags held up among them, if we were given PES's.
+    if args.flags:
+        flag_models = sorted(glob.glob(os.path.join(args.flags, "**", "mob_prop_teamflag*.fmdl"),
+                                       recursive=True))
+        seen = {}
+        for path in flag_models:
+            seen.setdefault(os.path.basename(path), path)
+        flag_models = [seen[k] for k in sorted(seen)]
+        flag_seats = flag_places(kept)
+        if flag_models and flag_seats:
+            flag_index = stadium_to_gf.build_ftex_index(
+                stadium_to_gf.find_texture_dirs(args.flags))
+            shares = share_out(flag_seats, len(flag_models))
+            for index, (model, share) in enumerate(zip(flag_models, shares)):
+                if not share:
+                    continue
+                fmdl = stadium_to_gf._load_fmdl(model, args.fmdl_lib)
+                name = "crowd_flag_%02d" % index
+                with open(os.path.join(out_dir, name + ".ase"), "w") as out:
+                    stadium_to_gf._write_ase_header(out, name)
+                    out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(fmdl.meshes))
+                    for i, mesh in enumerate(fmdl.meshes):
+                        texture = stadium_to_gf._mesh_base_texture(mesh)
+                        bitmap = (stadium_to_gf._texture_png(texture, flag_index, out_dir,
+                                                            converted) if texture else None)
+                        stadium_to_gf._write_material(out, i, "%s_m%d" % (name, i), bitmap,
+                                                      args.asset_dir or "crowd", None)
+                    out.write("}\n")
+                    for i, mesh in enumerate(fmdl.meshes):
+                        stadium_to_gf._write_geomobject(out, "%s_%02d" % (name, i), i, mesh.faces)
+                _write_instances(os.path.join(out_dir, name + ".instances"), share,
+                                 "%s: %d flag(s) of %s" % (name, len(share),
+                                                           os.path.basename(model)))
+                entries.append((name, len(share)))
+                print("  %s: %s over %d place(s)" % (name, os.path.basename(model), len(share)))
 
     if not entries:
         return 1

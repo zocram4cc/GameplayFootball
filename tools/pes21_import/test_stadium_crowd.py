@@ -148,5 +148,37 @@ class TheCapOnHowManyAreDrawn(unittest.TestCase):
         self.assertEqual(len(stadium_crowd.thin_to(seats, 0)), 1000)
 
 
+class FlagsInTheCrowd(unittest.TestCase):
+    """PES's stand flags are props held up among the spectators.
+
+    mob_prop_teamflag_home01..05 and away01 are 313-vertex flags, 2.8 m tall, and
+    dt19_x64.cpk animates them (common/mob/prop/standsFlag). Static, they belong
+    scattered through the seats - one every so often, not one per seat.
+    """
+
+    def test_a_flag_every_so_often(self):
+        seats = [(float(i), 0.0, 0.0, 0.0) for i in range(300)]
+        places = stadium_crowd.flag_places(seats, every=60)
+        self.assertEqual(len(places), 5)
+
+    def test_they_stand_where_a_spectator_does(self):
+        seats = [(1.0, 2.0, 3.0, 0.5), (9.0, 9.0, 9.0, 9.0)]
+        places = stadium_crowd.flag_places(seats, every=1)
+        self.assertEqual(places[0], seats[0])
+
+    def test_a_small_crowd_still_gets_one(self):
+        seats = [(0.0, 0.0, 0.0, 0.0)] * 10
+        self.assertEqual(len(stadium_crowd.flag_places(seats, every=100)), 1)
+
+    def test_no_seats_no_flags(self):
+        self.assertEqual(stadium_crowd.flag_places([], every=10), [])
+
+    def test_they_are_spread_through_the_crowd_not_bunched(self):
+        seats = [(float(i), 0.0, 0.0, 0.0) for i in range(300)]
+        places = stadium_crowd.flag_places(seats, every=60)
+        gaps = [places[i + 1][0] - places[i][0] for i in range(len(places) - 1)]
+        self.assertTrue(all(g == 60.0 for g in gaps), gaps)
+
+
 if __name__ == "__main__":
     unittest.main()
