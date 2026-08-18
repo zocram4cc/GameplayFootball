@@ -769,10 +769,25 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Loading crowd sounds");
 
+  // The crowd's own voice. PES keeps its in dt44_all.cpk
+  // (common/sound/match/awb/cheers/SE_Cheers_CM_Goal*.awb, HCA streams the import
+  // turns into ogg), and its roar belongs on the reaction layer that the mood
+  // mixing gains up when the crowd is on its feet. Where the import has landed,
+  // that is what plays; otherwise the engine's own two loops, as before.
+  const std::string ambientSound =
+      GetConfiguration()->Get("crowd_ambient_sound", "media/sounds/crowd01.wav");
+  std::string reactionSound = GetConfiguration()->Get("crowd_reaction_sound", "");
+  if (reactionSound.empty()) {
+    const std::string imported = "imports/pes21/cheers/cheer_goal_00000.ogg";
+    reactionSound =
+        std::filesystem::exists(imported) ? imported : std::string("media/sounds/crowd02.wav");
+  }
+  Log(e_Notice, "Match", "Match", "crowd: " + ambientSound + " under " + reactionSound);
+
   boost::intrusive_ptr<Resource<SoundBuffer>> soundBufferRes =
       ResourceManagerPool::GetInstance()
           .GetManager<SoundBuffer>(e_ResourceType_SoundBuffer)
-          ->Fetch("media/sounds/crowd01.wav", true, true);
+          ->Fetch(ambientSound, true, true);
   crowd01 = boost::static_pointer_cast<Sound>(
       ObjectFactory::GetInstance().CreateObject("crowd01sound", e_ObjectType_Sound));
   GetScene3D()->CreateSystemObjects(crowd01);
@@ -784,7 +799,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   soundBufferRes = ResourceManagerPool::GetInstance()
                        .GetManager<SoundBuffer>(e_ResourceType_SoundBuffer)
-                       ->Fetch("media/sounds/crowd02.wav", true, true);
+                       ->Fetch(reactionSound, true, true);
   crowd02 = boost::static_pointer_cast<Sound>(
       ObjectFactory::GetInstance().CreateObject("crowd02sound", e_ObjectType_Sound));
   GetScene3D()->CreateSystemObjects(crowd02);
