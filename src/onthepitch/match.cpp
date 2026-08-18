@@ -2004,6 +2004,7 @@ void Match::UpdateCutsceneChoreo() {
     radian yaw = 0;
     int animFrame = 0;
     activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
+    // SetChoreoPose wraps the clip frame; the path is already held at its end.
     cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position + stagingOffset, yaw);
   }
   for (auto& cast : cutsceneOfficialCast) {
