@@ -80,6 +80,45 @@ def thin_to(seats, cap):
     return [seats[min(len(seats) - 1, int(i * step))] for i in range(cap)]
 
 
+# PES's spectators declare no texture: the game binds a palette and the model's own
+# UVs pick a colour out of it. Both palettes sit beside the models, 32 x 128 of
+# swatches each - one for the low-detail crowd, one for the rest.
+PALETTE_LOW = "au_l_col_bsm_rgba32"
+PALETTE_HIGH = "au_h_col_bsm_rgba32"
+
+
+def palette_for(model_path):
+    """-> which of PES's crowd palettes a spectator model reads."""
+    stem = os.path.basename(str(model_path)).lower()
+    if stem.startswith("au_low") or stem.startswith("au_l"):
+        return PALETTE_LOW
+    return PALETTE_HIGH
+
+
+def palette_offset(variant_index, variant_count):
+    """-> (du, dv) moving a variant onto its own band of the palette.
+
+    Every copy of one model samples the palette the same way, so without this a
+    stand is one shirt colour repeated. PES varies it per spectator; we vary it per
+    variant, which is as far as a placement list of x, y, z and yaw reaches.
+    """
+    if variant_count <= 1:
+        return (0.0, 0.0)
+    return (0.0, (variant_index % variant_count) / float(variant_count))
+
+
+def _palette_png(stem, ftex_index, out_dir, converted):
+    """-> the palette converted to a PNG beside the crowd, or None if it is absent."""
+    class _Named(object):
+        def __init__(self, filename):
+            self.filename = filename
+
+    if stem not in ftex_index:
+        print("  palette %s is not in the models' sourceimages" % stem)
+        return None
+    return stadium_to_gf._texture_png(_Named(stem + ".ftex"), ftex_index, out_dir, converted)
+
+
 def _write_instances(path, seats, header):
     with open(path, "w") as out:
         out.write("# %s\n" % header)
@@ -97,6 +136,9 @@ def main():
     parser.add_argument("--fmdl-lib", default=None)
     parser.add_argument("--textures", action="append", default=[])
     parser.add_argument("--cap", type=int, default=DEFAULT_CAP)
+    parser.add_argument("--asset-dir", default=None,
+                        help="where this will be installed under media/objects/stadiums, "
+                             "for the .ase's own texture paths (e.g. pes_st060/crowd)")
     parser.add_argument("--variants", type=int, default=6,
                         help="how many of PES's spectators to seat")
     args = parser.parse_args()
@@ -149,19 +191,20 @@ def main():
         name = "crowd_%02d" % index
         ase_path = os.path.join(out_dir, name + ".ase")
         meshes = list(fmdl.meshes)
+        # The palette PES would have bound, and this variant's band of it.
+        palette = palette_for(model)
+        bitmap = _palette_png(palette, ftex_index, out_dir, converted)
+        offset = palette_offset(index, len(models))
         with open(ase_path, "w") as out:
             stadium_to_gf._write_ase_header(out, name)
             out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(meshes))
             for i, mesh in enumerate(meshes):
-                texture = stadium_to_gf._mesh_base_texture(mesh)
-                bitmap = (stadium_to_gf._texture_png(texture, ftex_index, out_dir, converted)
-                          if texture else None)
                 stadium_to_gf._write_material(out, i, "%s_m%d" % (name, i), bitmap,
-                                              (args.asset_dir if hasattr(args, "asset_dir")
-                                               else None) or "crowd", None)
+                                              args.asset_dir or "crowd", None)
             out.write("}\n")
             for i, mesh in enumerate(meshes):
-                stadium_to_gf._write_geomobject(out, "%s_%02d" % (name, i), i, mesh.faces)
+                stadium_to_gf._write_geomobject(out, "%s_%02d" % (name, i), i, mesh.faces,
+                                                uv_offset=offset)
         _write_instances(os.path.join(out_dir, name + ".instances"), share,
                          "%s: %d seat(s) of %s" % (name, len(share), os.path.basename(model)))
         entries.append((name, len(share)))
