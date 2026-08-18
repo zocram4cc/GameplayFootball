@@ -1,5 +1,10 @@
 # PES 2021 bulk import
 
+[PICTURE.md](PICTURE.md) is the companion to this one: what the presentation
+chain does to a frame, which of the things that look wrong are defects rather
+than somebody's art, and how the measurements here were taken.
+
+
 The goal: bring PES 2021 content — player models, animations (match play,
 celebrations, entrances), portraits, billboards, chants, and eventually
 stadiums — into GameplayFootball's own formats, so packs of imported content

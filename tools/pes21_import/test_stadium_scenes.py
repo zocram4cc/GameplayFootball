@@ -77,3 +77,53 @@ class ChooseSceneModels(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PesPitchToOurs(unittest.TestCase):
+    """PES authors on a smaller pitch than this engine plays on.
+
+    PES's pitch is 105 x 68 m (half 52.5 x 34); gametypes.hpp has this one at
+    110 x 72 (half 55 x 36). Geometry authored around PES's pitch therefore lands
+    two and a half metres too far in at each goal and two metres too far in at each
+    touchline.
+
+    It showed up on the advertising ring. Its boards stand 4.17 m behind PES's goal
+    line and 0.28 m outside its touchline - a real setback - but dropped on a longer
+    pitch that becomes 1.67 m behind the goal line, and the engine's own goal net is
+    2.55 m deep (goals.ase reaches x 57.55). So the hoardings ran straight through
+    the netting.
+
+    Scaling by the ratio of the two pitches keeps PES's placement relative to the
+    pitch, which is what its author meant, instead of nudging boards by hand.
+    """
+
+    def test_the_scale_is_the_ratio_of_the_two_pitches(self):
+        scale = stadium_to_gf.pitch_scale()
+        self.assertAlmostEqual(scale[0], 55.0 / 52.5, places=6)
+        self.assertAlmostEqual(scale[1], 36.0 / 34.0, places=6)
+
+    def test_height_is_never_scaled(self):
+        # a hoarding is a metre tall in either game; only the plan changes
+        self.assertEqual(stadium_to_gf.pitch_scale()[2], 1.0)
+
+    def test_a_board_behind_pes_goal_line_ends_up_behind_ours(self):
+        scaled = stadium_to_gf.scale_positions([(-56.67, 0.0, 1.06)],
+                                               stadium_to_gf.pitch_scale())
+        # clear of the engine's netting, which reaches 57.55
+        self.assertLess(scaled[0][0], -57.55)
+
+    def test_the_setback_is_preserved_in_proportion(self):
+        # 4.17 m behind a 52.5 m half-pitch is 4.37 m behind a 55 m one
+        scaled = stadium_to_gf.scale_positions([(-56.67, -34.28, 0.0)],
+                                               stadium_to_gf.pitch_scale())
+        self.assertAlmostEqual(abs(scaled[0][0]) - 55.0, 4.17 * (55.0 / 52.5), places=2)
+        self.assertAlmostEqual(abs(scaled[0][1]) - 36.0, 0.28 * (36.0 / 34.0), places=2)
+
+    def test_the_centre_spot_does_not_move(self):
+        self.assertEqual(stadium_to_gf.scale_positions([(0.0, 0.0, 0.0)],
+                                                       stadium_to_gf.pitch_scale()),
+                         [(0.0, 0.0, 0.0)])
+
+    def test_no_scale_leaves_everything_alone(self):
+        points = [(1.0, -2.0, 3.0)]
+        self.assertEqual(stadium_to_gf.scale_positions(points, None), points)

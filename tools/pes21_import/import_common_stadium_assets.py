@@ -91,23 +91,35 @@ def import_grading_tables(root, out_root):
     (see its docstring, and src/systems/graphics/scenegrade.hpp).
     """
     out = os.path.join(out_root, DESTINATIONS["lut"], "grade.png")
-    volumes = []
-    for band in lut_strip.BAND_ORDER:
-        wanted = lut_strip.table_name(band)
-        matches = gather(root, wanted + ".ftex")
-        if not matches:
-            print("lut:      %s missing" % wanted)
-            if volumes:
-                volumes.append(volumes[-1])
-            continue
-        volume, size = lut_strip.read_table(matches[0])
-        if size != lut_strip.LUT_SIZE:
-            print("lut:      %s is %d cubed, expected %d" % (wanted, size, lut_strip.LUT_SIZE))
-            return 0
-        volumes.append(volume)
-    if not volumes:
+    # Which table a band gets is decided by what it does to grey, not by its name:
+    # eleven of the sixteen PES ships stop climbing around 0.69 and cannot be a
+    # display transfer at all (lut_strip.spans_display_range).
+    loaded = {}
+    for names in lut_strip.TABLE_NAMES.values():
+        for wanted in names:
+            if wanted in loaded:
+                continue
+            matches = gather(root, wanted + ".ftex")
+            if not matches:
+                continue
+            volume, size = lut_strip.read_table(matches[0])
+            if size != lut_strip.LUT_SIZE:
+                print("lut:      %s is %d cubed, expected %d"
+                      % (wanted, size, lut_strip.LUT_SIZE))
+                continue
+            loaded[wanted] = volume
+    if not loaded:
         print("lut:      no grading tables found")
         return 0
+    volumes = []
+    for band, chosen, borrowed_from in lut_strip.plan_bands(loaded):
+        volumes.append(loaded[chosen])
+        if borrowed_from:
+            print("lut:      %-8s %-18s borrowed from %s: nothing it ships reaches white"
+                  % (band, chosen, borrowed_from))
+        else:
+            print("lut:      %-8s %-18s white -> %.3f"
+                  % (band, chosen, lut_strip.grey_response(loaded[chosen])[-1]))
     lut_strip.write_strip(lut_strip.strip_pixels(volumes, lut_strip.LUT_SIZE), out)
     print("lut:      %d band(s) -> %s" % (len(volumes), os.path.relpath(out, out_root)))
     return len(volumes)
