@@ -261,6 +261,55 @@ PES_PITCH_HALF = (52.5, 34.0)
 ENGINE_PITCH_HALF = (55.0, 36.0)
 
 
+# How upright a mesh has to be before "which way does it look" is a question about
+# the pitch at all, and how far from the centre spot it has to sit to have an answer.
+UPRIGHT_MAX_VERTICAL_FACING = 0.5
+PITCH_FACING_MIN_RADIUS = 1.0
+
+
+def faces_away_from_pitch(vertices, faces):
+    """Whether an upright mesh has its back to the pitch and should be turned round.
+
+    A hoarding that faces the stands is no hoarding: the broadcast camera stands
+    inside the ring, and this engine culls back faces. The advertising ring came in
+    with 84 of its 102 board faces wound that way - PES's convention is the opposite
+    of this engine's, the same trap as the centre-circle banner
+    (stadium_staff.wants_winding_flipped).
+
+    Judged in plan and by area. Anything lying flat is not a hoarding, and a mesh
+    over the centre spot has no inward direction to point along.
+    """
+    total = [0.0, 0.0, 0.0]
+    area = 0.0
+    centre = [0.0, 0.0]
+    for face in faces:
+        if len(face) < 3:
+            continue
+        a, b, c = (vertices[face[0]], vertices[face[1]], vertices[face[2]])
+        cross = ase_util._cross(ase_util._sub(b, a), ase_util._sub(c, a))
+        magnitude = (cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2) ** 0.5
+        if magnitude <= 0.0:
+            continue
+        for i in range(3):
+            total[i] += cross[i]
+        area += magnitude
+    if area <= 0.0:
+        return False
+    facing = [component / area for component in total]
+    # lying flat: its normal is vertical, so it faces the sky or the ground
+    if abs(facing[2]) > UPRIGHT_MAX_VERTICAL_FACING:
+        return False
+    for vertex in vertices:
+        centre[0] += vertex[0]
+        centre[1] += vertex[1]
+    centre = [centre[0] / len(vertices), centre[1] / len(vertices)]
+    radius = (centre[0] ** 2 + centre[1] ** 2) ** 0.5
+    if radius < PITCH_FACING_MIN_RADIUS:
+        return False
+    inward = (-centre[0] / radius, -centre[1] / radius)
+    return (facing[0] * inward[0] + facing[1] * inward[1]) < 0.0
+
+
 def pitch_scale():
     """-> (x, y, z) to carry PES-authored geometry onto this engine's pitch.
 
@@ -645,7 +694,7 @@ def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap)
 
 
 def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_offset=None,
-                     scale=None):
+                     scale=None, face_pitch=False):
     vertex_index = {}
     vertices = []
     uvs = []
@@ -670,6 +719,17 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     gf_positions = [(pos.x, -pos.z, pos.y) for pos in vertices]
     # A package authored around PES's pitch, carried onto this engine's larger one.
     gf_positions = scale_positions(gf_positions, scale)
+
+    # Which way round this mesh's faces are written. An outline shell is reversed so
+    # the engine culls the side PES culls; and for a package whose every face is meant
+    # to look at the pitch - the advertising ring - a mesh with its back to the pitch
+    # is turned round, because the broadcast camera stands inside the ring and the
+    # engine culls back faces.
+    reverse = outline
+    index_triples = [tuple(vertex_index[id(v)] for v in face.vertices) for face in faces]
+    if face_pitch and not outline and faces_away_from_pitch(gf_positions, index_triples):
+        reverse = True
+
     if outline and gf_positions:
         gf_positions = _widen_outline(gf_positions,
                                       [face_winding(*[vertex_index[id(v)] for v in face.vertices],
@@ -683,7 +743,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     out.write("\t\t}\n")
     out.write("\t\t*MESH_FACE_LIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
         out.write("\t\t\t*MESH_FACE %d: A: %d B: %d C: %d "
                   "AB: 1 BC: 1 CA: 1 *MESH_SMOOTHING 1 *MESH_MTLID 0\n"
                   % (i, a, b, c))
@@ -703,7 +763,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
     out.write("\t\t*MESH_TFACELIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
     out.write("\t\t}\n")
     gf_verts = gf_positions
@@ -711,7 +771,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     # the winding that was actually written: an outline shell whose faces were
     # reversed but whose normals were not has its visible side lit as though it
     # faced away, which is how the shells came out flat grey.
-    tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
+    tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
                  for face in faces]
     if sky:
         # One normal everywhere, pointing away from the sun: the dome keeps its

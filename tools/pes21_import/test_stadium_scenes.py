@@ -127,3 +127,59 @@ class PesPitchToOurs(unittest.TestCase):
     def test_no_scale_leaves_everything_alone(self):
         points = [(1.0, -2.0, 3.0)]
         self.assertEqual(stadium_to_gf.scale_positions(points, None), points)
+
+
+class HoardingsLookAtThePitch(unittest.TestCase):
+    """A hoarding that faces the stands is no hoarding at all.
+
+    The advertising ring came in with 84 of its 102 board faces wound so their
+    normals point away from the pitch centre: invisible from the broadcast camera,
+    which stands inside the ring, and visible only from above and outside. Same root
+    cause as the centre-circle banner - PES's winding convention is the opposite of
+    this engine's, and the engine both culls back faces and derives lighting from the
+    winding that was written.
+
+    Judged in plan and by area, and only for a package whose every face is meant to
+    look at the pitch: a stadium's walls and roofs are a different question and are
+    left alone.
+    """
+
+    def _quad(self, centre_y, facing):
+        # a vertical board a few metres from the centre spot, facing the pitch (-y)
+        # or the stands (+y)
+        y = centre_y
+        v = [(-2.0, y, 0.0), (2.0, y, 0.0), (2.0, y, 1.0), (-2.0, y, 1.0)]
+        f = [(0, 1, 2), (0, 2, 3)]
+        if facing == "stands":
+            f = [(2, 1, 0), (3, 2, 0)]
+        return v, f
+
+    def test_a_board_facing_the_stands_is_turned_round(self):
+        v, f = self._quad(40.0, "stands")
+        self.assertTrue(stadium_to_gf.faces_away_from_pitch(v, f))
+
+    def test_a_board_facing_the_pitch_is_left_alone(self):
+        v, f = self._quad(40.0, "pitch")
+        self.assertFalse(stadium_to_gf.faces_away_from_pitch(v, f))
+
+    def test_the_far_side_is_judged_the_same_way(self):
+        # a board on the other touchline faces +y to look at the pitch
+        v, f = self._quad(-40.0, "pitch")
+        self.assertTrue(stadium_to_gf.faces_away_from_pitch(v, f))
+        v, f = self._quad(-40.0, "stands")
+        self.assertFalse(stadium_to_gf.faces_away_from_pitch(v, f))
+
+    def test_something_lying_flat_is_not_a_hoarding(self):
+        # the ring's own base and shadow planes: their normals are vertical, and
+        # which way they face is not a question about the pitch
+        v = [(-2.0, 40.0, 0.0), (2.0, 40.0, 0.0), (2.0, 44.0, 0.0), (-2.0, 44.0, 0.0)]
+        for f in ([(0, 1, 2), (0, 2, 3)], [(2, 1, 0), (3, 2, 0)]):
+            self.assertFalse(stadium_to_gf.faces_away_from_pitch(v, f))
+
+    def test_a_board_over_the_centre_spot_is_left_alone(self):
+        # nothing to point at: no inward direction exists
+        v = [(-2.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 0.0, 1.0), (-2.0, 0.0, 1.0)]
+        self.assertFalse(stadium_to_gf.faces_away_from_pitch(v, [(2, 1, 0), (3, 2, 0)]))
+
+    def test_nothing_is_left_alone(self):
+        self.assertFalse(stadium_to_gf.faces_away_from_pitch([], []))

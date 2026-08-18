@@ -304,6 +304,11 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   // The gains bound how far a ground may be moved, so a dusk ground stays dusk;
   // the floor is low enough to pull one down, which at 0.85 it was not - st019
   // needed 0.55 and could not get it.
+  // The edge blur's depth test (postprocess.frag). 0 turns it off; a huge value is
+  // the old flat average, which fringed every silhouette. 0.02 blurs along an edge
+  // without reaching across it.
+  renderer->SetUniformFloat("postprocess", "edgeBlurDepthTolerance",
+                            GetConfiguration()->GetReal("graphics_edge_blur_tolerance", 0.02f));
   renderer->SetUniformFloat("postprocess", "exposureKey",
                             GetConfiguration()->GetReal("graphics_exposure_key", 0.45f));
   renderer->SetUniformFloat("postprocess", "exposureMinGain",
