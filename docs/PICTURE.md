@@ -366,9 +366,44 @@ screen, the camera changes underneath it, the wipe leaves.
 ```
 
 `id` is the competition slot (7 is the ACL one, −1 the default) and `fadestart` is
-the frame on which the picture underneath is switched. Converting it means PNG
-frames plus a text sidecar for fps, count and fadestart — a movie file is not an
-editable format, and the engine has no video path anyway. Task #69.
+the frame on which the picture underneath is switched. Both slots hold the same
+crest in this mod.
+
+`tools/pes21_import/import_wipe.py` merges the two streams into RGBA PNGs, drops the
+transparent tail and writes the timing beside them. Two notes on doing that with
+ffmpeg: the file must be opened **twice**, because a filtergraph addresses its inputs
+by file index rather than by stream (`[0:v:0][1:v:1]alphamerge`), and the frames are
+scaled to 640 wide by default — 92 frames of 1280x720 RGBA is 320 MB of texture for a
+second and a half of transition, and the crest is large and moving while it plays.
+
+`ReplayWipe` (`src/onthepitch/replaywipe.hpp`) is the timing alone: which frame is on
+screen this far in, and whether the cut is due yet. It is asked as "is the cut due"
+rather than "is this the cut frame" so a dropped frame cannot lose the switch, and a
+build with no wipe imported parses nothing, draws nothing and cuts immediately. The
+replay page plays it in on the way to the replay and out on the way back, holding
+itself open until the cut is covered so the return to live play happens behind the
+crest rather than in the clear.
+
+### PES's blur masks
+
+While looking for what hazed st031: PES splits one piece of geometry into several
+material passes, and one of them exists only to keep the mesh out of the motion blur
+— technique `fox3DDF_Blin_Fuzzblock`, material `"<name> antiblur"`. Nothing to look
+at, and imported anyway it is the same mesh written twice in the same place. st031
+carried 22,323 wasted vertices that way, st060 29,704, and st011, st043 and st056
+their own share; sixteen masks dropped across the five.
+
+It is **not** the cel-shade outline, and the difference is worth keeping straight: an
+outline carries a texture named `outline.png` and sits pushed out along its normals,
+while these sit at exactly zero offset with the same base texture. Measured on
+st031's pairs: mean offset 0.0000 m over 11,019 vertices.
+
+That was not the haze, though. st031 measures p98 0.694 with the grade on **and**
+off, so nothing in the chain is capping it — the ground is pale marble and a
+light-blue tiled pitch, and it has no bright values in that framing to lose. Its
+textures do carry contrast (`face.png` sd 0.415) but the statue's UVs land on the
+atlas's pale stone. Comparing a marble temple against a grass stadium's ladder is
+the part that was misleading.
 
 ## 7. Still open
 
