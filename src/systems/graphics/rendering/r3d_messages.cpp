@@ -259,13 +259,17 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   renderer->SetUniformFloat("postprocess", "sceneBrightness",
                             GetConfiguration()->GetReal("graphics_brightness", 1.0f));
   // PES's grade, chosen the way PES chooses it: by time of day and weather
-  // (scenegrade.hpp). Off unless asked for: the tables are authored against PES's
-  // own exposure, and dropped on top of this pipeline's output they clip and
-  // solarise rather than lifting it - the luminance gap against the broadcast is
-  // not a grading problem. The support is here for grading deliberately; the
-  // renderer also zeroes lutSize when no strip was imported.
+  // (scenegrade.hpp). On by default now that the strip decodes: it was read
+  // sideways - ftex stores width before height, and grade.png is 1089 x 132 - so
+  // what reached the shader was a sheared cube, which is what clipped and
+  // solarised the picture. Decoded properly it does what a grade should: the same
+  // Namek shot comes out brighter and more saturated, with the cloud detail in its
+  // sky visible. It is not the exposure fix - the median barely moves, and the
+  // 1.6x midtone gap against the broadcast is still there - but it is PES's own
+  // colour. The renderer zeroes lutSize when no strip was imported, so a build
+  // without one is unaffected.
   renderer->SetUniformFloat("postprocess", "lutStrength",
-                            GetConfiguration()->GetReal("graphics_lut_strength", 0.0f));
+                            GetConfiguration()->GetReal("graphics_lut_strength", 1.0f));
   renderer->SetUniformFloat(
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
