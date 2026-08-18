@@ -348,6 +348,12 @@ class TheEntranceSet(unittest.TestCase):
         self.assertTrue(arch)
         self.assertLess(abs(arch[0][1] - bearers[0][1]), 12.0)
 
+    def test_the_tunnel_is_not_in_the_default_set(self):
+        # passage_01 is 48 x 61 m, and placed at the mouth its wall filled the
+        # entrance camera's frame for the whole walk-on
+        self.assertNotIn("passage_01", stadium_props.ENTRANCE_WANTED)
+        self.assertIn("passage_01", stadium_props.TUNNEL_EXTRAS)
+
     def test_the_tunnel_sits_behind_the_mouth_not_on_the_pitch(self):
         marks = stadium_props.marks_for_entrance("tunnel", HALF_X, HALF_Y)
         self.assertTrue(marks)
