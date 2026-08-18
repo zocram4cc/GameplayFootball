@@ -25,12 +25,10 @@ uniform float fogStrength;
 // is the flat average that put a dark fringe around every object.
 uniform float edgeBlurDepthTolerance;
 
-// Exposure: 0 leaves the frame as lit. exposureKey is the average brightness to
-// aim for as displayed - the VGL26 broadcast reference sits at 0.45 - and the two
-// gains bound how far a ground may be moved, so a night match stays a night match.
-uniform float exposureKey;
-uniform float exposureMinGain;
-uniform float exposureMaxGain;
+// Exposure: the gain the engine's adaptation arrived at this frame, 1 for none. What
+// it is and why it is not measured here: autoexposure.hpp.
+uniform float exposureGain;
+
 // A stadium can supply its own sky (see src/onthepitch/stadiumsky.hpp); these
 // default to the constants this shader used to hardcode.
 uniform vec3 skyZenithColor;
@@ -229,59 +227,17 @@ void main(void) {
   //vec3 fragColor = vec3(SSAO);
   vec3 fragColor = base * SSAO;
 
-  // Exposure, the way PES sets it: the frame is scaled so its average luminance
-  // sits at a key value, which is what its atmosphere calls gameKeyValue (0.18,
-  // middle grey, with gameMinExposure/gameMaxExposure bounding the gain). Without
-  // it every ground is lit to whatever its own sun and its own textures happen to
-  // give, and measured against the broadcast reference Planet Namek came out at
-  // half the midtone while st031 and st041 were already there - so a fixed
-  // brightness cannot fix it and a per-frame measurement can.
+  // The exposure, as one number worked out on the engine side
+  // (src/systems/graphics/rendering/autoexposure.hpp). It used to be measured right
+  // here, from sixteen taps of this very buffer, and applied the same frame - which
+  // cannot work: a fragment shader remembers nothing, so the gain was recomputed
+  // from scratch every frame and jumped with every pan. Off a recorded match the
+  // picture's mean brightness moved 0.02 frame to frame through the opening
+  // cutscene, with single-frame jumps of -0.073 and +0.038. It read as a flicker.
   //
-  // The average is taken from a coarse grid of the scene itself. A read-back would
-  // be exact and would cost a stall; sixteen taps cost nothing and are steady
-  // enough, since the gain is clamped and the scene changes slowly.
-  if (exposureKey > 0.0f) {
-    // The frame's own brightness, measured where it is judged: as displayed, not
-    // in linear light. A geometric mean of linear luminance is the textbook
-    // measure and it reads far too dark here - a stand in shadow drags it down and
-    // the gain overshoots, which put st041 at a median of 0.558 against the
-    // broadcast's 0.434 while it had been sitting at 0.426 already.
-    float sum = 0.0f;
-    float counted = 0.0f;
-    const int kExposureTaps = 4;
-    for (int ty = 0; ty < kExposureTaps; ++ty) {
-      for (int tx = 0; tx < kExposureTaps; ++tx) {
-        vec2 tap = (vec2(float(tx), float(ty)) + 0.5f) / float(kExposureTaps);
-        // Empty background is not part of the measurement. Where the depth was
-        // never written the accumulation buffer holds the clear colour, and the sky
-        // that ends up there is painted further down - after this gain, so the gain
-        // cannot move it anyway. Counting those taps read a frame as far darker
-        // than it is shown and asked for light the picture did not need: st011 is
-        // most of a bowl under a wide sky, measured at a median of 0.55 against the
-        // broadcast's 0.434, and the exposure was still lifting it.
-        float tapDepth = texture2D(map_depth, tap).x;
-        if (tapDepth > 0.999999f) continue;
-        vec3 sampled = texture2D(map_accumulation, tap).rgb;
-        // Through the grades the picture goes through. Measured as lit instead,
-        // every scene reads far darker than it will be shown - the engine's
-        // contrast and PES's LUT both lift the midtones afterwards - so the gain
-        // sat pinned at its ceiling and the pass became a flat brightening: in the
-        // capture sheets every one of the nine grounds got brighter, including the
-        // four that were already past the broadcast's midtone.
-        vec3 shown = LutGrade(EngineGrade(sampled, sceneBrightness, 0.95f));
-        float luminance = dot(shown, vec3(0.2126f, 0.7152f, 0.0722f));
-        sum += pow(max(luminance, 0.0001f), 1.0f / 2.2f);
-        counted += 1.0f;
-      }
-    }
-    // A frame of nothing but sky is left alone rather than divided by zero.
-    float displayed = counted > 0.0f ? sum / counted : exposureKey;
-    // exposureKey is the brightness to aim for as displayed; the correction is
-    // applied in linear light, so it goes through the transfer the other way.
-    float ratio = clamp(exposureKey / max(displayed, 0.0001f), exposureMinGain, exposureMaxGain);
-    fragColor *= pow(ratio, 2.2f);
-  }
-
+  // Now the frame that was just presented is measured on the engine side and the
+  // gain walks toward what that asks for, so this is a multiply.
+  fragColor *= exposureGain;
 
   // fog
 

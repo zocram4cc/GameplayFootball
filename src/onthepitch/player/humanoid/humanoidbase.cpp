@@ -502,7 +502,10 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
 void HumanoidBase::UpdateFullbodyNodes() {
   Vector3 previousFullbodyOffset = fullbodyOffset;
   fullbodyOffset = humanoidNode->GetPosition().Get2D();
-  fullbodyNode->SetPosition(fullbodyOffset);
+  // A benched player stays parked. fullbodyOffset itself is left alone: the joint
+  // positions below are relative to it, and moving it would distort the skinning of
+  // a model that is about to come back on.
+  fullbodyNode->SetPosition(benched ? BenchedPosition() : fullbodyOffset);
 
   for (unsigned int i = 0; i < joints.size(); i++) {
     // linear blend skinning: rotate by the change since the bind pose
@@ -525,7 +528,7 @@ void HumanoidBase::UpdateFullbodyNodes() {
   false); hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   }
   */
-  if (hairstyleActive) {
+  if (hairstyleActive && !benched) {
     hairStyle->SetRotation(joints[neckJointIndex].orientation, false);
     hairStyle->SetPosition(joints[neckJointIndex].position * zMultiplier + fullbodyOffset,
                            false);

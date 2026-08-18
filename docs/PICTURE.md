@@ -44,9 +44,28 @@ Two things follow from that order and both have bitten:
 `gameMinExposure`/`gameMaxExposure` per atmosphere; this is the same idea with one
 key for every ground.
 
-Sixteen taps of `map_accumulation` are averaged **in display space**
-(`pow(luminance, 1/2.2)`) and the correction applied in linear as
-`pow(ratio, 2.2)`. Two corrections were needed to make it mean anything:
+**It is measured on the engine side, not in the shader, and that is the whole point.**
+A fragment shader remembers nothing, so a gain computed inside it is rebuilt from
+scratch every frame — and sixteen taps at fixed screen positions see entirely
+different things as a camera moves. Measured off a recorded match, the picture's mean
+brightness moved 0.0114 from frame to frame through the opening cutscene, 39% of
+frames moving more than 0.01, with single-frame jumps of −0.073 and +0.038. It read
+as a flicker on every cut and pan.
+
+The renderer now reads a centre window of the frame it just presented (a quarter of
+the width and height, every third frame — the adaptation is slow, and a readback costs
+a sync) and `AutoExposure::Adapt` walks the gain toward what that asks for over a
+half-life: `graphics_exposure_half_life`, 1.2 s by default, frame-rate independent,
+the same both ways. The shader is one multiply. On the same six-second window the mean
+frame-to-frame change fell to 0.0011 and the frames moving more than 0.01 from 39% to
+1%.
+
+Centre-weighted metering is also what a camera does, and the readback measures the
+*final graded* frame, which is the space the key is calibrated in.
+
+Historical note, because the reasoning is worth keeping: the in-shader version
+measured through `EngineGrade` and `LutGrade` and skipped cleared-depth taps, for
+these reasons:
 
 - **Measure where the frame is judged.** It used to sample the raw lit frame and
   compare that against a key read off graded pictures. Every scene therefore
@@ -60,10 +79,26 @@ Sixteen taps of `map_accumulation` are averaged **in display space**
   a bowl under a wide sky and was still being lifted at a median of 0.55.
 
 Instrumenting the shader to write `displayed`, `ratio` and the tap count into three
-patches on the bottom edge of the frame is how this was pinned down; the readback
+patches on the bottom edge of the frame is how that was pinned down; the readback
 is `pow(value, 2.2)` to survive the sRGB framebuffer, and note that `texCoord`
 comes from `gl_FragCoord`, so the patches are at the **bottom** of the image, not
 the top. Reading them from the top gave plausible-but-wrong numbers for a while.
+
+## 1a. The entrance cast blinking
+
+The same recording showed the squads blinking in and out of the centre circle every
+frame or two. `HideUnstagedPlayers` called `HumanoidBase::Hide()` on every player who
+was not part of the staging, once a frame — and `Hide()` only parks the model at
+(1000, 1000, −1000), which `UpdateFullbodyNodes` puts straight back because it follows
+the humanoid node. Two different schedules, so whichever ran last decided whether that
+player was on screen. The old comment on the function said as much ("this has to run
+... on every frame") without noticing that the race was the bug.
+
+Being parked is a state now (`SetBenched`), and `EntranceCast::ShouldBench` gives one
+answer per player per frame which is applied either way — saying "not parked" out loud
+is what lets it clear when the entrance ends. Counting player-coloured pixels per
+frame, the frame-to-frame change fell from a median of 6.5% to 0.6%, and pairs jumping
+more than 20% from 17% to 1%.
 
 ### The colour grade, and how its table is chosen
 

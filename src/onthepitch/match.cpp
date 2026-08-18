@@ -16,6 +16,7 @@
 #include "base/log.hpp"
 #include "coachmode.hpp"
 #include "competitionemblem.hpp"
+#include "entrancecast.hpp"
 #include "teamflag.hpp"
 #include "crowdmood.hpp"
 #include "managers/resourcemanagerpool.hpp"
@@ -1928,6 +1929,8 @@ void Match::UpdateEntranceChoreo() {
   }
 
   if (entranceCast.empty()) {
+    // Nobody staged: whoever was parked for an earlier beat comes back.
+    BenchUnstagedPlayers(/*holdingOpeningFrame=*/false);
     choreoBoundsValid = false;
     return;
   }
@@ -1936,9 +1939,7 @@ void Match::UpdateEntranceChoreo() {
   // yet, so nobody is on it. Holding the borrowed pack's opening frame instead put
   // both elevens in a ring on the centre circle through the whole stadium card.
   if (stagingHoldsOpeningFrame) {
-    for (auto& cast : entranceCast)
-      if (cast.player->CastHumanoid()) cast.player->CastHumanoid()->Hide();
-    HideUnstagedPlayers();
+    BenchUnstagedPlayers(/*holdingOpeningFrame=*/true);
     choreoBoundsValid = false;
     return;
   }
@@ -1980,7 +1981,7 @@ void Match::UpdateEntranceChoreo() {
   // pitch. PES walks its cast out of the tunnel to an empty field; a .chor stages
   // the slots its own pack authored - never all twenty-two - and the rest were
   // left at their kickoff marks, in shot, for the whole presentation.
-  HideUnstagedPlayers();
+  BenchUnstagedPlayers(/*holdingOpeningFrame=*/false);
 
   choreoBoundsValid = anyPosed;
   if (anyPosed) {
@@ -1989,9 +1990,14 @@ void Match::UpdateEntranceChoreo() {
   }
 }
 
-void Match::HideUnstagedPlayers() {
-  // Hide() parks the model far away, and a player's own Process puts it back, so
-  // this has to run after the cast is posed and on every frame of the entrance.
+void Match::BenchUnstagedPlayers(bool holdingOpeningFrame) {
+  // One answer per player per frame, applied either way. It used to call Hide() on
+  // the players it wanted gone and nothing on the rest, and Hide() only parked the
+  // model for a frame before the player's own UpdateFullbodyNodes put it back - so
+  // the squads blinked in and out of the centre circle depending on which schedule
+  // ran last. Being parked is a state now (HumanoidBase::SetBenched), and saying
+  // "not parked" out loud is what lets it clear when the entrance ends.
+  const bool inEntrance = IsInEntrance();
   std::set<PlayerBase*> staged;
   for (const auto& cast : entranceCast) staged.insert(cast.player);
   for (int teamID = 0; teamID < 2; teamID++) {
@@ -1999,8 +2005,9 @@ void Match::HideUnstagedPlayers() {
     std::vector<Player*> squad;
     teams[teamID]->GetActivePlayers(squad);
     for (Player* player : squad) {
-      if (!player || staged.count(player)) continue;
-      if (player->CastHumanoid()) player->CastHumanoid()->Hide();
+      if (!player || !player->CastHumanoid()) continue;
+      player->CastHumanoid()->SetBenched(EntranceCast::ShouldBench(
+          inEntrance, holdingOpeningFrame, staged.count(player) > 0));
     }
   }
 }

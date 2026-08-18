@@ -18,6 +18,8 @@
 
 #include "opengl_renderer3d.hpp"
 
+#include "autoexposure.hpp"
+
 #include <algorithm>
 #include <csignal>
 #include <cstdio>
@@ -162,6 +164,43 @@ void OpenGLRenderer3D::SwapBuffers() {
     WriteScreenshot(filename);
 
   WriteRecordedFrame();
+  MeasureFrameBrightness();
+}
+
+namespace {
+// Every third presented frame: the adaptation is slow, and a readback costs a sync.
+const int kExposureMeterInterval = 3;
+int exposureMeterCountdown = 0;
+}  // namespace
+
+void OpenGLRenderer3D::MeasureFrameBrightness() {
+  // What the exposure adapts toward (autoexposure.hpp). Measured here, off the frame
+  // that was just presented, because the shader cannot remember anything and a gain
+  // computed from scratch every frame flickers on every pan.
+  //
+  // A centre window rather than the whole frame: it is a fraction of the pixels to
+  // read back, and centre-weighted metering is what a camera does anyway. Every few
+  // frames rather than all of them - the adaptation is slow, so 20 Hz is plenty, and
+  // a readback costs a sync.
+  if (++exposureMeterCountdown < kExposureMeterInterval) return;
+  exposureMeterCountdown = 0;
+
+  const int width = context_width;
+  const int height = context_height;
+  if (width <= 0 || height <= 0) return;
+  const int windowWidth = width / 4;
+  const int windowHeight = height / 4;
+  if (windowWidth <= 0 || windowHeight <= 0) return;
+
+  static std::vector<unsigned char> window;
+  window.resize((size_t)windowWidth * windowHeight * 4);
+  glPixelStorei(GL_PACK_ALIGNMENT, 1);
+  glReadBuffer(GL_BACK);
+  glReadPixels((width - windowWidth) / 2, (height - windowHeight) / 2, windowWidth, windowHeight,
+               GL_RGBA, GL_UNSIGNED_BYTE, window.data());
+  const float measured =
+      AutoExposure::MeanDisplayedLuminance(window.data(), (size_t)windowWidth * windowHeight);
+  AutoExposure::SetMeasuredBrightness(measured);
 }
 
 void OpenGLRenderer3D::WriteRecordedFrame() {

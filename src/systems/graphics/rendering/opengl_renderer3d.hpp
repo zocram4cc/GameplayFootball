@@ -159,6 +159,8 @@ protected:
   int context_width, context_height, context_bpp;
   void WriteScreenshot(const std::string& filename);
   void WriteRecordedFrame();
+  // Measures the presented frame for the exposure to adapt toward (autoexposure.hpp).
+  void MeasureFrameBrightness();
   bool contextIsActive;
 
   float cameraNear;
