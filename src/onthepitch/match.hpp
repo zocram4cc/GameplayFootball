@@ -453,6 +453,7 @@ protected:
   boost::intrusive_ptr<Node> staffNode;
   boost::intrusive_ptr<Node> propsNode;
   boost::intrusive_ptr<Node> crowdNode;
+  boost::intrusive_ptr<Node> entrancePropsNode;
 
   // camera user settings
   float cameraUserZoom;

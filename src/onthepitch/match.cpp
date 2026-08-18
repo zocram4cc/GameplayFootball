@@ -643,6 +643,30 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     Log(e_Notice, "Match", "Match", "crowd: " + crowdObject);
   }
 
+  // What PES carries out for the walkout and takes away again: the flag bearers
+  // and their banners at the tunnel mouth, the arch over it, the pennant display
+  // on the centre circle, the tunnel itself. Loaded with the ground and dropped
+  // the moment the presentation is over, because none of it belongs on a pitch
+  // that is about to be played on (tools/pes21_import/stadium_props.py --set
+  // entrance).
+  std::string entranceProps = GetConfiguration()->Get("entrance_props_object", "");
+  if (entranceProps.empty()) {
+    const std::string stadiumForEntrance = GetConfiguration()->Get("stadium_object", "");
+    const std::string::size_type slash = stadiumForEntrance.find_last_of("/\\");
+    if (slash != std::string::npos) {
+      const std::string candidate =
+          stadiumForEntrance.substr(0, slash + 1) + "entrance/entrance.object";
+      if (std::filesystem::exists(candidate)) entranceProps = candidate;
+    }
+  }
+  if (!entranceProps.empty() && !SuperDebug() && entranceSeconds > 0.0f &&
+      std::filesystem::exists(entranceProps)) {
+    entrancePropsNode = loader.LoadObject(GetScene3D(), entranceProps);
+    entrancePropsNode->SetLocalMode(e_LocalMode_Absolute);
+    GetScene3D()->AddNode(entrancePropsNode);
+    Log(e_Notice, "Match", "Match", "walkout set: " + entranceProps);
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -1064,6 +1088,7 @@ void Match::Exit() {
   if (staffNode) scene3D->DeleteNode(staffNode);
   if (propsNode) scene3D->DeleteNode(propsNode);
   if (crowdNode) scene3D->DeleteNode(crowdNode);
+  if (entrancePropsNode) scene3D->DeleteNode(entrancePropsNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
@@ -3247,6 +3272,13 @@ void Match::Process() {
     if (GetEntranceElapsedSeconds() >= entranceSeconds) {
       entranceActive = false;
       ShowMatchHud(true);
+      // The walkout set goes back inside: banners, flag bearers, the arch, the
+      // pennant display on the centre circle.
+      if (entrancePropsNode) {
+        GetScene3D()->DeleteNode(entrancePropsNode);
+        entrancePropsNode.reset();
+        Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
+      }
       Log(e_Notice, "Match", "Process",
           "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
               "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");

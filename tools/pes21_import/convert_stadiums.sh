@@ -129,6 +129,12 @@ for pack in "$PACKS"/*/; do
     python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/props" \
       --fmdl-lib "$FMDL_LIB" \
       --asset-dir "pes_st$slot/props" || true
+    # And what PES only carries out for the walkout - the flag bearers, their
+    # banners, the arch over the tunnel mouth, the pennant display on the centre
+    # circle, the tunnel - which the engine drops at kickoff.
+    python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/entrance" \
+      --fmdl-lib "$FMDL_LIB" --name entrance --set entrance \
+      --asset-dir "pes_st$slot/entrance" || true
   fi
 
   # Where this ground's sun is. Every pack carries a place, a date and a time in

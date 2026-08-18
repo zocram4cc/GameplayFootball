@@ -291,5 +291,89 @@ class PlacedWhereTheMarkIs(unittest.TestCase):
         self.assertAlmostEqual(y, -38.5, places=3)
 
 
+class TheEntranceSet(unittest.TestCase):
+    """What PES carries out for the walkout and takes away again.
+
+    doh_fb_home/away are the flag bearers (10.9k vertices, dressed),
+    banner_nationalflag_home/away and banner_euro_competition the banners they hold,
+    tunnelarch_uefa_euro the arch over the tunnel mouth, circleflag_afc_cl_01 the
+    pennant display on the centre circle, and passage_01..99 the tunnel itself.
+    None of it belongs on the pitch once the match starts, so it is a separate set
+    the engine drops at kickoff.
+    """
+
+    def test_the_flag_bearers_and_their_banners_are_in_it(self):
+        self.assertIn("doh_fb_home", stadium_props.ENTRANCE_WANTED)
+        self.assertIn("banner_nationalflag_home", stadium_props.ENTRANCE_WANTED)
+
+    def test_so_are_the_arch_and_the_pennant(self):
+        self.assertIn("tunnelarch_uefa_euro", stadium_props.ENTRANCE_WANTED)
+        self.assertIn("circleflag_afc_cl_01", stadium_props.ENTRANCE_WANTED)
+
+    def test_the_touchline_furniture_is_not(self):
+        # it stays out for the whole match
+        self.assertNotIn("gadget_cornerflag", stadium_props.ENTRANCE_WANTED)
+        self.assertNotIn("doh_beltpole", stadium_props.ENTRANCE_WANTED)
+
+    def test_each_piece_knows_where_it_goes(self):
+        self.assertEqual(stadium_props.entrance_role("/x/doh_fb_home.fmdl"), "flagbearer")
+        self.assertEqual(stadium_props.entrance_role("/x/banner_nationalflag_away.fmdl"), "banner")
+        self.assertEqual(stadium_props.entrance_role("/x/tunnelarch_uefa_euro.fmdl"), "arch")
+        self.assertEqual(stadium_props.entrance_role("/x/circleflag_afc_cl_01.fmdl"), "pennant")
+        self.assertEqual(stadium_props.entrance_role("/x/passage_01.fmdl"), "tunnel")
+        self.assertIsNone(stadium_props.entrance_role("/x/gadget_cornerflag.fmdl"))
+
+    def test_the_pennant_display_stands_on_the_centre_circle(self):
+        marks = stadium_props.marks_for_entrance("pennant", HALF_X, HALF_Y)
+        self.assertTrue(marks)
+        for x, y, _yaw in marks:
+            self.assertLess(math.hypot(x, y), 10.0)
+
+    def test_the_flag_bearers_wait_at_the_tunnel_mouth(self):
+        marks = stadium_props.marks_for_entrance("flagbearer", HALF_X, HALF_Y)
+        self.assertTrue(marks)
+        for x, y, _yaw in marks:
+            self.assertLess(y, -HALF_Y)          # outside the near touchline
+            self.assertLess(abs(x), 20.0)        # by the halfway line, where the walk comes in
+
+    def test_the_arch_is_over_that_mouth_too(self):
+        arch = stadium_props.marks_for_entrance("arch", HALF_X, HALF_Y)
+        bearers = stadium_props.marks_for_entrance("flagbearer", HALF_X, HALF_Y)
+        self.assertTrue(arch)
+        self.assertLess(abs(arch[0][1] - bearers[0][1]), 12.0)
+
+    def test_the_tunnel_sits_behind_the_mouth_not_on_the_pitch(self):
+        marks = stadium_props.marks_for_entrance("tunnel", HALF_X, HALF_Y)
+        self.assertTrue(marks)
+        for _x, y, _yaw in marks:
+            self.assertLess(y, -HALF_Y - 20.0)
+
+    def test_something_with_no_place_in_the_walkout_gets_no_marks(self):
+        self.assertEqual(stadium_props.marks_for_entrance("cornerflag", HALF_X, HALF_Y), [])
+
+
+class DressedMeshByMesh(unittest.TestCase):
+    """A prop with one placeholder panel is still worth having.
+
+    tunnelarch_uefa_euro carries four meshes: two textured and two on
+    dummy_embA/embH, which are the placeholders PES swaps for the two teams'
+    emblems. Judged all-or-nothing the whole arch was left in the pack; judged mesh
+    by mesh the arch comes and the two blank panels do not.
+    """
+
+    def test_a_model_with_some_dressed_meshes_is_kept(self):
+        keep = stadium_props.dressed_meshes([True, True, False, False])
+        self.assertEqual(keep, [0, 1])
+
+    def test_one_with_none_dressed_is_left_out_entirely(self):
+        self.assertEqual(stadium_props.dressed_meshes([False, False]), [])
+
+    def test_a_fully_dressed_model_keeps_everything(self):
+        self.assertEqual(stadium_props.dressed_meshes([True, True, True]), [0, 1, 2])
+
+    def test_no_meshes_at_all_is_nothing_to_keep(self):
+        self.assertEqual(stadium_props.dressed_meshes([]), [])
+
+
 if __name__ == "__main__":
     unittest.main()
