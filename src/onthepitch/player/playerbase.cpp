@@ -120,10 +120,13 @@ void PlayerBase::Process() {
       externalController->Process();
     else
       controller->Process();
+    // Said out loud either way: a substitute coming on has to stop being parked, and
+    // that is not something the entrance's own bookkeeping knows about
+    // (humanoidbase.hpp).
+    if (humanoid) humanoid->SetInactiveHidden(false);
     humanoid->Process();
   } else {
-    if (humanoid)
-      humanoid->Hide();
+    if (humanoid) humanoid->SetInactiveHidden(true);
   }
   // if (debug) printf("::%f velo\n", GetMovement().GetLength());
 }
