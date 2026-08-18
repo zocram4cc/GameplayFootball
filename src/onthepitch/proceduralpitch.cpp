@@ -5,7 +5,10 @@
 
 #include "proceduralpitch.hpp"
 
+#include "onthepitch/pitchoverlay.hpp"
 #include "onthepitch/pitchturf.hpp"
+
+#include <filesystem>
 
 #include <cmath>
 
@@ -486,7 +489,18 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
   SDL_FreeSurface(seamless);
   seamlessMean = total / (float)(seamlessTexW * seamlessTexH);
 
-  SDL_Surface* overlay = IMG_Load("media/textures/pitch/overlay.png");
+  // The art painted on this pitch. A converted stadium brings PES's own -
+  // its mowing bands, its worn goalmouths, the crest mowed into it - as
+  // pitch_overlay.png beside its .object; without one, every ground shares
+  // the file the engine has always used (pitchoverlay.hpp).
+  const std::string sidecar =
+      PitchOverlay::SidecarPath(GetConfiguration()->Get("stadium_object", ""));
+  const std::string overlayPath =
+      PitchOverlay::Choose(sidecar, !sidecar.empty() && std::filesystem::exists(sidecar));
+  if (overlayPath != PitchOverlay::kSharedOverlay)
+    Log(e_Notice, "proceduralpitch", "GetPitchDiffuseTexture",
+        "pitch art from the stadium's own " + overlayPath);
+  SDL_Surface* overlay = IMG_Load(overlayPath.c_str());
   SDL_PixelFormat overlayFormat = *overlay->format;
   overlayTexW = overlay->w;
   overlayTexH = overlay->h;

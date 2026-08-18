@@ -295,6 +295,25 @@ Until that lands, imported heads render statically.
     twenty white mannequins beside the pitch. A ground with nobody to dress - the
     six that borrow the shared set - gets an empty technical area, which is not a
     defect, while a row of blank white figures in every wide shot is.
+- `pitch_overlay.py`: the pitch art PES paints on its own grass. The engine grows
+  its pitch procedurally and then blends one image over all of it by that image's
+  alpha, sampled across pitchFullHalfW/H (60 x 40 m either way) - and that was one
+  shared file for every ground. PES's is a mesh: the pack's pitch model is a flat
+  sheet with decal textures over it (st002: `pitch_alp` 2048 x 4096 of markings,
+  `pitch_scratch_bsm_alp` carrying two crests hatched into the grass like mowing,
+  and a tiled line pass). So every triangle is rasterised from metres into overlay
+  pixels and filled from its decal, composited in PES's own order, into
+  `pitch_overlay.png` beside the stadium; the engine picks that up in place of the
+  shared file (`src/onthepitch/pitchoverlay.hpp`). Two details matter:
+  * **the field is stretched to ours.** PES marks a real 106 x 68 m pitch (st002's
+    line mesh: +/-53 x +/-34.1) and this engine plays on 110 x 72 and paints its
+    lines there, so the art is scaled by 1.039 x 1.056 until the two rectangles
+    agree. Unscaled, PES's touchline sits two metres inside ours.
+  * **the line pass is left out** (`--lines` puts it in). The engine paints its own
+    markings, and two sets a few centimetres apart look like a printing error.
+  A decal bigger than the overlay is averaged down first: sampling 4096 rows into
+  1024 point by point kept every fourth row and combed the crests into stripes.
+  (The hatching that remains is PES's own - it is in the texture.)
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads — silhouette texture + billboard strips hooked into the stadium
   `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its

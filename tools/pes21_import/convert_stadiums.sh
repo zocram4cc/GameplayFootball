@@ -89,6 +89,15 @@ for pack in "$PACKS"/*/; do
     rm -rf "$out/sky"
   fi
 
+  # What PES paints on this pitch: the mowing bands, the worn goalmouths, the crest
+  # mowed into it. The pack's pitch model carries them as decals, and the engine
+  # already blends one image over the whole of its own pitch by alpha, so they are
+  # rasterised into that (pitch_overlay.png). PES's line markings are left out -
+  # the engine paints its own, and two sets never quite agree.
+  python3 "$HERE/pitch_overlay.py" "$pack" --out "$out" \
+    --fmdl-lib "$FMDL_LIB" \
+    --textures "$pack/sourceimages/tga/#windx11" || true
+
   # Where this ground's sun is. Every pack carries a place, a date and a time in
   # light/#Win/.../*.fox2.xml, and how much fog its atmosphere wants; without this
   # the engine rolls dice for the sun in every kickoff.
