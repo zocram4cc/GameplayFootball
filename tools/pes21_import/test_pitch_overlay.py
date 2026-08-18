@@ -174,6 +174,53 @@ class NothingPaintedIsNoOverlay(unittest.TestCase):
         self.assertFalse(pitch_overlay.worth_writing(pixels))
 
 
+class WhatEachPassIs(unittest.TestCase):
+    """A pitch model holds up to three kinds of pass, and they are not equal.
+
+    Measured over six packs:
+
+      * decals - st002's pitch_alp is 99% fully transparent, its pitch_scratch
+        crest pass 93%. These go over the engine's own grass and are the point of
+        the import.
+      * the grass itself - st019 and benuldys ship pitch.dds and st056 wide_s_c1,
+        every pixel opaque. That is PES's pitch surface, not a decal: painted over
+        the engine's pitch it replaces it outright, which is right (benuldys really
+        does play on a red and blue pitch) - but it also buries the markings the
+        engine paints procedurally, and st031 came out a blank cyan chequerboard.
+      * the lines - line_alp/line, a strip tiled along each marking.
+
+    So the lines go in exactly when the grass has covered ours, and not otherwise:
+    two sets of lines a few centimetres apart look like a printing error, but a
+    pitch with no markings at all is worse.
+    """
+
+    def test_a_mostly_transparent_pass_is_a_decal(self):
+        self.assertFalse(pitch_overlay.is_base_pass("pitch_alp.tga", clear_fraction=0.99))
+        self.assertFalse(pitch_overlay.is_base_pass("pitch_scratch_bsm_alp.tga",
+                                                   clear_fraction=0.93))
+
+    def test_an_opaque_pass_is_the_grass_itself(self):
+        self.assertTrue(pitch_overlay.is_base_pass("pitch.dds", clear_fraction=0.0))
+        self.assertTrue(pitch_overlay.is_base_pass("wide_s_c1.dds", clear_fraction=0.0))
+
+    def test_st031s_half_transparent_grass_is_still_grass(self):
+        # alpha averaging 130 with nothing fully clear: a surface, not a decal
+        self.assertTrue(pitch_overlay.is_base_pass("wide_s_c1.dds", clear_fraction=0.0))
+
+    def test_a_line_pass_is_never_the_grass_however_opaque(self):
+        # st019's line strip is fully opaque and still only a strip
+        self.assertFalse(pitch_overlay.is_base_pass("line_alp.dds", clear_fraction=0.0))
+
+    def test_pes_lines_go_in_when_pes_grass_covered_ours(self):
+        self.assertTrue(pitch_overlay.wants_lines(painted_base=True, forced=False))
+
+    def test_pes_lines_stay_out_when_our_own_still_show(self):
+        self.assertFalse(pitch_overlay.wants_lines(painted_base=False, forced=False))
+
+    def test_asking_for_them_puts_them_in_either_way(self):
+        self.assertTrue(pitch_overlay.wants_lines(painted_base=False, forced=True))
+
+
 class Rasterise(unittest.TestCase):
     """Filling one triangle of a pitch into the overlay."""
 

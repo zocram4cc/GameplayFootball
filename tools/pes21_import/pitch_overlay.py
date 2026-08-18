@@ -140,6 +140,42 @@ def is_line_pass(texture_name):
     return any(stem.startswith(prefix) for prefix in LINE_TEXTURES)
 
 
+# Below this much fully transparent texture, a pass is a surface and not a decal
+DECAL_MIN_CLEAR = 0.25
+
+
+def is_base_pass(texture_name, clear_fraction):
+    """Whether a pass is PES's pitch surface rather than a decal over it.
+
+    Measured over six packs: decals are nearly all transparent (st002's pitch_alp
+    99%, its crest pass 93%), while the grass itself is opaque everywhere
+    (st019's and benuldys's pitch.dds, st056's wide_s_c1, st031's at alpha 130
+    with nothing clear). A line strip is never the surface, however opaque it is -
+    st019's is solid and still only a strip.
+    """
+    if is_line_pass(texture_name):
+        return False
+    return clear_fraction < DECAL_MIN_CLEAR
+
+
+def wants_lines(painted_base, forced):
+    """Whether to lay PES's markings down.
+
+    Exactly when its grass has covered the engine's own, which took the engine's
+    procedural markings with it - st031 came out a blank chequerboard. Where our
+    grass still shows, so do our lines, and a second set a few centimetres away
+    reads as a printing error.
+    """
+    return bool(forced or painted_base)
+
+
+def clear_fraction(image):
+    """How much of a texture is fully transparent."""
+    import numpy
+    alpha = numpy.asarray(image.convert("RGBA"))[:, :, 3]
+    return float((alpha == 0).mean())
+
+
 def worth_writing(pixels):
     """Whether an overlay paints anything at all.
 
@@ -252,26 +288,50 @@ def main():
 
     pixels = blank(args.width, args.height)
     cache = {}
-    drawn = 0
+
+    # What each mesh is, before painting any of it: PES's grass, a decal over it,
+    # or its line markings. The order matters - grass first, then what is painted
+    # on it, then the lines - and the lines only go down when PES's grass has
+    # covered the engine's own (see wants_lines).
+    passes = []  # (index, mesh, name, image, kind)
+    painted_base = False
     for index, mesh in enumerate(fmdl.meshes):
         texture = stadium_to_gf._mesh_base_texture(mesh)
         name = getattr(texture, "filename", None)
-        if is_line_pass(name) and not args.lines:
-            print("  mesh %d: %s - the engine paints its own lines, skipped" % (index, name))
-            continue
         image = _decode_texture(texture, ftex_index, cache) if texture else None
-        if image is not None:
-            image = fit_texture(image, args.width, args.height)
         if image is None:
             print("  mesh %d: no texture (%s), skipped" % (index, name))
             continue
-        sampler = _sampler_for(image)
-        for face in mesh.faces:
-            corners = [(v.position.x * scale_x, -v.position.z * scale_y) for v in face.vertices]
-            uvs = [(v.uv[0].u, v.uv[0].v) if v.uv else (0.0, 0.0) for v in face.vertices]
-            rasterise_triangle(pixels, args.width, args.height, corners, uvs, sampler)
-        drawn += 1
-        print("  mesh %d: %s over %d triangle(s)" % (index, name, len(mesh.faces)))
+        clear = clear_fraction(image)
+        if is_line_pass(name):
+            kind = "lines"
+        elif is_base_pass(name, clear):
+            kind = "grass"
+            painted_base = True
+        else:
+            kind = "decal"
+        passes.append((index, mesh, name, fit_texture(image, args.width, args.height), kind))
+        print("  mesh %d: %s - %s (%.0f%% of it transparent)" % (index, name, kind, 100.0 * clear))
+
+    lines_wanted = wants_lines(painted_base, args.lines)
+    if not lines_wanted and any(p[4] == "lines" for p in passes):
+        print("  the engine's own markings still show through, so PES's are left out")
+
+    drawn = 0
+    for kind in ("grass", "decal", "lines"):
+        if kind == "lines" and not lines_wanted:
+            continue
+        for index, mesh, name, image, mesh_kind in passes:
+            if mesh_kind != kind:
+                continue
+            sampler = _sampler_for(image)
+            for face in mesh.faces:
+                corners = [(v.position.x * scale_x, -v.position.z * scale_y)
+                           for v in face.vertices]
+                uvs = [(v.uv[0].u, v.uv[0].v) if v.uv else (0.0, 0.0) for v in face.vertices]
+                rasterise_triangle(pixels, args.width, args.height, corners, uvs, sampler)
+            drawn += 1
+            print("  painted mesh %d (%s) over %d triangle(s)" % (index, kind, len(mesh.faces)))
 
     if not drawn:
         print("nothing to paint: leaving the engine's own overlay")
