@@ -11,6 +11,7 @@
 #include "../resources/vertexbuffer.hpp"
 #include "base/math/vector3.hpp"
 #include "scene/objects/geometry.hpp"
+#include "utils/instancelist.hpp"
 
 namespace blunted {
 
@@ -32,6 +33,8 @@ public:
 
   std::list<VertexBufferIndex> vertexBufferIndices;
   boost::intrusive_ptr<Resource<VertexBuffer>> vertexBuffer;
+  // where the copies of this mesh stand, if it is instanced at all
+  std::vector<InstanceList::Placement> instances;
 
 protected:
   Vector3 position;

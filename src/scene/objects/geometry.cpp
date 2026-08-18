@@ -150,6 +150,16 @@ void Geometry::RecursiveUpdateSpatialData(e_SpatialDataType spatialDataType,
   // Object::RecursiveUpdateSpatialData(spatialDataType);
 }
 
+void Geometry::SetInstances(const std::vector<InstanceList::Placement>& places) {
+  instances = places;
+  // The mesh sits at the origin and its copies are spread over the ground, so the
+  // bounds have to cover them or the whole crowd is culled the moment the middle
+  // of the pitch leaves the frustum.
+  aabb.Lock();
+  aabb.data.dirty = true;
+  aabb.Unlock();
+}
+
 AABB Geometry::GetAABB() const {
   aabb.Lock();
 
@@ -159,6 +169,16 @@ AABB Geometry::GetAABB() const {
     aabb.data.aabb =
         geometryData->GetResource()->GetAABB() * GetDerivedRotation() + GetDerivedPosition();
     geometryData->resourceMutex.unlock();
+    if (!instances.empty()) {
+      // one mesh's bounds, grown to hold every copy of it
+      const InstanceList::Bounds spread = InstanceList::Extent(instances);
+      if (spread.valid) {
+        aabb.data.aabb.minxyz +=
+            Vector3(spread.low[0], spread.low[1], spread.low[2]);
+        aabb.data.aabb.maxxyz +=
+            Vector3(spread.high[0], spread.high[1], spread.high[2]);
+      }
+    }
     aabb.data.dirty = false;
   }
 

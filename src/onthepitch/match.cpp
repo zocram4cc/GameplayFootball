@@ -617,6 +617,31 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     Log(e_Notice, "Match", "Match", "pitch furniture: " + propsObject);
   }
 
+  // And the crowd in the stands. PES gives every ground the same spectators and
+  // says where they sit in the pack's own audi/audiarea.bin - st060 works out to
+  // 5,120 seats - so the import writes one spectator per variant and a list of the
+  // seats it fills, and the renderer draws one mesh many times
+  // (tools/pes21_import/stadium_crowd.py, src/utils/instancelist.hpp). No shadows:
+  // five thousand figures in the shadow map buys nothing at that distance.
+  std::string crowdObject = GetConfiguration()->Get("crowd_object", "");
+  if (crowdObject.empty()) {
+    const std::string stadiumForCrowd = GetConfiguration()->Get("stadium_object", "");
+    const std::string::size_type slash = stadiumForCrowd.find_last_of("/\\");
+    if (slash != std::string::npos) {
+      const std::string candidate = stadiumForCrowd.substr(0, slash + 1) + "crowd/crowd.object";
+      if (std::filesystem::exists(candidate)) crowdObject = candidate;
+    }
+  }
+  if (!crowdObject.empty() && !SuperDebug() && std::filesystem::exists(crowdObject)) {
+    crowdNode = loader.LoadObject(GetScene3D(), crowdObject);
+    crowdNode->SetLocalMode(e_LocalMode_Absolute);
+    std::list<boost::intrusive_ptr<Geometry>> crowdGeoms;
+    crowdNode->GetObjects<Geometry>(e_ObjectType_Geometry, crowdGeoms);
+    for (auto& geom : crowdGeoms) geom->SetCastShadow(false);
+    GetScene3D()->AddNode(crowdNode);
+    Log(e_Notice, "Match", "Match", "crowd: " + crowdObject);
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -1037,6 +1062,7 @@ void Match::Exit() {
   if (skydomeNode) scene3D->DeleteNode(skydomeNode);
   if (staffNode) scene3D->DeleteNode(staffNode);
   if (propsNode) scene3D->DeleteNode(propsNode);
+  if (crowdNode) scene3D->DeleteNode(crowdNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);

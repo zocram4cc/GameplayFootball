@@ -117,6 +117,7 @@ SDL_PROC(void,glUniform3i,(GLint location,    GLint v0,    GLint v1,    GLint v2
 SDL_PROC(void,glUniform1f,(GLint location,    GLfloat v0))
 SDL_PROC(void,glUniform2f,(GLint location,    GLfloat v0,    GLfloat v1))
 SDL_PROC(void,glUniform3fv,(GLint location,    GLsizei count,    const GLfloat *value))
+SDL_PROC(void,glUniform4fv,(GLint location,    GLsizei count,    const GLfloat *value))
 SDL_PROC(void,glReadPixels,(GLint x,    GLint y,    GLsizei width,    GLsizei height,    GLenum format,    GLenum type,    GLvoid * data))
 
 SDL_PROC(void,glBindAttribLocation,(GLuint program,    GLuint index,    const GLchar *name))
@@ -311,6 +312,7 @@ SDL_PROC_UNUSED(void,glRasterPos2fv,(const GLfloat *v))
 
 
 SDL_PROC(void,glDrawRangeElements,(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const GLvoid * indices))
+SDL_PROC(void,glDrawElementsInstanced,(GLenum mode, GLsizei count, GLenum type, const GLvoid *indices, GLsizei primcount))
 
 SDL_PROC_UNUSED(void,glRasterPos2i,(GLint x, GLint y))
 SDL_PROC_UNUSED(void,glRasterPos2iv,(const GLint *v))

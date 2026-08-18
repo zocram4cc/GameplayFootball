@@ -452,6 +452,7 @@ protected:
   // beside the stadium (tools/pes21_import/stadium_staff.py).
   boost::intrusive_ptr<Node> staffNode;
   boost::intrusive_ptr<Node> propsNode;
+  boost::intrusive_ptr<Node> crowdNode;
 
   // camera user settings
   float cameraUserZoom;
