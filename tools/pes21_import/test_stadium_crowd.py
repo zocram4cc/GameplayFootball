@@ -92,6 +92,42 @@ class SharingOutTheVariants(unittest.TestCase):
         self.assertEqual(stadium_crowd.share_out([(0.0, 0.0, 0.0, 0.0)], 0), [])
 
 
+class DressingThemFromPesPalette(unittest.TestCase):
+    """PES's spectators carry no texture of their own; they index a palette.
+
+    The models declare no material texture at all - the game binds one at runtime -
+    and what sits beside them in Asset/model/bg/common/audi/sourceimages is a
+    colour palette: au_h_col_bsm_rgba32 and au_l_col_bsm_rgba32, each 32 x 128 of
+    small swatches, plus au_h_parts_bsm with the scarves and banners. So the
+    spectator's own UVs pick a colour out of the palette, and binding it is how a
+    crowd comes out in clothes rather than white.
+    """
+
+    def test_the_low_detail_crowd_reads_the_low_detail_palette(self):
+        self.assertEqual(stadium_crowd.palette_for("au_Low.fmdl"), "au_l_col_bsm_rgba32")
+        self.assertEqual(stadium_crowd.palette_for("/x/au_Low_parts.fmdl"), "au_l_col_bsm_rgba32")
+
+    def test_the_others_read_the_high_detail_one(self):
+        self.assertEqual(stadium_crowd.palette_for("au00_mouthOpen_parts.fmdl"),
+                         "au_h_col_bsm_rgba32")
+        self.assertEqual(stadium_crowd.palette_for("au14_parts.fmdl"), "au_h_col_bsm_rgba32")
+
+    def test_each_variant_reads_a_different_band_of_it(self):
+        # otherwise every copy of one model is dressed identically
+        first = stadium_crowd.palette_offset(0, 4)
+        second = stadium_crowd.palette_offset(1, 4)
+        self.assertNotEqual(first, second)
+
+    def test_the_offsets_stay_inside_the_palette(self):
+        for i in range(6):
+            _du, dv = stadium_crowd.palette_offset(i, 6)
+            self.assertGreaterEqual(dv, 0.0)
+            self.assertLess(dv, 1.0)
+
+    def test_one_variant_is_not_shifted_at_all(self):
+        self.assertEqual(stadium_crowd.palette_offset(0, 1), (0.0, 0.0))
+
+
 class TheCapOnHowManyAreDrawn(unittest.TestCase):
     """A stadium with 14,000 seats is thinned rather than dropped or drawn whole."""
 

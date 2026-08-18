@@ -614,7 +614,7 @@ def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap)
     out.write("\t}\n")
 
 
-def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
+def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_offset=None):
     vertex_index = {}
     vertices = []
     uvs = []
@@ -659,6 +659,12 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
     out.write("\t\t*MESH_TVERTLIST {\n")
     for i, uv in enumerate(uvs):
         u, v = (uv.u, 1.0 - uv.v) if uv is not None else (0.0, 0.0)
+        if uv_offset is not None:
+            # Moving a mesh onto its own band of a shared texture: PES's crowd
+            # palette is read this way, so one spectator model can be a stand of
+            # different shirts (stadium_crowd.palette_offset).
+            u = (u + uv_offset[0]) % 1.0
+            v = (v + uv_offset[1]) % 1.0
         out.write("\t\t\t*MESH_TVERT %d\t%.5f\t%.5f\t0.0\n" % (i, u, v))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))

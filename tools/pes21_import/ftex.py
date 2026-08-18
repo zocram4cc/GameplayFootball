@@ -67,7 +67,10 @@ def _read_mip(blob, offset, chunk_count, uncomp_size, comp_size):
 
 
 def parse(blob: bytes):
-    magic, version, pf, height, width, depth, mips, _nrt, _flags = \
+    # Width first, then height. Read the other way round it is invisible on a
+    # square texture - most of PES's are - and shears every other one: st002's
+    # pitch crest came out as two hatched half-crests, and the ad boards the same.
+    magic, version, pf, width, height, depth, mips, _nrt, _flags = \
         struct.unpack_from("<4sfHHHHBBH", blob, 0)
     if magic != b"FTEX":
         raise ValueError("not an ftex")
