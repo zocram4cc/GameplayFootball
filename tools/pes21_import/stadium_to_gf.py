@@ -22,6 +22,7 @@ every .ftex-holding directory underneath what you pass is searched.
 """
 
 import argparse
+import math
 import os
 import re
 import sys
@@ -297,25 +298,67 @@ def split_faces(faces, max_verts):
 # treatment as an outline shell (reversed winding, because its faces point
 # outward) plus normals that leave it unlit - lit like a wall, Planet Namek's green
 # sky comes out a white blowout. Thresholds are set to take the domes and nothing
-# else: Namek's sky is 1154 m across and reaches 624 m, its cloud dome 1123 m and
-# 440 m, while its terrain is 276 x 143 m and 13 m tall.
-SKY_MIN_SPAN = 300.0  # metres across, both ways
-SKY_MIN_TOP = 50.0    # metres above the pitch
+# else - and size cannot do that on its own. Namek's sky is 1154 m across and
+# reaches 624 m, but st019 is a custom ground whose bowl spans 1.5 x 5 km and
+# reaches 1160 m, so measuring metres called that entire stadium sky and left two
+# billboards standing in an empty scene.
+#
+# What tells a sky apart is which way it faces. PES authors a dome with its normals
+# turned in on the camera inside it (Namek's two average 1.00 and 0.97 towards the
+# pitch centre), while stands, terrain and scenery face every which way and average
+# out near zero (st019's three bowl meshes: -0.02, -0.03, -0.05). That is a property
+# of the geometry rather than of the ground's scale, so it holds for any pack.
+SKY_MIN_SPAN = 300.0        # metres across, both ways
+SKY_MIN_TOP = 50.0          # metres above the pitch
+SKY_MIN_CAMERA_FACING = 0.8  # how squarely its normals have to look at the camera
 SKY_CONSTANT_NORMAL = (0.0, 0.0, -1.0)  # away from the sun, as the engine's own sky.ase does
 
 
-def is_sky_dome(span_x, span_y, top_z, contains_origin):
-    """Whether a mesh of this size and position is a sky the camera is inside.
+def is_sky_dome(span_x, span_y, top_z, contains_origin, camera_facing):
+    """Whether a mesh is a sky the camera stands inside.
 
     Both spans have to be large: a wide flat apron is not a sky, and neither is a
     floodlight mast that is merely tall. It also has to surround the pitch - a
-    backdrop off to one side is seen from outside and must keep its winding.
+    backdrop off to one side is seen from outside and must keep its winding. And
+    with the size settled, its normals have to look back at the camera the way a
+    dome's do, or it is a stadium and not a sky.
     """
     if not contains_origin:
         return False
     if span_x < SKY_MIN_SPAN or span_y < SKY_MIN_SPAN:
         return False
-    return top_z >= SKY_MIN_TOP
+    if top_z < SKY_MIN_TOP:
+        return False
+    return camera_facing >= SKY_MIN_CAMERA_FACING
+
+
+def mesh_camera_facing(mesh):
+    """How much a mesh's normals turn in on its own centre: 1 all the way, -1 away.
+
+    A dome is authored for a camera inside it, so every normal points inward; a
+    stand, a roof or a hillside points wherever it happens to face and the average
+    collapses towards zero. Measured against the mesh's own centre rather than the
+    pitch spot, so a dome that is not perfectly centred still reads as one.
+    """
+    positions = [(v.position.x, -v.position.z, v.position.y) for v in mesh.vertices]
+    if not positions:
+        return 0.0
+    centre = [(min(c) + max(c)) / 2.0 for c in zip(*positions)]
+    total = 0.0
+    counted = 0
+    for vertex, position in zip(mesh.vertices, positions):
+        normal = getattr(vertex, "normal", None)
+        if normal is None:
+            continue
+        away = [position[axis] - centre[axis] for axis in range(3)]
+        length = math.sqrt(sum(component * component for component in away))
+        if length < 1e-6:
+            continue
+        inward = [-component / length for component in away]
+        facing = (normal.x * inward[0] + (-normal.z) * inward[1] + normal.y * inward[2])
+        total += facing
+        counted += 1
+    return total / counted if counted else 0.0
 
 
 def sample_sky_colours(png_path):
@@ -429,7 +472,8 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             # The camera stands inside a sky, so it is inverted like a shell - and
             # drawn unlit, or its own colour is lost to the lighting.
             span_x, span_y, top_z, contains_origin = mesh_bounds(mesh)
-            sky = is_sky_dome(span_x, span_y, top_z, contains_origin)
+            sky = is_sky_dome(span_x, span_y, top_z, contains_origin,
+                              mesh_camera_facing(mesh))
             if sky:
                 print("  sky dome: %s (%.0f x %.0f m, %.0f m up)"
                       % (geom_label(label, i), span_x, span_y, top_z))

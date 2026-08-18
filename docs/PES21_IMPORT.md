@@ -252,6 +252,47 @@ Until that lands, imported heads render statically.
   `MAP_DIFFUSE`, pointing at `media/objects/stadiums/white.png`: the ASE
   loader's own fallback is a stock `orange.jpg` that does not ship, and a
   missing image file is fatal to `ImageLoader`.
+- `convert_stadiums.sh <packs dir>`: one command per pack, and the same command
+  for every pack. It takes a directory of packs in either layout - a download
+  named `019 - somewhere`, or `st019` as the stadium cpks unpack - and for each
+  one: unpacks whatever is still in .fpk archives (`extract_stadium_packs.sh`),
+  finds the centre scene at any depth, converts it with its textures, writes the
+  distance its geometry reaches (`farplane.txt`), the sun the pack ships
+  (`lighting.txt`, `stadium_lighting.py`) and its touchline staff
+  (`staff/`, `stadium_staff.py`). The output directory is wiped first, so a
+  reconversion does not depend on what was converted into it before.
+  `COMMON_STAFF=<dir>` points at the game's own `bg/common`: a pack download
+  leaves a 48-byte stub where its staff should be, because in PES those models
+  live in the shared pack and every ground points at them, so any pack without
+  its own borrows from there. Verified over nine grounds: every mesh in every
+  centre scene arrives (st002 131, st011 85, st019 5, st031 22, st041 21, st043
+  89, st056 25, st060 31, st017 26), nothing dropped. A cpk that ships a slot
+  without its `#Win` scene (st065) is skipped and said so.
+- The sky is told apart by **which way it faces**, not by how big it is. A dome
+  is authored for the camera inside it, so its normals turn in on the pitch
+  (Namek's two average 1.00 and 0.97 towards the centre); stands, terrain and
+  scenery face every which way and average near zero. Judging by metres called
+  st019's whole ground a sky - its bowl spans 1.5 x 5 km and reaches 1160 m,
+  bigger than Namek's dome - inverted it, unlit it, and left two billboards
+  standing in an empty stadium. `mesh_camera_facing` measures it instead
+  (`SKY_MIN_CAMERA_FACING = 0.8`), which cost st002 seven false domes and st041
+  one. The lighting pack is never a second sky: PES keeps a 16 m unit-scale dome
+  in there for the game to blow up at runtime, and 4cc packs ship that file
+  empty, so importing it put a small lit ball over the pitch. A ground with no
+  dome of its own gets the engine's gradient, tinted from `sky.txt`.
+- Two things a pack can simply not have, found by converting nine of them:
+  * **the sun.** `stadium_lighting.py` reads `light/#Win/.../*.fox2.xml`, which is
+    a 4cc pack-download convenience - a stadium taken out of a cpk keeps PES's own
+    binaries (`.atsh`, `.rpd`, `.pcsp`) and no XML, so six of the nine got no
+    `lighting.txt` and fall back to the engine's own sun. (Some packs do not even
+    light themselves: st002's light pack is st009's, borrowed whole.)
+  * **stock skins.** The staff models reference PES's own coach kit
+    (`ca_blou2018_band_bsm`, `gu_spain_bsm`, `pr_cset000_bsm`), and no archive here
+    ships those - not the dt cpks, not the 4cc ones. So the converter puts the
+    figures it *can* dress on the touchline first (`dressed_first`), which is what
+    st002 wanted anyway: its author painted his own (`staff_campesina`,
+    `staff_doomyuri1`) and taking the models alphabetically had picked eight
+    stock-skinned ones and stood twenty white figures beside the pitch.
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads — silhouette texture + billboard strips hooked into the stadium
   `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its
