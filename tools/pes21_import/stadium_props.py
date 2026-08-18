@@ -67,6 +67,60 @@ ROLES = (
 )
 
 
+# What PES carries out for the walkout and takes away again: the flag bearers and
+# their banners, the arch over the tunnel mouth, the pennant display on the centre
+# circle, and the tunnel itself. None of it belongs on the pitch once the match
+# starts, so the engine drops the whole set at kickoff.
+ENTRANCE_WANTED = (
+    "doh_fb_home", "doh_fb_away",
+    "banner_nationalflag_home", "banner_nationalflag_away", "banner_euro_competition",
+    "tunnelarch_uefa_euro", "tunnelarch_afc_cl",
+    "circleflag_afc_cl_01",
+    "passage_01",
+)
+
+ENTRANCE_ROLES = (
+    ("flagbearer", ("doh_fb_", "doh_mfb_")),
+    ("banner", ("banner_",)),
+    ("arch", ("tunnelarch",)),
+    ("pennant", ("circleflag",)),
+    ("tunnel", ("passage",)),
+)
+
+# The tunnel mouth: where the walk-on comes in over the near touchline, which
+# StagingAnchor puts four metres outside it at the halfway line.
+MOUTH_Y = -(PITCH_HALF_Y + 4.0)
+
+
+def entrance_role(path):
+    """-> what a walkout prop is ('flagbearer', 'banner', 'arch', 'pennant',
+    'tunnel'), or None."""
+    stem = os.path.splitext(os.path.basename(str(path)))[0].lower()
+    for role, prefixes in ENTRANCE_ROLES:
+        if any(stem.startswith(prefix) for prefix in prefixes):
+            return role
+    return None
+
+
+def marks_for_entrance(role, pitch_half_x=PITCH_HALF_X, pitch_half_y=PITCH_HALF_Y):
+    """-> where a walkout prop stands."""
+    mouth = -(pitch_half_y + 4.0)
+    if role == "flagbearer":
+        # either side of the mouth, facing the pitch the cast walks onto
+        return [(sx * 6.0, mouth - 1.0, _facing(sx * 6.0, mouth - 1.0)) for sx in (-1.0, 1.0)]
+    if role == "banner":
+        return [(sx * 3.0, mouth - 2.5, _facing(sx * 3.0, mouth - 2.5)) for sx in (-1.0, 1.0)]
+    if role == "arch":
+        return [(0.0, mouth - 1.5, _facing(0.0, mouth - 1.5))]
+    if role == "pennant":
+        # the display PES sets on the centre circle for the team picture
+        return [(0.0, 0.0, math.pi)]
+    if role == "tunnel":
+        # behind the mouth, where the entrance camera starts before it comes out
+        return [(0.0, mouth - 26.0, math.pi)]
+    return []
+
+
 def prop_role(path):
     """-> what a prop is for ('cornerflag', 'camera', 'bench', 'barrier'), or None."""
     stem = os.path.splitext(os.path.basename(str(path)))[0].lower()
@@ -134,6 +188,17 @@ def write_prop(out, name, material_index, mesh, mark, yaw):
                                 on_ground=True)
 
 
+def dressed_meshes(dressed):
+    """-> the indices of the meshes worth drawing, given which are dressed.
+
+    A prop with one placeholder panel is still worth having: PES's tunnel arch
+    carries two textured meshes and two on dummy_embA/embH, the placeholders it
+    swaps for the two teams' emblems. Judged all-or-nothing the arch was left
+    behind; judged mesh by mesh it arrives without its blank panels.
+    """
+    return [index for index, ok in enumerate(dressed) if ok]
+
+
 def assign(models, marks):
     """-> [(model, mark)], one prop per mark, sharing the models out over them.
 
@@ -155,7 +220,14 @@ def main():
                         help="where this will be installed under media/objects/stadiums, "
                              "for the .ase's own texture paths (e.g. pes_st017/props)")
     parser.add_argument("--textures", action="append", default=[])
+    parser.add_argument("--set", choices=("touchline", "entrance"), default="touchline",
+                        help="the furniture that stays out all match, or what PES carries "
+                             "out for the walkout and takes away again")
     args = parser.parse_args()
+
+    wanted = WANTED if args.set == "touchline" else ENTRANCE_WANTED
+    role_of = prop_role if args.set == "touchline" else entrance_role
+    marks_of = marks_for_role if args.set == "touchline" else marks_for_entrance
 
     if args.fmdl_lib and args.fmdl_lib not in sys.path:
         sys.path.insert(0, args.fmdl_lib)
@@ -163,7 +235,7 @@ def main():
     models = {}
     for path in sorted(glob.glob(os.path.join(args.props, "**", "*.fmdl"), recursive=True)):
         stem = os.path.splitext(os.path.basename(path))[0]
-        if stem in WANTED:
+        if stem in wanted:
             models.setdefault(stem, path)
     if not models:
         print("none of the props we want are under %s" % args.props)
@@ -180,21 +252,27 @@ def main():
     by_role = {}
     for stem in sorted(models):
         path = models[stem]
-        role = prop_role(path)
+        role = role_of(path)
         if not role:
             continue
         fmdl = stadium_to_gf._load_fmdl(path, args.fmdl_lib)
         skins = [stadium_to_gf._mesh_base_texture(mesh) for mesh in fmdl.meshes]
-        if any(t is None or stadium_to_gf._tex_stem(t.filename) not in ftex_index for t in skins):
+        keep = dressed_meshes([t is not None and stadium_to_gf._tex_stem(t.filename) in ftex_index
+                               for t in skins])
+        if not keep:
             # An undressed prop is a white shape beside the pitch; better none.
             skipped.append(stem)
             continue
-        by_role.setdefault(role, []).append((stem, fmdl, skins))
+        if len(keep) < len(skins):
+            print("  %-24s %d of %d mesh(es) undressed, left off"
+                  % (stem, len(skins) - len(keep), len(skins)))
+        meshes = [fmdl.meshes[i] for i in keep]
+        by_role.setdefault(role, []).append((stem, meshes, [skins[i] for i in keep]))
 
     for role in sorted(by_role):
-        marks = marks_for_role(role)
-        for (stem, fmdl, skins), mark in assign(by_role[role], marks):
-            for mesh, texture in zip(fmdl.meshes, skins):
+        marks = marks_of(role)
+        for (stem, meshes, skins), mark in assign(by_role[role], marks):
+            for mesh, texture in zip(meshes, skins):
                 bitmap = stadium_to_gf._texture_png(texture, ftex_index, args.out, converted)
                 figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem))
         print("  %-10s %d mark(s) from %d model(s): %s"
