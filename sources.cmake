@@ -535,6 +535,7 @@ set(GAME_SOURCES
    src/onthepitch/camerastandoff.cpp
    src/onthepitch/competitionemblem.cpp
    src/onthepitch/teamflag.cpp
+   src/onthepitch/replaywipe.cpp
    src/onthepitch/pitchoverlay.cpp
    src/onthepitch/scenelighting.cpp
    src/onthepitch/stadiumfar.cpp

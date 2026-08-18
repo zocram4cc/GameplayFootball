@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# The replay wipe's timing
+add_executable(gameplayfootball_replaywipe_tests
+  onthepitch/replay_wipe_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/replaywipe.cpp
+)
+target_include_directories(gameplayfootball_replaywipe_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_replaywipe_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_replaywipe_tests DISCOVERY_MODE PRE_TEST)
+
 # Whose badge the crowd's stand flags fly
 add_executable(gameplayfootball_teamflag_tests
   onthepitch/team_flag_test.cpp
