@@ -144,3 +144,75 @@ TEST(CamTrackRetarget, KeepsCameraUpright) {
 }
 
 }  // namespace
+
+// PES's entrance camerawork is a montage, and the export carries it as one
+// file: the cuts are concatenated, each keeping its own frame numbering, so the
+// first column is where that cut starts in the demo's timeline. The .fdc cut
+// table for ent_009_st002_cmn says 0, 100, 200, 300, 400 - a shot change every
+// hundred frames, three and a third seconds - and the exported track's segments
+// begin on exactly those numbers.
+//
+// Read as one contiguous track (which is what indexing rows does) a cut lands
+// only every ten seconds, at the segment joins, and every shot drifts through
+// the three seconds it should have been cut at. Sampling by the timeline the
+// numbers describe makes it cut when PES cuts.
+namespace {
+
+blunted::CamTrack LoadMontage() {
+  // two cuts: the first starting at 0, the second at 100, each five frames long
+  std::istringstream in(
+      "0,0,0,1,0,0,0,1,35,0.5,400\n"
+      "1,1,0,1,0,0,0,1,35,0.5,400\n"
+      "2,2,0,1,0,0,0,1,35,0.5,400\n"
+      "3,3,0,1,0,0,0,1,35,0.5,400\n"
+      "4,4,0,1,0,0,0,1,35,0.5,400\n"
+      "100,50,0,1,0,0,0,1,35,0.5,400\n"
+      "101,51,0,1,0,0,0,1,35,0.5,400\n"
+      "102,52,0,1,0,0,0,1,35,0.5,400\n"
+      "103,53,0,1,0,0,0,1,35,0.5,400\n"
+      "104,54,0,1,0,0,0,1,35,0.5,400\n");
+  blunted::CamTrack track;
+  track.Load(in);
+  return track;
+}
+
+}  // namespace
+
+TEST(CamTrackTimeline, PlaysTheCutThatHasStarted) {
+  const blunted::CamTrack track = LoadMontage();
+  EXPECT_NEAR(track.SampleTimeline(0.0f).position[0], 0.0f, 1e-4);
+  EXPECT_NEAR(track.SampleTimeline(3.0f).position[0], 3.0f, 1e-4);
+  EXPECT_NEAR(track.SampleTimeline(100.0f).position[0], 50.0f, 1e-4);
+  EXPECT_NEAR(track.SampleTimeline(102.0f).position[0], 52.0f, 1e-4);
+}
+
+TEST(CamTrackTimeline, HoldsACutsLastFrameUntilTheNextOneStarts) {
+  // The cut's own clip is longer than the time it is given, and shorter than the
+  // gap in some packs; either way the picture holds rather than running on into
+  // the next cut's frames.
+  const blunted::CamTrack track = LoadMontage();
+  EXPECT_NEAR(track.SampleTimeline(50.0f).position[0], 4.0f, 1e-4);
+  EXPECT_NEAR(track.SampleTimeline(99.0f).position[0], 4.0f, 1e-4);
+}
+
+TEST(CamTrackTimeline, TheCutIsInstantaneous) {
+  const blunted::CamTrack track = LoadMontage();
+  EXPECT_NEAR(track.SampleTimeline(99.9f).position[0], 4.0f, 1e-4);
+  EXPECT_NEAR(track.SampleTimeline(100.0f).position[0], 50.0f, 1e-4);
+}
+
+TEST(CamTrackTimeline, ATrackWithOneCutIsJustThatTrack) {
+  std::istringstream in(
+      "0,0,0,1,0,0,0,1,35,0.5,400\n"
+      "1,1,0,1,0,0,0,1,35,0.5,400\n"
+      "2,2,0,1,0,0,0,1,35,0.5,400\n");
+  blunted::CamTrack track;
+  ASSERT_TRUE(track.Load(in));
+  EXPECT_NEAR(track.SampleTimeline(1.5f).position[0], 1.5f, 1e-4);
+  EXPECT_EQ(track.GetTimelineFrameCount(), 3);
+}
+
+TEST(CamTrackTimeline, TheTimelineIsAsLongAsItsLastCutRunsFor) {
+  const blunted::CamTrack track = LoadMontage();
+  EXPECT_EQ(track.GetTimelineFrameCount(), 105);
+}

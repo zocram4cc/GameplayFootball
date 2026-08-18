@@ -23,6 +23,7 @@
 #include "onthepitch/pitchturf.hpp"
 #include "onthepitch/stadiumfar.hpp"
 #include "onthepitch/scenelighting.hpp"
+#include "onthepitch/camerastandoff.hpp"
 #include "onthepitch/staginganchor.hpp"
 #include "onthepitch/stadiumsky.hpp"
 #include "onthepitch/playerbody.hpp"
@@ -1414,6 +1415,15 @@ Match::PrematchStaging* Match::AcquirePrematchStaging(const std::string& shot) {
   return staging.choreo.IsLoaded() ? &staging : nullptr;
 }
 
+std::string Match::FindPrematchShotName(const std::string& shot) const {
+  if (shot.empty()) return "";
+  auto found = prematchShots.find(shot);
+  if (found != prematchShots.end()) return found->first;
+  for (const auto& entry : prematchShots)
+    if (entry.first.find(shot) != std::string::npos) return entry.first;
+  return "";
+}
+
 const CamTrack* Match::FindPrematchShot(const std::string& shot) const {
   if (shot.empty()) return nullptr;
   auto found = prematchShots.find(shot);
@@ -1607,6 +1617,13 @@ void Match::BuildEntranceCast() {
   }
 }
 
+// The rate PES's camera tracks are authored at (the canm header says 30 in every
+// observed clip).
+static const float kPrematchShotFrameRate = 30.0f;
+
+// How close a body may come to the lens before the shot is dollied back.
+static const float kPrematchLensClearance = 2.2f;
+
 Vector3 Match::ComputeStagingOffset() const {
   // PES authors a walk-on in its own stadium's coordinates, with the cast
   // starting at its tunnel mouth: ent_009_st000 walks from y -48 to y -38, both
@@ -1653,17 +1670,41 @@ void Match::UpdateEntranceChoreo() {
         (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
             ? prematchTimeline.beats[beat.beatIndex].shot
             : std::string();
+    // A beat that names a pack will play it, whichever branch below takes it.
+    if (!shot.empty()) stagingHasRun = true;
+
     std::string wanted = shot;
+    // A beat names a family; which of that family's stadium variants plays is
+    // decided by the camerawork, and the players it films must be that variant's
+    // own - PES authors them as a pair (prematchshotpair.hpp). Resolved apart,
+    // the staging came from stadium 000 and the camera from stadium 002, so the
+    // lens sat where another ground's tunnel mouth is and spent the entire
+    // walk-on inside a player's chest.
+    stagedCameraKey.clear();
+    if (!shot.empty()) {
+      for (const auto& camera : prematchShots) {
+        if (camera.first.find(shot) == std::string::npos) continue;
+        const std::string paired = PrematchShotPair::StagingForCamera(camera.first);
+        if (paired.empty() || prematchStagings.find(paired) == prematchStagings.end()) continue;
+        wanted = paired;
+        stagedCameraKey = camera.first;
+        break;
+      }
+    }
     if (wanted.empty()) {
-      // A beat with no staging of its own: before anything has been staged,
-      // borrow the first pack the sequence will use and hold its opening
-      // frame, so the establishing shots look out over a pitch the squads
-      // have not walked onto yet.
-      for (const auto& other : prematchTimeline.beats)
-        if (!other.shot.empty()) {
-          if (!activeStaging) wanted = other.shot;
-          break;
-        }
+      // A beat with no staging of its own, *before* anything has been staged:
+      // borrow the first pack the sequence will use and hold its opening frame,
+      // so the establishing shots look out over a pitch the squads have not
+      // walked onto yet. Once a pack has run, this must not happen again - it put
+      // the whole column back at the tunnel mouth, frozen, in the middle of the
+      // lineup panels.
+      if (!stagingHasRun) {
+        for (const auto& other : prematchTimeline.beats)
+          if (!other.shot.empty()) {
+            if (!activeStaging) wanted = other.shot;
+            break;
+          }
+      }
     }
     PrematchStaging* staging = AcquirePrematchStaging(wanted);
     const bool holdOpeningFrame = shot.empty() && !wanted.empty();
@@ -1689,7 +1730,10 @@ void Match::UpdateEntranceChoreo() {
       stagingHoldsOpeningFrame = holdOpeningFrame;
       BuildEntranceCast();
       stagingOffset = ComputeStagingOffset();
-    } else if (!activeStaging && entranceChoreo.IsLoaded()) {
+    } else if (!activeStaging && !stagingHasRun && entranceChoreo.IsLoaded()) {
+      // The competition's own pack, for a timeline that stages nothing at all.
+      // Not after a pack has run: that hauled the released cast back to the
+      // tunnel mouth between beats.
       BuildEntranceCast();
     }
   }
@@ -2569,20 +2613,61 @@ void Match::UpdateIngameCamera() {
       // another ground: taken unconditionally, this pushed the lens through the
       // players at the walk-on and flew outside the stadium at the end, whatever
       // the timeline asked for.
+      // The camera that was paired with the staging now on the pitch, so the two
+      // stay the variant PES authored together (prematchshotpair.hpp).
       const CamTrack* namedShot =
           (want == PrematchTimeline::Camera::Entrance && beat.beatIndex >= 0 &&
            beat.beatIndex < (int)prematchTimeline.beats.size())
-              ? FindPrematchShot(prematchTimeline.beats[beat.beatIndex].shot)
+              ? FindPrematchShot(!stagedCameraKey.empty()
+                                     ? stagedCameraKey
+                                     : prematchTimeline.beats[beat.beatIndex].shot)
               : nullptr;
       if (namedShot && namedShot->GetFrameCount() > 0) {
-        const CamTrackFrame frame =
-            namedShot->Sample(beat.beatT * (namedShot->GetFrameCount() - 1));
+        // At the rate it was authored at, from the start of its beat. PES's
+        // entrance camerawork is a montage - the cut table in its .fdc changes
+        // shot every 100 frames, and the exported track carries those cuts as
+        // jumps at 3.33 second intervals - so stretching it across a beat played
+        // a hundred seconds of cutting in twenty-eight and left every shot
+        // drifting. Sampled in real time, it cuts when PES cuts.
+        const float beatSeconds =
+            (beat.beatIndex >= 0 && beat.beatIndex < (int)prematchTimeline.beats.size())
+                ? prematchTimeline.beats[beat.beatIndex].seconds
+                : 0.0f;
+        const float shotFrame = clamp(beat.beatT * beatSeconds * kPrematchShotFrameRate, 0.0f,
+                                      (float)namedShot->GetTimelineFrameCount());
+        const CamTrackFrame frame = namedShot->SampleTimeline(shotFrame);
         // The camerawork is authored in the same coordinates as the choreography
         // it films, so wherever the staging had to be moved to happen on our
         // pitch, the camera goes with it - otherwise PES's own shot points at the
         // empty ground the cast used to walk across.
         cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]) +
                              stagingOffset;
+        // PES composed these cuts around its own players; over a 4cc cast, whose
+        // characters are broader and carry props, the tight ones end up inside
+        // somebody. Dolly straight back until the nearest body clears the lens -
+        // the framing, the lens and the move stay PES's (camerastandoff.hpp).
+        {
+          std::vector<Vector3> castPositions;
+          castPositions.reserve(entranceCast.size());
+          const EntranceChoreo& posed = activeStaging ? activeStaging->choreo : entranceChoreo;
+          const float castFrame =
+              stagingHoldsOpeningFrame
+                  ? 0.0f
+                  : (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
+          for (const auto& member : entranceCast) {
+            Vector3 position;
+            radian yaw = 0;
+            int animFrame = 0;
+            posed.Sample(*member.slot, castFrame, position, yaw, animFrame);
+            castPositions.push_back(position + stagingOffset);
+          }
+          Quaternion aim = QUATERNION_IDENTITY;
+          aim.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
+          const Vector3 forward = aim * Vector3(0, 0, -1);
+          const float push = CameraStandoff::PushBack(castPositions, cameraNodePosition, forward,
+                                                      kPrematchLensClearance);
+          if (push > 0.0f) cameraNodePosition -= forward * push;
+        }
         cameraNodeOrientation = QUATERNION_IDENTITY;
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                               frame.rotation[3]);
@@ -2597,28 +2682,27 @@ void Match::UpdateIngameCamera() {
         // The imported shots are spread across the entrance beats only, so a
         // lineup graphic holding the picture does not eat into the walkout's
         // camerawork.
-        const float entranceProgress =
-            prematchTimeline.beats.empty()
-                ? t
-                : PrematchTimeline::EntranceProgress(prematchTimeline, beat);
+        // Played at the rate it was authored at, one track after another. These
+        // tracks are montages: the cut table in a .fdc changes shot every 100
+        // frames and the export carries those cuts as jumps in the track, three
+        // and a third seconds apart. Sampling them by how far through the
+        // presentation we are - which is what this did - stretched a hundred
+        // seconds of cutting over the whole sequence, so no cut ever landed and
+        // every shot drifted instead.
+        float elapsed = GetEntranceElapsedSeconds();
         const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
-        float shotT = entranceProgress;
-        if (introShots.size() > 1) {
-          float total = 0.0f;
-          for (const CamTrack& s : introShots) total += s.GetDurationSeconds();
-          float elapsed = entranceProgress * total;
-          for (const CamTrack& s : introShots) {
-            const float duration = s.GetDurationSeconds();
-            if (elapsed <= duration || &s == &introShots.back()) {
-              shot = &s;
-              shotT = duration > 0.0f ? clamp(elapsed / duration, 0.0f, 1.0f) : 0.0f;
-              break;
-            }
-            elapsed -= duration;
+        for (const CamTrack& candidate : introShots) {
+          const float duration = candidate.GetDurationSeconds();
+          if (elapsed <= duration || &candidate == &introShots.back()) {
+            shot = &candidate;
+            break;
           }
+          elapsed -= duration;
         }
         if (shot->GetFrameCount() > 0) {
-          CamTrackFrame frame = shot->Sample(shotT * (shot->GetFrameCount() - 1));
+          const float shotFrame = clamp(elapsed * kPrematchShotFrameRate, 0.0f,
+                                        (float)shot->GetTimelineFrameCount());
+          CamTrackFrame frame = shot->SampleTimeline(shotFrame);
           cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
           cameraNodeOrientation = QUATERNION_IDENTITY;
           cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],

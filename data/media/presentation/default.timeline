@@ -35,15 +35,18 @@ beat stadium_card       12.0  camera=orbit
 # touchline and bring them in. The tunnel packs (ent_007 passage*) stage a
 # three-metre corridor because PES plays them inside tunnel geometry - without
 # that set they are a column of players walking up an empty pitch.
-beat walk_on            22.0  camera=entrance shot=ent_009
-beat line_up            16.0  camera=entrance shot=ent_009
+# Each beat runs as long as its own pack's path. ent_009 walks its slowest actor
+# in over 28 seconds; asking for less leaves the column still arriving, and
+# giving the same pack a second beat restarts it - the whole column teleports
+# back to the tunnel and walks in again.
+beat walk_on            28.0  camera=entrance shot=ent_009
 beat anthems            20.0  camera=entrance shot=anth
 
 beat wide_home           9.0  camera=aerial   overlay=formation_home
 beat wide                4.0  camera=aerial
 beat wide_away           9.0  camera=aerial   overlay=formation_away
 
-beat team_picture       10.0  camera=entrance shot=circle_home
+beat team_picture       14.0  camera=entrance shot=circle_home
 
 # Ends on the camera the match itself starts on, and stages nobody: the cast has
 # left the field to the players by the time the whistle goes, so kickoff is a

@@ -51,8 +51,28 @@ public:
   // linear interpolation between frames; clamps outside the range
   CamTrackFrame Sample(float frame) const;
 
+  // The same track read as the montage it is. PES's entrance camerawork changes
+  // shot every hundred frames (the cut table in its .fdc), and the export
+  // concatenates those cuts with each one keeping its own frame numbering - so
+  // the first column is where that cut starts in the demo's timeline. Sampling
+  // by row plays the cuts back to back at ten seconds apiece; sampling by
+  // timeline cuts when PES cuts, and holds a cut's last frame until the next one
+  // starts.
+  CamTrackFrame SampleTimeline(float timelineFrame) const;
+
+  // Where the last cut's clip runs out, in timeline frames.
+  int GetTimelineFrameCount() const;
+
 private:
+  // Row ranges of the concatenated cuts, and where each begins in the timeline.
+  struct Cut {
+    int timelineStart = 0;
+    int firstRow = 0;
+    int rowCount = 0;
+  };
+
   std::vector<CamTrackFrame> frames;
+  std::vector<Cut> cuts;
 };
 
 }  // namespace blunted

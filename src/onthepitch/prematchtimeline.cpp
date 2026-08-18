@@ -99,13 +99,16 @@ Timeline Default() {
       // PES's own camerawork for each of these, moved onto our pitch with the
       // choreography it films (see Match::ComputeStagingOffset). The cast-framing
       // cameras are the fallback for a pack that ships none.
-      MakeBeat("walk_on", 22.0f, Camera::Entrance, Overlay::None, "ent_009"),
-      MakeBeat("line_up", 16.0f, Camera::Entrance, Overlay::None, "ent_009"),
+      // Each beat runs as long as its pack's own path: ent_009 walks the slowest
+      // actor in over 28 seconds, and cutting the beat short left the column
+      // still arriving. There is no separate line_up beat, because that used the
+      // walk-on pack again - and a second beat on the same pack restarted it.
+      MakeBeat("walk_on", 28.0f, Camera::Entrance, Overlay::None, "ent_009"),
       MakeBeat("anthems", 20.0f, Camera::Entrance, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
       MakeBeat("wide_away", 9.0f, Camera::Aerial, Overlay::FormationAway),
-      MakeBeat("team_picture", 10.0f, Camera::Entrance, Overlay::None, "circle_home"),
+      MakeBeat("team_picture", 14.0f, Camera::Entrance, Overlay::None, "circle_home"),
       // Ends on the camera the match itself starts on, so the first whistle is a
       // continuation rather than a cut, and with no staging of its own so the
       // cast has left the field to the players by the time it arrives.
