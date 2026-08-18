@@ -443,6 +443,9 @@ protected:
   boost::intrusive_ptr<Node> stadiumNode;
   boost::intrusive_ptr<Node> goalsNode;
   boost::intrusive_ptr<Node> skydomeNode;
+  // The touchline staff, imported from PES's common package and installed
+  // beside the stadium (tools/pes21_import/stadium_staff.py).
+  boost::intrusive_ptr<Node> staffNode;
 
   // camera user settings
   float cameraUserZoom;

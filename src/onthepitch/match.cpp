@@ -571,6 +571,29 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     GetScene3D()->AddNode(skydomeNode);
   }
 
+  // The people beside the pitch. A stadium pack does not carry them - PES keeps
+  // one copy in its common package and hands it to every ground, and Planet
+  // Namek's own staff pack is one of the 48-byte empty overrides - so they are
+  // imported separately (tools/pes21_import/stadium_staff.py) and land beside
+  // the stadium as staff/staff.object. Loaded outside the stadium node for the
+  // same reason as the sky: the node's geometry is split into 24 m cells, and
+  // figures scattered along both touchlines do not belong to one.
+  std::string staffObject = GetConfiguration()->Get("staff_object", "");
+  if (staffObject.empty()) {
+    const std::string stadiumForStaff = GetConfiguration()->Get("stadium_object", "");
+    const std::string::size_type slash = stadiumForStaff.find_last_of("/\\");
+    if (slash != std::string::npos) {
+      const std::string candidate = stadiumForStaff.substr(0, slash + 1) + "staff/staff.object";
+      if (std::filesystem::exists(candidate)) staffObject = candidate;
+    }
+  }
+  if (!staffObject.empty() && !SuperDebug() && std::filesystem::exists(staffObject)) {
+    staffNode = loader.LoadObject(GetScene3D(), staffObject);
+    staffNode->SetLocalMode(e_LocalMode_Absolute);
+    GetScene3D()->AddNode(staffNode);
+    Log(e_Notice, "Match", "Match", "touchline staff: " + staffObject);
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -985,6 +1008,7 @@ void Match::Exit() {
   scene3D->DeleteNode(stadiumNode);
   scene3D->DeleteNode(goalsNode);
   if (skydomeNode) scene3D->DeleteNode(skydomeNode);
+  if (staffNode) scene3D->DeleteNode(staffNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
