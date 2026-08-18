@@ -324,6 +324,38 @@ Until that lands, imported heads render statically.
   A decal bigger than the overlay is averaged down first: sampling 4096 rows into
   1024 point by point kept every fourth row and combed the crests into stripes.
   (The hatching that remains is PES's own - it is in the texture.)
+- `stadium_props.py`: the furniture PES stands around a pitch, which this engine
+  never had - there is not even a corner flag under `media/objects`. No stadium
+  pack ships any of it either: every 4cc pack's `audi`, `cheer`, `standsFlag`,
+  `scarecrow` and `tv` sub-pack is a 48-byte stub, because PES keeps one set and
+  hands it to every ground. It lives in `dt12_g4.cpk` under `common/demo/prop` and
+  `common/demo/fixdemoobj`, and it is small and fully textured: `gadget_cornerflag`
+  263 vertices, `substitute_board_cmn` 136, `mob_prop_tvcamera01` 3191,
+  `doh_beltpole` 1085 over 25 m. Extract those two directories, point
+  `COMMON_PROPS` at them, and every ground gets flags on its four corners, cameras
+  outside the perimeter looking in, the board and the paramedics in the technical
+  areas and the barrier along the tunnel side (-y here, the touchline the walk-on
+  comes in over). One prop per mark - three camera models and three marks make
+  three cameras, not nine. PES's stock-kit humans stay out: the stewards, the press
+  row and the television crew ask for clothing textures
+  (`st_shirt2018_non_bsm`, `gu_generic2018_bsm`, `tv_parka_bib_2018A_bsm`) that no
+  archive here carries, the same gap as the staff coach kit. The engine loads the
+  result as `<stadium>/props/props.object`, outside the stadium node for the same
+  reason as the staff and the sky.
+- What is still missing, and where it is (see the task list): PES's crowd is
+  `dt00_x64.cpk` `Asset/model/bg/common/audi/` - `audi_model`, `audiLow_model`,
+  `audiParts`, `audiLowParts`, `audi_seat_model`, where `au_Low.fmdl` is one
+  spectator of 672 vertices and `au00..au16_parts` are the variants, each with a
+  `mouthOpen` version - animated by `dt19_x64.cpk` `common/mob/audience_BB`
+  (skeleton plus 389 motions). It is authored for per-seat instancing, which this
+  renderer has no path for yet. The stand flags are `common/demo/prop/
+  mob_prop_teamflag_home01..05`, the centre-circle pennant `circleflag_afc_cl_01`,
+  the tunnel itself `common/demo/fixdemoobj/passage_01..99` (20 variants) with
+  `tunnelarch_uefa_euro` over its mouth, and the entrance cast `doh_fb_home/away`
+  with `banner_nationalflag_*` - those last are entrance-only, so they need the
+  presentation to put them out and take them away again. Ad boards:
+  `dt30_g4.cpk` `Asset/model/bg/common/bill`. Crowd sound: `dt44_all.cpk`
+  `common/sound/match/acb/cheers/*.acb`.
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads — silhouette texture + billboard strips hooked into the stadium
   `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its
