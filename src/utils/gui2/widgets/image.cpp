@@ -119,6 +119,12 @@ void Gui2Image::GetImages(std::vector<boost::intrusive_ptr<Image2D>>& target) {
   Gui2View::GetImages(target);
 }
 
+float Gui2Image::GetSourceAspectRatio() const {
+  SDL_Surface* surface = nullptr;
+  if (!HasRenderableSurface(imageSource, surface)) return 0.0f;
+  return (float)surface->w / (float)surface->h;
+}
+
 void Gui2Image::SetSize(float new_width_percent, float new_height_percent) {
   Gui2View::SetSize(new_width_percent, new_height_percent);
 

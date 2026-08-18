@@ -8,12 +8,25 @@
 #include "../../hid/gamepad.hpp"
 #include "../../hid/keyboard.hpp"
 #include "framework/scheduler.hpp"
+#include "gametask.hpp"
 #include "main.hpp"
+#include "onthepitch/match.hpp"
 #include "managers/environmentmanager.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/frame.hpp"
 
 using namespace blunted;
+
+namespace {
+
+// The match's own HUD is not part of a replay: only the replay's overlay is.
+void SuppressMatchHud(bool suppressed) {
+  auto gameTask = GetGameTask();
+  Match* match = gameTask ? gameTask->GetMatch() : nullptr;
+  if (match) match->SuppressHudForReplay(suppressed);
+}
+
+}  // namespace
 
 ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
@@ -44,6 +57,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   header->Show();
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "INSTANT REPLAY");
+  SuppressMatchHud(true);
   header->AddView(title);
   title->Show();
 
@@ -74,7 +88,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   match->replayState.Unlock();
 }
 
-ReplayPage::~ReplayPage() {}
+ReplayPage::~ReplayPage() { SuppressMatchHud(false); }
 
 void ReplayPage::OnClose() {
   match->replayState.Lock();

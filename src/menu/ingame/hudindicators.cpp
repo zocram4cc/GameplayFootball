@@ -49,4 +49,22 @@ float PhilosophyDialSplit(int philosophy) {
   }
 }
 
+void FitKeepingAspect(float boxWidth, float boxHeight, float aspect, float* width,
+                      float* height) {
+  if (!width || !height) return;
+  if (aspect <= 0.0f || boxWidth <= 0.0f || boxHeight <= 0.0f) {
+    *width = boxWidth;
+    *height = boxHeight;
+    return;
+  }
+  const float widthFromHeight = boxHeight * aspect;
+  if (widthFromHeight <= boxWidth) {
+    *width = widthFromHeight;
+    *height = boxHeight;
+  } else {
+    *width = boxWidth;
+    *height = boxWidth / aspect;
+  }
+}
+
 }  // namespace HudIndicators

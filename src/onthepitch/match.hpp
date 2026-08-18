@@ -117,6 +117,11 @@ public:
 
   void Exit();
 
+  // A replay takes the screen: the in-match chrome goes, leaving the replay's own
+  // overlay. A flag rather than a Hide() from the replay page, so the
+  // presentation still wins - the HUD does not come back mid-walkout.
+  void SuppressHudForReplay(bool suppressed);
+
   void SetRandomSunParams();
   void RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode);
   void UpdateControllerSetup();
@@ -517,6 +522,7 @@ protected:
   // first pack's opening frame before that; afterwards, a beat with no staging
   // leaves the cast released instead of hauling it back to the tunnel.
   bool stagingHasRun = false;
+  bool hudSuppressedForReplay = false;
   // The camera track paired with the staging currently on the pitch.
   std::string stagedCameraKey;
   // Where this staging has to be moved to happen on our pitch rather than in

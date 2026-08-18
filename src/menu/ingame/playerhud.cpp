@@ -117,6 +117,20 @@ Gui2PlayerHUD::Gui2PlayerHUD(Gui2WindowManager* windowManager, const std::string
       badge = new Gui2Image(windowManager, name + "_badge", atX(kBadgeX, kBadgeW), 0, kBadgeW * w,
                             h);
       badge->LoadImage(logo);
+      // At its own shape inside that box, centred in what is left: a crest is
+      // square and the box is not, so filling it stretched every badge sideways.
+      const float aspect = badge->GetSourceAspectRatio();
+      if (aspect > 0.0f) {
+        const float boxW = kBadgeW * w;
+        // The aspect is in pixels; the box is in screen percentages, which are
+        // not square, so it is converted before it is fitted.
+        const float screenAspect =
+            windowManager->GetWidthPercentForHeight(h, aspect) / (h > 0.0f ? h : 1.0f);
+        float fitW = boxW, fitH = h;
+        HudIndicators::FitKeepingAspect(boxW, h, screenAspect, &fitW, &fitH);
+        badge->SetSize(fitW, fitH);
+        badge->SetPosition(atX(kBadgeX, kBadgeW) + (boxW - fitW) * 0.5f, (h - fitH) * 0.5f);
+      }
       this->AddView(badge);
       badge->Show();
     }
