@@ -166,5 +166,68 @@ class OnePropPerMark(unittest.TestCase):
         self.assertEqual(stadium_props.assign(["a"], []), [])
 
 
+class PlacedWhereTheMarkIs(unittest.TestCase):
+    """A prop stands on its mark, not pushed off the pitch like a coach.
+
+    The staff writer sets every figure out past the touchline by its own depth,
+    which is right for people on a touchline and wrong for everything else: it
+    would take the corner flags off the corners, and a camera meant to sit six
+    metres behind a goal at (61, 0) would land at (61, 38), out by the halfway
+    line.
+    """
+
+    class _Point(object):
+        def __init__(self, x, y, z):
+            self.x, self.y, self.z = x, y, z
+
+    class _Vertex(object):
+        def __init__(self, x, y, z):
+            self.position = PlacedWhereTheMarkIs._Point(x, y, z)
+            self.uv = [PlacedWhereTheMarkIs._UV()]
+
+    class _UV(object):
+        u = 0.0
+        v = 0.0
+
+    class _Face(object):
+        def __init__(self, vertices):
+            self.vertices = vertices
+
+    class _Mesh(object):
+        def __init__(self):
+            # a half-metre post standing on its own origin, in Fox axes (y up)
+            self.vertices = [PlacedWhereTheMarkIs._Vertex(x, z, y)
+                             for x in (-0.25, 0.25) for y in (-0.25, 0.25) for z in (0.0, 1.5)]
+            self.faces = [PlacedWhereTheMarkIs._Face(self.vertices[:3])]
+
+    def _written_centre(self, mark):
+        import io
+        import stadium_staff
+        out = io.StringIO()
+        stadium_props.write_prop(out, "prop", 0, self._Mesh(), (mark[0], mark[1]), mark[2])
+        xs, ys = [], []
+        for line in out.getvalue().splitlines():
+            if "*MESH_VERTEX " in line:
+                parts = line.split()
+                xs.append(float(parts[2]))
+                ys.append(float(parts[3]))
+        return ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
+
+    def test_a_corner_flag_lands_on_its_corner(self):
+        x, y = self._written_centre((HALF_X, -HALF_Y, 0.0))
+        self.assertAlmostEqual(x, HALF_X, places=3)
+        self.assertAlmostEqual(y, -HALF_Y, places=3)
+
+    def test_a_camera_behind_the_goal_stays_behind_the_goal(self):
+        x, y = self._written_centre((61.0, 0.0, 0.0))
+        self.assertAlmostEqual(x, 61.0, places=3)
+        self.assertAlmostEqual(y, 0.0, places=3)
+
+    def test_the_tunnel_side_marks_are_kept_as_given(self):
+        x, y = self._written_centre((12.0, -38.5, 0.0))
+        self.assertAlmostEqual(x, 12.0, places=3)
+        self.assertAlmostEqual(y, -38.5, places=3)
+
+
 if __name__ == "__main__":
     unittest.main()

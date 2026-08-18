@@ -215,12 +215,20 @@ def main():
     return 0
 
 
-def _write_figure(out, name, material_index, mesh, mark, yaw):
+def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True):
+    """Writes one figure into an ASE, standing on `mark`.
+
+    off_pitch sets it out past the touchline by its own depth, which is what a
+    coach or a ball boy wants and what nothing else does: the corner flags belong
+    on the corners and a camera six metres behind a goal belongs there, not out by
+    the halfway line (see stadium_props).
+    """
     local = [_fox_to_gf(v.position) for v in mesh.vertices]
     dx, dy = footprint_offset(local)
     centred = [(v[0] + dx, v[1] + dy, v[2]) for v in local]
     depth = max(v[1] for v in centred) - min(v[1] for v in centred)
-    stand = (mark[0], mark_for_depth(mark[1], depth, PITCH_HALF_Y))
+    stand = ((mark[0], mark_for_depth(mark[1], depth, PITCH_HALF_Y)) if off_pitch
+             else (mark[0], mark[1]))
     vertices = [place_vertex(v, stand, yaw) for v in centred]
     index_of = {id(v): i for i, v in enumerate(mesh.vertices)}
     faces = [(index_of[id(f.vertices[0])], index_of[id(f.vertices[1])], index_of[id(f.vertices[2])])

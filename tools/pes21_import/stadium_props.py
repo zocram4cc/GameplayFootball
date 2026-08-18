@@ -128,6 +128,11 @@ def marks_for_role(role, pitch_half_x=PITCH_HALF_X, pitch_half_y=PITCH_HALF_Y):
     return []
 
 
+def write_prop(out, name, material_index, mesh, mark, yaw):
+    """Writes one piece of furniture into an ASE, standing exactly on its mark."""
+    stadium_staff._write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=False)
+
+
 def assign(models, marks):
     """-> [(model, mark)], one prop per mark, sharing the models out over them.
 
@@ -210,8 +215,7 @@ def main():
                                           args.asset_dir or args.name, None)
         out.write("}\n")
         for i, (mesh, mark, yaw, _bitmap, source) in enumerate(figures):
-            stadium_staff._write_figure(out, "%s_%02d_%s" % (args.name, i, source), i,
-                                        mesh, mark, yaw)
+            write_prop(out, "%s_%02d_%s" % (args.name, i, source), i, mesh, mark, yaw)
     print("wrote %s: %d piece(s) of furniture" % (ase_path, len(figures)))
 
     object_path = os.path.join(args.out, args.name + ".object")
