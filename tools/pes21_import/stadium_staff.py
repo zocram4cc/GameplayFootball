@@ -215,17 +215,25 @@ def main():
     return 0
 
 
-def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True):
+def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
+                  on_ground=False):
     """Writes one figure into an ASE, standing on `mark`.
 
     off_pitch sets it out past the touchline by its own depth, which is what a
     coach or a ball boy wants and what nothing else does: the corner flags belong
     on the corners and a camera six metres behind a goal belongs there, not out by
     the halfway line (see stadium_props).
+
+    on_ground sets it down on the grass. The staff stand on their own origin, but
+    PES hangs some props off an attach point instead - mob_prop_camera00 runs from
+    1.63 m below its origin to 0.09 above, so on the ground it would be buried.
     """
     local = [_fox_to_gf(v.position) for v in mesh.vertices]
     dx, dy = footprint_offset(local)
     centred = [(v[0] + dx, v[1] + dy, v[2]) for v in local]
+    if on_ground and centred:
+        lift = -min(v[2] for v in centred)
+        centred = [(v[0], v[1], v[2] + lift) for v in centred]
     depth = max(v[1] for v in centred) - min(v[1] for v in centred)
     stand = ((mark[0], mark_for_depth(mark[1], depth, PITCH_HALF_Y)) if off_pitch
              else (mark[0], mark[1]))

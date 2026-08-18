@@ -130,7 +130,8 @@ def marks_for_role(role, pitch_half_x=PITCH_HALF_X, pitch_half_y=PITCH_HALF_Y):
 
 def write_prop(out, name, material_index, mesh, mark, yaw):
     """Writes one piece of furniture into an ASE, standing exactly on its mark."""
-    stadium_staff._write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=False)
+    stadium_staff._write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=False,
+                                on_ground=True)
 
 
 def assign(models, marks):

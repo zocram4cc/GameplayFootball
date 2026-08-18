@@ -166,6 +166,68 @@ class OnePropPerMark(unittest.TestCase):
         self.assertEqual(stadium_props.assign(["a"], []), [])
 
 
+class SittingOnTheGround(unittest.TestCase):
+    """PES hangs some props off their attach point rather than standing them up.
+
+    Measured: gadget_cornerflag runs z -0.07..1.57 and the sub board -0.03..0.39,
+    both effectively on the ground, but mob_prop_tvcamera01 runs -0.42..0.82 and
+    mob_prop_camera00 -1.63..0.09 - a camera that would be half buried and one
+    that would be entirely underground. Every piece is set down on the grass.
+    """
+
+    class _Point(object):
+        def __init__(self, x, y, z):
+            self.x, self.y, self.z = x, y, z
+
+    class _UV(object):
+        u = 0.0
+        v = 0.0
+
+    class _Vertex(object):
+        def __init__(self, x, y, z):
+            self.position = SittingOnTheGround._Point(x, y, z)
+            self.uv = [SittingOnTheGround._UV()]
+
+    class _Face(object):
+        def __init__(self, vertices):
+            self.vertices = vertices
+
+    def _mesh(self, low, high):
+        # Fox axes: y is up
+        verts = [self._Vertex(x, y, z) for x in (-0.2, 0.2) for y in (low, high) for z in (-0.2, 0.2)]
+
+        class Mesh(object):
+            pass
+        mesh = Mesh()
+        mesh.vertices = verts
+        mesh.faces = [self._Face(verts[:3])]
+        return mesh
+
+    def _written_z(self, low, high):
+        import io
+        out = io.StringIO()
+        stadium_props.write_prop(out, "prop", 0, self._mesh(low, high), (0.0, -40.0), 0.0)
+        zs = [float(line.split()[4]) for line in out.getvalue().splitlines()
+              if "*MESH_VERTEX " in line]
+        return (min(zs), max(zs))
+
+    def test_a_prop_hanging_below_its_origin_is_stood_up(self):
+        low, _high = self._written_z(-1.63, 0.09)
+        self.assertAlmostEqual(low, 0.0, places=3)
+
+    def test_its_height_is_not_changed(self):
+        low, high = self._written_z(-1.63, 0.09)
+        self.assertAlmostEqual(high - low, 1.72, places=3)
+
+    def test_one_already_standing_is_left_where_it_is(self):
+        low, _high = self._written_z(0.0, 1.5)
+        self.assertAlmostEqual(low, 0.0, places=3)
+
+    def test_a_hair_below_the_grass_is_lifted_onto_it(self):
+        low, _high = self._written_z(-0.07, 1.57)
+        self.assertAlmostEqual(low, 0.0, places=3)
+
+
 class PlacedWhereTheMarkIs(unittest.TestCase):
     """A prop stands on its mark, not pushed off the pitch like a coach.
 
