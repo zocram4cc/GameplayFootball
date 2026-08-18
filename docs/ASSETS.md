@@ -172,6 +172,61 @@ nothing reaches over the line. `Match` loads `staff/staff.object` from beside th
 stadium the same way it finds the sky. The `.ase` is text, so the marks can be
 moved by hand.
 
+### The crowd in the stands
+
+The pack says where they sit and PES supplies the people. Extract its shared crowd
+once and every ground can be filled:
+
+    python3 tools/pes21_import/cpk.py <PES>/Data/dt00_x64.cpk audi --filter=bg/common/audi
+    bash tools/pes21_import/extract_stadium_packs.sh audi
+    python3 tools/pes21_import/stadium_crowd.py <pack> \
+        --out data/media/objects/stadiums/pes_st011 \
+        --models audi/Asset/model/bg/common/audi \
+        --flags <props>/common/demo/prop \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --asset-dir pes_st011/crowd
+
+`audi/audiarea.bin` in the pack gives the stands as sloped quads with the row
+spacing the game itself uses (1.9 m in st060, 2.1 in st002, 0.7-0.9 in st011);
+`dt00_x64.cpk` gives the spectators (`au00`..`au17`, each with a `mouthOpen`
+version, plus the cheap `au_Low`) and `chair.fmdl`, the seat. st041 comes to about
+13,800 seats, st011 11,900, st060 5,120 - far too much to merge into one mesh, so
+each model is written once and its seats beside it as a placement list, and the
+renderer draws one mesh many times (`src/utils/instancelist.hpp`). Measured on
+st011 with 23,944 copies in the stands: 60 fps, the same as without them. PES's
+stand flags (`mob_prop_teamflag_*`) go up one seat in sixty.
+
+### The furniture round the pitch, and the walkout
+
+Neither the packs nor this engine had any of it - there was not even a corner flag
+in `media/objects`. It is all in `dt12_g4.cpk`:
+
+    python3 tools/pes21_import/cpk.py <PES>/Data/dt12_g4.cpk props --filter=common/demo/prop
+    python3 tools/pes21_import/cpk.py <PES>/Data/dt12_g4.cpk props --filter=fixdemoobj
+    bash tools/pes21_import/extract_stadium_packs.sh props
+    python3 tools/pes21_import/stadium_props.py props \
+        data/media/objects/stadiums/pes_st011/props \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --asset-dir pes_st011/props
+    python3 tools/pes21_import/stadium_props.py props \
+        data/media/objects/stadiums/pes_st011/entrance --name entrance --set entrance \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --asset-dir pes_st011/entrance
+
+The first set stays out all match - corner flags, the fourth official's board,
+three television cameras outside the perimeter, the barrier at the tunnel mouth,
+the paramedics in the technical areas. The second is the walkout's own - the flag
+bearers, their banners, the arch over the mouth, the tunnel behind it - which the
+engine drops the moment the presentation ends. `--competition` adds the ring of
+pennant holders PES sets on the centre circle for a continental tie.
+
+PES's stock-kit humans are deliberately left out: the stewards, the press row and
+the television crew ask for clothing textures (`st_shirt2018_non_bsm`,
+`gu_generic2018_bsm`, `tv_parka_bib_2018A_bsm`) that are in none of the archives -
+checked every `dt` and 4cc cpk - and an undressed figure is a white shape beside
+the pitch. The 4cc mod replaces those skins with its own characters anyway, which
+is what the packs' own staff import gives you.
+
 ### The ground's own lighting
 
 A pack also ships how PES lights it, as readable XML:
