@@ -59,6 +59,8 @@ data/databases/default/images_teams/ink/
 data/media/objects/stadiums/pes_st*/
 data/media/objects/stadiums/adboards/
 data/media/textures/adboards/ad_4cc_*.png
+# PES's own hoardings, imported from dt30's bg/common/bill as <set>__<face>.png
+data/media/textures/adboards/*__*.png
 data/media/textures/stadium/pes_*.png
 data/media/textures/stadium/goalnetting_pes.png
 data/media/textures/pitch/pes/
