@@ -65,3 +65,42 @@ data/media/textures/pitch/pes/
 data/media/textures/crowd/banners/
 data/media/textures/sky/pes_*.png
 data/media/textures/lut/
+
+# Source packs, unpacked in the working tree while importing. These are Konami's
+# and the pack authors' work: extracted 4cc stadium packs ("<slot> - <name>/"),
+# a stadiums/ folder of them, and anything unpacked beside them. Ignored so no
+# amount of "git add -A" can put them in the repository - see docs/ASSETS.md.
+/[0-9][0-9][0-9] - *ered/
+/[0-9][0-9][0-9] - */
+/stadiums/
+/pes_common_extract/
+/pes_lut_extract/
+
+# Verification output from the smoke runs and recorders: screenshots, clips and
+# scratch configs, none of it source.
+/csreport/
+/foulcam/
+/foulcheck/
+/gkcheck/
+/mvshot/
+/showcase_run/
+/stadcheck/
+/export-list.txt
+/CMakeFiles/
+data/menu_smoke_*.config
+!data/menu_smoke_full_match.config
+!data/menu_smoke_quick_match.config
+!data/menu_smoke_gamepad_match.config
+!data/menu_smoke_league*.config
+!data/menu_smoke_career.config
+!data/menu_smoke_credits.config
+!data/menu_smoke_settings*.config
+!data/menu_smoke_penalties*.config
+!data/menu_smoke_showcase.config
+!data/menu_smoke_pes_stadium.config
+!data/menu_smoke_native_stock.config
+!data/menu_smoke_anim_probe.config
+!data/menu_smoke_animview_slide.config
+!data/menu_smoke_modelview.config
+data/data/
+data/pens/
