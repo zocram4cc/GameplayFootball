@@ -75,8 +75,12 @@ ENTRANCE_WANTED = (
     "doh_fb_home", "doh_fb_away",
     "banner_nationalflag_home", "banner_nationalflag_away", "banner_euro_competition",
     "tunnelarch_uefa_euro", "tunnelarch_afc_cl",
-    "passage_01",
 )
+
+# The tunnel interior. PES's passages are 48 x 61 m rooms authored for their own
+# ground's mouth; dropped at ours the wall filled the entrance camera's frame for
+# the whole walk-on, so it takes --tunnel and a ground whose mouth it fits.
+TUNNEL_EXTRAS = ("passage_01",)
 
 # PES's continental dressing, which a 4cc broadcast has none of: the ring of
 # pennant holders it sets on the centre circle for a competition tie. --competition
@@ -224,6 +228,10 @@ def main():
                         help="where this will be installed under media/objects/stadiums, "
                              "for the .ase's own texture paths (e.g. pes_st017/props)")
     parser.add_argument("--textures", action="append", default=[])
+    parser.add_argument("--tunnel", action="store_true",
+                        help="add PES's tunnel interior behind the mouth; it is a 48 x 61 m "
+                             "room authored for another ground and will block the shot "
+                             "unless it happens to fit")
     parser.add_argument("--competition", action="store_true",
                         help="add PES's continental dressing: the ring of pennant holders "
                              "it sets on the centre circle for a competition tie")
@@ -235,6 +243,8 @@ def main():
     wanted = WANTED if args.set == "touchline" else ENTRANCE_WANTED
     if args.set == "entrance" and args.competition:
         wanted = wanted + COMPETITION_EXTRAS
+    if args.set == "entrance" and args.tunnel:
+        wanted = wanted + TUNNEL_EXTRAS
     role_of = prop_role if args.set == "touchline" else entrance_role
     marks_of = marks_for_role if args.set == "touchline" else marks_for_entrance
 

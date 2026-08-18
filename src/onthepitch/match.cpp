@@ -1873,6 +1873,17 @@ void Match::UpdateEntranceChoreo() {
     return;
   }
 
+  // The establishing beat looks out over a pitch the squads have not walked onto
+  // yet, so nobody is on it. Holding the borrowed pack's opening frame instead put
+  // both elevens in a ring on the centre circle through the whole stadium card.
+  if (stagingHoldsOpeningFrame) {
+    for (auto& cast : entranceCast)
+      if (cast.player->CastHumanoid()) cast.player->CastHumanoid()->Hide();
+    HideUnstagedPlayers();
+    choreoBoundsValid = false;
+    return;
+  }
+
   const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
   float minX = 0, maxX = 0, minY = 0, maxY = 0;
   bool anyPosed = false;
