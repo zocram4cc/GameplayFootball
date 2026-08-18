@@ -180,5 +180,21 @@ class FlagsInTheCrowd(unittest.TestCase):
         self.assertTrue(all(g == 60.0 for g in gaps), gaps)
 
 
+class TheSeatsThemselves(unittest.TestCase):
+    """PES ships the seat as well as the spectator.
+
+    audi_seat_model.fpk holds chair.fmdl - 566 vertices, half a metre square and
+    0.84 m tall - and a deck of them is what makes a stand read as a stand rather
+    than a slope with dots on it. One under every spectator.
+    """
+
+    def test_a_seat_goes_under_every_spectator(self):
+        seats = [(1.0, 2.0, 3.0, 0.5), (4.0, 5.0, 6.0, 1.5)]
+        self.assertEqual(stadium_crowd.seat_places(seats), seats)
+
+    def test_no_spectators_no_seats(self):
+        self.assertEqual(stadium_crowd.seat_places([]), [])
+
+
 if __name__ == "__main__":
     unittest.main()

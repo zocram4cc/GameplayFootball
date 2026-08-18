@@ -111,6 +111,16 @@ def palette_offset(variant_index, variant_count):
 FLAG_EVERY = 60
 
 
+def seat_places(seats):
+    """-> where the seats go: one under every spectator.
+
+    PES ships chair.fmdl in audi_seat_model.fpk, 566 vertices and half a metre
+    square, and a deck of them is what makes a stand read as a stand rather than a
+    slope with dots on it.
+    """
+    return list(seats)
+
+
 def flag_places(seats, every=FLAG_EVERY):
     """-> the seats that hold a flag, spread through the crowd.
 
@@ -161,7 +171,9 @@ def main():
                         help="a directory holding PES's stand flags "
                              "(common/demo/prop/mob_prop_teamflag_*), scattered through "
                              "the crowd one seat in %d" % FLAG_EVERY)
-    parser.add_argument("--variants", type=int, default=6,
+    parser.add_argument("--no-seats", action="store_true",
+                        help="leave PES's own seats (chair.fmdl) out of the stands")
+    parser.add_argument("--variants", type=int, default=12,
                         help="how many of PES's spectators to seat")
     args = parser.parse_args()
 
@@ -231,6 +243,32 @@ def main():
                          "%s: %d seat(s) of %s" % (name, len(share), os.path.basename(model)))
         entries.append((name, len(share)))
         print("  %s: %s over %d seat(s)" % (name, os.path.basename(model), len(share)))
+
+    # The seats they sit on, one under each.
+    if not args.no_seats:
+        chairs = sorted(glob.glob(os.path.join(args.models, "**", "chair.fmdl"), recursive=True))
+        if chairs:
+            fmdl = stadium_to_gf._load_fmdl(chairs[0], args.fmdl_lib)
+            name = "crowd_seat"
+            with open(os.path.join(out_dir, name + ".ase"), "w") as out:
+                stadium_to_gf._write_ase_header(out, name)
+                out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(fmdl.meshes))
+                for i, mesh in enumerate(fmdl.meshes):
+                    texture = stadium_to_gf._mesh_base_texture(mesh)
+                    bitmap = (stadium_to_gf._texture_png(texture, ftex_index, out_dir, converted)
+                              if texture else None)
+                    stadium_to_gf._write_material(out, i, "%s_m%d" % (name, i), bitmap,
+                                                  args.asset_dir or "crowd", None)
+                out.write("}\n")
+                for i, mesh in enumerate(fmdl.meshes):
+                    stadium_to_gf._write_geomobject(out, "%s_%02d" % (name, i), i, mesh.faces)
+            places = seat_places(kept)
+            _write_instances(os.path.join(out_dir, name + ".instances"), places,
+                             "%s: %d seat(s) of %s" % (name, len(places),
+                                                       os.path.basename(chairs[0])))
+            entries.append((name, len(places)))
+            print("  %s: %s under %d spectator(s)"
+                  % (name, os.path.basename(chairs[0]), len(places)))
 
     # The flags held up among them, if we were given PES's.
     if args.flags:
