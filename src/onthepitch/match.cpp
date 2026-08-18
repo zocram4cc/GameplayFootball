@@ -1540,6 +1540,8 @@ void Match::SuppressHudForReplay(bool suppressed) {
   // own overlay. Re-applied through the same door the presentation uses, so a
   // replay ending during the walkout does not put the HUD back early.
   ShowMatchHud(!suppressed && !entranceActive);
+  Log(e_Notice, "Match", "SuppressHudForReplay", suppressed ? "replay: match HUD hidden"
+                                                           : "replay over: match HUD back");
 }
 
 void Match::ShowMatchHud(bool visible) {
