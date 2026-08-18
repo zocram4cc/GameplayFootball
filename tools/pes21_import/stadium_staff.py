@@ -117,6 +117,18 @@ def dressed_first(models, skins, available):
     return dressed + bare
 
 
+def only_dressed(models, skins, available):
+    """The models whose skins the pack ships, and nobody else.
+
+    A figure with no skin renders as a white mannequin, and six of the nine
+    grounds converted borrow PES's shared staff, whose stock coach kit is in none
+    of the archives to hand - so they stood eight blank white figures beside the
+    pitch in every wide shot. An empty technical area is the better of the two.
+    """
+    return [model for model in models
+            if skins.get(model) and all(skin in available for skin in skins[model])]
+
+
 def model_skins(path, fmdl_lib):
     """-> the base texture stems a staff model asks for, one per mesh."""
     fmdl = stadium_to_gf._load_fmdl(path, fmdl_lib)
@@ -161,12 +173,15 @@ def main():
     ftex_index = stadium_to_gf.build_ftex_index(texture_dirs)
     converted = {}
 
-    # Put the ones we can dress on the touchline first.
+    # Only the ones we can dress go on the touchline, best first.
     skins = {path: model_skins(path, args.fmdl_lib) for path in models}
-    models = dressed_first(models, skins, set(ftex_index))
-    dressed = sum(1 for path in models if skins[path] and
-                  all(stem in ftex_index for stem in skins[path]))
-    print("%d of %d model(s) have the skins they ask for" % (dressed, len(models)))
+    dressed = only_dressed(dressed_first(models, skins, set(ftex_index)), skins, set(ftex_index))
+    print("%d of %d model(s) have the skins they ask for" % (len(dressed), len(models)))
+    if not dressed:
+        print("nobody to dress: leaving the touchline empty rather than filling it with "
+              "white figures")
+        return 1
+    models = dressed
 
     os.makedirs(args.out, exist_ok=True)
     figures = []  # (mesh, mark, yaw, bitmap)

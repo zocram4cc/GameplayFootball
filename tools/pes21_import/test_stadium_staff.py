@@ -72,6 +72,35 @@ class DressedFirst(unittest.TestCase):
         self.assertEqual(order, ["dressed.fmdl", "bare.fmdl"])
 
 
+class OnlyTheDressedStandThere(unittest.TestCase):
+    """Undressed models are left out rather than stood on the touchline.
+
+    Six of the nine grounds converted have no staff of their own and borrow PES's
+    shared set, whose skins (ca_blou2018_band_bsm, gu_spain_bsm, pr_cset000_bsm)
+    are in none of the archives here. They came out as eight white mannequins
+    beside the pitch, in every wide shot, on every ground. An empty technical area
+    is not a defect; a row of blank white figures is.
+    """
+
+    def test_a_ground_with_dressed_models_uses_only_those(self):
+        self.assertEqual(
+            stadium_staff.only_dressed(["coach.fmdl", "fairy.fmdl"],
+                                       {"coach.fmdl": ["missing"], "fairy.fmdl": ["have"]},
+                                       {"have"}),
+            ["fairy.fmdl"])
+
+    def test_a_ground_with_none_dressed_gets_nobody(self):
+        self.assertEqual(
+            stadium_staff.only_dressed(["a.fmdl", "b.fmdl"],
+                                       {"a.fmdl": ["missing"], "b.fmdl": []}, {"have"}),
+            [])
+
+    def test_the_order_is_kept(self):
+        models = ["a.fmdl", "b.fmdl", "c.fmdl"]
+        skins = {m: ["have"] for m in models}
+        self.assertEqual(stadium_staff.only_dressed(models, skins, {"have"}), models)
+
+
 class Placements(unittest.TestCase):
     def setUp(self):
         self.spots = stadium_staff.placements(HALF_X, HALF_Y, per_side=4)
