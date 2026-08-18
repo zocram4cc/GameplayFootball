@@ -631,7 +631,14 @@ void HumanoidBase::UploadFullbodyModel() {
 void HumanoidBase::SetChoreoPose(Animation* anim, int animFrame,
                                  const Vector3& position, radian angle) {
   choreoAnim = anim;
-  choreoFrame = animFrame;
+  // Wrapped here rather than trusted from the caller. A choreography's path and
+  // the clip it plays are different lengths - EntranceChoreo::Sample counts the
+  // clip frame on without wrapping, because only the clip knows its own length -
+  // and a frame off the end of the animation reads whatever is past it: the foul
+  // cutscenes came out with limbs pseudo-ragdolling and actors sliding out of the
+  // ground, because that call site did not wrap it.
+  const int frameCount = anim ? anim->GetFrameCount() : 0;
+  choreoFrame = frameCount > 0 ? ((animFrame % frameCount) + frameCount) % frameCount : 0;
   choreoPosition = position.Get2D();
   choreoAngle = angle;
   choreoPending = true;
