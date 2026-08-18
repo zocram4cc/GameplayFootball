@@ -1,0 +1,19 @@
+# The scoreboard's bitmap font, built by tools/art/make_scoreboard_font.py
+# from Fira Sans Condensed ExtraBold (SIL OFL). Nothing here is Konami's.
+atlas num_mid.png
+line_height 62
+ascent 48
+glyph 32 1 1 0 0 0 0 10
+glyph 43 2 1 25 29 0 29 25
+glyph 45 28 1 19 20 0 20 19
+glyph 48 48 1 28 36 0 35 28
+glyph 49 77 1 22 34 0 34 22
+glyph 50 100 1 25 35 -1 35 24
+glyph 51 126 1 25 36 -1 35 24
+glyph 52 152 1 27 36 0 36 27
+glyph 53 180 1 26 36 0 35 26
+glyph 54 207 1 27 37 0 36 27
+glyph 55 235 1 22 36 0 35 22
+glyph 56 258 1 27 37 0 36 27
+glyph 57 286 1 27 38 0 36 27
+glyph 58 314 1 12 27 0 26 12

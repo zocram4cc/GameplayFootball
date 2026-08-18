@@ -618,6 +618,7 @@ set(MENU_HEADERS
    src/menu/ingame/hudindicators.hpp
    src/menu/ingame/playerhud.hpp
    src/menu/ingame/scoreboard.hpp
+   src/menu/ingame/scoreboardfont.hpp
    src/menu/ingame/statsoverlay.hpp
    src/menu/ingame/radar.hpp
    src/menu/ingame/matchhistorypage.hpp
@@ -674,6 +675,7 @@ set(MENU_SOURCES
    src/menu/ingame/phasemenu.cpp
    src/menu/ingame/ingame.cpp
    src/menu/ingame/scoreboard.cpp
+   src/menu/ingame/scoreboardfont.cpp
    src/menu/ingame/statsoverlay.cpp
    src/menu/ingame/hudindicators.cpp
    src/menu/ingame/playerhud.cpp

@@ -4,6 +4,7 @@
 // :)
 
 #include "scoreboard.hpp"
+#include "scoreboardfont.hpp"
 
 #include "../../onthepitch/match.hpp"
 #include "main.hpp"
@@ -173,7 +174,7 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   const float clockTextHeight = clockHeight * 0.52f;
   clockText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_clock", clockX + 0.3f,
                                  clockY + (clockHeight - clockTextHeight) * 0.5f, clockWidth - 0.6f,
-                                 clockTextHeight, "media/ui/pes/num_mid.fnt");
+                                 clockTextHeight, ScoreboardFont::Path("num_mid"));
   clockText->SetText("00:00");
   this->AddView(clockText);
   clockText->Show();
@@ -192,7 +193,7 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   const float scoreWidth = barWidth * 0.26f;
   scoreText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_score",
                                  centerX - scoreWidth * 0.5f, (barHeight - scoreHeight) * 0.5f,
-                                 scoreWidth, scoreHeight, "media/ui/pes/num_match.fnt");
+                                 scoreWidth, scoreHeight, ScoreboardFont::Path("num_match"));
   scoreText->SetText("0-0");
   this->AddView(scoreText);
   scoreText->Show();
@@ -247,7 +248,7 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   const float chipTextHeight = chipHeight * 0.55f;
   addedTimeText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_addedtime", chipX + 0.3f,
                                      chipY + (chipHeight - chipTextHeight) * 0.5f, chipWidth - 0.6f,
-                                     chipTextHeight, "media/ui/pes/num_mid.fnt");
+                                     chipTextHeight, ScoreboardFont::Path("num_mid"));
   addedTimeText->SetText("+0:00");
   this->AddView(addedTimeText);
 }
