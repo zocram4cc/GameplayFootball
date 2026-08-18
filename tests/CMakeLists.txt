@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Which pitch art a ground gets painted with
+add_executable(gameplayfootball_pitchoverlay_tests
+  onthepitch/pitch_overlay_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/pitchoverlay.cpp
+)
+target_include_directories(gameplayfootball_pitchoverlay_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_pitchoverlay_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_pitchoverlay_tests DISCOVERY_MODE PRE_TEST)
+
 # Keeping an imported shot out of the players it films
 add_executable(gameplayfootball_camerastandoff_tests
   onthepitch/camera_standoff_test.cpp

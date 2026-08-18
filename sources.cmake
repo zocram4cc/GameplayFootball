@@ -532,6 +532,7 @@ set(GAME_SOURCES
    src/onthepitch/staginganchor.cpp
    src/onthepitch/prematchshotpair.cpp
    src/onthepitch/camerastandoff.cpp
+   src/onthepitch/pitchoverlay.cpp
    src/onthepitch/scenelighting.cpp
    src/onthepitch/stadiumfar.cpp
    src/onthepitch/pitchturf.cpp
