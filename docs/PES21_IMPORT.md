@@ -309,8 +309,18 @@ Until that lands, imported heads render statically.
     line mesh: +/-53 x +/-34.1) and this engine plays on 110 x 72 and paints its
     lines there, so the art is scaled by 1.039 x 1.056 until the two rectangles
     agree. Unscaled, PES's touchline sits two metres inside ours.
-  * **the line pass is left out** (`--lines` puts it in). The engine paints its own
-    markings, and two sets a few centimetres apart look like a printing error.
+  * **each pass is classified before anything is painted**, because a pitch model
+    holds up to three kinds and they are not equal. Measured over six packs, a
+    decal is nearly all transparent (st002's `pitch_alp` 99% clear, its crest pass
+    93%) while PES's grass itself is opaque everywhere (st019's and benuldys's
+    `pitch.dds`, st056's `wide_s_c1`, st031's at alpha 130 with nothing clear); a
+    line strip is neither, however opaque (st019's is solid). They are painted in
+    PES's order - grass, then what is painted on it, then the markings - and the
+    markings go down exactly when PES's grass has covered the engine's own, which
+    is when the engine's procedural markings went with it. Painting everything
+    blindly put st031 on a blank cyan chequerboard; where our grass still shows
+    (st002), PES's lines stay out, because two sets a few centimetres apart read
+    as a printing error. `--lines` forces them in.
   A decal bigger than the overlay is averaged down first: sampling 4096 rows into
   1024 point by point kept every fourth row and combed the crests into stripes.
   (The hatching that remains is PES's own - it is in the texture.)
