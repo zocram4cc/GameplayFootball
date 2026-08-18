@@ -112,3 +112,46 @@ TEST(PhilosophyDial, AnUnknownPhilosophyFallsBackToAnEvenSplit) {
   EXPECT_FLOAT_EQ(HudIndicators::PhilosophyDialSplit(99), 0.5f);
   EXPECT_FLOAT_EQ(HudIndicators::PhilosophyDialSplit(-1), 0.5f);
 }
+
+// The team badge on the indicator plate.
+//
+// It was given a fixed box - thirteen per cent of the plate's width by the
+// plate's full height - and a square crest stretched to fill it. Fitted inside
+// the box at its own shape instead, and centred in what is left.
+TEST(HudIndicators, ASquareBadgeComesOutSquare) {
+  float w = 0, h = 0;
+  HudIndicators::FitKeepingAspect(4.0f, 2.0f, 1.0f, &w, &h);
+  EXPECT_NEAR(w, 2.0f, 0.001f);
+  EXPECT_NEAR(h, 2.0f, 0.001f);
+}
+
+TEST(HudIndicators, AWideBadgeIsLimitedByTheBoxsWidth) {
+  float w = 0, h = 0;
+  HudIndicators::FitKeepingAspect(4.0f, 4.0f, 2.0f, &w, &h);
+  EXPECT_NEAR(w, 4.0f, 0.001f);
+  EXPECT_NEAR(h, 2.0f, 0.001f);
+}
+
+TEST(HudIndicators, ATallBadgeIsLimitedByTheBoxsHeight) {
+  float w = 0, h = 0;
+  HudIndicators::FitKeepingAspect(4.0f, 4.0f, 0.5f, &w, &h);
+  EXPECT_NEAR(w, 2.0f, 0.001f);
+  EXPECT_NEAR(h, 4.0f, 0.001f);
+}
+
+TEST(HudIndicators, ItNeverGrowsPastTheBox) {
+  for (float aspect : {0.2f, 0.75f, 1.0f, 1.5f, 5.0f}) {
+    float w = 0, h = 0;
+    HudIndicators::FitKeepingAspect(3.0f, 5.0f, aspect, &w, &h);
+    EXPECT_LE(w, 3.0f + 0.001f);
+    EXPECT_LE(h, 5.0f + 0.001f);
+  }
+}
+
+TEST(HudIndicators, AnUnknownAspectFillsTheBoxAsBefore) {
+  float w = 0, h = 0;
+  HudIndicators::FitKeepingAspect(4.0f, 2.0f, 0.0f, &w, &h);
+  EXPECT_NEAR(w, 4.0f, 0.001f);
+  EXPECT_NEAR(h, 2.0f, 0.001f);
+}
+

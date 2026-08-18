@@ -36,6 +36,13 @@ float StaminaFraction(float condition);
 // TeamPhilosophy::e_Philosophy; anything unrecognised splits the dial evenly.
 float PhilosophyDialSplit(int philosophy);
 
+// Fits content of a given aspect (width / height, in the same units as the box)
+// inside the box, without cropping and without stretching. An aspect of zero -
+// nothing known about the content - fills the box, which is what the badge used
+// to do to a square crest.
+void FitKeepingAspect(float boxWidth, float boxHeight, float aspect, float* width,
+                      float* height);
+
 }  // namespace HudIndicators
 
 #endif

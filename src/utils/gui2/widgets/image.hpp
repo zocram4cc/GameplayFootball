@@ -27,6 +27,11 @@ public:
 
   boost::intrusive_ptr<Image2D>& GetImage2D() { return image; }
 
+  // The loaded file's own width / height, or 0 when nothing is loaded. Callers
+  // that must not stretch their content need it - a team crest is square and was
+  // being pulled to the shape of its box.
+  float GetSourceAspectRatio() const;
+
 protected:
   boost::intrusive_ptr<Image2D> image;
   boost::intrusive_ptr<Image2D> imageSource;
