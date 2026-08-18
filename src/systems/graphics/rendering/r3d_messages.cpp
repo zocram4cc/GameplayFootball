@@ -274,8 +274,23 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
                                            GetConfiguration()->GetReal("match_weather", 0.0f)));
+  // Exposure, keyed the way PES keys it (gameKeyValue 0.18). Off unless asked for
+  // until it is measured against the reference on more than one ground.
+  renderer->SetUniformFloat("postprocess", "exposureKey",
+                            GetConfiguration()->GetReal("graphics_exposure_key", 0.0f));
+  renderer->SetUniformFloat("postprocess", "exposureMinGain",
+                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.6f));
+  renderer->SetUniformFloat("postprocess", "exposureMaxGain",
+                            GetConfiguration()->GetReal("graphics_exposure_max_gain", 3.0f));
+  // How much of the horizon's colour the distance is washed with. A converted
+  // ground sets this from its own atmosphere (influenceOfFog, via lighting.txt),
+  // and every PES atmosphere we can actually read says none of it: Planet Namek,
+  // benuldys and WWELIAS all carry fog 0. The default used to be full, which put a
+  // quarter of a pale grey sky over everything on the six grounds whose lighting
+  // comes out of a cpk as PES's own binaries with no readable XML - the haze on
+  // their pitches. Off unless a ground asks for it.
   renderer->SetUniformFloat("postprocess", "fogStrength",
-                            GetConfiguration()->GetReal("graphics_fog_strength", 1.0f));
+                            GetConfiguration()->GetReal("graphics_fog_strength", 0.0f));
   renderer->SetUniformFloat3(
       "postprocess", "skyFogColor", GetConfiguration()->GetReal("sky_fog_r", 0.85f),
       GetConfiguration()->GetReal("sky_fog_g", 0.85f),
