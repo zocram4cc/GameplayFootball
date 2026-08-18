@@ -23,6 +23,7 @@ every .ftex-holding directory underneath what you pass is searched.
 
 import argparse
 import glob
+import hashlib
 import math
 import os
 import re
@@ -265,6 +266,35 @@ ENGINE_PITCH_HALF = (55.0, 36.0)
 # the pitch at all, and how far from the centre spot it has to sit to have an answer.
 UPRIGHT_MAX_VERTICAL_FACING = 0.5
 PITCH_FACING_MIN_RADIUS = 1.0
+
+
+# PES's motion-blur mask. It splits one piece of geometry into several material
+# passes, and one of them is a copy drawn only to keep the mesh out of the blur:
+# technique fox3DDF_Blin_Fuzzblock, material "<name> antiblur". Nothing to draw, and
+# drawn anyway it is the same mesh twice at the same place - z-fighting and, on
+# st031, 22,323 wasted vertices. Not the cel-shade outline, which carries
+# outline.png and sits pushed out along its normals (is_outline_pass).
+ANTIBLUR_TECHNIQUE_MARK = "fuzzblock"
+ANTIBLUR_MATERIAL_MARK = "antiblur"
+
+
+def is_antiblur_pass(technique, material_name):
+    """Whether a mesh is PES's blur mask rather than something to look at."""
+    if technique and ANTIBLUR_TECHNIQUE_MARK in str(technique).lower():
+        return True
+    return bool(material_name) and ANTIBLUR_MATERIAL_MARK in str(material_name).lower()
+
+
+def keep_visible_passes(passes):
+    """passes: [(geometry key, is a blur mask)] -> the indices worth writing.
+
+    A blur mask is dropped only when the same geometry is present as something
+    visible; on its own it is kept, because a mesh drawn once from the wrong pass
+    beats a hole in the ground. Two visible passes on one geometry are both kept -
+    PES does layer real coats, and dropping one would lose artwork.
+    """
+    visible = {key for key, mask in passes if not mask}
+    return [i for i, (key, mask) in enumerate(passes) if not (mask and key in visible)]
 
 
 def faces_away_from_pitch(vertices, faces):
@@ -523,7 +553,7 @@ def mesh_extent(mesh):
 
 def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
               max_verts_per_geom=None, max_extent=None, fallback_bitmap=None,
-              geometry_scale=None):
+              geometry_scale=None, face_pitch=False):
     converted = {}
     ftex_index = build_ftex_index(tex_dirs)
     materials = []          # (material name, bitmap path or None)
@@ -546,12 +576,28 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
     reach = 0.0
     sky_texture = None  # the converted texture of the tallest dome
     sky_top = 0.0
+    skipped_blur_masks = 0
     for label, fmdl in fmdls:
+        # PES's blur masks, where the same geometry is also present as something
+        # visible: nothing to look at, and drawn anyway it is the mesh twice at the
+        # same place (keep_visible_passes).
+        passes = []
+        for mesh in fmdl.meshes:
+            instance = getattr(mesh, "materialInstance", None)
+            key = hashlib.sha1(str([(v.position.x, v.position.y, v.position.z)
+                                    for v in mesh.vertices]).encode()).hexdigest()
+            passes.append((key, is_antiblur_pass(getattr(instance, "technique", None),
+                                                 getattr(instance, "name", None))))
+        visible_passes = set(keep_visible_passes(passes))
+        skipped_blur_masks += len(passes) - len(visible_passes)
+
         # biggest meshes first so a budget keeps the structural shell and
         # drops decorative detail last-to-first
         order = sorted(range(len(fmdl.meshes)),
                        key=lambda i: -len(fmdl.meshes[i].faces))
         for i in order:
+            if i not in visible_passes:
+                continue
             mesh = fmdl.meshes[i]
             if mesh_extent(mesh) > extent_limit:
                 skipped_extent += 1
@@ -590,6 +636,9 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
                     geom_name += "_p%02d" % part
                 geoms.append((geom_name, mat_index, faces, outline, sky))
 
+    if skipped_blur_masks:
+        print("  dropped %d blur mask(s): PES's own geometry, already drawn"
+              % skipped_blur_masks)
     if skipped_budget or skipped_extent:
         print("  skipped %d mesh(es) over the %s-triangle budget, "
               "%d beyond the %sm extent limit"
@@ -653,7 +702,7 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             if sky:
                 continue  # the domes go to their own object, below
             _write_geomobject(out, geom_name, mat_index, faces, outline, False,
-                              scale=geometry_scale)
+                              scale=geometry_scale, face_pitch=face_pitch)
             outlines += 1 if outline else 0
         if outlines:
             print("  %d outline shell(s) written with reversed winding" % outlines)
@@ -889,7 +938,8 @@ def find_turf_texture(names):
 TURF_FILENAME = "turf.png"
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
             max_tris=None, max_verts_per_geom=None, max_extent=None,
-            fallback_bitmap=None, with_pitch=True, geometry_scale=None):
+            fallback_bitmap=None, with_pitch=True, geometry_scale=None,
+            face_pitch=False):
     os.makedirs(out_dir, exist_ok=True)
     tex_dirs = find_texture_dirs(*tex_dirs)
     print("texture dirs: %s" % (tex_dirs or "none found"))
@@ -901,7 +951,7 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
     ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
                                                 max_tris, max_verts_per_geom,
                                                 max_extent, fallback_bitmap,
-                                                geometry_scale)
+                                                geometry_scale, face_pitch)
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(object_text(name, with_pitch))
@@ -955,6 +1005,10 @@ if __name__ == "__main__":
     # ad_placeholder hands them to GF's own randomiser, which swaps in a panel from
     # media/textures/adboards - the same thing PES does, by the mechanism this
     # engine already has.
+    parser.add_argument("--face-pitch", action="store_true",
+                        help="turn round any upright mesh whose back is to the pitch: "
+                             "what the advertising ring needs, since the broadcast "
+                             "camera stands inside it and back faces are culled")
     parser.add_argument("--pitch-scale", action="store_true",
                         help="carry the geometry from PES's pitch (105 x 68 m) onto "
                              "this engine's (110 x 72): what the advertising ring "
@@ -991,5 +1045,6 @@ if __name__ == "__main__":
                                         args.max_tris, args.max_verts_per_geom,
                                         args.max_extent, args.fallback_bitmap,
                                         not args.no_pitch,
-                                        pitch_scale() if args.pitch_scale else None)
+                                        pitch_scale() if args.pitch_scale else None,
+                                        args.face_pitch)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))

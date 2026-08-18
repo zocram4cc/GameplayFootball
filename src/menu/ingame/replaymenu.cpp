@@ -14,6 +14,9 @@
 #include "managers/environmentmanager.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/frame.hpp"
+#include "utils/gui2/widgets/image.hpp"
+
+#include <filesystem>
 
 using namespace blunted;
 
@@ -58,6 +61,26 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "INSTANT REPLAY");
   SuppressMatchHud(true);
+
+  // The 4cc wipe over the cut into the replay. Full screen, on top of everything the
+  // page draws, and hidden until it has a frame to show (replaywipe.hpp).
+  wipe = new Gui2Image(windowManager, "image_replay_wipe", 0, 0, 100, 100);
+  this->AddView(wipe);
+  wipe->Hide();
+  wipeDir = GetConfiguration()->Get("replay_wipe_dir", "media/textures/wipe/wepes");
+  wipeTiming = ReplayWipe::Timing();
+  wipeStarted_ms = 0;
+  wipeFrameOnScreen = -1;
+  wipeRunning = false;
+  wipeClosing = false;
+  const std::string sidecar = ReplayWipe::SidecarPath(wipeDir);
+  if (!wipeDir.empty() && std::filesystem::exists(sidecar)) {
+    std::ifstream file(sidecar);
+    std::stringstream contents;
+    contents << file.rdbuf();
+    wipeTiming = ReplayWipe::Parse(contents.str());
+  }
+  StartWipe();
   header->AddView(title);
   title->Show();
 
@@ -128,7 +151,43 @@ void ReplayPage::UpdateTimeLabel() {
   timeLabel->SetCaption(label);
 }
 
+void ReplayPage::StartWipe() {
+  if (!wipeTiming.valid) return;
+  wipeStarted_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  wipeFrameOnScreen = -1;
+  wipeRunning = true;
+}
+
+bool ReplayPage::RunWipe() {
+  if (!wipeRunning) return true;
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  const unsigned long elapsed = now - wipeStarted_ms;
+  const int frame = ReplayWipe::FrameAt(wipeTiming, elapsed);
+  if (frame == ReplayWipe::kFinished) {
+    wipeRunning = false;
+    wipeFrameOnScreen = -1;
+    if (wipe) wipe->Hide();
+    return true;
+  }
+  if (frame != wipeFrameOnScreen && wipe) {
+    wipeFrameOnScreen = frame;
+    wipe->LoadImage(ReplayWipe::FramePath(wipeDir, frame));
+    wipe->Show();
+  }
+  // The cut goes under full cover, which is what fadestart marks.
+  return ReplayWipe::CutIsDue(wipeTiming, elapsed);
+}
+
 void ReplayPage::Process() {
+  const bool covered = RunWipe();
+  if (wipeClosing) {
+    // Holding the page open until the outgoing wipe has the screen.
+    if (covered) {
+      wipeClosing = false;
+      GoBack();
+    }
+    return;
+  }
   if (autoRun) {
     Vector3 direction;
     direction.coords[0] = slowMotion ? 0.25f : 0.5f;
@@ -273,6 +332,13 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
     autoRun = false;
     if (closeWhenAutorunCompletes) {
       closeWhenAutorunCompletes = false;
+      // Wipe out of the replay the same way it wiped in, and leave when the cut is
+      // covered rather than cutting in the clear.
+      if (wipeTiming.valid) {
+        StartWipe();
+        wipeClosing = true;
+        return;
+      }
       GoBack();
       return;
     }

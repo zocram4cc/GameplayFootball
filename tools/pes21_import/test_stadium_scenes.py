@@ -183,3 +183,55 @@ class HoardingsLookAtThePitch(unittest.TestCase):
 
     def test_nothing_is_left_alone(self):
         self.assertFalse(stadium_to_gf.faces_away_from_pitch([], []))
+
+
+class PesRenderPasses(unittest.TestCase):
+    """PES splits one piece of geometry into several material passes.
+
+    st031's centre scene holds 22 meshes over 17 distinct geometries, and every
+    duplicate is the same pair: one mesh on technique fox3DFW_ConstantSRGB_NDR_Solid
+    with material "Material", and a twin on fox3DDF_Blin_Fuzzblock with material
+    "Material antiblur". That is PES's motion-blur mask - a copy of the geometry
+    drawn to keep it out of the blur - not artwork and not an outline. Imported, both
+    get written, so the mesh is drawn twice at exactly the same place: z-fighting,
+    and 22,323 wasted vertices on st031 alone (st060 29,704, st056 and st043 and
+    st011 their own share).
+
+    This is not the cel-shade outline, which is a different thing: an outline carries
+    a texture named outline.png and sits pushed out along its normals
+    (is_outline_pass, and stadium_staff.wants_winding_flipped for the winding).
+    """
+
+    def test_the_blur_mask_is_recognised_by_its_technique(self):
+        self.assertTrue(stadium_to_gf.is_antiblur_pass("fox3DDF_Blin_Fuzzblock", "Material"))
+        self.assertTrue(stadium_to_gf.is_antiblur_pass("FOX3DDF_BLIN_FUZZBLOCK", ""))
+
+    def test_it_is_also_recognised_by_pes_own_material_name(self):
+        self.assertTrue(stadium_to_gf.is_antiblur_pass("", "Material antiblur"))
+
+    def test_a_normal_pass_is_not(self):
+        self.assertFalse(stadium_to_gf.is_antiblur_pass("fox3DFW_ConstantSRGB_NDR_Solid",
+                                                       "Material"))
+        self.assertFalse(stadium_to_gf.is_antiblur_pass(None, None))
+
+    def test_a_blur_mask_over_geometry_that_is_already_there_is_dropped(self):
+        keep = stadium_to_gf.keep_visible_passes([("A", False), ("A", True)])
+        self.assertEqual(keep, [0])
+
+    def test_the_order_of_the_pair_does_not_matter(self):
+        self.assertEqual(stadium_to_gf.keep_visible_passes([("A", True), ("A", False)]), [1])
+
+    def test_a_blur_mask_with_no_twin_is_kept(self):
+        # better a mesh drawn once from the wrong pass than a hole in the ground
+        self.assertEqual(stadium_to_gf.keep_visible_passes([("A", True)]), [0])
+
+    def test_distinct_geometry_is_all_kept(self):
+        self.assertEqual(stadium_to_gf.keep_visible_passes([("A", False), ("B", False)]), [0, 1])
+
+    def test_two_visible_passes_on_one_geometry_are_both_kept(self):
+        # PES does layer real passes - a second, blended coat over the first - and
+        # dropping one of those would lose artwork
+        self.assertEqual(stadium_to_gf.keep_visible_passes([("A", False), ("A", False)]), [0, 1])
+
+    def test_nothing_keeps_nothing(self):
+        self.assertEqual(stadium_to_gf.keep_visible_passes([]), [])

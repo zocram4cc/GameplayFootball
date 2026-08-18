@@ -7,8 +7,10 @@
 #define _HPP_MENU_INGAME_REPLAY
 
 #include "../../onthepitch/match.hpp"
+#include "../../onthepitch/replaywipe.hpp"
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 using namespace blunted;
@@ -46,6 +48,22 @@ protected:
   bool closeWhenAutorunCompletes;
 
   Gui2Caption* timeLabel;
+
+  // The 4cc wipe over the cut, in and out (replaywipe.hpp). One full-screen image
+  // whose picture is swapped per frame, rather than a hundred views: the frames are
+  // RGBA and the crest is drawn through PES's own matte.
+  Gui2Image* wipe;
+  ReplayWipe::Timing wipeTiming;
+  std::string wipeDir;
+  unsigned long wipeStarted_ms;
+  int wipeFrameOnScreen;
+  bool wipeRunning;
+  // The outgoing wipe holds the page open until the cut is covered.
+  bool wipeClosing;
+
+  void StartWipe();
+  // -> true once an outgoing wipe has covered the cut and the page may go.
+  bool RunWipe();
 };
 
 #endif

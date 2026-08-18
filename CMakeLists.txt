@@ -326,8 +326,12 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   add_library(datalib ${DATA_SOURCES} ${DATA_HEADERS})
   gf_target_includes(datalib)
 
+  # gamelib twice, and deliberately. A static library is scanned once, left to
+  # right, so a symbol that only menulib references - ReplayWipe, for the 4cc wipe
+  # over a replay cut - goes unresolved when gamelib has already gone past. The
+  # alternative is moving onthepitch code into the menu, which is worse.
   set(LIBRARIES gamelib hidlib menulib datalib leaguelib blunted2
-     SQLite::SQLite3)
+     gamelib SQLite::SQLite3)
   if(GF_SDL2_GFX_TARGET)
     list(APPEND LIBRARIES ${GF_SDL2_GFX_TARGET})
   elseif(SDL2_GFX_LIBRARIES)
