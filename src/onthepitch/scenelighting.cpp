@@ -45,4 +45,27 @@ Sun Parse(const std::string& text) {
   return sun;
 }
 
+Sun DefaultSun(float timeOfDay) {
+  // Where PES puts a sun when it is not saying otherwise: across the ground
+  // rather than down it, and at the elevation its own atmospheres sit around -
+  // Namek's works out at 46 degrees, and the grounds that came out right in the
+  // capture sheets were the ones lit like that. Bearing is kept off the main
+  // camera's axis so players are lit from the front three-quarters, which is what
+  // the old dice roll was reaching for when it flipped the sun to the camera side.
+  const float day = std::max(0.0f, std::min(1.0f, timeOfDay));
+  const float kDayElevation = 44.0f;
+  const float kNightElevation = 6.0f;  // low, dim, and the floodlights take over
+  const float elevation = (kDayElevation + (kNightElevation - kDayElevation) * day) *
+                          3.14159265358979f / 180.0f;
+  const float bearing = -130.0f * 3.14159265358979f / 180.0f;
+
+  Sun sun;
+  const float horizontal = std::cos(elevation);
+  sun.direction[0] = horizontal * std::sin(bearing);
+  sun.direction[1] = horizontal * std::cos(bearing);
+  sun.direction[2] = std::sin(elevation);
+  sun.valid = true;
+  return sun;
+}
+
 }  // namespace SceneLighting

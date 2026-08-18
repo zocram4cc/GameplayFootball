@@ -132,11 +132,22 @@ for pack in "$PACKS"/*/; do
       --fmdl-lib "$FMDL_LIB" \
       --asset-dir "pes_st$slot/props" || true
     # And what PES only carries out for the walkout - the flag bearers, their
-    # banners, the arch over the tunnel mouth, the pennant display on the centre
-    # circle, the tunnel - which the engine drops at kickoff.
+    # banners, the arch over the tunnel mouth - which the engine drops at kickoff.
     python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/entrance" \
       --fmdl-lib "$FMDL_LIB" --name entrance --set entrance \
       --asset-dir "pes_st$slot/entrance" || true
+
+    # The ring of pennant bearers on the centre circle, once per competition: the
+    # four-leaf clover for a tie between two boards, the /vg/ Football League's
+    # crest otherwise, and the engine loads whichever the teams call for. Both
+    # emblems come out of the packs' own emblemLc (COMPETITION_EMBLEM_DIR).
+    for emblem in ${COMPETITION_EMBLEMS:-4cc vgl}; do
+      png="${COMPETITION_EMBLEM_DIR:-data/imports/pes21/competition}/emblem_$emblem.png"
+      [ -f "$png" ] || continue
+      python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/entrance" \
+        --fmdl-lib "$FMDL_LIB" --name "pennant_$emblem" --set pennant \
+        --asset-dir "pes_st$slot/entrance" --emblem "$png" || true
+    done
   fi
 
   # The crowd in the stands: PES's spectators and seats, placed from this pack's own

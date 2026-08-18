@@ -122,7 +122,7 @@ public:
   // presentation still wins - the HUD does not come back mid-walkout.
   void SuppressHudForReplay(bool suppressed);
 
-  void SetRandomSunParams();
+  void SetSunParams();
   void RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode);
   void UpdateControllerSetup();
   // Legacy plain-string call sites (goal commentary etc.) still work; routes
@@ -454,6 +454,7 @@ protected:
   boost::intrusive_ptr<Node> propsNode;
   boost::intrusive_ptr<Node> crowdNode;
   boost::intrusive_ptr<Node> entrancePropsNode;
+  boost::intrusive_ptr<Node> pennantNode;
 
   // camera user settings
   float cameraUserZoom;

@@ -115,6 +115,26 @@ vec3 GradeThroughLut(vec3 color) {
   return mix(low, high, slice - slice0);
 }
 
+// The engine's own grade: its brightness, and the contrast it raises around a
+// fixed mid grey. Named so the exposure below can measure a tap through the same
+// chain the picture goes through, instead of measuring the frame as lit and
+// judging it against a target read off the graded picture.
+const float kContrastBias = 0.3f;  // 0 == normal .. 1 == 'fake hdri'
+
+vec3 EngineGrade(vec3 color, float brightness, float saturation) {
+  return AlternateContrast(ContrastSaturationBrightness(color, brightness, 1.0f, saturation),
+                           kContrastBias);
+}
+
+// PES's grade, through the LUT it ships. Lifts the midtones and rolls the top end
+// off, which is most of why the frame as lit reads so much darker than the frame
+// as shown.
+vec3 LutGrade(vec3 color) {
+  if (lutStrength <= 0.0f || lutSize < 2.0f) return color;
+  vec3 graded = DisplayToLinear(GradeThroughLut(LinearToDisplay(color)));
+  return mix(color, graded, clamp(lutStrength, 0.0f, 1.0f));
+}
+
 vec3 Compress(vec3 color, float startThreshold, float endThreshold) {
   float range = endThreshold - startThreshold;
   float compressedRange = 1.0f - startThreshold;
@@ -196,16 +216,35 @@ void main(void) {
     // the gain overshoots, which put st041 at a median of 0.558 against the
     // broadcast's 0.434 while it had been sitting at 0.426 already.
     float sum = 0.0f;
+    float counted = 0.0f;
     const int kExposureTaps = 4;
     for (int ty = 0; ty < kExposureTaps; ++ty) {
       for (int tx = 0; tx < kExposureTaps; ++tx) {
         vec2 tap = (vec2(float(tx), float(ty)) + 0.5f) / float(kExposureTaps);
+        // Empty background is not part of the measurement. Where the depth was
+        // never written the accumulation buffer holds the clear colour, and the sky
+        // that ends up there is painted further down - after this gain, so the gain
+        // cannot move it anyway. Counting those taps read a frame as far darker
+        // than it is shown and asked for light the picture did not need: st011 is
+        // most of a bowl under a wide sky, measured at a median of 0.55 against the
+        // broadcast's 0.434, and the exposure was still lifting it.
+        float tapDepth = texture2D(map_depth, tap).x;
+        if (tapDepth > 0.999999f) continue;
         vec3 sampled = texture2D(map_accumulation, tap).rgb;
-        float luminance = dot(sampled, vec3(0.2126f, 0.7152f, 0.0722f));
+        // Through the grades the picture goes through. Measured as lit instead,
+        // every scene reads far darker than it will be shown - the engine's
+        // contrast and PES's LUT both lift the midtones afterwards - so the gain
+        // sat pinned at its ceiling and the pass became a flat brightening: in the
+        // capture sheets every one of the nine grounds got brighter, including the
+        // four that were already past the broadcast's midtone.
+        vec3 shown = LutGrade(EngineGrade(sampled, sceneBrightness, 0.95f));
+        float luminance = dot(shown, vec3(0.2126f, 0.7152f, 0.0722f));
         sum += pow(max(luminance, 0.0001f), 1.0f / 2.2f);
+        counted += 1.0f;
       }
     }
-    float displayed = sum / float(kExposureTaps * kExposureTaps);
+    // A frame of nothing but sky is left alone rather than divided by zero.
+    float displayed = counted > 0.0f ? sum / counted : exposureKey;
     // exposureKey is the brightness to aim for as displayed; the correction is
     // applied in linear light, so it goes through the transfer the other way.
     float ratio = clamp(exposureKey / max(displayed, 0.0001f), exposureMinGain, exposureMaxGain);
@@ -231,7 +270,6 @@ void main(void) {
   fragColor = fragColor * (1.0f - fogFactor) + fogColor * fogFactor;
 
   float brightness = sceneBrightness;
-  float contrastBias = 0.3f;//0.1f; // 0 == normal .. 1 == 'fake hdri'
   float saturation = 0.95f * (0.4f + SSAO * 0.6f); // SSAO shadows are less saturated
 
   // now happens automagically because of glEnable(GL_FRAMEBUFFER_SRGB)
@@ -241,8 +279,7 @@ void main(void) {
   fragColor.b = GammaCorrection(fragColor.b, gamma);
 */
 
-  fragColor = ContrastSaturationBrightness(fragColor, brightness, 1.0f, saturation);
-  fragColor = AlternateContrast(fragColor, contrastBias);
+  fragColor = EngineGrade(fragColor, brightness, saturation);
 
   // sky: color the empty background (cleared depth) with a view-direction
   // gradient instead of a flat fill - kills the white void behind open
@@ -256,9 +293,7 @@ void main(void) {
     float elevation = clamp(viewDir.z, 0.0f, 1.0f);
     vec3 sky = mix(skyHorizon, skyZenith, pow(elevation, 0.55f));
     // below the horizon fade to the graded fog fill so stadium gaps stay hazy
-    vec3 gradedFog = AlternateContrast(
-        ContrastSaturationBrightness(fogColor, brightness, 1.0f, saturation),
-        contrastBias);
+    vec3 gradedFog = EngineGrade(fogColor, brightness, saturation);
     fragColor = mix(gradedFog, sky, smoothstep(-0.06f, 0.02f, viewDir.z));
   }
 
@@ -266,10 +301,7 @@ void main(void) {
   // goes in PES too. This is the tone curve the engine never had: it lifts the
   // midtones and rolls the top end off, rather than raising contrast around a
   // fixed mid grey the way AlternateContrast above does.
-  if (lutStrength > 0.0f && lutSize >= 2.0f) {
-    vec3 graded = DisplayToLinear(GradeThroughLut(LinearToDisplay(fragColor)));
-    fragColor = mix(fragColor, graded, clamp(lutStrength, 0.0f, 1.0f));
-  }
+  fragColor = LutGrade(fragColor);
 
   // Cinematic Vignette
   vec2 uv = texCoord * 2.0 - 1.0;
@@ -280,5 +312,9 @@ void main(void) {
 
   //gl_FragColor = vec4(fragColor, 0);
   //fragColor = vec3(0, 0.5, 1.0);
-  stdout = vec4(fragColor, 0);
+  // Opaque. Nothing composites the presented frame, so the alpha was never looked
+  // at on screen - but the frame recorder writes this buffer straight out as rgba,
+  // and a zero here made every captured still invisible in anything that honours
+  // alpha while looking perfectly fine in anything that drops it.
+  stdout = vec4(fragColor, 1.0f);
 }

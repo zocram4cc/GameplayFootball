@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Which competition's emblem rings the centre circle
+add_executable(gameplayfootball_competitionemblem_tests
+  onthepitch/competition_emblem_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/competitionemblem.cpp
+)
+target_include_directories(gameplayfootball_competitionemblem_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_competitionemblem_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_competitionemblem_tests DISCOVERY_MODE PRE_TEST)
+
 # Which pitch art a ground gets painted with
 add_executable(gameplayfootball_pitchoverlay_tests
   onthepitch/pitch_overlay_test.cpp

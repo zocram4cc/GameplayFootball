@@ -45,6 +45,16 @@ std::string SidecarPath(const std::string& stadiumObjectPath);
 // engine keeps its own rather than underlighting the ground.
 Sun Parse(const std::string& text);
 
+// Where the sun goes for a ground that ships no lighting of its own - six of the
+// nine converted ones, whose packs came out of cpk extractions and so kept PES's
+// binary atmosphere instead of the readable XML. The engine used to roll
+// random(-1.7, 1.7) on two axes over a height multiplier of 1.3, which puts the
+// sun near the zenith more often than not and washed those six to white. This is
+// a fixed mid-afternoon sun instead: the same shadows every kickoff, and never
+// straight overhead. timeOfDay is the pre-match selector, 0 day .. 1 night, and
+// only lowers it.
+Sun DefaultSun(float timeOfDay);
+
 }  // namespace SceneLighting
 
 #endif

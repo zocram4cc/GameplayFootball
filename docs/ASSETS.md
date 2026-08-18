@@ -263,6 +263,22 @@ pictures, so `lut_strip.py` unrolls the set into one ordinary PNG
 down) and `postprocess.frag` samples it. `graphics_lut_strength` mixes it in;
 `0` turns it off.
 
+**It is off by default, because the strip does not decode correctly yet.** Sample
+the grey response of the four bands and three of them saturate: `day`, `cloudy` and
+`evening` map every input above 0.6 into 0.64-0.69, while `night` - the band that
+ought to be the dark one - is the only one that reaches 1.0. Graded, the picture
+loses its whole top end: st011 measures p98 0.659 against 0.918 ungraded and 0.918
+in the reference broadcast, and its spread falls to 0.087 against the reference's
+0.132. That reads as washed-out and flat, and it is a contrast error, not a level
+one - the median is barely touched (Planet Namek 0.424 -> 0.431), which is why
+keying the exposure against a median never fixed it.
+
+The 1.68x midtone gap quoted above was measured before each ground's own sun was
+imported and the exposure keyed; those closed it. So the grade is imported and
+sampled but mixed at 0, and turning it back on is one setting once the tables
+decode - the suspect is the ftex pixel-format-12 half-float read in
+`lut_strip.py`, or an assumption that PES's SDR tables hold direct RGB output.
+
 ## 5. Scoreboard and formation-panel theme
 
     python3 tools/pes21_import/export_scoreboard_theme.py "/path/to/PES21/Data" \

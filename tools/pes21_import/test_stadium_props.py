@@ -309,12 +309,11 @@ class TheEntranceSet(unittest.TestCase):
     def test_so_is_the_arch(self):
         self.assertIn("tunnelarch_uefa_euro", stadium_props.ENTRANCE_WANTED)
 
-    def test_the_competition_pennant_display_is_not_in_it_by_default(self):
-        # circleflag is what PES rings the centre circle with for a continental
-        # tie; a 4cc broadcast has no such thing, and it sat there through every
-        # wide beat of the presentation
+    def test_the_pennant_ring_is_a_set_of_its_own(self):
+        # the broadcast does have it, but which emblem it carries depends on the
+        # competition, so it is written once per emblem and loaded separately
         self.assertNotIn("circleflag_afc_cl_01", stadium_props.ENTRANCE_WANTED)
-        self.assertIn("circleflag_afc_cl_01", stadium_props.COMPETITION_EXTRAS)
+        self.assertIn("circleflag_afc_cl_01", stadium_props.PENNANT_WANTED)
 
     def test_the_touchline_furniture_is_not(self):
         # it stays out for the whole match
@@ -362,6 +361,86 @@ class TheEntranceSet(unittest.TestCase):
 
     def test_something_with_no_place_in_the_walkout_gets_no_marks(self):
         self.assertEqual(stadium_props.marks_for_entrance("cornerflag", HALF_X, HALF_Y), [])
+
+
+class ThePennantCarriesTheCompetition(unittest.TestCase):
+    """The ring on the centre circle is the competition's, and says which one.
+
+    PES's circleflag_afc_cl_01 is eight meshes: four flag faces on
+    acl_circlef_prop000_nomip_bsm and four bearers on acl_circlef_prop001_bsm. The
+    face is where the competition's own emblem goes - the 4cc mod does the same
+    thing to its UEFA slot, where circleflag_uefa_cl_0_bsm carries a Winter Cup
+    badge - so a /a/ v /b/ tie wants the 4chan Stupor Cup clover
+    (emblemLc/emb_0004) and an LCG or 2HUG tie the /vg/ Football League crest
+    (emb_0008).
+    """
+
+    def test_the_flag_face_is_the_one_that_takes_the_emblem(self):
+        self.assertTrue(stadium_props.is_pennant_face("acl_circlef_prop000_nomip_bsm.tga"))
+        self.assertTrue(stadium_props.is_pennant_face("circleflag_uefa_cl_0_bsm.tga"))
+        self.assertTrue(stadium_props.is_pennant_face("demo_circleflag_nomip_bsm.tga"))
+
+    def test_the_bearers_are_left_in_their_own_kit(self):
+        self.assertFalse(stadium_props.is_pennant_face("acl_circlef_prop001_bsm.tga"))
+        self.assertFalse(stadium_props.is_pennant_face("cl_staff_bsm.tga"))
+        self.assertFalse(stadium_props.is_pennant_face(None))
+
+    def test_the_pennant_has_its_own_set(self):
+        self.assertEqual(stadium_props.PENNANT_WANTED, ("circleflag_afc_cl_01",))
+
+
+class ComposingTheBanner(unittest.TestCase):
+    """The competition's emblem goes onto PES's banner, not in place of it.
+
+    PES's flag face is a 1024 x 1024 disc - a dark navy field with a hex pattern and
+    the AFC Champions League badge in the middle. Dropping a UI emblem in whole
+    gives a mostly transparent PNG where a banner should be, and the engine's ASE
+    materials have no alpha blending to save it: the disc came out a dark blob on
+    the centre circle. So the middle is wiped to the banner's own colour and the
+    emblem painted on it, and the outer ring - pattern, edge and all - is PES's.
+    """
+
+    def _base(self, size=64):
+        from PIL import Image, ImageDraw
+        base = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(base)
+        draw.ellipse((0, 0, size - 1, size - 1), fill=(20, 30, 70, 255))
+        draw.ellipse((size // 4, size // 4, 3 * size // 4, 3 * size // 4),
+                     fill=(255, 128, 0, 255))          # the old badge
+        return base
+
+    def _emblem(self, size=32):
+        from PIL import Image, ImageDraw
+        emblem = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        ImageDraw.Draw(emblem).ellipse((2, 2, size - 3, size - 3), fill=(0, 200, 0, 255))
+        return emblem
+
+    def test_the_banner_keeps_its_size(self):
+        out = stadium_props.compose_flag_face(self._base(), self._emblem())
+        self.assertEqual(out.size, (64, 64))
+
+    def test_the_old_badge_is_gone_from_the_middle(self):
+        base = self._base()
+        out = stadium_props.compose_flag_face(base, self._emblem())
+        # dead centre is the new emblem, not the orange badge
+        self.assertNotEqual(out.getpixel((32, 32))[:3], base.getpixel((32, 32))[:3])
+        self.assertGreater(out.getpixel((32, 32))[1], out.getpixel((32, 32))[0])
+
+    def test_the_edge_of_the_disc_is_still_pes(self):
+        base = self._base()
+        out = stadium_props.compose_flag_face(base, self._emblem())
+        self.assertEqual(out.getpixel((32, 1))[:3], base.getpixel((32, 1))[:3])
+        self.assertEqual(out.getpixel((1, 32))[:3], base.getpixel((1, 32))[:3])
+
+    def test_what_was_transparent_stays_transparent(self):
+        # the corners are outside the disc
+        out = stadium_props.compose_flag_face(self._base(), self._emblem())
+        self.assertEqual(out.getpixel((0, 0))[3], 0)
+
+    def test_no_emblem_leaves_the_banner_alone(self):
+        base = self._base()
+        out = stadium_props.compose_flag_face(base, None)
+        self.assertEqual(out.tobytes(), base.tobytes())
 
 
 class DressedMeshByMesh(unittest.TestCase):

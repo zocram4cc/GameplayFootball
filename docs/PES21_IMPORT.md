@@ -284,8 +284,17 @@ Until that lands, imported heads render statically.
   * **the sun.** `stadium_lighting.py` reads `light/#Win/.../*.fox2.xml`, which is
     a 4cc pack-download convenience - a stadium taken out of a cpk keeps PES's own
     binaries (`.atsh`, `.rpd`, `.pcsp`) and no XML, so six of the nine got no
-    `lighting.txt` and fall back to the engine's own sun. (Some packs do not even
-    light themselves: st002's light pack is st009's, borrowed whole.)
+    `lighting.txt` and fall back to a fixed default sun. (Some packs do not even
+    light themselves: st002's light pack is st009's, borrowed whole.) That fallback
+    used to be a dice roll - `random(-1.7, 1.7)` on two axes over a height
+    multiplier of 1.3 - which puts the sun near the zenith more often than not and
+    lights the ground with the full cool noon sun straight overhead. It is what
+    washed those six to white: medians of 0.55-0.57 against the reference
+    broadcast's 0.434, while the three grounds that do carry a `lighting.txt` sat at
+    0.26-0.41 and kept their own colour. `SceneLighting::DefaultSun` gives a fixed
+    mid-afternoon one instead - 44 degrees up, across the ground rather than down
+    it, lowered by the time-of-day selector - so the same shadows fall every
+    kickoff and no ground is lit from overhead unless PES says it is.
   * **stock skins.** The staff models reference PES's own coach kit
     (`ca_blou2018_band_bsm`, `gu_spain_bsm`, `pr_cset000_bsm`), and no archive here
     ships those - not the dt cpks, not the 4cc ones. So only the models whose skins
@@ -356,6 +365,33 @@ Until that lands, imported heads render statically.
   presentation to put them out and take them away again. Ad boards:
   `dt30_g4.cpk` `Asset/model/bg/common/bill`. Crowd sound: `dt44_all.cpk`
   `common/sound/match/acb/cheers/*.acb`.
+- **The centre-circle pennant, carrying the competition's own emblem.** PES's
+  `circleflag_afc_cl_01` is the flat banner it lays over the centre circle for a
+  continental tie - eight pieces, four flag faces on
+  `acl_circlef_prop000_nomip_bsm` and four bearers on `acl_circlef_prop001_bsm`,
+  spanning +/-8.7 m - and a 4cc broadcast has it too, with the tournament's badge
+  on it. So it is imported once per competition (`--set pennant --name
+  pennant_<emblem> --emblem <png>`) and the engine loads whichever the tie calls
+  for (`src/onthepitch/competitionemblem.hpp`: the four-leaf clover when both teams
+  are boards, the /vg/ Football League crest otherwise), dropping it with the rest
+  of the walkout set at kickoff.
+  The emblem is not used as the banner. PES's face is a hex-patterned navy disc
+  filling the whole 1024 x 1024 with its badge across the middle, while the
+  emblems - `common/render/symbol/emblemLc/emb_0004_ll` and `emb_0008_l`, out of
+  `4cc_10_interface.cpk` - are transparent UI badges, and this material does not
+  blend alpha, so used directly the banner came out a dark blob on the centre spot.
+  Nor is the texture the whole of it: PES's four flag faces are wound face-*down*
+  (their geometric normals average -0.99 in z), and this engine takes a mesh's
+  lighting from the winding that was written, so the banner rendered as a black disc
+  on the grass whatever texture it carried. `stadium_staff.wants_winding_flipped`
+  turns over any mesh that is flat, lying on the ground and facing away from the
+  sky - judged by area, so a wall stays as its author drew it and a solid is never
+  touched.
+  `compose_flag_face` dresses PES's own face instead: it samples the field's colour
+  from a ring between the badge and the rim, wipes the middle to it with a
+  feathered edge, and paints the emblem over that. The rim stays exactly as PES
+  drew it; the hexagons under the badge are lost, and are invisible from any camera
+  that films a flat banner lying on grass.
 - `stadium_crowd.py`: PES's own crowd in the stands. Each pack says where they sit -
   `audi/audiarea.bin`, sloped quads plus the row spacing the game uses (1.9 m in
   st060, 2.1 in st002, 0.7-0.9 in st011) - and the spectators are shared, in
