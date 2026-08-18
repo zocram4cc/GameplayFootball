@@ -356,6 +356,26 @@ Until that lands, imported heads render statically.
   presentation to put them out and take them away again. Ad boards:
   `dt30_g4.cpk` `Asset/model/bg/common/bill`. Crowd sound: `dt44_all.cpk`
   `common/sound/match/acb/cheers/*.acb`.
+- `stadium_crowd.py`: PES's own crowd in the stands. Each pack says where they sit -
+  `audi/audiarea.bin`, sloped quads plus the row spacing the game uses (1.9 m in
+  st060, 2.1 in st002, 0.7-0.9 in st011) - and the spectators are shared, in
+  `dt00_x64.cpk` under `Asset/model/bg/common/audi`: `au_Low.fmdl` 672 vertices,
+  `au00..au17` and their `_parts`/`mouthOpen` variants (fifteen of them, twelve
+  seated by default), `chair.fmdl` the seat itself at 566. Counted off those files
+  st041 seats about 13,800, st011 11,900, st060 5,120. They are placed as a list and
+  drawn as instances, one mesh many times (`src/utils/instancelist.hpp`), because as
+  separate meshes st011 alone is over a million vertices in a text ASE. The rows
+  follow each stand's own slope so the back rows sit higher, every seat faces the
+  centre spot, and PES's stand flags (`mob_prop_teamflag_*`) go up one seat in
+  sixty. Measured on st011 - 11,873 spectators, 11,873 seats, 198 flags, 23,944
+  copies of thirteen meshes - 1974 frames over 32.9 s, which is the 60 fps cap: the
+  crowd costs nothing measurable. `COMMON_CROWD` points the driver at the models.
+- The crowd's voice comes from the same place: `dt44_all.cpk`
+  `common/sound/match/awb/cheers/SE_Cheers_CM_Goal*.awb`, HCA streams that ffmpeg
+  turns into ogg beside the chants. The engine's reaction layer - the loop its mood
+  mixing gains up when the crowd is on its feet - plays PES's roar wherever that
+  import has landed, and its own `crowd02.wav` otherwise
+  (`crowd_ambient_sound`/`crowd_reaction_sound`).
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads — silhouette texture + billboard strips hooked into the stadium
   `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its

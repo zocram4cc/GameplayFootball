@@ -21,6 +21,8 @@
 # 4.7 km across); stadium_to_gf.py's own 260 m default is meant for a real
 # stadium's car park.
 #
+# COMMON_CROWD=<dir> is an extraction of PES's Asset/model/bg/common/audi, for the
+# spectators and the seats they sit on.
 # COMMON_PROPS=<dir> is an extraction of PES's common/demo/prop and
 # common/demo/fixdemoobj, for the furniture round the pitch (corner flags, cameras,
 # the fourth official's board, the tunnel barrier, the paramedics).
@@ -135,6 +137,17 @@ for pack in "$PACKS"/*/; do
     python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/entrance" \
       --fmdl-lib "$FMDL_LIB" --name entrance --set entrance \
       --asset-dir "pes_st$slot/entrance" || true
+  fi
+
+  # The crowd in the stands: PES's spectators and seats, placed from this pack's own
+  # audi/audiarea.bin. COMMON_CROWD points at an extraction of PES's
+  # Asset/model/bg/common/audi, and the flags come from COMMON_PROPS.
+  if [ -n "${COMMON_CROWD:-}" ] && [ -d "${COMMON_CROWD:-}" ]; then
+    python3 "$HERE/stadium_crowd.py" "$pack" --out "$out" \
+      --models "$COMMON_CROWD" \
+      ${COMMON_PROPS:+--flags "$COMMON_PROPS/common/demo/prop"} \
+      --fmdl-lib "$FMDL_LIB" \
+      --asset-dir "pes_st$slot/crowd" || true
   fi
 
   # Where this ground's sun is. Every pack carries a place, a date and a time in
