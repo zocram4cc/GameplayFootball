@@ -75,9 +75,13 @@ ENTRANCE_WANTED = (
     "doh_fb_home", "doh_fb_away",
     "banner_nationalflag_home", "banner_nationalflag_away", "banner_euro_competition",
     "tunnelarch_uefa_euro", "tunnelarch_afc_cl",
-    "circleflag_afc_cl_01",
     "passage_01",
 )
+
+# PES's continental dressing, which a 4cc broadcast has none of: the ring of
+# pennant holders it sets on the centre circle for a competition tie. --competition
+# puts it back.
+COMPETITION_EXTRAS = ("circleflag_afc_cl_01",)
 
 ENTRANCE_ROLES = (
     ("flagbearer", ("doh_fb_", "doh_mfb_")),
@@ -220,12 +224,17 @@ def main():
                         help="where this will be installed under media/objects/stadiums, "
                              "for the .ase's own texture paths (e.g. pes_st017/props)")
     parser.add_argument("--textures", action="append", default=[])
+    parser.add_argument("--competition", action="store_true",
+                        help="add PES's continental dressing: the ring of pennant holders "
+                             "it sets on the centre circle for a competition tie")
     parser.add_argument("--set", choices=("touchline", "entrance"), default="touchline",
                         help="the furniture that stays out all match, or what PES carries "
                              "out for the walkout and takes away again")
     args = parser.parse_args()
 
     wanted = WANTED if args.set == "touchline" else ENTRANCE_WANTED
+    if args.set == "entrance" and args.competition:
+        wanted = wanted + COMPETITION_EXTRAS
     role_of = prop_role if args.set == "touchline" else entrance_role
     marks_of = marks_for_role if args.set == "touchline" else marks_for_entrance
 

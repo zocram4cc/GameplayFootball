@@ -306,9 +306,15 @@ class TheEntranceSet(unittest.TestCase):
         self.assertIn("doh_fb_home", stadium_props.ENTRANCE_WANTED)
         self.assertIn("banner_nationalflag_home", stadium_props.ENTRANCE_WANTED)
 
-    def test_so_are_the_arch_and_the_pennant(self):
+    def test_so_is_the_arch(self):
         self.assertIn("tunnelarch_uefa_euro", stadium_props.ENTRANCE_WANTED)
-        self.assertIn("circleflag_afc_cl_01", stadium_props.ENTRANCE_WANTED)
+
+    def test_the_competition_pennant_display_is_not_in_it_by_default(self):
+        # circleflag is what PES rings the centre circle with for a continental
+        # tie; a 4cc broadcast has no such thing, and it sat there through every
+        # wide beat of the presentation
+        self.assertNotIn("circleflag_afc_cl_01", stadium_props.ENTRANCE_WANTED)
+        self.assertIn("circleflag_afc_cl_01", stadium_props.COMPETITION_EXTRAS)
 
     def test_the_touchline_furniture_is_not(self):
         # it stays out for the whole match
