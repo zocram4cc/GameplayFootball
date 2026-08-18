@@ -21,6 +21,9 @@
 # 4.7 km across); stadium_to_gf.py's own 260 m default is meant for a real
 # stadium's car park.
 #
+# COMMON_PROPS=<dir> is an extraction of PES's common/demo/prop and
+# common/demo/fixdemoobj, for the furniture round the pitch (corner flags, cameras,
+# the fourth official's board, the tunnel barrier, the paramedics).
 # COMMON_STAFF=<dir> is the game's own bg/common (or its staff subtree), used for
 # the touchline staff of any pack that ships none itself. COMMON_TEXTURES=<dir> is
 # any other tree of the game's textures to dress them from; a pack's staff wear
@@ -83,7 +86,7 @@ for pack in "$PACKS"/*/; do
   while IFS= read -r model; do
     [ -z "$model" ] && continue
     extras+=(--extra "$model")
-  done < <(find "$pack" -name "*.fmdl" \
+  done < <(find -L "$pack" -name "*.fmdl" \
              -not -path "$pack/#Win/*" -not -path "$pack/pitch/*" \
              -not -path "$pack/staff/*" -not -path "$pack/light/*" \
              -not -path "$pack/turf3d/*" 2>/dev/null \
@@ -116,6 +119,17 @@ for pack in "$PACKS"/*/; do
   python3 "$HERE/pitch_overlay.py" "$pack" --out "$out" \
     --fmdl-lib "$FMDL_LIB" \
     --textures "$pack/sourceimages/tga/#windx11" || true
+
+  # The furniture PES stands around a pitch: corner flags, the fourth official's
+  # board, the television cameras, the barrier at the tunnel mouth, the paramedics.
+  # No pack ships any of it - PES keeps one set for every ground - so point
+  # COMMON_PROPS at an extraction of its common/demo/prop and
+  # common/demo/fixdemoobj and every ground gets them.
+  if [ -n "${COMMON_PROPS:-}" ] && [ -d "${COMMON_PROPS:-}" ]; then
+    python3 "$HERE/stadium_props.py" "$COMMON_PROPS" "$out/props" \
+      --fmdl-lib "$FMDL_LIB" \
+      --asset-dir "pes_st$slot/props" || true
+  fi
 
   # Where this ground's sun is. Every pack carries a place, a date and a time in
   # light/#Win/.../*.fox2.xml, and how much fog its atmosphere wants; without this
