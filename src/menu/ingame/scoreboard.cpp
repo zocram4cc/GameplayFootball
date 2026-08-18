@@ -171,7 +171,9 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   this->AddView(clockPanel);
   clockPanel->Show();
 
-  const float clockTextHeight = clockHeight * 0.52f;
+  // The numerals fill their pills rather than floating in them: at 0.52 the
+  // clock read small against the panel around it.
+  const float clockTextHeight = clockHeight * 0.70f;
   clockText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_clock", clockX + 0.3f,
                                  clockY + (clockHeight - clockTextHeight) * 0.5f, clockWidth - 0.6f,
                                  clockTextHeight, ScoreboardFont::Path("num_mid"));
@@ -189,7 +191,7 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   barImage->Show();
 
   // score digits, dead centre of the bar
-  const float scoreHeight = barHeight * 0.58f;
+  const float scoreHeight = barHeight * 0.74f;
   const float scoreWidth = barWidth * 0.26f;
   scoreText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_score",
                                  centerX - scoreWidth * 0.5f, (barHeight - scoreHeight) * 0.5f,
@@ -245,7 +247,7 @@ void Gui2ScoreBoard::ConstructPesTheme() {
   addedTimePanel->LoadImage("media/ui/pes/addedtime_panel.png");
   this->AddView(addedTimePanel);
 
-  const float chipTextHeight = chipHeight * 0.55f;
+  const float chipTextHeight = chipHeight * 0.72f;
   addedTimeText = new Gui2BitmapText(windowManager, "game_scoreboard_pes_addedtime", chipX + 0.3f,
                                      chipY + (chipHeight - chipTextHeight) * 0.5f, chipWidth - 0.6f,
                                      chipTextHeight, ScoreboardFont::Path("num_mid"));
