@@ -9,10 +9,12 @@
 // to film a walkout in a venue the camerawork was not authored for - it showed
 // the squads strolling across open ground beside the ground.
 //
-// The motion is PES's and worth keeping; only its placement is wrong. So a
-// staging that finishes outside the playing area is translated until it
-// finishes on the centre spot, and one that already finishes inside is left
-// exactly where its author put it.
+// The motion is PES's and worth keeping; only its placement is wrong. Anchoring
+// its finish to the centre spot was worse than useless - it put the whole ten
+// metres of walk in the middle of the field, so the squads never walked in from
+// anywhere. What a walk-on needs is its *start* just outside the nearest line,
+// so PES's own motion carries the cast onto the pitch. A staging that already
+// starts inside is left exactly where its author put it.
 
 #include <gtest/gtest.h>
 
@@ -26,45 +28,55 @@ constexpr float kHalfX = 55.0f;
 constexpr float kHalfY = 36.0f;
 }  // namespace
 
-TEST(StagingAnchor, AStagingThatFinishesOnThePitchIsLeftAlone) {
-  // the anthem pack lines the squads up along the halfway line
-  const Vector3 offset =
-      StagingAnchor::OnPitchOffset(Vector3(0.0f, -2.0f, 0.0f), kHalfX, kHalfY);
+TEST(StagingAnchor, AStagingThatStartsOnThePitchIsLeftAlone) {
+  // the anthem pack stands the squads on the halfway line to begin with
+  const Vector3 offset = StagingAnchor::WalkOnOffset(Vector3(0.0f, -2.0f, 0.0f), kHalfX, kHalfY);
   EXPECT_FLOAT_EQ(offset.coords[0], 0.0f);
   EXPECT_FLOAT_EQ(offset.coords[1], 0.0f);
 }
 
-TEST(StagingAnchor, AWalkOnThatFinishesPastTheTouchlineIsBroughtToTheCentreSpot) {
-  // ent_009_st000 finishes around y -38
-  const Vector3 offset =
-      StagingAnchor::OnPitchOffset(Vector3(-0.9f, -38.0f, 0.0f), kHalfX, kHalfY);
-  EXPECT_NEAR(offset.coords[0], 0.9f, 0.001f);
-  EXPECT_NEAR(offset.coords[1], 38.0f, 0.001f);
+TEST(StagingAnchor, AWalkOnStartsJustOutsideTheLineItComesInOver) {
+  // ent_009_st000 starts around y -48 and walks ten metres inward
+  const Vector3 offset = StagingAnchor::WalkOnOffset(Vector3(-0.7f, -47.8f, 0.0f), kHalfX, kHalfY);
+  EXPECT_FLOAT_EQ(offset.coords[0], 0.0f);  // nothing wrong with where it sits along the pitch
+  const float startY = -47.8f + offset.coords[1];
+  EXPECT_LT(startY, -kHalfY);                      // still outside, so they walk in
+  EXPECT_GT(startY, -kHalfY - 8.0f);               // and only just
+}
+
+TEST(StagingAnchor, TheWalkEndsUpOnThePitch) {
+  // the ten metres PES walks them has to finish inside the touchline
+  const Vector3 offset = StagingAnchor::WalkOnOffset(Vector3(-0.7f, -47.8f, 0.0f), kHalfX, kHalfY);
+  const float finishY = -37.9f + offset.coords[1];
+  EXPECT_GT(finishY, -kHalfY);
+  EXPECT_LT(finishY, 0.0f);
 }
 
 TEST(StagingAnchor, TheEdgesOfThePitchCountAsOnIt) {
   EXPECT_FLOAT_EQ(
-      StagingAnchor::OnPitchOffset(Vector3(0.0f, -kHalfY + 1.0f, 0.0f), kHalfX, kHalfY).coords[1],
+      StagingAnchor::WalkOnOffset(Vector3(0.0f, -kHalfY + 1.0f, 0.0f), kHalfX, kHalfY).coords[1],
       0.0f);
   EXPECT_FLOAT_EQ(
-      StagingAnchor::OnPitchOffset(Vector3(kHalfX - 1.0f, 0.0f, 0.0f), kHalfX, kHalfY).coords[0],
+      StagingAnchor::WalkOnOffset(Vector3(kHalfX - 1.0f, 0.0f, 0.0f), kHalfX, kHalfY).coords[0],
       0.0f);
 }
 
-TEST(StagingAnchor, AStagingBeyondAGoalLineIsBroughtInToo) {
-  const Vector3 offset = StagingAnchor::OnPitchOffset(Vector3(-70.0f, 0.0f, 0.0f), kHalfX, kHalfY);
-  EXPECT_NEAR(offset.coords[0], 70.0f, 0.001f);
+TEST(StagingAnchor, AWalkOnFromBeyondAGoalLineComesInThatWay) {
+  const Vector3 offset = StagingAnchor::WalkOnOffset(Vector3(-70.0f, 0.0f, 0.0f), kHalfX, kHalfY);
+  const float startX = -70.0f + offset.coords[0];
+  EXPECT_LT(startX, -kHalfX);
+  EXPECT_GT(startX, -kHalfX - 8.0f);
+  EXPECT_FLOAT_EQ(offset.coords[1], 0.0f);
 }
 
 TEST(StagingAnchor, TheHeightIsNeverTouched) {
   // The choreography's own z is what keeps feet on the ground.
-  const Vector3 offset =
-      StagingAnchor::OnPitchOffset(Vector3(0.0f, -48.0f, 3.2f), kHalfX, kHalfY);
+  const Vector3 offset = StagingAnchor::WalkOnOffset(Vector3(0.0f, -48.0f, 3.2f), kHalfX, kHalfY);
   EXPECT_FLOAT_EQ(offset.coords[2], 0.0f);
 }
 
 TEST(StagingAnchor, ANonsensePitchLeavesEverythingWhereItIs) {
   // Better an unmoved staging than one translated by a garbage measurement.
-  EXPECT_FLOAT_EQ(StagingAnchor::OnPitchOffset(Vector3(0.0f, -48.0f, 0.0f), 0.0f, 0.0f).coords[1],
+  EXPECT_FLOAT_EQ(StagingAnchor::WalkOnOffset(Vector3(0.0f, -48.0f, 0.0f), 0.0f, 0.0f).coords[1],
                   0.0f);
 }

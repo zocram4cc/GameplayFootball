@@ -18,10 +18,10 @@
 namespace StagingAnchor {
 
 // The translation to apply to every position in a staging, given where its cast
-// finishes. Zero when that is already inside the playing area, or when the pitch
-// measurements are not usable.
-blunted::Vector3 OnPitchOffset(const blunted::Vector3& finishCentre, float pitchHalfX,
-                               float pitchHalfY);
+// starts. Zero on an axis the start is already inside, and zero altogether when
+// the pitch measurements are not usable.
+blunted::Vector3 WalkOnOffset(const blunted::Vector3& startCentre, float pitchHalfX,
+                              float pitchHalfY);
 
 }  // namespace StagingAnchor
 

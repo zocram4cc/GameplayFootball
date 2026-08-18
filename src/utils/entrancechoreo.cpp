@@ -66,14 +66,16 @@ const ChoreoSlot* EntranceChoreo::GetSlot(int slotIndex) const {
 void EntranceChoreo::Sample(const ChoreoSlot& slot, float elapsedFrame,
                             Vector3& position, radian& yaw,
                             int& animFrame) const {
-  float cycleTime = elapsedFrame;
-  if (slot.loop) {
-    cycleTime = std::fmod(cycleTime, (float)slot.cycleFrames);
-    if (cycleTime < 0.0f) cycleTime += slot.cycleFrames;
-  } else if (cycleTime > slot.cycleFrames) {
-    cycleTime = (float)slot.cycleFrames;
-  }
-  animFrame = (slot.phaseFrames + (int)cycleTime) % slot.cycleFrames;
+  // The path plays once and then holds, whatever the slot's loop flag says. PES
+  // flags its walk-on slots looping, and wrapping the path teleports the actor
+  // back to the tunnel mouth to walk in again - in plain view, because a
+  // walk-on beat runs 22 seconds over a 13-second path.
+  float cycleTime = std::max(0.0f, std::min(elapsedFrame, (float)slot.cycleFrames));
+
+  // The clip is a different length from the path and loops on its own; the
+  // caller wraps this against it (see Match::UpdateEntranceChoreo), so it keeps
+  // counting and an actor who has arrived marks time instead of freezing.
+  animFrame = slot.phaseFrames + (int)std::max(0.0f, elapsedFrame);
 
   const auto& keys = slot.keys;
   if (keys.size() == 1) {

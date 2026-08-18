@@ -1611,24 +1611,29 @@ Vector3 Match::ComputeStagingOffset() const {
   // PES authors a walk-on in its own stadium's coordinates, with the cast
   // starting at its tunnel mouth: ent_009_st000 walks from y -48 to y -38, both
   // of them past this pitch's touchline at 36. The motion is worth keeping and
-  // only its placement is wrong, so a staging that finishes off the field is
-  // brought in (staginganchor.hpp). Measured from where the cast ends up, which
-  // is where the beat hands over to the next one.
+  // only its placement is wrong, so a staging that starts off the field is moved
+  // to start just outside the line it comes in over (staginganchor.hpp), and its
+  // own ten metres then carry the cast onto the pitch.
   if (entranceCast.empty()) return Vector3(0, 0, 0);
   const EntranceChoreo& choreo = activeStaging ? activeStaging->choreo : entranceChoreo;
-  Vector3 sum(0, 0, 0);
-  int counted = 0;
+  // Anchored on whoever starts nearest the pitch - the head of the column - so
+  // the whole group starts outside the line rather than straddling it.
+  Vector3 innermost(0, 0, 0);
+  bool any = false;
   for (const auto& cast : entranceCast) {
     Vector3 position;
     radian yaw = 0;
     int animFrame = 0;
-    // The last frame of that actor's path through the staging.
-    choreo.Sample(*cast.slot, (float)cast.slot->cycleFrames, position, yaw, animFrame);
-    sum += position;
-    counted++;
+    // The first frame of that actor's path: a walk-on is placed by where it
+    // comes in from, not by where it ends up.
+    choreo.Sample(*cast.slot, 0.0f, position, yaw, animFrame);
+    if (!any || position.GetLength() < innermost.GetLength()) {
+      innermost = position;
+      any = true;
+    }
   }
-  if (counted == 0) return Vector3(0, 0, 0);
-  return StagingAnchor::OnPitchOffset(sum / (float)counted, pitchHalfW, pitchHalfH);
+  if (!any) return Vector3(0, 0, 0);
+  return StagingAnchor::WalkOnOffset(innermost, pitchHalfW, pitchHalfH);
 }
 
 void Match::UpdateEntranceChoreo() {
@@ -1662,8 +1667,18 @@ void Match::UpdateEntranceChoreo() {
     }
     PrematchStaging* staging = AcquirePrematchStaging(wanted);
     const bool holdOpeningFrame = shot.empty() && !wanted.empty();
-    // A beat with no staging of its own keeps the previous one standing
-    // rather than dropping everyone back to the scripted walk mid-sequence.
+
+    // A beat that names no staging, once the sequence is under way, lets the
+    // cast go: the players walk to their own kickoff marks from wherever the
+    // last pack left them. Holding the last pose instead is what made the first
+    // whistle teleport everybody - they were still standing in the team picture
+    // when the match took them back.
+    if (!staging && activeStaging && shot.empty()) {
+      activeStaging = nullptr;
+      entranceCast.clear();
+      choreoBoundsValid = false;
+      return;
+    }
     if (staging) {
       activeStaging = staging;
       // Holding the opening frame: park the clock on it rather than letting
@@ -2562,7 +2577,12 @@ void Match::UpdateIngameCamera() {
       if (namedShot && namedShot->GetFrameCount() > 0) {
         const CamTrackFrame frame =
             namedShot->Sample(beat.beatT * (namedShot->GetFrameCount() - 1));
-        cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+        // The camerawork is authored in the same coordinates as the choreography
+        // it films, so wherever the staging had to be moved to happen on our
+        // pitch, the camera goes with it - otherwise PES's own shot points at the
+        // empty ground the cast used to walk across.
+        cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]) +
+                             stagingOffset;
         cameraNodeOrientation = QUATERNION_IDENTITY;
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                               frame.rotation[3]);
