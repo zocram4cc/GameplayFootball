@@ -274,14 +274,24 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
                                            GetConfiguration()->GetReal("match_weather", 0.0f)));
-  // Exposure, keyed the way PES keys it (gameKeyValue 0.18). Off unless asked for
-  // until it is measured against the reference on more than one ground.
+  // Exposure. PES scales every frame so its brightness lands on a key value -
+  // gameKeyValue in the atmosphere - and without that each ground is lit to
+  // whatever its own sun and textures happen to give: Planet Namek came out at
+  // half the broadcast's midtone while st041 was already on it. The key here is
+  // that brightness as displayed (the reference measures 0.45), and the gains
+  // bound how far a ground may be moved so a night match stays a night match.
+  // Measured on two grounds at either end, against the broadcast's median of
+  // 0.434: Planet Namek sat at 0.284 and st041 at 0.426. Keyed at 0.37 Namek lands
+  // on 0.422 and st041 goes to 0.513 - the sixteen taps read a frame with dark
+  // stands lower than it is, so a ground that was already right gets lifted too.
+  // 0.35 splits it: neither is more than a tenth out, against a third for Namek
+  // before. The bounds keep a night match a night match.
   renderer->SetUniformFloat("postprocess", "exposureKey",
-                            GetConfiguration()->GetReal("graphics_exposure_key", 0.0f));
+                            GetConfiguration()->GetReal("graphics_exposure_key", 0.35f));
   renderer->SetUniformFloat("postprocess", "exposureMinGain",
-                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.6f));
+                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.85f));
   renderer->SetUniformFloat("postprocess", "exposureMaxGain",
-                            GetConfiguration()->GetReal("graphics_exposure_max_gain", 3.0f));
+                            GetConfiguration()->GetReal("graphics_exposure_max_gain", 1.6f));
   // How much of the horizon's colour the distance is washed with. A converted
   // ground sets this from its own atmosphere (influenceOfFog, via lighting.txt),
   // and every PES atmosphere we can actually read says none of it: Planet Namek,

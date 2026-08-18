@@ -20,6 +20,13 @@ uniform float fogScale;
 // turned Planet Namek's rock formations flat green - and PES's own atmosphere for
 // that ground asks for no fog at all. 1 is what this shader always did.
 uniform float fogStrength;
+
+// Exposure: 0 leaves the frame as lit. exposureKey is the average brightness to
+// aim for as displayed - the VGL26 broadcast reference sits at 0.45 - and the two
+// gains bound how far a ground may be moved, so a night match stays a night match.
+uniform float exposureKey;
+uniform float exposureMinGain;
+uniform float exposureMaxGain;
 // A stadium can supply its own sky (see src/onthepitch/stadiumsky.hpp); these
 // default to the constants this shader used to hardcode.
 uniform vec3 skyZenithColor;
@@ -170,6 +177,40 @@ void main(void) {
 
   //vec3 fragColor = vec3(SSAO);
   vec3 fragColor = base * SSAO;
+
+  // Exposure, the way PES sets it: the frame is scaled so its average luminance
+  // sits at a key value, which is what its atmosphere calls gameKeyValue (0.18,
+  // middle grey, with gameMinExposure/gameMaxExposure bounding the gain). Without
+  // it every ground is lit to whatever its own sun and its own textures happen to
+  // give, and measured against the broadcast reference Planet Namek came out at
+  // half the midtone while st031 and st041 were already there - so a fixed
+  // brightness cannot fix it and a per-frame measurement can.
+  //
+  // The average is taken from a coarse grid of the scene itself. A read-back would
+  // be exact and would cost a stall; sixteen taps cost nothing and are steady
+  // enough, since the gain is clamped and the scene changes slowly.
+  if (exposureKey > 0.0f) {
+    // The frame's own brightness, measured where it is judged: as displayed, not
+    // in linear light. A geometric mean of linear luminance is the textbook
+    // measure and it reads far too dark here - a stand in shadow drags it down and
+    // the gain overshoots, which put st041 at a median of 0.558 against the
+    // broadcast's 0.434 while it had been sitting at 0.426 already.
+    float sum = 0.0f;
+    const int kExposureTaps = 4;
+    for (int ty = 0; ty < kExposureTaps; ++ty) {
+      for (int tx = 0; tx < kExposureTaps; ++tx) {
+        vec2 tap = (vec2(float(tx), float(ty)) + 0.5f) / float(kExposureTaps);
+        vec3 sampled = texture2D(map_accumulation, tap).rgb;
+        float luminance = dot(sampled, vec3(0.2126f, 0.7152f, 0.0722f));
+        sum += pow(max(luminance, 0.0001f), 1.0f / 2.2f);
+      }
+    }
+    float displayed = sum / float(kExposureTaps * kExposureTaps);
+    // exposureKey is the brightness to aim for as displayed; the correction is
+    // applied in linear light, so it goes through the transfer the other way.
+    float ratio = clamp(exposureKey / max(displayed, 0.0001f), exposureMinGain, exposureMaxGain);
+    fragColor *= pow(ratio, 2.2f);
+  }
 
 
   // fog
