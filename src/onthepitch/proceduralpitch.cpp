@@ -501,6 +501,12 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
     Log(e_Notice, "proceduralpitch", "GetPitchDiffuseTexture",
         "pitch art from the stadium's own " + overlayPath);
   SDL_Surface* overlay = IMG_Load(overlayPath.c_str());
+  if (!overlay && overlayPath != PitchOverlay::kSharedOverlay) {
+    // A ground's own art that will not load is not worth a crash.
+    Log(e_Warning, "proceduralpitch", "GetPitchDiffuseTexture",
+        "could not read " + overlayPath + "; using " + PitchOverlay::kSharedOverlay);
+    overlay = IMG_Load(PitchOverlay::kSharedOverlay);
+  }
   SDL_PixelFormat overlayFormat = *overlay->format;
   overlayTexW = overlay->w;
   overlayTexH = overlay->h;
