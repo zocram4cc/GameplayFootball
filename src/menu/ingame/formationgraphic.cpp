@@ -1,4 +1,5 @@
 #include "formationgraphic.hpp"
+#include "scoreboardfont.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -180,7 +181,7 @@ void Gui2FormationGraphic::BuildImages() {
 
     sw.number = new Gui2BitmapText(windowManager, "formationgraphic_number" + int_to_str(i), 0, 0,
                                    iconWidth * 0.60f, iconHeight * 0.46f,
-                                   "media/ui/pes/num_mid.fnt");
+                                   ScoreboardFont::Path("num_mid"));
     sw.number->SetText("");
     this->AddView(sw.number);
     sw.number->Show();
