@@ -1929,8 +1929,6 @@ void Match::UpdateEntranceChoreo() {
   }
 
   if (entranceCast.empty()) {
-    // Nobody staged: whoever was parked for an earlier beat comes back.
-    BenchUnstagedPlayers(/*holdingOpeningFrame=*/false);
     choreoBoundsValid = false;
     return;
   }
@@ -1939,7 +1937,6 @@ void Match::UpdateEntranceChoreo() {
   // yet, so nobody is on it. Holding the borrowed pack's opening frame instead put
   // both elevens in a ring on the centre circle through the whole stadium card.
   if (stagingHoldsOpeningFrame) {
-    BenchUnstagedPlayers(/*holdingOpeningFrame=*/true);
     choreoBoundsValid = false;
     return;
   }
@@ -1981,8 +1978,6 @@ void Match::UpdateEntranceChoreo() {
   // pitch. PES walks its cast out of the tunnel to an empty field; a .chor stages
   // the slots its own pack authored - never all twenty-two - and the rest were
   // left at their kickoff marks, in shot, for the whole presentation.
-  BenchUnstagedPlayers(/*holdingOpeningFrame=*/false);
-
   choreoBoundsValid = anyPosed;
   if (anyPosed) {
     choreoBoundsCentre = Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0.0f);
@@ -2006,7 +2001,7 @@ void Match::BenchUnstagedPlayers(bool holdingOpeningFrame) {
     teams[teamID]->GetActivePlayers(squad);
     for (Player* player : squad) {
       if (!player || !player->CastHumanoid()) continue;
-      player->CastHumanoid()->SetBenched(EntranceCast::ShouldBench(
+      player->CastHumanoid()->SetEntranceHidden(EntranceCast::ShouldBench(
           inEntrance, holdingOpeningFrame, staged.count(player) > 0));
     }
   }
@@ -3444,6 +3439,12 @@ void Match::Process() {
     teams[0]->UpdateSwitch();
     teams[1]->UpdateSwitch();
     UpdateEntranceChoreo();
+    // After the cast is posed, and outside UpdateEntranceChoreo on purpose: that
+    // function gives up early when the entrance is over or the choreography is
+    // switched off, and a pass that parks players must never be able to stop running
+    // while the flag it sets is sticky. It did, once, and every player stayed
+    // invisible for the whole match.
+    BenchUnstagedPlayers(IsInEntrance() && stagingHoldsOpeningFrame);
     UpdateCutsceneChoreo();
     // Posing a player who is still taking part in the match fights his own
 // animation machinery and corrupts it (isolated by bisection: camera-only

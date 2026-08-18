@@ -278,21 +278,29 @@ public:
 
   const NodeMap& GetNodeMap() { return nodeMap; }
 
-  // Parked, and staying parked. Hide() only moved the model away for one frame and
-  // UpdateFullbodyNodes put it straight back, because that follows the humanoid
-  // node - so a caller wanting a player gone had to call it every frame and race
-  // the player's own update. In the recorded match the squads blinked in and out of
-  // the centre circle every frame or two. This is the same parking held as a state,
-  // so the answer no longer depends on which schedule ran last.
-  void SetBenched(bool parked) {
-    benched = parked;
-    if (benched) {
-      fullbodyNode->SetPosition(BenchedPosition());
-      hairStyle->SetPosition(BenchedPosition());
-    }
+  // Parked, and staying parked. Hide() used to move the model away for one frame and
+  // UpdateFullbodyNodes put it straight back, because that follows the humanoid node
+  // - so a caller wanting a player gone had to call it every frame and race the
+  // player's own update. In one recorded match the squads blinked in and out of the
+  // centre circle every frame or two.
+  //
+  // There are two separate reasons to be parked and they must not fight each other:
+  // a player can be out of the match altogether (PlayerBase, a substitute on the
+  // bench) or merely not part of the entrance staging that is on screen (Match, see
+  // onthepitch/entrancecast.hpp). Holding one flag for both meant whichever owner
+  // wrote last won, which is the same race in a different coat - and a substitute
+  // coming on stayed invisible. Each owner sets its own reason, every frame, either
+  // way; parked is the union.
+  void SetInactiveHidden(bool hidden) {
+    inactiveHidden = hidden;
+    ApplyBenched();
+  }
+  void SetEntranceHidden(bool hidden) {
+    entranceHidden = hidden;
+    ApplyBenched();
   }
   bool IsBenched() const { return benched; }
-  void Hide() { SetBenched(true); }  // hax ;), now sticky
+  void Hide() { SetInactiveHidden(true); }  // hax ;), and now it sticks
 
   void SetKit(boost::intrusive_ptr<Resource<Surface>> newKit);
 
@@ -302,8 +310,19 @@ protected:
   // Far enough away to be outside any camera's frustum. A function rather than a
   // constant: Vector3 is not a literal type, so it cannot be constexpr.
   static Vector3 BenchedPosition() { return Vector3(1000, 1000, -1000); }
-  // Parked by whoever is running the entrance (onthepitch/entrancecast.hpp).
+  // Out of the match (PlayerBase) and not in the staging on screen (Match); parked
+  // if either says so.
+  bool inactiveHidden = false;
+  bool entranceHidden = false;
   bool benched = false;
+
+  void ApplyBenched() {
+    benched = inactiveHidden || entranceHidden;
+    if (benched) {
+      fullbodyNode->SetPosition(BenchedPosition());
+      hairStyle->SetPosition(BenchedPosition());
+    }
+  }
 
   bool _HighOrBouncyBall() const;
   void _KeepBestDirectionAnims(
