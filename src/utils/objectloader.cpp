@@ -184,7 +184,8 @@ boost::intrusive_ptr<Node> ObjectLoader::LoadObjectImpl(std::shared_ptr<Scene3D>
       object->SetLocalMode(localMode);
       object->SetPosition(position);
       object->SetRotation(rotation);
-      object->SetGeometryData(geometry);
+      // Before the geometry data: loading that is what hands the mesh to the
+      // graphics side, and it takes the placements with it.
       if (!instancesFilename.empty()) {
         const std::vector<InstanceList::Placement> places =
             InstanceList::Load(dirpart + instancesFilename);
@@ -193,6 +194,7 @@ boost::intrusive_ptr<Node> ObjectLoader::LoadObjectImpl(std::shared_ptr<Scene3D>
             objectName + ": " + int_to_str((int)places.size()) + " instance(s) from " +
                 instancesFilename);
       }
+      object->SetGeometryData(geometry);
       objNode->AddObject(object);
     }
 

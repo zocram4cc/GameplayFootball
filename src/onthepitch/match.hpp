@@ -626,6 +626,8 @@ protected:
   bool cutsceneShotTaken = false;
   Player* cutsceneOpponent = nullptr;
   void BuildEntranceCast();
+  // Everybody the staging does not stage, out of shot for the presentation.
+  void HideUnstagedPlayers();
   void UpdateEntranceChoreo();
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
   // track's authored goal side (+1/-1 from its mean x) for mirroring

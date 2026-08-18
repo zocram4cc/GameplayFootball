@@ -6,6 +6,7 @@
 #include "match.hpp"
 
 #include <fstream>
+#include <set>
 
 #include "../data/playertraits.hpp"
 #include "../main.hpp"
@@ -1865,10 +1866,32 @@ void Match::UpdateEntranceChoreo() {
     }
   }
 
+  // Everybody the staging does not stage is off camera, not standing about on the
+  // pitch. PES walks its cast out of the tunnel to an empty field; a .chor stages
+  // the slots its own pack authored - never all twenty-two - and the rest were
+  // left at their kickoff marks, in shot, for the whole presentation.
+  HideUnstagedPlayers();
+
   choreoBoundsValid = anyPosed;
   if (anyPosed) {
     choreoBoundsCentre = Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0.0f);
     choreoBoundsExtent = Vector3(maxX - minX, maxY - minY, 0.0f);
+  }
+}
+
+void Match::HideUnstagedPlayers() {
+  // Hide() parks the model far away, and a player's own Process puts it back, so
+  // this has to run after the cast is posed and on every frame of the entrance.
+  std::set<PlayerBase*> staged;
+  for (const auto& cast : entranceCast) staged.insert(cast.player);
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (!teams[teamID]) continue;
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* player : squad) {
+      if (!player || staged.count(player)) continue;
+      if (player->CastHumanoid()) player->CastHumanoid()->Hide();
+    }
   }
 }
 
