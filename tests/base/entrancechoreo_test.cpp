@@ -48,11 +48,16 @@ TEST(EntranceChoreo, SamplesAndInterpolates) {
   EXPECT_NEAR(position.coords[0], -6.1f, 1e-4);
   EXPECT_NEAR(position.coords[1], -18.2f, 1e-4);
   EXPECT_NEAR(yaw, 1.6f, 1e-4);
-  // phase offset applied to the clip frame, modulo the cycle
-  EXPECT_EQ(animFrame, (4 + 1) % 4);
+  // The phase offset is applied and the count left unwrapped: the clip's length
+  // is not the path's, so the caller wraps this against the clip it plays.
+  EXPECT_EQ(animFrame, 4 + 1);
 }
 
-TEST(EntranceChoreo, LoopsTheCycle) {
+TEST(EntranceChoreo, ThePathPlaysOnceHoweverTheSlotIsFlagged) {
+  // The clip loops - a walk cycle is meant to - but the path must not. PES flags
+  // its walk-on slots "loop 1", and wrapping their path teleported the actor back
+  // to the tunnel mouth and walked him in again: the walk-on beat runs 22 seconds
+  // over a 13-second path, so the reset happened in plain view, twice a beat.
   std::istringstream in(kChor);
   blunted::EntranceChoreo choreo;
   ASSERT_TRUE(choreo.Load(in));
@@ -60,14 +65,35 @@ TEST(EntranceChoreo, LoopsTheCycle) {
   blunted::Vector3 position;
   blunted::radian yaw = 0;
   int animFrame = 0;
-  // elapsed 5 wraps to 1 on a 4-frame cycle
-  choreo.Sample(*choreo.GetSlot(0), 5.0f, position, yaw, animFrame);
-  EXPECT_NEAR(position.coords[0], -6.1f, 1e-4);
 
-  // the non-looping slot clamps instead
+  // slot 0 is flagged looping, on a 4-frame path; at elapsed 5 it holds its end
+  // rather than starting again
+  choreo.Sample(*choreo.GetSlot(0), 5.0f, position, yaw, animFrame);
+  blunted::Vector3 atEnd;
+  choreo.Sample(*choreo.GetSlot(0), 4.0f, atEnd, yaw, animFrame);
+  EXPECT_NEAR(position.coords[0], atEnd.coords[0], 1e-4);
+  EXPECT_NEAR(position.coords[1], atEnd.coords[1], 1e-4);
+
+  // and the non-looping slot behaves the same way
   choreo.Sample(*choreo.GetSlot(11), 50.0f, position, yaw, animFrame);
   EXPECT_NEAR(position.coords[0], 40.0f, 1e-4);
   EXPECT_NEAR(yaw, -1.0f, 1e-4);
+}
+
+TEST(EntranceChoreo, TheClipFrameKeepsCountingSoFeetKeepMoving) {
+  // The caller wraps this against the clip's own length (see
+  // Match::UpdateEntranceChoreo), so it must not be wrapped against the path's -
+  // otherwise an actor who has arrived stands frozen instead of marking time.
+  std::istringstream in(kChor);
+  blunted::EntranceChoreo choreo;
+  ASSERT_TRUE(choreo.Load(in));
+
+  blunted::Vector3 position;
+  blunted::radian yaw = 0;
+  int early = 0, late = 0;
+  choreo.Sample(*choreo.GetSlot(0), 2.0f, position, yaw, early);
+  choreo.Sample(*choreo.GetSlot(0), 20.0f, position, yaw, late);
+  EXPECT_GT(late, early);
 }
 
 TEST(EntranceChoreo, EmptyFails) {

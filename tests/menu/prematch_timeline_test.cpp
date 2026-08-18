@@ -170,14 +170,15 @@ TEST(PrematchTimelineDefaultTest, EndsOnTheCameraTheMatchItselfStartsOn) {
   EXPECT_TRUE(last.shot.empty());
 }
 
-TEST(PrematchTimelineDefaultTest, NeedsNoCamerworkAuthoredForOneParticularGround) {
-  // The imported PES entrance tracks are authored per stadium: in a venue they
-  // were not made for they film the wrong place - through the players at the
-  // walk-on, and outside the ground at the end. The default has to work in any
-  // stadium, so it frames the cast instead, with the cameras that are computed
-  // from where the choreography actually put them.
+TEST(PrematchTimelineDefaultTest, StagedBeatsAreFilmedByPessOwnCamerawork) {
+  // PES's framing and focal lengths are the thing being imported, so a beat that
+  // stages PES's choreography is filmed by PES's camera for it. The tracks are
+  // authored in the same coordinates as the choreography, so Match moves both by
+  // the same offset to put them on our pitch; computing a camera off the cast
+  // instead - which this default used to do - looked nothing like the broadcast.
   for (const Beat& beat : Default().beats) {
-    EXPECT_NE(beat.camera, Camera::Entrance) << "beat " << beat.name;
+    if (beat.shot.empty()) continue;
+    EXPECT_EQ(beat.camera, Camera::Entrance) << "beat " << beat.name;
   }
 }
 
