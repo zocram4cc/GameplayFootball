@@ -1,5 +1,6 @@
 #include "scenelighting.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 
@@ -35,6 +36,9 @@ Sun Parse(const std::string& text) {
     } else if (key == "sun_lux") {
       float lux = 0;
       if (fields >> lux) sun.lux = lux;
+    } else if (key == "fog") {
+      float fog = 1.0f;
+      if (fields >> fog) sun.fog = std::max(0.0f, std::min(1.0f, fog));
     }
   }
   sun.valid = haveDirection;

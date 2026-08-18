@@ -14,6 +14,7 @@
 //
 //     sun -0.617 -0.306 0.725
 //     sun_lux 150000
+//     fog 0
 
 #ifndef _HPP_ONTHEPITCH_SCENELIGHTING
 #define _HPP_ONTHEPITCH_SCENELIGHTING
@@ -28,6 +29,12 @@ struct Sun {
   // PES's own illuminance for it. Kept for anyone who wants to drive exposure
   // from it; the engine's brightness model is its own.
   float lux = 0.0f;
+  // How much of the engine's own fog this ground wants, 0..1. It washes
+  // everything distant with a quarter of the horizon's colour, which on a green
+  // sky turned Namek's rock formations from their own colour into flat green -
+  // and PES's atmosphere for that ground asks for no fog at all. 1 leaves the
+  // engine as it was.
+  float fog = 1.0f;
   bool valid = false;
 };
 

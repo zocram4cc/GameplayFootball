@@ -60,3 +60,60 @@ class FaceWindingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutlineWidth(unittest.TestCase):
+    """How far the shell is pushed out, so the rim is visible at all.
+
+    PES pushes its outline shells about 4 cm along the normal, which is right for
+    a character filmed from a few metres. Planet Namek's scenery is 50 to 600 m
+    from the camera, and at 600 m four centimetres is well under a pixel - the
+    shells draw (they cover a few tenths of a percent of the frame) but the anime
+    line never reads. The push is scaled with the distance the mesh will be seen
+    from instead, so the rim stays a few pixels wide wherever it is.
+    """
+
+    def test_close_scenery_keeps_something_like_pess_own_offset(self):
+        self.assertLess(stadium_to_gf.outline_offset(20.0), 0.15)
+        self.assertGreaterEqual(stadium_to_gf.outline_offset(20.0), 0.04)
+
+    def test_distant_scenery_is_pushed_much_further(self):
+        near = stadium_to_gf.outline_offset(40.0)
+        far = stadium_to_gf.outline_offset(400.0)
+        self.assertGreater(far, near * 5)
+
+    def test_the_rim_stays_about_the_same_width_on_screen(self):
+        # offset / distance is the angle it subtends; hold it roughly constant
+        angles = [stadium_to_gf.outline_offset(d) / d for d in (60.0, 150.0, 300.0)]
+        self.assertLess(max(angles) - min(angles), 0.0005)
+
+    def test_nothing_is_pushed_out_absurdly(self):
+        self.assertLessEqual(stadium_to_gf.outline_offset(5000.0), 2.5)
+
+    def test_a_mesh_at_the_origin_still_gets_an_outline(self):
+        self.assertGreater(stadium_to_gf.outline_offset(0.0), 0.0)
+
+    def test_pushing_a_vertex_moves_it_along_its_normal(self):
+        moved = stadium_to_gf.push_along_normal((1.0, 0.0, 0.0), (1.0, 0.0, 0.0), 0.5)
+        self.assertAlmostEqual(moved[0], 1.5, places=5)
+        self.assertAlmostEqual(moved[1], 0.0, places=5)
+
+    def test_a_degenerate_normal_leaves_the_vertex_alone(self):
+        moved = stadium_to_gf.push_along_normal((2.0, 3.0, 4.0), (0.0, 0.0, 0.0), 0.5)
+        self.assertEqual(moved, (2.0, 3.0, 4.0))
+
+    def test_a_shell_gets_bigger_not_smaller(self):
+        # The shells are written with reversed winding - that is what makes their
+        # visible side face the camera - so the normals derived from it point
+        # inward, and pushing along them shrank the shell instead of growing it.
+        # A cube wound that way has to come out larger.
+        corners = [(x, y, z) for x in (-1.0, 1.0) for y in (-1.0, 1.0) for z in (-1.0, 1.0)]
+        # two triangles per face, wound inward
+        faces = [(0, 2, 1), (1, 2, 3), (4, 5, 6), (5, 7, 6),
+                 (0, 1, 4), (1, 5, 4), (2, 6, 3), (3, 6, 7),
+                 (0, 4, 2), (2, 4, 6), (1, 3, 5), (3, 7, 5)]
+        widened = stadium_to_gf._widen_outline(corners, faces)
+        before = max(c[0] for c in corners) - min(c[0] for c in corners)
+        after = max(w[0] for w in widened) - min(w[0] for w in widened)
+        self.assertGreater(after, before)
+

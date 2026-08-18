@@ -646,6 +646,10 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         contents.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
     stadiumSun = SceneLighting::Parse(contents);
+    // What this ground wants of the engine's fog. Namek asks for none, and with
+    // the fog taking the horizon's colour that is the difference between rock
+    // formations in their own colour and a flat green wash.
+    GetConfiguration()->Set("graphics_fog_strength", stadiumSun.fog);
     if (stadiumSun.valid)
       Log(e_Notice, "Match", "Match",
           "stadium sun from " + lightingPath + ": " + real_to_str(stadiumSun.direction[0]) + ", " +

@@ -95,12 +95,16 @@ def sun_direction(elevation, azimuth, north_angle):
             math.sin(math.radians(elevation)))
 
 
-def sidecar_text(direction, sun_lux):
+def sidecar_text(direction, sun_lux, fog=1.0):
     return ("# Where this ground's sun is, from the lighting PES ships with it\n"
             "# (tools/pes21_import/stadium_lighting.py). The engine reads this\n"
             "# instead of picking a direction at random - see scenelighting.hpp.\n"
             "sun %.3f %.3f %.3f\n"
-            "sun_lux %g\n" % (direction[0], direction[1], direction[2], sun_lux))
+            "sun_lux %g\n"
+            "# ...and how much fog it wants, from the atmosphere's influenceOfFog.\n"
+            "# Namek asks for none, which is why its rocks keep their own colour\n"
+            "# instead of being washed with the green of its horizon.\n"
+            "fog %g\n" % (direction[0], direction[1], direction[2], sun_lux, fog))
 
 
 def _scalars(entity):
@@ -123,7 +127,8 @@ def read_lighting(fox2_path):
         if entity.get("class") == "TimeOfDaySettings" and values.get("name") != "TimeOfDaySettings":
             continue
         for key in ("latitude", "longitude", "gmtTimeDifference", "year", "month", "day",
-                    "northAngle", "sunLux", "dateTimeHour", "dateTimeMinute"):
+                    "northAngle", "sunLux", "dateTimeHour", "dateTimeMinute",
+                    "influenceOfFog"):
             if key in values and key not in wanted:
                 try:
                     wanted[key] = float(values[key])
@@ -163,7 +168,8 @@ def main():
     if args.out:
         os.makedirs(args.out, exist_ok=True)
         path = os.path.join(args.out, "lighting.txt")
-        open(path, "w").write(sidecar_text(direction, settings.get("sunLux", 100000.0)))
+        open(path, "w").write(sidecar_text(direction, settings.get("sunLux", 100000.0),
+                                          settings.get("influenceOfFog", 1.0)))
         print("wrote %s" % path)
     return 0
 

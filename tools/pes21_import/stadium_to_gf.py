@@ -179,6 +179,60 @@ def _texture_png(texture, ftex_index, out_dir, converted):
 
 OUTLINE_TEXTURE = "outline"
 
+# PES pushes an outline shell about 4 cm along the normal, which is right for a
+# character filmed from a few metres. Namek's scenery is 50 to 600 m out, and at
+# 600 m four centimetres is well under a pixel: the shells draw, but the line
+# never reads. Scaling the push with the distance the mesh will be seen from keeps
+# the rim a few pixels wide wherever it is - roughly what PES's own shaders do by
+# offsetting in screen space.
+OUTLINE_RADIANS = 0.0022      # about three pixels at 720p
+OUTLINE_MIN = 0.04            # PES's own offset, for anything close
+OUTLINE_MAX = 2.5             # a kilometre-wide backdrop does not need more
+
+
+def outline_offset(distance):
+    """-> how far to push a shell whose mesh sits `distance` metres out."""
+    return max(OUTLINE_MIN, min(OUTLINE_MAX, abs(distance) * OUTLINE_RADIANS))
+
+
+def _widen_outline(positions, tri_faces):
+    """Pushes a shell out along its own smooth normals, by how far it will be seen.
+
+    The distance is measured from the pitch centre to the shell's own centre,
+    which is what decides how many pixels four centimetres is worth. The winding
+    passed in is the one actually written, so the normals point the way the
+    visible side faces.
+    """
+    normals = [[0.0, 0.0, 0.0] for _ in positions]
+    for a, b, c in tri_faces:
+        pa, pb, pc = positions[a], positions[b], positions[c]
+        u = (pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2])
+        v = (pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2])
+        face = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+        for index in (a, b, c):
+            for axis in range(3):
+                normals[index][axis] += face[axis]
+
+    centre = [sum(p[axis] for p in positions) / len(positions) for axis in range(3)]
+    distance = (centre[0] ** 2 + centre[1] ** 2 + centre[2] ** 2) ** 0.5
+    # Outward is against these normals: the shells are written with reversed
+    # winding - that is what turns their visible side towards the camera - so the
+    # winding's own normal points into the mesh, and pushing along it shrank the
+    # shell instead of growing it.
+    offset = -outline_offset(distance)
+    return [push_along_normal(p, n, offset) for p, n in zip(positions, normals)]
+
+
+def push_along_normal(vertex, normal, offset):
+    """-> the vertex moved `offset` metres along `normal` (unit or not)."""
+    length = (normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2) ** 0.5
+    if length < 1e-6:
+        return vertex
+    scale = offset / length
+    return (vertex[0] + normal[0] * scale,
+            vertex[1] + normal[1] * scale,
+            vertex[2] + normal[2] * scale)
+
 
 def is_outline_pass(texture_name):
     """Whether a texture marks one of PES's cel-shading outline shells.
@@ -511,12 +565,19 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
     out.write("\t\t*TM_ROW0 1.0\t0.0\t0.0\n\t\t*TM_ROW1 0.0\t1.0\t0.0\n")
     out.write("\t\t*TM_ROW2 0.0\t0.0\t1.0\n\t\t*TM_ROW3 0.0\t0.0\t0.0\n\t}\n")
     out.write("\t*MESH {\n")
+    # In engine space, and for an outline shell pushed out far enough to be seen
+    # from where it will be seen (outline_offset).
+    gf_positions = [(pos.x, -pos.z, pos.y) for pos in vertices]
+    if outline and gf_positions:
+        gf_positions = _widen_outline(gf_positions,
+                                      [face_winding(*[vertex_index[id(v)] for v in face.vertices],
+                                                    outline) for face in faces])
+
     out.write("\t\t*MESH_NUMVERTEX %d\n" % len(vertices))
     out.write("\t\t*MESH_NUMFACES %d\n" % len(faces))
     out.write("\t\t*MESH_VERTEX_LIST {\n")
-    for i, pos in enumerate(vertices):
-        out.write("\t\t\t*MESH_VERTEX %d\t%.4f\t%.4f\t%.4f\n"
-                  % (i, pos.x, -pos.z, pos.y))
+    for i, pos in enumerate(gf_positions):
+        out.write("\t\t\t*MESH_VERTEX %d\t%.4f\t%.4f\t%.4f\n" % (i, pos[0], pos[1], pos[2]))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_FACE_LIST {\n")
     for i, face in enumerate(faces):
@@ -537,7 +598,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False):
         a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], outline)
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
     out.write("\t\t}\n")
-    gf_verts = [(pos.x, -pos.z, pos.y) for pos in vertices]
+    gf_verts = gf_positions
     # The normals are derived from the winding, so they have to be derived from
     # the winding that was actually written: an outline shell whose faces were
     # reversed but whose normals were not has its visible side lit as though it

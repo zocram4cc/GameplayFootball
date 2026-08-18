@@ -67,3 +67,29 @@ TEST(SceneLighting, RubbishIsRefusedRatherThanPointedSomewhere) {
 TEST(SceneLighting, ALuxWithoutADirectionIsNotALighting) {
   EXPECT_FALSE(SceneLighting::Parse("sun_lux 150000\n").valid);
 }
+
+// How much fog the ground wants. PES's atmosphere carries it per stadium, and
+// Planet Namek's says none at all ("influenceOfFog" 0) - which matters, because
+// this engine washes everything distant with a quarter of the horizon's colour,
+// and on a green sky that turned the rock formations from their own colour into
+// flat green. The reference broadcast has them pink in front of a green sky.
+TEST(SceneLighting, WithoutASidecarTheEnginesOwnFogIsUnchanged) {
+  EXPECT_FLOAT_EQ(SceneLighting::Parse("").fog, 1.0f);
+}
+
+TEST(SceneLighting, AGroundThatWantsNoFogGetsNone) {
+  const SceneLighting::Sun sun = SceneLighting::Parse("sun 0 0 1\nfog 0\n");
+  ASSERT_TRUE(sun.valid);
+  EXPECT_FLOAT_EQ(sun.fog, 0.0f);
+}
+
+TEST(SceneLighting, APartialFogIsKeptAsGiven) {
+  EXPECT_NEAR(SceneLighting::Parse("sun 0 0 1\nfog 0.35\n").fog, 0.35f, 0.001f);
+}
+
+TEST(SceneLighting, ANonsenseFogIsClampedRatherThanBelieved) {
+  EXPECT_FLOAT_EQ(SceneLighting::Parse("sun 0 0 1\nfog -2\n").fog, 0.0f);
+  EXPECT_FLOAT_EQ(SceneLighting::Parse("sun 0 0 1\nfog 5\n").fog, 1.0f);
+  EXPECT_FLOAT_EQ(SceneLighting::Parse("sun 0 0 1\nfog lots\n").fog, 1.0f);
+}
+
