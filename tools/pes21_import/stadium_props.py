@@ -35,6 +35,7 @@ import sys
 
 import ase_util
 import stadium_staff
+import stadium_crowd  # noqa: E402
 import stadium_to_gf
 
 # gametypes.hpp
@@ -108,6 +109,24 @@ ENTRANCE_ROLES = (
 # The tunnel mouth: where the walk-on comes in over the near touchline, which
 # StagingAnchor puts four metres outside it at the halfway line.
 MOUTH_Y = -(PITCH_HALF_Y + 4.0)
+
+
+def placeholder_bitmap(texture_name, model_name):
+    """-> the engine's own team cloth for a PES placeholder, or None for artwork.
+
+    PES's doh_fb_home/away and its tunnel arches all reference sys_zero_bsm, which
+    is not a texture so much as a slot: PES paints the club's own flag there at run
+    time, and what Konami left in the file is the flag of the United States for the
+    bearers and the FC Barcelona crest for the arch. Worse, textures are keyed by
+    bare filename, so one sys_zero_bsm.png per stadium was shared between every
+    model that names it and whichever converted last decided what the walkout
+    carried. The engine paints these instead (src/onthepitch/teamflag.hpp).
+    """
+    if not stadium_crowd.is_placeholder_texture(texture_name):
+        return None
+    stem = os.path.splitext(os.path.basename(str(model_name)))[0].lower()
+    side = "away" if "away" in stem else "home"
+    return stadium_crowd.TEAM_FLAG_BITMAPS[side]
 
 
 def is_pennant_face(texture_name):
@@ -415,7 +434,7 @@ def main():
                                                 emblem_image.size[0], emblem_image.size[1]))
     composed = {}
 
-    figures = []  # (mesh, mark, yaw, bitmap, source)
+    figures = []  # (mesh, mark, yaw, bitmap, source, engine's own cloth or None)
     skipped = []
     # Which models can play which part, and then one of them per mark.
     by_role = {}
@@ -442,6 +461,13 @@ def main():
         marks = marks_of(role)
         for (stem, meshes, skins), mark in assign(by_role[role], marks):
             for mesh, texture in zip(meshes, skins):
+                ident = getattr(texture, "filename", None) if texture else None
+                own = placeholder_bitmap(ident, stem)
+                if own:
+                    # PES's run-time slot, not artwork: the engine paints the team's
+                    # badge on it rather than us shipping Konami's stand-in.
+                    figures.append((mesh, (mark[0], mark[1]), mark[2], None, stem, own))
+                    continue
                 bitmap = stadium_to_gf._texture_png(texture, ftex_index, args.out, converted)
                 # The competition's emblem goes on the pennant faces, and only on
                 # them: the bearers holding them keep their own kit.
@@ -449,7 +475,7 @@ def main():
                         getattr(texture, "filename", None)):
                     bitmap = _composed_face(bitmap, emblem_image, emblem_stem,
                                             args.out, composed)
-                figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem))
+                figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem, None))
         print("  %-10s %d mark(s) from %d model(s): %s"
               % (role, len(marks), len(by_role[role]),
                  ", ".join(m[0] for m in by_role[role])))
@@ -464,11 +490,14 @@ def main():
     with open(ase_path, "w") as out:
         stadium_to_gf._write_ase_header(out, args.name)
         out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(figures))
-        for i, (_mesh, _mark, _yaw, bitmap, source) in enumerate(figures):
+        for i, (_mesh, _mark, _yaw, bitmap, source, own) in enumerate(figures):
+            # `own` is the engine's own cloth for one of PES's run-time slots; it is
+            # already a path under media/, so it goes in as the fallback rather than
+            # being prefixed with the stadium's asset directory.
             stadium_to_gf._write_material(out, i, "prop_%02d_%s" % (i, source), bitmap,
-                                          args.asset_dir or args.name, None)
+                                          args.asset_dir or args.name, own)
         out.write("}\n")
-        for i, (mesh, mark, yaw, _bitmap, source) in enumerate(figures):
+        for i, (mesh, mark, yaw, _bitmap, source, _own) in enumerate(figures):
             write_prop(out, "%s_%02d_%s" % (args.name, i, source), i, mesh, mark, yaw)
     print("wrote %s: %d piece(s) of furniture" % (ase_path, len(figures)))
 

@@ -443,6 +443,37 @@ class ComposingTheBanner(unittest.TestCase):
         self.assertEqual(out.tobytes(), base.tobytes())
 
 
+class TheWalkoutFlags(unittest.TestCase):
+    """The flags the walkout cast carries, and the arch they walk under.
+
+    Same trap as the crowd's stand flags: PES's doh_fb_home and tunnelarch models
+    both reference sys_zero_bsm, a placeholder it swaps at run time, and the picture
+    left in the file is the flag of the United States for the bearers and the FC
+    Barcelona crest for the arch. Since textures are keyed by bare filename, one
+    sys_zero_bsm.png per stadium was shared between all of them, so whichever was
+    converted last decided what the whole walkout carried.
+    """
+
+    def test_a_bearers_flag_becomes_the_engines_own_cloth(self):
+        self.assertEqual(stadium_props.placeholder_bitmap("sys_zero_bsm", "doh_fb_home"),
+                         "media/textures/stadium/teamflag_home.png")
+        self.assertEqual(stadium_props.placeholder_bitmap("sys_zero_bsm", "doh_fb_away"),
+                         "media/textures/stadium/teamflag_away.png")
+
+    def test_the_arch_takes_the_home_sides_cloth(self):
+        # PES puts the home club's crest on it
+        self.assertEqual(stadium_props.placeholder_bitmap("sys_zero_bsm", "tunnelarch_uefa_euro"),
+                         "media/textures/stadium/teamflag_home.png")
+
+    def test_real_artwork_is_converted_as_usual(self):
+        self.assertIsNone(stadium_props.placeholder_bitmap("staff_fb00a_bsm", "doh_fb_home"))
+        self.assertIsNone(stadium_props.placeholder_bitmap("tunnelarch_euro000_bsm",
+                                                          "tunnelarch_uefa_euro"))
+
+    def test_nothing_is_not_a_placeholder(self):
+        self.assertIsNone(stadium_props.placeholder_bitmap(None, "doh_fb_home"))
+
+
 class DressedMeshByMesh(unittest.TestCase):
     """A prop with one placeholder panel is still worth having.
 

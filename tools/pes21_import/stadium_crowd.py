@@ -121,6 +121,51 @@ def seat_places(seats):
     return list(seats)
 
 
+# PES's per-model placeholders. sys_zero_bsm is not a zero: it is what PES swaps
+# at run time, and each model ships its own picture under that name - the flag
+# bearers' is the flag of the United States, the tunnel arch's and the stand flags'
+# are the FC Barcelona crest. Importing one means every crowd in every ground flies
+# Barcelona, and since textures are keyed by bare filename it also means all four
+# models fight over one file.
+PLACEHOLDER_MARKS = ("sys_zero", "dummy")
+
+# The engine's own neutral flags, which it paints the playing teams' badges over
+# (src/onthepitch/teamflag.hpp). Repo art, not PES's.
+TEAM_FLAG_BITMAPS = {
+    "home": "media/textures/stadium/teamflag_home.png",
+    "away": "media/textures/stadium/teamflag_away.png",
+}
+
+
+def is_placeholder_texture(name):
+    """Whether a texture is one of PES's run-time stand-ins rather than artwork."""
+    if not name:
+        return False
+    stem = os.path.splitext(os.path.basename(str(name)))[0].lower()
+    return any(mark in stem for mark in PLACEHOLDER_MARKS)
+
+
+def flag_side(model_name):
+    """-> 'home' or 'away' for one of PES's stand flags.
+
+    PES ships home01..05 and a single away01; anything that does not say is the
+    home crowd, which is most of the ground.
+    """
+    stem = os.path.splitext(os.path.basename(str(model_name)))[0].lower()
+    return "away" if "away" in stem else "home"
+
+
+def flag_bitmap(texture_name, model_name):
+    """-> the engine's own flag for this side, or None to import PES's texture.
+
+    None means the mesh carries real artwork - the cloth's normal map, say - and
+    should be converted like anything else.
+    """
+    if not is_placeholder_texture(texture_name):
+        return None
+    return TEAM_FLAG_BITMAPS[flag_side(model_name)]
+
+
 def flag_places(seats, every=FLAG_EVERY):
     """-> the seats that hold a flag, spread through the crowd.
 
@@ -293,6 +338,15 @@ def main():
                     out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(fmdl.meshes))
                     for i, mesh in enumerate(fmdl.meshes):
                         texture = stadium_to_gf._mesh_base_texture(mesh)
+                        ident = getattr(texture, "filename", None) if texture else None
+                        # A placeholder is not artwork: PES paints the team's badge
+                        # over it, and so does the engine. Written as an absolute
+                        # path under media/, not relative to the stadium.
+                        own = flag_bitmap(ident, model)
+                        if own:
+                            stadium_to_gf._write_material(out, i, "%s_m%d" % (name, i), None,
+                                                          args.asset_dir or "crowd", own)
+                            continue
                         bitmap = (stadium_to_gf._texture_png(texture, flag_index, out_dir,
                                                             converted) if texture else None)
                         stadium_to_gf._write_material(out, i, "%s_m%d" % (name, i), bitmap,

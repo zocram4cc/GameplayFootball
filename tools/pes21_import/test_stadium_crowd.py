@@ -198,3 +198,52 @@ class TheSeatsThemselves(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheStandFlagsBadge(unittest.TestCase):
+    """Whose badge the crowd's flags fly.
+
+    PES's stand flags (mob_prop_teamflag_home01..05, away01) carry a texture called
+    sys_zero_bsm, which is not a zero at all: it is a per-model placeholder PES
+    swaps at run time, and each model ships a different picture under that one
+    filename - the flag bearers' is the flag of the United States, the tunnel arch's
+    and the stand flags' are both the FC Barcelona crest. Copied verbatim, every
+    crowd in every ground flew Barcelona; and because the importer keys textures by
+    bare filename, one sys_zero_bsm.png per stadium was shared between all four
+    models, so whichever was converted last overwrote the rest.
+
+    So a placeholder is not imported. The material is pointed at the engine's own
+    neutral flag instead, named for the side it belongs to, and the engine paints
+    the playing team's badge over it at kick-off.
+    """
+
+    def test_pes_placeholders_are_recognised(self):
+        for name in ("sys_zero_bsm", "sys_zero_bsm.ftex", "SYS_ZERO_BSM_tmp", "dummy_bsm"):
+            self.assertTrue(stadium_crowd.is_placeholder_texture(name), name)
+
+    def test_real_artwork_is_not(self):
+        for name in ("au_h_col_bsm_rgba32", "mob_teamflag_nrm_nomip", "acl_circlef_prop000"):
+            self.assertFalse(stadium_crowd.is_placeholder_texture(name), name)
+
+    def test_nothing_is_not_a_placeholder(self):
+        self.assertFalse(stadium_crowd.is_placeholder_texture(None))
+        self.assertFalse(stadium_crowd.is_placeholder_texture(""))
+
+    def test_a_flag_knows_which_side_it_is(self):
+        self.assertEqual(stadium_crowd.flag_side("mob_prop_teamflag_home01.fmdl"), "home")
+        self.assertEqual(stadium_crowd.flag_side("mob_prop_teamflag_away01.fmdl"), "away")
+
+    def test_a_flag_that_says_neither_is_the_home_ends_flag(self):
+        # PES only ships an away01; the rest of the ground is the home crowd
+        self.assertEqual(stadium_crowd.flag_side("mob_prop_teamflag01.fmdl"), "home")
+
+    def test_a_placeholder_becomes_the_engines_own_flag_for_that_side(self):
+        self.assertEqual(stadium_crowd.flag_bitmap("sys_zero_bsm", "mob_prop_teamflag_home01"),
+                         "media/textures/stadium/teamflag_home.png")
+        self.assertEqual(stadium_crowd.flag_bitmap("sys_zero_bsm", "mob_prop_teamflag_away01"),
+                         "media/textures/stadium/teamflag_away.png")
+
+    def test_a_flags_real_artwork_is_left_to_the_converter(self):
+        # the cloth's own normal map and the like: None means "import it as usual"
+        self.assertIsNone(stadium_crowd.flag_bitmap("mob_teamflag_nrm_nomip",
+                                                    "mob_prop_teamflag_home01"))
