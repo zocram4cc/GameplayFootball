@@ -288,11 +288,13 @@ Until that lands, imported heads render statically.
     light themselves: st002's light pack is st009's, borrowed whole.)
   * **stock skins.** The staff models reference PES's own coach kit
     (`ca_blou2018_band_bsm`, `gu_spain_bsm`, `pr_cset000_bsm`), and no archive here
-    ships those - not the dt cpks, not the 4cc ones. So the converter puts the
-    figures it *can* dress on the touchline first (`dressed_first`), which is what
-    st002 wanted anyway: its author painted his own (`staff_campesina`,
-    `staff_doomyuri1`) and taking the models alphabetically had picked eight
-    stock-skinned ones and stood twenty white figures beside the pitch.
+    ships those - not the dt cpks, not the 4cc ones. So only the models whose skins
+    the pack ships go on the touchline (`dressed_first`, then `only_dressed`):
+    st002's author painted his own (`staff_campesina`, `staff_doomyuri1`) and
+    taking the models alphabetically had picked eight stock-skinned ones and stood
+    twenty white mannequins beside the pitch. A ground with nobody to dress - the
+    six that borrow the shared set - gets an empty technical area, which is not a
+    defect, while a row of blank white figures in every wide shot is.
 - `crowd_gen.py`: flat-outline crowds from the stadium's own `audiarea.bin`
   stand quads — silhouette texture + billboard strips hooked into the stadium
   `.object`. audiarea.bin is a set of stand blocks (magic `0x0001xxxx`, its
