@@ -140,6 +140,17 @@ def is_line_pass(texture_name):
     return any(stem.startswith(prefix) for prefix in LINE_TEXTURES)
 
 
+def worth_writing(pixels):
+    """Whether an overlay paints anything at all.
+
+    The engine blends this by its alpha, so an overlay with none is invisible -
+    and installing it would replace the shared file, which carries faint markings
+    and a little wear belonging to no team, with a blank. A ground whose pitch
+    model has only its line pass (Planet Namek) is better off with the shared one.
+    """
+    return bool((pixels[:, :, 3] > 0).any())
+
+
 def fit_texture(image, width, height):
     """A decal reduced to the overlay's own resolution, averaging as it goes.
 
@@ -264,6 +275,9 @@ def main():
 
     if not drawn:
         print("nothing to paint: leaving the engine's own overlay")
+        return 1
+    if not worth_writing(pixels):
+        print("this ground paints nothing on its grass: leaving the engine's own overlay")
         return 1
 
     from PIL import Image

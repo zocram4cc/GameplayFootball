@@ -150,6 +150,30 @@ class DecalResolution(unittest.TestCase):
         self.assertTrue(100 < reduced.getpixel((0, 0))[0] < 155)
 
 
+class NothingPaintedIsNoOverlay(unittest.TestCase):
+    """A ground that paints nothing on its grass keeps the engine's shared art.
+
+    Planet Namek's pitch model has its line pass and nothing else: rasterising it
+    gives an overlay that is transparent everywhere, and installing that would
+    replace the shared file - faint markings and a little wear at the spots, which
+    belongs to no team - with a blank. Better to leave the shared one in place.
+    """
+
+    def test_an_empty_overlay_is_not_worth_writing(self):
+        self.assertFalse(pitch_overlay.worth_writing(pitch_overlay.blank(8, 8)))
+
+    def test_one_painted_pixel_is(self):
+        pixels = pitch_overlay.blank(8, 8)
+        pixels[3][4] = (10, 200, 30, 255)
+        self.assertTrue(pitch_overlay.worth_writing(pixels))
+
+    def test_colour_without_alpha_paints_nothing(self):
+        # the engine blends by alpha, so opaque-less colour is invisible
+        pixels = pitch_overlay.blank(8, 8)
+        pixels[3][4] = (255, 0, 0, 0)
+        self.assertFalse(pitch_overlay.worth_writing(pixels))
+
+
 class Rasterise(unittest.TestCase):
     """Filling one triangle of a pitch into the overlay."""
 
