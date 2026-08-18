@@ -259,23 +259,30 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   renderer->SetUniformFloat("postprocess", "sceneBrightness",
                             GetConfiguration()->GetReal("graphics_brightness", 1.0f));
   // PES's grade, chosen the way PES chooses it: by time of day and weather
-  // (scenegrade.hpp). Off by default, because the strip we decode is still wrong -
-  // sample its grey response and three of its four bands saturate: day, cloudy and
-  // evening all map every input above 0.6 into 0.64-0.69, while night, the one band
-  // that should be dark, is the only one that reaches 1.0. Rendered, that costs the
-  // picture its whole top end. Measured on st011 against the reference broadcast
-  // (p98 0.918): graded 0.659, ungraded 0.918, and the spread drops from the
-  // reference's 0.132 to 0.087 - which is the flat, washed-out look, not a level
-  // error, and it is why keying the exposure never fixed it. On Planet Namek the
-  // grade buys nothing either: the median moves 0.424 -> 0.431 and p98 falls
-  // 0.729 -> 0.647.
+  // (scenegrade.hpp). On, now that the strip carries tables that can be a display
+  // transfer at all.
   //
-  // The earlier reason for having it on - our midtones sitting 1.68x low - was
-  // measured before the ground's sun was fixed and the exposure keyed, which is
-  // where that gap actually was. So: off until the tables decode, and the strip
-  // stays imported so turning it back on is one setting. (Task #57.)
+  // It was flattening the picture, and not because the decode was wrong - the ftex
+  // read matches PES bit for bit. Of the sixteen tables PES ships, eleven stop
+  // climbing around 0.69: lut_s_day_game, which lut_strip.py used to take on the
+  // strength of its name, maps grey 0.5 to 0.616 and grey 1.0 to 0.689, so half the
+  // input range lands inside a 0.07 band. Applied as a display transfer that costs
+  // the frame its whole top end - on st011, p98 0.659 against 0.918 ungraded and
+  // 0.918 in the reference broadcast, with the spread down to 0.087 from 0.132. A
+  // contrast error, not a level one, which is why keying the exposure never touched
+  // it. The importer now picks per band by what a table does to grey, and only
+  // lut_h_day_demo and the night tables reach white (cloudy and evening borrow the
+  // day one - PES ships nothing usable for them).
+  //
+  // Measured over all nine converted grounds, as distance from the reference's whole
+  // ladder (median, p90, p98, spread): 3.44 graded against 3.49 ungraded, closer on
+  // five of the nine. So it is a wash on the numbers - it helps most where a ground
+  // is dark (st002 0.92 -> 0.82, st043 0.74 -> 0.59, st041 0.28 -> 0.18) and costs a
+  // little where one is already bright (st019 0.15 -> 0.27, st031 0.21 -> 0.37) - and
+  // PES's own colour is the tie-breaker: side by side the old table is milky, this
+  // one holds Namek's rocks pink and st011's grass green.
   renderer->SetUniformFloat("postprocess", "lutStrength",
-                            GetConfiguration()->GetReal("graphics_lut_strength", 0.0f));
+                            GetConfiguration()->GetReal("graphics_lut_strength", 1.0f));
   renderer->SetUniformFloat(
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
