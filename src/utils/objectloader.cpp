@@ -9,6 +9,7 @@
 #include "managers/resourcemanagerpool.hpp"
 #include "scene/objectfactory.hpp"
 #include "scene/objects/geometry.hpp"
+#include "utils/instancelist.hpp"
 #include "scene/objects/joint.hpp"
 #include "scene/objects/light.hpp"
 #include "scene/resources/geometrydata.hpp"
@@ -133,6 +134,7 @@ boost::intrusive_ptr<Node> ObjectLoader::LoadObjectImpl(std::shared_ptr<Scene3D>
       objectType = e_ObjectType_Geometry;
 
       std::string aseFilename;
+      std::string instancesFilename;
       Vector3 position;
       Quaternion rotation;
 
@@ -160,6 +162,11 @@ boost::intrusive_ptr<Node> ObjectLoader::LoadObjectImpl(std::shared_ptr<Scene3D>
         if (iter->first == "localmode") {
           localMode = InterpretLocalMode(iter->second.value);
         }
+        if (iter->first == "instances") {
+          // Where the copies of this mesh stand: PES's crowd is one spectator at
+          // every seat (utils/instancelist.hpp).
+          instancesFilename = iter->second.value;
+        }
 
         iter++;
       }
@@ -178,6 +185,14 @@ boost::intrusive_ptr<Node> ObjectLoader::LoadObjectImpl(std::shared_ptr<Scene3D>
       object->SetPosition(position);
       object->SetRotation(rotation);
       object->SetGeometryData(geometry);
+      if (!instancesFilename.empty()) {
+        const std::vector<InstanceList::Placement> places =
+            InstanceList::Load(dirpart + instancesFilename);
+        object->SetInstances(places);
+        Log(e_Notice, "ObjectLoader", "Load",
+            objectName + ": " + int_to_str((int)places.size()) + " instance(s) from " +
+                instancesFilename);
+      }
       objNode->AddObject(object);
     }
 

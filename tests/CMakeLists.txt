@@ -216,6 +216,17 @@ add_executable(gameplayfootball_faceanim_tests
   ${PROJECT_SOURCE_DIR}/src/utils/faceanim.cpp
 )
 
+# Where the many copies of one model stand (the crowd, the 3D turf)
+add_executable(gameplayfootball_instancelist_tests
+  base/instance_list_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/instancelist.cpp
+)
+target_include_directories(gameplayfootball_instancelist_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_instancelist_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_instancelist_tests DISCOVERY_MODE PRE_TEST)
+
 # Camera track loader unit tests (imported PES camerawork)
 add_executable(gameplayfootball_camtrack_tests
   base/camtrack_test.cpp

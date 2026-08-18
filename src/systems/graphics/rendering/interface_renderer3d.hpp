@@ -10,6 +10,7 @@
 #include "../resources/vertexbuffer.hpp"
 #include "base/geometry/triangle.hpp"
 #include "base/math/vector3.hpp"
+#include "utils/instancelist.hpp"
 #include "base/sdl_surface.hpp"
 #include "types/material.hpp"
 #include "types/resource.hpp"
@@ -48,6 +49,10 @@ struct VertexBufferQueueEntry {
   AABB aabb;
   Vector3 position;
   Quaternion rotation;
+  // Empty for ordinary geometry. When it is not, this mesh is drawn once per
+  // placement instead of once - PES's crowd is one spectator at every seat
+  // (utils/instancelist.hpp).
+  std::vector<InstanceList::Placement> instances;
   // todo: think about this: int id_cache; // for quick access - getting resource's id needs
   // mutexing and all
 };
@@ -258,6 +263,8 @@ public:
                                 float value1, float value2) = 0;
   virtual void SetUniformFloat3(const std::string& shaderName, const std::string& varName,
                                 float value1, float value2, float value3) = 0;
+  virtual void SetUniformFloat4Array(const std::string& shaderName, const std::string& varName,
+                                    int count, float* values) = 0;
   virtual void SetUniformFloat3Array(const std::string& shaderName, const std::string& varName,
                                      int count, float* values) = 0;
   virtual void SetUniformMatrix4(const std::string& shaderName, const std::string& varName,

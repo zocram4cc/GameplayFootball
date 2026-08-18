@@ -141,6 +141,8 @@ public:
                                 float value1, float value2);
   virtual void SetUniformFloat3(const std::string& shaderName, const std::string& varName,
                                 float value1, float value2, float value3);
+  virtual void SetUniformFloat4Array(const std::string& shaderName, const std::string& varName,
+                                    int count, float* values);
   virtual void SetUniformFloat3Array(const std::string& shaderName, const std::string& varName,
                                      int count, float* values);
   virtual void SetUniformMatrix4(const std::string& shaderName, const std::string& varName,

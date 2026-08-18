@@ -1397,12 +1397,21 @@ void OpenGLRenderer3D::DeleteVertexBuffer(VertexBufferID vertexBufferID) {
   */
 }
 
-void DrawBufferChunk(int startIndex, int count) {
+void DrawBufferChunk(int startIndex, int count, int instanceCount = 0) {
   // draw buffer
   if (count > 0) {
 #define BUFFER_OFFSET(i) ((char*)nullptr + (i))
-    mapping.glDrawRangeElements(GL_TRIANGLES, startIndex, startIndex + count, count,
-                                GL_UNSIGNED_INT, BUFFER_OFFSET(startIndex * sizeof(unsigned int)));
+    if (instanceCount > 0) {
+      // one mesh, many copies: PES's crowd is one spectator at every seat, and
+      // the shader turns each into place from instancePlacement (simple.vert).
+      mapping.glDrawElementsInstanced(GL_TRIANGLES, count, GL_UNSIGNED_INT,
+                                      BUFFER_OFFSET(startIndex * sizeof(unsigned int)),
+                                      instanceCount);
+    } else {
+      mapping.glDrawRangeElements(GL_TRIANGLES, startIndex, startIndex + count, count,
+                                  GL_UNSIGNED_INT,
+                                  BUFFER_OFFSET(startIndex * sizeof(unsigned int)));
+    }
   }
 }
 
@@ -1503,8 +1512,6 @@ void OpenGLRenderer3D::RenderVertexBuffer(
     // glMultMatrixf((float*)transform.elements);
     SetMatrix("modelMatrix", transform);
 
-    bool sequential = true;  // buffer vertexbuffer chunks until a change happens (in texture or
-                             // index, for example)
     struct BufferChunk {
       BufferChunk() {
         startIndex = 0;
@@ -1513,6 +1520,38 @@ void OpenGLRenderer3D::RenderVertexBuffer(
       int startIndex;
       int count;
     };
+
+    // One mesh drawn many times, if this is instanced geometry: the placements go
+    // to the shader a batch at a time (a uniform array holds 256 of them), and
+    // each batch redraws the same chunks. Ordinary geometry is one batch of none.
+    const std::vector<InstanceList::Placement>& instances = queueEntry->instances;
+    const int kInstanceBatch = 256;
+    const int batchCount =
+        instances.empty()
+            ? 1
+            : static_cast<int>((instances.size() + kInstanceBatch - 1) / kInstanceBatch);
+
+    for (int batch = 0; batch < batchCount; ++batch) {
+    int instancesThisBatch = 0;
+    if (!instances.empty()) {
+      const int first = batch * kInstanceBatch;
+      instancesThisBatch =
+          std::min<int>(kInstanceBatch, static_cast<int>(instances.size()) - first);
+      float placements[kInstanceBatch * 4];
+      for (int i = 0; i < instancesThisBatch; ++i) {
+        const InstanceList::Placement& place = instances[first + i];
+        placements[i * 4 + 0] = place.x;
+        placements[i * 4 + 1] = place.y;
+        placements[i * 4 + 2] = place.z;
+        placements[i * 4 + 3] = place.yaw;
+      }
+      SetUniformFloat4Array(currentShader->first, "instancePlacement", instancesThisBatch,
+                            placements);
+      SetUniformInt(currentShader->first, "instanceCount", instancesThisBatch);
+    }
+
+    bool sequential = true;  // buffer vertexbuffer chunks until a change happens (in texture or
+                             // index, for example)
     BufferChunk bufferChunk;
 
     std::deque<VertexBufferIndex>::const_iterator vertexBufferIter =
@@ -1547,7 +1586,7 @@ void OpenGLRenderer3D::RenderVertexBuffer(
             specularTextureID != currentSpecularTextureID ||
             illuminationTextureID != currentIlluminationTextureID) {
           if (sequential) {
-            DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count);
+            DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count, instancesThisBatch);
             sequential = false;
           }
 
@@ -1613,7 +1652,7 @@ void OpenGLRenderer3D::RenderVertexBuffer(
 
       if (sequential)
         if (bufferChunk.startIndex + bufferChunk.count != start) {
-          DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count);
+          DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count, instancesThisBatch);
           sequential = false;
         }
 
@@ -1633,10 +1672,14 @@ void OpenGLRenderer3D::RenderVertexBuffer(
 
       if (sequential)
         if (vertexBufferIter == queueEntry->vertexBufferIndices.end()) {
-          DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count);
+          DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count, instancesThisBatch);
           sequential = false;
         }
     }
+    }  // instance batches
+
+    // Ordinary geometry after this must not be drawn as copies of itself.
+    if (!instances.empty()) SetUniformInt(currentShader->first, "instanceCount", 0);
 
     vertexBufferQueueIter++;
   }
@@ -2637,6 +2680,25 @@ void OpenGLRenderer3D::SetUniformFloat3(const std::string& shaderName, const std
     uniformCache.insert(std::pair<std::string, GLint>(shaderName + "_var_" + varName, location));
   }
   mapping.glUniform3f(location, value1, value2, value3);
+}
+
+void OpenGLRenderer3D::SetUniformFloat4Array(const std::string& shaderName,
+                                             const std::string& varName, int count, float* values) {
+  std::map<std::string, Shader>::iterator shaderIter = shaders.find(shaderName);
+  assert(shaderIter != shaders.end());
+
+  std::map<std::string, GLint>::iterator iter = uniformCache.find(shaderName + "_var_" + varName);
+  GLint location;
+  if (iter != uniformCache.end()) {
+    location = iter->second;
+  } else {
+    location = mapping.glGetUniformLocation((*shaderIter).second.programID, varName.c_str());
+    if (location == -1)
+      Log(e_Error, "OpenGLRenderer3D", "SetUniformFloat4Array",
+          "Uniform location for shader '" + shaderName + "' not found: " + varName);
+    uniformCache.insert(std::pair<std::string, GLint>(shaderName + "_var_" + varName, location));
+  }
+  mapping.glUniform4fv(location, count, values);
 }
 
 void OpenGLRenderer3D::SetUniformFloat3Array(const std::string& shaderName,

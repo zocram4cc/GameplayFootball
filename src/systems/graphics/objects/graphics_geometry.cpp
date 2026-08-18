@@ -176,6 +176,7 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
   // printf("loading %s\n", geometry->GetName().c_str());
 
   boost::intrusive_ptr<Resource<GeometryData>> resource = geometry->GetGeometryData();
+  caller->instances = geometry->GetInstances();
 
   resource->resourceMutex.lock();
   bool dynamicBuffer = resource->GetResource()->IsDynamic();
@@ -446,6 +447,7 @@ void GraphicsGeometry_GeometryInterpreter::GetVertexBufferQueue(
   queueEntry.vertexBuffer = caller->vertexBuffer;
   queueEntry.position = caller->GetPosition();
   queueEntry.rotation = caller->GetRotation();
+  queueEntry.instances = caller->instances;
   queue.push_back(queueEntry);
 }
 

@@ -7,6 +7,7 @@
 #define _HPP_OBJECT_GEOMETRY
 
 #include "base/math/vector3.hpp"
+#include "utils/instancelist.hpp"
 #include "defines.hpp"
 #include "scene/object.hpp"
 #include "scene/resources/geometrydata.hpp"
@@ -41,9 +42,17 @@ public:
   void SetCastShadow(bool castShadow) { this->castShadow = castShadow; }
   bool GetCastShadow() const { return castShadow; }
 
+  // Where the copies of this mesh stand. PES's crowd is one spectator placed at
+  // every seat and its 3D turf one tuft across the pitch; drawn once each they are
+  // millions of vertices, drawn as instances they are one mesh and a list of
+  // places (utils/instancelist.hpp).
+  void SetInstances(const std::vector<InstanceList::Placement>& places);
+  const std::vector<InstanceList::Placement>& GetInstances() const { return instances; }
+
 protected:
   boost::intrusive_ptr<Resource<GeometryData>> geometryData;
   bool castShadow = true;
+  std::vector<InstanceList::Placement> instances;
 };
 
 class IGeometryInterpreter : public Interpreter {
