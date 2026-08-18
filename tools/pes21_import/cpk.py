@@ -202,12 +202,33 @@ def strip_crypt(blob: bytes) -> bytes:
     raise ValueError("cannot decode @UTF block")
 
 
-if __name__ == "__main__":
-    cpk = sys.argv[1]
-    dest = sys.argv[2] if len(sys.argv) > 2 else "extracted"
-    list_only = "--list" in sys.argv[3:]
+def parse_args(argv):
+    """-> (cpk, dest, list_only, pattern) from the arguments after the script.
+
+    The destination is positional, so a flag in its place has to be recognised as
+    one: "cpk.py dt15.cpk --list" once extracted the whole archive into a
+    directory named "--list". A listing writes nothing, so it needs no
+    destination at all.
+    """
+    cpk_path = argv[0]
+    rest = argv[1:]
+    dest = None
+    list_only = False
     pattern = None
-    for arg in sys.argv[3:]:
-        if arg.startswith("--filter="):
+    for arg in rest:
+        if arg == "--list":
+            list_only = True
+        elif arg.startswith("--filter="):
             pattern = arg.split("=", 1)[1]
-    extract(cpk, dest, list_only, pattern)
+        elif not arg.startswith("--") and dest is None:
+            dest = arg
+    if dest is None and not list_only:
+        dest = "extracted"
+    return (cpk_path, dest, list_only, pattern)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("usage: cpk.py <archive.cpk> [<dest>] [--list] [--filter=<text>]")
+        sys.exit(2)
+    extract(*parse_args(sys.argv[1:]))

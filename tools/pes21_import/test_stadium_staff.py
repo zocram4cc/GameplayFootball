@@ -25,6 +25,53 @@ HALF_X = 55.0  # gametypes.hpp: x runs goal to goal
 HALF_Y = 36.0  # y touchline to touchline
 
 
+class DressedFirst(unittest.TestCase):
+    """Which of a pack's staff models to actually put on the touchline.
+
+    A stadium pack ships more staff models than there is room for - st002 has 61 -
+    and takes them alphabetically, which is how twenty figures came out plain
+    white: the first eight in the alphabet wear PES's stock coach skins
+    (ca_blou2018_band_bsm, gu_spain_bsm), and no archive on hand carries those,
+    while the ones the 4cc author actually dressed (staff_campesina,
+    staff_doomyuri1) sit further down the list. Prefer the models whose skins the
+    pack ships; nobody is dropped, because a white figure still beats an empty
+    touchline.
+    """
+
+    def test_a_model_with_its_skin_comes_before_one_without(self):
+        order = stadium_staff.dressed_first(
+            ["coach.fmdl", "fairy.fmdl"],
+            {"coach.fmdl": ["gu_spain_bsm"], "fairy.fmdl": ["staff_evilfairy"]},
+            {"staff_evilfairy"})
+        self.assertEqual(order, ["fairy.fmdl", "coach.fmdl"])
+
+    def test_nobody_is_dropped(self):
+        models = ["a.fmdl", "b.fmdl", "c.fmdl"]
+        order = stadium_staff.dressed_first(models, {m: ["missing"] for m in models}, set())
+        self.assertEqual(sorted(order), sorted(models))
+
+    def test_the_order_within_a_group_is_kept(self):
+        models = ["a.fmdl", "b.fmdl", "c.fmdl", "d.fmdl"]
+        skins = {"a.fmdl": ["x"], "b.fmdl": ["have"], "c.fmdl": ["y"], "d.fmdl": ["have"]}
+        self.assertEqual(stadium_staff.dressed_first(models, skins, {"have"}),
+                         ["b.fmdl", "d.fmdl", "a.fmdl", "c.fmdl"])
+
+    def test_a_model_half_dressed_counts_as_undressed(self):
+        # a figure with one bare mesh is the same white patch as a bare figure
+        order = stadium_staff.dressed_first(
+            ["half.fmdl", "whole.fmdl"],
+            {"half.fmdl": ["have", "missing"], "whole.fmdl": ["have"]},
+            {"have"})
+        self.assertEqual(order, ["whole.fmdl", "half.fmdl"])
+
+    def test_a_model_with_no_textures_at_all_is_undressed(self):
+        order = stadium_staff.dressed_first(
+            ["bare.fmdl", "dressed.fmdl"],
+            {"bare.fmdl": [], "dressed.fmdl": ["have"]},
+            {"have"})
+        self.assertEqual(order, ["dressed.fmdl", "bare.fmdl"])
+
+
 class Placements(unittest.TestCase):
     def setUp(self):
         self.spots = stadium_staff.placements(HALF_X, HALF_Y, per_side=4)

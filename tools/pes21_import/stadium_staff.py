@@ -100,6 +100,34 @@ def _fox_to_gf(position):
     return (position.x, -position.z, position.y)
 
 
+def dressed_first(models, skins, available):
+    """Models whose skins the pack ships, first; the others after, order kept.
+
+    A pack carries more staff than there is room on a touchline (st002: 61 models
+    for 8 marks) and the alphabet is no way to choose between them: the first
+    eight of st002's wear PES's stock coach skins, which no archive here carries,
+    so twenty figures came out plain white while the ones the author dressed
+    himself waited further down the list. Nobody is dropped - a white figure is
+    still better than an empty technical area.
+    """
+    dressed, bare = [], []
+    for model in models:
+        wanted = skins.get(model, [])
+        (dressed if wanted and all(skin in available for skin in wanted) else bare).append(model)
+    return dressed + bare
+
+
+def model_skins(path, fmdl_lib):
+    """-> the base texture stems a staff model asks for, one per mesh."""
+    fmdl = stadium_to_gf._load_fmdl(path, fmdl_lib)
+    stems = []
+    for mesh in fmdl.meshes:
+        texture = stadium_to_gf._mesh_base_texture(mesh)
+        if texture is not None:
+            stems.append(stadium_to_gf._tex_stem(texture.filename))
+    return stems
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("common", help="the extracted bg/common directory")
@@ -111,9 +139,11 @@ def main():
                         help="where this will be installed under "
                              "media/objects/stadiums, for the .ase's own texture paths "
                              "(e.g. pes_st017/staff)")
-    parser.add_argument("--textures", default=None,
+    parser.add_argument("--textures", action="append", default=[],
                         help="where the skins live; 4cc keeps them in the stadium pack's "
-                             "sourceimages rather than beside the models")
+                             "sourceimages rather than beside the models. Repeatable: PES's "
+                             "own staff wear skins from its shared packs, a 4cc pack's wear "
+                             "its own")
     args = parser.parse_args()
 
     if args.fmdl_lib and args.fmdl_lib not in sys.path:
@@ -127,9 +157,16 @@ def main():
     marks = placements(PITCH_HALF_X, PITCH_HALF_Y, args.per_side)
     print("%d staff model(s), %d mark(s)" % (len(models), len(marks)))
 
-    texture_dirs = stadium_to_gf.find_texture_dirs(args.common, args.textures)
+    texture_dirs = stadium_to_gf.find_texture_dirs(args.common, *args.textures)
     ftex_index = stadium_to_gf.build_ftex_index(texture_dirs)
     converted = {}
+
+    # Put the ones we can dress on the touchline first.
+    skins = {path: model_skins(path, args.fmdl_lib) for path in models}
+    models = dressed_first(models, skins, set(ftex_index))
+    dressed = sum(1 for path in models if skins[path] and
+                  all(stem in ftex_index for stem in skins[path]))
+    print("%d of %d model(s) have the skins they ask for" % (dressed, len(models)))
 
     os.makedirs(args.out, exist_ok=True)
     figures = []  # (mesh, mark, yaw, bitmap)
