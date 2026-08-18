@@ -5,6 +5,8 @@
 
 #include "r3d_messages.hpp"
 
+#include "autoexposure.hpp"
+
 #include "main.hpp"
 
 #include "../resources/texture.hpp"
@@ -293,28 +295,45 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   // half the broadcast's midtone while st041 was already on it. The key here is
   // that brightness as displayed (the reference measures 0.45), and the gains
   // bound how far a ground may be moved so a night match stays a night match.
-  // The taps are measured through both grades (postprocess.frag's EngineGrade and
-  // LutGrade), so the key is in the same space as the number it was read off: the
-  // broadcast's own midtone. Measured as lit instead, every scene reads far darker
-  // than it is shown, the gain sat pinned at its ceiling, and the pass turned into
-  // a flat brightening - across the nine grounds all nine got brighter, including
-  // the four already past the reference, and the spread between them widened from
-  // 0.31 to 0.35.
+  // Exposure, the way PES sets it: the frame is scaled so its average brightness sits
+  // at a key value - what its atmosphere calls gameKeyValue, with
+  // gameMinExposure/gameMaxExposure bounding the gain. Without it every ground is lit
+  // to whatever its own sun and textures happen to give, and against the broadcast
+  // reference Planet Namek came out at half the midtone while st031 and st041 were
+  // already there.
   //
-  // The gains bound how far a ground may be moved, so a dusk ground stays dusk;
-  // the floor is low enough to pull one down, which at 0.85 it was not - st019
-  // needed 0.55 and could not get it.
-  // The edge blur's depth test (postprocess.frag). 0 turns it off; a huge value is
-  // the old flat average, which fringed every silhouette. 0.02 blurs along an edge
-  // without reaching across it.
-  renderer->SetUniformFloat("postprocess", "edgeBlurDepthTolerance",
-                            GetConfiguration()->GetReal("graphics_edge_blur_tolerance", 0.02f));
-  renderer->SetUniformFloat("postprocess", "exposureKey",
-                            GetConfiguration()->GetReal("graphics_exposure_key", 0.45f));
-  renderer->SetUniformFloat("postprocess", "exposureMinGain",
-                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.55f));
-  renderer->SetUniformFloat("postprocess", "exposureMaxGain",
-                            GetConfiguration()->GetReal("graphics_exposure_max_gain", 1.6f));
+  // It is worked out here rather than in the shader, and that is the whole point. The
+  // first version measured sixteen taps inside postprocess.frag and applied the
+  // result the same frame; a fragment shader remembers nothing, so the gain was
+  // recomputed from scratch every frame and jumped with every pan. Off a recorded
+  // match, the picture's mean brightness moved 0.02 frame to frame through the opening
+  // cutscene, with single-frame jumps of -0.073 and +0.038 - a flicker on every cut.
+  //
+  // Now the renderer measures the frame it just presented (a centre window of the back
+  // buffer, every third frame) and the gain walks toward what that asks for over a
+  // half-life, the way an eye adapts. graphics_exposure_half_life is that time in
+  // seconds; 0 turns the smoothing off and 0 for the key turns the whole thing off.
+  {
+    const float key = GetConfiguration()->GetReal("graphics_exposure_key", 0.45f);
+    const float minGain = GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.55f);
+    const float maxGain = GetConfiguration()->GetReal("graphics_exposure_max_gain", 1.6f);
+    const float halfLife = GetConfiguration()->GetReal("graphics_exposure_half_life", 1.2f);
+    static float gain = 1.0f;
+    static unsigned long previousTime_ms = 0;
+    const unsigned long now_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    const float dt = previousTime_ms == 0
+                         ? 0.0f
+                         : (now_ms - previousTime_ms) / 1000.0f;
+    previousTime_ms = now_ms;
+    if (key <= 0.0f) {
+      gain = 1.0f;
+    } else {
+      const float target =
+          AutoExposure::TargetGain(AutoExposure::GetMeasuredBrightness(), key, minGain, maxGain);
+      gain = AutoExposure::Adapt(gain, target, dt, halfLife);
+    }
+    renderer->SetUniformFloat("postprocess", "exposureGain", gain);
+  }
   // How much of the horizon's colour the distance is washed with. A converted
   // ground sets this from its own atmosphere (influenceOfFog, via lighting.txt),
   // and every PES atmosphere we can actually read says none of it: Planet Namek,

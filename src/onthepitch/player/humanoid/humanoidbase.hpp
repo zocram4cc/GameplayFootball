@@ -278,16 +278,33 @@ public:
 
   const NodeMap& GetNodeMap() { return nodeMap; }
 
-  void Hide() {
-    fullbodyNode->SetPosition(Vector3(1000, 1000, -1000));
-    hairStyle->SetPosition(Vector3(1000, 1000, -1000));
-  }  // hax ;)
+  // Parked, and staying parked. Hide() only moved the model away for one frame and
+  // UpdateFullbodyNodes put it straight back, because that follows the humanoid
+  // node - so a caller wanting a player gone had to call it every frame and race
+  // the player's own update. In the recorded match the squads blinked in and out of
+  // the centre circle every frame or two. This is the same parking held as a state,
+  // so the answer no longer depends on which schedule ran last.
+  void SetBenched(bool parked) {
+    benched = parked;
+    if (benched) {
+      fullbodyNode->SetPosition(BenchedPosition());
+      hairStyle->SetPosition(BenchedPosition());
+    }
+  }
+  bool IsBenched() const { return benched; }
+  void Hide() { SetBenched(true); }  // hax ;), now sticky
 
   void SetKit(boost::intrusive_ptr<Resource<Surface>> newKit);
 
   virtual void ResetSituation(const Vector3& focusPos);
 
 protected:
+  // Far enough away to be outside any camera's frustum. A function rather than a
+  // constant: Vector3 is not a literal type, so it cannot be constexpr.
+  static Vector3 BenchedPosition() { return Vector3(1000, 1000, -1000); }
+  // Parked by whoever is running the entrance (onthepitch/entrancecast.hpp).
+  bool benched = false;
+
   bool _HighOrBouncyBall() const;
   void _KeepBestDirectionAnims(
       DataSet& dataset, const PlayerCommand& command, bool strict = true, radian allowedAngle = 0,

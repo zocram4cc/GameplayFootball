@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Who is on the pitch during the entrance
+add_executable(gameplayfootball_entrancecast_tests
+  onthepitch/entrance_cast_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/entrancecast.cpp
+)
+target_include_directories(gameplayfootball_entrancecast_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_entrancecast_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_entrancecast_tests DISCOVERY_MODE PRE_TEST)
+
 # The replay wipe's timing
 add_executable(gameplayfootball_replaywipe_tests
   onthepitch/replay_wipe_test.cpp
@@ -170,6 +181,17 @@ target_include_directories(gameplayfootball_staginganchor_tests PRIVATE
 )
 target_link_libraries(gameplayfootball_staginganchor_tests PRIVATE gf_mathlib GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_staginganchor_tests DISCOVERY_MODE PRE_TEST)
+
+# How fast the exposure is allowed to change
+add_executable(gameplayfootball_autoexposure_tests
+  onthepitch/auto_exposure_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/systems/graphics/rendering/autoexposure.cpp
+)
+target_include_directories(gameplayfootball_autoexposure_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_autoexposure_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_autoexposure_tests DISCOVERY_MODE PRE_TEST)
 
 # Which of PES's colour grading tables a match is graded through
 add_executable(gameplayfootball_scenegrade_tests

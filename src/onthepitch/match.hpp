@@ -631,7 +631,9 @@ protected:
   Player* cutsceneOpponent = nullptr;
   void BuildEntranceCast();
   // Everybody the staging does not stage, out of shot for the presentation.
-  void HideUnstagedPlayers();
+  // Parks whoever should not be on the pitch during the entrance, and unparks
+  // whoever should (onthepitch/entrancecast.hpp).
+  void BenchUnstagedPlayers(bool holdingOpeningFrame);
   void UpdateEntranceChoreo();
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
   // track's authored goal side (+1/-1 from its mean x) for mirroring
