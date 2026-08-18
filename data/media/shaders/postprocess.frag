@@ -20,6 +20,10 @@ uniform float fogScale;
 // turned Planet Namek's rock formations flat green - and PES's own atmosphere for
 // that ground asks for no fog at all. 1 is what this shader always did.
 uniform float fogStrength;
+// How near in depth a neighbour must be to count in the edge blur, as a fraction
+// of the fragment's own depth. 0 turns the blur off; huge accepts everything, which
+// is the flat average that put a dark fringe around every object.
+uniform float edgeBlurDepthTolerance;
 
 // Exposure: 0 leaves the frame as lit. exposureKey is the average brightness to
 // aim for as displayed - the VGL26 broadcast reference sits at 0.45 - and the two
@@ -164,17 +168,44 @@ void main(void) {
 
   vec4 modifier = texture2D(map_modifier, texCoord);
 
-  // edge blur
-  if (modifier.r > 0.0) {
+  // Edge blur: the anti-aliasing this path has instead of MSAA. ambient.frag's
+  // GetEdge finds the silhouettes (a Sobel over depth and normals) and this softens
+  // them.
+  //
+  // It used to average all four neighbours flat, which on an edge means averaging
+  // *across* it: an object against a bright sky had its own dark pixels pulled onto
+  // the sky side, so everything wore a one-pixel dark fringe. That is the "black
+  // outline" the engine appeared to draw, and the same block still carries the
+  // original author's explicitly black version, commented out below - the effect was
+  // a deliberate style once and then abandoned, leaving the accident behind.
+  //
+  // So a neighbour only counts when it is on the same surface, judged by depth.
+  // edgeBlurDepthTolerance is that test as a fraction of the fragment's own depth,
+  // and it spans every behaviour worth having: 0 accepts nothing and turns the blur
+  // off, a small value blurs along an edge but never across it, and a huge value
+  // accepts everything, which is the old flat average.
+  if (modifier.r > 0.0 && edgeBlurDepthTolerance > 0.0f) {
+    float centreDepth = cameraClip.y / (texture2D(map_depth, texCoord).x - cameraClip.x);
+    float limit = abs(centreDepth) * edgeBlurDepthTolerance;
+    vec2 taps[4];
+    taps[0] = vec2(0, 1 / contextHeight);
+    taps[1] = vec2(1 / contextWidth, 0);
+    taps[2] = vec2(0, -1 / contextHeight);
+    taps[3] = vec2(-1 / contextWidth, 0);
     vec3 smoothPixel = vec3(0);
-    smoothPixel += texture2D(map_accumulation, texCoord + vec2(0, 1 / contextHeight)).xyz;
-    smoothPixel += texture2D(map_accumulation, texCoord + vec2(1 / contextWidth, 0)).xyz;
-    smoothPixel += texture2D(map_accumulation, texCoord + vec2(0, -1 / contextHeight)).xyz;
-    smoothPixel += texture2D(map_accumulation, texCoord + vec2(-1 / contextWidth, 0)).xyz;
-    smoothPixel *= 0.25;
-    base = base * (1.0 - modifier.r) + smoothPixel * modifier.r;
+    float taken = 0.0f;
+    for (int i = 0; i < 4; ++i) {
+      float neighbourDepth =
+          cameraClip.y / (texture2D(map_depth, texCoord + taps[i]).x - cameraClip.x);
+      if (abs(neighbourDepth - centreDepth) > limit) continue;   // across the edge
+      smoothPixel += texture2D(map_accumulation, texCoord + taps[i]).xyz;
+      taken += 1.0f;
+    }
+    if (taken > 0.0f) {
+      smoothPixel /= taken;
+      base = base * (1.0 - modifier.r) + smoothPixel * modifier.r;
+    }
     //base = base * (1.0 - modifier.r) + vec3(0, 0, 0) * modifier.r * 0.5 + smoothPixel * modifier.r * 0.5; // cartooney effect
-    //base = base * (1.0 - modifier.r) + vec3(0, 0, 0) * modifier.r * 0.8 + smoothPixel * modifier.r * 0.2; // cartooney effect
   }
 
 

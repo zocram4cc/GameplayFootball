@@ -182,8 +182,24 @@ original author's explicitly black version is still there, commented out — so 
 outline was a deliberate style once and then disabled, and what survives is a
 weaker accident of the AA.
 
-Open question (#68): restrict the blur so it never averages across a depth
-discontinuity, or drop it and see whether the aliasing is worse than the fringe.
+**Settled (#68): the blur only averages neighbours on the same surface.**
+`edgeBlurDepthTolerance` (`graphics_edge_blur_tolerance`, 0.02) is the depth test as
+a fraction of the fragment's own depth, and it spans every behaviour worth having -
+0 accepts nothing and turns the blur off, a small value blurs along an edge but
+never across it, a huge value is the old flat average. Measured on st060 over twelve
+frames, counting dark one-pixel troughs (a pixel darker than both its neighbours by
+0.06, which is what a fringe is):
+
+| variant | dark one-pixel troughs |
+|---|---|
+| across, the old flat average | 0.771% of the frame |
+| **along the edge** | **0.609%** |
+| off entirely | 0.791% |
+
+Turning it off is the *worst* of the three, because raw aliasing makes its own
+one-pixel troughs; the depth-aware blur removes the fringe and keeps the
+anti-aliasing. The overall ladder does not move (median 0.608 either way, p98 0.961,
+spread 0.186 -> 0.179), so this touches the edges and nothing else.
 
 ### PES's own cel-shade shells (art, not an effect)
 
@@ -324,7 +340,37 @@ Recipe, and the traps in it:
   gamescope start. It is keyboard-layout noise and the error filter excludes it;
   left in, a healthy run reads like a broken one.
 
-## 6. Still open
+## 6. The replay wipe
+
+The 4cc mod ships its own replay transition in `4cc_20_swipe.cpk` (PES19's download
+folder), and it is not a shader or a mask - it is a movie:
+
+```
+movie/fade/ACLwipe_hd.usm      1280 x 720, 145 frames at 60 fps (2.42 s)
+movie/fade/WEPESwipe_hd.usm    the same, the default slot
+movie/fade/settings.json
+```
+
+CRI USM containers, and ffmpeg reads them straight - the mod re-encoded them, so
+there is no key to find. The picture is the /vg/ Football League badge, a purple and
+silver ring crest, spinning in on black, holding, then spinning out. The first frame
+and the last third are pure black; about 59% of the run carries picture. Being
+opaque rather than an alpha mask, it is played **over** the cut: the wipe covers the
+screen, the camera changes underneath it, the wipe leaves.
+
+`settings.json` carries both the mapping and the timing:
+
+```json
+{ "id": -1, "file": "WEPESwipe_hd.usm", "fade": 0, "fadestart": 6 }
+{ "id":  7, "file": "ACLwipe_hd.usm",   "fade": 0, "fadestart": 8 }
+```
+
+`id` is the competition slot (7 is the ACL one, −1 the default) and `fadestart` is
+the frame on which the picture underneath is switched. Converting it means PNG
+frames plus a text sidecar for fps, count and fadestart — a movie file is not an
+editable format, and the engine has no video path anyway. Task #69.
+
+## 7. Still open
 
 - **#66** st031's wide beat is the one ground still flat: p98 0.66 and sd 0.10
   against the reference's 0.92 and 0.13, while its own close beat is fine at 0.96
