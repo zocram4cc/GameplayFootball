@@ -128,6 +128,29 @@ a stadium that looked broken in a way that had nothing to do with the pack:
   The colours are sampled into `sky.txt` as well, for the postprocess gradient
   behind everything the dome does not cover.
 
+### The people beside the pitch
+
+A stadium pack does not carry them. PES keeps one copy in its common package and
+hands it to every ground - and Planet Namek's own staff pack is one of the
+48-byte empty overrides, so without this there is nobody on the touchline:
+
+    python3 tools/pes21_import/stadium_staff.py \
+        <extracted>/Asset/model/bg/st002/staff \
+        data/media/objects/stadiums/pes_st017/staff \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --textures <extracted 4cc_30_stadiums.cpk>/Asset/model/bg/st002 \
+        --asset-dir pes_st017/staff
+
+The models are in the *stadium* packs' staff directories and their skins are in
+the stadium pack's own sourceimages - which is why they are named after teams
+(`staff_doomyuri1`, `staff_lizard`, `staff_jkraptor`): the 4cc mod replaces them,
+and that is what the reference broadcast shows on the touchline. They are rigged
+but stand still, so they import as static geometry in their bind pose, already
+placed in the technical areas, facing the pitch and set out by their own depth so
+nothing reaches over the line. `Match` loads `staff/staff.object` from beside the
+stadium the same way it finds the sky. The `.ase` is text, so the marks can be
+moved by hand.
+
 ### The ground's own lighting
 
 A pack also ships how PES lights it, as readable XML:
