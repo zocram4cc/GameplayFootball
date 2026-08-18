@@ -16,6 +16,7 @@
 #include "base/log.hpp"
 #include "coachmode.hpp"
 #include "competitionemblem.hpp"
+#include "teamflag.hpp"
 #include "crowdmood.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "matchduration.hpp"
@@ -642,6 +643,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     for (auto& geom : crowdGeoms) geom->SetCastShadow(false);
     GetScene3D()->AddNode(crowdNode);
     Log(e_Notice, "Match", "Match", "crowd: " + crowdObject);
+    PaintTeamFlags(crowdGeoms);
   }
 
   // What PES carries out for the walkout and takes away again: the flag bearers
@@ -1310,6 +1312,52 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
 
     stadiumGeomsIter++;
   }
+}
+
+void Match::PaintTeamFlags(const std::list<boost::intrusive_ptr<Geometry>>& geoms) {
+  // The stand flags fly the playing teams' badges. PES's own texture for them is a
+  // placeholder it swaps at run time - and the picture Konami left in the file is
+  // the FC Barcelona crest, which is what every converted ground's crowd was
+  // waving. The importer leaves that behind and gives the cloth a name instead
+  // (teamflag.hpp); this paints the right badge over it.
+  boost::intrusive_ptr<Resource<Surface>> badge[2];
+  for (int side = 0; side < 2; ++side) {
+    const std::string logo =
+        TeamFlag::BadgeFor(teams[side] && teams[side]->GetTeamData()
+                               ? teams[side]->GetTeamData()->GetLogoUrl()
+                               : "");
+    if (logo.empty()) continue;
+    badge[side] = ResourceManagerPool::GetInstance()
+                      .GetManager<Surface>(e_ResourceType_Surface)
+                      ->Fetch(logo);
+  }
+  if (!badge[0] && !badge[1]) return;
+
+  int painted = 0;
+  for (const auto& geomObject : geoms) {
+    boost::intrusive_ptr<Resource<GeometryData>> data = geomObject->GetGeometryData();
+    if (!data) continue;
+    data->resourceMutex.lock();
+    std::vector<MaterializedTriangleMesh>& tmesh = data->GetResource()->GetTriangleMeshesRef();
+    bool replacedAny = false;
+    for (unsigned int i = 0; i < tmesh.size(); i++) {
+      if (tmesh.at(i).material.diffuseTexture == boost::intrusive_ptr<Resource<Surface>>())
+        continue;
+      const TeamFlag::Side side =
+          TeamFlag::SideOf(tmesh.at(i).material.diffuseTexture->GetIdentString());
+      if (side == TeamFlag::e_NotAFlag) continue;
+      const int index = (side == TeamFlag::e_Away) ? 1 : 0;
+      if (!badge[index]) continue;   // a team with no badge keeps the plain cloth
+      tmesh.at(i).material.diffuseTexture = badge[index];
+      replacedAny = true;
+      painted++;
+    }
+    data->resourceMutex.unlock();
+    if (replacedAny) geomObject->OnUpdateGeometryData();
+  }
+  if (painted)
+    Log(e_Notice, "Match", "PaintTeamFlags",
+        "stand flags: " + int_to_str(painted) + " painted with the teams' own badges");
 }
 
 void Match::UpdateControllerSetup() {

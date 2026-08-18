@@ -123,6 +123,8 @@ public:
   void SuppressHudForReplay(bool suppressed);
 
   void SetSunParams();
+  // The crowd's stand flags, painted with the playing teams' badges (teamflag.hpp).
+  void PaintTeamFlags(const std::list<boost::intrusive_ptr<Geometry>>& geoms);
   void RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode);
   void UpdateControllerSetup();
   // Legacy plain-string call sites (goal commentary etc.) still work; routes

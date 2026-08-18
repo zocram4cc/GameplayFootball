@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Whose badge the crowd's stand flags fly
+add_executable(gameplayfootball_teamflag_tests
+  onthepitch/team_flag_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/teamflag.cpp
+)
+target_include_directories(gameplayfootball_teamflag_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_teamflag_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_teamflag_tests DISCOVERY_MODE PRE_TEST)
+
 # Which competition's emblem rings the centre circle
 add_executable(gameplayfootball_competitionemblem_tests
   onthepitch/competition_emblem_test.cpp
