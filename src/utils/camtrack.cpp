@@ -122,6 +122,7 @@ CamTrackFrame RetargetCamTrackFrame(const CamTrackFrame& frame,
 }
 
 bool CamTrack::Load(std::istream& in) {
+  int lastTimelineFrame = -1;
   frames.clear();
   std::string line;
   while (std::getline(in, line)) {
@@ -142,9 +143,45 @@ bool CamTrack::Load(std::istream& in) {
     frame.fov = values[8];
     frame.near = values[9];
     frame.far = values[10];
+
+    // A row whose frame number does not follow the one before it begins a new
+    // cut: the export concatenates PES's cuts and each keeps its own numbering,
+    // so that number is where the cut starts in the demo's timeline.
+    const int timelineFrame = (int)values[0];
+    if (cuts.empty() || timelineFrame != lastTimelineFrame + 1) {
+      Cut cut;
+      cut.timelineStart = timelineFrame;
+      cut.firstRow = (int)frames.size();
+      cuts.push_back(cut);
+    }
+    cuts.back().rowCount++;
+    lastTimelineFrame = timelineFrame;
+
     frames.push_back(frame);
   }
   return !frames.empty();
+}
+
+int CamTrack::GetTimelineFrameCount() const {
+  if (cuts.empty()) return (int)frames.size();
+  const Cut& last = cuts.back();
+  return last.timelineStart + last.rowCount;
+}
+
+CamTrackFrame CamTrack::SampleTimeline(float timelineFrame) const {
+  if (frames.empty()) return CamTrackFrame();
+  if (cuts.size() <= 1) return Sample(timelineFrame);
+
+  // The cut that has started and not yet been replaced.
+  const Cut* current = &cuts.front();
+  for (const Cut& cut : cuts) {
+    if ((float)cut.timelineStart > timelineFrame) break;
+    current = &cut;
+  }
+  const float within =
+      std::max(0.0f, std::min(timelineFrame - (float)current->timelineStart,
+                              (float)(current->rowCount - 1)));
+  return Sample((float)current->firstRow + within);
 }
 
 CamTrackFrame CamTrack::Sample(float frame) const {

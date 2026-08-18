@@ -10,6 +10,7 @@
 #include <mutex>
 #include "utils/camtrack.hpp"
 #include "prematchtimeline.hpp"
+#include "prematchshotpair.hpp"
 #include "scenelighting.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
@@ -485,6 +486,9 @@ protected:
   std::map<std::string, CamTrack> prematchShots;
   void LoadPrematchShots(const std::string& stadiumToken);
   const CamTrack* FindPrematchShot(const std::string& shot) const;
+  // The key FindPrematchShot would resolve to, so the staging can be paired with
+  // that camera's own (prematchshotpair.hpp).
+  std::string FindPrematchShotName(const std::string& shot) const;
 
   // The player staging that goes with each shot. PES authors both together -
   // the tunnel pack walks the squads out, the anthem pack stands them on the
@@ -506,6 +510,12 @@ protected:
   int stagedBeatIndex = -2;
   float stagingStartSeconds = 0.0f;
   bool stagingHoldsOpeningFrame = false;
+  // Whether any pack has actually played. The establishing shots borrow the
+  // first pack's opening frame before that; afterwards, a beat with no staging
+  // leaves the cast released instead of hauling it back to the tunnel.
+  bool stagingHasRun = false;
+  // The camera track paired with the staging currently on the pitch.
+  std::string stagedCameraKey;
   // Where this staging has to be moved to happen on our pitch rather than in
   // the stadium PES authored it for (staginganchor.hpp).
   Vector3 stagingOffset;

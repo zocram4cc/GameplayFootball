@@ -94,6 +94,28 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Keeping an imported shot out of the players it films
+add_executable(gameplayfootball_camerastandoff_tests
+  onthepitch/camera_standoff_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/camerastandoff.cpp
+)
+target_include_directories(gameplayfootball_camerastandoff_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_camerastandoff_tests PRIVATE gf_mathlib GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_camerastandoff_tests DISCOVERY_MODE PRE_TEST)
+
+# Keeping a pre-match shot's camera and its choreography together
+add_executable(gameplayfootball_prematchpair_tests
+  onthepitch/prematch_pair_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/prematchshotpair.cpp
+)
+target_include_directories(gameplayfootball_prematchpair_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_prematchpair_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_prematchpair_tests DISCOVERY_MODE PRE_TEST)
+
 # Putting an imported entrance staging where our pitch is
 add_executable(gameplayfootball_staginganchor_tests
   onthepitch/staging_anchor_test.cpp

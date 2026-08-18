@@ -138,7 +138,10 @@ TEST(PrematchTimelineDefaultTest, FollowsTheReferenceRunningOrder) {
   };
   const int card = indexOf("stadium_card");
   const int walkOn = indexOf("walk_on");
-  const int line = indexOf("line_up");
+  // The hold on the line is the anthem beat: it has the pack that stands the
+  // squads in a row. Giving it a beat of its own on the walk-on pack restarted
+  // that pack, which walked the whole column in a second time.
+  const int line = indexOf("anthems");
   const int wideHome = indexOf("wide_home");
   const int picture = indexOf("team_picture");
 
