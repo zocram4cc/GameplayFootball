@@ -15,6 +15,11 @@ uniform float contextY;
 uniform vec2 cameraClip;
 
 uniform float fogScale;
+// How much fog this stadium wants (scenelighting.hpp). The pass washes everything
+// distant with up to a quarter of the horizon's colour, which on a green sky
+// turned Planet Namek's rock formations flat green - and PES's own atmosphere for
+// that ground asks for no fog at all. 1 is what this shader always did.
+uniform float fogStrength;
 // A stadium can supply its own sky (see src/onthepitch/stadiumsky.hpp); these
 // default to the constants this shader used to hardcode.
 uniform vec3 skyZenithColor;
@@ -179,7 +184,8 @@ void main(void) {
 //  vec3 fogColor = vec3(0.85, 0.65, 1.0);
   vec3 fogColor = skyFogColor;
 
-  float fogFactor = clamp(fragDepth * 0.01f * (1.0f - fogScale) - 0.16f * fogScale, 0.0f, 0.25f);
+  float fogFactor = clamp(fragDepth * 0.01f * (1.0f - fogScale) - 0.16f * fogScale, 0.0f, 0.25f) *
+                    clamp(fogStrength, 0.0f, 1.0f);
 
   fragColor = fragColor * (1.0f - fogFactor) + fogColor * fogFactor;
 

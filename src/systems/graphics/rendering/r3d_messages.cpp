@@ -270,6 +270,8 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
                                            GetConfiguration()->GetReal("match_weather", 0.0f)));
+  renderer->SetUniformFloat("postprocess", "fogStrength",
+                            GetConfiguration()->GetReal("graphics_fog_strength", 1.0f));
   renderer->SetUniformFloat3(
       "postprocess", "skyFogColor", GetConfiguration()->GetReal("sky_fog_r", 0.85f),
       GetConfiguration()->GetReal("sky_fog_g", 0.85f),
