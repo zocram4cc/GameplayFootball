@@ -22,6 +22,7 @@ every .ftex-holding directory underneath what you pass is searched.
 """
 
 import argparse
+import glob
 import math
 import os
 import re
@@ -394,6 +395,30 @@ def sample_sky_colours(png_path):
     horizon = max(strips, key=lambda rgb: 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2])
     to_unit = lambda rgb: tuple(c / 255.0 for c in rgb)
     return to_unit(zenith), to_unit(horizon)
+
+
+def choose_scene_models(paths):
+    """-> (the centre scene, its sibling models) out of a pack's scene files.
+
+    A PES stadium is fifteen models, not one: its own scene graph names back1/2/3,
+    center1/2/3, front1/2/3, left1/2/3 and right1/2/3 (Planet Namek's
+    st017.fox2.xml lists exactly those). Taking center1 alone cost st002 a front
+    section and st060 its two aeroplanes, which are part of that ground.
+
+    A pack also holds each model twice - once under <pack>_fpk/ and once under
+    <pack>_fpk_extracted/ - so siblings are taken by name, once each, in a settled
+    order.
+    """
+    by_name = {}
+    for path in sorted(paths):
+        by_name.setdefault(os.path.basename(path), path)
+    if not by_name:
+        return (None, [])
+    names = sorted(by_name)
+    centre_name = next((n for n in names if "center1" in n.lower()),
+                       next((n for n in names if "center" in n.lower()), names[0]))
+    centre = by_name.pop(centre_name)
+    return (centre, [by_name[n] for n in sorted(by_name)])
 
 
 def geom_label(label, index):
@@ -811,7 +836,8 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("fmdl")
+    parser.add_argument("fmdl", help="a stadium scene .fmdl, or a directory of them "
+                                          "(the whole scene: center1 and its siblings)")
     parser.add_argument("out_dir")
     parser.add_argument("--fmdl-lib", required=True)
     parser.add_argument("--textures", action="append", default=[],
@@ -840,9 +866,24 @@ if __name__ == "__main__":
                              "several GEOMOBJECTs sharing one material")
     args = parser.parse_args()
 
-    name = args.name or "pes_" + os.path.splitext(os.path.basename(args.fmdl))[0]
-    ase_path, geoms, textures = convert(args.fmdl, args.out_dir, args.fmdl_lib,
-                                        args.textures, name, args.extra,
+    scene = args.fmdl
+    extras = list(args.extra)
+    if os.path.isdir(scene):
+        # A whole stadium: the centre scene and every sibling model the pack ships,
+        # which is what its own scene graph asks for (choose_scene_models).
+        found = glob.glob(os.path.join(scene, "**", "*.fmdl"), recursive=True)
+        scene, siblings = choose_scene_models(found)
+        if scene is None:
+            print("no scene models under %s" % args.fmdl)
+            sys.exit(1)
+        extras = siblings + extras
+        print("scene: %s%s" % (os.path.basename(scene),
+                               (" + " + ", ".join(os.path.basename(s) for s in siblings))
+                               if siblings else ""))
+
+    name = args.name or "pes_" + os.path.splitext(os.path.basename(scene))[0]
+    ase_path, geoms, textures = convert(scene, args.out_dir, args.fmdl_lib,
+                                        args.textures, name, extras,
                                         args.max_tris, args.max_verts_per_geom,
                                         args.max_extent, args.fallback_bitmap,
                                         not args.no_pitch)

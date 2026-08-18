@@ -56,13 +56,15 @@ for pack in "$PACKS"/*/; do
   # converter only sees models, so unpack first - it is idempotent.
   bash "$HERE/extract_stadium_packs.sh" "$pack" >/dev/null 2>&1 || true
 
-  # The centre scene is the stadium itself. It sits at any depth: a pack download
-  # extracts it as #Win/st<slot>_fpk_extracted/center1.fmdl, a cpk keeps the game's
-  # own tree, #Win/st<slot>_fpk_extracted/Assets/pes16/model/bg/st<slot>/scenes/.
-  scene=$(find "$pack/#Win" -name "*center1.fmdl" 2>/dev/null | sort | head -1)
-  [ -z "$scene" ] && scene=$(find "$pack/#Win" -name "*center*.fmdl" 2>/dev/null | sort | head -1)
-  [ -z "$scene" ] && scene=$(find "$pack/#Win" -maxdepth 2 -name "*.fmdl" 2>/dev/null | head -1)
-  if [ -z "$scene" ]; then
+  # The stadium is every model under #Win, not just one: PES's own scene graph
+  # names fifteen (back/center/front/left/right, three tiers each), and while the
+  # 4cc authors mostly bake theirs into center1, st002 also ships a front section
+  # and st060 two aeroplanes. The converter takes the directory and sorts out which
+  # is the centre scene and which are its siblings (choose_scene_models); it copes
+  # with either layout, a pack download's #Win/st<slot>_fpk_extracted/center1.fmdl
+  # and a cpk's own deeper tree.
+  scene="$pack/#Win"
+  if [ -z "$(find "$scene" -name "*.fmdl" 2>/dev/null | head -1)" ]; then
     echo "SKIP $name: no scene fmdl under #Win"
     skipped=$((skipped + 1)); continue
   fi
@@ -72,10 +74,27 @@ for pack in "$PACKS"/*/; do
   # pipeline, and leaving an older run's meshes and textures behind makes the
   # result depend on what was converted before it.
   rm -rf "$out"
+  # The scenery sub-packs, where a pack fills them: big_flag is the tifo draped
+  # over a stand (st002 ships one), and scarecrow/tv/standsFlag/cheer hold models
+  # in some packs and 48-byte stubs in most, because PES keeps the shared ones. The
+  # pitch, the staff, the lighting and the 3D turf are imported by their own steps,
+  # so they are left out here.
+  extras=()
+  while IFS= read -r model; do
+    [ -z "$model" ] && continue
+    extras+=(--extra "$model")
+  done < <(find "$pack" -name "*.fmdl" \
+             -not -path "$pack/#Win/*" -not -path "$pack/pitch/*" \
+             -not -path "$pack/staff/*" -not -path "$pack/light/*" \
+             -not -path "$pack/turf3d/*" 2>/dev/null \
+           | awk -F/ '{print $NF"\t"$0}' | sort -u -k1,1 | cut -f2- | sort)
+  [ ${#extras[@]} -gt 0 ] && echo "  scenery: $((${#extras[@]} / 2)) model(s) from the pack's own sub-packs"
+
   python3 "$HERE/stadium_to_gf.py" "$scene" "$out" \
     --fmdl-lib "$FMDL_LIB" \
     --textures "$pack/sourceimages/tga/#windx11" \
     --textures "$pack/turf3d/sourceimages/#windx11" \
+    "${extras[@]}" \
     --name "pes_st$slot" --max-extent "$MAX_EXTENT" || { skipped=$((skipped + 1)); continue; }
 
   # No sky node unless the centre scene had a dome of its own. The lighting pack
