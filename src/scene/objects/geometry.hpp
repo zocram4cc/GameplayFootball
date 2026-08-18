@@ -46,6 +46,8 @@ public:
   // every seat and its 3D turf one tuft across the pitch; drawn once each they are
   // millions of vertices, drawn as instances they are one mesh and a list of
   // places (utils/instancelist.hpp).
+  // Set this before SetGeometryData: loading the data is what hands the mesh to
+  // the graphics side, and the placements travel with it.
   void SetInstances(const std::vector<InstanceList::Placement>& places);
   const std::vector<InstanceList::Placement>& GetInstances() const { return instances; }
 
