@@ -259,17 +259,23 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   renderer->SetUniformFloat("postprocess", "sceneBrightness",
                             GetConfiguration()->GetReal("graphics_brightness", 1.0f));
   // PES's grade, chosen the way PES chooses it: by time of day and weather
-  // (scenegrade.hpp). On by default now that the strip decodes: it was read
-  // sideways - ftex stores width before height, and grade.png is 1089 x 132 - so
-  // what reached the shader was a sheared cube, which is what clipped and
-  // solarised the picture. Decoded properly it does what a grade should: the same
-  // Namek shot comes out brighter and more saturated, with the cloud detail in its
-  // sky visible. It is not the exposure fix - the median barely moves, and the
-  // 1.6x midtone gap against the broadcast is still there - but it is PES's own
-  // colour. The renderer zeroes lutSize when no strip was imported, so a build
-  // without one is unaffected.
+  // (scenegrade.hpp). Off by default, because the strip we decode is still wrong -
+  // sample its grey response and three of its four bands saturate: day, cloudy and
+  // evening all map every input above 0.6 into 0.64-0.69, while night, the one band
+  // that should be dark, is the only one that reaches 1.0. Rendered, that costs the
+  // picture its whole top end. Measured on st011 against the reference broadcast
+  // (p98 0.918): graded 0.659, ungraded 0.918, and the spread drops from the
+  // reference's 0.132 to 0.087 - which is the flat, washed-out look, not a level
+  // error, and it is why keying the exposure never fixed it. On Planet Namek the
+  // grade buys nothing either: the median moves 0.424 -> 0.431 and p98 falls
+  // 0.729 -> 0.647.
+  //
+  // The earlier reason for having it on - our midtones sitting 1.68x low - was
+  // measured before the ground's sun was fixed and the exposure keyed, which is
+  // where that gap actually was. So: off until the tables decode, and the strip
+  // stays imported so turning it back on is one setting. (Task #57.)
   renderer->SetUniformFloat("postprocess", "lutStrength",
-                            GetConfiguration()->GetReal("graphics_lut_strength", 1.0f));
+                            GetConfiguration()->GetReal("graphics_lut_strength", 0.0f));
   renderer->SetUniformFloat(
       "postprocess", "lutBand",
       (float)SceneGrade::BandForConditions(GetConfiguration()->GetReal("match_time_of_day", 0.0f),
@@ -280,16 +286,21 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
   // half the broadcast's midtone while st041 was already on it. The key here is
   // that brightness as displayed (the reference measures 0.45), and the gains
   // bound how far a ground may be moved so a night match stays a night match.
-  // Measured on two grounds at either end, against the broadcast's median of
-  // 0.434: Planet Namek sat at 0.284 and st041 at 0.426. Keyed at 0.37 Namek lands
-  // on 0.422 and st041 goes to 0.513 - the sixteen taps read a frame with dark
-  // stands lower than it is, so a ground that was already right gets lifted too.
-  // 0.35 splits it: neither is more than a tenth out, against a third for Namek
-  // before. The bounds keep a night match a night match.
+  // The taps are measured through both grades (postprocess.frag's EngineGrade and
+  // LutGrade), so the key is in the same space as the number it was read off: the
+  // broadcast's own midtone. Measured as lit instead, every scene reads far darker
+  // than it is shown, the gain sat pinned at its ceiling, and the pass turned into
+  // a flat brightening - across the nine grounds all nine got brighter, including
+  // the four already past the reference, and the spread between them widened from
+  // 0.31 to 0.35.
+  //
+  // The gains bound how far a ground may be moved, so a dusk ground stays dusk;
+  // the floor is low enough to pull one down, which at 0.85 it was not - st019
+  // needed 0.55 and could not get it.
   renderer->SetUniformFloat("postprocess", "exposureKey",
-                            GetConfiguration()->GetReal("graphics_exposure_key", 0.35f));
+                            GetConfiguration()->GetReal("graphics_exposure_key", 0.45f));
   renderer->SetUniformFloat("postprocess", "exposureMinGain",
-                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.85f));
+                            GetConfiguration()->GetReal("graphics_exposure_min_gain", 0.55f));
   renderer->SetUniformFloat("postprocess", "exposureMaxGain",
                             GetConfiguration()->GetReal("graphics_exposure_max_gain", 1.6f));
   // How much of the horizon's colour the distance is washed with. A converted

@@ -14,6 +14,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include "onthepitch/scenelighting.hpp"
 
 TEST(SceneLighting, TheSidecarSitsBesideTheStadiumObject) {
@@ -93,3 +95,63 @@ TEST(SceneLighting, ANonsenseFogIsClampedRatherThanBelieved) {
   EXPECT_FLOAT_EQ(SceneLighting::Parse("sun 0 0 1\nfog lots\n").fog, 1.0f);
 }
 
+// A ground that ships no lighting at all.
+//
+// Six of the nine converted grounds came out of cpk extractions, which keep PES's
+// binary atmosphere (.atsh/.rpd/.pcsp) rather than the readable XML the 4cc pack
+// downloads carry, so there is no sidecar to import and the engine fell back to
+// the dice roll - random(-1.7, 1.7) on x and y over a height multiplier of 1.3.
+// That puts the sun near the zenith more often than not, which drives noonBias to
+// 1 and lights the ground with the full cool noon sun straight overhead; those six
+// were the ones that came out washed to white in the capture sheets, at medians of
+// 0.55-0.57 against the broadcast's 0.434, while the three with a sidecar sat at
+// 0.26-0.41 and kept their own colour.
+//
+// So the fallback is a fixed mid-afternoon sun rather than a guess: shadows fall
+// the same way every kickoff, which is what a broadcast looks like, and no ground
+// is lit from directly above unless PES says it is.
+TEST(SceneLighting, WithoutASidecarTheSunIsFixedRatherThanRolled) {
+  const SceneLighting::Sun first = SceneLighting::DefaultSun(0.0f);
+  const SceneLighting::Sun second = SceneLighting::DefaultSun(0.0f);
+  ASSERT_TRUE(first.valid);
+  for (int i = 0; i < 3; ++i) EXPECT_FLOAT_EQ(first.direction[i], second.direction[i]);
+}
+
+TEST(SceneLighting, TheDefaultSunIsAMidAfternoonOne) {
+  // Not overhead: an overhead sun is what flattened the stands to white. PES's
+  // own grounds sit around 40-50 degrees, Namek's at 46.
+  const SceneLighting::Sun sun = SceneLighting::DefaultSun(0.0f);
+  const float elevation = std::asin(sun.direction[2]) * 180.0f / 3.14159265f;
+  EXPECT_GT(elevation, 30.0f);
+  EXPECT_LT(elevation, 55.0f);
+}
+
+TEST(SceneLighting, TheDefaultSunIsNormalised) {
+  for (float timeOfDay : {0.0f, 0.5f, 1.0f}) {
+    const SceneLighting::Sun sun = SceneLighting::DefaultSun(timeOfDay);
+    const float length = std::sqrt(sun.direction[0] * sun.direction[0] +
+                                  sun.direction[1] * sun.direction[1] +
+                                  sun.direction[2] * sun.direction[2]);
+    EXPECT_NEAR(length, 1.0f, 0.001f);
+  }
+}
+
+TEST(SceneLighting, LaterInTheDayTheDefaultSunIsLower) {
+  // The pre-match screen's time-of-day selector still has to mean something.
+  EXPECT_LT(SceneLighting::DefaultSun(1.0f).direction[2],
+            SceneLighting::DefaultSun(0.5f).direction[2]);
+  EXPECT_LT(SceneLighting::DefaultSun(0.5f).direction[2],
+            SceneLighting::DefaultSun(0.0f).direction[2]);
+}
+
+TEST(SceneLighting, TheDefaultSunStaysAboveTheHorizon) {
+  // Even at night: the floodlights do the lighting then, and a sun below the
+  // pitch shadows everything above it.
+  EXPECT_GT(SceneLighting::DefaultSun(1.0f).direction[2], 0.0f);
+}
+
+TEST(SceneLighting, AGroundsOwnSunOutranksTheDefault) {
+  const SceneLighting::Sun own = SceneLighting::Parse("sun -0.617 -0.306 0.725\n");
+  ASSERT_TRUE(own.valid);
+  EXPECT_NE(own.direction[0], SceneLighting::DefaultSun(0.0f).direction[0]);
+}

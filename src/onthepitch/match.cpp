@@ -15,6 +15,7 @@
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
 #include "coachmode.hpp"
+#include "competitionemblem.hpp"
 #include "crowdmood.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "matchduration.hpp"
@@ -667,6 +668,25 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     Log(e_Notice, "Match", "Match", "walkout set: " + entranceProps);
   }
 
+  // And the ring of pennant bearers on the centre circle, flying the competition's
+  // own emblem: the four-leaf clover for a tie between two boards, the /vg/
+  // Football League's crest for anything else (competitionemblem.hpp). Part of the
+  // walkout, so it goes back inside with the rest of it at kickoff.
+  if (entranceSeconds > 0.0f && !SuperDebug()) {
+    std::string emblem = GetConfiguration()->Get("competition_emblem", "");
+    if (emblem.empty())
+      emblem = CompetitionEmblem::ForTeams(teams[0] ? teams[0]->GetTeamData()->GetName() : "",
+                                           teams[1] ? teams[1]->GetTeamData()->GetName() : "");
+    const std::string pennant = CompetitionEmblem::ObjectPath(
+        GetConfiguration()->Get("stadium_object", ""), emblem);
+    if (!pennant.empty() && std::filesystem::exists(pennant)) {
+      pennantNode = loader.LoadObject(GetScene3D(), pennant);
+      pennantNode->SetLocalMode(e_LocalMode_Absolute);
+      GetScene3D()->AddNode(pennantNode);
+      Log(e_Notice, "Match", "Match", "competition pennants: " + pennant);
+    }
+  }
+
   // pitch
 
   Log(e_Notice, "Match", "Match", "Generating pitch");
@@ -709,7 +729,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   }
 
   // Where this ground's sun is, if the pack said so (scenelighting.hpp). Read
-  // before the sun is placed, which happens in SetRandomSunParams below.
+  // before the sun is placed, which happens in SetSunParams below.
   {
     const std::string lightingPath = SceneLighting::SidecarPath(stadiumObject);
     std::string contents;
@@ -757,7 +777,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   sunNode = loader.LoadObject(GetScene3D(), "media/objects/lighting/generic.object");
   GetDynamicNode()->AddNode(sunNode);
-  SetRandomSunParams();
+  SetSunParams();
 
   // human gamers
 
@@ -1104,6 +1124,7 @@ void Match::Exit() {
   if (propsNode) scene3D->DeleteNode(propsNode);
   if (crowdNode) scene3D->DeleteNode(crowdNode);
   if (entrancePropsNode) scene3D->DeleteNode(entrancePropsNode);
+  if (pennantNode) scene3D->DeleteNode(pennantNode);
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
@@ -1172,9 +1193,9 @@ void Match::Exit() {
   sig_OnExitedMatch(this);
 }
 
-void Match::SetRandomSunParams() {
+void Match::SetSunParams() {
   if (Verbose())
-    printf("setting random sun params\n");
+    printf("setting sun params\n");
 
   // Time of day chosen before kick-off: 0 day, 0.5 evening, 1 night. A night
   // match is lit by the floodlights, so the sun sits low and dim.
@@ -1182,24 +1203,22 @@ void Match::SetRandomSunParams() {
 
   float brightness = 1.0f - timeOfDay * 0.45f;
 
-  Vector3 sunPos = Vector3(-1.2f, 0.4f, 1.0f);  // sane default
-  float averageHeightMultiplier = 1.3f - timeOfDay * 0.9f;
   // A stadium that shipped its own lighting says where its sun is, and PES's
   // answer is a place, a date and a time rather than a guess - so its shadows
   // fall the same way every kickoff, which is what the broadcast looks like.
-  // Without one, the old dice roll.
+  // Without one it used to be a dice roll: random(-1.7, 1.7) on two axes over a
+  // height multiplier of 1.3, which puts the sun near the zenith more often than
+  // not, drives noonBias below to 1, and lights the ground with the full cool
+  // noon sun straight overhead. That is what washed the six grounds with no
+  // sidecar to white - medians of 0.55-0.57 against the broadcast's 0.434, while
+  // the three that do carry lighting.txt sat at 0.26-0.41 and kept their colour.
+  // So the fallback is a fixed mid-afternoon sun (SceneLighting::DefaultSun).
   const bool haveStadiumSun = stadiumSun.valid;
-  if (haveStadiumSun) {
-    sunPos = Vector3(stadiumSun.direction[0], stadiumSun.direction[1], stadiumSun.direction[2]);
-    sunPos.Normalize();
-  } else {
-    sunPos = Vector3(clamp(random(-1.7f, 1.7f), -1.0, 1.0), clamp(random(-1.7f, 1.7f), -1.0, 1.0),
-                     averageHeightMultiplier);
-    sunPos.Normalize();
-    if (random(0, 1) > 0.5f && sunPos.coords[1] > 0.25f)
-      sunPos.coords[1] = -sunPos.coords[1];  // sun more often on (default) camera side (coming from
-                                             // front == clearer lighting on players)
-  }
+  const SceneLighting::Sun sunSource =
+      haveStadiumSun ? stadiumSun : SceneLighting::DefaultSun(timeOfDay);
+  Vector3 sunPos =
+      Vector3(sunSource.direction[0], sunSource.direction[1], sunSource.direction[2]);
+  sunPos.Normalize();
   sunNode->GetObject("sun")->SetPosition(sunPos * 10000.0f);
 
   float defaultRadius = 1000000.0f;
@@ -1215,14 +1234,6 @@ void Match::SetRandomSunParams() {
   // Later in the day the warm dusk tint takes over.
   noonBias *= 1.0f - timeOfDay;
   Vector3 sunColor = sunColorNoon * noonBias + sunColorDusk * (1.0f - noonBias);
-
-  if (!haveStadiumSun) {
-    // The jitter is there to keep randomly-lit matches from all looking alike;
-    // a ground that says how it is lit should look the same every time.
-    Vector3 randomAddition(random(-0.1, 0.1), random(-0.1, 0.1), random(-0.1, 0.1));
-    randomAddition *= 1.2f;
-    sunColor += randomAddition;
-  }
 
   if (Verbose())
     printf("sunlight noonbias: %f, stadium sun: %s\n", noonBias, haveStadiumSun ? "yes" : "no");
@@ -3278,7 +3289,7 @@ void Match::Process() {
   previousProcessTime_ms = time_ms;
 
   if (UserEventManager::GetInstance().GetKeyboardState(SDLK_F1)) {
-    SetRandomSunParams();
+    SetSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
   }
 
@@ -3304,6 +3315,10 @@ void Match::Process() {
         GetScene3D()->DeleteNode(entrancePropsNode);
         entrancePropsNode.reset();
         Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
+      }
+      if (pennantNode) {
+        GetScene3D()->DeleteNode(pennantNode);
+        pennantNode.reset();
       }
       Log(e_Notice, "Match", "Process",
           "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +

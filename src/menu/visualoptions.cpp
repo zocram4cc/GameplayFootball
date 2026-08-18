@@ -71,7 +71,7 @@ VisualOptionsPage::VisualOptionsPage(Gui2WindowManager* windowManager, const Gui
 VisualOptionsPage::~VisualOptionsPage() {}
 
 void VisualOptionsPage::OnRandomizeSun() {
-  GetGameTask()->GetMatch()->SetRandomSunParams();
+  GetGameTask()->GetMatch()->SetSunParams();
 }
 
 void VisualOptionsPage::OnChangeKit(Gui2Pulldown* pulldown) {

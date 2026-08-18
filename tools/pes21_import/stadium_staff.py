@@ -215,6 +215,44 @@ def main():
     return 0
 
 
+# How flat and how horizontal a mesh has to be before it counts as something
+# lying on the pitch. PES's centre-circle banner measures -0.99.
+FLAT_MIN_FACING = 0.9
+
+
+def wants_winding_flipped(vertices, faces):
+    """Whether a mesh is a flat thing lying face-down and should be turned over.
+
+    This engine takes a mesh's lighting from the winding that was written
+    (ase_util.write_mesh_normals derives the normals geometrically), so a face
+    pointing away from the sky is lit as though it were the underside. PES's
+    centre-circle banner is wound exactly that way - its four flag faces average
+    -0.99 in z - which is why the imported banner came out a black disc on the
+    grass with the competition emblem invisible on it.
+
+    Judged by area, over the whole mesh: a banner with a small tab on it is still a
+    banner, a wall is flat but vertical and which way it faces is the model's own
+    business, and a solid has faces pointing every way so there is nothing to turn.
+    """
+    total = [0.0, 0.0, 0.0]
+    area = 0.0
+    for face in faces:
+        if len(face) < 3:
+            continue
+        a, b, c = (vertices[face[0]], vertices[face[1]], vertices[face[2]])
+        cross = ase_util._cross(ase_util._sub(b, a), ase_util._sub(c, a))
+        magnitude = (cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2) ** 0.5
+        if magnitude <= 0.0:
+            continue
+        for i in range(3):
+            total[i] += cross[i]
+        area += magnitude
+    if area <= 0.0:
+        return False
+    facing = [component / area for component in total]
+    return facing[2] < -FLAT_MIN_FACING
+
+
 def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
                   on_ground=False):
     """Writes one figure into an ASE, standing on `mark`.
@@ -241,6 +279,10 @@ def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
     index_of = {id(v): i for i, v in enumerate(mesh.vertices)}
     faces = [(index_of[id(f.vertices[0])], index_of[id(f.vertices[1])], index_of[id(f.vertices[2])])
              for f in mesh.faces]
+    # A flat thing lying on the pitch is there to be seen from above; PES's
+    # centre-circle banner is wound the other way and came out a black disc.
+    if wants_winding_flipped(vertices, faces):
+        faces = [(c, b, a) for (a, b, c) in faces]
     uvs = [(v.uv[0].u, 1.0 - v.uv[0].v) if v.uv else (0.0, 0.0) for v in mesh.vertices]
 
     out.write("*GEOMOBJECT {\n")
