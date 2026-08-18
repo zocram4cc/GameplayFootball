@@ -252,6 +252,33 @@ def is_outline_pass(texture_name):
     return OUTLINE_TEXTURE in words
 
 
+# The two pitches. PES's is 105 x 68 m; this engine's is 110 x 72 (gametypes.hpp:
+# pitchHalfW 55, pitchHalfH 36). Geometry authored around PES's pitch therefore
+# lands two and a half metres too far in at each goal, which is how the advertising
+# ring came to run through the goal netting: its boards stand 4.17 m behind PES's
+# goal line, that became 1.67 m behind ours, and the engine's own net is 2.55 m deep.
+PES_PITCH_HALF = (52.5, 34.0)
+ENGINE_PITCH_HALF = (55.0, 36.0)
+
+
+def pitch_scale():
+    """-> (x, y, z) to carry PES-authored geometry onto this engine's pitch.
+
+    Height is never touched: a hoarding is a metre tall in either game, and only
+    the plan differs.
+    """
+    return (ENGINE_PITCH_HALF[0] / PES_PITCH_HALF[0],
+            ENGINE_PITCH_HALF[1] / PES_PITCH_HALF[1],
+            1.0)
+
+
+def scale_positions(positions, scale):
+    """Scales about the centre spot, which is where both games put their origin."""
+    if not scale:
+        return positions
+    return [(x * scale[0], y * scale[1], z * scale[2]) for (x, y, z) in positions]
+
+
 def face_winding(a, b, c, reverse):
     """A face's indices, reversed for an outline shell so the engine - which culls
     back faces - culls the same side PES does."""
@@ -446,7 +473,8 @@ def mesh_extent(mesh):
 
 
 def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
-              max_verts_per_geom=None, max_extent=None, fallback_bitmap=None):
+              max_verts_per_geom=None, max_extent=None, fallback_bitmap=None,
+              geometry_scale=None):
     converted = {}
     ftex_index = build_ftex_index(tex_dirs)
     materials = []          # (material name, bitmap path or None)
@@ -557,7 +585,8 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             for new_index, (geom_name, _, faces, _, _) in enumerate(sky_geoms):
                 # inside-out, because the camera is inside it, and unlit, or its own
                 # colour is lost to the lighting
-                _write_geomobject(out, geom_name, new_index, faces, True, True)
+                _write_geomobject(out, geom_name, new_index, faces, True, True,
+                                  scale=geometry_scale)
         open(os.path.join(sky_dir, "sky.object"), "w").write(object_text("sky", with_pitch=False))
         print("  %d sky dome(s) -> sky/sky.object (inside-out, unlit)" % len(sky_geoms))
 
@@ -574,7 +603,8 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
         for geom_name, mat_index, faces, outline, sky in geoms:
             if sky:
                 continue  # the domes go to their own object, below
-            _write_geomobject(out, geom_name, mat_index, faces, outline, False)
+            _write_geomobject(out, geom_name, mat_index, faces, outline, False,
+                              scale=geometry_scale)
             outlines += 1 if outline else 0
         if outlines:
             print("  %d outline shell(s) written with reversed winding" % outlines)
@@ -614,7 +644,8 @@ def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap)
     out.write("\t}\n")
 
 
-def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_offset=None):
+def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_offset=None,
+                     scale=None):
     vertex_index = {}
     vertices = []
     uvs = []
@@ -637,6 +668,8 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     # In engine space, and for an outline shell pushed out far enough to be seen
     # from where it will be seen (outline_offset).
     gf_positions = [(pos.x, -pos.z, pos.y) for pos in vertices]
+    # A package authored around PES's pitch, carried onto this engine's larger one.
+    gf_positions = scale_positions(gf_positions, scale)
     if outline and gf_positions:
         gf_positions = _widen_outline(gf_positions,
                                       [face_winding(*[vertex_index[id(v)] for v in face.vertices],
@@ -796,7 +829,7 @@ def find_turf_texture(names):
 TURF_FILENAME = "turf.png"
 def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
             max_tris=None, max_verts_per_geom=None, max_extent=None,
-            fallback_bitmap=None, with_pitch=True):
+            fallback_bitmap=None, with_pitch=True, geometry_scale=None):
     os.makedirs(out_dir, exist_ok=True)
     tex_dirs = find_texture_dirs(*tex_dirs)
     print("texture dirs: %s" % (tex_dirs or "none found"))
@@ -807,7 +840,8 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
 
     ase_path, geom_count, tex_count = write_ase(fmdls, out_dir, name, tex_dirs,
                                                 max_tris, max_verts_per_geom,
-                                                max_extent, fallback_bitmap)
+                                                max_extent, fallback_bitmap,
+                                                geometry_scale)
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(object_text(name, with_pitch))
@@ -861,6 +895,10 @@ if __name__ == "__main__":
     # ad_placeholder hands them to GF's own randomiser, which swaps in a panel from
     # media/textures/adboards - the same thing PES does, by the mechanism this
     # engine already has.
+    parser.add_argument("--pitch-scale", action="store_true",
+                        help="carry the geometry from PES's pitch (105 x 68 m) onto "
+                             "this engine's (110 x 72): what the advertising ring "
+                             "needs, or its boards run through the goal netting")
     parser.add_argument("--no-pitch", action="store_true",
                         help="for a shared package rather than a ground: omit the "
                              "pitch from the .object (two pitches collide at load)")
@@ -892,5 +930,6 @@ if __name__ == "__main__":
                                         args.textures, name, extras,
                                         args.max_tris, args.max_verts_per_geom,
                                         args.max_extent, args.fallback_bitmap,
-                                        not args.no_pitch)
+                                        not args.no_pitch,
+                                        pitch_scale() if args.pitch_scale else None)
     print("wrote %s: %d geomobjects, %d textures" % (ase_path, geoms, textures))

@@ -314,6 +314,9 @@ Kits and badges come out of the uniform archive: the badge is already a PNG at
 `common/render/symbol/flag/e_<teamId padded>_r.png`, and the kits are
 `u0<teamId>p1`..`p8` `.ftex` beside it — decode with `ftex.py` and install as
 `<kit_url>_kit_0<n>.png`, with `kit_url` set on the team's row.
+How the imported art then reaches the screen - the grade, the exposure, the
+sun, and the defects that look like art - is [PICTURE.md](PICTURE.md).
+
 PES21_IMPORT.md covers the staging layout and the `EDIT` decryption for real
 player names.
 
