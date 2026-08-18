@@ -23,6 +23,27 @@ wired up — and it is worth fixing so the repository is playable out of the box
 Everything else below is genuinely optional: each step adds one layer of PES
 fidelity and is independent of the others.
 
+## What is in the repository, and how to check
+
+Nothing derived from PES 2021 or from the 4cc packs is tracked. Two tracked files
+have "pes" in the name and neither is artwork: `fullbody_pes.object` is a
+ten-line descriptor pointing at a model you build, and
+`menu_smoke_pes_stadium.config` is a config. The check is one command:
+
+    git ls-files | grep -iE 'fullbody_pes\.(ase|png)|pes_st|/ent/|\.camtrack$|\.chor$|_bsm|_alp\.'
+
+It should print nothing. The import outputs are covered by `.gitignore` -
+stadiums, adboards, LUTs, banners, nets, the player body, the entrance packs, the
+PES UI theme - so a build that has been through `tools/pes21_import` still has a
+clean `git status`.
+
+The one thing that used to need Konami's artwork even in a fresh checkout was the
+scoreboard's bitmap font, because the code named `media/ui/pes/num_mid.fnt`
+directly. The shipped default is now built from Fira Sans Condensed ExtraBold
+(SIL OFL, licence included) by `tools/art/make_scoreboard_font.py`, and
+`scoreboard_font_dir` points at the PES export for anyone who wants the exact
+glyphs.
+
 ## What you need
 
 * A PES 2021 installation (its `Data/` directory).
