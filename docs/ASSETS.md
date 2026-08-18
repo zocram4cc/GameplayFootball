@@ -263,21 +263,29 @@ pictures, so `lut_strip.py` unrolls the set into one ordinary PNG
 down) and `postprocess.frag` samples it. `graphics_lut_strength` mixes it in;
 `0` turns it off.
 
-**It is off by default, because the strip does not decode correctly yet.** Sample
-the grey response of the four bands and three of them saturate: `day`, `cloudy` and
-`evening` map every input above 0.6 into 0.64-0.69, while `night` - the band that
-ought to be the dark one - is the only one that reaches 1.0. Graded, the picture
-loses its whole top end: st011 measures p98 0.659 against 0.918 ungraded and 0.918
-in the reference broadcast, and its spread falls to 0.087 against the reference's
-0.132. That reads as washed-out and flat, and it is a contrast error, not a level
-one - the median is barely touched (Planet Namek 0.424 -> 0.431), which is why
-keying the exposure against a median never fixed it.
+**Which table a band uses is decided by looking at it, not by its name.** PES ships
+sixteen: an `h_` and an `s_` for each condition, each in a version for its own
+presentation (`demo`) and one for gameplay (`game`). Eleven of them stop climbing
+around 0.69 - `lut_s_day_game` maps grey 0.5 to 0.616 and grey 1.0 to 0.689, so half
+its input range lands inside a 0.07 band - and applied as a display transfer that
+costs the frame its whole top end: st011 measured p98 0.659 graded against 0.918
+ungraded and 0.918 in the reference broadcast, with the spread down to 0.087 from
+the reference's 0.132. That is the washed-out, milky look, and it is a contrast
+error rather than a level one, which is why keying the exposure never touched it.
+The decode was never at fault - the ftex read matches PES bit for bit; the table
+selection was.
+
+So `lut_strip.py` reads every candidate, measures what each does to grey
+(`grey_response`, `spans_display_range`), and takes the first that reaches white.
+Only `lut_h_day_demo` and the four night tables do; `cloudy` and `evening` have
+nothing usable of their own and borrow the day table, which the importer prints as
+it goes. Distance from the reference's whole ladder afterwards, over all nine converted
+grounds: 3.44 graded against 3.49 ungraded, closer on five of the nine. It helps
+most where a ground is dark (st002 0.92 -> 0.82, st043 0.74 -> 0.59) and costs a
+little where one is already bright (st019 0.15 -> 0.27).
 
 The 1.68x midtone gap quoted above was measured before each ground's own sun was
-imported and the exposure keyed; those closed it. So the grade is imported and
-sampled but mixed at 0, and turning it back on is one setting once the tables
-decode - the suspect is the ftex pixel-format-12 half-float read in
-`lut_strip.py`, or an assumption that PES's SDR tables hold direct RGB output.
+imported and the exposure keyed; those are where that gap actually was.
 
 ## 5. Scoreboard and formation-panel theme
 
