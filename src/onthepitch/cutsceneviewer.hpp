@@ -77,6 +77,27 @@ constexpr float kIncidentLocalRadius = 12.0f;
 // substitution or card shots do - they frame a person standing beside the incident.
 constexpr float kAimsAtOriginDegrees = 15.0f;
 
+// Is this category about something that happened on the pitch?
+//
+// Measuring the track is not enough to decide it, and a substitution is the proof.
+// PES authors its change camerawork in its own stadium - all 78 tracks sit beyond
+// 12 m, the change_stand_* family out to 86.6 m - so on PES's ground a stand camera
+// looking at PES's touchline is a fine shot, and on ours the same coordinates film
+// the sky over the stand. Measured with debug_cutscene_report: a foul was shot from
+// 6 m of an incident at (0, -33), and a substitution from 117 m of one at (-61, -14).
+//
+// So the question is answered by what the category *is*. A foul, a substitution and
+// an offside each have a subject standing on the grass, and their shots are placed at
+// it. The entrance and the post-match presentations do not: they are authored to show
+// a stadium, and dragging them to the ball would wreck them.
+//
+// Accepts a subpool ("foul/card_yellow") as its category.
+bool AnchorsAtIncident(const std::string& category);
+
+// Where a substitution happens: the touchline beside the man coming off, clamped
+// between the goal lines so a change never stages itself behind a goal.
+std::pair<float, float> TouchlineMark(float x, float y, float pitchHalfY);
+
 Anchoring ClassifyAnchoring(const TrackExtent& extent);
 const char* AnchoringName(Anchoring anchoring);
 

@@ -72,6 +72,15 @@ int GetAnnouncedAddedMinutes(const Stoppage& stoppage);
 // scheduled end. A scheduled end of 0 (pre-match, penalties) ticks plainly.
 std::string FormatClock(unsigned long matchTime_ms, unsigned long scheduledEnd_ms);
 
+// Does this period change ends? Team::GetSide() flips for the second half and the
+// second period of extra time and for nothing else, so these are the two moments
+// both teams must be set out again on the ends they have just swapped to. Half time
+// never did it: the referee prepares the kickoff and only then fires the phase
+// change, so the marks belonged to the ends the teams were leaving.
+inline bool SwapsEnds(e_MatchPhase phase) {
+  return phase == e_MatchPhase_2ndHalf || phase == e_MatchPhase_2ndExtraTime;
+}
+
 }  // namespace MatchProgression
 
 #endif

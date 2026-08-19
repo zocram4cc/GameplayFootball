@@ -629,6 +629,8 @@ public:
 
 protected:
   Player* cutscenePrimary = nullptr;
+  // A substitution is staged at the touchline rather than where the man stood.
+  bool cutsceneAtTouchline = false;
   // Where the running cutscene's camerawork is authored: PES's foul shots are
   // authored about the incident and have to be placed at it, the rest are in
   // stadium coordinates and are used as they are. Measured when the cutscene

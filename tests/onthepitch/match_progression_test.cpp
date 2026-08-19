@@ -178,3 +178,29 @@ TEST(AddedTimeClockTest, PhasesWithoutAScheduledEndTickPlainly) {
   // Pre-match and penalties report a scheduled end of 0.
   EXPECT_EQ(MatchProgression::FormatClock(7200000, 0), "120:00");
 }
+
+// Which periods change ends. Team::GetSide() flips for the second half and the
+// second period of extra time, and nothing else does - so those are the two moments
+// both teams have to be set out again, on the ends they have just swapped to.
+//
+// At half time nothing was: the referee prepares the kickoff at prepareTime and only
+// *then* fires the phase change, so the marks were computed for the ends the teams
+// were leaving, and after the flip nobody re-prepared. The second half kicked off
+// with everyone standing where the whistle caught them.
+TEST(MatchProgression, TheSecondHalfChangesEnds) {
+  EXPECT_TRUE(MatchProgression::SwapsEnds(e_MatchPhase_2ndHalf));
+}
+
+TEST(MatchProgression, AndSoDoesTheSecondPeriodOfExtraTime) {
+  EXPECT_TRUE(MatchProgression::SwapsEnds(e_MatchPhase_2ndExtraTime));
+}
+
+TEST(MatchProgression, TheOpeningPeriodsDoNot) {
+  EXPECT_FALSE(MatchProgression::SwapsEnds(e_MatchPhase_1stHalf));
+  EXPECT_FALSE(MatchProgression::SwapsEnds(e_MatchPhase_1stExtraTime));
+}
+
+TEST(MatchProgression, NorDoesAnythingThatIsNotAPeriodOfPlay) {
+  EXPECT_FALSE(MatchProgression::SwapsEnds(e_MatchPhase_PreMatch));
+  EXPECT_FALSE(MatchProgression::SwapsEnds(e_MatchPhase_Penalties));
+}
