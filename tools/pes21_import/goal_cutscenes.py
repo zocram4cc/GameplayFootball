@@ -35,7 +35,9 @@ import sys
 
 # What separates one angle on a celebration from another. PES shoots most of them
 # from the left and the right, and flips a couple.
-ANGLE_SUFFIX = re.compile(r"_(Z_fromL|Z_fromR|Flip)$")
+# Measured across the full library rather than guessed: PES separates one angle from
+# another with any of these.
+ANGLE_SUFFIX = re.compile(r"_(Z_fromL|Z_fromR|Flip|cam\d+|appendCam|audi|cam_up|cam_default)$")
 
 
 def slots(chor_text):
@@ -85,6 +87,69 @@ def build(clips_by_chor, camera_names):
             raise ValueError("camera %s has no choreography (%s)" % (camera, base))
         built[base]["cameras"].append(camera)
     return built
+
+
+# PES's main celebration library is keyed by a four-digit number rather than by a
+# choreography: goal_celebrate_0092_mayaL0x.camtrack films dml_goal_celebrate_0092.anim,
+# and there is no .chor between them. 213 numbers have both, which is ten times what
+# the .chor route finds.
+CELEBRATION_ID = re.compile(r"(?:^goal|^dml_goal)_celebrate_(\d+)")
+
+
+def celebration_id(name):
+    """-> the four-digit celebration number in a camera or performance name, or None."""
+    match = CELEBRATION_ID.match(os.path.basename(str(name)))
+    return match.group(1) if match else None
+
+
+def build_by_id(anim_names, camera_names):
+    """-> {celebrate_NNNN: {clip, cameras}} for every number that has both.
+
+    A number with a performance and no camera is left out: it would be a celebration
+    with no camerawork, and the seeded draw must never land on one. A camera with no
+    performance is left out for the same reason in reverse.
+    """
+    clips = {}
+    for name in sorted(anim_names):
+        number = celebration_id(name)
+        if number and number not in clips:
+            clips[number] = os.path.basename(str(name))
+    cameras = {}
+    for name in sorted(camera_names):
+        number = celebration_id(name)
+        if number:
+            cameras.setdefault(number, []).append(os.path.basename(str(name)))
+    built = {}
+    for number in sorted(set(clips) & set(cameras)):
+        built["celebrate_" + number] = {"clip": clips[number], "cameras": cameras[number]}
+    return built
+
+
+def sort_cameras(camera_names, chor_names):
+    """Splits the goal camera pool into the families it actually holds.
+
+    Of PES's 731 goal tracks, 355 are the numbered celebrations and some belong to
+    staged cutscenes with choreographies; about 200 are neither - goal_st033_TV and
+    friends are a ground's own goal cameras and have nothing to do with what the scorer
+    does. Sweeping those in would tie a camera to a performance it never shot.
+    """
+    families = {"by_id": [], "by_chor": [], "other": []}
+    for name in sorted(camera_names):
+        if celebration_id(name):
+            families["by_id"].append(name)
+        elif celebration_base(name) in chor_names:
+            families["by_chor"].append(name)
+        else:
+            families["other"].append(name)
+    return families
+
+
+def merge(*sets):
+    """One manifest out of the families, which are named apart and cannot collide."""
+    merged = {}
+    for one in sets:
+        merged.update(one)
+    return merged
 
 
 def assign_variables(built, base=100):
@@ -145,13 +210,28 @@ def main():
     cameras = [os.path.splitext(os.path.basename(p))[0]
                for p in sorted(glob.glob(os.path.join(args.dir, "*.camtrack")))]
 
-    built = assign_variables(build(clips, cameras))
+    # Two families, named apart. The .chor route pairs a staged cutscene with the
+    # cameras that shot it; the numbered route pairs goal_celebrate_NNNN cameras with
+    # the dml_goal_celebrate_NNNN performance of the same number, with no .chor
+    # between them - and that is where most of PES's celebrations live.
+    performances = [os.path.basename(p)
+                    for p in sorted(glob.glob(os.path.join(args.dir, "anims", "*.anim")))]
+    families = sort_cameras(cameras, set(clips))
+    by_id = build_by_id(performances, families["by_id"])
+    by_chor = build(clips, families["by_chor"])
+
+    built = assign_variables(merge(by_chor, by_id))
     out = args.out or os.path.join(args.dir, "celebrations.txt")
     open(out, "w").write(manifest_text(built))
 
     filmed = sum(1 for entry in built.values() if entry["cameras"])
     print("%d celebration(s), %d of them filmed, %d camera track(s) -> %s"
           % (len(built), filmed, sum(len(e["cameras"]) for e in built.values()), out))
+    print("   %d from a choreography, %d keyed by number" % (len(by_chor), len(by_id)))
+    if families["other"]:
+        print("   %d camera(s) are not celebration camerawork (a ground's own goal "
+              "cameras and the like), e.g. %s"
+              % (len(families["other"]), ", ".join(families["other"][:3])))
     for name in sorted(built):
         if not built[name]["cameras"]:
             print("  %-42s performance only, no camerawork" % name)
