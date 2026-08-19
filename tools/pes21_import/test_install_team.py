@@ -129,6 +129,24 @@ class InstallingATeam(unittest.TestCase):
             "(select id from teams where name='/hdg/')"))
         self.assertEqual(orders, list(range(23)))
 
+    def test_the_logo_and_kit_urls_are_set(self):
+        # A NULL here is fatal, not cosmetic: the scoreboard asks the resource manager
+        # for the empty path and it dies with "There is no loader for
+        # databases/default/". That crashed a whole showcase run.
+        install_team.install(self.path, TEAM, TACTICS)
+        logo, kit = self.rows("select logo_url, kit_url from teams where name='/hdg/'")[0]
+        self.assertEqual(logo, "images_teams/hdg/hdg_logo.png")
+        self.assertEqual(kit, "images_teams/hdg/hdg")
+
+    def test_the_tag_comes_from_the_team_name_and_not_the_code(self):
+        # /lcg/ -> lcg, matching the directories the shipped teams already use
+        self.assertEqual(install_team.art_tag("/hdg/"), "hdg")
+        self.assertEqual(install_team.art_tag("/lcg/"), "lcg")
+        self.assertEqual(install_team.art_tag("2HUG"), "2hug")
+
+    def test_a_name_with_nothing_usable_in_it_still_gives_a_tag(self):
+        self.assertTrue(install_team.art_tag("///"))
+
     def test_a_team_with_no_name_is_refused(self):
         with self.assertRaises(ValueError):
             install_team.install(self.path, dict(TEAM, team=""), TACTICS)

@@ -103,6 +103,16 @@ def stat_values(xml):
             for m in re.finditer(r"<([a-z_]+)>([\d.]+)</\1>", xml)}
 
 
+def art_tag(name):
+    """The directory a team's art lives under: "/hdg/" -> "hdg", "2HUG" -> "2hug".
+
+    Matches what the shipped teams already use - images_teams/lcg, images_teams/ink -
+    so a 4cc team's crest and kits sit beside theirs.
+    """
+    tag = "".join(c for c in name.lower() if c.isalnum())
+    return tag or "team"
+
+
 def tactics_xml(tactics):
     """The engine's own format: one tag per slider (TeamData::SaveTactics)."""
     return "".join("<%s>%.6f</%s>\n" % (k, v, k) for k, v in sorted(tactics.items()))
@@ -126,20 +136,28 @@ def install(database, team, tactics, dry_run=False):
     try:
         cur = conn.cursor()
         xml = tactics_xml(tactics)
+        # A NULL logo or kit is fatal, not cosmetic: the scoreboard hands the empty
+        # path to the resource manager and it dies with "There is no loader for
+        # databases/default/", which took a whole showcase run down.
+        tag = art_tag(name)
+        logo = "images_teams/%s/%s_logo.png" % (tag, tag)
+        kit = "images_teams/%s/%s" % (tag, tag)
         row = cur.execute("select id from teams where name = ?", (name,)).fetchone()
         if row:
             team_row = row[0]
             cur.execute("update teams set shortname = ?, tactics_xml = ?, "
-                        "tactics_factory_xml = ? where id = ?",
-                        (team["abbreviation"][:3], xml, xml, team_row))
+                        "tactics_factory_xml = ?, logo_url = ?, kit_url = ? "
+                        "where id = ?",
+                        (team["abbreviation"][:3], xml, xml, logo, kit, team_row))
             cur.execute("delete from players where team_id = ?", (team_row,))
         else:
             league = cur.execute("select league_id from teams where league_id is not null "
                                  "limit 1").fetchone()
             cur.execute("insert into teams(league_id, name, shortname, tactics_xml, "
-                        "tactics_factory_xml) values (?, ?, ?, ?, ?)",
+                        "tactics_factory_xml, logo_url, kit_url) "
+                        "values (?, ?, ?, ?, ?, ?, ?)",
                         (league[0] if league else 1, name,
-                         team["abbreviation"][:3], xml, xml))
+                         team["abbreviation"][:3], xml, xml, logo, kit))
             team_row = cur.lastrowid
 
         # The squad in order. The number is the shirt; formationorder is the slot, and
