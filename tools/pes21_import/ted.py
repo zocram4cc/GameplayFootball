@@ -47,11 +47,35 @@ SAMPLE_KEY = bytes.fromhex(
     "738be68ecb2d9a56da9ef6e3eee1affd0b03cb03f4f044fe72e713a646850ff5")
 
 TEAM_NAME_OFFSET = 0x0088
+ABBREVIATION_OFFSET = 0x00ce
+CHANTS_OFFSET = 0x0187
+CHANT_SLOT = 16
+CHANT_SLOTS = 4
+TEAM_ID_OFFSET = 0x026c
 MANAGER_OFFSET = 0x0275
+SQUAD_IDS_OFFSET = 0x02c8
+SQUAD_NUMBERS_OFFSET = 0x0368
+SQUAD_MAX = 23
 SQUAD_ORDER_OFFSET = 0x05c5
 SQUAD_SIZE = 39
-PLAYER_TABLE_OFFSET = 0x08e0
+# The presets start with the team id repeated, then 12 slot indices and ten marks.
+FORMATIONS_OFFSET = 0x03e0
+FORMATION_SLOTS = 12
+FORMATION_MARKS = 10
+FORMATION_STRIDE = FORMATION_SLOTS + 2 * FORMATION_MARKS + 1
+
+# The roster is a plain array of 312-byte records - 0x08e0 is 19 bytes early - and
+# each carries three fixed fields rather than one printable run to be hunted for.
+# Some records open with a KSSH or KSSP magic and some do not, so the magic is no
+# use for finding them: on HDG's export it marks eight of the twenty-three.
+PLAYER_TABLE_OFFSET = 0x08f3
 PLAYER_RECORD_SIZE = 312
+REC_NAME = 0x2b
+REC_SHIRT_NAME = 0x68
+REC_EXTRA = 0xa5
+
+# 4cc writes a coloured name as cRRGGBBff<text>. The tag is markup, not a name.
+COLOUR_TAG = re.compile(r"c[0-9a-fA-F]{6}ff")
 
 
 def recover_key(payload, key_length=KEY_LENGTH):
@@ -91,30 +115,115 @@ def read_squad_order(plain):
     return [b for b in raw]
 
 
+def strip_markup(text):
+    """A name with its 4cc colour tags taken out.
+
+    Names arrive as cRRGGBBff<text> when the pack colours them, and the tag is not
+    part of the man's name: "c8b5f55ffI DIVE" is I DIVE.
+    """
+    without_tags = COLOUR_TAG.sub("", text)
+    # And control bytes are never part of a name: five of HDG's twenty-three open
+    # with 0x11, which strip() leaves in place.
+    return "".join(c for c in without_tags if c >= " ").strip()
+
+
 def read_players(plain):
-    """Names in record order. A record's name is the longest printable run in
-    it, which is robust against the bit-packed stats before it."""
+    """-> [{name, shirt_name, extra}] in record order, from their own fields.
+
+    Reading the longest printable run instead was wrong twice on HDG's export: it
+    dragged in the colour markup and the stray bytes of the packed block before a
+    name, and where a shirt name was the longer of the two it returned that - player
+    12 came out as "MY FAVOURITE" rather than "Brapdiver".
+    """
     players = []
     offset = PLAYER_TABLE_OFFSET
     while offset + PLAYER_RECORD_SIZE <= len(plain):
-        record = plain[offset:offset + PLAYER_RECORD_SIZE]
-        runs = re.findall(rb"[\x20-\x7e]{3,}", record)
-        runs = [r for r in runs if not r.startswith(b"w" * 4)]
-        name = max(runs, key=len).decode("ascii", "replace").strip() if runs else ""
+        name = strip_markup(read_string(plain, offset + REC_NAME))
         if not name:
             break
-        players.append(name)
+        players.append({
+            "name": name,
+            "shirt_name": strip_markup(read_string(plain, offset + REC_SHIRT_NAME)),
+            "extra": strip_markup(read_string(plain, offset + REC_EXTRA)),
+        })
         offset += PLAYER_RECORD_SIZE
     return players
+
+
+def read_team_id(plain):
+    if TEAM_ID_OFFSET + 4 > len(plain):
+        return 0
+    return struct.unpack_from("<I", plain, TEAM_ID_OFFSET)[0]
+
+
+def read_abbreviation(plain):
+    return read_string(plain, ABBREVIATION_OFFSET, 8)
+
+
+def read_chants(plain):
+    """-> the chant slots that hold one."""
+    out = []
+    for slot in range(CHANT_SLOTS):
+        chant = read_string(plain, CHANTS_OFFSET + slot * CHANT_SLOT, CHANT_SLOT)
+        if chant:
+            out.append(chant)
+    return out
+
+
+def read_squad(plain):
+    """-> [{id, number}] in team order, stopping at the first empty slot.
+
+    This is the squad itself, as against read_squad_order's permutation: HDG's is
+    ids 80301..80323 wearing 1..23.
+    """
+    out = []
+    for slot in range(SQUAD_MAX):
+        at = SQUAD_IDS_OFFSET + 4 * slot
+        num_at = SQUAD_NUMBERS_OFFSET + 2 * slot
+        if at + 4 > len(plain) or num_at + 2 > len(plain):
+            break
+        identifier = struct.unpack_from("<I", plain, at)[0]
+        if identifier == 0:
+            break
+        out.append({"id": identifier,
+                    "number": struct.unpack_from("<H", plain, num_at)[0]})
+    return out
+
+
+def read_formations(plain):
+    """-> the formation presets: 12 slot indices and ten (x, y) marks apiece.
+
+    The marks are kept in the units they were authored in - x about a centre of 52,
+    y from 8 to 43 on HDG's export - and deliberately not rescaled. What those units
+    are worth has to be calibrated against the engine's own formation coordinates,
+    and guessing it would bake a wrong pitch into the import.
+    """
+    out = []
+    at = FORMATIONS_OFFSET + 4  # the team id repeats at the head of the block
+    while at + FORMATION_STRIDE <= len(plain):
+        slots = list(plain[at:at + FORMATION_SLOTS])
+        marks_at = at + FORMATION_SLOTS
+        marks = [(plain[marks_at + 2 * m], plain[marks_at + 2 * m + 1])
+                 for m in range(FORMATION_MARKS)]
+        if not any(x or y for x, y in marks):
+            break
+        out.append({"slots": slots, "marks": marks})
+        at += FORMATION_STRIDE
+    return out
 
 
 def read_export(path):
     plain, key = decrypt(open(path, "rb").read())
     return {
         "team": read_string(plain, TEAM_NAME_OFFSET),
+        "team_id": read_team_id(plain),
+        "abbreviation": read_abbreviation(plain),
         "manager": read_string(plain, MANAGER_OFFSET),
+        "chants": read_chants(plain),
+        "squad": read_squad(plain),
         "squad_order": read_squad_order(plain),
         "players": read_players(plain),
+        "formations": read_formations(plain),
         "key": key.hex(),
         "key_is_sample": key == SAMPLE_KEY,
     }, plain
@@ -136,13 +245,21 @@ def main():
         print(json.dumps(export, indent=2))
         return 0
 
-    print("team     %s" % export["team"])
+    print("team     %s (%s), id %d" % (export["team"], export["abbreviation"],
+                                       export["team_id"]))
     print("manager  %s" % export["manager"])
     print("key      %s%s" % (export["key"], "" if export["key_is_sample"] else "  (per-file)"))
+    for chant in export["chants"]:
+        print("chant    %s" % chant)
     print("order    %s" % " ".join("%d" % n for n in export["squad_order"][:11]))
+    print("squad    %d" % len(export["squad"]))
     print("players  %d" % len(export["players"]))
-    for i, name in enumerate(export["players"]):
-        print("   %2d  %s" % (i + 1, name))
+    for i, player in enumerate(export["players"]):
+        number = export["squad"][i]["number"] if i < len(export["squad"]) else 0
+        print("   %2d  %-34s %s" % (number or i + 1, player["name"],
+                                    player["shirt_name"]))
+    for i, preset in enumerate(export["formations"]):
+        print("form %d   %s" % (i, " ".join("%d,%d" % m for m in preset["marks"])))
     return 0
 
 
