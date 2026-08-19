@@ -180,6 +180,7 @@ set(LOADERS_SOURCES
         src/loaders/asecache.cpp
    src/loaders/asecache.hpp
    src/loaders/aseloader.cpp
+   src/loaders/asenormals.cpp
         src/loaders/oggdecoder.cpp
         src/utils/playermodelmap.cpp
         src/utils/faceanim.cpp

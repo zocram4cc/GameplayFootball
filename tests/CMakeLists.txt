@@ -306,6 +306,21 @@ target_link_libraries(gameplayfootball_camtrack_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_camtrack_tests DISCOVERY_MODE PRE_TEST)
 
+# ASE normal derivation: normals are 45% of an imported stadium's bytes and, over
+# 200,000 sampled faces, 100% of them are flat - so a mesh can ship without them.
+add_executable(gameplayfootball_asenormals_tests
+  base/ase_normals_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/loaders/asenormals.cpp
+)
+target_include_directories(gameplayfootball_asenormals_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_asenormals_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_asenormals_tests DISCOVERY_MODE PRE_TEST)
+
 # Entrance choreography loader unit tests (imported PES _pl packs)
 add_executable(gameplayfootball_entrancechoreo_tests
   base/entrancechoreo_test.cpp
