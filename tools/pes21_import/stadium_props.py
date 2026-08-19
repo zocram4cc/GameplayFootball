@@ -339,10 +339,43 @@ def marks_for_role(role, pitch_half_x=PITCH_HALF_X, pitch_half_y=PITCH_HALF_Y):
     return []
 
 
-def write_prop(out, name, material_index, mesh, mark, yaw):
-    """Writes one piece of furniture into an ASE, standing exactly on its mark."""
+def prop_placement(meshes):
+    """-> how to place every mesh of one prop: {"dx", "dy", "lift"}.
+
+    A prop is not one mesh. gadget_cornerflag is four - pole, ground disc, and the
+    cloth in two pieces - and placing each on its own is what put the flag on the
+    floor: the cloth is authored at z 1.28..1.62, where it hangs off the top of a
+    1.62 m pole, and setting *it* down on the grass dropped it by 1.28 m. The
+    footprint centring did the same sideways, pushing a flag that hangs to one side
+    of the pole back onto the pole's axis.
+
+    So both are measured once over every vertex the prop has, and every one of its
+    meshes is placed with that: the pole still stands on the grass, and the flag keeps
+    its height and its overhang.
+    """
+    everything = [v for mesh in meshes for v in mesh]
+    if not everything:
+        return {"dx": 0.0, "dy": 0.0, "lift": 0.0}
+    dx, dy = stadium_staff.footprint_offset(everything)
+    lift = -min(v[2] for v in everything)
+    return {"dx": dx, "dy": dy, "lift": lift}
+
+
+def place_prop_mesh(vertices, placement):
+    """One mesh's vertices moved by its prop's shared placement."""
+    return [(v[0] + placement["dx"], v[1] + placement["dy"], v[2] + placement["lift"])
+            for v in vertices]
+
+
+def write_prop(out, name, material_index, mesh, mark, yaw, placement=None):
+    """Writes one piece of furniture into an ASE, standing exactly on its mark.
+
+    `placement` is the prop's own, shared by every mesh in it (prop_placement). Left
+    out, the mesh is placed on its own, which is right only for a prop that is one
+    mesh.
+    """
     stadium_staff._write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=False,
-                                on_ground=True)
+                                on_ground=True, placement=placement)
 
 
 def dressed_meshes(dressed):
@@ -460,13 +493,20 @@ def main():
     for role in sorted(by_role):
         marks = marks_of(role)
         for (stem, meshes, skins), mark in assign(by_role[role], marks):
+            # One placement for the whole prop. Measured per mesh, a corner flag's
+            # cloth is set down on the grass and centred on the pole - which is how
+            # the flag came out lying on the floor beside it.
+            placement = prop_placement(
+                [[stadium_staff._fox_to_gf(v.position) for v in mesh.vertices]
+                 for mesh in meshes])
             for mesh, texture in zip(meshes, skins):
                 ident = getattr(texture, "filename", None) if texture else None
                 own = placeholder_bitmap(ident, stem)
                 if own:
                     # PES's run-time slot, not artwork: the engine paints the team's
                     # badge on it rather than us shipping Konami's stand-in.
-                    figures.append((mesh, (mark[0], mark[1]), mark[2], None, stem, own))
+                    figures.append((mesh, (mark[0], mark[1]), mark[2], None, stem, own,
+                                    placement))
                     continue
                 bitmap = stadium_to_gf._texture_png(texture, ftex_index, args.out, converted)
                 # The competition's emblem goes on the pennant faces, and only on
@@ -475,7 +515,8 @@ def main():
                         getattr(texture, "filename", None)):
                     bitmap = _composed_face(bitmap, emblem_image, emblem_stem,
                                             args.out, composed)
-                figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem, None))
+                figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem, None,
+                                placement))
         print("  %-10s %d mark(s) from %d model(s): %s"
               % (role, len(marks), len(by_role[role]),
                  ", ".join(m[0] for m in by_role[role])))
@@ -490,15 +531,16 @@ def main():
     with open(ase_path, "w") as out:
         stadium_to_gf._write_ase_header(out, args.name)
         out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(figures))
-        for i, (_mesh, _mark, _yaw, bitmap, source, own) in enumerate(figures):
+        for i, (_mesh, _mark, _yaw, bitmap, source, own, _place) in enumerate(figures):
             # `own` is the engine's own cloth for one of PES's run-time slots; it is
             # already a path under media/, so it goes in as the fallback rather than
             # being prefixed with the stadium's asset directory.
             stadium_to_gf._write_material(out, i, "prop_%02d_%s" % (i, source), bitmap,
                                           args.asset_dir or args.name, own)
         out.write("}\n")
-        for i, (mesh, mark, yaw, _bitmap, source, _own) in enumerate(figures):
-            write_prop(out, "%s_%02d_%s" % (args.name, i, source), i, mesh, mark, yaw)
+        for i, (mesh, mark, yaw, _bitmap, source, _own, place) in enumerate(figures):
+            write_prop(out, "%s_%02d_%s" % (args.name, i, source), i, mesh, mark, yaw,
+                       placement=place)
     print("wrote %s: %d piece(s) of furniture" % (ase_path, len(figures)))
 
     object_path = os.path.join(args.out, args.name + ".object")

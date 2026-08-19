@@ -254,7 +254,7 @@ def wants_winding_flipped(vertices, faces):
 
 
 def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
-                  on_ground=False):
+                  on_ground=False, placement=None):
     """Writes one figure into an ASE, standing on `mark`.
 
     off_pitch sets it out past the touchline by its own depth, which is what a
@@ -265,13 +265,22 @@ def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
     on_ground sets it down on the grass. The staff stand on their own origin, but
     PES hangs some props off an attach point instead - mob_prop_camera00 runs from
     1.63 m below its origin to 0.09 above, so on the ground it would be buried.
+
+    placement is the whole prop's, shared by every mesh in it
+    (stadium_props.prop_placement). It matters for anything built out of more than one
+    mesh: measured on its own, a corner flag's cloth is set down on the grass and
+    centred on the pole, which is how the flag ended up lying on the floor.
     """
     local = [_fox_to_gf(v.position) for v in mesh.vertices]
-    dx, dy = footprint_offset(local)
-    centred = [(v[0] + dx, v[1] + dy, v[2]) for v in local]
-    if on_ground and centred:
-        lift = -min(v[2] for v in centred)
-        centred = [(v[0], v[1], v[2] + lift) for v in centred]
+    if placement is not None:
+        centred = [(v[0] + placement["dx"], v[1] + placement["dy"],
+                    v[2] + (placement["lift"] if on_ground else 0.0)) for v in local]
+    else:
+        dx, dy = footprint_offset(local)
+        centred = [(v[0] + dx, v[1] + dy, v[2]) for v in local]
+        if on_ground and centred:
+            lift = -min(v[2] for v in centred)
+            centred = [(v[0], v[1], v[2] + lift) for v in centred]
     depth = max(v[1] for v in centred) - min(v[1] for v in centred)
     stand = ((mark[0], mark_for_depth(mark[1], depth, PITCH_HALF_Y)) if off_pitch
              else (mark[0], mark[1]))

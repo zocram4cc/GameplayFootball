@@ -235,3 +235,77 @@ class PesRenderPasses(unittest.TestCase):
 
     def test_nothing_keeps_nothing(self):
         self.assertEqual(stadium_to_gf.keep_visible_passes([]), [])
+
+
+class AdvertisingReadsFromThePitch(unittest.TestCase):
+    """Turning a hoarding round is not enough; its text has to read the right way.
+
+    Rendered and read off the capture, the imported ring shows a run of boards where
+    some ads read normally and others are mirrored ("LESBIANS" as "SNAIBSEL").
+    Measured over adboards.ase: of 89 meshes carrying board faces, 70 read correctly
+    throughout and one is mirrored throughout, but 18 - the big merged runs - hold
+    both, and those carry about 900 of the 916 mirrored faces. Inside one such mesh
+    the same UV rectangle turns up twice with opposite handedness (nine faces at
+    U 0.668..0.854 mirrored against nine at U 0.670..0.841 readable), which is what a
+    modeller mirroring a duplicated segment leaves behind. PES gets away with it
+    because it assigns the advertising faces at runtime through bill_anime.json; this
+    engine uses the model's own UVs, so the mirrored copies show mirrored ads.
+
+    So the handedness is normalised: for a board face whose U grows towards the
+    viewer's LEFT when seen from the pitch, U is mirrored within that face's own
+    extent, which for a UV rectangle is exactly the panel flipped back.
+    """
+
+    def test_a_panel_facing_the_pitch_with_u_growing_rightwards_is_left_alone(self):
+        # a board on the far touchline (y = +40) facing the pitch: normal -y, so a
+        # viewer at the centre sees +x as his right
+        vertices = [(0.0, 40.0, 0.0), (2.0, 40.0, 0.0), (2.0, 40.0, 1.0)]
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
+        self.assertFalse(stadium_to_gf.face_reads_mirrored(vertices, uvs))
+
+    def test_the_same_panel_with_u_growing_leftwards_reads_mirrored(self):
+        vertices = [(0.0, 40.0, 0.0), (2.0, 40.0, 0.0), (2.0, 40.0, 1.0)]
+        uvs = [(1.0, 0.0), (0.0, 0.0), (0.0, 1.0)]
+        self.assertTrue(stadium_to_gf.face_reads_mirrored(vertices, uvs))
+
+    def test_a_board_behind_the_goal_is_judged_in_its_own_frame(self):
+        # x = +55, facing the pitch: normal -x, so the viewer's right is -y
+        vertices = [(55.0, 2.0, 0.0), (55.0, 0.0, 0.0), (55.0, 0.0, 1.0)]
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
+        self.assertFalse(stadium_to_gf.face_reads_mirrored(vertices, uvs))
+
+    def test_a_face_lying_flat_has_no_text_to_read(self):
+        # the ring's own ground shadow: nothing to mirror, and no viewer frame either
+        vertices = [(0.0, 0.0, 0.0), (2.0, 0.0, 0.0), (2.0, 2.0, 0.0)]
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
+        self.assertIsNone(stadium_to_gf.face_reads_mirrored(vertices, uvs))
+
+    def test_a_degenerate_face_is_not_judged(self):
+        vertices = [(0.0, 40.0, 0.0), (0.0, 40.0, 0.0), (0.0, 40.0, 0.0)]
+        self.assertIsNone(stadium_to_gf.face_reads_mirrored(vertices, [(0.0, 0.0)] * 3))
+
+    def test_mirroring_flips_u_within_the_faces_own_extent(self):
+        # 0.668..0.854 stays 0.668..0.854; only which corner is which changes
+        uvs = [(0.668, 0.0), (0.854, 0.0), (0.854, 1.0)]
+        flipped = stadium_to_gf.mirror_face_u(uvs)
+        self.assertAlmostEqual(flipped[0][0], 0.854)
+        self.assertAlmostEqual(flipped[1][0], 0.668)
+        self.assertAlmostEqual(flipped[2][0], 0.668)
+
+    def test_mirroring_leaves_v_alone(self):
+        uvs = [(0.1, 0.25), (0.9, 0.75), (0.9, 0.5)]
+        for before, after in zip(uvs, stadium_to_gf.mirror_face_u(uvs)):
+            self.assertAlmostEqual(before[1], after[1])
+
+    def test_mirroring_twice_is_the_original(self):
+        uvs = [(0.2, 0.0), (0.7, 0.0), (0.7, 1.0)]
+        twice = stadium_to_gf.mirror_face_u(stadium_to_gf.mirror_face_u(uvs))
+        for before, after in zip(uvs, twice):
+            self.assertAlmostEqual(before[0], after[0])
+
+    def test_a_mirrored_panel_reads_correctly_once_flipped(self):
+        vertices = [(0.0, 40.0, 0.0), (2.0, 40.0, 0.0), (2.0, 40.0, 1.0)]
+        uvs = [(1.0, 0.0), (0.0, 0.0), (0.0, 1.0)]
+        self.assertTrue(stadium_to_gf.face_reads_mirrored(vertices, uvs))
+        self.assertFalse(
+            stadium_to_gf.face_reads_mirrored(vertices, stadium_to_gf.mirror_face_u(uvs)))
