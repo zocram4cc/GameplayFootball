@@ -506,6 +506,56 @@ Goal celebrations (`goal`, 2 015 streams, 515 278 frames) are the biggest prize
 but need the actor `.gani` playback to be worth cutting to, since the shots are
 framed around specific celebration animations.
 
+### 6.7 A goal camera is not authored in world space
+
+The position envelope in §4 reads a `goal` track as if its numbers were places on
+a pitch, and they are not. PES authors a goal camera in the *celebration's own*
+space: the scorer stands at the origin and the camera is set around him. Measured
+over the 516 goal tracks imported into `data/media/cutscenes/goal`, taking the
+first frame of each:
+
+| | min | p25 | median | p75 | max |
+|---|---|---|---|---|---|
+| distance from the origin | 1.0 | 9.6 | **12.6** | 19.2 | 80.1 |
+| framed height at that distance | 0.28 | 0.95 | **1.85** | 2.40 | 37.2 |
+| lens (vertical FOV, degrees) | 0.53 | 3.66 | **9.04** | 13.61 | 51.28 |
+| camera height | 0.01 | 0.67 | **0.72** | 1.02 | 20.0 |
+
+448 of the 516 aim within ten degrees of `(0, 0, 1)` — chest height on a man
+standing at the origin — and the median lens frames 1.85 m at the median
+distance, which is that man. The families separate cleanly too: the 27
+`_Z_fromL` tracks sit at x = +40.6 and the 27 `_Z_fromR` at x = -39.1, both at
+y = -18.7, and the 355 numbered `goal_celebrate_NNNN` cameras sit dead in front
+at x = 0.0, y = -11.6. The camera is on the -Y side in 349 of those 355, so
+local -Y is the way the scorer faces.
+
+That explains the shot the engine used to take. Reading the frame as a world
+position put every goal camera near the centre spot regardless of where the goal
+was scored, and `RetargetCamTrackFrame` then re-aimed it at the scorer and opened
+the lens far enough to cover him — so PES's 0.9-degree telephoto, which is right
+only because its camera is a hundred metres out, became a 40-degree lens jammed
+against a scorer's head.
+
+`StageCamTrackFrame` (`src/utils/camtrack.cpp`) treats the frame as what it is: a
+composition to put down. The authored offset is turned about world Z by the yaw
+that lays local -Y along the scorer's facing, added to his feet, and the same turn
+is applied to the rotation. Nothing else is touched — distance, lens, clip planes
+and the authored camera move all survive. The yaw is taken once, when the goal
+goes in (`Match::UpdateIngameCamera`), and held: re-read every frame it swings the
+camera round the player as he turns.
+
+The old `goalCamAuthoredSides` x-mirror went with it. It was there to flip a
+world-space track to whichever end the goal was scored at, and in celebration
+space there is no end to flip to — the yaw already puts the shot where it belongs.
+
+Two caveats. The *other* incident-local categories are not the same shape: only
+2 of 16 `change` tracks and neither `card` track aims at its origin, so those are
+multi-actor stagings whose authored aim points at whichever actor PES framed, and
+they keep the re-aim (`CutsceneViewer::Anchoring::IncidentLocal`) rather than pure
+staging. And the celebration animations are in-place, so the camera follows the
+scorer's live position; if a scorer ever runs while celebrating, the shot travels
+with him rather than letting him leave a 9-degree frame.
+
 ---
 
 ## 7. `CameraPickupInfo.bin` (a separate, smaller table)

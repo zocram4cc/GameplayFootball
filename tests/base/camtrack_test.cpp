@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <sstream>
 
 #include "utils/camtrack.hpp"
@@ -215,4 +216,79 @@ TEST(CamTrackTimeline, ATrackWithOneCutIsJustThatTrack) {
 TEST(CamTrackTimeline, TheTimelineIsAsLongAsItsLastCutRunsFor) {
   const blunted::CamTrack track = LoadMontage();
   EXPECT_EQ(track.GetTimelineFrameCount(), 105);
+}
+
+// --- staging: PES authors its goal camerawork in the celebration's own space ---
+//
+// Measured over the 516 imported goal tracks: 448 of them aim within ten degrees of
+// the local origin, from a median 12.6 m away, with a median 9-degree lens - which
+// frames 1.85 m of subject at that distance, i.e. a man. The scorer stands at the
+// origin and the camera is placed around him; _Z_fromL sits at +40 m on X and
+// _Z_fromR at -39, and the 355 numbered celebration cameras sit dead in front at
+// y = -11.6.
+//
+// So a goal frame is not a world position to be re-aimed but a composition to be put
+// down: stage it at the scorer, turned the way he is turned, and PES's distance, lens
+// and camera move all come with it.
+
+TEST(CamTrackStage, PutsTheAuthoredOffsetDownAtTheSubject) {
+  blunted::CamTrackFrame frame;
+  frame.position = {0.0f, -12.0f, 0.7f};  // authored: in front of him, low
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  auto out = blunted::StageCamTrackFrame(frame, {30.0f, -20.0f, 0.0f}, 0.0f);
+  EXPECT_NEAR(out.position[0], 30.0f, 1e-4);
+  EXPECT_NEAR(out.position[1], -32.0f, 1e-4);
+  EXPECT_NEAR(out.position[2], 0.7f, 1e-4);   // the subject stands on the ground
+}
+
+TEST(CamTrackStage, KeepsTheLensPesChose) {
+  // the whole point: a 0.9-degree lens is right because the camera is 100 m out,
+  // and staging keeps them together
+  blunted::CamTrackFrame frame;
+  frame.position = {0.0f, -99.0f, 1.5f};
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.fov = 0.91f;
+  frame.near = 35.0f;
+  frame.far = 400.0f;
+  auto out = blunted::StageCamTrackFrame(frame, {10.0f, 10.0f, 0.0f}, 0.0f);
+  EXPECT_FLOAT_EQ(out.fov, 0.91f);
+  EXPECT_FLOAT_EQ(out.near, 35.0f);
+  EXPECT_FLOAT_EQ(out.far, 400.0f);
+}
+
+TEST(CamTrackStage, TurnsWithTheSubject) {
+  // +90 degrees about Z: the camera authored in front of him swings round to his side
+  blunted::CamTrackFrame frame;
+  frame.position = {0.0f, -12.0f, 0.7f};
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  const float halfPi = 1.57079633f;
+  auto out = blunted::StageCamTrackFrame(frame, {0.0f, 0.0f, 0.0f}, halfPi);
+  EXPECT_NEAR(out.position[0], 12.0f, 1e-3);
+  EXPECT_NEAR(out.position[1], 0.0f, 1e-3);
+  EXPECT_NEAR(out.position[2], 0.7f, 1e-4);
+}
+
+TEST(CamTrackStage, TheShotStillFramesHimAfterTurning) {
+  // whatever the yaw, a camera authored looking at the origin looks at the scorer
+  blunted::CamTrackFrame frame;
+  frame.position = {0.0f, -12.0f, 1.0f};
+  frame.rotation = {0.70710678f, 0.0f, 0.0f, 0.70710678f};  // +90 about X: looks +Y
+  for (float yaw = -3.0f; yaw < 3.0f; yaw += 0.7f) {
+    auto out = blunted::StageCamTrackFrame(frame, {25.0f, -8.0f, 0.0f}, yaw);
+    auto fwd = blunted::CamTrackForward(out.rotation);
+    // the aim line from the staged camera to the scorer's chest
+    const float aim[3] = {25.0f - out.position[0], -8.0f - out.position[1],
+                          1.0f - out.position[2]};
+    const float len = std::sqrt(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]);
+    const float dot =
+        (fwd[0] * aim[0] + fwd[1] * aim[1] + fwd[2] * aim[2]) / len;
+    EXPECT_NEAR(dot, 1.0f, 1e-3) << "yaw " << yaw;
+  }
+}
+
+TEST(CamTrackStage, NoTurnLeavesTheAuthoredRotationAlone) {
+  blunted::CamTrackFrame frame;
+  frame.rotation = {0.1f, 0.2f, 0.3f, 0.927362f};
+  auto out = blunted::StageCamTrackFrame(frame, {0.0f, 0.0f, 0.0f}, 0.0f);
+  for (int c = 0; c < 4; c++) EXPECT_NEAR(out.rotation[c], frame.rotation[c], 1e-5);
 }
