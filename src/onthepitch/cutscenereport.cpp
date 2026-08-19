@@ -1,6 +1,7 @@
 #include "cutscenereport.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace CutsceneViewer {
@@ -36,6 +37,23 @@ TrackExtent MeasureTrack(const blunted::CamTrack& track) {
   // incident-local pack.
   extent.isStatic = extent.SpanX() < 0.01f && extent.SpanY() < 0.01f &&
                     (extent.maxZ - extent.minZ) < 0.01f;
+
+  // Where the shot opens looking. The first frame is what decides it: PES pans off
+  // its subject as a shot develops (a goal camera is 3 degrees off the origin at
+  // frame 0 and 60 by frame 105), so a late frame says nothing about whose space the
+  // track was authored in.
+  const blunted::CamTrackFrame opening = track.Sample(0.0f);
+  const std::array<float, 3> forward = blunted::CamTrackForward(opening.rotation);
+  const float toOrigin[3] = {-opening.position[0], -opening.position[1],
+                             1.0f - opening.position[2]};
+  const float distance = std::sqrt(toOrigin[0] * toOrigin[0] + toOrigin[1] * toOrigin[1] +
+                                  toOrigin[2] * toOrigin[2]);
+  if (distance > 0.5f) {
+    const float cosine = (forward[0] * toOrigin[0] + forward[1] * toOrigin[1] +
+                          forward[2] * toOrigin[2]) / distance;
+    extent.aimsAtOrigin =
+        cosine >= std::cos(kAimsAtOriginDegrees * 3.14159265358979f / 180.0f);
+  }
   return extent;
 }
 

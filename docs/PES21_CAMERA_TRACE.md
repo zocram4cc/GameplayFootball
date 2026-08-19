@@ -572,6 +572,18 @@ the guard leaves PES's lens untouched on 77.5% at 0.75 m, 92.5% at 0.40, 98.8% a
 0.25 and **99.6% at 0.15**, which is the value used - it fires only where even a
 face would not fit, i.e. where the camera is right on top of him.
 
+The same measurement fixed how a track's space is decided at all. `ClassifyAnchoring`
+used to call a track incident-local only when every frame sat within 12 m of the
+centre, and over the 703 imported tracks that rule is a poor discriminator - it
+catches 32% of the goal camerawork where 90% aims at the origin, and none of the
+`result` camerawork, which is 88% aimed at the origin from a median 99 m out: long
+lenses on a group standing at the middle, as incident-local as anything. Aim cannot
+decide alone either, because PES's card shots sit five metres out and aim *past* the
+origin at the referee. Either sign is now enough (`aimsAtOrigin` at 15 degrees, or
+the 12 m radius), which is strictly wider than before, so nothing that was staged at
+the incident stopped being staged there. The aim is read off the opening frame -
+a later one says nothing, since PES pans away as the shot develops.
+
 Two caveats. The *other* incident-local categories are not the same shape: only
 2 of 16 `change` tracks and neither `card` track aims at its origin, so those are
 multi-actor stagings whose authored aim points at whichever actor PES framed, and

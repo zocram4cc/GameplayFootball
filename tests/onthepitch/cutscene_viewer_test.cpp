@@ -98,3 +98,43 @@ TEST(CutsceneViewer, AFilterMatchesOnSubstring) {
   EXPECT_TRUE(CutsceneViewer::PackMatches(s, "foul_injury_card_r01"));
   EXPECT_FALSE(CutsceneViewer::PackMatches(s, "foul_injury_card_y01"));
 }
+
+// How far out a track sits is a poor test of whose space it is in. Measured over the
+// 703 imported tracks, the 12 m rule calls only 32% of the goal camerawork
+// incident-local when 90% of it aims at the origin, and none of the `result`
+// camerawork - which is 88% aimed at the origin from a median 99 m out, long lenses
+// on a group standing at the middle. Those are authored about their subject as
+// plainly as a card shot is; they are just further away.
+//
+// So aim decides too. It cannot decide alone: PES's card shots sit within 12 m and do
+// NOT aim at their origin (0 of 2), because they frame a referee standing beside the
+// incident rather than the incident itself. Both signs together, either sufficient,
+// is the rule that fits the data - and it is strictly wider than the radius alone, so
+// nothing that is staged at the incident today stops being staged there.
+
+TEST(CutsceneViewer, ALongLensAimedAtItsOriginIsIncidentLocal) {
+  // result_*: 99 m out, pointed at the middle
+  CutsceneViewer::TrackExtent e = Extent(300, -70.0f, -70.0f, -70.0f, -70.0f);
+  e.aimsAtOrigin = true;
+  EXPECT_EQ(CutsceneViewer::ClassifyAnchoring(e), CutsceneViewer::Anchoring::IncidentLocal);
+}
+
+TEST(CutsceneViewer, ACloseShotThatLooksElsewhereIsStillIncidentLocal) {
+  // the card shot: 5.6 m out, aimed past the origin at the referee
+  CutsceneViewer::TrackExtent e = Extent(180, -4.4f, -4.4f, -3.1f, -3.1f);
+  e.aimsAtOrigin = false;
+  EXPECT_EQ(CutsceneViewer::ClassifyAnchoring(e), CutsceneViewer::Anchoring::IncidentLocal);
+}
+
+TEST(CutsceneViewer, AFarShotThatLooksElsewhereIsStadiumWorld) {
+  // neither sign: a shot of the stands, authored where it stands
+  CutsceneViewer::TrackExtent e = Extent(300, -72.0f, 56.0f, -39.5f, 0.0f);
+  e.aimsAtOrigin = false;
+  EXPECT_EQ(CutsceneViewer::ClassifyAnchoring(e), CutsceneViewer::Anchoring::StadiumWorld);
+}
+
+TEST(CutsceneViewer, AnEmptyTrackIsStillUnclassifiable) {
+  CutsceneViewer::TrackExtent e = Extent(0, 0, 0, 0, 0);
+  e.aimsAtOrigin = true;   // nothing to aim with, so it cannot rescue an empty track
+  EXPECT_EQ(CutsceneViewer::ClassifyAnchoring(e), CutsceneViewer::Anchoring::Unknown);
+}
