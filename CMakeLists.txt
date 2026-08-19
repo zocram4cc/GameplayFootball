@@ -372,6 +372,25 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   endif()
 
   add_executable(gameplayfootball ${CORE_SOURCES} ${CORE_HEADERS})
+
+  # A standalone model viewer. It reuses the whole engine except main.cpp - and the
+  # engine's own ASE loader on purpose: a viewer with its own parser would show what
+  # its parser thinks rather than what the game sees, which is the opposite of useful
+  # when an imported model is missing geometry.
+  set(VIEWER_SOURCES ${CORE_SOURCES})
+  list(REMOVE_ITEM VIEWER_SOURCES src/main.cpp)
+  add_executable(gfviewer ${VIEWER_SOURCES} src/viewer/main.cpp)
+  target_link_libraries(gfviewer PRIVATE ${LIBRARIES})
+  target_include_directories(gfviewer PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+    ${OPENGL_INCLUDE_DIR}
+    ${SDL2_INCLUDE_DIR}
+    ${SDL2_IMAGE_INCLUDE_DIRS}
+    ${SDL2_TTF_INCLUDE_DIRS}
+    ${SDL2_GFX_INCLUDE_DIRS}
+    ${GF_BOOST_INCLUDE_DIRS}
+    ${SQLite3_INCLUDE_DIRS}
+  )
   target_link_libraries(gameplayfootball PRIVATE ${LIBRARIES})
   target_include_directories(gameplayfootball PRIVATE
     ${PROJECT_SOURCE_DIR}/src

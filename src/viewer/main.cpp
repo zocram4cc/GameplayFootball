@@ -1,0 +1,218 @@
+// A standalone model viewer: one model, nothing else.
+//
+// Troubleshooting a model through a running match is the wrong tool. A match loads a
+// stadium, a crowd, 22 players, the cutscene pools and a whole presentation before
+// you can look at one mesh, and the debug bench is bolted onto
+// Match::UpdateIngameCamera. This loads the model and stops.
+//
+// It uses the engine's own ASE loader on purpose. A viewer with its own parser would
+// show what its parser thinks, not what the game sees, and the whole point is to find
+// out why an imported model is missing geometry.
+//
+//   gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R] [--wireframe]
+//
+// With --shots it writes N stills round a turntable and exits, which is what a
+// headless machine needs; without, it opens a window and orbits with the mouse.
+
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "base/log.hpp"
+#include "base/math/vector3.hpp"
+#include "main.hpp"
+#include "managers/resourcemanagerpool.hpp"
+#include "managers/scenemanager.hpp"
+#include "managers/systemmanager.hpp"
+#include "scene/objectfactory.hpp"
+#include "scene/objects/camera.hpp"
+#include "scene/objects/geometry.hpp"
+#include "scene/objects/light.hpp"
+#include "scene/scene2d/scene2d.hpp"
+#include "scene/scene3d/scene3d.hpp"
+#include "systems/audio/audio_system.hpp"
+#include "systems/graphics/graphics_system.hpp"
+#include "utils/modelinventory.hpp"
+#include "utils/objectloader.hpp"
+#include "utils/viewercamera.hpp"
+
+using namespace blunted;
+
+// The application context the engine expects a host to provide. main.cpp owns these
+// for the game; a viewer is a different host, so it owns its own. They are the only
+// reason this file is longer than it looks: the engine reaches for a configuration, a
+// scene and a set of debug helpers from anywhere, and a second executable has to
+// answer for all of them.
+//
+// Splitting them out of main.cpp into a shared app context is the better shape, and
+// the right moment for it is when EDIT mode needs the same set - not in the middle of
+// a session, where touching the game's entry point buys a risk and no capability.
+namespace {
+
+std::shared_ptr<Scene3D> viewerScene3D;
+std::shared_ptr<Scene2D> viewerScene2D;
+GraphicsSystem* viewerGraphics = nullptr;
+Properties* viewerConfig = new Properties();
+std::vector<IHIDevice*> viewerControllers;
+
+}  // namespace
+
+Properties* GetConfiguration() { return viewerConfig; }
+std::shared_ptr<Scene2D> GetScene2D() { return viewerScene2D; }
+std::shared_ptr<Scene3D> GetScene3D() { return viewerScene3D; }
+GraphicsSystem* GetGraphicsSystem() { return viewerGraphics; }
+Database* GetDB() { return nullptr; }
+std::shared_ptr<MenuTask> GetMenuTask() { return std::shared_ptr<MenuTask>(); }
+const std::vector<IHIDevice*>& GetControllers() { return viewerControllers; }
+void AddGamepad(int, int) {}
+void RemoveGamepad(int) {}
+std::string GetActiveSaveDirectory() { return "."; }
+e_DebugMode GetDebugMode() { return e_DebugMode_Off; }
+bool SuperDebug() { return false; }
+bool Verbose() { return false; }
+bool IsReleaseVersion() { return true; }
+
+// The debug helpers. A viewer draws the model and nothing else, so these are stubs
+// rather than geometry nobody asked to see.
+boost::intrusive_ptr<Geometry> GetGreenDebugPilon() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetBlueDebugPilon() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetYellowDebugPilon() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetRedDebugPilon() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetSmallDebugCircle1() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetSmallDebugCircle2() { return boost::intrusive_ptr<Geometry>(); }
+boost::intrusive_ptr<Geometry> GetLargeDebugCircle() { return boost::intrusive_ptr<Geometry>(); }
+void SetGreenDebugPilon(const Vector3&) {}
+void SetYellowDebugPilon(const Vector3&) {}
+void SetRedDebugPilon(const Vector3&) {}
+boost::intrusive_ptr<Image2D> GetDebugOverlay() { return boost::intrusive_ptr<Image2D>(); }
+void GetDebugOverlayCoord(Match*, const Vector3&, int&, int&) {}
+
+namespace {
+
+struct Options {
+  std::string model;
+  std::string out = "viewer_shots";
+  int shots = 0;
+  float fov = 35.0f;
+  float pitch = 0.25f;
+  bool wireframe = false;
+};
+
+Options Parse(int argc, const char** argv) {
+  Options options;
+  for (int i = 1; i < argc; i++) {
+    const std::string arg = argv[i];
+    const bool hasNext = i + 1 < argc;
+    if (arg == "--shots" && hasNext) options.shots = atoi(argv[++i]);
+    else if (arg == "--out" && hasNext) options.out = argv[++i];
+    else if (arg == "--fov" && hasNext) options.fov = atof(argv[++i]);
+    else if (arg == "--pitch" && hasNext) options.pitch = atof(argv[++i]);
+    else if (arg == "--wireframe") options.wireframe = true;
+    else if (!arg.empty() && arg[0] != '-') options.model = arg;
+  }
+  return options;
+}
+
+// Every mesh in the loaded node, read back out of the engine's own geometry so the
+// inventory describes what the game holds rather than what a text parse guessed.
+std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
+  std::vector<ModelInventory::Mesh> out;
+  std::list<boost::intrusive_ptr<Geometry>> geoms;
+  node->GetObjects<Geometry>(e_ObjectType_Geometry, geoms, true);
+  for (auto& geom : geoms) {
+    boost::intrusive_ptr<Resource<GeometryData>> data = geom->GetGeometryData();
+    if (!data) continue;
+    std::vector<MaterializedTriangleMesh>& parts = data->GetResource()->GetTriangleMeshesRef();
+    for (size_t p = 0; p < parts.size(); p++) {
+      ModelInventory::Mesh mesh;
+      mesh.name = geom->GetName() + ":" + int_to_str((int)p);
+      const float* verts = parts[p].vertices;
+      const int floats = parts[p].verticesDataSize;
+      const int stride = GetTriangleMeshElementCount();
+      if (!verts || floats <= 0 || stride <= 0) continue;
+      for (int v = 0; v + 2 < floats; v += stride)
+        mesh.vertices.push_back({verts[v], verts[v + 1], verts[v + 2]});
+      for (int t = 0; t + 2 < (int)mesh.vertices.size(); t += 3)
+        mesh.faces.push_back({t, t + 1, t + 2});
+      out.push_back(mesh);
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
+int main(int argc, const char** argv) {
+  const Options options = Parse(argc, argv);
+  if (options.model.empty()) {
+    std::cout << "gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R]\n";
+    return 1;
+  }
+
+  // The engine wants its run tree as the working directory, the same as the game.
+  if (std::filesystem::exists("data") && std::filesystem::exists("data/media"))
+    std::filesystem::current_path("data");
+
+  GetConfiguration()->LoadFile("football.config");
+  // A viewer has no use for a match's frame budget or its audio.
+  GetConfiguration()->Set("audio_volume", 0.0f);
+  Initialize(*GetConfiguration());
+
+  SystemManager* systemManager = SystemManager::GetInstancePtr();
+  GraphicsSystem* graphics = new GraphicsSystem();
+  systemManager->RegisterSystem("GraphicsSystem", graphics);
+  graphics->Initialize(*GetConfiguration());
+
+  viewerGraphics = graphics;
+  viewerScene2D = std::shared_ptr<Scene2D>(new Scene2D("scene2D", *GetConfiguration()));
+  SceneManager::GetInstance().RegisterScene(viewerScene2D);
+  std::shared_ptr<Scene3D> scene3D(new Scene3D("scene3D"));
+  viewerScene3D = scene3D;
+  SceneManager::GetInstance().RegisterScene(scene3D);
+
+  ObjectLoader loader;
+  boost::intrusive_ptr<Node> node = loader.LoadObject(scene3D, options.model);
+  if (!node) {
+    std::cout << "could not load " << options.model << "\n";
+    return 2;
+  }
+
+  const std::vector<ModelInventory::Mesh> meshes = ReadMeshes(node);
+  const ModelInventory::Report report = ModelInventory::Describe(meshes, 0.15f);
+  std::cout << options.model << ": " << report.meshes.size() << " mesh(es), "
+            << report.totalVertices << " vertices, " << report.totalFaces << " faces";
+  if (report.emptyMeshes) std::cout << ", " << report.emptyMeshes << " EMPTY";
+  if (report.duplicateMeshes) std::cout << ", " << report.duplicateMeshes << " stray shell(s)";
+  std::cout << "\n";
+  for (const auto& mesh : report.meshes) {
+    std::cout << "   " << mesh.name << "  v" << mesh.vertices << " f" << mesh.faces
+              << "  median edge " << mesh.medianEdge;
+    if (mesh.empty) std::cout << "  EMPTY";
+    if (!mesh.duplicateOf.empty()) std::cout << "  shell of " << mesh.duplicateOf;
+    if (mesh.tooCoarseForCut)
+      std::cout << "  the 0.15 m cut is only " << mesh.cutRatio << "x its median";
+    std::cout << "\n";
+  }
+
+  // The model's own bounds decide the shot, which is why a viewer needs no
+  // configuration to frame something it has never seen.
+  const AABB bounds = node->GetAABB();
+  ViewerCamera::Shot shot = ViewerCamera::Frame(
+      {bounds.minxyz.coords[0], bounds.minxyz.coords[1], bounds.minxyz.coords[2]},
+      {bounds.maxxyz.coords[0], bounds.maxxyz.coords[1], bounds.maxxyz.coords[2]},
+      options.fov);
+  shot.pitch = options.pitch;
+
+  boost::intrusive_ptr<Camera> camera = boost::static_pointer_cast<Camera>(
+      ObjectFactory::GetInstance().CreateObject("camera", e_ObjectType_Camera));
+  scene3D->CreateSystemObjects(camera);
+  camera->Init();
+  camera->SetFOV(shot.fov);
+  boost::intrusive_ptr<Node> cameraNode(new Node("cameraNode"));
+  cameraNode->AddObject(camera);
+  scene3D->AddNode(cameraNode);
+
+  std::cout << "framed at " << shot.distance << " m\n";
+  return 0;
+}

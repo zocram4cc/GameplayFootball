@@ -331,6 +331,8 @@ set(UTILS_SOURCES
         src/utils/animation.cpp
         src/utils/splitgeometry.cpp
         src/utils/objectloader.cpp
+   src/utils/modelinventory.cpp
+   src/utils/viewercamera.cpp
         src/utils/directoryparser.cpp
         src/utils/threadhud.cpp
         src/utils/xmlloader.cpp
