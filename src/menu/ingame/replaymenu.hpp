@@ -13,6 +13,8 @@
 #include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
+#include <vector>
+
 using namespace blunted;
 
 class ReplayPage : public Gui2Page {
@@ -62,8 +64,21 @@ protected:
   bool wipeClosing;
 
   void StartWipe();
-  // -> true once an outgoing wipe has covered the cut and the page may go.
+  // -> true once the wipe has the screen covered, which is when a cut may happen.
   bool RunWipe();
+  // The cut into the replay, and the cut back out. Both happen under full cover, so
+  // neither is ever seen: PES's own "fadestart" is the frame that marks it.
+  void EnterReplay();
+  void LeaveReplay();
+  // The replay's own chrome, which has no business being on screen before the cut
+  // into it or after the cut out of it.
+  void ShowReplayChrome(bool shown);
+
+  // The replay is entered when the incoming wipe covers, and left when the outgoing
+  // one does; the page itself lives until the wipe has played out.
+  bool enteredReplay;
+  bool leftReplay;
+  std::vector<Gui2View*> replayChrome;
 };
 
 #endif

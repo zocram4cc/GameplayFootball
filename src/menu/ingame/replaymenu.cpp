@@ -58,6 +58,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   Gui2Frame* header = new Gui2Frame(windowManager, "frame_replay_header", 36, 8.5f, 28, 5.5f, true);
   this->AddView(header);
   header->Show();
+  replayChrome.push_back(header);
   Gui2Caption* title =
       new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "INSTANT REPLAY");
   SuppressMatchHud(true);
@@ -88,6 +89,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   Gui2Frame* footer = new Gui2Frame(windowManager, "frame_replay_footer", 21, 88.5f, 56, 9.5f, true);
   this->AddView(footer);
   footer->Show();
+  replayChrome.push_back(footer);
   Gui2Caption* help = new Gui2Caption(
       windowManager, "caption_replay_help", 2, 1.6f, 52, 2.2f,
       "Left/Right: scrub | Up/Down: camera | Pass: change camera | Shoot: play/pause");
@@ -101,19 +103,45 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
 
   sig_OnClose.connect([this](...) { OnClose(); });
 
+  // The cut into the replay waits for the wipe to cover the screen. It used to happen
+  // right here, in the constructor, while the wipe's first frame had not been loaded
+  // yet - so the first thing on screen was a frame of the replay and its chrome, and
+  // the wipe arrived afterwards, covering nothing. Which is the opposite of a wipe.
+  enteredReplay = false;
+  leftReplay = false;
+  ShowReplayChrome(false);
+  if (!wipeTiming.valid) EnterReplay();   // no wipe imported: cut straight there
+}
+
+void ReplayPage::ShowReplayChrome(bool shown) {
+  for (Gui2View* view : replayChrome) {
+    if (!view) continue;
+    if (shown)
+      view->Show();
+    else
+      view->Hide();
+  }
+}
+
+void ReplayPage::EnterReplay() {
+  if (enteredReplay) return;
+  enteredReplay = true;
+  ShowReplayChrome(true);
   match->SetAutoUpdateIngameCamera(false);
 
   match->replayState.Lock();
-  match->replayState->viewTime_ms = actualTime_ms;  // minTime_ms;
+  match->replayState->viewTime_ms = actualTime_ms;
   match->replayState->cam = cam;
   match->replayState->modifierValue = 0.0f;
   match->replayState->dirty = true;
   match->replayState.Unlock();
 }
 
-ReplayPage::~ReplayPage() { SuppressMatchHud(false); }
+void ReplayPage::LeaveReplay() {
+  if (leftReplay) return;
+  leftReplay = true;
+  ShowReplayChrome(false);
 
-void ReplayPage::OnClose() {
   match->replayState.Lock();
   match->replayState->viewTime_ms = maxTime_ms;
   match->replayState->cam = cam;
@@ -123,10 +151,15 @@ void ReplayPage::OnClose() {
 
   GetScheduler()->ResetTaskSequenceTime("game");
   match->SetAutoUpdateIngameCamera(true);
+  if (stayInReplay) match->Pause(false);
+}
 
-  if (stayInReplay)
-    match->Pause(false);  // todo: handle gracefully instead of using stayInReplay :p only unpause
-                          // when started from gamepage instead of ingame page
+ReplayPage::~ReplayPage() { SuppressMatchHud(false); }
+
+void ReplayPage::OnClose() {
+  // Normally the outgoing wipe has already done this, under cover; a page closed any
+  // other way (the user backing out) still has to hand the match back.
+  LeaveReplay();
 }
 
 void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay, int camera) {
@@ -156,6 +189,9 @@ void ReplayPage::StartWipe() {
   wipeStarted_ms = EnvironmentManager::GetInstance().GetTime_ms();
   wipeFrameOnScreen = -1;
   wipeRunning = true;
+  // Put the first frame up now rather than on the next tick: a wipe that starts a
+  // frame late is a frame of whatever it was meant to be hiding.
+  RunWipe();
 }
 
 bool ReplayPage::RunWipe() {
@@ -180,14 +216,27 @@ bool ReplayPage::RunWipe() {
 
 void ReplayPage::Process() {
   const bool covered = RunWipe();
+
   if (wipeClosing) {
-    // Holding the page open until the outgoing wipe has the screen.
-    if (covered) {
+    // On the way out the whole wipe plays, exactly as it does on the way in. The
+    // match goes back to live play the moment the screen is covered, and the page
+    // stays up - drawing nothing but the wipe - until the crest has swung away
+    // again. Closing at the cut instead threw away five sixths of the animation and
+    // snapped back to the pitch.
+    if (covered) LeaveReplay();
+    if (!wipeRunning) {
       wipeClosing = false;
       GoBack();
     }
     return;
   }
+
+  // Going in, the cut waits for the cover in the same way.
+  if (!enteredReplay) {
+    if (covered) EnterReplay();
+    return;
+  }
+
   if (autoRun) {
     Vector3 direction;
     direction.coords[0] = slowMotion ? 0.25f : 0.5f;
@@ -332,8 +381,8 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
     autoRun = false;
     if (closeWhenAutorunCompletes) {
       closeWhenAutorunCompletes = false;
-      // Wipe out of the replay the same way it wiped in, and leave when the cut is
-      // covered rather than cutting in the clear.
+      // Wipe out of the replay the same way it wiped in: the whole animation, with
+      // the cut back to live play hidden under its cover.
       if (wipeTiming.valid) {
         StartWipe();
         wipeClosing = true;

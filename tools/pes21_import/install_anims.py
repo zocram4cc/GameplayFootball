@@ -31,12 +31,43 @@ import anim_metrics as am
 
 # --- presentation classes ---------------------------------------------------
 
+# specialvar1/specialvar2 are how the engine asks for a particular special animation
+# (animcollection.cpp matches on them), so they are the handle a celebration is
+# selected by.
+#
+# A PES celebration is two clips: an intro, and a loop the scorer holds until the
+# celebration is over. 66 loop clips come out of the import and none used to be
+# installed, so a scorer played 1.2 seconds and then fell back to whatever his
+# controller did next - which is why a celebration read as unfinished however long
+# kCelebration_ms was. A loop goes in beside its intro and keeps specialvar1, so it is
+# the same mood, with specialvar2 raised by ten so it can be asked for separately
+# (GoalCelebration::Phase decides when).
+LOOP_VAR_OFFSET = 10
+
 CLASSES = {
     "happy_normal": ("celebration/happy_normal", {"specialvar1": 1, "specialvar2": 1}),
     "happy_extreme": ("celebration/happy_extreme", {"specialvar1": 1, "specialvar2": 2}),
     "sad_normal": ("celebration/sad_normal", {"specialvar1": 2, "specialvar2": 1}),
     "entrance_lineup": ("entrance/lineup", {"specialvar1": 3, "specialvar2": 1}),
 }
+for _name in ("happy_normal", "happy_extreme", "sad_normal"):
+    _subdir, _vars = CLASSES[_name]
+    CLASSES[_name + "_loop"] = (_subdir, {"specialvar1": _vars["specialvar1"],
+                                          "specialvar2": _vars["specialvar2"] + LOOP_VAR_OFFSET})
+
+
+def is_loop(path):
+    """Whether a clip is the held part of a celebration rather than its opening."""
+    return os.path.splitext(os.path.basename(str(path)))[0].endswith("_loop")
+
+
+def intro_of(path):
+    """-> the clip a loop belongs to, or None if it is not a loop."""
+    name = os.path.basename(str(path))
+    stem, ext = os.path.splitext(name)
+    if not stem.endswith("_loop"):
+        return None
+    return stem[: -len("_loop")] + ext
 
 # --- match classes ----------------------------------------------------------
 
