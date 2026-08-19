@@ -28,6 +28,8 @@ geometry and vertex colors are carried over verbatim.
 
 import argparse
 import math
+
+import stretched_cut
 import os
 import re
 import sys
@@ -385,20 +387,35 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             # single-sided originals do not.)
             faces.append((tri[0], tri[2], tri[1]))
 
-    if max_edge > 0.0:
+    if max_edge != 0.0:
+        # The cut follows the mesh rather than a fixed metre value. An absolute 0.15 m
+        # works on a fine mesh and destroys a coarse one: over the 90 models already
+        # imported, 44 have their longest surviving edge sitting exactly on that cut,
+        # and nine are coarse meshes where 0.15 m is only 1.6x to 3.6x their median
+        # edge. The shards this is for were 1.25 m against a 1.9 cm median.
+        # A negative --max-edge asks for the old absolute behaviour.
         dropped = 0
         for group in groups:
             vertices, faces = group[1], group[2]
-            kept = []
-            for tri in faces:
-                a, b, c = (vertices[i][0] for i in tri)
-                if max(math.dist(a, b), math.dist(b, c), math.dist(c, a)) > max_edge:
-                    continue
-                kept.append(tri)
+            if max_edge < 0.0:
+                limit = -max_edge
+                kept = [tri for tri in faces
+                        if max(math.dist(vertices[tri[0]][0], vertices[tri[1]][0]),
+                               math.dist(vertices[tri[1]][0], vertices[tri[2]][0]),
+                               math.dist(vertices[tri[2]][0], vertices[tri[0]][0])) <= limit]
+            else:
+                triangles = [tuple(vertices[i][0] for i in tri) for tri in faces]
+                limit = stretched_cut.limit_for(triangles)
+                kept = faces if limit <= 0.0 else [
+                    tri for tri, points in zip(faces, triangles)
+                    if max(math.dist(points[0], points[1]),
+                           math.dist(points[1], points[2]),
+                           math.dist(points[2], points[0])) <= limit]
             dropped += len(faces) - len(kept)
             group[2] = kept
         if dropped:
-            print("dropped %d stretched triangles (edge > %.2fm)" % (dropped, max_edge))
+            print("dropped %d stretched triangle(s), threshold from each mesh's own "
+                  "geometry" % dropped)
 
     # what the rest of the writer used to work on
     vertices = groups[0][1] if groups else []
