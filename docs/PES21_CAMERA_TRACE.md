@@ -58,7 +58,30 @@ A secondary, unrelated table lives in `PES21/Data/dt13_all.cpk`:
 | **total** | **4 804** | **1 726** | **5 104** | **9 031** | **1 274 880** |
 
 All 4 804 files parse with zero errors and every one of the 5 104 streams has an
-identical channel signature (section 4). 311 cut files are generic (`st000`),
+identical channel signature (section 4).
+
+**What is imported.** `export_cutscenes.py` and `export_entrances.py` take the packs
+that actually carry a camera stream; the rest are actor or crowd choreography and are
+skipped rather than left as empty tracks. Run without a per-category cap the pools
+come out as:
+
+| pool | tracks | source packs | packs with no camera |
+|---|---|---|---|
+| `goal` | 731 | 1 691 | 954 |
+| `ent` | 421 | 962 (455 `_cam`) | 35 |
+| `mode` | 246 | 923 | 398 |
+| `end` | 140 | 526 | 342 |
+| `change` | 78 | 192 | 96 |
+| `result` | 65 | 106 | 37 |
+| `pk` | 21 | 128 | 107 |
+| `timeup` | 9 | 198 | 140 |
+| `foul` | 2 | 78 | 68 |
+| **total** | **1 714** | | |
+
+`foul` really is two: of PES's 78 foul packs only two hold camerawork, so the
+subpools the engine sorts them into (card_red, card_yellow, warning, protest,
+referee_run, injury, no_card) are fed by those two plus the actor choreography.
+`offside` is choreography only — staged but never filmed. 311 cut files are generic (`st000`),
 the rest are stadium-specific (`st002` x62, `st014` x55, `st011` x51, `st016`
 x49, `st007` x46, `st062` x46 ...). Longest single shot: 7 200 frames = 240 s
 (`result_002_cam_mid.fdc` -> `ent_001_result_st000_cam0030.canm`). Most common
@@ -317,7 +340,27 @@ Near clip: `1.0` (2 214), `0.005` (1 057), `0.01` (552), `0.5` (372),
 The wild `ent` / `result` extremes are all `*aerial*` files — helicopter
 establishing shots up to 450 m altitude and several hundred metres out
 (`ent_001_aerial_st007_cam_nf.fdc` starts at `(359.4, 150.0, 171.2)`).
-`mode` shots are menu/card-pack scenes staged near the origin, not on a pitch.
+
+`mode` is *not* menu camerawork, which an earlier reading of this table had it as.
+Broken down by family, its 923 packs are PES's career-mode drama:
+
+| family | packs | | family | packs |
+|---|---|---|---|---|
+| `news` | 252 | | `transfer` | 42 |
+| `cardpack` | 229 | | `locker` | 41 |
+| `meeting` | 144 | | `player` | 26 |
+| `testimonial` | 50 | | `visit` | 16 |
+| `press` | 50 | | `award` | 12 |
+| `room` | 44 | | `randomselect` | 10 |
+| | | | `firstday` | 5 |
+| | | | `circuittraining` | 2 |
+
+Only `cardpack` is menu presentation (the myClub reveal). The rest is the dressing
+room before a tie, the press conference after it, the transfer meeting, signing day,
+the testimonial, the award — staged near the origin because they are staged *rooms*,
+not pitch shots. That is 694 packs of career presentation, and none of it is wired up
+yet (`mode` is exported but the engine reads only `goal`, `ent` and the stoppage
+pools).
 
 ---
 
