@@ -499,3 +499,67 @@ class DressedMeshByMesh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class APropIsOnePieceOfFurniture(unittest.TestCase):
+    """A prop's meshes have to be placed together, not one at a time.
+
+    The corner flag rendered with its flag lying flat on the grass beside the pole,
+    and the cause was the code meant to stop props being buried. gadget_cornerflag is
+    four meshes - pole, ground disc, and the cloth in two pieces - and each was set
+    down on the grass on its own, so the cloth, authored at z 1.28..1.62 where it hangs
+    off the top of a 1.62 m pole, was lifted by -1.28 and came out at z 0..0.343. The
+    footprint centring did the same sideways: the cloth hangs to one side of the pole
+    and was pushed back onto its axis.
+
+    Measured off the imported props.ase before the fix, all four pieces of every flag
+    started at exactly z 0.000, which is the signature.
+
+    So the ground lift and the footprint offset are computed once for the whole prop,
+    over every vertex it has, and every mesh is placed with that.
+    """
+
+    # a pole from the ground to 1.62, and a flag hanging from its top
+    POLE = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.0, 0.0, 1.62)]
+    CLOTH = [(0.0, 0.0, 1.28), (0.3, 0.0, 1.28), (0.3, 0.0, 1.62)]
+
+    def test_the_lift_comes_from_the_whole_prop(self):
+        lift = stadium_props.prop_placement([self.POLE, self.CLOTH])["lift"]
+        self.assertAlmostEqual(lift, 0.0)   # the pole already stands on the ground
+
+    def test_a_prop_hung_off_an_attach_point_is_still_brought_down(self):
+        # mob_prop_camera00 runs from 1.63 below its origin to 0.09 above
+        below = [(0.0, 0.0, -1.63), (0.1, 0.0, -1.63), (0.1, 0.0, 0.09)]
+        self.assertAlmostEqual(stadium_props.prop_placement([below])["lift"], 1.63)
+
+    def test_the_flag_keeps_its_height_above_the_ground(self):
+        place = stadium_props.prop_placement([self.POLE, self.CLOTH])
+        cloth = stadium_props.place_prop_mesh(self.CLOTH, place)
+        self.assertAlmostEqual(min(v[2] for v in cloth), 1.28)
+        self.assertAlmostEqual(max(v[2] for v in cloth), 1.62)
+
+    def test_the_pole_still_stands_on_the_grass(self):
+        place = stadium_props.prop_placement([self.POLE, self.CLOTH])
+        pole = stadium_props.place_prop_mesh(self.POLE, place)
+        self.assertAlmostEqual(min(v[2] for v in pole), 0.0)
+
+    def test_the_flag_stays_out_to_the_side_of_the_pole(self):
+        place = stadium_props.prop_placement([self.POLE, self.CLOTH])
+        pole = stadium_props.place_prop_mesh(self.POLE, place)
+        cloth = stadium_props.place_prop_mesh(self.CLOTH, place)
+        # the cloth's own x range is 0.0..0.3 against the pole's 0.0..0.02, and that
+        # difference has to survive the centring
+        self.assertGreater(max(v[0] for v in cloth), max(v[0] for v in pole))
+
+    def test_placing_one_mesh_alone_is_what_it_always_was(self):
+        # a single-mesh prop is centred and grounded exactly as before
+        place = stadium_props.prop_placement([self.POLE])
+        pole = stadium_props.place_prop_mesh(self.POLE, place)
+        self.assertAlmostEqual(min(v[2] for v in pole), 0.0)
+        centre_x = (min(v[0] for v in pole) + max(v[0] for v in pole)) / 2.0
+        self.assertAlmostEqual(centre_x, 0.0)
+
+    def test_a_prop_with_no_vertices_does_not_divide_by_nothing(self):
+        place = stadium_props.prop_placement([[]])
+        self.assertAlmostEqual(place["lift"], 0.0)
+        self.assertEqual(stadium_props.place_prop_mesh([], place), [])

@@ -297,6 +297,62 @@ def keep_visible_passes(passes):
     return [i for i, (key, mask) in enumerate(passes) if not (mask and key in visible)]
 
 
+# A board face is judged upright, and so worth reading, when its normal is this far
+# off vertical. The ring's ground shadows and the boards' own top edges are not text.
+FACE_MAX_VERTICAL = 0.8
+
+
+def face_reads_mirrored(vertices, uvs):
+    """Does this face's texture read back-to-front to someone looking at it?
+
+    None when there is nothing to read: a degenerate face, or one lying flat.
+
+    Turning a hoarding round is not enough. Rendered and read off a capture, the
+    imported ring shows some ads normal and others mirrored ("LESBIANS" as
+    "SNAIBSEL"). Of the 89 meshes in adboards.ase that carry board faces, 70 read
+    correctly throughout and one is mirrored throughout, but 18 - the big merged runs
+    - hold both, and carry about 900 of the 916 mirrored faces. Inside one of them the
+    same UV rectangle appears twice with opposite handedness (nine faces at
+    U 0.668..0.854 mirrored against nine at 0.670..0.841 readable): what a modeller
+    mirroring a duplicated segment leaves behind. PES gets away with it because it
+    assigns the advertising faces at runtime through bill_anime.json; this engine uses
+    the model's own UVs, so the mirrored copies show mirrored ads.
+
+    The viewer is taken to be on the side the face points to, standing upright, so his
+    right hand is (-ny, nx, 0) - checked against n = (0, -1, 0), a far-touchline board
+    facing the pitch, whose viewer looks along +y and whose right is +x.
+    """
+    if len(vertices) < 3 or len(uvs) < 3:
+        return None
+    a, b, c = vertices[0], vertices[1], vertices[2]
+    e1 = ase_util._sub(b, a)
+    e2 = ase_util._sub(c, a)
+    normal = ase_util._cross(e1, e2)
+    length = (normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2) ** 0.5
+    if length <= 0.0:
+        return None
+    if abs(normal[2]) / length > FACE_MAX_VERTICAL:
+        return None
+    right = (-normal[1] / length, normal[0] / length, 0.0)
+    # how far U and screen-right agree over the face's own two edges
+    agreement = ((uvs[1][0] - uvs[0][0]) * sum(x * y for x, y in zip(e1, right)) +
+                 (uvs[2][0] - uvs[0][0]) * sum(x * y for x, y in zip(e2, right)))
+    if abs(agreement) < 1e-12:
+        return None
+    return agreement < 0.0
+
+
+def mirror_face_u(uvs):
+    """The same UVs with U flipped inside the face's own extent.
+
+    For the UV rectangle a board panel is, that is exactly the panel turned back the
+    right way round; V is left alone, so the ad stays the right way up.
+    """
+    us = [uv[0] for uv in uvs]
+    span = min(us) + max(us)
+    return [(span - uv[0],) + tuple(uv[1:]) for uv in uvs]
+
+
 def faces_away_from_pitch(vertices, faces):
     """Whether an upright mesh has its back to the pitch and should be turned round.
 
@@ -952,6 +1008,18 @@ def convert(scene_fmdl, out_dir, fmdl_lib, tex_dirs, name, extras=(),
                                                 max_tris, max_verts_per_geom,
                                                 max_extent, fallback_bitmap,
                                                 geometry_scale, face_pitch)
+
+    if face_pitch:
+        # Turning a board to face the pitch is only half of it: some of the ring's
+        # panels are mirrored copies, and this engine uses the model's own UVs where
+        # PES assigns the advertising faces at runtime, so those show mirrored ads.
+        import adboard_uvs
+        fixed, stats = adboard_uvs.normalise(open(ase_path).read())
+        if stats["mirrored"]:
+            open(ase_path, "w").write(fixed)
+            print("  advertising: %d face(s) already read from the pitch, %d turned "
+                  "back (in %d mesh(es))"
+                  % (stats["readable"], stats["mirrored"], stats["meshes"]))
 
     object_path = os.path.join(out_dir, name + ".object")
     open(object_path, "w").write(object_text(name, with_pitch))
