@@ -17,8 +17,16 @@ float TrackExtent::MaxRadius() const {
 Anchoring ClassifyAnchoring(const TrackExtent& extent) {
   if (extent.frames <= 0)
     return Anchoring::Unknown;
-  return extent.MaxRadius() <= kIncidentLocalRadius ? Anchoring::IncidentLocal
-                                                    : Anchoring::StadiumWorld;
+  // Either sign is enough. How far out a camera sits does not say whose space it is
+  // in - PES's `result` shots are 99 m away and pointed at a group standing at the
+  // middle, as incident-local as anything - and where it points does not say it
+  // either, because a card shot sits five metres out and frames the referee rather
+  // than the incident. Measured over the 703 imported tracks, the union is the rule
+  // that fits, and it is strictly wider than the radius alone, so nothing that is
+  // staged at the incident today stops being staged there.
+  const bool local =
+      extent.aimsAtOrigin || extent.MaxRadius() <= kIncidentLocalRadius;
+  return local ? Anchoring::IncidentLocal : Anchoring::StadiumWorld;
 }
 
 const char* AnchoringName(Anchoring anchoring) {
