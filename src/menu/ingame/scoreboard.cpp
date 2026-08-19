@@ -4,6 +4,8 @@
 // :)
 
 #include "scoreboard.hpp"
+
+#include "captionfit.hpp"
 #include "scoreboardfont.hpp"
 
 #include "../../onthepitch/match.hpp"
@@ -216,7 +218,14 @@ void Gui2ScoreBoard::ConstructPesTheme() {
 
   // 3-letter team codes, centred in the space between each crest and the
   // score rather than at a fixed offset that could collide with either.
-  const float nameHeight = barHeight * 0.46f;
+  //
+  // Sized with the rest of the bar rather than well under it: the score is drawn at
+  // 0.74 of the bar's height and the clock at 0.70 of its own, and a team's code at
+  // 0.46 read as an afterthought beside them. FitAndCentreCaption then shrinks it
+  // again only if a particular code is too wide for the gap it sits in, so raising
+  // this cannot push a name into a crest or into the score.
+  const float nameHeight = barHeight * 0.66f;
+  const float nameFloorHeight = barHeight * 0.40f;
   const float scoreLeft = centerX - scoreWidth * 0.5f;
   const float scoreRight = centerX + scoreWidth * 0.5f;
   const float crestInnerLeft = barX + logoMargin + logoWidth;
@@ -230,8 +239,10 @@ void Gui2ScoreBoard::ConstructPesTheme() {
     teamNameCaption[i]->SetOutlineColor(textOutlineColor);
     const float nameCenter = i == 0 ? (crestInnerLeft + scoreLeft) * 0.5f
                                     : (scoreRight + crestInnerRight) * 0.5f;
-    teamNameCaption[i]->SetPosition(nameCenter - teamNameCaption[i]->GetTextWidthPercent() * 0.5f,
-                                    (barHeight - nameHeight) * 0.5f);
+    const float nameRoom = (i == 0 ? scoreLeft - crestInnerLeft : crestInnerRight - scoreRight);
+    teamNameCaption[i]->SetPosition(nameCenter, (barHeight - nameHeight) * 0.5f);
+    FitAndCentreCaption(teamNameCaption[i], nameCenter, nameRoom * 0.92f, nameHeight,
+                        nameFloorHeight);
     this->AddView(teamNameCaption[i]);
     teamNameCaption[i]->Show();
   }
