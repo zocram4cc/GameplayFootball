@@ -306,6 +306,18 @@ target_link_libraries(gameplayfootball_camtrack_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_camtrack_tests DISCOVERY_MODE PRE_TEST)
 
+# Model inventory: what a model is made of, for the standalone viewer and for judging
+# an import that dropped geometry.
+add_executable(gameplayfootball_modelinventory_tests
+  base/model_inventory_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/modelinventory.cpp
+)
+target_include_directories(gameplayfootball_modelinventory_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_modelinventory_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_modelinventory_tests DISCOVERY_MODE PRE_TEST)
+
 # ASE normal derivation: normals are 45% of an imported stadium's bytes and, over
 # 200,000 sampled faces, 100% of them are flat - so a mesh can ship without them.
 add_executable(gameplayfootball_asenormals_tests
