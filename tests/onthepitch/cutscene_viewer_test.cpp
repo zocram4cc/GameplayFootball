@@ -138,3 +138,70 @@ TEST(CutsceneViewer, AnEmptyTrackIsStillUnclassifiable) {
   e.aimsAtOrigin = true;   // nothing to aim with, so it cannot rescue an empty track
   EXPECT_EQ(CutsceneViewer::ClassifyAnchoring(e), CutsceneViewer::Anchoring::Unknown);
 }
+
+// Which categories are about an incident, and so must be staged at one.
+//
+// Measured off a match with debug_cutscene_report on:
+//
+//   category foul/card_yellow  shot incident-local: incident at 0,-33, camera 6 m from it
+//   category change            shot stadium-world:  incident at -61,-14, camera 117 m from it
+//
+// The foul is right and the substitution is not, and the reason is not the track
+// measurement - it is that a substitution's camerawork is authored in PES's own
+// stadium (78 tracks, every one beyond 12 m, out to 86.6 m for the change_stand_*
+// family) and used here as a world position. On PES's ground a stand camera looking
+// at PES's touchline is a fine shot; on ours it films the sky over the stand.
+//
+// A category either has a subject on the pitch or it does not, and that is known
+// from the category rather than from coordinates. A foul, a substitution and an
+// offside all have one. The post-match and entrance presentations do not - they are
+// authored to show the stadium, and anchoring them at the ball would wreck them.
+
+TEST(CutsceneViewer, AnIncidentCategoryIsStagedAtTheIncident) {
+  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("foul"));
+  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("change"));
+  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("offside"));
+}
+
+TEST(CutsceneViewer, ASubpoolIsTheSameCategory) {
+  // the engine asks for "foul/card_yellow" and falls back to "foul"
+  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("foul/card_yellow"));
+  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("goal/offside"));
+}
+
+TEST(CutsceneViewer, APresentationCategoryKeepsItsOwnCoordinates) {
+  // these are shots of a stadium, and there is no incident in them to move to
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("result"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("result/003"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("end"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("ent"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("timeup"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("mode"));
+}
+
+TEST(CutsceneViewer, SomethingUnknownIsLeftWhereItIs) {
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident(""));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("something_new"));
+}
+
+// Where a substitution happens: at the touchline beside the man coming off, not
+// where he was standing and not where the ball rolled out. The ball is the wrong
+// answer badly - it put the anchor at -61,-14, six metres beyond the goal line.
+TEST(CutsceneViewer, ASubstitutionIsStagedAtTheNearestTouchline) {
+  // a player in his own half, nearer the -y touchline
+  const auto mark = CutsceneViewer::TouchlineMark(20.0f, -12.0f, 36.0f);
+  EXPECT_FLOAT_EQ(mark.first, 20.0f);
+  EXPECT_FLOAT_EQ(mark.second, -36.0f);
+}
+
+TEST(CutsceneViewer, AndTheOtherTouchlineWhenHeIsNearerThat) {
+  const auto mark = CutsceneViewer::TouchlineMark(-8.0f, 21.0f, 36.0f);
+  EXPECT_FLOAT_EQ(mark.first, -8.0f);
+  EXPECT_FLOAT_EQ(mark.second, 36.0f);
+}
+
+TEST(CutsceneViewer, ATouchlineMarkStaysBetweenTheGoalLines) {
+  // a man out by the corner does not drag the change behind the goal
+  EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(70.0f, 2.0f, 36.0f).first, 45.0f);
+  EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(-70.0f, 2.0f, 36.0f).first, -45.0f);
+}

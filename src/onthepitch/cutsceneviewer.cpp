@@ -29,6 +29,25 @@ Anchoring ClassifyAnchoring(const TrackExtent& extent) {
   return local ? Anchoring::IncidentLocal : Anchoring::StadiumWorld;
 }
 
+bool AnchorsAtIncident(const std::string& category) {
+  const std::string head = category.substr(0, category.find('/'));
+  return head == "foul" || head == "change" || head == "offside" || head == "goal";
+}
+
+// How far inside the goal lines a substitution may be staged. The touchline is
+// walked on to between the corner and the halfway line; PES's own change staging
+// sits around the middle of it.
+namespace {
+constexpr float kTouchlineMarkMaxX = 45.0f;
+}
+
+std::pair<float, float> TouchlineMark(float x, float y, float pitchHalfY) {
+  const float clampedX = x > kTouchlineMarkMaxX
+                             ? kTouchlineMarkMaxX
+                             : (x < -kTouchlineMarkMaxX ? -kTouchlineMarkMaxX : x);
+  return {clampedX, y >= 0.0f ? pitchHalfY : -pitchHalfY};
+}
+
 const char* AnchoringName(Anchoring anchoring) {
   switch (anchoring) {
     case Anchoring::IncidentLocal: return "incident-local";

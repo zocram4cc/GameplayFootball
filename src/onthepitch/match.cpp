@@ -2131,6 +2131,11 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   // away the challenge actually was.
   activeStagingAnchoring =
       CutsceneViewer::ClassifyAnchoring(CutsceneViewer::MeasureChoreography(*activeCutsceneChoreo));
+  // The actors go where the camera goes. Left to the measurement they disagreed: a
+  // substitution's staging measures 36.9 m (PES's own touchline) and was played out
+  // at those coordinates while the change itself happened at ours.
+  if (CutsceneViewer::AnchorsAtIncident(category))
+    activeStagingAnchoring = CutsceneViewer::Anchoring::IncidentLocal;
 
   // Cast by role first - the incident's own people take their marks - then
   // fill the remaining marks with whoever stands nearest them.
@@ -2314,7 +2319,16 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
     // challenge happened in. Measure the track and place it accordingly.
     activeCutsceneAnchoring =
         CutsceneViewer::ClassifyAnchoring(CutsceneViewer::MeasureTrack(track));
+    // A category with a subject on the grass is filmed at that subject, whatever
+    // the track measures. PES authors its substitution camerawork in its own
+    // stadium - all 78 tracks beyond 12 m, the change_stand_* family out to 86.6 m
+    // - so those coordinates used as world positions filmed the sky over the stand
+    // while the change happened at our touchline, 117 m away.
+    if (CutsceneViewer::AnchorsAtIncident(category))
+      activeCutsceneAnchoring = CutsceneViewer::Anchoring::IncidentLocal;
   }
+  // A change is made at the touchline; a foul and an offside where they happened.
+  cutsceneAtTouchline = category.compare(0, 6, "change") == 0;
   StartCutsceneChoreo(category);
   // Some incidents are staged but not filmed: PES ships no camera pack at all
   // for an offside, because the assistant's flag and the disallowed-goal
@@ -2354,6 +2368,17 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   if (matchPhase == e_MatchPhase_2ndHalf) {
     teams[0]->RelaxFatigue(0.05f);
     teams[1]->RelaxFatigue(0.05f);
+  }
+
+  // Ends have just changed, so put both teams back out on the ones they swapped to.
+  // The referee prepares its kickoff at prepareTime and fires the phase change from
+  // the same tick, in that order - so the marks it computed belonged to the ends the
+  // teams were leaving, and nothing re-prepared afterwards. The second half kicked
+  // off with everyone standing wherever the whistle caught him, on the wrong side of
+  // a pitch that had turned round underneath him.
+  if (MatchProgression::SwapsEnds(matchPhase)) {
+    ResetSituation(Vector3(0, 0, 0));
+    if (referee) referee->PrepareSetPiece(e_SetPiece_KickOff);
   }
 }
 
@@ -2466,8 +2491,13 @@ void Match::ExecutePendingSubstitutions() {
     Log(e_Notice, "Match", "ExecutePendingSubstitutions",
         "substitution, team " + int_to_str(sub.teamID) + ": in " + in + ", out " + out);
     if (random(0.0f, 1.0f) <
-        GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f))
+        GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f)) {
+      // Name the two men, or the cutscene has no subject and falls back to the
+      // ball - which at a substitution is wherever it went out of play. Measured
+      // once at (-61, -14), six metres beyond the goal line.
+      SetCutsceneParticipants(sub.playerOut, sub.playerIn);
       StartCutscene("change", 5.0f);
+    }
   }
 }
 
@@ -2755,9 +2785,17 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 Vector3 Match::CutsceneAnchorPosition() const {
   // The offender if the referee named one, otherwise wherever the ball stopped:
   // at a stoppage that is the incident.
-  if (cutscenePrimary)
-    return cutscenePrimary->GetPosition();
-  return ball ? ball->Predict(0).Get2D() : Vector3(0, 0, 0);
+  const Vector3 subject = cutscenePrimary
+                              ? cutscenePrimary->GetPosition()
+                              : (ball ? ball->Predict(0).Get2D() : Vector3(0, 0, 0));
+  // A substitution is not made where the man was standing: he walks off at the
+  // touchline, so that is where the scene belongs.
+  if (cutsceneAtTouchline) {
+    const std::pair<float, float> mark = CutsceneViewer::TouchlineMark(
+        subject.coords[0], subject.coords[1], pitchHalfH);
+    return Vector3(mark.first, mark.second, 0.0f);
+  }
+  return subject;
 }
 
 void Match::UpdateIngameCamera() {
