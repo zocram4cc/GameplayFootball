@@ -30,7 +30,12 @@ const int kFinished = -1;
 struct Timing {
   float fps = 60.0f;
   int frames = 0;
-  // PES's "fadestart": the frame under which the cut is hidden.
+  // The frame the cut happens on. "cut" in the sidecar, which the importer holds a
+  // quarter of a second into the cover: the matte first covers everything at frame 9,
+  // and cutting exactly there leaves nothing to spare when the game is not running at
+  // the wipe's 60 fps. Falls back to "cover" (measured), then to PES's own
+  // "fadestart", which is no good on its own - at fadestart the matte still has pixels
+  // at zero and the cut shows through them.
   int cutFrame = 0;
   bool valid = false;
 };

@@ -11,6 +11,7 @@
 #include "utils/camtrack.hpp"
 #include "prematchtimeline.hpp"
 #include "prematchshotpair.hpp"
+#include "goalcelebration.hpp"
 #include "scenelighting.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
@@ -171,6 +172,18 @@ public:
   void StartPlay() { inPlay = true; }
   void StopPlay() { inPlay = false; }
   bool IsInPlay() const { return inPlay; }
+  // How long the celebration has been running, for whoever needs to know which
+  // half of it is playing (onthepitch/goalcelebration.hpp).
+  unsigned long GetGoalScoredTimer() const { return goalScoredTimer; }
+  // The performance the camera is filming, as the specialvar2 that asks for it, or 0
+  // when there is no chosen celebration (goalcelebration.hpp). Only the scorer gives
+  // it; his teammates celebrate however they like.
+  int GetGoalCelebrationVar() const {
+    return (goalCelebrationIndex >= 0 && goalCelebrationIndex < (int)goalCelebrations.size())
+               ? goalCelebrations[goalCelebrationIndex].var
+               : 0;
+  }
+  Player* GetLastGoalScorer() const { return lastGoalScorer; }
 
   // The match entrance: teams walking out and lining up before the kickoff.
   // While this is true the kickoff is held and no football is played.
@@ -639,6 +652,14 @@ protected:
   // track's authored goal side (+1/-1 from its mean x) for mirroring
   std::vector<CamTrack> goalCamTracks;
   std::vector<int> goalCamAuthoredSides;
+  // Which track is which, so a celebration can be filmed by the camera PES shot it
+  // with instead of by whatever the score happened to index (goalcelebration.hpp).
+  std::vector<std::string> goalCamNames;
+  std::vector<GoalCelebration::Celebration> goalCelebrations;
+  // Chosen when the goal goes in and held for the celebration: which performance the
+  // scorer is giving, and the camera that belongs to it.
+  int goalCelebrationIndex = -1;
+  int goalCelebrationCamera = -1;
   // stoppage cutscenes: PES's other fixdemo categories, played at their
   // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
   std::map<std::string, std::vector<CamTrack>> cutscenePools;

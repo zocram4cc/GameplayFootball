@@ -89,18 +89,57 @@ def useful_frames(alpha_maxima):
     return last
 
 
-def sidecar_text(fps, frames, fadestart, source):
+# How opaque the least opaque pixel has to be before a cut can hide behind the frame.
+# The real matte tops out at 0.996.
+COVER_ALPHA = 0.99
+
+
+def cover_frame(alpha_minima):
+    """-> the first frame whose *least* opaque pixel is opaque, or None.
+
+    PES's own "fadestart" is not that frame. It is 6 on the default wipe and 8 on the
+    ACL one, and at frame 6 the matte still has pixels at zero: the crest has swung
+    most of the way across but there are gaps, and a cut made there is a cut you can
+    see through. Full cover arrives at frame 9 on both.
+    """
+    for index, value in enumerate(alpha_minima):
+        if value >= COVER_ALPHA:
+            return index
+    return None
+
+
+# How far into the cover the cut is held. The matte first covers everything at frame
+# 9; cutting exactly there leaves nothing to spare, since the wipe is 60 fps and the
+# game may not be. Frame 15 is a quarter of a second in, well inside the hold.
+CUT_HOLD_FRAME = 15
+
+
+def cut_frame(cover, frames):
+    """-> the frame the engine cuts on: held past the cover, inside the wipe."""
+    last = max(0, int(frames) - 1)
+    held = CUT_HOLD_FRAME if cover is None else max(int(cover), CUT_HOLD_FRAME)
+    return min(held, last)
+
+
+def sidecar_text(fps, frames, fadestart, source, cover=None):
     """The timing, as the engine reads it (src/onthepitch/replaywipe.hpp)."""
-    cut = max(0, min(int(fadestart), max(0, int(frames) - 1)))
+    last = max(0, int(frames) - 1)
+    cut = max(0, min(int(fadestart), last))
+    covered = cut if cover is None else max(0, min(int(cover), last))
     return ("# The 4cc replay wipe, from %s by tools/pes21_import/import_wipe.py.\n"
             "# RGBA frames: the colour is PES's stream 0, the alpha its stream 1 -\n"
             "# without that matte the crest's black background blacks out the screen.\n"
             "fps %g\n"
             "frames %d\n"
-            "# The frame on which the picture underneath is switched, which is where\n"
-            "# the matte reaches full cover (PES's own \"fadestart\").\n"
+            "# PES's own \"fadestart\", kept for reference.\n"
             "fadestart %d\n"
-            % (source, fps, int(frames), cut))
+            "# The frame the matte first covers every pixel, measured rather than taken\n"
+            "# from fadestart, which still has gaps in it.\n"
+            "cover %d\n"
+            "# The frame the engine cuts on: held past the cover, so a game running at\n"
+            "# some other rate than the wipe's 60 fps cannot land the cut in the gaps.\n"
+            "cut %d\n"
+            % (source, fps, int(frames), cut, covered, cut_frame(cover, frames)))
 
 
 def _probe_fps(path):
@@ -140,20 +179,22 @@ def _decode(path, out_dir, width=None):
 
 
 def _trim(out_dir):
-    """Drops the fully transparent tail. -> how many frames remain."""
+    """Drops the fully transparent tail. -> (frames kept, the frame that covers)."""
     from PIL import Image
     import numpy
 
     frames = sorted(glob.glob(os.path.join(out_dir, "f_*.png")))
     maxima = []
+    minima = []
     for path in frames:
         with Image.open(path) as image:
             alpha = numpy.asarray(image.convert("RGBA"), dtype=numpy.float32)[..., 3] / 255.0
         maxima.append(float(alpha.max()))
+        minima.append(float(alpha.min()))
     keep = useful_frames(maxima)
     for path in frames[keep:]:
         os.remove(path)
-    return keep
+    return keep, cover_frame(minima[:keep])
 
 
 def main():
@@ -193,11 +234,12 @@ def main():
         out_dir = os.path.join(args.out, name)
         fps = _probe_fps(matches[0])
         decoded = _decode(matches[0], out_dir, args.width)
-        kept = _trim(out_dir)
+        kept, covers = _trim(out_dir)
         open(os.path.join(out_dir, "wipe.txt"), "w").write(
-            sidecar_text(fps, kept, wipe["fadestart"], wipe["file"]))
-        print("  %-22s id %3d  %d frame(s) at %g fps, %d kept, cut on %d -> %s"
-              % (wipe["file"], wipe["id"], decoded, fps, kept, wipe["fadestart"], out_dir))
+            sidecar_text(fps, kept, wipe["fadestart"], wipe["file"], covers))
+        print("  %-22s id %3d  %d frame(s) at %g fps, %d kept, fadestart %d, covers at %s -> %s"
+              % (wipe["file"], wipe["id"], decoded, fps, kept, wipe["fadestart"],
+                 covers, out_dir))
         written += 1
     print("wrote %d wipe(s) under %s" % (written, args.out))
     return 0

@@ -37,6 +37,7 @@
 #include "strategies/offtheball/default_off.hpp"
 #include "strategies/offtheball/goalie_default.hpp"
 #include "strategies/strategy.hpp"
+#include "onthepitch/goalcelebration.hpp"
 
 ElizaController::ElizaController(Match* match) : PlayerController(match) {
   lastDesiredDirection = Vector3(0);
@@ -1421,7 +1422,27 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
     command.useSpecialVar1 = true;
     command.specialVar1 = celebrationType;
     command.useSpecialVar2 = true;
-    command.specialVar2 = madeGoal;
+    // A PES celebration is two clips: an opening, and a loop held until it is over.
+    // Asking for the opening the whole way through played it and then dropped the
+    // player back into whatever came next, which is why a celebration read as
+    // unfinished (goalcelebration.hpp, tools/pes21_import/install_anims.py).
+    //
+    // And the scorer performs the celebration the camera is filming. PES authors the
+    // two together - goal_2018_run_30_banzai.chor names the performance, and
+    // ..._Z_fromL/R.camtrack are the angles it shot that performance from - so the
+    // match picks one when the goal goes in and the man who scored gives it. His
+    // teammates celebrate however they like.
+    const int filmed = match->GetGoalCelebrationVar();
+    const bool isScorer = filmed != 0 && match->GetLastGoalScorer() == player;
+    if (isScorer) {
+      command.specialVar2 = filmed;
+    } else {
+      command.specialVar2 =
+          GoalCelebration::Phase(match->GetGoalScoredTimer(), GoalCelebration::kIntroHold_ms) ==
+                  GoalCelebration::e_Loop
+              ? GoalCelebration::LoopVariable(madeGoal)
+              : madeGoal;
+    }
     command.useDesiredMovement = false;
     command.useDesiredLookAt = false;
     commandQueue.push_back(command);

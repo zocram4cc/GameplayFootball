@@ -358,6 +358,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         for (int s = 0; s < samples; s++)
           meanX += track.Sample((float)s).position[0];
         goalCamAuthoredSides.push_back(meanX >= 0.0f ? 1 : -1);
+        goalCamNames.push_back(entry.path().stem().string());
         goalCamTracks.push_back(track);
       }
     }
@@ -365,6 +366,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       Log(e_Notice, "Match", "Match",
           "Loaded " + int_to_str((int)goalCamTracks.size()) +
               " goal camera tracks");
+
+    // Which celebration each of those cameras was shot for. PES ships the pair -
+    // a .chor naming the performance and the .camtracks that filmed it - and
+    // tools/pes21_import/goal_cutscenes.py reads it into celebrations.txt.
+    const std::string manifest = goalDir + "/celebrations.txt";
+    if (std::filesystem::exists(manifest)) {
+      std::ifstream file(manifest);
+      std::stringstream contents;
+      contents << file.rdbuf();
+      goalCelebrations = GoalCelebration::Parse(contents.str());
+      int filmed = 0;
+      for (const auto& celebration : goalCelebrations)
+        if (!celebration.cameras.empty()) filmed++;
+      Log(e_Notice, "Match", "Match",
+          "Loaded " + int_to_str((int)goalCelebrations.size()) + " goal celebrations, " +
+              int_to_str(filmed) + " of them filmed");
+    }
   }
 
   // stoppage cutscene pools, one directory per PES fixdemo category
@@ -3171,8 +3189,37 @@ void Match::UpdateIngameCamera() {
     // masks the actual outcome, so the ball-tracking scorer cam rules there
     if (!goalCamTracks.empty() && lastGoalTeamID >= 0 &&
         matchPhase != e_MatchPhase_Penalties) {
-      int pick = (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
-                 (int)goalCamTracks.size();
+      // The camera PES shot this celebration with, not whichever the score happened
+      // to index. Chosen once when the goal goes in and held: a scorer carries his own
+      // celebration by name ("celebration" in his player data), and anyone without one
+      // draws from the filmed set (goalcelebration.hpp).
+      if (goalCelebrationIndex < 0 && !goalCelebrations.empty()) {
+        const std::string assigned =
+            lastGoalScorer && lastGoalScorer->GetPlayerData()
+                ? GetConfiguration()->Get(
+                      ("celebration_" +
+                       int_to_str(lastGoalScorer->GetPlayerData()->GetDatabaseID()))
+                          .c_str(),
+                      "")
+                : "";
+        const int seed = GetScore(0) + GetScore(1) * 3 + lastGoalTeamID * 7;
+        goalCelebrationIndex = GoalCelebration::Choose(goalCelebrations, assigned, seed);
+        goalCelebrationCamera = -1;
+        if (goalCelebrationIndex >= 0) {
+          const GoalCelebration::Celebration& chosen = goalCelebrations[goalCelebrationIndex];
+          const int attacked = -teams[lastGoalTeamID]->GetSide();
+          const std::string wanted = GoalCelebration::PickCamera(chosen, attacked, seed);
+          for (size_t i = 0; i < goalCamNames.size(); i++)
+            if (goalCamNames[i] == wanted) goalCelebrationCamera = (int)i;
+          Log(e_Notice, "Match", "UpdateIngameCamera",
+              "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), filmed by " +
+                  (goalCelebrationCamera >= 0 ? wanted : std::string("nothing; falling back")));
+        }
+      }
+      int pick = goalCelebrationCamera >= 0
+                     ? goalCelebrationCamera
+                     : (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
+                           (int)goalCamTracks.size();
       const CamTrack& track = goalCamTracks[pick];
       CamTrackFrame frame = track.Sample(goalScoredTimer * 0.03f);
       int scoredSide = -teams[lastGoalTeamID]->GetSide();
@@ -3504,6 +3551,8 @@ void Match::Process() {
       }
       goalScoredTimer = 0;
       replayStartOffset_ms = 0;  // armed again for the next goal
+      goalCelebrationIndex = -1;
+      goalCelebrationCamera = -1;
     }
 
     if (IsInPlay() && !IsInSetPiece())

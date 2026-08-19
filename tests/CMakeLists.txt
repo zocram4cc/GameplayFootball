@@ -94,6 +94,17 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# Which celebration a scorer performs, and which camera films it
+add_executable(gameplayfootball_goalcelebration_tests
+  onthepitch/goal_celebration_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/goalcelebration.cpp
+)
+target_include_directories(gameplayfootball_goalcelebration_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_goalcelebration_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_goalcelebration_tests DISCOVERY_MODE PRE_TEST)
+
 # Who is on the pitch during the entrance
 add_executable(gameplayfootball_entrancecast_tests
   onthepitch/entrance_cast_test.cpp

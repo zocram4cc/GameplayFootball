@@ -10,6 +10,8 @@ Timing Parse(const std::string& text) {
   std::istringstream lines(text);
   std::string line;
   bool haveFrames = false;
+  bool haveCover = false;
+  bool haveCut = false;
   while (std::getline(lines, line)) {
     std::istringstream fields(line);
     std::string key;
@@ -25,7 +27,20 @@ Timing Parse(const std::string& text) {
       }
     } else if (key == "fadestart") {
       int cut = 0;
-      if (fields >> cut) timing.cutFrame = cut < 0 ? 0 : cut;
+      // Only if nothing better arrives: PES's fadestart still has gaps in the matte.
+      if (fields >> cut && !haveCover) timing.cutFrame = cut < 0 ? 0 : cut;
+    } else if (key == "cover") {
+      int cover = 0;
+      if (fields >> cover && !haveCut) {
+        timing.cutFrame = cover < 0 ? 0 : cover;
+        haveCover = true;
+      }
+    } else if (key == "cut") {
+      int cut = 0;
+      if (fields >> cut) {
+        timing.cutFrame = cut < 0 ? 0 : cut;
+        haveCover = haveCut = true;
+      }
     }
   }
   timing.valid = haveFrames && timing.fps > 0.0f;

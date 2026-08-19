@@ -21,7 +21,8 @@
 #include "onthepitch/replaywipe.hpp"
 
 namespace {
-const char* kSidecar = "# a comment\nfps 60\nframes 92\nfadestart 8\n";
+const char* kSidecar =
+    "# a comment\nfps 60\nframes 92\nfadestart 8\ncover 9\ncut 15\n";
 }  // namespace
 
 TEST(ReplayWipe, ASidecarIsRead) {
@@ -29,7 +30,26 @@ TEST(ReplayWipe, ASidecarIsRead) {
   EXPECT_TRUE(timing.valid);
   EXPECT_FLOAT_EQ(timing.fps, 60.0f);
   EXPECT_EQ(timing.frames, 92);
-  EXPECT_EQ(timing.cutFrame, 8);
+  EXPECT_EQ(timing.cutFrame, 15);
+}
+
+// PES's fadestart is not the frame a cut can hide behind: at frame 6 the matte still
+// has pixels at zero, so the cut shows through the gaps. The importer measures where
+// it actually covers and writes that as "cover"; fadestart is kept for reference and
+// used only by a sidecar too old to carry one.
+TEST(ReplayWipe, TheCutWaitsForRealCoverRatherThanPesFadestart) {
+  EXPECT_EQ(ReplayWipe::Parse("fps 60\nframes 92\nfadestart 6\ncover 9\n").cutFrame, 9);
+}
+
+// And "cut" beats both: covered is not the same as safely covered, so the importer
+// holds it a quarter of a second into the hold.
+TEST(ReplayWipe, TheHeldCutFrameWinsOverBoth) {
+  EXPECT_EQ(ReplayWipe::Parse("fps 60\nframes 92\nfadestart 6\ncover 9\ncut 15\n").cutFrame,
+            15);
+}
+
+TEST(ReplayWipe, WithoutACoverFrameFadestartIsAllThereIs) {
+  EXPECT_EQ(ReplayWipe::Parse("fps 60\nframes 92\nfadestart 6\n").cutFrame, 6);
 }
 
 TEST(ReplayWipe, NothingIsNotAWipe) {
@@ -73,12 +93,12 @@ TEST(ReplayWipe, AnInvalidTimingIsAlwaysOver) {
 TEST(ReplayWipe, TheCutHasNotHappenedBeforeItsFrame) {
   const ReplayWipe::Timing timing = ReplayWipe::Parse(kSidecar);
   EXPECT_FALSE(ReplayWipe::CutIsDue(timing, 0));
-  EXPECT_FALSE(ReplayWipe::CutIsDue(timing, 100));   // frame 6
+  EXPECT_FALSE(ReplayWipe::CutIsDue(timing, 234));   // frame 14, covered but not yet held
 }
 
 TEST(ReplayWipe, TheCutIsDueFromItsFrameOnward) {
   const ReplayWipe::Timing timing = ReplayWipe::Parse(kSidecar);
-  EXPECT_TRUE(ReplayWipe::CutIsDue(timing, 134));    // frame 8
+  EXPECT_TRUE(ReplayWipe::CutIsDue(timing, 250));    // frame 15
   EXPECT_TRUE(ReplayWipe::CutIsDue(timing, 800));
   EXPECT_TRUE(ReplayWipe::CutIsDue(timing, 99999));  // even once it is over
 }

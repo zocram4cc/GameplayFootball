@@ -114,30 +114,87 @@ class TrimmingTheTail(unittest.TestCase):
         self.assertEqual(import_wipe.useful_frames([]), 0)
 
 
+class WhenItActuallyCovers(unittest.TestCase):
+    """The frame the cut can hide behind.
+
+    PES's own "fadestart" is not it. On both of these wipes fadestart is 6 or 8, and
+    at frame 6 the matte still has pixels at zero - the crest has swung most of the
+    way across but there are gaps, and a cut made there is a cut you can see through.
+    The matte does not reach full cover until frame 9.
+
+    So the covering frame is measured rather than taken on faith: the first frame
+    whose *least* opaque pixel is opaque.
+    """
+
+    def test_the_first_fully_opaque_frame_is_found(self):
+        # minimum alpha per frame, as measured off the decoded matte
+        self.assertEqual(import_wipe.cover_frame([0.0, 0.0, 0.4, 1.0, 1.0]), 3)
+
+    def test_partial_cover_does_not_count(self):
+        # 0.996 is what the real matte reaches, and that counts; 0.9 does not
+        self.assertEqual(import_wipe.cover_frame([0.0, 0.9, 0.996]), 2)
+
+    def test_a_wipe_that_never_covers_says_so(self):
+        self.assertIsNone(import_wipe.cover_frame([0.0, 0.3, 0.5]))
+        self.assertIsNone(import_wipe.cover_frame([]))
+
+
+class WhereTheCutGoes(unittest.TestCase):
+    """Covered is not the same as safely covered.
+
+    The matte first covers every pixel at frame 9, and cutting exactly there leaves
+    nothing to spare: the wipe is 60 fps, the game may not be, and a frame either way
+    puts the cut back in the gaps. So the cut is held to frame 15, well inside the
+    hold, which is a quarter of a second in and still a long way from the crest
+    starting to swing away.
+    """
+
+    def test_the_cut_is_held_past_the_moment_it_covers(self):
+        self.assertEqual(import_wipe.cut_frame(cover=9, frames=92), 15)
+
+    def test_a_late_cover_wins_over_the_hold(self):
+        # a wipe that takes longer to close is not cut into early
+        self.assertEqual(import_wipe.cut_frame(cover=40, frames=92), 40)
+
+    def test_it_never_runs_past_the_end(self):
+        self.assertEqual(import_wipe.cut_frame(cover=9, frames=10), 9)
+        self.assertEqual(import_wipe.cut_frame(cover=None, frames=6), 5)
+
+    def test_a_wipe_that_never_covers_still_cuts(self):
+        self.assertEqual(import_wipe.cut_frame(cover=None, frames=92), 15)
+
+
 class Sidecar(unittest.TestCase):
     """What the engine reads instead of a movie file."""
 
     def test_it_carries_what_playback_needs(self):
         text = import_wipe.sidecar_text(fps=60.0, frames=92, fadestart=8,
-                                        source="ACLwipe_hd.usm")
+                                        source="ACLwipe_hd.usm", cover=9)
+        self.assertIn("cut 15", text)
         self.assertIn("fps 60", text)
         self.assertIn("frames 92", text)
         self.assertIn("fadestart 8", text)
+        self.assertIn("cover 9", text)
         self.assertIn("ACLwipe_hd.usm", text)
 
+    def test_without_a_covering_frame_it_falls_back_to_pes_own(self):
+        text = import_wipe.sidecar_text(60.0, 92, 8, "x.usm", cover=None)
+        self.assertIn("cover 8", text)
+
     def test_every_line_is_one_fact_or_a_comment(self):
-        text = import_wipe.sidecar_text(60.0, 92, 8, "x.usm")
+        text = import_wipe.sidecar_text(60.0, 92, 8, "x.usm", cover=9)
         for line in text.splitlines():
             if line and not line.startswith("#"):
                 self.assertGreaterEqual(len(line.split()), 2)
 
     def test_a_fadestart_past_the_end_is_clamped_to_it(self):
         # better the cut on the last frame than a cut that never happens
-        text = import_wipe.sidecar_text(60.0, 10, 40, "x.usm")
+        text = import_wipe.sidecar_text(60.0, 10, 40, "x.usm", cover=40)
         self.assertIn("fadestart 9", text)
+        self.assertIn("cover 9", text)
 
     def test_a_negative_fadestart_lands_on_the_first_frame(self):
-        self.assertIn("fadestart 0", import_wipe.sidecar_text(60.0, 10, -3, "x.usm"))
+        self.assertIn("fadestart 0", import_wipe.sidecar_text(60.0, 10, -3, "x.usm", cover=-5))
 
 
 if __name__ == "__main__":
