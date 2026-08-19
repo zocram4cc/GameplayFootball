@@ -3249,6 +3249,18 @@ void Match::UpdateIngameCamera() {
           frame, {subject.coords[0], subject.coords[1], 0.0f}, goalCelebrationYaw);
       // never underground, whatever the staging lands on
       frame.position[2] = std::max(0.3f, frame.position[2]);
+      // Then follow him with it. PES pans these cameras off the origin as the shot
+      // develops - on goal_celebrate_0303 the aim is 3 degrees off at frame 0 and 60
+      // by frame 105 - because in PES the scorer *arrives* into the shot. Ours
+      // celebrates on the spot (every installed celebration clip has a root that
+      // moves at most 6 mm), so replaying that pan literally films the stand behind
+      // him. Aiming after staging is not the old re-aim of a world position: the
+      // camera is already at PES's own distance, so the authored lens is wide enough
+      // on 77.5% of the library's 472,077 frames and is kept untouched there.
+      frame = RetargetCamTrackFrame(
+          frame,
+          {subject.coords[0], subject.coords[1], subject.coords[2] + 1.0f},
+          1.5f, 0.75f);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;

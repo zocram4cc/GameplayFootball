@@ -548,13 +548,30 @@ The old `goalCamAuthoredSides` x-mirror went with it. It was there to flip a
 world-space track to whichever end the goal was scored at, and in celebration
 space there is no end to flip to — the yaw already puts the shot where it belongs.
 
+Staging alone films the stand, though, because PES pans these cameras off the
+origin as the shot develops. On `goal_celebrate_0303_mayaL0x` the aim is 3 degrees
+off the local origin at frame 0, 31 by frame 70 and 60 by frame 105, and the lens
+opens from 11 to 25 degrees with it - PES's scorer *arrives* into that shot. Ours
+does not: every one of the 266 installed `pes_dml_goal_celebrate_*.anim` clips has
+a root that moves at most 6 mm, so a literal replay of the pan ends up looking at
+the sky over the stand, which is precisely what the first staged capture did.
+
+So the position is staged and the aim then follows the scorer
+(`RetargetCamTrackFrame` after `StageCamTrackFrame`). That is not the old re-aim of
+a world position: the camera is already at PES's authored distance, so the authored
+lens is wide enough to frame him on 365 684 of the library's 472 077 frames (77.5%)
+and is kept untouched there; where it is widened it is by a median of 2.7 degrees.
+
 Two caveats. The *other* incident-local categories are not the same shape: only
 2 of 16 `change` tracks and neither `card` track aims at its origin, so those are
 multi-actor stagings whose authored aim points at whichever actor PES framed, and
 they keep the re-aim (`CutsceneViewer::Anchoring::IncidentLocal`) rather than pure
-staging. And the celebration animations are in-place, so the camera follows the
-scorer's live position; if a scorer ever runs while celebrating, the shot travels
-with him rather than letting him leave a 9-degree frame.
+staging. And the camera follows the scorer's live position rather than the spot he
+scored from, which costs nothing: the celebration clips do not travel. Over 120 of
+the 266 installed `pes_dml_goal_celebrate_*.anim`, the root moves a median of 0.0 m
+and at most 6 mm across the whole clip, so the staged composition holds still
+exactly as PES framed it - and if a scorer is ever moved by something else, the
+shot goes with him rather than letting him walk out of a nine-degree frame.
 
 ---
 

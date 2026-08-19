@@ -292,3 +292,61 @@ TEST(CamTrackStage, NoTurnLeavesTheAuthoredRotationAlone) {
   auto out = blunted::StageCamTrackFrame(frame, {0.0f, 0.0f, 0.0f}, 0.0f);
   for (int c = 0; c < 4; c++) EXPECT_NEAR(out.rotation[c], frame.rotation[c], 1e-5);
 }
+
+// Staging alone is not enough, because PES pans its goal cameras off the origin as
+// the shot develops: on goal_celebrate_0303_mayaL0x the aim is 3 degrees off the
+// local origin at frame 0, 31 by frame 70 and 60 by frame 105, and the lens opens
+// from 11 to 25 degrees with it. PES's actor arrives into that shot. Ours celebrates
+// in place - every one of the 266 installed celebration clips has a root that moves
+// at most 6 mm - so replaying the pan literally ends up filming the sky over the
+// stand, which is exactly what the first staged capture did.
+//
+// So the position is staged and the aim then follows the scorer. That is not the old
+// re-aim-a-world-position: the camera is already at PES's authored distance, so the
+// authored lens is wide enough to frame him on 77.5% of the library's 472 077 frames
+// and is kept untouched there.
+
+TEST(CamTrackStageThenAim, TheShotFollowsTheScorerWhenPesPansAway) {
+  blunted::CamTrackFrame frame;
+  frame.position = {3.75f, -6.89f, 0.61f};    // goal_celebrate_0303, frame 105
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};  // authored: 60 deg off the subject
+  frame.fov = 25.47f;
+  const std::array<float, 3> subject = {25.0f, -8.0f, 0.0f};
+  auto out = blunted::StageCamTrackFrame(frame, subject, 0.0f);
+  out = blunted::RetargetCamTrackFrame(
+      out, {subject[0], subject[1], subject[2] + 1.0f}, 1.5f, 0.75f);
+  auto fwd = blunted::CamTrackForward(out.rotation);
+  const float aim[3] = {subject[0] - out.position[0], subject[1] - out.position[1],
+                        subject[2] + 1.0f - out.position[2]};
+  const float len = std::sqrt(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]);
+  EXPECT_NEAR((fwd[0] * aim[0] + fwd[1] * aim[1] + fwd[2] * aim[2]) / len, 1.0f, 1e-3);
+  // and it is still where PES put it, 7.9 m out rather than at the centre spot
+  EXPECT_NEAR(len, 7.90f, 0.05f);
+}
+
+TEST(CamTrackStageThenAim, TheAuthoredLensSurvivesAtTheAuthoredDistance) {
+  blunted::CamTrackFrame frame;
+  frame.position = {-1.51f, -9.09f, 0.52f};   // goal_celebrate_0303, frame 0
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.fov = 11.42f;                          // frames 1.85 m at 9.2 m: a man
+  const std::array<float, 3> subject = {0.0f, 0.0f, 0.0f};
+  auto out = blunted::StageCamTrackFrame(frame, subject, 0.0f);
+  out = blunted::RetargetCamTrackFrame(out, {0.0f, 0.0f, 1.0f}, 1.5f, 0.75f);
+  EXPECT_FLOAT_EQ(out.fov, 11.42f);
+}
+
+TEST(CamTrackStageThenAim, StagingAloneWouldFilmTheStandBehindHim) {
+  // the failure this composition exists to prevent, kept as a test so it cannot
+  // come back: PES's frame 105 aim, staged faithfully, points 60 degrees past him
+  blunted::CamTrackFrame frame;
+  frame.position = {3.75f, -6.89f, 0.61f};
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  const std::array<float, 3> subject = {25.0f, -8.0f, 0.0f};
+  auto staged = blunted::StageCamTrackFrame(frame, subject, 0.0f);
+  auto fwd = blunted::CamTrackForward(staged.rotation);
+  const float aim[3] = {subject[0] - staged.position[0], subject[1] - staged.position[1],
+                        subject[2] + 1.0f - staged.position[2]};
+  const float len = std::sqrt(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]);
+  const float dot = (fwd[0] * aim[0] + fwd[1] * aim[1] + fwd[2] * aim[2]) / len;
+  EXPECT_LT(dot, 0.6f);  // more than 50 degrees off him
+}
