@@ -3257,10 +3257,16 @@ void Match::UpdateIngameCamera() {
       // him. Aiming after staging is not the old re-aim of a world position: the
       // camera is already at PES's own distance, so the authored lens is wide enough
       // on 77.5% of the library's 472,077 frames and is kept untouched there.
+      // The framing guard is a head, not a whole player. Once the camera is at
+      // PES's own distance it is PES's lens that is right, and a player-sized guard
+      // fights it: goal_celebrate_0312 opens at 2.57 degrees from 17.2 m, framing
+      // 0.77 m of him on purpose, and a 0.75 m half-height forces that to 5 degrees
+      // and a full body. At 0.15 m PES's lens survives on 99.6% of the library's
+      // 472,077 frames, and the guard only fires where even a face would not fit.
       frame = RetargetCamTrackFrame(
           frame,
           {subject.coords[0], subject.coords[1], subject.coords[2] + 1.0f},
-          1.5f, 0.75f);
+          1.5f, 0.15f);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;

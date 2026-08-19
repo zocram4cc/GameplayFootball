@@ -562,6 +562,16 @@ a world position: the camera is already at PES's authored distance, so the autho
 lens is wide enough to frame him on 365 684 of the library's 472 077 frames (77.5%)
 and is kept untouched there; where it is widened it is by a median of 2.7 degrees.
 
+The framing guard in that aim is a head, not a whole player, for the same reason.
+`goal_celebrate_0312_mayaL0x` opens at 2.57 degrees from 17.2 m - 0.77 m of subject,
+a head and shoulders on purpose - and pulls back over the shot to 24.6 degrees at
+23 m, framing 9.9 m: PES's own zoom out from the scorer to the group that has
+reached him. A guard sized to a whole player (0.75 m half-height) forces that
+opening shot to 5 degrees and a full body. Across the library's 472 077 goal frames
+the guard leaves PES's lens untouched on 77.5% at 0.75 m, 92.5% at 0.40, 98.8% at
+0.25 and **99.6% at 0.15**, which is the value used - it fires only where even a
+face would not fit, i.e. where the camera is right on top of him.
+
 Two caveats. The *other* incident-local categories are not the same shape: only
 2 of 16 `change` tracks and neither `card` track aims at its origin, so those are
 multi-actor stagings whose authored aim points at whichever actor PES framed, and

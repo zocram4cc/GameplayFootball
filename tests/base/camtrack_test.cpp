@@ -350,3 +350,33 @@ TEST(CamTrackStageThenAim, StagingAloneWouldFilmTheStandBehindHim) {
   const float dot = (fwd[0] * aim[0] + fwd[1] * aim[1] + fwd[2] * aim[2]) / len;
   EXPECT_LT(dot, 0.6f);  // more than 50 degrees off him
 }
+
+// How much framing guard is allowed to override PES. The guard exists so a shot
+// cannot end up too tight to show anything, but once the camera is at PES's own
+// distance it is PES's lens that is right - and a guard sized to a whole player
+// fights it. goal_celebrate_0312_mayaL0x opens at 2.57 degrees from 17.2 m, which
+// frames 0.77 m: a head and shoulders, deliberately. A 0.75 m half-height forces
+// that to 5 degrees and a full-body shot; 0.15 m leaves it alone.
+//
+// Measured over the library's 472,077 goal frames, the guard leaves PES's lens
+// untouched on 77.5% at 0.75 m, 92.5% at 0.40, 98.8% at 0.25 and 99.6% at 0.15.
+TEST(CamTrackStageThenAim, PesOwnTightCloseUpIsNotOpenedUp) {
+  blunted::CamTrackFrame frame;
+  frame.position = {12.37f, -11.90f, 0.65f};   // goal_celebrate_0312, frame 0
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.fov = 2.57f;
+  auto out = blunted::StageCamTrackFrame(frame, {0.0f, 0.0f, 0.0f}, 0.0f);
+  out = blunted::RetargetCamTrackFrame(out, {0.0f, 0.0f, 1.0f}, 1.5f, 0.15f);
+  EXPECT_FLOAT_EQ(out.fov, 2.57f);
+}
+
+TEST(CamTrackStageThenAim, AShotTooTightToShowAnythingIsStillOpenedUp) {
+  // the guard still earns its keep: a camera half a metre from his face
+  blunted::CamTrackFrame frame;
+  frame.position = {0.0f, -0.5f, 1.0f};
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.fov = 2.0f;
+  auto out = blunted::StageCamTrackFrame(frame, {0.0f, 0.0f, 0.0f}, 0.0f);
+  out = blunted::RetargetCamTrackFrame(out, {0.0f, 0.0f, 1.0f}, 1.5f, 0.15f);
+  EXPECT_GT(out.fov, 2.0f);
+}
