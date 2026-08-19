@@ -3,6 +3,10 @@
 [PICTURE.md](PICTURE.md) is the companion to this one: what the presentation
 chain does to a frame, which of the things that look wrong are defects rather
 than somebody's art, and how the measurements here were taken.
+[STATUS.md](STATUS.md) is where the project stands, and carries the standing
+finding about imported player bodies: a 4cc aesthetic export is often not a body
+at all but a set of slot overrides drawn over PES's own base body, so 30 of the
+93 installed bodies need `fmdl_to_fullbody.py --base` under them.
 
 
 The goal: bring PES 2021 content — player models, animations (match play,
