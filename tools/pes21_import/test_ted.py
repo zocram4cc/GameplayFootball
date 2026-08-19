@@ -88,12 +88,17 @@ class ThePlayerRecords(unittest.TestCase):
         self.assertEqual(players[0]["name"], "Brapdiver")
 
     def test_the_colour_markup_is_not_part_of_the_name(self):
-        # 4cc writes a name as cRRGGBBff<name>; the tag is not the man's name
-        players = self.roster(record("c8b5f55ffI DIVE", "I DIVE"))
+        # 4cc writes a coloured name as 0x11 c RRGGBBAA <name>; the tag is markup
+        players = self.roster(record("\x11c8b5f55ffI DIVE", "I DIVE"))
         self.assertEqual(players[0]["name"], "I DIVE")
 
-    def test_markup_in_the_middle_of_a_name_goes_too(self):
-        players = self.roster(record("cccccccffJohn Helldiver", "HELLDIVER"))
+    def test_the_same_tag_without_its_escape_is_ordinary_text(self):
+        # and it has to be, or a name that begins "c8b5f55ff" could not be spelled
+        players = self.roster(record("c8b5f55ffI DIVE", "I DIVE"))
+        self.assertEqual(players[0]["name"], "c8b5f55ffI DIVE")
+
+    def test_markup_before_a_name_goes_and_the_name_stays(self):
+        players = self.roster(record("\x11cccccccffJohn Helldiver", "HELLDIVER"))
         self.assertEqual(players[0]["name"], "John Helldiver")
 
     def test_a_leading_control_byte_is_not_part_of_the_name(self):
@@ -184,3 +189,69 @@ class TheFormations(unittest.TestCase):
 
     def test_nothing_there_is_no_presets(self):
         self.assertEqual(ted.read_formations(bytes(0x0100)), [])
+
+
+class ColouredNames(unittest.TestCase):
+    """PES colours a name from markup inside the string, and 4cc packs use it.
+
+    Five of HDG's twenty-three names carry it. The grammar, read off the bytes:
+
+        0x11  escape
+        'c'   the tag: a colour follows
+        8 lowercase hex digits, RRGGBBAA
+        then the text
+
+    So player 7 is  11 63 38 62 35 66 35 35 66 66 'I DIVE'  =  #8b5f55, "I DIVE".
+    Players 7 and 8 are #8b5f55, 9 is #cc9900, 10 and 11 are #cccccc.
+
+    RRGGBBAA rather than AARRGGBB because all three tags end in "ff" while their
+    leading six digits differ: a constant trailing pair is an opaque alpha, whereas
+    the other reading would make them three different partial alphas over blue,
+    purple and pale blue. That is inference from three samples, not a spec.
+    """
+
+    def test_a_plain_name_has_no_colour(self):
+        text, colours = ted.parse_name("Bullet Sponge")
+        self.assertEqual(text, "Bullet Sponge")
+        self.assertEqual(colours, [])
+
+    def test_a_coloured_name_gives_up_both(self):
+        text, colours = ted.parse_name("\x11c8b5f55ffI DIVE")
+        self.assertEqual(text, "I DIVE")
+        self.assertEqual(colours, [(0, "#8b5f55ff")])
+
+    def test_the_grey_and_the_gold(self):
+        self.assertEqual(ted.parse_name("\x11cccccccffJohn Helldiver"),
+                         ("John Helldiver", [(0, "#ccccccff")]))
+        self.assertEqual(ted.parse_name("\x11ccc9900ffI'm not gonna sugarcoat it"),
+                         ("I'm not gonna sugarcoat it", [(0, "#cc9900ff")]))
+
+    def test_a_colour_can_change_part_way_through(self):
+        # the markup allows it even though HDG only ever opens with one
+        text, colours = ted.parse_name("\x11cff0000ffRed\x11c00ff00ffGreen")
+        self.assertEqual(text, "RedGreen")
+        self.assertEqual(colours, [(0, "#ff0000ff"), (3, "#00ff00ff")])
+
+    def test_an_escape_that_is_not_a_colour_is_left_as_text(self):
+        # better a literal than a guess: an unknown tag is not silently eaten
+        text, colours = ted.parse_name("\x11zsomething")
+        self.assertEqual(text, "zsomething")
+        self.assertEqual(colours, [])
+
+    def test_a_truncated_colour_tag_is_left_as_text(self):
+        text, colours = ted.parse_name("\x11c8b5")
+        self.assertEqual(text, "c8b5")
+        self.assertEqual(colours, [])
+
+    def test_a_name_that_merely_begins_with_c_keeps_it(self):
+        self.assertEqual(ted.parse_name("cabbage"), ("cabbage", []))
+
+    def test_the_reader_carries_the_colour_through(self):
+        plain = payload(ted.PLAYER_TABLE_OFFSET) + record("\x11c8b5f55ffI DIVE", "I DRIVE")
+        player = ted.read_players(bytes(plain))[0]
+        self.assertEqual(player["name"], "I DIVE")
+        self.assertEqual(player["name_colour"], "#8b5f55ff")
+
+    def test_an_uncoloured_player_has_no_colour_to_carry(self):
+        plain = payload(ted.PLAYER_TABLE_OFFSET) + record("Mothdiver", "MOTH")
+        self.assertIsNone(ted.read_players(bytes(plain))[0]["name_colour"])

@@ -74,8 +74,24 @@ REC_NAME = 0x2b
 REC_SHIRT_NAME = 0x68
 REC_EXTRA = 0xa5
 
-# 4cc writes a coloured name as cRRGGBBff<text>. The tag is markup, not a name.
-COLOUR_TAG = re.compile(r"c[0-9a-fA-F]{6}ff")
+# PES colours a name from markup inside the string, and 4cc packs use it:
+#
+#     0x11  escape
+#     'c'   the tag: a colour follows
+#     8 lowercase hex digits, RRGGBBAA
+#     then the text
+#
+# So player 7 of HDG's export is 11 63 38 62 35 66 35 35 66 66 "I DIVE": #8b5f55,
+# "I DIVE". Five of its twenty-three names carry one - 7 and 8 #8b5f55, 9 #cc9900,
+# 10 and 11 #cccccc.
+#
+# Read as RRGGBBAA rather than AARRGGBB because all three tags end in "ff" while
+# their leading six digits differ: a constant trailing pair is an opaque alpha,
+# where the other reading would make them three different partial alphas over blue,
+# purple and pale blue. Inference from three samples, not a spec.
+NAME_ESCAPE = "\x11"
+COLOUR_TAG_LENGTH = 1 + 8  # 'c' and RRGGBBAA
+HEX_DIGITS = "0123456789abcdefABCDEF"
 
 
 def recover_key(payload, key_length=KEY_LENGTH):
@@ -115,16 +131,41 @@ def read_squad_order(plain):
     return [b for b in raw]
 
 
-def strip_markup(text):
-    """A name with its 4cc colour tags taken out.
+def parse_name(field):
+    """-> (text, [(index into text, "#rrggbbaa")]) for one name field.
 
-    Names arrive as cRRGGBBff<text> when the pack colours them, and the tag is not
-    part of the man's name: "c8b5f55ffI DIVE" is I DIVE.
+    The colours are kept rather than thrown away: they are the pack author's, and a
+    name is meant to be drawn in them. An escape that is not a colour, or a colour
+    tag too short to be one, is left in the text as the literal it is - better a
+    stray character than a guess that eats part of somebody's name.
+
+    Colour changes are read wherever they appear, not only at the start: the markup
+    allows it, even though HDG's export always opens with one and never changes.
     """
-    without_tags = COLOUR_TAG.sub("", text)
-    # And control bytes are never part of a name: five of HDG's twenty-three open
-    # with 0x11, which strip() leaves in place.
-    return "".join(c for c in without_tags if c >= " ").strip()
+    text = []
+    colours = []
+    i = 0
+    while i < len(field):
+        ch = field[i]
+        if ch != NAME_ESCAPE:
+            if ch >= " ":
+                text.append(ch)
+            i += 1
+            continue
+        tag = field[i + 1:i + 1 + COLOUR_TAG_LENGTH]
+        if (len(tag) == COLOUR_TAG_LENGTH and tag[0] == "c"
+                and all(d in HEX_DIGITS for d in tag[1:])):
+            colours.append((len("".join(text)), "#" + tag[1:].lower()))
+            i += 1 + COLOUR_TAG_LENGTH
+            continue
+        # not a colour: drop the escape byte, keep what followed as text
+        i += 1
+    return "".join(text).strip(), colours
+
+
+def strip_markup(text):
+    """Just the readable name, with its markup and any control bytes gone."""
+    return parse_name(text)[0]
 
 
 def read_players(plain):
@@ -138,11 +179,13 @@ def read_players(plain):
     players = []
     offset = PLAYER_TABLE_OFFSET
     while offset + PLAYER_RECORD_SIZE <= len(plain):
-        name = strip_markup(read_string(plain, offset + REC_NAME))
+        name, colours = parse_name(read_string(plain, offset + REC_NAME))
         if not name:
             break
         players.append({
             "name": name,
+            "name_colour": colours[0][1] if colours else None,
+            "name_colours": colours,
             "shirt_name": strip_markup(read_string(plain, offset + REC_SHIRT_NAME)),
             "extra": strip_markup(read_string(plain, offset + REC_EXTRA)),
         })
