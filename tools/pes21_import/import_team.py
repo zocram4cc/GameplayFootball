@@ -119,7 +119,14 @@ def main():
                         help="assign consecutive database ids from here")
     parser.add_argument("--db-ids", default="",
                         help="explicit comma-separated database ids, in export order")
-    parser.add_argument("--max-tris", type=int, default=20000)
+    # 20,000 dropped whole meshes and took heads off models. select_meshes fits
+    # meshes into the budget biggest-first and discards what will not fit, and a 4cc
+    # character is not a 20,000-triangle budget: lcg_2709's source carries 205,774
+    # faces over 20 meshes, of which the old budget kept 16,308 - its head, at 20,086
+    # faces, was one of the meshes thrown away whole, leaving a robe with a floating
+    # chefhat where the head should be. At 100,000 it comes in at 96,130 over four
+    # meshes and is a whole character again.
+    parser.add_argument("--max-tris", type=int, default=100000)
     parser.add_argument("--max-edge", type=float, default=0.15,
                         help="drop triangles with an edge longer than this "
                              "(metres); see fmdl_to_fullbody")
