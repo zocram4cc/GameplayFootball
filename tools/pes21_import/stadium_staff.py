@@ -294,6 +294,7 @@ def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
         faces = [(c, b, a) for (a, b, c) in faces]
     uvs = [(v.uv[0].u, 1.0 - v.uv[0].v) if v.uv else (0.0, 0.0) for v in mesh.vertices]
 
+
     out.write("*GEOMOBJECT {\n")
     out.write('\t*NODE_NAME "%s"\n' % name)
     # The loader wants a transform block per object, and refuses the file
