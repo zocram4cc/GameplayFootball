@@ -306,6 +306,17 @@ target_link_libraries(gameplayfootball_camtrack_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_camtrack_tests DISCOVERY_MODE PRE_TEST)
 
+# The standalone viewer's orbit camera.
+add_executable(gameplayfootball_viewercamera_tests
+  base/viewer_camera_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/viewercamera.cpp
+)
+target_include_directories(gameplayfootball_viewercamera_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_viewercamera_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_viewercamera_tests DISCOVERY_MODE PRE_TEST)
+
 # Model inventory: what a model is made of, for the standalone viewer and for judging
 # an import that dropped geometry.
 add_executable(gameplayfootball_modelinventory_tests
