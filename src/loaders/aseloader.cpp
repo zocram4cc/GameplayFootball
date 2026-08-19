@@ -5,6 +5,8 @@
 
 #include "aseloader.hpp"
 
+#include "loaders/asenormals.hpp"
+
 #include "asecache.hpp"
 
 #include <chrono>
@@ -199,9 +201,14 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
       Log(e_FatalError, "ASELoader", "BuildTriangleMesh", "subtree MESH_TFACELIST not found");
   }
 
+  // Optional. Normals are 45% of an imported stadium's bytes - of pes_st002.ase's
+  // 1,132 MB, MESH_VERTEXNORMAL is 386.6 MB and MESH_FACENORMAL 121.2 MB - and over
+  // 200,000 sampled faces of pes_st011.ase every one has its three vertex normals
+  // identical, so the file writes a flat normal three times and carries no smoothing
+  // at all. A mesh may leave them out and have them derived from its winding
+  // instead. A mesh that ships them keeps them, which matters: props.ase is only 7%
+  // flat and entrance.ase 1.8%, because those figures really are smooth-shaded.
   const s_tree* tree_mesh_normals = tree_find(tree_mesh, "MESH_NORMALS");
-  if (!tree_mesh_normals)
-    Log(e_FatalError, "ASELoader", "BuildTriangleMesh", "subtree MESH_NORMALS not found");
 
   /* vertices
     MESH_VERTEX_LIST {
@@ -297,12 +304,24 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
   normalize(&rotation_matrix.elements[3]);
   normalize(&rotation_matrix.elements[6]);
 
-  if (tree_mesh_normals->entries.size() / 4 != (unsigned int)numfaces)
+  if (!tree_mesh_normals) {
+    // Derived: the flat normal of each triangle, on all three of its corners, which
+    // is exactly what a file with normals stores for these meshes.
+    for (int i = 0; i < numfaces; i++) {
+      Triangle* triangle = triangles.at(i);
+      Vector3 normal = AseNormals::FromWinding(triangle->GetVertex(0), triangle->GetVertex(1),
+                                               triangle->GetVertex(2));
+      normal *= rotation_matrix;
+      normal.Normalize();
+      for (int v = 0; v < 3; v++)
+        triangle->SetNormal(v, normal.coords[0], normal.coords[1], normal.coords[2]);
+    }
+  } else if (tree_mesh_normals->entries.size() / 4 != (unsigned int)numfaces)
     Log(e_FatalError, "ASELoader", "BuildTriangleMesh",
         "numfaces and tree_mesh_normals->entries.size() * 4 differ! Loader corrupt?");
 
-  // face normals
-  for (unsigned int i = 0; i < tree_mesh_normals->entries.size(); i += 4) {
+  // face normals, when the file carries them
+  for (unsigned int i = 0; tree_mesh_normals && i < tree_mesh_normals->entries.size(); i += 4) {
     s_treeentry* entry_normal = tree_mesh_normals->entries.at(i);  // less typing
 
     // vertex normals
