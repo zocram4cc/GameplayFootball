@@ -718,6 +718,44 @@ data/imports/<pack>/
   chants/<name>.ogg
 ```
 
+## A squad model import requires the team's tactical export
+
+A pack does not name its files after players. It names them after shirt numbers,
+because that is what PES's slots are keyed by:
+
+    Faces/XXX02 - Lobby doko          the face and hair for whoever wears 2
+    Boots/k2411 - Helldiver           the body in the boots slot for shirt 11
+
+Nothing in the pack says which engine player wears which shirt. That mapping is
+in the tactical export and nowhere else: `ted.read_squad` returns
+`{'id': 80311, 'number': 11}`, and the boots folder's last two digits are that
+number (4cc allocates each team a block, so /hdg/ is `k24nn`). So the .ted is a
+requirement, not a convenience — /hdg/ was first imported without using it and
+came out with bodies on the three players whose shirt number happened to have its
+own boots folder, and the other twenty on the stock body.
+
+The second thing the packs do is **share bodies**: PES lets one boots model serve
+any number of players. /hdg/ ships three for twenty-three, and which one a player
+takes follows from his own face folder, because PES draws the boots model and the
+face model together:
+
+| his folder ships | he takes | why |
+|---|---|---|
+| `face_high.fmdl` (a face mesh) | the headless body | his own head would otherwise be a second one |
+| only `fcl_hair.fmdl` (hair) | the complete body | nothing else supplies a head |
+| nothing — no folder at all | the body at his own shirt number | he is a character of his own |
+
+That is why the pack ships `k2411 - Helldiver` and `k2402 - Helldiver Headless`
+as a pair, and it resolves /hdg/ to 15 x Helldiver, 7 x Helldiver Headless and
+1 x Alexus, with every player assigned. Measured: 2402's geometry stops at
+z 1.59, below the head joint at 1.64, and 2411 reaches 1.81.
+
+    python3 tools/pes21_import/squad_models.py <team.ted> <pack dir>
+
+prints the assignment before anything is imported. `body_coverage.py` then says
+whether each assembled body clothes the rig — see [STATUS.md](STATUS.md) for what
+that measures and why the threshold is 0.20 m.
+
 ## Importing a 4cc team straight from the game's own archives
 
 The AET packs are convenient but partial. A team that only exists inside the
