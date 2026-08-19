@@ -129,3 +129,77 @@ class FixingAWholeMesh(unittest.TestCase):
 
     def test_an_empty_mesh_is_no_work(self):
         self.assertEqual(cloth.match_mesh_uvs([]), ([], 0))
+
+
+class GatingItOnTwoSidedness(unittest.TestCase):
+    """The gate that makes match_mesh_uvs safe to wire into an importer.
+
+    Ungated it repaints the pole. The corner flag's pole legitimately uses the same
+    bottom strip of cf_common_bsm that the flag's back sheet wrongly samples - its grey
+    band lives there - so running the majority rule over the pole's 274 faces moves 176
+    of them. A mesh only gets the treatment when its two texture regions look like the
+    front and back of one cloth: comparable area, and each covering a similar count.
+    """
+
+    def test_a_flag_cloth_qualifies(self):
+        # 16 faces on each region, 0.0697 and 0.0689 square metres
+        self.assertTrue(cloth.regions_are_two_sided(16, 0.0697, 16, 0.0689))
+
+    def test_the_pole_does_not(self):
+        # 114 faces on one region and 160 on the other, and nothing like equal area
+        self.assertFalse(cloth.regions_are_two_sided(114, 0.0421, 160, 0.2637))
+
+    def test_a_lopsided_face_count_disqualifies_it(self):
+        self.assertFalse(cloth.regions_are_two_sided(16, 0.0697, 3, 0.0689))
+
+    def test_a_lopsided_area_disqualifies_it(self):
+        self.assertFalse(cloth.regions_are_two_sided(16, 0.0697, 16, 0.0031))
+
+    def test_nothing_measurable_does_not(self):
+        self.assertFalse(cloth.regions_are_two_sided(0, 0.0, 0, 0.0))
+
+    def test_the_mesh_pass_leaves_a_pole_alone(self):
+        # two regions, unequal in both count and area: no change at all
+        pole = ([[((0.0, 0.0, z / 10.0), (0.55, 0.30)) for z in range(3)]] * 40
+                + [[((1.0, 0.0, z / 10.0), (0.55, 0.80)) for z in range(3)]] * 5)
+        fixed, moved = cloth.match_mesh_uvs(pole, gated=True)
+        self.assertEqual(moved, 0)
+        self.assertEqual(fixed, pole)
+
+
+class SplittingAMeshIntoItsTwoRegions(unittest.TestCase):
+    """Bucketing mean V was the wrong model and the real mesh said so.
+
+    The corner flag's 32 faces fall into five buckets at a 0.2 grid, because their V
+    values spread across 0.266..0.991 - so a fixed grid invents regions that are not
+    there. What is actually present is two clusters with a gap between them, which is
+    what a hand split at 0.63 found. So the boundary is learned: sort the faces by mean
+    V and cut at the largest gap, and only call it two regions when that gap is wide
+    enough to be one.
+    """
+
+    def test_two_clusters_are_found_wherever_they_sit(self):
+        means = [0.30, 0.31, 0.33, 0.29, 0.80, 0.82, 0.79, 0.81]
+        low, high = cloth.split_regions(means)
+        self.assertEqual(sorted(low), [0, 1, 2, 3])
+        self.assertEqual(sorted(high), [4, 5, 6, 7])
+
+    def test_the_flags_own_spread_splits_in_two(self):
+        # measured: the cloth's faces sit at about 0.45 and 0.86
+        means = [0.42, 0.45, 0.47, 0.44, 0.50, 0.84, 0.86, 0.88, 0.85, 0.90]
+        low, high = cloth.split_regions(means)
+        self.assertEqual(len(low), 5)
+        self.assertEqual(len(high), 5)
+
+    def test_one_spread_out_region_is_not_split(self):
+        # an even spread has no gap worth cutting at
+        means = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
+        low, high = cloth.split_regions(means)
+        self.assertEqual(high, [])
+
+    def test_nothing_is_no_regions(self):
+        self.assertEqual(cloth.split_regions([]), ([], []))
+
+    def test_a_degenerate_face_does_not_break_the_area(self):
+        # the real file has faces with a repeated corner
+        self.assertEqual(cloth._face_area([((0, 0, 0), (0.1, 0.1))]), 0.0)

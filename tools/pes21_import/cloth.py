@@ -39,6 +39,27 @@ def looks_two_sided(area_a, area_b):
     return abs(area_a - area_b) / larger <= TWO_SIDED_AREA_TOLERANCE
 
 
+# How unequal two regions may be and still be the two sides of one cloth. The flag's
+# are 16 faces each at 0.0697 and 0.0689 square metres; the pole's are 114 and 160
+# faces at 0.0421 and 0.2637, and it must not qualify.
+COUNT_TOLERANCE = 0.25
+AREA_TOLERANCE = 0.25
+
+
+def regions_are_two_sided(count_a, area_a, count_b, area_b):
+    """Do these two texture regions look like the front and back of one cloth?
+
+    The gate that makes match_mesh_uvs safe to use on a whole mesh. Ungated it repaints
+    the corner flag's pole, which legitimately uses the same strip the flag's back sheet
+    wrongly samples.
+    """
+    if count_a <= 0 or count_b <= 0 or area_a <= 0.0 or area_b <= 0.0:
+        return False
+    if abs(count_a - count_b) / max(count_a, count_b) > COUNT_TOLERANCE:
+        return False
+    return abs(area_a - area_b) / max(area_a, area_b) <= AREA_TOLERANCE
+
+
 def _region_key(sheet):
     """Which part of the texture a sheet sits in: its mean V, rounded."""
     if not sheet:
@@ -85,15 +106,61 @@ def match_two_sided_uvs(sheets):
 REGION_SPLIT = 0.2
 
 
-def match_mesh_uvs(faces):
+# How wide the gap between two clusters of V has to be to count as two regions of the
+# texture rather than one spread-out region. The flag's clusters sit at about 0.45 and
+# 0.86, a gap of near 0.3.
+REGION_GAP = 0.15
+
+
+def split_regions(means):
+    """-> (indices of the lower cluster, indices of the upper), by the largest gap.
+
+    Bucketing on a fixed grid was wrong: the flag's 32 faces fall into five buckets at
+    0.2 because their V spreads across 0.266..0.991. The boundary is learned instead -
+    sort, cut at the widest gap, and only call it two regions if that gap is wide
+    enough to be one.
+    """
+    if not means:
+        return [], []
+    order = sorted(range(len(means)), key=lambda i: means[i])
+    best_gap = 0.0
+    best_at = -1
+    for k in range(len(order) - 1):
+        gap = means[order[k + 1]] - means[order[k]]
+        if gap > best_gap:
+            best_gap = gap
+            best_at = k
+    if best_gap < REGION_GAP or best_at < 0:
+        return list(order), []
+    return order[:best_at + 1], order[best_at + 1:]
+
+
+def _face_area(face):
+    if len(face) < 3 or any(len(corner) < 2 for corner in face[:3]):
+        return 0.0
+    a, b, c = (corner[0] for corner in face[:3])
+    u = [b[i] - a[i] for i in range(3)]
+    v = [c[i] - a[i] for i in range(3)]
+    n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0])
+    return 0.5 * sum(x * x for x in n) ** 0.5
+
+
+def match_mesh_uvs(faces, gated=False):
     """-> (faces with every one on the majority texture region, how many moved).
 
-    NOT SAFE TO APPLY TO A WHOLE MESH UNGATED, and the corner flag pole is why. The
+    Gate it with gated=True. Ungated it repaints the corner flag's pole, and why is The
     pole legitimately uses both halves of cf_common_bsm - its grey band lives in the
     same bottom strip the flag's back sheet wrongly samples - so this rule, run over
     the pole's 274 faces, moves 176 of them and repaints it. It is only correct for a
     sheet pair that looks_two_sided() agrees on: equal areas, opposite windings.
-    Gate it before wiring it into an importer.
+    worth keeping: the pole legitimately uses both halves of cf_common_bsm.
+
+    Gated it is correct - on the real flag mesh it splits 16/16 at areas 0.0697 and
+    0.0689 and moves 16 faces - but it CANNOT YET BE WIRED INTO stadium_staff. That
+    writer keeps one UV per vertex, and the flag's two sheets share 9 of their 18
+    positions, so writing a back-face corner's UV overwrites the front's. The writer has
+    to emit TVERTs per face corner first, which is exactly what adboard_uvs.py does for
+    the advertising ring; until then this runs correctly and changes nothing.
 
     `faces` is a list of faces, each a list of (position, uv) corners - which is what
     a mesh with a shared UV pool comes out as. Faces are grouped by their mean V, the
@@ -112,6 +179,29 @@ def match_mesh_uvs(faces):
         groups.setdefault(key, []).append(face)
     if len(groups) < 2:
         return [list(f) for f in faces], 0
+
+    if gated:
+        # Only a mesh whose two regions look like one cloth seen from both sides.
+        means = [sum(uv[1] for _, uv in f) / len(f) if f else 0.0 for f in faces]
+        low, high = split_regions(means)
+        if not high:
+            return [list(f) for f in faces], 0
+        if not regions_are_two_sided(
+                len(low), sum(_face_area(faces[i]) for i in low),
+                len(high), sum(_face_area(faces[i]) for i in high)):
+            return [list(f) for f in faces], 0
+        # The larger region's art wins, matched by position.
+        keep, move = (low, high) if len(low) >= len(high) else (high, low)
+        by_position = {}
+        for i in keep:
+            for position, uv in faces[i]:
+                by_position.setdefault(position, uv)
+        out = [list(f) for f in faces]
+        moved = 0
+        for i in move:
+            out[i] = [(p, by_position.get(p, uv)) for p, uv in faces[i]]
+            moved += 1
+        return out, moved
 
     best = max(groups.items(), key=lambda kv: len(kv[1]))[0]
     by_position = {}
