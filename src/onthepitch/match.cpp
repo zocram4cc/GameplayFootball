@@ -353,11 +353,6 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       std::ifstream file(entry.path());
       CamTrack track;
       if (file.good() && track.Load(file)) {
-        float meanX = 0.0f;
-        int samples = std::min(30, track.GetFrameCount());
-        for (int s = 0; s < samples; s++)
-          meanX += track.Sample((float)s).position[0];
-        goalCamAuthoredSides.push_back(meanX >= 0.0f ? 1 : -1);
         goalCamNames.push_back(entry.path().stem().string());
         goalCamTracks.push_back(track);
       }
@@ -3207,12 +3202,29 @@ void Match::UpdateIngameCamera() {
         goalCelebrationCamera = -1;
         if (goalCelebrationIndex >= 0) {
           const GoalCelebration::Celebration& chosen = goalCelebrations[goalCelebrationIndex];
+          // the scorer, so the line says whose celebration this is rather than only
+          // which one played: an assignment honoured and a seeded draw read alike
+          const std::string scorer =
+              lastGoalScorer && lastGoalScorer->GetPlayerData()
+                  ? int_to_str(lastGoalScorer->GetPlayerData()->GetDatabaseID())
+                  : std::string("?");
           const int attacked = -teams[lastGoalTeamID]->GetSide();
           const std::string wanted = GoalCelebration::PickCamera(chosen, attacked, seed);
+          // The turn that puts PES's staging down on this scorer, taken once at the
+          // whistle and held: the celebration space has the camera in front of him
+          // (local -Y), so the turn is the one that lays local -Y along the way he is
+          // facing. Re-taken every frame it would swing the camera round him as he
+          // turns; with no scorer to read, the shot faces up the pitch he attacked.
+          Vector3 facing =
+              lastGoalScorer ? lastGoalScorer->GetDirectionVec() : Vector3(0, 0, 0);
+          if (facing.GetLength() < 0.01f) facing = Vector3(0, (float)attacked, 0);
+          goalCelebrationYaw = std::atan2(facing.coords[0], -facing.coords[1]);
           for (size_t i = 0; i < goalCamNames.size(); i++)
             if (goalCamNames[i] == wanted) goalCelebrationCamera = (int)i;
           Log(e_Notice, "Match", "UpdateIngameCamera",
-              "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), filmed by " +
+              "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), " +
+                  (assigned.empty() ? "drawn for" : "assigned to") + " player " + scorer +
+                  ", filmed by " +
                   (goalCelebrationCamera >= 0 ? wanted : std::string("nothing; falling back")));
         }
       }
@@ -3222,24 +3234,21 @@ void Match::UpdateIngameCamera() {
                            (int)goalCamTracks.size();
       const CamTrack& track = goalCamTracks[pick];
       CamTrackFrame frame = track.Sample(goalScoredTimer * 0.03f);
-      int scoredSide = -teams[lastGoalTeamID]->GetSide();
-      if (scoredSide != goalCamAuthoredSides[pick]) {
-        frame.position[0] = -frame.position[0];
-        frame.rotation[1] = -frame.rotation[1];
-        frame.rotation[2] = -frame.rotation[2];
-      }
-      // the tracks are authored against PES's celebration staging; re-aim
-      // them at the actual celebrating player (or the ball) so the shot
-      // frames whoever scored instead of PES's staged runner, never clips
-      // inside him, and the PES super-telephoto lens curve adapts to the
-      // real subject distance
+      // These tracks are not authored in world space, and reading them as if they
+      // were is what used to jam a one-degree lens against a scorer's head. PES
+      // authors a goal camera in the celebration's own space, with the scorer at the
+      // origin: measured over the 516 imported tracks, 448 aim within ten degrees of
+      // that origin from a median 12.6 m out with a median nine-degree lens, which
+      // frames 1.85 m of subject - a man. So the shot is staged on the scorer rather
+      // than re-aimed at him, and PES's distance, lens, clip planes and camera move
+      // come with it unchanged.
       Vector3 subject = lastGoalScorer
                             ? lastGoalScorer->GetPosition()
                             : ball->Predict(0).Get2D();
-      frame = RetargetCamTrackFrame(
-          frame,
-          {subject.coords[0], subject.coords[1], subject.coords[2] + 1.5f},
-          1.5f, 0.75f);
+      frame = StageCamTrackFrame(
+          frame, {subject.coords[0], subject.coords[1], 0.0f}, goalCelebrationYaw);
+      // never underground, whatever the staging lands on
+      frame.position[2] = std::max(0.3f, frame.position[2]);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;
@@ -3553,6 +3562,7 @@ void Match::Process() {
       replayStartOffset_ms = 0;  // armed again for the next goal
       goalCelebrationIndex = -1;
       goalCelebrationCamera = -1;
+      goalCelebrationYaw = 0.0f;
     }
 
     if (IsInPlay() && !IsInSetPiece())

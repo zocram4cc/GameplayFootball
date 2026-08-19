@@ -41,6 +41,22 @@ CamTrackFrame RetargetCamTrackFrame(const CamTrackFrame& frame,
                                     float minDistance,
                                     float subjectHalfHeight);
 
+// Stages an authored frame on a live subject, which is what PES's goal camerawork
+// actually wants. It is not authored in world space: the celebration has its own
+// space with the scorer standing at the origin, and the camera is placed around him.
+// Measured over the 516 imported goal tracks, 448 aim within ten degrees of that
+// origin from a median 12.6 m out, with a median 9-degree lens - which frames 1.85 m
+// of subject at that distance, i.e. a man. The two staged angles sit at +40 and -39 m
+// on X (_Z_fromL, _Z_fromR) and the 355 numbered celebration cameras dead in front at
+// y = -11.6.
+//
+// So the frame is a composition to be put down rather than a position to be re-aimed:
+// the offset is turned by yaw (radians, about world Z, so the shot faces the way the
+// scorer faces) and laid down at the subject's feet, and PES's distance, lens, clip
+// planes and camera move all come with it.
+CamTrackFrame StageCamTrackFrame(const CamTrackFrame& frame,
+                                 const std::array<float, 3>& subject, float yaw);
+
 class CamTrack {
 public:
   bool Load(std::istream& in);

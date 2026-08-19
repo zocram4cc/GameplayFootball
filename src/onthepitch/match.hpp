@@ -651,7 +651,6 @@ protected:
   // goal-replay camerawork pool (media/cutscenes/goal/*.camtrack) with each
   // track's authored goal side (+1/-1 from its mean x) for mirroring
   std::vector<CamTrack> goalCamTracks;
-  std::vector<int> goalCamAuthoredSides;
   // Which track is which, so a celebration can be filmed by the camera PES shot it
   // with instead of by whatever the score happened to index (goalcelebration.hpp).
   std::vector<std::string> goalCamNames;
@@ -660,6 +659,8 @@ protected:
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;
   int goalCelebrationCamera = -1;
+  // the turn that lays PES's celebration staging on this scorer, held for the goal
+  float goalCelebrationYaw = 0.0f;
   // stoppage cutscenes: PES's other fixdemo categories, played at their
   // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
   std::map<std::string, std::vector<CamTrack>> cutscenePools;

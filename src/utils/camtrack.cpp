@@ -121,6 +121,25 @@ CamTrackFrame RetargetCamTrackFrame(const CamTrackFrame& frame,
   return out;
 }
 
+CamTrackFrame StageCamTrackFrame(const CamTrackFrame& frame,
+                                 const std::array<float, 3>& subject, float yaw) {
+  CamTrackFrame out = frame;
+
+  const float c = std::cos(yaw), s = std::sin(yaw);
+  out.position = {subject[0] + frame.position[0] * c - frame.position[1] * s,
+                  subject[1] + frame.position[0] * s + frame.position[1] * c,
+                  subject[2] + frame.position[2]};
+
+  // the same turn on the rotation, so the camera still looks where it was
+  // composed to look: q = yaw * authored
+  const float hy = std::sin(yaw * 0.5f), hw = std::cos(yaw * 0.5f);
+  const std::array<float, 4>& q = frame.rotation;
+  out.rotation = {hw * q[0] - hy * q[1], hw * q[1] + hy * q[0],
+                  hw * q[2] + hy * q[3], hw * q[3] - hy * q[2]};
+
+  return out;
+}
+
 bool CamTrack::Load(std::istream& in) {
   int lastTimelineFrame = -1;
   frames.clear();
