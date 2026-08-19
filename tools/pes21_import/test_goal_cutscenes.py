@@ -75,9 +75,93 @@ class MatchingCamerasToCelebrations(unittest.TestCase):
         self.assertEqual(built["goal_2018_run_30_plane"]["cameras"], [])
 
     def test_a_camera_with_no_choreography_is_refused(self):
-        # it would be a camera aimed at nothing; better to know
+        # inside this family it would be a camera aimed at nothing; better to know
         with self.assertRaises(ValueError):
             goal_cutscenes.build({}, ["goal_2018_run_30_banzai_Z_fromL"])
+
+    def test_more_angle_suffixes_than_the_two_obvious_ones(self):
+        # measured across the full library: _camNN, _appendCam, _audi and friends all
+        # tie a camera back to its choreography
+        for name, base in (("goal_2019_S_Golazo_01_cam00", "goal_2019_S_Golazo_01"),
+                           ("x_appendCam", "x"),
+                           ("x_cam_up", "x"),
+                           ("x_cam_default", "x"),
+                           ("x_audi", "x")):
+            self.assertEqual(goal_cutscenes.celebration_base(name), base)
+
+
+class SortingTheLibraryIntoFamilies(unittest.TestCase):
+    """A goal camera is not always a celebration camera.
+
+    Of PES's 731 goal tracks, 355 are the numbered celebrations, some belong to staged
+    cutscenes with choreographies, and about 200 are neither: goal_st033_TV,
+    goal_st061_away_G4 - a ground's own goal cameras, nothing to do with what the
+    scorer does. Sweeping the lot into the celebration manifest would tie cameras to
+    performances they were never shot for, so they are sorted and the leftovers named.
+    """
+
+    def test_a_numbered_celebration_goes_to_its_family(self):
+        families = goal_cutscenes.sort_cameras(
+            ["goal_celebrate_0092_mayaL0x"], chor_names=set())
+        self.assertEqual(families["by_id"], ["goal_celebrate_0092_mayaL0x"])
+
+    def test_a_choreographed_one_goes_to_its_own(self):
+        families = goal_cutscenes.sort_cameras(
+            ["goal_2018_run_30_banzai_Z_fromL"], chor_names={"goal_2018_run_30_banzai"})
+        self.assertEqual(families["by_chor"], ["goal_2018_run_30_banzai_Z_fromL"])
+
+    def test_a_grounds_own_camera_is_neither(self):
+        families = goal_cutscenes.sort_cameras(["goal_st033_TV"], chor_names=set())
+        self.assertEqual(families["other"], ["goal_st033_TV"])
+
+
+class TheCelebrationsKeyedByNumber(unittest.TestCase):
+    """PES's main celebration library is not shaped like a cutscene at all.
+
+    The goal_2018_run_* family above is a handful of staged cutscenes with .chor
+    files. The bulk is different: 355 cameras named goal_celebrate_NNNN with an angle
+    suffix, and 790 performances named dml_goal_celebrate_NNNN, tied by the four-digit
+    celebration number and nothing else. Every one of the 213 numbers that has a
+    camera also has a performance, so the tie is complete - and it is ten times the
+    19 celebrations the .chor route finds.
+    """
+
+    def test_the_number_is_read_from_either_side(self):
+        self.assertEqual(goal_cutscenes.celebration_id("goal_celebrate_0092_mayaL1x"), "0092")
+        self.assertEqual(goal_cutscenes.celebration_id("dml_goal_celebrate_0092.anim"), "0092")
+
+    def test_anything_else_has_no_number(self):
+        self.assertIsNone(goal_cutscenes.celebration_id("goal_2018_run_30_banzai"))
+        self.assertIsNone(goal_cutscenes.celebration_id("goal_st033_TV"))
+
+    def test_a_number_collects_its_angles(self):
+        built = goal_cutscenes.build_by_id(
+            ["dml_goal_celebrate_0092.anim", "dml_goal_celebrate_0093.anim"],
+            ["goal_celebrate_0092_mayaL0x", "goal_celebrate_0092_mayaL1x",
+             "goal_celebrate_0093"])
+        self.assertEqual(sorted(built), ["celebrate_0092", "celebrate_0093"])
+        self.assertEqual(built["celebrate_0092"]["cameras"],
+                         ["goal_celebrate_0092_mayaL0x", "goal_celebrate_0092_mayaL1x"])
+        self.assertEqual(built["celebrate_0092"]["clip"], "dml_goal_celebrate_0092.anim")
+
+    def test_a_performance_nobody_filmed_is_left_out(self):
+        # 296 numbers have a performance and only 213 a camera; the rest would be a
+        # celebration with no camerawork, which is what the seeded draw must not pick
+        built = goal_cutscenes.build_by_id(["dml_goal_celebrate_0500.anim"], [])
+        self.assertEqual(built, {})
+
+    def test_a_camera_with_no_performance_is_left_out(self):
+        built = goal_cutscenes.build_by_id([], ["goal_celebrate_0500_mayaL0x"])
+        self.assertEqual(built, {})
+
+    def test_the_two_families_live_in_one_manifest(self):
+        chor_side = {"goal_2018_run_30_banzai": {"clip": "dml_goal_move3_0002.anim",
+                                                 "cameras": ["goal_2018_run_30_banzai_Z_fromL"]}}
+        id_side = goal_cutscenes.build_by_id(["dml_goal_celebrate_0092.anim"],
+                                             ["goal_celebrate_0092_mayaL0x"])
+        merged = goal_cutscenes.merge(chor_side, id_side)
+        self.assertIn("goal_2018_run_30_banzai", merged)
+        self.assertIn("celebrate_0092", merged)
 
 
 class TheVariableEachCelebrationIsAskedForBy(unittest.TestCase):
