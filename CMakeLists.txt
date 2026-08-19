@@ -408,9 +408,15 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${PROJECT_SOURCE_DIR}/data/locale
       $<TARGET_FILE_DIR:gameplayfootball>/locale
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${PROJECT_SOURCE_DIR}/data/media
-      $<TARGET_FILE_DIR:gameplayfootball>/media
+    # media/ is linked, not copied. Copying it cost 18.6 GB across the build
+    # configurations - four byte-identical copies of a 6.2 GB tree - and made every
+    # build shovel gigabytes before it could link. Windows keeps the copy, where a
+    # symlink needs developer mode or elevation.
+    COMMAND ${CMAKE_COMMAND}
+      -DSOURCE=${PROJECT_SOURCE_DIR}/data/media
+      -DDEST=$<TARGET_FILE_DIR:gameplayfootball>/media
+      -DFALLBACK_COPY=$<IF:$<BOOL:${WIN32}>,ON,OFF>
+      -P ${PROJECT_SOURCE_DIR}/cmake/link_media.cmake
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${PROJECT_SOURCE_DIR}/data/locale
       $<TARGET_FILE_DIR:gameplayfootball>/data/locale
