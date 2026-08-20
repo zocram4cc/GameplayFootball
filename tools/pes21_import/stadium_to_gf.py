@@ -396,6 +396,43 @@ def faces_away_from_pitch(vertices, faces):
     return (facing[0] * inward[0] + facing[1] * inward[1]) < 0.0
 
 
+# Below this area-weighted upness a mesh is a ground sheet with its lit side
+# underneath. Measured on st017, whose meshes separate with nothing in between:
+# the landscape sheets sit at -0.953, -0.936 and -0.935, and the next mesh down
+# the list is -0.491. Stands and other closed volumes measure near zero, because
+# their faces cancel.
+GROUND_FACING_LIMIT = -0.8
+
+
+def faces_downward(vertices, faces, limit=GROUND_FACING_LIMIT):
+    """Whether a mesh is a ground whose lit side is underneath.
+
+    PES draws its landscape two-sided; this engine culls back faces. A ground
+    wound this way is therefore not dim but absent, and what shows through the
+    hole is the sky fill postprocess.frag paints below the horizon - which is how
+    Namek came to render flat green while its ground texture is teal.
+
+    Judged by area-weighted facing, so a closed volume cancels to nothing and
+    only a sheet genuinely presenting its underside is turned round.
+    """
+    total = [0.0, 0.0, 0.0]
+    area = 0.0
+    for face in faces:
+        if len(face) < 3:
+            continue
+        a, b, c = (vertices[face[0]], vertices[face[1]], vertices[face[2]])
+        cross = ase_util._cross(ase_util._sub(b, a), ase_util._sub(c, a))
+        magnitude = (cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2) ** 0.5
+        if magnitude <= 0.0:
+            continue
+        for i in range(3):
+            total[i] += cross[i]
+        area += magnitude
+    if area <= 0.0:
+        return False
+    return (total[2] / area) < limit
+
+
 def pitch_scale():
     """-> (x, y, z) to carry PES-authored geometry onto this engine's pitch.
 
@@ -833,6 +870,11 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     reverse = outline
     index_triples = [tuple(vertex_index[id(v)] for v in face.vertices) for face in faces]
     if face_pitch and not outline and faces_away_from_pitch(gf_positions, index_triples):
+        reverse = True
+    # And a ground sheet presenting its underside is turned round for the same
+    # reason: PES draws its landscape two-sided, so such a mesh is not dim here but
+    # missing, with the sky fill showing through where it should be.
+    if not outline and not sky and faces_downward(gf_positions, index_triples):
         reverse = True
 
     if outline and gf_positions:
