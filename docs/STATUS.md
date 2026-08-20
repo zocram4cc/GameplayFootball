@@ -212,16 +212,44 @@ shells and sky domes, and judging by area-weighted facing so closed volumes -
 which cancel to near zero - are left alone. The threshold of -0.8 sits in the gap
 between -0.935 and -0.491 with nothing in it.
 
-**7 of the 10 installed stadiums carry such meshes, 52 in all**: st043 11, st011
-8, st060 8, st017 7, st002 6, st041 6, st060_full 4, st056 2. st019 and st031 are
-clean. Only st017 has been re-converted so far; the rest still need it, with the
-flags they were first built with — st017 needs `--max-extent 3000`, since the
-default 260 m drops the landscape as oversized scenery.
+**7 of the 10 installed stadiums carried such meshes, 52 in all.** All are
+re-converted now, via `rescene.sh` with `MAX_EXTENT=3000`, which rebuilds the
+scene ASE without disturbing the props, crowd and entrance alongside it. The
+default 260 m drops the landscape as oversized scenery, so it has to be raised.
+Measured afterwards, none has a downward sheet left:
 
-Two things worth knowing before recording a re-converted stadium: delete the
-stale `.ase.geomcache` or the engine keeps the old winding, and then warm it,
-because a cold re-parse of a 148 MB stadium ASE takes longer than a 200 s capture
-window — the first attempt filmed nothing but the title screen.
+| stadium | geoms | facing down, before -> after |
+|---|---|---|
+| st002 | 152 | 6 -> 0 |
+| st011 | 84 | 8 -> 0 |
+| st017 | 24 | 7 -> 1 |
+| st041 | 21 | 6 -> 0 |
+| st043 | 86 | 11 -> 0 |
+| st056 | 18 | 2 -> 0 |
+| st060 | 39 | 8 -> 0 |
+| st019, st031 | 5, 16 | 0 -> 0 (were already clean) |
+
+st017's remaining one is `pes_st017_25`, the ground's own outline shell, which the
+converter reverses deliberately so the engine culls the side PES culls.
+
+Two exceptions. `st060_full` is a differently-built st060 living in its own slot,
+and its `.object` names `pes_st060.ase`, so `rescene.sh` cannot target it; it has
+one marginal mesh at -0.81 and is only referenced by `menu_smoke_stadfull.config`,
+so it is left as it is. And st002's geom count moved 154 -> 152, the only count
+that changed; its ASE is 1.13 GB either way, so that is not a size regression.
+
+Two things worth knowing before recording a re-converted stadium. Delete the stale
+`.ase.geomcache` or the engine keeps the old winding — `rescene.sh` does this. And
+allow for the cold re-parse: 148 MB took longer than a 200 s window and filmed
+nothing but the title screen, and st002's 1.13 GB took about 15 minutes to reach
+its 454 MB cache. st017 and st002 are warm; the rest rebuild their cache on first
+load, which costs that one run and nothing after it.
+
+Verified on screen for st017, where the entrance camera now looks out on water and
+cliffs instead of green nothing. The other six are verified by the facing measure
+only; st002 shows a building beyond the pitch that the earlier recording did not,
+but the two frames are from different points in the entrance so that is not a
+matched pair.
 
 ## Loose end
 
