@@ -182,6 +182,47 @@ substitute with the shared `fullbodyNode` and `playerColorCoords`. A player who
 comes off the bench therefore loses the model `playermodels.cfg` assigns him and
 appears as the stock body. Filed as #85; unrelated to the exploding models.
 
+## Stadium grounds render as sky
+
+Namek showed flat green outside the pitch and st002 flat blue-purple. Neither is a
+ground colour: `postprocess.frag` fills below the horizon with the graded fog
+colour, and st017's `sky.txt` says `horizon 0.34 0.76 0.11` while st002's says
+`0.055 0.055 0.169`. The flat colour was the hole where the ground should be.
+
+The ground was imported the whole time. Namek's landscape is 9984 triangles, UVs
+spanning a full 0..1, an opaque 4096x4096 texture whose mean colour is teal, well
+inside the 702 m far plane and listed in the stadium's `.object`. It is wound with
+its lit side underneath. Area-weighted facing, where +1 is straight up:
+
+| mesh | faces | facing |
+|---|---|---|
+| `Namek` | 572 | **-0.953** |
+| `Namek2` outline shell | 9804 | -0.936 |
+| `Namek2` (the landscape) | 9984 | **-0.935** |
+| next mesh down the list | 2346 | -0.491 |
+| a stand (closed volume) | 20000 | +0.109 |
+
+PES draws its landscape two-sided and this engine culls back faces, so a mesh
+wound that way is not dim here but absent. It is the same trap that
+`faces_away_from_pitch` and `stadium_staff.wants_winding_flipped` already
+document, in the one place where it costs a whole landscape.
+
+`stadium_to_gf.faces_downward` now turns such a mesh round, skipping outline
+shells and sky domes, and judging by area-weighted facing so closed volumes -
+which cancel to near zero - are left alone. The threshold of -0.8 sits in the gap
+between -0.935 and -0.491 with nothing in it.
+
+**7 of the 10 installed stadiums carry such meshes, 52 in all**: st043 11, st011
+8, st060 8, st017 7, st002 6, st041 6, st060_full 4, st056 2. st019 and st031 are
+clean. Only st017 has been re-converted so far; the rest still need it, with the
+flags they were first built with — st017 needs `--max-extent 3000`, since the
+default 260 m drops the landscape as oversized scenery.
+
+Two things worth knowing before recording a re-converted stadium: delete the
+stale `.ase.geomcache` or the engine keeps the old winding, and then warm it,
+because a cold re-parse of a 148 MB stadium ASE takes longer than a 200 s capture
+window — the first attempt filmed nothing but the title screen.
+
 ## Loose end
 
 `data/media/objects/helpers/*.ase` and `data/media/objects/menu/background01.ase`
