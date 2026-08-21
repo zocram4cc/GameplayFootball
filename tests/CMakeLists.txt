@@ -239,6 +239,13 @@ target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtes
 gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
 
 # What the in-play player indicator says
+add_executable(gameplayfootball_faceexpression_tests
+  onthepitch/face_expression_test.cpp
+)
+target_include_directories(gameplayfootball_faceexpression_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(gameplayfootball_faceexpression_tests GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_faceexpression_tests DISCOVERY_MODE PRE_TEST)
+
 add_executable(gameplayfootball_cutscenesequence_tests
   onthepitch/cutscene_sequence_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutscenesequence.cpp

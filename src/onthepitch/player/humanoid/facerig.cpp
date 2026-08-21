@@ -15,6 +15,7 @@ static const std::map<e_FaceExpression, const char*> kPoseFiles = {
     {e_FaceExpression::Happy, "smil_soft.faceanim"},
     {e_FaceExpression::Sad, "loss_brwtrb_mmov_soft.faceanim"},
     {e_FaceExpression::Exert, "pow_brwnit_grit_hard.faceanim"},
+    {e_FaceExpression::Pain, "pain_brwtrb_shut_eyc_hard.faceanim"},
 };
 
 bool FaceRig::Load(const std::string& modelDir) {

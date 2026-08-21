@@ -706,15 +706,10 @@ void HumanoidBase::Process() {
 
   // imported faces: pick the expression from what the body is doing
   if (faceRig.IsActive() && currentAnim && currentAnim->anim) {
-    e_FaceExpression expression = e_FaceExpression::Neutral;
-    if (currentAnim->anim->GetVariable("type") == "special") {
-      const std::string& var1 = currentAnim->anim->GetVariable("specialvar1");
-      expression = (var1 == "2") ? e_FaceExpression::Sad
-                                 : e_FaceExpression::Happy;
-    } else if (spatialState.floatVelocity > 7.0f) {
-      expression = e_FaceExpression::Exert;
-    }
-    faceRig.SetExpression(expression);
+    faceRig.SetExpression(ChooseExpression(currentAnim->anim->GetVariable("type"),
+                                           currentAnim->anim->GetVariable("specialvar1"),
+                                           spatialState.floatVelocity,
+                                           player->GetInjuryLevel()));
   }
 
   _cache_AgilityFactor =
