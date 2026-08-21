@@ -143,6 +143,11 @@ protected:
   std::vector<int> substitutedPlayerIDs;
 
   boost::intrusive_ptr<Resource<Surface>> FetchKit(int formationIndex);
+  // Activates a player on the model playermodels.cfg assigns him, or on the
+  // shared body when he has none. Starters and substitutes both go through here.
+  void ActivateWithModel(Player* player, int formationIndex,
+                         boost::intrusive_ptr<Node> fullbodyNode,
+                         std::map<Vector3, Vector3>& colorCoords);
   boost::intrusive_ptr<Node> fullbodyNode;
   // source nodes for imported per-player models; kept alive for the match
   std::vector<boost::intrusive_ptr<Node>> customBodyNodes;
