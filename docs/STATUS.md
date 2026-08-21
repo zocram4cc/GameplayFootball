@@ -257,6 +257,86 @@ only; st002 shows a building beyond the pitch that the earlier recording did not
 but the two frames are from different points in the entrance so that is not a
 matched pair.
 
+## Controlling a match: coach mode, tactics and controllers
+
+There is no on-screen indication of any of this, which is itself the finding. What
+follows is read out of `Match::ProcessTacticalHotkeys`,
+`Match::ProcessTacticalHotkeysForPad`, `Match::GetTouchlineDevice` and
+`CoachMode::FromHumanGamerCounts`.
+
+### How a side ends up coached
+
+`CoachMode::FromHumanGamerCounts` decides per team, from the number of human
+gamers on it and the `coach_mode` setting:
+
+| human gamers on the team | `coach_mode` off | `coach_mode` on |
+|---|---|---|
+| one or more | plays the players | plays the players |
+| none | AI | **coached by a human** |
+
+So coach mode is not a mode you enter for the match, it is a property each side
+acquires by having nobody on the sticks. Two consequences worth knowing:
+
+- **One controller, both teams coached: yes.** Assign no human gamers to either
+  side and turn `coach_mode` on, and both become `HumanCoach` -
+  `CoachMode::IsManagerDuel`. You do not need one controller per side.
+- **One controller assigned to a team, with coach_mode on, coaches the opponent.**
+  The side you are assigned to plays football; the *other* side, having nobody on
+  it, becomes coached rather than AI. That is what the rule says, and it is
+  probably not what someone selecting "coach mode" expects.
+
+In coach mode nothing is run by the CPU manager at all, on either side
+(`AIManager::AIManagerRuns` returns false whenever any side is coached).
+
+### The controls
+
+**Gamepad** — hold **RT** (`e_ButtonFunction_Sprint`) as a touchline modifier;
+without it the d-pad plays football as usual. Only the press counts, so holding a
+direction does not spin through presets.
+
+| RT + | does |
+|---|---|
+| D-pad up | all-out attack |
+| D-pad right | attacking |
+| D-pad down | all-out defence |
+| D-pad left | defensive |
+| Short pass | toggle frontline pressure |
+| Shot | toggle deep defensive line |
+| High pass | toggle hug the touchline |
+| Long pass | toggle tiki-taka |
+
+Which pad addresses which bench: a human on the sticks uses his own pad, and a
+coach uses the pad matching his bench - **controller 0 runs team 0, controller 1
+runs team 1**.
+
+**Keyboard** — always addresses the coached team, and **Shift** addresses the other
+bench in a manager duel (`GetCoachedTeamID(preferSecondTeam)`).
+
+| key | does |
+|---|---|
+| Page Up | push the team up the pitch |
+| Page Down | drop it back |
+| F5 | frontline pressure |
+| F6 | deep defensive line |
+| F7 | aggressive defence |
+| F8 | hug the touchline |
+| F9 | centre shading |
+| F10 | tiki-taka |
+| F11 | long-ball counter |
+
+Every change takes effect immediately (`AnnounceInstructions` calls
+`UpdateTactics`) and is announced on screen, so the feedback exists once you know
+the key - it is only the discovery that is missing.
+
+### Still to check
+
+Nothing above has been exercised with a controller in hand; it is read from the
+source. A pass over UI and playability should confirm it, and answer the question
+the table above raises: whether "coach mode on, one controller assigned" coaching
+the *opponent* is intended, or whether picking coach mode should put the human on
+the bench of the side he selected. There is also no in-game surface listing any of
+these bindings.
+
 ## Loose end
 
 `data/media/objects/helpers/*.ase` and `data/media/objects/menu/background01.ase`
