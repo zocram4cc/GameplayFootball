@@ -326,6 +326,8 @@ public:
   int GetReplayCamera() const { return replayCamera; }
   // How long the celebration on screen holds its intro, from the clip itself.
   unsigned long GetCelebrationIntroHold_ms() const { return goalCelebrationIntroHold_ms; }
+  // How long the celebration on screen runs, measured from its own clip.
+  unsigned long GetCelebrationLength_ms() const { return goalCelebrationLength_ms; }
   // Asks for a close-up replay of a foul, once its cutscene has finished.
   // Scheduled off FoulSequence so the referee's restart cannot pre-empt it.
   void RequestFoulReplay(unsigned long foulTime_ms, int foulType);

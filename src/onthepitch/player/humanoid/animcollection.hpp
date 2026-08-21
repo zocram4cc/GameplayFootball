@@ -139,6 +139,12 @@ public:
 
   const std::vector<Animation*>& GetAnimations() const;
 
+  // Whether any clip answers to this pair of special variables. A celebration is an
+  // intro and a loop, and most of the imported performances have no loop of their
+  // own: asking for one that does not exist does not fall back, it drops the command
+  // and the player out of the celebration entirely.
+  bool HasSpecial(int specialVar1, int specialVar2) const;
+
   void CrudeSelection(DataSet& dataSet, const CrudeSelectionQuery& query);
 
   inline Animation* GetAnim(int index) { return animations.at(index); }

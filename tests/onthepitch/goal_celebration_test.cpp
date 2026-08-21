@@ -205,3 +205,41 @@ TEST(CelebrationClips, TheLongestClipsStillFitTheSchedule) {
   EXPECT_LE(total, GoalSequence::kLongestCelebration_ms)
       << "a celebration longer than this outruns the replay buffer";
 }
+
+// How long the players actually perform.
+//
+// The controller issued the celebration command for a flat slice of the stoppage -
+// "more than 2000 ms and less than 4000 ms since the whistle" - while the clip on
+// screen runs as long as it runs: the imported performances reach 10 s and the median
+// is 2.7 s. A 5.2 s celebration was therefore cut at 4 s, dropping the scorer out of
+// his pose and back into ordinary play while the camera was still on him.
+
+TEST(CelebrationWindow, NobodyReactsBeforeTheWhistleHasSettled) {
+  EXPECT_FALSE(GoalCelebration::IsPerforming(0, 5200));
+  EXPECT_FALSE(GoalCelebration::IsPerforming(GoalCelebration::kReactionDelay_ms - 1, 5200));
+  EXPECT_TRUE(GoalCelebration::IsPerforming(GoalCelebration::kReactionDelay_ms, 5200));
+}
+
+TEST(CelebrationWindow, ALongCelebrationRunsAllTheWayThrough) {
+  // 4000 ms was the old ceiling; a 5.2 s clip has to outlast it
+  EXPECT_TRUE(GoalCelebration::IsPerforming(4500, 5200));
+  EXPECT_TRUE(GoalCelebration::IsPerforming(5199, 5200));
+  EXPECT_FALSE(GoalCelebration::IsPerforming(5200, 5200));
+}
+
+TEST(CelebrationWindow, AShortClipStillGetsAMomentRatherThanAFlicker) {
+  // the shortest imported clips are 400 ms, which would otherwise be over before the
+  // reaction delay had passed
+  EXPECT_TRUE(GoalCelebration::IsPerforming(GoalCelebration::kReactionDelay_ms + 100, 400));
+  EXPECT_FALSE(GoalCelebration::IsPerforming(60000, 400));
+}
+
+TEST(CelebrationWindow, AnUnknownLengthFallsBackRatherThanEndingAtOnce) {
+  EXPECT_TRUE(GoalCelebration::IsPerforming(GoalCelebration::kReactionDelay_ms + 500, 0));
+}
+
+TEST(CelebrationWindow, ItNeverOutlastsTheGoalSequence) {
+  // the restart is scheduled off the same measurement, so performing past it would
+  // have players posing as the game kicks off again
+  EXPECT_FALSE(GoalCelebration::IsPerforming(30000, 5200));
+}

@@ -1415,8 +1415,11 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
 
   // celebration
 
-  if (match->GetActualTime_ms() - match->GetReferee()->GetBuffer().stopTime > 2000 &&
-      match->GetActualTime_ms() - match->GetReferee()->GetBuffer().stopTime < 4000) {
+  // The performance runs for as long as its clip does, rather than for a flat slice
+  // of the stoppage: a 5.2 s celebration was being cut at 4 s, which dropped the
+  // scorer out of his pose and into ordinary play with the camera still on him.
+  if (GoalCelebration::IsPerforming(match->GetGoalScoredTimer(),
+                                    match->GetCelebrationLength_ms())) {
     PlayerCommand command;
     command.desiredFunctionType = e_FunctionType_Special;
     command.useSpecialVar1 = true;
@@ -1434,16 +1437,26 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
     // teammates celebrate however they like.
     const int filmed = match->GetGoalCelebrationVar();
     const bool isScorer = filmed != 0 && match->GetLastGoalScorer() == player;
-    if (isScorer) {
-      command.specialVar2 = filmed;
-    } else {
-      command.specialVar2 =
-          GoalCelebration::Phase(match->GetGoalScoredTimer(),
-                                 match->GetCelebrationIntroHold_ms()) ==
-                  GoalCelebration::e_Loop
-              ? GoalCelebration::LoopVariable(madeGoal)
-              : madeGoal;
-    }
+    // Intro first, then the loop that holds the pose - for the scorer as much as for
+    // anyone else. He was given the opening variable for the whole performance, which
+    // is the very thing the loop exists to prevent; a clip with no loop of its own
+    // falls back on its intro anyway, so asking costs nothing.
+    const int opening = isScorer ? filmed : madeGoal;
+    const int loop = GoalCelebration::LoopVariable(opening);
+    // Only ask for the loop when a loop was installed. Most performances have none -
+    // of the imported set only moods 1 and 2 do, and sad_normal does not - and an
+    // unmatched special command is dropped rather than falling back, which took the
+    // losing side out of their reaction after 1.9 s and would have done the same to
+    // the scorer.
+    const bool loopExists =
+        match->GetAnimCollection() &&
+        match->GetAnimCollection()->HasSpecial(celebrationType, loop);
+    command.specialVar2 = loopExists && GoalCelebration::Phase(
+                                            match->GetGoalScoredTimer(),
+                                            match->GetCelebrationIntroHold_ms()) ==
+                                            GoalCelebration::e_Loop
+                              ? loop
+                              : opening;
     command.useDesiredMovement = false;
     command.useDesiredLookAt = false;
     commandQueue.push_back(command);

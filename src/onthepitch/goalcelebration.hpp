@@ -82,6 +82,23 @@ unsigned long CelebrationTotal_ms(int introFrames, int loopFrames);
 // same mood with specialvar2 raised by ten, which is how install_anims.py files it.
 int LoopVariable(int introVariable);
 
+// How long the whistle is held before anyone reacts. PES does not have the scorer
+// wheel away the instant the ball crosses the line.
+const unsigned long kReactionDelay_ms = 2000;
+
+// The shortest a performance is held, for a clip too brief to be seen otherwise: the
+// imported set runs from 400 ms.
+const unsigned long kMinimumPerformance_ms = 1500;
+
+// Whether the celebration should still be performed. `celebrationLength_ms` is what
+// GoalSequence::CelebrationLength_ms returned for the clip on screen; 0 when nothing
+// is known about it, which falls back to the plain hold rather than ending at once.
+//
+// This was a flat slice of the stoppage - after 2 s and before 4 s - while the clips
+// run as long as they run, so a 5.2 s celebration was cut at 4 s and the scorer
+// dropped out of his pose mid-shot.
+bool IsPerforming(unsigned long sinceGoal_ms, unsigned long celebrationLength_ms);
+
 }  // namespace GoalCelebration
 
 #endif
