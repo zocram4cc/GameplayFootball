@@ -129,6 +129,27 @@ void GamePlanPage::Process() {
                                "_gameplan.bmp");
     printf("[menu-smoke] Game plan screenshot requested\n");
   }
+
+  // Then the lineup, because that is where a player's portrait is drawn and the top
+  // page never shows one: a shot of this page says nothing about whether the
+  // imported portraits load.
+  if (uiShotTaken && !lineupShotRequested &&
+      GetConfiguration()->GetBool("menu_smoke_open_gameplan", false) &&
+      GetConfiguration()->Exists("screenshot_path")) {
+    // Opened on one beat and shot on the next, off the clock rather than off the menu
+    // pointer: the page keeps running its own Process while the submenu covers it, so
+    // a pointer test fires again in the same frame and photographs the page below.
+    const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+    if (!lineupOpened && now >= pageCreatedTime_ms + 2400) {
+      lineupOpened = true;
+      GoLineupMenu();
+    } else if (lineupOpened && now >= pageCreatedTime_ms + 3600) {
+      lineupShotRequested = true;
+      blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") +
+                                 "_lineup.bmp");
+      printf("[menu-smoke] Lineup screenshot requested\n");
+    }
+  }
 }
 
 GamePlanPage::~GamePlanPage() {}
@@ -178,8 +199,13 @@ void GamePlanPage::GoLineupMenu() {
       button->SetFocus();
   }
 
-  // imported player portrait (editable media/players/playerportraits.cfg)
-  lineupPortrait = new Gui2Image(windowManager, "lineup_portrait", 72, 30, 16, 22);
+  // The imported player portrait (editable media/players/playerportraits.cfg), flush
+  // against the panel's right edge and square in pixels rather than in percent - the
+  // exports are square, and 16x22 percent of a 16:9 page stretched them wide.
+  const float kPortraitW = 12.0f;
+  const float kPortraitH = kPortraitW * 16.0f / 9.0f;
+  lineupPortrait = new Gui2Image(windowManager, "lineup_portrait", 67.5f, 30.0f, kPortraitW,
+                                 kPortraitH);
   this->AddView(lineupPortrait);
   if (!playerData.empty())
     ShowLineupPortrait(playerData.at(0)->GetDatabaseID());

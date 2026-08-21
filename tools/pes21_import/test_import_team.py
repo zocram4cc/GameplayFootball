@@ -46,3 +46,96 @@ class WhichExportsMayBeBoundAsABody(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PortraitBindings(unittest.TestCase):
+    """Binding a pack's portraits to the players who already have models.
+
+    A 4cc export names its portraits by team slot - "XXX07 - Rodya.png" - because the
+    team's real slot number is not known until it is assigned. The models are keyed by
+    the same slot ("lcg_2707"), and the model bindings already resolve a slot to a
+    database ID, so the portraits ride along on that rather than guessing.
+    """
+
+    def test_a_slot_is_read_out_of_a_portrait_name(self):
+        self.assertEqual(import_team.portrait_slot("XXX07 - Rodya.png"), 7)
+        self.assertEqual(import_team.portrait_slot("XXX23 - te.png"), 23)
+        self.assertEqual(import_team.portrait_slot("player_78301.png"), 1)
+
+    def test_a_name_with_no_slot_in_it_is_refused(self):
+        self.assertIsNone(import_team.portrait_slot("logo.png"))
+        self.assertIsNone(import_team.portrait_slot("XXX - nameless.png"))
+
+    def test_an_export_number_is_read_out_of_a_model_directory(self):
+        self.assertEqual(import_team.model_number("media/players/custom/lcg_2707"), 2707)
+        self.assertEqual(import_team.model_number("media/players/custom/2hug_1851"), 1851)
+        self.assertIsNone(import_team.model_number("media/players/custom/plain"))
+
+    def test_a_pack_numbering_from_its_own_base_still_lines_up(self):
+        # 2hug counts its players from 51 and its portraits from 01
+        models = {"393": "media/players/custom/2hug_1851",
+                  "153": "media/players/custom/2hug_1853"}
+        bound = import_team.bind_portraits(models, ["player_78301.png", "player_78303.png"],
+                                          "2hug")
+        self.assertEqual(bound, {"393": "imports/2hug/portraits/player_78301.png",
+                                 "153": "imports/2hug/portraits/player_78303.png"})
+
+    def test_portraits_bind_to_the_ids_their_models_already_hold(self):
+        models = {"450": "media/players/custom/lcg_2701",
+                  "455": "media/players/custom/lcg_2706"}
+        portraits = ["XXX01 - Clapped.png", "XXX06 - Faust.png", "XXX09 - Monzo.png"]
+        bound = import_team.bind_portraits(models, portraits, "lcg")
+        self.assertEqual(bound, {"450": "imports/lcg/portraits/XXX01 - Clapped.png",
+                                "455": "imports/lcg/portraits/XXX06 - Faust.png"})
+
+    def test_a_portrait_for_a_player_with_no_model_is_left_alone(self):
+        # binding it would need an ID nothing in the pack supplies
+        bound = import_team.bind_portraits({}, ["XXX01 - Clapped.png"], "lcg")
+        self.assertEqual(bound, {})
+
+    def test_a_name_both_sides_carry_beats_the_numbering(self):
+        # LCG's portraits run one ahead of its boots from slot 8 on: XXX09 is Dante
+        # and the model numbered 2708 is Dante. The numbering is not evidence; the
+        # name they both carry is.
+        models = {"457": "media/players/custom/lcg_2708",
+                  "458": "media/players/custom/lcg_2709"}
+        names = {"457": "Dante", "458": "Monzo"}
+        bound = import_team.bind_portraits(
+            models, ["XXX08 - Papa Don.png", "XXX09 - Dante.png", "XXX10 - Monzo.png"],
+            "lcg", names)
+        self.assertEqual(bound, {"457": "imports/lcg/portraits/XXX09 - Dante.png",
+                                 "458": "imports/lcg/portraits/XXX10 - Monzo.png"})
+
+    def test_an_unnamed_portrait_does_not_take_a_player_the_named_one_wants(self):
+        # Papa Don has no model and sits at slot 8, which is Dante's model number;
+        # binding by slot first would consume Dante and drop his own portrait.
+        models = {"457": "media/players/custom/lcg_2708"}
+        bound = import_team.bind_portraits(
+            models, ["XXX08 - Papa Don.png", "XXX09 - Dante.png"], "lcg", {"457": "Dante"})
+        self.assertEqual(bound, {"457": "imports/lcg/portraits/XXX09 - Dante.png"})
+
+    def test_a_pack_that_only_numbers_its_portraits_binds_by_slot(self):
+        # 2hug's are player_78301.png upwards and name nobody
+        models = {"393": "media/players/custom/2hug_1851"}
+        bound = import_team.bind_portraits(models, ["player_78301.png"], "2hug",
+                                          {"393": "1CC Killer"})
+        self.assertEqual(bound, {"393": "imports/2hug/portraits/player_78301.png"})
+
+    def test_a_pack_that_names_most_players_does_not_guess_the_rest(self):
+        # its numbering has already been shown wrong where a name failed to match, so
+        # a leftover portrait is left unbound rather than put on somebody's face
+        models = {"457": "media/players/custom/lcg_2708",
+                  "458": "media/players/custom/lcg_2709"}
+        bound = import_team.bind_portraits(models, ["XXX08 - Papa Don.png", "XXX09 - Dante.png"],
+                                          "lcg", {"457": "Dante", "458": "Nobody"})
+        self.assertEqual(bound, {"457": "imports/lcg/portraits/XXX09 - Dante.png"})
+
+    def test_one_portrait_is_not_handed_to_two_players(self):
+        models = {"1": "media/players/custom/lcg_2701", "2": "media/players/custom/lcg_2702"}
+        names = {"1": "Clapped", "2": "Clapped"}
+        bound = import_team.bind_portraits(models, ["XXX01 - Clapped.png"], "lcg", names)
+        self.assertEqual(len(set(bound.values())), len(bound))
+
+    def test_portraits_of_another_teams_prefix_are_not_claimed(self):
+        models = {"450": "media/players/custom/ink_2401"}
+        self.assertEqual(import_team.bind_portraits(models, ["XXX01 - x.png"], "lcg"), {})

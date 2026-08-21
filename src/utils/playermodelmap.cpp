@@ -12,10 +12,16 @@ std::map<int, std::string> ParsePlayerModelMap(std::istream& in) {
     if (line.empty() || line[0] == '#') continue;
     std::istringstream tokens(line);
     int id;
-    std::string dir;
-    if ((tokens >> id >> dir) && !dir.empty()) {
-      map[id] = dir;
-    }
+    if (!(tokens >> id)) continue;
+    // The rest of the line, not the next token: a 4cc export names its portraits for
+    // the player ("XXX09 - Dante.png") and this file is meant to be edited by hand,
+    // so a path with a space in it has to survive rather than be truncated.
+    std::string path;
+    std::getline(tokens, path);
+    const size_t begin = path.find_first_not_of(" \t");
+    const size_t end = path.find_last_not_of(" \t\r");
+    if (begin == std::string::npos) continue;
+    map[id] = path.substr(begin, end - begin + 1);
   }
   return map;
 }
