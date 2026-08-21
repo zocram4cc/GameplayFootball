@@ -106,13 +106,27 @@ ALPHA_DISCARD_THRESHOLD = 0.12
 def alpha_is_a_cutout(minimum, maximum):
     """Whether an alpha channel shapes the mesh, given its darkest and brightest.
 
-    Kept when something is transparent and something else survives the shader's
-    discard; dropped when the channel says nothing (uniformly opaque) or when
-    honouring it would erase the mesh (uniformly, or nearly, transparent).
+    Kept whenever anything is transparent; dropped only when the channel says
+    nothing at all, which is a uniformly opaque one.
+
+    A channel that leaves nothing visible used to be dropped too, on the reasoning
+    that honouring it would erase the mesh. It does erase the mesh, and that is what
+    it is for: PES's blank corner flag is a 16x16 texture with alpha 0 everywhere, a
+    placeholder it draws nothing for. Flattening that to RGB drew it instead, and its
+    RGB is chroma green - the green panel that appeared on the side of every corner
+    flag.
     """
-    if maximum <= ALPHA_DISCARD_THRESHOLD * 255.0:
-        return False
     return minimum < 255
+
+
+def texture_draws_nothing(alpha_extrema):
+    """Whether a base texture is transparent everywhere the shader would keep.
+
+    Such a mesh is geometry PES never shows, so there is no reason to import it.
+    """
+    if not alpha_extrema:
+        return False
+    return alpha_extrema[1] <= ALPHA_DISCARD_THRESHOLD * 255.0
 
 
 def png_mode_for(source_mode, alpha_extrema):
