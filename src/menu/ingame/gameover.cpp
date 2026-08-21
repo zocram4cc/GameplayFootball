@@ -5,6 +5,8 @@
 
 #include "gameover.hpp"
 
+#include <algorithm>
+
 #include <cmath>
 #include <ctime>
 
@@ -39,7 +41,9 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   }
   match->Pause(true);
 
-  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 8, 80, 84, true);
+  // Lighter than a menu panel: the closing ceremony - this ground's crowd, the winners,
+  // the walk over, the team photo - plays behind it, as it does on the broadcast.
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 8, 80, 84, true, 120);
   this->AddView(frame);
   frame->Show();
 
@@ -220,9 +224,13 @@ int PossessionPercent(MatchData* matchData, int teamID) {
 void GameOverPage::Process() {
   Gui2Page::Process();
 
+  // The closing ceremony plays behind this page, so a run that wants to see it says
+  // how long to hold before quitting ("menu_smoke_gameover_hold_ms").
+  const unsigned long hold_ms = static_cast<unsigned long>(std::max(
+      0, GetConfiguration()->GetInt("menu_smoke_gameover_hold_ms",
+                                    (int)kMenuSmokeQuitDelay_ms)));
   if (!autoQuitTriggered && MenuSmokeFullMatchEnabled() &&
-      EnvironmentManager::GetInstance().GetTime_ms() >=
-          pageCreatedTime_ms + kMenuSmokeQuitDelay_ms) {
+      EnvironmentManager::GetInstance().GetTime_ms() >= pageCreatedTime_ms + hold_ms) {
     autoQuitTriggered = true;
     printf("[menu-smoke] Full match complete: %s %i - %i %s\n",
            match->GetTeam(0)->GetTeamData()->GetName().c_str(),

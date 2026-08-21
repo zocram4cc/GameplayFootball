@@ -43,6 +43,7 @@
 #include "scene/objects/light.hpp"
 #include "scene/objects/sound.hpp"
 #include "cutsceneplayback.hpp"
+#include "cutscenesequence.hpp"
 #include "cutsceneviewer.hpp"
 #include "substitutions.hpp"
 #include "team.hpp"
@@ -680,6 +681,7 @@ protected:
   // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
   std::map<std::string, std::vector<CamTrack>> cutscenePools;
   const CamTrack* activeCutscene = nullptr;
+  std::vector<CutsceneSequence::Stage> cutsceneQueue;
   // The cutscene's clock: accumulated from the match's frame deltas, so it stops when
   // the match does and can be skipped (CutscenePlayback).
   CutscenePlayback::State cutscenePlayback;
@@ -690,6 +692,8 @@ protected:
   // plays a random track from the category's pool during the current
   // stoppage (no-op when the pool is empty or a cutscene is running)
   void StartCutscene(const std::string& category, float capSeconds);
+  // Plays the next shot of a queued sequence - the closing ceremony is several.
+  void StartNextQueuedCutscene();
 
  protected:
   // per-team chant loops (config "team1_chant"/"team2_chant"), gained up on goals

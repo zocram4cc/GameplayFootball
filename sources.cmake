@@ -524,6 +524,7 @@ set(GAME_SOURCES
    src/onthepitch/ball.cpp
    src/onthepitch/cutscenereport.cpp
    src/onthepitch/cutsceneplayback.cpp
+   src/onthepitch/cutscenesequence.cpp
    src/onthepitch/cutsceneviewer.cpp
    src/onthepitch/foulsequence.cpp
    src/onthepitch/goalsequence.cpp

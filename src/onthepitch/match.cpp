@@ -415,6 +415,13 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
             PrematchChoices::FamilyFromCamtrackName(entry.path().filename().string());
         if (!family.empty())
           cutscenePools[std::string(category) + "/" + family].push_back(track);
+        // The closing camerawork is flat too, with the family in the name rather than
+        // a number: the crowd of one ground, the winners, the losers, the walk over
+        // and the team photo. Filed so the whistle can ask for them in order.
+        const std::string closing =
+            CutsceneSequence::ClosingPoolForFile(entry.path().filename().string());
+        if (!closing.empty())
+          cutscenePools[closing].push_back(track);
       }
       // The people in shot: PES stages actors alongside the camera, so any
       // .chor exported next to the camerawork joins a matching pool.
@@ -2405,11 +2412,51 @@ signed int Match::GetBestPossessionTeamID() {
 
 void Match::GameOver() {
   gameOver = true;
-  // The pre-match screen can pin the post-match presentation to one family;
-  // StartCutscene falls back to the whole pool when that family is not installed.
+
+  // The closing ceremony, which PES plays as a run of shots and we were dropping
+  // entirely: 140 imported tracks of this ground's crowd, the winners, the losers,
+  // the walk over to the stand and the team photo. The viewer's own side decides
+  // whether it is joy or dejection.
+  {
+    const std::string stadiumPath = GetConfiguration()->Get("stadium_object", "");
+    const size_t at = stadiumPath.find("st");
+    const std::string stadiumTag = at != std::string::npos && at + 5 <= stadiumPath.size()
+                                       ? stadiumPath.substr(at, 5)
+                                       : std::string();
+    const int viewed = teams[0]->GetHumanGamerCount() > 0 || teams[1]->GetHumanGamerCount() == 0
+                           ? 0
+                           : 1;
+    const int difference = GetScore(viewed) - GetScore(1 - viewed);
+    cutsceneQueue = CutsceneSequence::ClosingStages(
+        difference, stadiumTag,
+        [this](const std::string& pool) {
+          auto found = cutscenePools.find(pool);
+          return found != cutscenePools.end() && !found->second.empty();
+        });
+    Log(e_Notice, "Match", "GameOver",
+        "closing sequence: " + int_to_str((int)cutsceneQueue.size()) + " shots, " +
+            int_to_str((int)CutsceneSequence::TotalSeconds(cutsceneQueue)) + " s, " +
+            (difference > 0 ? "won" : difference < 0 ? "lost" : "drawn"));
+  }
+
+  // The result presentation runs after the ceremony rather than instead of it. The
+  // pre-match screen can pin it to one family; StartCutscene falls back to the whole
+  // pool when that family is not installed.
   {
     const std::string family = GetConfiguration()->Get("result_cutscene_id", "");
-    StartCutscene(family.empty() ? "result" : "result/" + family, 8.0f);
+    cutsceneQueue.push_back(
+        CutsceneSequence::Stage{family.empty() ? "result" : "result/" + family, 8.0f});
+  }
+  StartNextQueuedCutscene();
+}
+
+void Match::StartNextQueuedCutscene() {
+  // One shot at a time, each played as any other cutscene is - so pause holds it and
+  // space skips it, and skipping one moves on to the next rather than the match.
+  while (!cutsceneQueue.empty() && !activeCutscene && !activeCutsceneChoreo) {
+    const CutsceneSequence::Stage stage = cutsceneQueue.front();
+    cutsceneQueue.erase(cutsceneQueue.begin());
+    StartCutscene(stage.pool, stage.seconds);
   }
 }
 
@@ -3519,7 +3566,23 @@ void Match::Process() {
 
   // The cutscene's clock runs on the match's own delta, so pausing holds it where it
   // is. Space skips it, as PES lets you skip a cutscene.
-  CutscenePlayback::Advance(cutscenePlayback, timeSincePreviousProcess_ms, pause);
+  //
+  // Except after the whistle: the result screen pauses the match, and the closing
+  // ceremony is meant to play behind it - which is what the broadcast shows, the
+  // camera cutting between crowd and players while the panel sits over them. Held by
+  // that pause, the ceremony stopped on its first shot.
+  CutscenePlayback::Advance(cutscenePlayback, timeSincePreviousProcess_ms,
+                            pause && !gameOver);
+
+  // A queued ceremony carries on where its last shot left off. Beside the clock rather
+  // than in UpdateIngameCamera: that stops being called about a second after the
+  // whistle - the result page takes the camera - and the ceremony stalled on its first
+  // shot with three more waiting.
+  if (!cutsceneQueue.empty() && !CutscenePlayback::IsPlaying(cutscenePlayback)) {
+    activeCutscene = nullptr;
+    activeCutsceneChoreo = nullptr;
+    StartNextQueuedCutscene();
+  }
   if (CutscenePlayback::IsPlaying(cutscenePlayback) &&
       UserEventManager::GetInstance().GetKeyboardState(SDLK_SPACE)) {
     UserEventManager::GetInstance().SetKeyboardState(SDLK_SPACE, false);
