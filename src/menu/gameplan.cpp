@@ -14,6 +14,8 @@
 #include "mainmenu.hpp"
 #include "onthepitch/match.hpp"
 #include "onthepitch/team.hpp"
+#include "menu/ingame/hudindicators.hpp"
+#include "onthepitch/teaminstructions.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 #include "utils/localization.hpp"
 
@@ -58,6 +60,10 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   buttonPhilosophy = new Gui2Button(
       windowManager, "gameplan_button_philosophy", 0, 0, 32, 3,
       Localization::GetInstance().Translate("gameplan_philosophy") + ": " + GetPhilosophyCaption());
+  buttonInstructions = new Gui2Button(
+      windowManager, "gameplan_button_instructions", 0, 0, 32, 3,
+      Localization::GetInstance().Translate("gameplan_instructions") + ": " +
+          GetInstructionsCaption());
   buttonSubstitutions =
       new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_substitutions"));
@@ -65,6 +71,7 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   buttonLineup->sig_OnClick.connect([this](...) { GoLineupMenu(); });
   buttonTactics->sig_OnClick.connect([this](...) { GoTacticsMenu(); });
   buttonPhilosophy->sig_OnClick.connect([this](...) { GoPhilosophyMenu(); });
+  buttonInstructions->sig_OnClick.connect([this](...) { GoInstructionsMenu(); });
   buttonSubstitutions->sig_OnClick.connect([this](...) { GoSubstitutionsMenu(); });
 
   if (IsReleaseVersion()) {
@@ -81,8 +88,9 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridNav->AddView(buttonLineup, 0, 0);
   gridNav->AddView(buttonTactics, 1, 0);
   gridNav->AddView(buttonPhilosophy, 2, 0);
-  gridNav->AddView(buttonSubstitutions, 3, 0);
-  gridNav->AddView(buttonFormation, 4, 0);
+  gridNav->AddView(buttonInstructions, 3, 0);
+  gridNav->AddView(buttonSubstitutions, 4, 0);
+  gridNav->AddView(buttonFormation, 5, 0);
   gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
   grid->AddView(gridNav, 1, 0);
@@ -438,6 +446,52 @@ void GamePlanPage::GoPhilosophyMenu() {
   }
 
   philosophyMenu->Show();
+}
+
+std::string GamePlanPage::GetInstructionsCaption() const {
+  const TeamInstructions::State state =
+      TeamInstructions::Load(teamData->GetTactics().userProperties);
+  const std::string line = HudIndicators::InstructionsText(state.instructions);
+  return line.empty() ? Localization::GetInstance().Translate("instructions_none") : line;
+}
+
+void GamePlanPage::GoInstructionsMenu() {
+  Deactivate();
+
+  instructionsMenu =
+      new GamePlanSubMenu(windowManager, buttonInstructions, grid, "instructions_submenu");
+  instructionsMenu->sig_OnClose.connect([this](...) { SaveTactics(); });
+  instructionsMenu->sig_OnClose.connect([this](...) { Reactivate(); });
+
+  const TeamInstructions::State current =
+      TeamInstructions::Load(teamData->GetTactics().userProperties);
+  for (int i = 0; i < TeamInstructions::instructionCount; i++) {
+    const TeamInstructions::e_Instruction instruction = TeamInstructions::GetInstructionAt(i);
+    const bool on = TeamInstructions::Has(current, instruction);
+    Gui2Button* button = instructionsMenu->AddButton(
+        "instructionbutton_" + int_to_str(i),
+        Localization::GetInstance().Translate("instruction_" + int_to_str(i)), i, 0,
+        on ? Vector3(80, 160, 80) : Vector3(60, 60, 60));
+    button->sig_OnClick.connect([this, i](Gui2Button* btn) { InstructionsMenuOnClick(i); });
+    if (i == 0)
+      button->SetFocus();
+  }
+  instructionsMenu->Show();
+}
+
+void GamePlanPage::InstructionsMenuOnClick(int instructionIndex) {
+  TeamInstructions::State state = TeamInstructions::Load(teamData->GetTactics().userProperties);
+  TeamInstructions::Toggle(state, TeamInstructions::GetInstructionAt(instructionIndex));
+  TeamInstructions::Save(state, teamData->GetTacticsWritable().userProperties);
+  buttonInstructions->SetCaption(
+      Localization::GetInstance().Translate("gameplan_instructions") + ": " +
+      GetInstructionsCaption());
+  const std::vector<Gui2Button*>& buttons = instructionsMenu->GetAllButtons();
+  for (unsigned int i = 0; i < buttons.size(); i++) {
+    const bool on =
+        TeamInstructions::Has(state, TeamInstructions::GetInstructionAt(static_cast<int>(i)));
+    buttons.at(i)->SetColor(on ? Vector3(80, 160, 80) : Vector3(60, 60, 60));
+  }
 }
 
 void GamePlanPage::PhilosophyMenuOnClick(int philosophyIndex) {

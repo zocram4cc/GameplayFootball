@@ -87,6 +87,16 @@ Gui2PlayerHUD::Gui2PlayerHUD(Gui2WindowManager* windowManager, const std::string
   this->AddView(plateText);
   plateText->Show();
 
+  // The advanced instructions in force, under the plate. Without this the seven of
+  // them changed nothing on screen once the banner had faded.
+  instructionsText = new Gui2Caption(
+      windowManager, name + "_instructions",
+      atX(kPlateX + kPlateTextInsetX, kPlateW - kPlateTextInsetX * 2.0f),
+      kStaminaY * h + kStaminaH * h + h * 0.62f, (kPlateW - kPlateTextInsetX * 2.0f) * w,
+      h * 0.52f, "");
+  this->AddView(instructionsText);
+  instructionsText->Show();
+
   levelBox = new Gui2Image(windowManager, name + "_levelbox", atX(kBoxX, kBoxW), kBoxY * h,
                            kBoxW * w, kBoxH * h);
   levelBox->LoadImage("media/menu/hud_level_box.png");
@@ -207,6 +217,12 @@ void Gui2PlayerHUD::Refresh() {
         HudIndicators::LevelBandPosition(mentality, TeamInstructions::e_Mentality_Count);
     // Drawn bottom-up: the most defensive rung sits at the bottom of the box.
     levelBand->SetPosition(bandX, bandTopY + bandTravelY * (1.0f - position));
+  }
+
+  const std::string instructionLine = HudIndicators::InstructionsText(instructions.instructions);
+  if (instructionLine != lastInstructions) {
+    lastInstructions = instructionLine;
+    instructionsText->SetCaption(instructionLine);
   }
 
   const int philosophy = static_cast<int>(TeamPhilosophy::Parse(

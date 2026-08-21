@@ -67,4 +67,35 @@ void FitKeepingAspect(float boxWidth, float boxHeight, float aspect, float* widt
   }
 }
 
+// Short tags rather than names: the strip is one line under the plate, and seven of
+// them have to fit. Order follows TeamInstructions::GetInstructionAt so the readout
+// is stable whatever order they were switched on in.
+static const char* kInstructionTags[TeamInstructions::instructionCount] = {
+    "PRESS", "DEEP", "AGGR", "WIDE", "NARROW", "TIKI", "LONG",
+};
+
+// The instruction each tag stands for, in the same order, so the readout is stable
+// whatever order they were switched on in.
+static const TeamInstructions::e_Instruction kTagOrder[TeamInstructions::instructionCount] = {
+    TeamInstructions::e_Instruction_FrontlinePressure,
+    TeamInstructions::e_Instruction_DeepDefensiveLine,
+    TeamInstructions::e_Instruction_AggressiveDefence,
+    TeamInstructions::e_Instruction_HugTheTouchline,
+    TeamInstructions::e_Instruction_CentreShading,
+    TeamInstructions::e_Instruction_TikiTaka,
+    TeamInstructions::e_Instruction_LongBallCounter,
+};
+
+std::string InstructionsText(TeamInstructions::InstructionMask instructions) {
+  std::string out;
+  for (int i = 0; i < TeamInstructions::instructionCount; i++) {
+    if ((instructions & kTagOrder[i]) == 0)
+      continue;
+    if (!out.empty())
+      out += " ";
+    out += kInstructionTags[i];
+  }
+  return out;
+}
+
 }  // namespace HudIndicators

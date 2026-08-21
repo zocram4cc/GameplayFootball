@@ -58,6 +58,11 @@ public:
 
   std::string GetPhilosophyCaption() const;
   void GoPhilosophyMenu();
+  // The advanced instructions, set before kick-off rather than only from the
+  // touchline once play has begun.
+  void GoInstructionsMenu();
+  void InstructionsMenuOnClick(int instructionIndex);
+  std::string GetInstructionsCaption() const;
   void PhilosophyMenuOnClick(int philosophyIndex);
 
   void GoSubstitutionsMenu();
@@ -79,6 +84,7 @@ protected:
   Gui2Button* buttonTactics;
   Gui2Button* buttonFormation;
   Gui2Button* buttonPhilosophy;
+  Gui2Button* buttonInstructions;
   Gui2Button* buttonSubstitutions;
 
   TeamData* teamData;
@@ -89,6 +95,7 @@ protected:
   Gui2Image* lineupPortrait = nullptr;
   GamePlanSubMenu* tacticsMenu;
   GamePlanSubMenu* philosophyMenu;
+  GamePlanSubMenu* instructionsMenu;
   GamePlanSubMenu* formationMenu;
   Gui2Slider* sliderCustomDefenders = nullptr;
   Gui2Slider* sliderCustomMidfielders = nullptr;

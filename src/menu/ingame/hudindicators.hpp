@@ -18,6 +18,8 @@
 
 #include <string>
 
+#include "onthepitch/teaminstructions.hpp"
+
 namespace HudIndicators {
 
 // Where the white band sits in its box, 0 at the bottom. `mentality` is a
@@ -31,6 +33,14 @@ std::string PlateText(int shirtNumber, const std::string& name, bool numberFirst
 // The filled part of the stamina bar, quantised so the bar is not rescaled for
 // a change nobody can see.
 float StaminaFraction(float condition);
+
+// The advanced instructions in force, as a short line for the HUD strip, or empty
+// when none are.
+//
+// The indicators were wired to the mentality band and the philosophy dial and to
+// nothing else, so toggling one of the seven advanced instructions moved the
+// transient banner and left the HUD unchanged - they never appeared to do anything.
+std::string InstructionsText(TeamInstructions::InstructionMask instructions);
 
 // The attacking tone's share of the philosophy dial. `philosophy` is a
 // TeamPhilosophy::e_Philosophy; anything unrecognised splits the dial evenly.

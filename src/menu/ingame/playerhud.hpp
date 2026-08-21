@@ -61,6 +61,7 @@ protected:
   Gui2Image* levelBand = nullptr;
   Gui2Image* dial = nullptr;
   Gui2Caption* plateText = nullptr;
+  Gui2Caption* instructionsText = nullptr;
 
   // Geometry, in this view's percentages, worked out once in the constructor.
   float staminaFullWidth = 0.0f;
@@ -77,6 +78,7 @@ protected:
   // a hundred times a second, twice.
   std::vector<Player*> activePlayers;
   std::string lastPlateText;
+  std::string lastInstructions;
   int lastHumanControlled = -1;
   int lastMentality = -1;
   int lastPhilosophy = -1;
