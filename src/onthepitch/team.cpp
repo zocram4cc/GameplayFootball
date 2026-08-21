@@ -67,6 +67,32 @@ void Team::Exit() {
   match->GetDynamicNode()->DeleteNode(teamNode);
 }
 
+// Activates a player on the model media/players/playermodels.cfg assigns him,
+// falling back to the shared body. A substitute needs this as much as a starter:
+// activating him on the shared fullbody left him wearing the stock body for the
+// rest of the match, however carefully his own had been imported.
+void Team::ActivateWithModel(Player* player, int formationIndex,
+                             boost::intrusive_ptr<Node> fullbodyNode,
+                             std::map<Vector3, Vector3>& colorCoords) {
+  boost::intrusive_ptr<Resource<Surface>> kit = FetchKit(formationIndex);
+  const std::string& modelDir = GetPlayerModelDir(player->GetPlayerData()->GetDatabaseID());
+  if (modelDir.empty()) {
+    player->Activate(playerNode, fullbodyNode, colorCoords, kit,
+                     match->GetAnimCollection());
+    return;
+  }
+  ObjectLoader loader;
+  boost::intrusive_ptr<Node> customBody =
+      loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
+  customBodyNodes.push_back(customBody);  // must not die before Exit()
+  // the model's ase carries the directory name (unique resource key)
+  const std::string& baseName = modelDir.substr(modelDir.find_last_of('/') + 1);
+  std::map<Vector3, Vector3> customColors;
+  GetVertexColors(customColors, modelDir + "/fullbody_" + baseName + ".ase");
+  player->Activate(playerNode, customBody, customColors, kit,
+                   match->GetAnimCollection());
+}
+
 void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
                        std::map<Vector3, Vector3>& colorCoords) {
   // first, load 1 instance of a player
@@ -98,26 +124,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
     if (i < activePlayerCount) {
       // activate playerCount players (the starting eleven, usually)
-      kit = FetchKit(i);
-      // imported per-player models (media/players/playermodels.cfg) replace
-      // the shared fullbody + its vertex-color skin map
-      const std::string& modelDir = GetPlayerModelDir(playerData->GetDatabaseID());
-      if (!modelDir.empty()) {
-        boost::intrusive_ptr<Node> customBody =
-            loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
-        customBodyNodes.push_back(customBody);  // must not die before Exit()
-        // the model's ase carries the directory name (unique resource key)
-        std::string baseName =
-            modelDir.substr(modelDir.find_last_of('/') + 1);
-        std::map<Vector3, Vector3> customColors;
-        GetVertexColors(customColors,
-                        modelDir + "/fullbody_" + baseName + ".ase");
-        player->Activate(playerNode, customBody, customColors, kit,
-                         match->GetAnimCollection());
-      } else {
-        player->Activate(playerNode, fullbodyNode, colorCoords, kit,
-                         match->GetAnimCollection());
-      }
+      ActivateWithModel(player, i, fullbodyNode, colorCoords);
     }
   }
 
@@ -211,8 +218,7 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
   // position in this vector, so the two players swap places in it.
   std::swap(players.at(indexOut), players.at(indexIn));
 
-  kit = FetchKit(indexOut);
-  playerIn->Activate(playerNode, fullbodyNode, playerColorCoords, kit, match->GetAnimCollection());
+  ActivateWithModel(playerIn, indexOut, fullbodyNode, playerColorCoords);
   playerIn->ResetPosition(replacedPosition, Vector3(0));
 
   // Nobody may be left pointing at the player who just walked off.
