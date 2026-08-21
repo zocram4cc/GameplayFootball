@@ -64,10 +64,16 @@ Open:
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
 | 80 | Corner flag cloth samples the wrong half of its texture | **blocked** — the gate is correct in isolation, but applying it needs `stadium_staff._write_figure` to emit per-corner TVERTs the way `adboard_uvs.py` does |
+| 81 | Import HDG fully | **reopened** — tactics, roster, crest, kits and sliders are in; the models are not. `squad_models.py` now resolves the real assignment from the .ted (15 x Helldiver, 7 x Helldiver Headless, 1 x Alexus); #86 applies it |
 | 82 | Standalone model viewer, no match logic | pending — `gfviewer` builds but dies reading geometry the engine loads on worker threads |
 | 83 | Composite slot-override exports over the base body | new, from the showcase |
 | 84 | Drop scenery meshes that swallow a player's bounds | new, from the showcase |
 | 85 | Give substitutes their imported model | new, from the showcase |
+| 86 | Assemble squad bodies from shared body plus per-player face | new — wire `squad_models.py` into `import_team.py` and re-import /hdg/, 2hug and lcg |
+
+Done since this snapshot was first written: the stadium grounds (all seven
+affected grounds re-converted, `14ecace`/`af1ca3b`), the `.ted` requirement for
+squad model imports (`be27ff7`), and the body coverage measure (`3f01a62`).
 
 ## The HDG showcase
 
