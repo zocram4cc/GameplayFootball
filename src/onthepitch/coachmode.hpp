@@ -6,6 +6,7 @@
 #define _HPP_COACH_MODE
 
 #include <string>
+#include <vector>
 
 namespace CoachMode {
 
@@ -62,13 +63,14 @@ bool AIManagerRuns(const Setup& setup, int teamID);
 // counts could not express the second - it coached the empty side too.
 Setup FromSelections(const int playing[2], const int coaching[2], bool coachBothSides);
 
-// What the select-sides screen says about the arrangement it is showing, or empty
-// when nobody is coaching.
+// What the select-sides screen says about the arrangement it is showing: one short
+// line each, or nothing at all when nobody is coaching.
 //
-// That screen is where it belongs: coach mode had no presence outside hotkey routing,
-// and the in-match instruction banner only appears once something has already been
-// changed, which is no use to somebody who does not know the keys yet.
-std::string Tip(const Setup& setup, const std::string& homeName, const std::string& awayName);
+// Lines rather than a sentence, because it is read at a glance off a menu: who is
+// coaching, then the pad, then the keyboard. It was one run-on paragraph, which is
+// the sort of thing nobody reads.
+std::vector<std::string> TipLines(const Setup& setup, const std::string& homeName,
+                                  const std::string& awayName);
 
 // The arrangement in the words a player would use: "Player vs CPU", "Coach vs CPU",
 // "Player vs Coach", "CPU vs CPU". Home side first.

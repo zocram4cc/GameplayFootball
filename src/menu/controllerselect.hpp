@@ -39,6 +39,9 @@ protected:
   std::vector<SideSelection> sides;
   std::vector<Gui2Caption*> coachCaptions;
   Gui2Caption* modeCaption = nullptr;
+  // Who has the bench, the pad, the keyboard.
+  static const int kTipLineCount = 3;
+  std::vector<Gui2Caption*> tipCaptions;
   bool streamerMode = false;
   std::vector<unsigned long> delay;
   bool inGame;

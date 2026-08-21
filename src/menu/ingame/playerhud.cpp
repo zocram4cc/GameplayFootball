@@ -87,13 +87,14 @@ Gui2PlayerHUD::Gui2PlayerHUD(Gui2WindowManager* windowManager, const std::string
   this->AddView(plateText);
   plateText->Show();
 
-  // The advanced instructions in force, under the plate. Without this the seven of
-  // them changed nothing on screen once the banner had faded.
+  // The advanced instructions in force, clear of the plate art rather than on it -
+  // the name owns the bar, and two lines inside it collide. Smaller than the name,
+  // because it is a footnote to whoever is being watched. Without it the seven
+  // instructions changed nothing on screen once the banner had faded.
   instructionsText = new Gui2Caption(
       windowManager, name + "_instructions",
-      atX(kPlateX + kPlateTextInsetX, kPlateW - kPlateTextInsetX * 2.0f),
-      kStaminaY * h + kStaminaH * h + h * 0.62f, (kPlateW - kPlateTextInsetX * 2.0f) * w,
-      h * 0.52f, "");
+      atX(kPlateX + kPlateTextInsetX, kPlateW - kPlateTextInsetX * 2.0f), h * 1.02f,
+      (kPlateW - kPlateTextInsetX * 2.0f) * w, h * 0.42f, "");
   this->AddView(instructionsText);
   instructionsText->Show();
 

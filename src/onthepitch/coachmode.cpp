@@ -113,25 +113,34 @@ Setup FromSelections(const int playing[2], const int coaching[2], bool coachBoth
   return setup;
 }
 
-std::string Tip(const Setup& setup, const std::string& homeName, const std::string& awayName) {
+std::vector<std::string> TipLines(const Setup& setup, const std::string& homeName,
+                                  const std::string& awayName) {
+  std::vector<std::string> lines;
   const bool coached[2] = {setup.control[0] == e_TeamControl_HumanCoach,
                            setup.control[1] == e_TeamControl_HumanCoach};
   if (!coached[0] && !coached[1])
-    return "";
-  const std::string names[2] = {homeName, awayName};
-  std::string who;
-  for (int team = 0; team < 2; team++) {
-    if (!coached[team] || names[team].empty())
-      continue;
-    if (!who.empty())
-      who += " and ";
-    who += names[team];
+    return lines;
+
+  // A duel does not name the sides: both benches are the viewer's, and two club
+  // names of any length overrun the line.
+  if (coached[0] && coached[1]) {
+    lines.push_back("Both benches are yours. The AI plays.");
+  } else {
+    const std::string& name = coached[0] ? homeName : awayName;
+    if (name.empty()) {
+      lines.push_back("You run the bench. The AI plays.");
+    } else {
+      // Long enough for any club, short enough to keep the line on the menu.
+      const size_t kNameBudget = 40;
+      const std::string shown =
+          name.size() > kNameBudget ? name.substr(0, kNameBudget - 3) + "..." : name;
+      lines.push_back("You run the bench for " + shown + ". The AI plays.");
+    }
   }
-  // A bench with no name to print still gets a tip; it just does not name itself.
-  const std::string bench = who.empty() ? "You are coaching" : "You are coaching " + who;
-  return bench + ". RT and the d-pad set the mentality, RT and the face buttons the "
-                 "instructions; on the keyboard Page Up and Page Down move the line and "
-                 "F5 to F11 toggle instructions.";
+  lines.push_back("Pad:  RT + d-pad = mentality    RT + buttons = instructions");
+  lines.push_back("Keys: PgUp/PgDn = line    F5-F11 = instructions" +
+                  std::string(IsManagerDuel(setup) ? "    Shift = other bench" : ""));
+  return lines;
 }
 
 std::string Describe(const Setup& setup) {
