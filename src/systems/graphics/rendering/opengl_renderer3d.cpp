@@ -2836,18 +2836,15 @@ void OpenGLRenderer3D::operator()() {
         }
       }
 
+      // Closing the window quits. There used to be a second way - F12 signalled
+      // quit from here, straight out of the SDL event loop - which read as the game
+      // crashing on a keypress: the process simply vanished, with no menu, no
+      // confirmation and nothing in the log. It also collided with F12's real job,
+      // the screenshot key (Match::Process), which never got a look in because this
+      // ran first. Quitting is in the menus.
       switch (event.type) {
         case SDL_QUIT:
           EnvironmentManager::GetInstance().SignalQuit();
-          break;
-        case SDL_KEYDOWN:
-          switch (event.key.keysym.sym) {
-            case SDLK_F12:
-              EnvironmentManager::GetInstance().SignalQuit();
-              break;
-            default:
-              break;
-          }
           break;
         default:
           break;
