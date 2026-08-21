@@ -15,18 +15,30 @@
 
 namespace GoalSequence {
 
-// How long the celebration is allowed to run before the replay takes over.
-// Nine seconds is where the scoring team's chant has finished fading.
+// How long a celebration runs when nothing else decides it. It used to be the whole
+// answer - a flat nine seconds - which both cut long celebrations off partway and
+// held short ones on a player running in place. The clips say how long they are:
+// measured over the 387 imported celebration animations at 10 ms a frame, they run
+// 0.4 s to 10.0 s, median 2.7 s and p90 6.8 s. So the length comes from the clip and
+// this is only the floor for a very short one.
+constexpr unsigned long kMinCelebration_ms = 4000;
+
+// Kept as the plain default for callers with no clip to hand.
 constexpr unsigned long kCelebration_ms = 9000;
+
+// The longest celebration the schedule will run: the longest single clip is 10.0 s,
+// and a celebration may chain an intro into a loop, so two of them. Everything below
+// depends on this, because the recorded buffer has to reach back past it.
+constexpr unsigned long kLongestCelebration_ms = 20000;
 
 // How far before the goal the replay opens, so it shows the build-up rather
 // than the celebration it just interrupted.
-constexpr unsigned long kReplayLeadIn_ms = 7000;
+constexpr unsigned long kReplayLeadIn_ms = 10000;
 
-// The recorded window the replay is cut from. It has to cover the celebration
-// plus the lead-in, or a replay fired after the celebration can no longer
-// reach the goal.
-constexpr unsigned long kReplayBuffer_ms = 22000;
+// The recorded window the replay is cut from. It has to cover the longest
+// celebration plus the lead-in, or a replay fired after the celebration can no
+// longer reach the goal and plays back the celebration instead of the action.
+constexpr unsigned long kReplayBuffer_ms = kLongestCelebration_ms + kReplayLeadIn_ms;
 
 // Gap between the replay firing and the referee preparing the restart. The
 // match clock is frozen while the replay plays (Match::Process runs its
@@ -37,11 +49,18 @@ constexpr unsigned long kRestartPrepareAfterReplay_ms = 1500;
 // Prepared set piece to actual kickoff.
 constexpr unsigned long kKickOffAfterPrepare_ms = 2000;
 
+// How long a celebration of `animLength_ms` should be held on screen: the clip's own
+// length, floored so a very short one is not cut to nothing and capped so a long one
+// cannot outrun the recorded buffer. Pass 0 when the clip is unknown and it falls
+// back to the plain default.
+unsigned long CelebrationLength_ms(unsigned long animLength_ms);
+
 // When the replay should fire for a goal scored at `goalTime_ms`.
 // `cutsceneEnd_ms` is the end of a goal cutscene if one is playing, 0 if not;
-// a cutscene running past the plain celebration wins, a shorter one does not
-// cut the celebration short.
-unsigned long ReplayFiresAt_ms(unsigned long goalTime_ms, unsigned long cutsceneEnd_ms = 0);
+// a cutscene running past the celebration wins, a shorter one does not cut it short.
+// `celebrationLength_ms` is what CelebrationLength_ms returned for the clip on screen.
+unsigned long ReplayFiresAt_ms(unsigned long goalTime_ms, unsigned long cutsceneEnd_ms = 0,
+                               unsigned long celebrationLength_ms = kCelebration_ms);
 
 // When the referee should prepare the kickoff, and when it should start.
 unsigned long RestartPrepareAt_ms(unsigned long goalTime_ms);

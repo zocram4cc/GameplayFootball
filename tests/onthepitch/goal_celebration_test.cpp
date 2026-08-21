@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "onthepitch/goalcelebration.hpp"
+#include "onthepitch/goalsequence.hpp"
 
 namespace {
 const char* kManifest =
@@ -162,4 +163,45 @@ TEST(GoalCelebration, WithNoIntroToPlayItIsAllLoop) {
 TEST(GoalCelebration, TheLoopIsTheSameMoodAskedForDifferently) {
   EXPECT_EQ(GoalCelebration::LoopVariable(1), 11);
   EXPECT_EQ(GoalCelebration::LoopVariable(2), 12);
+}
+
+// How long a celebration actually is.
+//
+// The intro was held for a flat 1900 ms - the longest of the 40 imported intros - and
+// the loop then ran until an unrelated nine-second timer cut it off. So a short intro
+// held its last pose, and a loop either got cut partway or, once it had finished,
+// left the scorer running in place until the timer expired. The clips know their own
+// lengths; the engine reads an .anim at 10 ms a frame.
+
+TEST(CelebrationClips, AFrameIsTenMilliseconds) {
+  EXPECT_EQ(GoalCelebration::ClipLength_ms(100), 1000u);
+  EXPECT_EQ(GoalCelebration::ClipLength_ms(0), 0u);
+}
+
+TEST(CelebrationClips, AnIntroIsHeldForItsOwnLength) {
+  // the imported intros run 330 to 1850 ms
+  EXPECT_EQ(GoalCelebration::IntroHold_ms(33), 330u);
+  EXPECT_EQ(GoalCelebration::IntroHold_ms(185), 1850u);
+}
+
+TEST(CelebrationClips, AnUnknownIntroFallsBackToTheOldFlatHold) {
+  EXPECT_EQ(GoalCelebration::IntroHold_ms(0), GoalCelebration::kIntroHold_ms);
+  EXPECT_EQ(GoalCelebration::IntroHold_ms(-5), GoalCelebration::kIntroHold_ms);
+}
+
+TEST(CelebrationClips, TheTotalIsTheIntroPlusTheLoop) {
+  EXPECT_EQ(GoalCelebration::CelebrationTotal_ms(120, 400), 1200u + 4000u);
+}
+
+TEST(CelebrationClips, AnUnknownLoopStillGivesTheIntroTimeToPlay) {
+  const unsigned long total = GoalCelebration::CelebrationTotal_ms(120, 0);
+  EXPECT_GE(total, 1200u) << "the intro has to fit in whatever is returned";
+}
+
+TEST(CelebrationClips, TheLongestClipsStillFitTheSchedule) {
+  // 1000 frames is the longest imported celebration; two of them chained is the
+  // worst case the buffer is sized for
+  const unsigned long total = GoalCelebration::CelebrationTotal_ms(1000, 1000);
+  EXPECT_LE(total, GoalSequence::kLongestCelebration_ms)
+      << "a celebration longer than this outruns the replay buffer";
 }

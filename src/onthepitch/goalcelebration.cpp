@@ -1,4 +1,5 @@
 #include "goalcelebration.hpp"
+#include "goalsequence.hpp"
 
 #include <cstdlib>
 #include <sstream>
@@ -78,5 +79,27 @@ Phase_e Phase(unsigned long elapsed_ms, unsigned long introHold_ms) {
 }
 
 int LoopVariable(int introVariable) { return introVariable + 10; }
+
+unsigned long ClipLength_ms(int frames) {
+  return frames > 0 ? static_cast<unsigned long>(frames) * kFrameLength_ms : 0;
+}
+
+unsigned long IntroHold_ms(int introFrames) {
+  const unsigned long length = ClipLength_ms(introFrames);
+  return length > 0 ? length : kIntroHold_ms;
+}
+
+unsigned long CelebrationTotal_ms(int introFrames, int loopFrames) {
+  const unsigned long intro = IntroHold_ms(introFrames);
+  const unsigned long loop = ClipLength_ms(loopFrames);
+  // With no loop to measure, the sequence's own default decides how long the
+  // performance runs - but never less than the intro needs.
+  const unsigned long total = loop > 0 ? intro + loop
+                                       : (intro > GoalSequence::kCelebration_ms
+                                              ? intro
+                                              : GoalSequence::kCelebration_ms);
+  return total > GoalSequence::kLongestCelebration_ms ? GoalSequence::kLongestCelebration_ms
+                                                      : total;
+}
 
 }  // namespace GoalCelebration
