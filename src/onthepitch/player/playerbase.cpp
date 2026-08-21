@@ -29,18 +29,8 @@ PlayerBase::PlayerBase(Match* match, PlayerData* playerData)
   confidenceFactor = 1.0;
   injuryLevel = 0.0f;
 
-  averageStat = GetStat("physical_balance") + GetStat("physical_reaction") +
-                GetStat("physical_acceleration") + GetStat("physical_velocity") +
-                GetStat("physical_stamina") + GetStat("physical_agility") +
-                GetStat("physical_shotpower") + GetStat("technical_standingtackle") +
-                GetStat("technical_slidingtackle") + GetStat("technical_ballcontrol") +
-                GetStat("technical_dribble") + GetStat("technical_shortpass") +
-                GetStat("technical_highpass") + GetStat("technical_header") +
-                GetStat("technical_shot") + GetStat("technical_volley") +
-                GetStat("mental_calmness") + GetStat("mental_workrate") +
-                GetStat("mental_resilience") + GetStat("mental_defensivepositioning") +
-                GetStat("mental_offensivepositioning") + GetStat("mental_vision");
-  averageStat /= 22.0;
+  averageStat = playerData->GetAverageStat();
+
 
   // if (Verbose()) printf("player '%s' has an average stat of %f\n",
   // playerData->GetLastName().c_str(), averageStat);

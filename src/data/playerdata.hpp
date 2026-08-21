@@ -26,6 +26,11 @@ public:
 
   float GetStat(const char* name);
 
+  // The mean of the twenty-two stats: the engine's own notion of how good a player
+  // is, used for substitution decisions and printed on the game plan's cards. It
+  // lived inside PlayerBase, which the menus have no access to before kick-off.
+  float GetAverageStat() const;
+
   // Gives the player a style of his own when the database defines none.
   void AssignPlayingStyles();
 

@@ -8,9 +8,12 @@
 GamePlanSubMenu::GamePlanSubMenu(Gui2WindowManager* windowManager, Gui2View* parentFocus,
                                  Gui2Grid* mainGrid, const std::string& name)
     : Gui2View(windowManager, name, 0, 0, 100, 100), mainGrid(mainGrid), parentFocus(parentFocus) {
+  // A sub-menu takes the cell the button column just vacated - beside the pitch, the
+  // way the broadcast lays the game plan out. It used to take the cell below, which
+  // ran the list off the bottom of the panel once the pitch grew.
   grid = new Gui2Grid(windowManager, "gameplan_grid_" + name, 0, 0, 0, 0);
   this->AddView(grid);
-  mainGrid->AddView(this, 1, 0);
+  mainGrid->AddView(this, kGamePlanNavRow, kGamePlanNavColumn);
   mainGrid->UpdateLayout(0.0);
   grid->SetQuickScroll(true);
   grid->Show();
@@ -62,7 +65,7 @@ Gui2Button* GamePlanSubMenu::GetToggledButton(Gui2Button* except) {
 
 void GamePlanSubMenu::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape()) {
-    mainGrid->RemoveView(1, 0);  // removing self!
+    mainGrid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);  // removing self!
     parentFocus->SetFocus();
 
     this->Exit();  // should send sig_OnClose

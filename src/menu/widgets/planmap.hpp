@@ -6,11 +6,14 @@
 #ifndef _HPP_GUI2_VIEW_PLANMAP
 #define _HPP_GUI2_VIEW_PLANMAP
 
+#include "gametypes.hpp"
 #include "scene/objects/image2d.hpp"
 #include "utils/gui2/view.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/image.hpp"
 
 class TeamData;
+class PlayerData;
 class Match;
 
 namespace blunted {
@@ -35,16 +38,18 @@ protected:
 
 class Gui2PlanMapEntry : public Gui2View {
 public:
+  // One starter's card: portrait, position and rating strip, name. portraitHeight is
+  // in percent of the page and 0 when the player has no imported portrait.
   Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::string& name, float x_percent,
-                   float y_percent, float width_percent, float height_percent,
-                   const std::string& roleName, const std::string& playerName);
+                   float y_percent, float width_percent, float height_percent, e_PlayerRole role,
+                   PlayerData* playerData, float portraitHeight);
   virtual ~Gui2PlanMapEntry();
 
 protected:
-  SDL_Surface* zoomedImage;
-
-  Gui2Caption* roleNameCaption;  // formerly: captionView
-  Gui2Caption* playerNameCaption;
+  Gui2Image* portraitImage = nullptr;
+  Gui2Caption* roleNameCaption = nullptr;
+  Gui2Caption* ratingCaption = nullptr;
+  Gui2Caption* playerNameCaption = nullptr;
 };
 
 }  // namespace blunted

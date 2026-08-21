@@ -142,6 +142,25 @@ void PlayerData::AssignPlayingStyles() {
   traits = PlayerTraits::AssignForPlayer(databaseID, role, stats.GetReal("technical_shot", 0.5f));
 }
 
+float PlayerData::GetAverageStat() const {
+  static const char* kStats[] = {
+      "physical_balance",           "physical_reaction",
+      "physical_acceleration",      "physical_velocity",
+      "physical_stamina",           "physical_agility",
+      "physical_shotpower",         "technical_standingtackle",
+      "technical_slidingtackle",    "technical_ballcontrol",
+      "technical_dribble",          "technical_shortpass",
+      "technical_highpass",         "technical_header",
+      "technical_shot",             "technical_volley",
+      "mental_calmness",            "mental_workrate",
+      "mental_resilience",          "mental_defensivepositioning",
+      "mental_offensivepositioning", "mental_vision"};
+  const int count = sizeof(kStats) / sizeof(kStats[0]);
+  float total = 0.0f;
+  for (int i = 0; i < count; i++) total += stats.GetReal(kStats[i], 0.0f);
+  return total / static_cast<float>(count);
+}
+
 float PlayerData::GetStat(const char* name) {
   bool exists = stats.Exists(name);
   if (!exists)

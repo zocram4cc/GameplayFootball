@@ -19,6 +19,8 @@
 #include "onthepitch/teamphilosophy.hpp"
 #include "utils/localization.hpp"
 
+
+
 using namespace blunted;
 
 GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
@@ -27,7 +29,9 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   pageCreatedTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
   const int teamDatabaseID = pageData.properties->GetInt("teamDatabaseID", -1);
 
-  constexpr float xOffset = 32.5f;
+  // Wide enough for the pitch and the list side by side, as the broadcast lays them
+  // out; it used to be a narrow centred column with the pitch stacked on top.
+  constexpr float xOffset = 17.0f;
   // Before kick-off there is no match yet, so load the team straight from the
   // database; during a match the live team data is edited instead.
   Match* match = GetGameTask()->GetMatch();
@@ -38,7 +42,7 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
     teamData = standaloneTeamData.get();
   }
 
-  Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", xOffset, 10, 35, 82, true);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", xOffset, 10, 66, 82, true);
   this->AddView(frame);
   frame->Show();
 
@@ -48,7 +52,9 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   grid = new Gui2Grid(windowManager, "gameplan_grid", 1.5f, 6, 0, 0);
   gridNav = new Gui2Grid(windowManager, "gameplan_grid_navigation", 0, 0, 0, 0);
 
-  map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 32, 26, teamData);
+  // The pitch beside the list rather than above it, and tall enough for eleven cards
+  // to stand apart - the broadcast gives it most of the panel.
+  map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 30, 54, teamData);
   buttonLineup = new Gui2Button(windowManager, "gameplan_button_lineup", 0, 0, 32, 3,
                                 Localization::GetInstance().Translate("gameplan_lineup"));
   buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 32, 3,
@@ -93,7 +99,7 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridNav->AddView(buttonFormation, 5, 0);
   gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
-  grid->AddView(gridNav, 1, 0);
+  grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
 
   grid->UpdateLayout(0.0);
   grid->Show();
@@ -159,11 +165,11 @@ void GamePlanPage::OnClose() {
 }
 
 void GamePlanPage::Deactivate() {
-  grid->RemoveView(1, 0);
+  grid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);
 }
 
 void GamePlanPage::Reactivate() {
-  grid->AddView(gridNav, 1, 0);
+  grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
   grid->UpdateLayout(0.0);
   gridNav->Show();
   // Restore keyboard/gamepad focus after returning from a sub-menu, otherwise
@@ -202,9 +208,12 @@ void GamePlanPage::GoLineupMenu() {
   // The imported player portrait (editable media/players/playerportraits.cfg), flush
   // against the panel's right edge and square in pixels rather than in percent - the
   // exports are square, and 16x22 percent of a 16:9 page stretched them wide.
-  const float kPortraitW = 12.0f;
+  // Under the pitch, inside the panel: these are page coordinates, and the panel runs
+  // from 17 to 83 percent across. Square in pixels rather than in percent - the
+  // exports are square and the page is 16:9.
+  const float kPortraitW = 11.0f;
   const float kPortraitH = kPortraitW * 16.0f / 9.0f;
-  lineupPortrait = new Gui2Image(windowManager, "lineup_portrait", 67.5f, 30.0f, kPortraitW,
+  lineupPortrait = new Gui2Image(windowManager, "lineup_portrait", 22.0f, 71.0f, kPortraitW,
                                  kPortraitH);
   this->AddView(lineupPortrait);
   if (!playerData.empty())

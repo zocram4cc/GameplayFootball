@@ -666,6 +666,7 @@ set(MENU_SOURCES
    src/menu/league/league_standings.cpp
    src/menu/gameplan.cpp
    src/menu/widgets/planmap.cpp
+   src/menu/widgets/planmapcard.cpp
    src/menu/widgets/gameplansubmenu.cpp
    src/menu/startmatch/teamselect.cpp
    src/menu/startmatch/fixturerequest.cpp
