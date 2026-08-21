@@ -14,6 +14,7 @@
 // With --shots it writes N stills round a turntable and exits, which is what a
 // headless machine needs; without, it opens a window and orbits with the mouse.
 
+#include <deque>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -289,7 +290,21 @@ int main(int argc, const char** argv) {
                                 shot.target[2] + shot.distance));
   scene3D->AddNode(lightNode);
 
-  std::cout << "framed at " << shot.distance << " m\n";
+  {
+    // What the graphics task will actually be offered. A model that is loaded but
+    // not in the scene, or in it and disabled, draws nothing, and those look alike
+    // from outside.
+    std::list<boost::intrusive_ptr<Object>> all;
+    scene3D->GetObjects(all);
+    int geoms = 0, enabled = 0;
+    for (auto& object : all) {
+      if (object->GetObjectType() != e_ObjectType_Geometry) continue;
+      geoms++;
+      if (object->IsEnabled()) enabled++;
+    }
+    std::cout << "framed at " << shot.distance << " m; " << geoms
+              << " geometry object(s) in the scene, " << enabled << " enabled\n";
+  }
 
   if (options.shots > 0) {
     // The same path the game records a showcase through: every presented frame goes
