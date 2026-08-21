@@ -279,6 +279,12 @@ void GamePlanPage::GoTacticsMenu() {
   int i = 0;
   while (iter != userPropMap->end()) {
     const std::string& tacticName = (*iter).first;
+    // Philosophy lives in these same properties and has the philosophy menu of its
+    // own; on a slider it showed up unmarked at zero and overwrote itself.
+    if (!TeamPhilosophy::IsSliderTactic(tacticName)) {
+      iter++;
+      continue;
+    }
     if (Verbose())
       printf("adding %s\n", tacticName.c_str());
     TacticsSlider slider;

@@ -495,6 +495,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/crowd_mood_test.cpp
   data/match_analytics_test.cpp
   data/formations_test.cpp
+  data/team_tactics_test.cpp
   onthepitch/coach_mode_test.cpp
   onthepitch/substitutions_test.cpp
   onthepitch/ai_manager_test.cpp

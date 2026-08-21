@@ -55,6 +55,17 @@ float GetPassErrorMultiplier(e_Philosophy philosophy, float supportDistance);
 // -1 or 1 and points from the pitch centre towards the team's own goal.
 float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide);
 
+// Whether a tactics key belongs on a slider in the game plan.
+//
+// The slider list is built from every key in a team's tactics, which works only
+// while they are all numbers. Philosophy is not: the philosophy menu writes the
+// string "balanced" into the same map, so choosing one grew an extra slider with no
+// readable name, sitting at zero because GetReal of "balanced" is zero, and dragging
+// it wrote a number over the philosophy that menu had just set. Keys with an editor
+// of their own are refused; anything else is a number and belongs on a slider,
+// including tactics this build has never heard of.
+bool IsSliderTactic(const std::string& tacticName);
+
 }  // namespace TeamPhilosophy
 
 #endif

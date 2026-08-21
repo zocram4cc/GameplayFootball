@@ -121,4 +121,11 @@ float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide) {
   return trapX * side > boxEdgeX * side ? trapX : boxEdgeX;
 }
 
+// The key philosophy is stored under, which has the philosophy menu instead.
+static const char* kPhilosophyKey = "philosophy";
+
+bool IsSliderTactic(const std::string& tacticName) {
+  return !tacticName.empty() && tacticName != kPhilosophyKey;
+}
+
 }  // namespace TeamPhilosophy
