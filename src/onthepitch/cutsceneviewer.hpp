@@ -115,6 +115,15 @@ bool PackMatches(const Settings& settings, const std::string& packName);
 std::string DescribePool(const std::string& category, int cameraPacks, int choreographyPacks,
                          const TrackExtent& firstTrack);
 
+// Whether the legacy referee-follow may take the camera during a booking.
+//
+// It takes it by switching auto camera updates off - and that is the very function the
+// imported PES foul camerawork plays through, so the shot was chosen, started, logged
+// and never seen: what the viewer got was the 2008 follow-the-referee camera. PES
+// ships two foul camera packs of its seventy-eight and both are imported, so when one
+// is playing it wins; the follow is for a stoppage with nothing else to show.
+bool RefereeFollowMayTakeCamera(bool cutscenePlaying);
+
 }  // namespace CutsceneViewer
 
 #endif

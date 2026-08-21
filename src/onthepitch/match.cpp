@@ -2210,14 +2210,19 @@ void Match::StartCutsceneChoreo(const std::string& category) {
 }
 
 void Match::UpdateCutsceneChoreo() {
-  if (!activeCutsceneChoreo || !activeCutscene) {
-    if (!activeCutscene) {
-      activeCutsceneChoreo = nullptr;
-      cutsceneCast.clear();
-      cutsceneOfficialCast.clear();
-      cutscenePrimary = nullptr;
-      cutsceneOpponent = nullptr;
-    }
+  if (!activeCutsceneChoreo)
+    return;
+  // The choreography lives as long as its own clock, not as long as a camera track.
+  // Tearing it down whenever there was no camera threw away every incident PES stages
+  // but does not film - all seven offside packs carry zero camera frames - one frame
+  // after casting it: the assistant was given his flag and dropped again before he
+  // could raise it, which is why an offside was never seen.
+  if (!CutscenePlayback::IsPlaying(cutscenePlayback)) {
+    activeCutsceneChoreo = nullptr;
+    cutsceneCast.clear();
+    cutsceneOfficialCast.clear();
+    cutscenePrimary = nullptr;
+    cutsceneOpponent = nullptr;
     return;
   }
   // The cutscene's own clock, which holds while the match is paused. Read off the
@@ -2321,6 +2326,10 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
     if (slash != std::string::npos) pool = cutscenePools.find(category.substr(0, slash));
   }
   const bool haveCamera = pool != cutscenePools.end() && !pool->second.empty();
+  // Whether PES filmed this category at all. A shot that has simply run out is not
+  // the same as a category that never had one: the first hands the camera back, the
+  // second has to be filmed by the broadcast camera instead.
+  cutsceneHasCamera = haveCamera;
   cutsceneStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
   float seconds = capSeconds;
   activeCutsceneAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
@@ -2882,9 +2891,19 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 Vector3 Match::CutsceneAnchorPosition() const {
   // The offender if the referee named one, otherwise wherever the ball stopped:
   // at a stoppage that is the incident.
-  const Vector3 subject = cutscenePrimary
-                              ? cutscenePrimary->GetPosition()
-                              : (ball ? ball->Predict(0).Get2D() : Vector3(0, 0, 0));
+  // The offender if the referee named one; failing that the spot he is restarting
+  // from, which for an offside is where the offence occurred (Law 11) and at any
+  // stoppage is the incident. The ball's own position was the old fallback and it
+  // reads as the centre spot once play has stopped, so the camera filmed the centre
+  // circle while the flag was up somewhere else.
+  Vector3 subject(0, 0, 0);
+  if (cutscenePrimary) {
+    subject = cutscenePrimary->GetPosition();
+  } else if (referee && referee->GetBuffer().active) {
+    subject = referee->GetBuffer().restartPos;
+  } else if (ball) {
+    subject = ball->Predict(0).Get2D();
+  }
   // A substitution is not made where the man was standing: he walks off at the
   // touchline, so that is where the scene belongs.
   if (cutsceneAtTouchline) {
@@ -2935,6 +2954,27 @@ void Match::UpdateIngameCamera() {
       return;
     }
     activeCutscene = nullptr;
+  }
+
+  // An incident PES stages but does not film. Its offside packs parse cleanly and
+  // carry zero camera frames - all seven of them - because PES means the assistant's
+  // flag to be caught by the live broadcast camera. Ours went on tracking the ball,
+  // so the flag went up somewhere off-frame and the offside was never seen. The
+  // broadcast camera holds on the incident instead, for as long as the choreography
+  // runs.
+  // The stoppage registers a beat after the choreography starts - measured: the flag
+  // goes up with IsInPlay() still true - so the referee's pending decision counts as
+  // well, or the shot is skipped for the whole of its four seconds. Only for a
+  // category PES never filmed: a shot that has merely run out hands the camera back.
+  if (!cutsceneHasCamera && activeCutsceneChoreo &&
+      CutscenePlayback::IsPlaying(cutscenePlayback) &&
+      (!IsInPlay() || GetReferee()->GetBuffer().active)) {
+    const Vector3 anchor = CutsceneAnchorPosition();
+    FollowCamera(cameraOrientation, cameraNodeOrientation, cameraNodePosition, cameraFOV,
+                 anchor + Vector3(0, 0, 1.0f), 1.3f);
+    cameraNearCap = 1;
+    cameraFarCap = 220;
+    return;
   }
 
   // pre-kickoff cutscene. With an imported PES camera track
@@ -3835,7 +3875,9 @@ void Match::Process() {
     if (GetReferee()->GetBuffer().active == true &&
         (GetReferee()->GetCurrentFoulType() == 2 || GetReferee()->GetCurrentFoulType() == 3) &&
         GetReferee()->GetBuffer().stopTime < GetActualTime_ms() - 1000) {
-      if (GetReferee()->GetBuffer().prepareTime > GetActualTime_ms()) {  // FOUL, film referee
+      const bool cutscenePlaying = activeCutscene != nullptr || activeCutsceneChoreo != nullptr;
+      if (GetReferee()->GetBuffer().prepareTime > GetActualTime_ms() &&
+          CutsceneViewer::RefereeFollowMayTakeCamera(cutscenePlaying)) {  // FOUL, film referee
         SetAutoUpdateIngameCamera(false);
         FollowCamera(cameraOrientation, cameraNodeOrientation, cameraNodePosition, cameraFOV,
                      officials->GetReferee()->GetPosition() + Vector3(0, 0, 0.8f), 1.5f);

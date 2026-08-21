@@ -48,7 +48,7 @@ public:
 
   void PrepareSetPiece(e_SetPiece setPiece);
 
-  const RefereeBuffer& GetBuffer() { return buffer; };
+  const RefereeBuffer& GetBuffer() const { return buffer; };
 
   void AlterSetPiecePrepareTime(unsigned long newTime_ms);
 

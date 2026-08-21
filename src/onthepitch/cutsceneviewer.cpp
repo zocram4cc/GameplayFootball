@@ -90,4 +90,6 @@ std::string DescribePool(const std::string& category, int cameraPacks, int chore
   return buffer;
 }
 
+bool RefereeFollowMayTakeCamera(bool cutscenePlaying) { return !cutscenePlaying; }
+
 }  // namespace CutsceneViewer
