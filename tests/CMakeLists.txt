@@ -98,6 +98,7 @@ gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TES
 add_executable(gameplayfootball_goalcelebration_tests
   onthepitch/goal_celebration_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalcelebration.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
 )
 target_include_directories(gameplayfootball_goalcelebration_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
@@ -503,6 +504,8 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/goal_sequence_test.cpp
   onthepitch/foul_sequence_test.cpp
   onthepitch/cutscene_viewer_test.cpp
+  onthepitch/cutscene_playback_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneplayback.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneviewer.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/foulsequence.cpp

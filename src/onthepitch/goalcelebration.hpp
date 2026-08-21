@@ -62,6 +62,22 @@ const unsigned long kIntroHold_ms = 1900;
 
 Phase_e Phase(unsigned long elapsed_ms, unsigned long introHold_ms);
 
+// The engine reads an .anim at 10 ms a frame (humanoidbase.cpp walks
+// GetFrameCount() * 10), so a clip's length follows from its frame count.
+constexpr unsigned long kFrameLength_ms = 10;
+
+unsigned long ClipLength_ms(int frames);
+
+// How long to hold the intro: its own length, or the old flat hold when the clip is
+// not known. Holding every intro for the longest one left short intros sitting on
+// their last pose.
+unsigned long IntroHold_ms(int introFrames);
+
+// The whole performance, intro then loop. Capped to what the replay buffer can reach
+// back past (GoalSequence::kLongestCelebration_ms), because a celebration that
+// outruns it takes the goal out of its own replay.
+unsigned long CelebrationTotal_ms(int introFrames, int loopFrames);
+
 // The engine asks for a special animation by specialvar1/specialvar2. A loop is the
 // same mood with specialvar2 raised by ten, which is how install_anims.py files it.
 int LoopVariable(int introVariable);
