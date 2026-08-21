@@ -64,7 +64,9 @@ Open:
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
 | 80 | Corner flag cloth samples the wrong half of its texture | **blocked** — the gate is correct in isolation, but applying it needs `stadium_staff._write_figure` to emit per-corner TVERTs the way `adboard_uvs.py` does |
-| 82 | Standalone model viewer, no match logic | **in progress** — four bugs fixed (see below); the model is in the scene and enabled and still is not rasterised |
+| 54 | Match the VGL26 Day 7 reference | pending |
+| 59 | PES's own pitch model and 3D turf | in progress |
+| 76 | Floppy surfaces on one mechanism | in progress — banner and pennant need choreography |
 
 Closed since: **81** (all 23 /hdg/ players bound to the body the .ted assigns —
 15 Helldiver, 7 Helldiver Headless, 1 Alexus), **83** (kit alpha *is* honoured:
@@ -73,28 +75,34 @@ compositing is not the answer), **84** (not needed — the binding gate covers i
 **85** (substitutes get their model), **86** (a prop is no longer bound as a body),
 and the shadeless shader.
 
-### What #82 still needs
+### The model viewer
 
-`gfviewer` loads a model, reports it, frames it from its own bounds, presents N
-turntable frames through the recording path and exits cleanly. Four real bugs went
-with that: the vertex buffer was read by striding the whole buffer by the element
-count rather than taking the position block (hdg_2402 measured a 1.49 m median edge
-on a 1.6 m body), teardown aborted with "Observer(s) still present", nothing called
-`SetCapping` so the near/far planes were never set, and the loaded node was never
-added to the scene.
+`gfviewer <model.object> [--shots N] [--out FILE]` loads one model, reports what it
+is made of, frames it from its own bounds, and writes a turntable. Six bugs stood
+between it and a picture, and all six were about how a second host drives the engine
+rather than anything about the models:
 
-It still does not show the model, and the search is narrowed rather than open:
+| what | why it showed nothing |
+|---|---|
+| vertex buffer read with the wrong stride | strode the whole buffer by the element count instead of taking the position block; hdg_2402 measured a 1.49 m median edge on a 1.6 m body |
+| teardown | aborted with "Observer(s) still present at destruction time" |
+| no `SetCapping` | near and far planes never set, so the model fell outside them |
+| node never added to the scene | loaded, framed and measured, and not in the render set |
+| `SetPosition(..., false)` | skips `RecursiveUpdateSpatialData`, so the camera never moved from the origin |
+| phase order | the graphics Get phase enqueues the view, so a user task writing the camera has to run before it |
 
-- the geometry is in the scene and enabled (`1 geometry object(s), 1 enabled`), so
-  it is not the loader
-- a 120-degree frustum changes nothing, so it is not aiming or culling
-- forcing `sky_horizon`/`sky_zenith` to pure red leaves the frame neutral, so the
-  uniform fill is not `postprocess.frag`'s sky gradient
+Verified across the kinds of model there are: `hdg_2402` comes out visibly headless,
+which is what its name says and independent confirmation of how the pack is
+assembled; `hdg_2421` is Alexus and his speech bubble; `2hug_1857` is the winged
+character on the motorbike; `lcg_2716` is flat-shaded, which is the unlit material
+surviving the whole trip.
 
-Which leaves the compositing stage. A second host has to bring up more of the
-renderer than registering the graphics system's three phases.
+The recording stream opens against the swap chain rather than in step with it, so
+the file carries N frames and occasionally N+1, and the first can be empty. An empty
+frame has no variance in it. Five presents of warm-up are skipped before recording
+starts, which was measured, not guessed.
 
-### #80, on measurement rather than sight
+### #80, settled on the texture rather than a screenshot
 
 The per-corner TVERT work is done: figures write 3 TVERTs per face with `TFACE`
 indexing them, verified lossless (0 of 96 UVs change on the real flag mesh). But
@@ -102,8 +110,12 @@ the defect cannot occur as described. The cloth samples V 0.266 to 0.991;
 `cf_common_bsm` carries the flag art over V 0.25 to 1.0 with the grey band only
 below that; and `aseloader.cpp` reads per-face UVs from `TFACE` without welding by
 position. `cloth.match_mesh_uvs` is also an identity here, because the flag's two
-sheets share their positions *and* the UVs on them. Corroborating on screen needs a
-camera that shows a corner flag, which none of the recorded footage does.
+sheets share their positions *and* the UVs on them.
+
+Settled by sampling the texture at the UVs the cloth actually uses: of its 96 face
+corners, 58 land on the flag art, 38 on the art's paler markings, and **none on the
+grey band**. That is stronger evidence than a screenshot of an object three pixels
+wide, which is all a match camera offers.
 
 Done since this snapshot was first written: the stadium grounds (all seven
 affected grounds re-converted, `14ecace`/`af1ca3b`), the `.ted` requirement for
