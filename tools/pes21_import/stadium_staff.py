@@ -292,8 +292,21 @@ def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
     # centre-circle banner is wound the other way and came out a black disc.
     if wants_winding_flipped(vertices, faces):
         faces = [(c, b, a) for (a, b, c) in faces]
-    uvs = [(v.uv[0].u, 1.0 - v.uv[0].v) if v.uv else (0.0, 0.0) for v in mesh.vertices]
-
+    # Per face corner, not per vertex. A TFACE indexing the vertex list can only
+    # give a position one UV, so nothing downstream could ever express a sheet pair
+    # that disagrees about a shared corner; unwelding the pool is what
+    # adboard_uvs.py does for the advertising ring.
+    #
+    # It is not what fixes the corner flag, though. cloth.match_mesh_uvs repaints
+    # the minority region from the majority by matching positions, and the flag's
+    # two sheets share both their positions and their UVs, so the match is the
+    # identity - wiring it in here changes 0 of the cloth's 96 corners. The cloth
+    # does not need it either: it samples V 0.266 to 0.991 and cf_common_bsm carries
+    # the flag art over V 0.25 to 1.0, with the grey band below that.
+    vertex_uvs = [(v.uv[0].u, 1.0 - v.uv[0].v) if v.uv else (0.0, 0.0)
+                  for v in mesh.vertices]
+    uvs = [vertex_uvs[i] for face in faces for i in face]
+    uv_faces = [(i * 3, i * 3 + 1, i * 3 + 2) for i in range(len(faces))]
 
     out.write("*GEOMOBJECT {\n")
     out.write('\t*NODE_NAME "%s"\n' % name)
@@ -320,7 +333,7 @@ def _write_figure(out, name, material_index, mesh, mark, yaw, off_pitch=True,
         out.write("\t\t\t*MESH_TVERT %d\t%.6f\t%.6f\t0.0000\n" % (i, uv[0], uv[1]))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMTVFACES %d\n\t\t*MESH_TFACELIST {\n" % len(faces))
-    for i, f in enumerate(faces):
+    for i, f in enumerate(uv_faces):
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, f[0], f[1], f[2]))
     out.write("\t\t}\n")
     ase_util.write_mesh_normals(out, vertices, faces, smooth=True)

@@ -15,6 +15,7 @@ the pitch.
 Run: python3 -m unittest test_stadium_staff -v
 """
 
+import re
 import math
 import unittest
 
@@ -272,3 +273,84 @@ class ABannerLyingOnThePitch(unittest.TestCase):
 
     def test_nothing_is_left_alone(self):
         self.assertFalse(stadium_staff.wants_winding_flipped([], []))
+
+
+class _Vec:
+    def __init__(self, x, y, z):
+        self.x, self.y, self.z = x, y, z
+
+
+class _UV:
+    def __init__(self, u, v):
+        self.u, self.v = u, v
+
+
+class _Vertex:
+    def __init__(self, pos, uv):
+        self.position = _Vec(*pos)
+        self.uv = [_UV(*uv)]
+
+
+class _Face:
+    def __init__(self, vertices):
+        self.vertices = vertices
+
+
+class _Mesh:
+    def __init__(self, corners, tris):
+        self.vertices = [_Vertex(p, uv) for p, uv in corners]
+        self.faces = [_Face([self.vertices[i] for i in tri]) for tri in tris]
+
+
+def _figure_text(mesh):
+    import io
+    out = io.StringIO()
+    stadium_staff._write_figure(out, "thing", 0, mesh, (0.0, 0.0), 0.0, off_pitch=False)
+    return out.getvalue()
+
+
+class UVsAreWrittenPerFaceCorner(unittest.TestCase):
+    """One UV per vertex cannot express a sheet pair sharing positions.
+
+    The corner flag's cloth is two sheets that share 9 of their 18 positions, so a
+    back-face corner's UV overwrote the front's and the back sampled the wrong half
+    of cf_common_bsm. A TFACE indexing the vertex list can only ever give a shared
+    position one UV, so the list is written per face corner instead - the same thing
+    adboard_uvs.py does for the advertising ring.
+    """
+
+    def setUp(self):
+        # two triangles sharing an edge, and disagreeing about that edge's UV
+        corners = [((0.0, 0.0, 1.0), (0.0, 0.0)), ((1.0, 0.0, 1.0), (1.0, 0.0)),
+                   ((0.0, 1.0, 1.0), (0.0, 1.0)), ((1.0, 1.0, 1.0), (1.0, 1.0))]
+        self.mesh = _Mesh(corners, [(0, 1, 2), (1, 3, 2)])
+        self.text = _figure_text(self.mesh)
+
+    def test_there_is_one_tvert_per_face_corner(self):
+        self.assertIn("*MESH_NUMTVERTEX 6", self.text)     # 2 faces x 3 corners
+        self.assertIn("*MESH_NUMTVFACES 2", self.text)
+
+    def test_each_tface_indexes_its_own_three_tverts(self):
+        self.assertIn("*MESH_TFACE 0\t0\t1\t2", self.text)
+        self.assertIn("*MESH_TFACE 1\t3\t4\t5", self.text)
+
+    def test_the_uvs_still_belong_to_the_right_corners(self):
+        """Per-corner indexing must not shuffle which art lands where."""
+        tverts = re.findall(r'\*MESH_TVERT \d+\t([-\d.]+)\t([-\d.]+)', self.text)
+        got = [(float(u), float(v)) for u, v in tverts]
+        # v is flipped on the way in, so (0,0) becomes (0,1)
+        self.assertEqual(got[0], (0.0, 1.0))
+        self.assertEqual(len(got), 6)
+
+    def test_the_vertex_list_is_untouched(self):
+        """Positions stay shared; only the UV pool is unwelded."""
+        self.assertIn("*MESH_NUMVERTEX 4", self.text)
+        self.assertIn("*MESH_NUMFACES 2", self.text)
+
+    def test_a_mesh_with_no_uvs_still_writes_a_tvert_per_corner(self):
+        mesh = _Mesh([((0.0, 0.0, 1.0), (0.0, 0.0))] * 3, [(0, 1, 2)])
+        for vertex in mesh.vertices:
+            vertex.uv = []
+        text = _figure_text(mesh)
+        self.assertIn("*MESH_NUMTVERTEX 3", text)
+        self.assertIn("*MESH_TFACE 0\t0\t1\t2", text)
