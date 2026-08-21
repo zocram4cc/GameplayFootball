@@ -1,5 +1,7 @@
 #include "coachmode.hpp"
 
+#include <string>
+
 #include <algorithm>
 #include <cctype>
 
@@ -87,9 +89,57 @@ bool CanEditTactics(const Setup& setup, int teamID) {
 }
 
 bool AIManagerRuns(const Setup& setup, int teamID) {
-  // A human's own team is never managed for him, and in coach mode nothing is
-  // managed by the CPU at all - not even the side the humans play against.
-  return !IsCoachMode(setup) && !CanEditTactics(setup, teamID);
+  // Per side: the AI manager runs a bench nobody human is running. A human's own
+  // team is never managed for him, and a CPU opponent keeps its manager even when
+  // the other bench is coached - "coach against CPU" means against a managed CPU.
+  //
+  // This was once a blanket rule, off for both sides whenever anyone coached, so
+  // that a manager duel was not one human against a CPU that kept reshaping the
+  // other bench. With the benches assigned per side that case is expressed directly
+  // - both marked coached - and the blanket rule only removed an opponent.
+  return !CanEditTactics(setup, teamID);
+}
+
+Setup FromSelections(const int playing[2], const int coaching[2], bool coachBothSides) {
+  Setup setup;
+  for (int team = 0; team < 2; team++) {
+    if (playing[team] > 0)
+      setup.control[team] = e_TeamControl_HumanPlayers;
+    else if (coaching[team] > 0 || coachBothSides)
+      setup.control[team] = e_TeamControl_HumanCoach;
+    else
+      setup.control[team] = e_TeamControl_AI;
+  }
+  return setup;
+}
+
+std::string Tip(const Setup& setup, const std::string& homeName, const std::string& awayName) {
+  const bool coached[2] = {setup.control[0] == e_TeamControl_HumanCoach,
+                           setup.control[1] == e_TeamControl_HumanCoach};
+  if (!coached[0] && !coached[1])
+    return "";
+  const std::string names[2] = {homeName, awayName};
+  std::string who;
+  for (int team = 0; team < 2; team++) {
+    if (!coached[team] || names[team].empty())
+      continue;
+    if (!who.empty())
+      who += " and ";
+    who += names[team];
+  }
+  // A bench with no name to print still gets a tip; it just does not name itself.
+  const std::string bench = who.empty() ? "You are coaching" : "You are coaching " + who;
+  return bench + ". RT and the d-pad set the mentality, RT and the face buttons the "
+                 "instructions; on the keyboard Page Up and Page Down move the line and "
+                 "F5 to F11 toggle instructions.";
+}
+
+std::string Describe(const Setup& setup) {
+  const char* role[e_TeamControl_Count] = {"CPU", "Player", "Coach"};
+  const int home = setup.control[0], away = setup.control[1];
+  const int homeRole = (home >= 0 && home < e_TeamControl_Count) ? home : e_TeamControl_AI;
+  const int awayRole = (away >= 0 && away < e_TeamControl_Count) ? away : e_TeamControl_AI;
+  return std::string(role[homeRole]) + " vs " + role[awayRole];
 }
 
 }  // namespace CoachMode

@@ -1381,22 +1381,31 @@ void Match::UpdateControllerSetup() {
 
   // add new
   const std::vector<SideSelection> sides = menuTask->GetControllerSetup();
+  int playing[2] = {0, 0};
+  int coaching[2] = {0, 0};
   for (unsigned int i = 0; i < sides.size(); i++) {
     const int controllerID = sides.at(i).controllerID;
     if ((sides.at(i).side == -1 || sides.at(i).side == 1) && controllerID >= 0 &&
         controllerID < static_cast<int>(controllers.size())) {
       int teamID = int(round(sides.at(i).side * 0.5 + 0.5));
+      // A pad marked COACH on the select-sides screen runs that bench instead of
+      // playing for it, so it is not added as a gamer.
+      if (sides.at(i).coach) {
+        coaching[teamID]++;
+        continue;
+      }
+      playing[teamID]++;
       teams[teamID]->AddHumanGamer(controllers.at(controllerID),
                                    (e_PlayerColor)i);  // todo: proper color
-      // printf("team id %i, %i\n", teamID, sides.at(i).controllerID);
     }
   }
 
-  // Coach mode: teams without a human on the sticks can still be run from the
-  // touchline by a human manager.
-  const bool coachModeEnabled = GetConfiguration()->GetBool("coach_mode", false);
-  coachSetup = CoachMode::FromHumanGamerCounts(teams[0]->GetHumanGamerCount(),
-                                               teams[1]->GetHumanGamerCount(), coachModeEnabled);
+  // Who runs each bench. The select-sides screen decides it per side; the settings
+  // flag still coaches any side nobody is on at all, which is one pad running both.
+  // "coach_mode" is the one-pad streamer toggle: it coaches both benches. Per-side
+  // marks from the select-sides screen do the rest.
+  const bool coachBothSides = GetConfiguration()->GetBool("coach_mode", false);
+  coachSetup = CoachMode::FromSelections(playing, coaching, coachBothSides);
 }
 
 void Match::SpamMessage(const std::string& msg, int time_ms) {

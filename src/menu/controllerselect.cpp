@@ -142,6 +142,15 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
     sides.resize(controllers.size());
   }
 
+  // One line naming the arrangement and the keys that change it. Without this the
+  // screen assigns benches with no indication that it does, which is how coach mode
+  // came to be undiscoverable.
+  modeCaption = new Gui2Caption(windowManager, "caption_controllermode", 0, 88, 100, 4, "");
+  this->AddView(modeCaption);
+  modeCaption->Show();
+  streamerMode = GetConfiguration()->GetBool("coach_mode", false);
+  UpdateModeCaption();
+
   SetImagePositions();
 
   Gui2Button* backButton =
@@ -200,7 +209,49 @@ void ControllerSelectPage::SetImagePositions() {
         kControllerThumbnailHeight, kControllerThumbnailAspectRatio);
     const float centerX = 50.0f + sides.at(i).side * 25.0f;
     sides.at(i).controllerImage->SetPosition(centerX - controllerImageWidth * 0.5f, 20 + i * 15);
+    if (i < coachCaptions.size() && coachCaptions.at(i)) {
+      coachCaptions.at(i)->SetPosition(centerX - 7.0f, 20 + i * 15 + kControllerThumbnailHeight);
+      // Coaching a side means being on one: on No Team the flag would say nothing.
+      if (sides.at(i).coach && sides.at(i).side != 0)
+        coachCaptions.at(i)->Show();
+      else
+        coachCaptions.at(i)->Hide();
+    }
   }
+}
+
+void ControllerSelectPage::SetStreamerMode(bool on) {
+  streamerMode = on;
+  if (streamerMode) {
+    // Nobody is on a side in this arrangement, so the per-side marks would only
+    // contradict it.
+    for (unsigned int i = 0; i < sides.size(); i++) {
+      sides.at(i).coach = false;
+    }
+  }
+  GetConfiguration()->SetBool("coach_mode", streamerMode);
+  UpdateModeCaption();
+}
+
+void ControllerSelectPage::UpdateModeCaption() {
+  if (!modeCaption)
+    return;
+  // What the screen is currently describing, in the words of the arrangement rather
+  // than of the flags: this is the only place any of it is written down.
+  int playing[2] = {0, 0};
+  int coaching[2] = {0, 0};
+  for (unsigned int i = 0; i < sides.size(); i++) {
+    if (sides.at(i).side != -1 && sides.at(i).side != 1)
+      continue;
+    const int teamID = sides.at(i).side == -1 ? 0 : 1;
+    if (sides.at(i).coach)
+      coaching[teamID]++;
+    else
+      playing[teamID]++;
+  }
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, streamerMode);
+  std::string line = streamerMode ? TR("controllerselect_streamer") : CoachMode::Describe(setup);
+  modeCaption->SetCaption(line + "   " + TR("controllerselect_coach_keys"));
 }
 
 void ControllerSelectPage::Process() {
@@ -259,6 +310,18 @@ void ControllerSelectPage::Process() {
         sides.at(i).side = 1;
         moved = true;
       }
+      // "C" marks this bench as coached rather than played, the keyboard's Y.
+      if (UserEventManager::GetInstance().GetKeyboardState(SDLK_c)) {
+        sides.at(i).coach = !sides.at(i).coach;
+        moved = true;
+      }
+      // "S" is the one-pad streamer arrangement: both benches coached from this pad.
+      // Exclusive of the per-side marks, because it is a different thing - it says
+      // nobody is on a side, rather than who is on which.
+      if (UserEventManager::GetInstance().GetKeyboardState(SDLK_s)) {
+        SetStreamerMode(!streamerMode);
+        moved = true;
+      }
     } else if (controller->GetDeviceType() == e_HIDeviceType_Gamepad) {
       HIDGamepad* gamepad = static_cast<HIDGamepad*>(controller);
       if (gamepad->GetButtonValue(e_ButtonFunction_Left) > 0.5) {
@@ -269,11 +332,20 @@ void ControllerSelectPage::Process() {
         sides.at(i).side += 1;
         moved = true;
       }
+      // Y marks this bench as coached rather than played, which is where PES puts it.
+      if (gamepad->GetButtonValue(e_ButtonFunction_HighPass) > 0.5) {
+        sides.at(i).coach = !sides.at(i).coach;
+        moved = true;
+      }
     }
 
     if (moved) {
       sides.at(i).side = clamp(sides.at(i).side, -1, 1);
+      // A per-side mark and the one-pad arrangement are mutually exclusive.
+      if (sides.at(i).coach && streamerMode)
+        SetStreamerMode(false);
       delay.at(i) = now_ms;
+      UpdateModeCaption();
     }
   }
 
