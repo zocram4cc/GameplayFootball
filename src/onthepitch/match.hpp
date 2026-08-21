@@ -41,6 +41,7 @@
 #include "scene/objects/camera.hpp"
 #include "scene/objects/light.hpp"
 #include "scene/objects/sound.hpp"
+#include "cutsceneplayback.hpp"
 #include "cutsceneviewer.hpp"
 #include "substitutions.hpp"
 #include "team.hpp"
@@ -667,6 +668,9 @@ protected:
   // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
   std::map<std::string, std::vector<CamTrack>> cutscenePools;
   const CamTrack* activeCutscene = nullptr;
+  // The cutscene's clock: accumulated from the match's frame deltas, so it stops when
+  // the match does and can be skipped (CutscenePlayback).
+  CutscenePlayback::State cutscenePlayback;
   unsigned long cutsceneStart_ms = 0;
   unsigned long cutsceneEnd_ms = 0;
 

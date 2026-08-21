@@ -15,6 +15,7 @@
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
 #include "coachmode.hpp"
+#include "cutsceneplayback.hpp"
 #include "competitionemblem.hpp"
 #include "entrancecast.hpp"
 #include "teamflag.hpp"
@@ -2212,8 +2213,9 @@ void Match::UpdateCutsceneChoreo() {
     }
     return;
   }
-  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
-  const float elapsedFrame = (now - cutsceneStart_ms) * 0.1f;  // 10 ms frames
+  // The cutscene's own clock, which holds while the match is paused. Read off the
+  // wall clock this ran on regardless, so a paused cutscene played to its end.
+  const float elapsedFrame = CutscenePlayback::Elapsed_ms(cutscenePlayback) * 0.1f;  // 10 ms frames
   // Staging authored about the incident is played out at the incident. Only the
   // positions move: the actors' facings are relative to each other within the
   // authored frame, and the camera is placed in that same frame, so rotating
@@ -2346,6 +2348,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   // the camera. With nothing at all to show, there is no cutscene.
   if (!haveCamera && !activeCutsceneChoreo) return;
   cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
+  CutscenePlayback::Start(cutscenePlayback, (unsigned long)(seconds * 1000.0f));
   Log(e_Notice, "Match", "StartCutscene",
       "category " + category + (haveCamera ? "" : " (choreography only)") + ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
           int_to_str((matchTime_ms / 1000) % 60) + ", " + int_to_str((int)(seconds * 10)) +
@@ -2810,10 +2813,9 @@ Vector3 Match::CutsceneAnchorPosition() const {
 void Match::UpdateIngameCamera() {
   // stoppage cutscene: play until it ends or the ball is back in play
   if (activeCutscene) {
-    unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
-    if (now < cutsceneEnd_ms && !IsInPlay()) {
-      CamTrackFrame frame =
-          activeCutscene->Sample((now - cutsceneStart_ms) * 0.03f);
+    const unsigned long cutsceneElapsed_ms = CutscenePlayback::Elapsed_ms(cutscenePlayback);
+    if (CutscenePlayback::IsPlaying(cutscenePlayback) && !IsInPlay()) {
+      CamTrackFrame frame = activeCutscene->Sample(cutsceneElapsed_ms * 0.03f);
       if (activeCutsceneAnchoring == CutsceneViewer::Anchoring::IncidentLocal) {
         // Place the authored rig at the incident, then re-aim it there: the
         // authored rotation assumed its subject at the origin, so once the
@@ -2835,7 +2837,7 @@ void Match::UpdateIngameCamera() {
       // Where the camera ended up relative to the incident it is filming. The
       // one number that says whether an incident-local shot was placed at the
       // challenge or left sitting by the centre spot ("debug_cutscene_report").
-      if (!cutsceneShotTaken && now >= cutsceneStart_ms + 900 &&
+      if (!cutsceneShotTaken && cutsceneElapsed_ms >= 900 &&
           GetConfiguration()->GetBool("debug_cutscene_report", false)) {
         cutsceneShotTaken = true;
         const Vector3 anchor = CutsceneAnchorPosition();
@@ -3462,6 +3464,16 @@ void Match::Process() {
   if (UserEventManager::GetInstance().GetKeyboardState(SDLK_F1)) {
     SetSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
+  }
+
+  // The cutscene's clock runs on the match's own delta, so pausing holds it where it
+  // is. Space skips it, as PES lets you skip a cutscene.
+  CutscenePlayback::Advance(cutscenePlayback, timeSincePreviousProcess_ms, pause);
+  if (CutscenePlayback::IsPlaying(cutscenePlayback) &&
+      UserEventManager::GetInstance().GetKeyboardState(SDLK_SPACE)) {
+    UserEventManager::GetInstance().SetKeyboardState(SDLK_SPACE, false);
+    CutscenePlayback::Skip(cutscenePlayback);
+    Log(e_Notice, "Match", "Process", "cutscene skipped");
   }
 
   // The presentation runs on real seconds (see Match::IsInEntrance). Until
