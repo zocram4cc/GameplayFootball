@@ -60,6 +60,16 @@ constexpr float kCoarseCutRatio = 4.0f;
 // skip that judgement.
 Report Describe(const std::vector<Mesh>& meshes, float edgeCut = 0.0f);
 
+// Positions out of one of the engine's vertex buffers.
+//
+// The buffer is element-major: every position, then every normal, then the UVs and
+// the tangent pair. So the geometry is the first block, three floats a vertex, and
+// there are verticesDataSize / elementCount / 3 of them - which is how
+// GetTriangleMeshAABB reads the same buffer. Striding the whole buffer by the element
+// count instead reads each position out of the middle of another attribute.
+std::vector<std::array<float, 3>> ReadPositions(const float* data, int floats,
+                                               int elementCount);
+
 }  // namespace ModelInventory
 }  // namespace blunted
 

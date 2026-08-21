@@ -115,3 +115,64 @@ TEST(ModelInventory, NothingIsAnEmptyReportRatherThanACrash) {
   EXPECT_EQ(report.totalVertices, 0);
   EXPECT_TRUE(report.meshes.empty());
 }
+
+// Reading positions back out of the engine's own vertex buffer.
+//
+// The buffer is element-major: every position first, then every normal, then the UVs
+// and the tangent pair - GetTriangleMeshAABB walks it as vertices[t * 9 + v * 3 + i]
+// and sizes it as verticesDataSize / GetTriangleMeshElementCount() / 3. The viewer
+// instead strode the whole buffer by the element *count*, so every position after the
+// first was read out of the middle of another attribute: hdg_2402 came back with a
+// median edge of 1.49 m, on a body 1.6 m tall.
+namespace {
+
+// Two triangles' worth of positions followed by three more attribute blocks, so the
+// element count is 4 and only the first quarter is geometry.
+std::vector<float> ElementMajorBuffer() {
+  std::vector<float> positions = {
+      0.0f, 0.0f, 0.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,
+      0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 1.0f,  0.0f, 1.0f, 1.0f};
+  std::vector<float> buffer = positions;
+  for (int block = 1; block < 4; block++)
+    for (size_t i = 0; i < positions.size(); i++)
+      buffer.push_back(-99.0f);  // anything but a position
+  return buffer;
+}
+
+}  // namespace
+
+TEST(ReadPositions, TakesOnlyTheFirstBlock) {
+  const std::vector<float> buffer = ElementMajorBuffer();
+  const std::vector<std::array<float, 3>> got =
+      blunted::ModelInventory::ReadPositions(buffer.data(), (int)buffer.size(), 4);
+  ASSERT_EQ(got.size(), 6u);
+  EXPECT_FLOAT_EQ(got[1][0], 1.0f);
+  EXPECT_FLOAT_EQ(got[5][2], 1.0f);
+  for (const auto& position : got)
+    for (int i = 0; i < 3; i++)
+      EXPECT_GT(position[i], -1.0f) << "read past the position block";
+}
+
+TEST(ReadPositions, CountsVerticesNotFloats) {
+  const std::vector<float> buffer = ElementMajorBuffer();
+  EXPECT_EQ(blunted::ModelInventory::ReadPositions(buffer.data(), (int)buffer.size(), 4).size(),
+            buffer.size() / 4 / 3);
+}
+
+TEST(ReadPositions, AnEmptyOrBrokenBufferReadsNothing) {
+  const float one = 1.0f;
+  EXPECT_TRUE(blunted::ModelInventory::ReadPositions(nullptr, 12, 4).empty());
+  EXPECT_TRUE(blunted::ModelInventory::ReadPositions(&one, 0, 4).empty());
+  EXPECT_TRUE(blunted::ModelInventory::ReadPositions(&one, 12, 0).empty());
+}
+
+TEST(ReadPositions, AMeshOfOneTriangleKeepsItsEdgeLengths) {
+  // the whole point: a metre-wide triangle must not measure 1.49 m per edge
+  const std::vector<float> buffer = ElementMajorBuffer();
+  std::vector<blunted::ModelInventory::Mesh> meshes(1);
+  meshes[0].name = "tri";
+  meshes[0].vertices = blunted::ModelInventory::ReadPositions(buffer.data(), (int)buffer.size(), 4);
+  meshes[0].faces = {{0, 1, 2}, {3, 4, 5}};
+  const blunted::ModelInventory::Report report = blunted::ModelInventory::Describe(meshes, 0.0f);
+  EXPECT_NEAR(report.meshes[0].medianEdge, 1.0f, 0.5f);
+}

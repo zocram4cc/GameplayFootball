@@ -22,6 +22,11 @@
 #include "base/log.hpp"
 #include "base/math/vector3.hpp"
 #include "main.hpp"
+#include "framework/scheduler.hpp"
+#include "managers/environmentmanager.hpp"
+#include "types/iusertask.hpp"
+#include "framework/tasksequence.hpp"
+#include "blunted.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "managers/scenemanager.hpp"
 #include "managers/systemmanager.hpp"
@@ -33,6 +38,7 @@
 #include "scene/scene3d/scene3d.hpp"
 #include "systems/audio/audio_system.hpp"
 #include "systems/graphics/graphics_system.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/modelinventory.hpp"
 #include "utils/objectloader.hpp"
 #include "utils/viewercamera.hpp"
@@ -129,10 +135,9 @@ std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
       mesh.name = geom->GetName() + ":" + int_to_str((int)p);
       const float* verts = parts[p].vertices;
       const int floats = parts[p].verticesDataSize;
-      const int stride = GetTriangleMeshElementCount();
-      if (!verts || floats <= 0 || stride <= 0) continue;
-      for (int v = 0; v + 2 < floats; v += stride)
-        mesh.vertices.push_back({verts[v], verts[v + 1], verts[v + 2]});
+      mesh.vertices = ModelInventory::ReadPositions(verts, floats, GetTriangleMeshElementCount());
+      if (mesh.vertices.empty()) continue;
+      // The engine holds these unwelded: three vertices to a triangle, in order.
       for (int t = 0; t + 2 < (int)mesh.vertices.size(); t += 3)
         mesh.faces.push_back({t, t + 1, t + 2});
       out.push_back(mesh);
@@ -142,6 +147,52 @@ std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
 }
 
 }  // namespace
+
+// Drives the turntable and stops the run.
+//
+// The scheduler runs until something signals quit, so a viewer that wants N frames
+// and then an exit has to be the thing that counts them. Sitting in the graphics
+// sequence's Put phase means one call per presented frame, which is exactly the
+// unit being counted.
+class TurntableTask : public IUserTask {
+ public:
+  TurntableTask(boost::intrusive_ptr<Node> cameraNode, boost::intrusive_ptr<Camera> camera,
+                const ViewerCamera::Shot& shot, int frames)
+      : cameraNode(cameraNode), camera(camera), shot(shot), frames(frames) {}
+
+  void GetPhase() override {}
+  void ProcessPhase() override {}
+
+  void PutPhase() override {
+    ViewerCamera::Shot turned = shot;
+    turned.yaw = ViewerCamera::TurntableYaw(shot, drawn, frames > 0 ? frames : 1);
+    const std::array<float, 3> eye = ViewerCamera::Position(turned);
+    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]), false);
+    // Split the way the match camera splits it: the node carries the yaw about Z and
+    // the camera object the pitch about X, a quarter turn off because a camera looks
+    // down its own -z (Match::UpdateIngameCamera).
+    Quaternion yaw;
+    yaw.SetAngleAxis(turned.yaw, Vector3(0, 0, 1));
+    cameraNode->SetRotation(yaw, false);
+    Quaternion pitch;
+    pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
+    camera->SetRotation(pitch, false);
+    drawn++;
+    if (frames > 0 && drawn >= frames)
+      EnvironmentManager::GetInstance().SignalQuit();
+  }
+
+  std::string GetName() const override { return "turntable"; }
+
+  int Drawn() const { return drawn; }
+
+ private:
+  boost::intrusive_ptr<Node> cameraNode;
+  boost::intrusive_ptr<Camera> camera;
+  ViewerCamera::Shot shot;
+  int frames = 0;
+  int drawn = 0;
+};
 
 int main(int argc, const char** argv) {
   const Options options = Parse(argc, argv);
@@ -209,10 +260,67 @@ int main(int argc, const char** argv) {
   scene3D->CreateSystemObjects(camera);
   camera->Init();
   camera->SetFOV(shot.fov);
+  // Near and far from the model's own size. Without capping the planes are
+  // whatever the camera defaulted to and the model falls outside them, which is
+  // a turntable of blank frames (MenuScene sets its own for the same reason).
+  camera->SetCapping(shot.distance * 0.02f, shot.distance * 20.0f);
   boost::intrusive_ptr<Node> cameraNode(new Node("cameraNode"));
   cameraNode->AddObject(camera);
   scene3D->AddNode(cameraNode);
 
+  // Something has to light it, or every shot is a silhouette. One lamp over the
+  // camera's shoulder is what a turntable wants; the model's own size sets how far
+  // out it sits, so a boot and a stadium prop are both lit the same way.
+  boost::intrusive_ptr<Light> light = boost::static_pointer_cast<Light>(
+      ObjectFactory::GetInstance().CreateObject("light", e_ObjectType_Light));
+  scene3D->CreateSystemObjects(light);
+  light->SetColor(Vector3(1.0f, 1.0f, 1.0f));
+  light->SetRadius(shot.distance * 8.0f);
+  light->SetType(e_LightType_Point);
+  light->SetShadow(false);
+  boost::intrusive_ptr<Node> lightNode(new Node("lightNode"));
+  lightNode->AddObject(light);
+  lightNode->SetPosition(Vector3(shot.target[0], shot.target[1] - shot.distance,
+                                shot.target[2] + shot.distance));
+  scene3D->AddNode(lightNode);
+
   std::cout << "framed at " << shot.distance << " m\n";
+
+  if (options.shots > 0) {
+    // The same path the game records a showcase through: every presented frame goes
+    // to a fifo or a file, and the caller turns it into stills. A viewer that wrote
+    // its own PNGs would be a second answer to a question already answered.
+    StartFrameRecording(options.out);
+
+    std::shared_ptr<TurntableTask> turntable(
+        new TurntableTask(cameraNode, camera, shot, options.shots));
+    std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 0, true));
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
+    sequence->AddUserTaskEntry(turntable, e_TaskPhase_Put);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Process);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Put);
+    GetScheduler()->RegisterTaskSequence(sequence);
+
+    Run();
+    StopFrameRecording();
+    std::cout << "drew " << turntable->Drawn() << " frame(s) to " << options.out << "\n";
+    sequence.reset();
+  }
+
+  // Teardown, in the order the game's own does it. A geometry destroyed while the
+  // graphics system still observes it aborts with "Observer(s) still present at
+  // destruction time", which is how this exited before it drew anything.
+  lightNode->Exit();
+  lightNode.reset();
+  cameraNode->Exit();
+  cameraNode.reset();
+  node->Exit();
+  node.reset();
+  viewerScene3D.reset();
+  scene3D.reset();
+  viewerScene2D.reset();
+  delete viewerConfig;
+  viewerConfig = nullptr;
+  Exit();
   return 0;
 }
