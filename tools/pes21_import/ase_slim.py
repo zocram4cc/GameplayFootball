@@ -24,8 +24,15 @@ import os
 import re
 import sys
 
-FACENORMAL = re.compile(r'^\s*\*MESH_FACENORMAL\s')
+FACENORMAL = re.compile(r'^\s*\*MESH_FACENORMAL\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)')
 VERTEXNORMAL = re.compile(r'^\s*\*MESH_VERTEXNORMAL\s+\d+\s+(\S+)\s+(\S+)\s+(\S+)')
+VERTEX = re.compile(r'^\s*\*MESH_VERTEX\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)')
+FACE = re.compile(r'^\s*\*MESH_FACE\s+(\d+):\s+A:\s+(\d+)\s+B:\s+(\d+)\s+C:\s+(\d+)')
+
+# How far a stored normal may sit from the winding's and still be reproduced by it.
+# Generous on purpose: the question is whether dropping the block changes which way
+# the face is lit, not whether the two agree to the last bit.
+NORMAL_AGREEMENT = 0.9
 
 
 def _mesh_is_flat(lines):
@@ -48,6 +55,58 @@ def _mesh_is_flat(lines):
             return False
         faces += 1
     return faces > 0
+
+
+def _normals_match_winding(chunk, agreement=NORMAL_AGREEMENT):
+    """Whether every stored face normal is the one the winding would derive.
+
+    Flat says a mesh carries no smoothing; it says nothing about which way the
+    faces point. A sky dome is drawn from the inside and ships one normal pointing
+    away from the sun, and the goal net and the debug helpers carry normals
+    authored off their winding entirely. Dropping those does not reproduce them.
+
+    A mesh whose positions or faces are not in the chunk cannot be shown
+    redundant, so it fails here and keeps its block.
+    """
+    positions = {}
+    faces = {}
+    stored = {}
+    for line in chunk:
+        match = VERTEX.match(line)
+        if match:
+            positions[int(match.group(1))] = tuple(float(match.group(i)) for i in (2, 3, 4))
+            continue
+        match = FACE.match(line)
+        if match:
+            faces[int(match.group(1))] = tuple(int(match.group(i)) for i in (2, 3, 4))
+            continue
+        match = FACENORMAL.match(line)
+        if match:
+            stored[int(match.group(1))] = tuple(float(match.group(i)) for i in (2, 3, 4))
+    if not positions or not faces or not stored:
+        return False
+    for index, normal in stored.items():
+        triangle = faces.get(index)
+        if triangle is None:
+            return False
+        try:
+            a, b, c = (positions[i] for i in triangle)
+        except KeyError:
+            return False
+        u = tuple(b[i] - a[i] for i in range(3))
+        v = tuple(c[i] - a[i] for i in range(3))
+        cross = (u[1] * v[2] - u[2] * v[1],
+                 u[2] * v[0] - u[0] * v[2],
+                 u[0] * v[1] - u[1] * v[0])
+        length = sum(component ** 2 for component in cross) ** 0.5
+        if length <= 1e-9:
+            # asenormals.cpp returns a zero normal here too, so there is nothing
+            # for the stored one to disagree with.
+            continue
+        derived = tuple(component / length for component in cross)
+        if sum(derived[i] * normal[i] for i in range(3)) < agreement:
+            return False
+    return True
 
 
 def _normals_span(lines):
@@ -84,7 +143,7 @@ def slim(text):
             out.extend(chunk)
             continue
         first, last = span
-        if _mesh_is_flat(chunk[first:last + 1]):
+        if _mesh_is_flat(chunk[first:last + 1]) and _normals_match_winding(chunk):
             stats["slimmed"] += 1
             out.extend(chunk[:first])
             out.extend(chunk[last + 1:])
