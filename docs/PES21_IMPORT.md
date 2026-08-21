@@ -227,6 +227,13 @@ authored.
 - `face_to_anim.py` exports them to an open text format
   (`data/imports/pes21/faces_anim/*.faceanim`): `skf_bone,frame,qx,qy,qz,qw`
   rotation lines and `skf_bone_pos,...` translation lines, metres.
+- The engine drives five of them (`facerig.cpp` `kPoseFiles`): neutral, a smile
+  while celebrating, dejection for the losing mood, a strain face above sprint
+  speed, and pain while a player carries an injury. `ChooseExpression` in
+  `facerig.hpp` is the whole rule and is unit-tested. Generate the poses with
+  `face_to_anim.py <face_skel.frig> <Animations dir> data/media/objects/players/expressions`;
+  `pain_brwtrb_shut_eyc_hard` is the one the injury state wants, and a missing
+  file is skipped rather than disabling the rig.
 - FHSequence bins (`Facebase.bin`/`Faceadd.bin`) sequence those expressions
   in-game; the expression names are already self-describing, so an engine
   implementation can key off contexts directly and FHSequence decode is

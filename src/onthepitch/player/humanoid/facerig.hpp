@@ -16,7 +16,29 @@
 
 namespace blunted {
 
-enum class e_FaceExpression { Neutral, Happy, Sad, Exert };
+enum class e_FaceExpression { Neutral, Happy, Sad, Exert, Pain };
+
+// Which face to wear, from what the body is doing. Its own function so the rule is
+// testable: it used to sit inline in HumanoidBase::Process, where a player who had
+// just been hurt went on smiling because nothing asked.
+//
+// `animType` and `specialVar1` are the current clip's own variables ("special" and
+// 1 or 2 for a celebration's mood), `speed` is metres per second, `injuryLevel` is
+// what PlayerBase carries after a foul.
+inline e_FaceExpression ChooseExpression(const std::string& animType,
+                                        const std::string& specialVar1, float speed,
+                                        float injuryLevel) {
+  // Being hurt wins over everything else: a player limping after a foul was still
+  // wearing whatever the last clip put on him.
+  if (injuryLevel > 0.0f)
+    return e_FaceExpression::Pain;
+  if (animType == "special")
+    return specialVar1 == "2" ? e_FaceExpression::Sad : e_FaceExpression::Happy;
+  // Sprinting, not merely running: the threshold is the engine's own sprint speed.
+  if (speed > 7.0f)
+    return e_FaceExpression::Exert;
+  return e_FaceExpression::Neutral;
+}
 
 class FaceRig {
 public:
