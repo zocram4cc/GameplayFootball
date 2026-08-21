@@ -79,6 +79,100 @@ def describe_import(dest, prefix, export_id):
     return body_coverage.verdict(vertices, retarget.gf_world_bind())[0]
 
 
+# A 4cc export names its portraits by team slot rather than by player, because the
+# slot a team gets is not known when the pack is built: "XXX07 - Rodya.png". The
+# models carry the same slot in their directory name, and their bindings already
+# resolve a slot to a database ID - so that is what the portraits ride on.
+PORTRAIT_SLOT_RE = re.compile(r"(\d{2})(?:\D|$)")
+
+
+def portrait_slot(filename):
+    """The slot a portrait file names, or None when it names none."""
+    base = os.path.basename(filename)
+    match = PORTRAIT_SLOT_RE.search(base)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def model_number(model_dir):
+    """The export number a model directory carries: .../lcg_2707 -> 2707."""
+    base = os.path.basename(model_dir.rstrip("/"))
+    digits = re.search(r"_(\d+)$", base)
+    return int(digits.group(1)) if digits else None
+
+
+def portrait_name(filename):
+    """The nickname a portrait file carries: "XXX09 - Dante.png" -> "dante"."""
+    base = os.path.splitext(os.path.basename(filename))[0]
+    trimmed = re.sub(r"^\S+\s*-\s*", "", base).strip().lower()
+    return re.sub(r"[^a-z0-9]+", "", trimmed)
+
+
+def bind_portraits(model_bindings, portrait_files, prefix, names=None):
+    """Maps database ID -> portrait path, for players this pack has a model for.
+
+    model_bindings is {database ID: model directory} as playermodels.cfg holds it, and
+    names is {database ID: player name} out of the roster - which is the authority on
+    who a player is. A 4cc export names its portraits for the player ("XXX09 -
+    Dante.png"), so the roster name is what binds them; the slot in the filename is a
+    fallback for a pack that numbers its portraits and nothing more.
+    """
+    # Each pack numbers its own players from a base of its choosing - lcg from 2701,
+    # 2hug from 1851, ink from 2426 - while the portraits always count from 01. So the
+    # slot is the offset from the pack's lowest number, not the digits themselves.
+    numbered = {}
+    for database_id, model_dir in model_bindings.items():
+        if ("/%s_" % prefix) not in model_dir:
+            continue
+        number = model_number(model_dir)
+        if number is not None:
+            numbered[number] = database_id
+    base = min(numbered) if numbered else 0
+    by_slot = {number - base + 1: database_id for number, database_id in numbered.items()}
+    # Both sides usually carry the player's nickname, and that beats the numbering:
+    # LCG's portraits run one ahead of its boots from slot 8 on, so binding by slot
+    # gives ten players somebody else's face. Fall back to the slot only for a name
+    # that appears on neither side or on both.
+    # A portrait needs no model: any rostered player can have a face on the game plan,
+    # so the name pass runs over the whole roster it was given.
+    by_name = {}
+    for database_id, player in (names or {}).items():
+        nickname = portrait_name("x - %s" % player)
+        if not nickname:
+            continue
+        # A name two players share is no evidence at all.
+        by_name[nickname] = None if nickname in by_name else database_id
+
+    # Names first, across the whole set, and only then slots for what is left. One
+    # pass would let an unnamed portrait take a player by slot before the portrait
+    # that names him is reached - which is exactly LCG's Papa Don and Dante.
+    bound = {}
+    taken = set()
+    unmatched = []
+    for name in portrait_files:
+        nickname = portrait_name(name)
+        database_id = by_name.get(nickname) if nickname else None
+        if database_id is None or database_id in taken:
+            unmatched.append(name)
+            continue
+        taken.add(database_id)
+        bound[database_id] = "imports/%s/portraits/%s" % (prefix, name)
+    # A pack whose portraits name their players has already shown its numbering to be
+    # unreliable wherever a name failed to match - LCG's run one ahead from slot 8 -
+    # so no guessing from there. Slots are for a pack that offers nothing else.
+    if bound:
+        return bound
+    for name in unmatched:
+        slot = portrait_slot(name)
+        database_id = by_slot.get(slot) if slot is not None else None
+        if database_id is None or database_id in taken:
+            continue
+        taken.add(database_id)
+        bound[database_id] = "imports/%s/portraits/%s" % (prefix, name)
+    return bound
+
+
 def install_dir(game_dir, prefix, export_id):
     return os.path.join(game_dir, "media", "players", "custom",
                         "%s_%s" % (prefix, export_id))
