@@ -228,6 +228,38 @@ MATERIAL_BLOCK = (
     "\t\t\t*MAP_TYPE Screen\n\t\t}\n")
 
 
+# Fox Engine names a shader after the BRDF it uses, and the unlit one is Constant:
+# fox3DFW_ConstantSRGB_NDR_Solid against fox3DDF_Blin_Fuzzblock, _GGX and
+# _Blin_Translucent. That is the flat-shaded look the 4cc anime models are drawn in,
+# and the pack says so itself rather than leaving it to be guessed.
+SHADELESS_SHADER = "constant"
+
+
+def is_shadeless(mesh):
+    """Whether PES draws this mesh unlit."""
+    material = getattr(mesh, "materialInstance", None)
+    if material is None:
+        return False
+    for name in (getattr(material, "shader", "") or "",
+                 getattr(material, "technique", "") or ""):
+        if SHADELESS_SHADER in name.lower():
+            return True
+    return False
+
+
+def material_block(texture, shadeless=False):
+    """The ASE material for one mesh.
+
+    An unlit mesh asks for full self-illumination, which is how this engine says the
+    same thing: aseloader.cpp reads MATERIAL_SELFILLUM into materialparams.z,
+    simple.frag writes it to the aux buffer, and the lighting pass takes it as the
+    self-illumination factor.
+    """
+    return (MATERIAL_BLOCK % {"texture": texture}).replace(
+        "*MATERIAL_SELFILLUM 0.0", "*MATERIAL_SELFILLUM 1.0" if shadeless else
+        "*MATERIAL_SELFILLUM 0.0")
+
+
 def mesh_base_texture(mesh):
     """File name of a mesh's colour texture, without directory or suffix.
 
@@ -362,12 +394,23 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # becomes its own ASE material and its own GEOMOBJECT instead.
     groups = []          # [(texture_name, vertices, faces, index)]
     group_of = {}
+    # Whether PES draws each group unlit, in step with `groups`.
+    #
+    # Grouped by texture *and* shading, not texture alone. Shading is per mesh and a
+    # texture routinely carries both kinds: over 2HUG's 23 exports, 65 of 68 texture
+    # groups mix lit and unlit meshes and not one is wholly unlit. Folding them
+    # together loses the distinction whichever way it is resolved - every group unlit,
+    # or none - so a texture whose meshes disagree becomes two materials.
+    group_shadeless = []
     for mesh in meshes:
         name = mesh_base_texture(mesh) or ""
-        if name not in group_of:
-            group_of[name] = len(groups)
+        shadeless = is_shadeless(mesh)
+        key = (name, shadeless)
+        if key not in group_of:
+            group_of[key] = len(groups)
             groups.append([name, [], [], {}])
-        _, vertices, faces, index = groups[group_of[name]]
+            group_shadeless.append(shadeless)
+        _, vertices, faces, index = groups[group_of[key]]
         for face in mesh.faces:
             tri = []
             for vertex in face.vertices:
@@ -480,9 +523,17 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             count_match.group(0),
             "*MATERIAL_COUNT %d" % (base_material_count + len(appended)))
         close_at = base_head.rstrip().rfind("}")
+        # base_material_plan returns texture paths; the flag is keyed by group name.
+        # appended is a list of texture paths; two groups can share one when their
+        # shading differs, so the first occurrence decides. It costs nothing on the
+        # composite path this branch serves: HDG's armour has no unlit mesh in it.
+        shadeless_by_path = {}
+        for index, group in enumerate(groups):
+            shadeless_by_path.setdefault(group_texture_path(group[0]), group_shadeless[index])
+        appended_shadeless = [shadeless_by_path.get(tex, False) for tex in appended]
         plate_materials = "".join(
             "\t*MATERIAL %d {\n%s\t}\n" % (base_material_count + i,
-                                           MATERIAL_BLOCK % {"texture": tex})
+                                           material_block(tex, appended_shadeless[i]))
             for i, tex in enumerate(appended))
         base_head = base_head[:close_at] + plate_materials + base_head[close_at:]
 
@@ -503,11 +554,12 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % max(1, len(groups)))
             for slot, group in enumerate(groups):
                 out.write("\t*MATERIAL %d {\n" % slot)
-                out.write(MATERIAL_BLOCK % {"texture": group_texture_path(group[0])})
+                out.write(material_block(group_texture_path(group[0]),
+                                         group_shadeless[slot]))
                 out.write("\t}\n")
             if not groups:
                 out.write("\t*MATERIAL 0 {\n")
-                out.write(MATERIAL_BLOCK % {"texture": texture})
+                out.write(material_block(texture, False))
                 out.write("\t}\n")
             out.write("}\n")
 
