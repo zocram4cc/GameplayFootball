@@ -90,5 +90,17 @@ Report Describe(const std::vector<Mesh>& meshes, float edgeCut) {
   return report;
 }
 
+std::vector<std::array<float, 3>> ReadPositions(const float* data, int floats,
+                                               int elementCount) {
+  std::vector<std::array<float, 3>> out;
+  if (!data || floats <= 0 || elementCount <= 0)
+    return out;
+  const int vertices = floats / elementCount / 3;
+  out.reserve(vertices);
+  for (int v = 0; v < vertices; v++)
+    out.push_back({data[v * 3 + 0], data[v * 3 + 1], data[v * 3 + 2]});
+  return out;
+}
+
 }  // namespace ModelInventory
 }  // namespace blunted
