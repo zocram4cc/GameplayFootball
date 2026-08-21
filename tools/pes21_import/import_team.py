@@ -28,6 +28,9 @@ import re
 import subprocess
 import sys
 
+import body_coverage
+import retarget
+
 EXPORT_DIR_RE = re.compile(r"^([kgf])(\d+)\s*-\s*(.+)$")
 
 
@@ -46,6 +49,34 @@ def find_players(pack_dir, kind="Boots", model_name="boots.fmdl"):
             continue
         found.append((match.group(2), match.group(3).strip(), fmdl))
     return found
+
+
+# The verdicts body_coverage.py returns for an export that is not a whole body.
+# PES draws a boots or glove export *over* its own body wearing the team's kit - the
+# packs' kit textures are DXT1 and carry no alpha, so nothing is hiding that body -
+# and binding the prop in its place leaves the prop and nothing else. lcg_2702 is
+# `boots` plus `wings`; 2hug_1851 is one `medical_c` mesh.
+NOT_A_BODY = ("needs base", "carries scenery")
+
+
+def may_bind_as_body(verdict, composited=False):
+    """Whether an export may replace a player's body.
+
+    `composited` is for --base, which puts the stock skinned body underneath: the
+    result clothes the rig whatever the export alone measured.
+    """
+    if composited:
+        return True
+    return verdict == "whole"
+
+
+def describe_import(dest, prefix, export_id):
+    """-> body_coverage's verdict on the .ase the import just wrote."""
+    ase = os.path.join(dest, "fullbody_%s_%s.ase" % (prefix, export_id))
+    if not os.path.isfile(ase):
+        return "missing"
+    vertices, _ = body_coverage.read_vertices(ase)
+    return body_coverage.verdict(vertices, retarget.gf_world_bind())[0]
 
 
 def install_dir(game_dir, prefix, export_id):
@@ -160,8 +191,14 @@ def main():
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge,
                                    args.base or None)
-        print("%-6s %-28s %-34s %s" % (export_id, name[:28], rel, status))
-        if db_id is not None:
+        # What the import actually produced decides whether it may stand in for a
+        # body. An export that leaves the rig's joints bare is a prop PES draws over
+        # its own body, and binding it in place of that body leaves only the prop.
+        verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
+        bindable = may_bind_as_body(verdict, composited=bool(args.base))
+        print("%-6s %-28s %-34s %s%s" % (export_id, name[:28], rel, status,
+                                         "" if bindable else "  NOT BOUND: " + verdict))
+        if db_id is not None and bindable:
             lines.append("%d %s" % (db_id, rel))
 
     if lines and not args.dry_run:
