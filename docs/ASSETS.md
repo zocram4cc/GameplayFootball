@@ -11,7 +11,7 @@ installation: `tools/pes21_import/`. The formats are documented in
 does what it does; this file is the running order.
 
 **Step 2 is currently required.** The engine's default player body is
-`fullbody_pes.ase`, and it stops with a fatal error if that file is missing
+`fullbody_pes.ase` (whose hands hand_pose.py curls out of PES's splayed bind), and it stops with a fatal error if that file is missing
 rather than falling back to the legacy `fullbody.ase` beside it:
 
     [FATAL ERROR] in [tree_load::]: could not open

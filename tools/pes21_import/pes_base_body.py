@@ -60,6 +60,7 @@ import sys
 import ase_util
 import retarget
 import face_weights
+import hand_pose
 import pes_skl
 from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
 
@@ -939,6 +940,15 @@ def assemble(args):
             total_f += len(faces)
             print("  %-8s %5d verts %5d faces (%s)" %
                   (name, len(vertices), len(faces), material))
+
+    # PES models its hands flat with the fingers spread and poses them at runtime from
+    # finger channels this rig does not have (retarget.py collapses skh_* onto the
+    # wrist), so a bind-pose hand sits on every player as a flat paddle. Curl it once,
+    # here, so the resting pose is a hand rather than a blade.
+    posed, moved = hand_pose.pose_ase(open(ase_path, errors="replace").read())
+    if moved:
+        open(ase_path, "w").write(posed)
+        print("  curled %s" % ", ".join("%s (%d verts)" % (k, moved[k]) for k in sorted(moved)))
 
     open(os.path.join(args.out_dir, "fullbody_pes.object"), "w").write(
         "<object>\n\n\t<geometry>\n"
