@@ -239,6 +239,14 @@ target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtes
 gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
 
 # What the in-play player indicator says
+add_executable(gameplayfootball_planmapcard_tests
+  menu/plan_map_card_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/widgets/planmapcard.cpp
+)
+target_include_directories(gameplayfootball_planmapcard_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(gameplayfootball_planmapcard_tests GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_planmapcard_tests DISCOVERY_MODE PRE_TEST)
+
 add_executable(gameplayfootball_hudindicators_tests
   menu/hud_indicators_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/hudindicators.cpp

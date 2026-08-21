@@ -16,6 +16,7 @@ Outputs (data/media/ui/pes/, committed to the repo):
   formation_panel.png   - tall navy-to-blue gradient portrait panel (body)
   formation_header.png  - short brighter-blue gradient strip (team tag header)
   jersey_icon.png       - light-blue jersey silhouette (starter icon)
+  plan_pitch.png        - portrait pitch diagram for the game plan's formation map
   banner_panel.png      - dark rounded rect, the in-match lower-third banner
                           (PRESENTATION_SPEC.md section 4)
 """
@@ -90,6 +91,48 @@ def draw_jersey_icon(size=64):
     return img
 
 
+# The game plan's pitch, portrait, as the broadcast draws it: mown bands running
+# across, white markings, the goal at the bottom and the attack at the top. Drawn
+# rather than sourced - PES's own gamePlan pitch art is noise-compressed line work
+# that does not survive extraction (see the note above about the jersey icon).
+PITCH_PX = (420, 580)
+GRASS_DARK = (38, 92, 44, 236)
+GRASS_LIGHT = (46, 108, 52, 236)
+PITCH_LINE = (232, 240, 232, 190)
+
+
+def draw_plan_pitch(size=PITCH_PX, bands=9):
+    pitch = Image.new("RGBA", size, GRASS_DARK)
+    draw = ImageDraw.Draw(pitch)
+    w, h = size
+    for i in range(bands):
+        if i % 2:
+            continue
+        top = int(h * i / float(bands))
+        bottom = int(h * (i + 1) / float(bands))
+        draw.rectangle([0, top, w, bottom], fill=GRASS_LIGHT)
+
+    line = max(1, w // 210)
+    inset = int(w * 0.045)
+    draw.rectangle([inset, inset, w - inset, h - inset], outline=PITCH_LINE, width=line)
+    # halfway line and centre circle
+    draw.line([inset, h // 2, w - inset, h // 2], fill=PITCH_LINE, width=line)
+    circle = int(w * 0.155)
+    draw.ellipse([w // 2 - circle, h // 2 - circle, w // 2 + circle, h // 2 + circle],
+                 outline=PITCH_LINE, width=line)
+    # penalty areas, top and bottom
+    boxW, boxH = int(w * 0.60), int(h * 0.135)
+    sixW, sixH = int(w * 0.30), int(h * 0.058)
+    for near in (True, False):
+        y0 = h - inset - boxH if near else inset
+        draw.rectangle([(w - boxW) // 2, y0, (w + boxW) // 2, y0 + boxH], outline=PITCH_LINE,
+                       width=line)
+        y1 = h - inset - sixH if near else inset
+        draw.rectangle([(w - sixW) // 2, y1, (w + sixW) // 2, y1 + sixH], outline=PITCH_LINE,
+                       width=line)
+    return pitch
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--extracted", default=DEFAULT_EXTRACTED,
@@ -119,6 +162,10 @@ def main():
     header = header.resize(HEADER_PX, Image.LANCZOS)
     header.save(os.path.join(out_dir, "formation_header.png"))
     print("wrote formation_header.png %dx%d" % header.size)
+
+    pitch = draw_plan_pitch()
+    pitch.save(os.path.join(out_dir, "plan_pitch.png"))
+    print("wrote plan_pitch.png %dx%d" % pitch.size)
 
     jersey = draw_jersey_icon(64)
     jersey.save(os.path.join(out_dir, "jersey_icon.png"))

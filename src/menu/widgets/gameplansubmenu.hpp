@@ -14,6 +14,12 @@
 
 using namespace blunted;
 
+// Where the button column and every sub-menu sit in the game plan's grid: beside the
+// pitch, not below it. Shared so the page and the sub-menus cannot disagree - they
+// did, and a mismatched cell is a fatal in Gui2View::RemoveView.
+constexpr int kGamePlanNavRow = 0;
+constexpr int kGamePlanNavColumn = 1;
+
 class GamePlanSubMenu : public Gui2View {
 public:
   GamePlanSubMenu(Gui2WindowManager* windowManager, Gui2View* parentFocus, Gui2Grid* mainGrid,
