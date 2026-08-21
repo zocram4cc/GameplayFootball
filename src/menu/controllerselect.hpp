@@ -9,6 +9,7 @@
 #include "../onthepitch/match.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/grid.hpp"
+#include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/menu.hpp"
@@ -24,6 +25,10 @@ public:
 
   void ConfirmSelection();
   void SetImagePositions();
+  // The one-pad arrangement: both benches coached from a single controller. It is
+  // exclusive of the per-side COACH marks, so turning it on clears them.
+  void SetStreamerMode(bool on);
+  void UpdateModeCaption();
 
   virtual void Process();
   virtual void ProcessKeyboardEvent(KeyboardEvent* event);
@@ -32,6 +37,9 @@ public:
 
 protected:
   std::vector<SideSelection> sides;
+  std::vector<Gui2Caption*> coachCaptions;
+  Gui2Caption* modeCaption = nullptr;
+  bool streamerMode = false;
   std::vector<unsigned long> delay;
   bool inGame;
   bool autoAssignedPlayerOne = false;

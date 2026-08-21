@@ -29,6 +29,11 @@ struct SideSelection {
   int controllerID = -1;
   Gui2Image* controllerImage = nullptr;
   int side = 0;  // -1, 0, 1
+  // This pad runs the bench rather than the players, PES-style: marked on the
+  // select-sides screen, per side, so one pad may coach one team and another play
+  // the other. Both benches at once is just both sides marked.
+  bool coach = false;
+  Gui2Image* coachImage = nullptr;
 };
 
 // todo: just load match-, team-, and playerdata before starting match

@@ -121,13 +121,14 @@ TEST(CoachModeTest, TheAIManagerNeverRunsATeamAHumanIsOnTheSticksFor) {
   EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 0));
 }
 
-TEST(CoachModeTest, CoachModeDisablesTheAIManagerForBothTeams) {
+TEST(CoachModeTest, TheAIManagerRunsWhicheverBenchNoHumanIsRunning) {
+  // Coaching one side leaves the other to the CPU and its manager: "coach against
+  // CPU" is against a managed CPU, not against a bench nobody is running.
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
   ASSERT_TRUE(CoachMode::IsCoachMode(setup));
   EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 0)) << "the coached team is the human's";
-  EXPECT_FALSE(CoachMode::AIManagerRuns(setup, 1))
-      << "and nothing on the other bench second-guesses him";
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1)) << "the CPU still manages its own side";
 }
 
 TEST(CoachModeTest, AManagerDuelLeavesBothBenchesToTheHumans) {
@@ -144,4 +145,163 @@ TEST(CoachModeTest, APlainAIvsAIMatchStillHasItsManagers) {
   ASSERT_FALSE(CoachMode::IsCoachMode(setup));
   EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 0));
   EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
+}
+
+
+// Who is coaching, decided by the side-selection screen rather than by counting
+// heads.
+//
+// FromHumanGamerCounts could only infer it: a side with nobody on it became coached
+// whenever the global setting was on, which meant assigning one pad to a team and
+// turning coach mode on coached the *opponent*. PES marks the bench on the select-
+// sides screen instead, and a pad coaching a side is a different thing from a pad
+// playing it.
+
+TEST(CoachModeSelections, APadPlayingASideMakesItAPlayersSide) {
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {0, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0));
+  EXPECT_FALSE(CoachMode::IsCoachMode(setup));
+}
+
+TEST(CoachModeSelections, APadCoachingASideCoachesThatSideAndNotTheOther) {
+  const int playing[2] = {0, 0};
+  const int coaching[2] = {1, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, 0));
+  EXPECT_FALSE(CoachMode::CanEditTactics(setup, 1)) << "the opponent is not coached by default";
+  EXPECT_FALSE(CoachMode::ControlsPlayersOnPitch(setup, 0)) << "a coach has nobody on the sticks";
+}
+
+TEST(CoachModeSelections, BothBenchesMayBeCoached) {
+  const int playing[2] = {0, 0};
+  const int coaching[2] = {1, 1};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::IsManagerDuel(setup));
+}
+
+TEST(CoachModeSelections, OnePadMayPlayWhileAnotherCoachesTheOtherSide) {
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {0, 1};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0));
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, 1));
+}
+
+TEST(CoachModeSelections, PlayingWinsOverCoachingOnTheSameSide) {
+  // somebody is on the sticks for that team, so it is not a bench-only side
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {1, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0));
+}
+
+TEST(CoachModeSelections, StreamerModeCoachesBothBenchesFromOnePad) {
+  const int playing[2] = {0, 0};
+  const int coaching[2] = {0, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, true);
+  EXPECT_TRUE(CoachMode::IsManagerDuel(setup));
+}
+
+TEST(CoachModeSelections, StreamerModeDoesNotOverrideAPlayedSide) {
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {0, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, true);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0)) << "somebody is on the sticks";
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, 1));
+}
+
+// The four arrangements that have to be reachable.
+
+TEST(CoachModeArrangements, PlayerVersusCoachPlayer) {
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {0, 1};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0));
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, 1));
+  EXPECT_FALSE(CoachMode::ControlsPlayersOnPitch(setup, 1));
+}
+
+TEST(CoachModeArrangements, CoachVersusCPULeavesTheOtherBenchToTheAIManager) {
+  // the case the old head-count rule got wrong: it coached the empty side too
+  const int playing[2] = {0, 0};
+  const int coaching[2] = {1, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::CanEditTactics(setup, 0));
+  EXPECT_FALSE(CoachMode::CanEditTactics(setup, 1));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1)) << "the CPU still manages its own side";
+}
+
+TEST(CoachModeArrangements, CPUVersusCPUIsUntouched) {
+  const int playing[2] = {0, 0};
+  const int coaching[2] = {0, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_FALSE(CoachMode::IsCoachMode(setup));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 0));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
+}
+
+TEST(CoachModeArrangements, PlayerVersusCPUIsUntouched) {
+  const int playing[2] = {1, 0};
+  const int coaching[2] = {0, 0};
+  const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, false);
+  EXPECT_TRUE(CoachMode::ControlsPlayersOnPitch(setup, 0));
+  EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
+}
+
+// The line the select-sides screen shows. Coach mode had no presence outside
+// hotkey routing, so the screen that assigns a bench is where it has to be said.
+
+TEST(CoachModeTip, ANormalMatchGetsNoTip) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers, CoachMode::e_TeamControl_AI);
+  EXPECT_TRUE(CoachMode::Tip(setup, "Home", "Away").empty());
+}
+
+TEST(CoachModeTip, ItNamesTheCoachedSide) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
+  const std::string got = CoachMode::Tip(setup, "Home", "Away");
+  EXPECT_NE(got.find("Home"), std::string::npos) << got;
+  EXPECT_EQ(got.find("Away"), std::string::npos) << got;
+}
+
+TEST(CoachModeTip, AManagerDuelNamesBothBenches) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_HumanCoach);
+  const std::string got = CoachMode::Tip(setup, "Home", "Away");
+  EXPECT_NE(got.find("Home"), std::string::npos) << got;
+  EXPECT_NE(got.find("Away"), std::string::npos) << got;
+}
+
+TEST(CoachModeTip, ItSaysHowToDriveIt) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
+  const std::string got = CoachMode::Tip(setup, "Home", "Away");
+  EXPECT_NE(got.find("RT"), std::string::npos) << got;
+  EXPECT_NE(got.find("F5"), std::string::npos) << got;
+}
+
+TEST(CoachModeTip, AnUnnamedTeamDoesNotProduceARaggedTip) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
+  const std::string got = CoachMode::Tip(setup, "", "Away");
+  EXPECT_FALSE(got.empty());
+  EXPECT_EQ(got.find("  "), std::string::npos) << "double space: " << got;
+}
+
+TEST(CoachModeDescribe, NamesEachSidesRole) {
+  EXPECT_EQ(CoachMode::Describe(CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers,
+                                                  CoachMode::e_TeamControl_AI)),
+            "Player vs CPU");
+  EXPECT_EQ(CoachMode::Describe(CoachMode::Create(CoachMode::e_TeamControl_HumanCoach,
+                                                  CoachMode::e_TeamControl_AI)),
+            "Coach vs CPU");
+  EXPECT_EQ(CoachMode::Describe(CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers,
+                                                  CoachMode::e_TeamControl_HumanCoach)),
+            "Player vs Coach");
+  EXPECT_EQ(CoachMode::Describe(CoachMode::Create(CoachMode::e_TeamControl_AI,
+                                                  CoachMode::e_TeamControl_AI)),
+            "CPU vs CPU");
 }
