@@ -229,6 +229,11 @@ int main(int argc, const char** argv) {
     return 2;
   }
 
+  // LoadObject builds the node and its graphics counterparts but leaves it to the
+  // caller to put in the scene. Without this the model is loaded, framed, measured -
+  // and never in the render set, which is a turntable of empty frames.
+  scene3D->AddNode(node);
+
   const std::vector<ModelInventory::Mesh> meshes = ReadMeshes(node);
   const ModelInventory::Report report = ModelInventory::Describe(meshes, 0.15f);
   std::cout << options.model << ": " << report.meshes.size() << " mesh(es), "
