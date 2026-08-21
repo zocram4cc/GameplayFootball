@@ -16,9 +16,14 @@ dist/
 data/log.txt
 data/gameplayfootball
 
-# Nothing derived from PES 2021 or the 4cc packs belongs in this repository -
-# it is Konami's, or the pack authors'. tools/pes21_import/ rebuilds all of it
-# from your own installation; docs/PES21_IMPORT.md is the runbook.
+# Nothing of Konami's belongs in this repository. tools/pes21_import/ rebuilds all
+# of it from your own installation; docs/PES21_IMPORT.md is the runbook.
+#
+# 4cc material is a different question, decided per asset. A team's crest and kits
+# are committed, because databases/default/database.sqlite names them and a clone
+# without them dies with "There is no loader for databases/default/" the moment
+# that team is picked. The packs themselves, and the bodies and animations built
+# from them, stay out.
 
 # source packs and reference material
 *.pdf
@@ -42,10 +47,6 @@ data/media/ui/pes/
 data/media/animations/**/pes_*.anim
 data/media/objects/stadiums/pes_*/
 data/media/players/custom/
-data/databases/default/images_teams/ateam/
-data/databases/default/images_teams/2hug/
-data/databases/default/images_teams/lcg/
-data/databases/default/images_teams/ink/
 
 # 4cc Blender Starter Pack: external tooling (pes-fmdl addon), not ours
 /4cc Blender Starter Pack/
