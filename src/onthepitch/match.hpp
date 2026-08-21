@@ -684,6 +684,8 @@ protected:
   std::map<std::string, std::vector<CamTrack>> cutscenePools;
   const CamTrack* activeCutscene = nullptr;
   std::vector<CutsceneSequence::Stage> cutsceneQueue;
+  // Whether PES filmed the running category at all.
+  bool cutsceneHasCamera = false;
   // The cutscene's clock: accumulated from the match's frame deltas, so it stops when
   // the match does and can be skipped (CutscenePlayback).
   CutscenePlayback::State cutscenePlayback;

@@ -205,3 +205,17 @@ TEST(CutsceneViewer, ATouchlineMarkStaysBetweenTheGoalLines) {
   EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(70.0f, 2.0f, 36.0f).first, 45.0f);
   EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(-70.0f, 2.0f, 36.0f).first, -45.0f);
 }
+
+// Who holds the camera during a booking.
+//
+// The legacy referee-follow takes the camera by switching auto updates off, which is
+// the function the imported PES foul camerawork plays through: the shot was chosen,
+// started and logged, and the viewer saw the follow camera instead.
+
+TEST(RefereeFollow, ItStandsAsideForAnImportedShot) {
+  EXPECT_FALSE(CutsceneViewer::RefereeFollowMayTakeCamera(true));
+}
+
+TEST(RefereeFollow, ItStillFilmsAStoppageWithNothingElseToShow) {
+  EXPECT_TRUE(CutsceneViewer::RefereeFollowMayTakeCamera(false));
+}
