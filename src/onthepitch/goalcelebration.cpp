@@ -102,4 +102,12 @@ unsigned long CelebrationTotal_ms(int introFrames, int loopFrames) {
                                                       : total;
 }
 
+bool IsPerforming(unsigned long sinceGoal_ms, unsigned long celebrationLength_ms) {
+  if (sinceGoal_ms < kReactionDelay_ms)
+    return false;
+  const unsigned long floor = kReactionDelay_ms + kMinimumPerformance_ms;
+  const unsigned long until = celebrationLength_ms > floor ? celebrationLength_ms : floor;
+  return sinceGoal_ms < until;
+}
+
 }  // namespace GoalCelebration

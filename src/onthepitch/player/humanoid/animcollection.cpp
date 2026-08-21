@@ -572,6 +572,18 @@ void AnimCollection::Load(std::filesystem::path directory) {
   Log(e_Notice, "AnimCollection", "Load", "Ready");
 }
 
+bool AnimCollection::HasSpecial(int specialVar1, int specialVar2) const {
+  for (unsigned int i = 0; i < animations.size(); i++) {
+    if (animations.at(i)->GetAnimType().compare("special") != 0)
+      continue;
+    if (int(round(atof(animations.at(i)->GetVariable("specialvar1").c_str()))) != specialVar1)
+      continue;
+    if (int(round(atof(animations.at(i)->GetVariable("specialvar2").c_str()))) == specialVar2)
+      return true;
+  }
+  return false;
+}
+
 const std::vector<Animation*>& AnimCollection::GetAnimations() const {
   return animations;
 }
