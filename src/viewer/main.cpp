@@ -13,6 +13,15 @@
 //
 // With --shots it writes N stills round a turntable and exits, which is what a
 // headless machine needs; without, it opens a window and orbits with the mouse.
+//
+// The stills go to --out as raw RGBA at the context size, through the same recording
+// path the game records a showcase through, so ffmpeg turns them into PNGs:
+//
+//   ffmpeg -f rawvideo -pixel_format rgba -video_size 1280x720 -i out.raw shot%02d.png
+//
+// The file holds N frames, occasionally N+1, and the first of them is sometimes empty:
+// the recording stream opens against the swap chain rather than in step with it. A
+// frame with no variance in it is one of those and can be dropped.
 
 #include <deque>
 #include <filesystem>
@@ -158,26 +167,39 @@ std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
 class TurntableTask : public IUserTask {
  public:
   TurntableTask(boost::intrusive_ptr<Node> cameraNode, boost::intrusive_ptr<Camera> camera,
-                const ViewerCamera::Shot& shot, int frames)
-      : cameraNode(cameraNode), camera(camera), shot(shot), frames(frames) {}
+                const ViewerCamera::Shot& shot, int frames, const std::string& out)
+      : cameraNode(cameraNode), camera(camera), shot(shot), frames(frames), out(out) {}
 
   void GetPhase() override {}
   void ProcessPhase() override {}
 
+  // Presents before the first one worth keeping. The pipeline needs a couple of
+  // frames to fill and one more stale frame follows the first recorded one: measured
+  // over 12- and 8-shot runs, 5 is where every recorded frame comes back drawn.
+  static const int kWarmupFrames = 5;
+
   void PutPhase() override {
+    if (warmup < kWarmupFrames) {
+      warmup++;
+      // Recording starts once the pipeline is drawing, so the file holds exactly the
+      // shots asked for rather than the warm-up as well.
+      if (warmup == kWarmupFrames)
+        StartFrameRecording(out);
+      return;
+    }
     ViewerCamera::Shot turned = shot;
     turned.yaw = ViewerCamera::TurntableYaw(shot, drawn, frames > 0 ? frames : 1);
     const std::array<float, 3> eye = ViewerCamera::Position(turned);
-    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]), false);
+    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
     // Split the way the match camera splits it: the node carries the yaw about Z and
     // the camera object the pitch about X, a quarter turn off because a camera looks
     // down its own -z (Match::UpdateIngameCamera).
     Quaternion yaw;
     yaw.SetAngleAxis(turned.yaw, Vector3(0, 0, 1));
-    cameraNode->SetRotation(yaw, false);
+    cameraNode->SetRotation(yaw);
     Quaternion pitch;
     pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
-    camera->SetRotation(pitch, false);
+    camera->SetRotation(pitch);
     drawn++;
     if (frames > 0 && drawn >= frames)
       EnvironmentManager::GetInstance().SignalQuit();
@@ -193,6 +215,8 @@ class TurntableTask : public IUserTask {
   ViewerCamera::Shot shot;
   int frames = 0;
   int drawn = 0;
+  int warmup = 0;
+  std::string out;
 };
 
 int main(int argc, const char** argv) {
@@ -310,13 +334,14 @@ int main(int argc, const char** argv) {
     // The same path the game records a showcase through: every presented frame goes
     // to a fifo or a file, and the caller turns it into stills. A viewer that wrote
     // its own PNGs would be a second answer to a question already answered.
-    StartFrameRecording(options.out);
-
     std::shared_ptr<TurntableTask> turntable(
-        new TurntableTask(cameraNode, camera, shot, options.shots));
+        new TurntableTask(cameraNode, camera, shot, options.shots, options.out));
     std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 0, true));
-    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
+    // The order the game's own graphics sequence uses: the user task writes the
+    // camera in its Put phase, then the graphics Get phase reads it and enqueues the
+    // view. Getting first renders the frame before the camera has been placed.
     sequence->AddUserTaskEntry(turntable, e_TaskPhase_Put);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
     sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Process);
     sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Put);
     GetScheduler()->RegisterTaskSequence(sequence);
