@@ -39,6 +39,11 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   match = team->GetMatch();
   taker = 0;
 
+  // Whatever the game plan set before kick-off. These used to start at their
+  // defaults every match, so the only way to reach them was from the touchline once
+  // play had begun - no use at all for a side nobody is shouting at.
+  instructions = TeamInstructions::Load(team->GetTeamData()->GetTactics().userProperties);
+
   depth = 0.45f;
   width = 0.95f;
 

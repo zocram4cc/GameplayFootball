@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include "menu/ingame/hudindicators.hpp"
+#include "onthepitch/teaminstructions.hpp"
 
 TEST(AttackDefenceLevel, TheBandFollowsTheMentalityTheManagerSet) {
   // TeamInstructions::e_Mentality is the control PES's vertical box shows:
@@ -155,3 +156,63 @@ TEST(HudIndicators, AnUnknownAspectFillsTheBoxAsBefore) {
   EXPECT_NEAR(h, 2.0f, 0.001f);
 }
 
+
+// The advanced instructions, on the HUD.
+//
+// The indicators were wired to the mentality band and the philosophy dial and to
+// nothing else, so toggling any of the seven advanced instructions changed the
+// transient banner and left the HUD exactly as it was - which is why they never
+// appeared to do anything. This is the line the HUD shows for them.
+
+namespace {
+
+const TeamInstructions::e_Instruction kAll[TeamInstructions::instructionCount] = {
+    TeamInstructions::e_Instruction_FrontlinePressure,
+    TeamInstructions::e_Instruction_DeepDefensiveLine,
+    TeamInstructions::e_Instruction_AggressiveDefence,
+    TeamInstructions::e_Instruction_HugTheTouchline,
+    TeamInstructions::e_Instruction_CentreShading,
+    TeamInstructions::e_Instruction_TikiTaka,
+    TeamInstructions::e_Instruction_LongBallCounter,
+};
+
+}  // namespace
+
+TEST(InstructionsReadout, NoInstructionsReadsAsNone) {
+  EXPECT_TRUE(HudIndicators::InstructionsText(TeamInstructions::instructionsNone).empty());
+}
+
+TEST(InstructionsReadout, OneInstructionNamesItself) {
+  const std::string got =
+      HudIndicators::InstructionsText(TeamInstructions::e_Instruction_FrontlinePressure);
+  EXPECT_FALSE(got.empty());
+  EXPECT_NE(got.find("PRESS"), std::string::npos) << got;
+}
+
+TEST(InstructionsReadout, SeveralAreSeparated) {
+  const TeamInstructions::InstructionMask mask =
+      TeamInstructions::e_Instruction_FrontlinePressure | TeamInstructions::e_Instruction_TikiTaka;
+  const std::string got = HudIndicators::InstructionsText(mask);
+  EXPECT_NE(got.find(" "), std::string::npos) << "two should read apart: " << got;
+}
+
+TEST(InstructionsReadout, EveryInstructionHasATag) {
+  // a toggled instruction that produced nothing would be invisible again
+  for (int i = 0; i < TeamInstructions::instructionCount; i++)
+    EXPECT_FALSE(HudIndicators::InstructionsText(kAll[i]).empty())
+        << "instruction " << i << " shows nothing";
+}
+
+TEST(InstructionsReadout, TurningOneOffTakesItOffTheHud) {
+  const std::string on =
+      HudIndicators::InstructionsText(TeamInstructions::e_Instruction_CentreShading);
+  EXPECT_FALSE(on.empty());
+  EXPECT_TRUE(HudIndicators::InstructionsText(TeamInstructions::instructionsNone).empty());
+}
+
+TEST(InstructionsReadout, AllSevenAtOnceStillFitsOneLine) {
+  TeamInstructions::InstructionMask mask = TeamInstructions::instructionsNone;
+  for (int i = 0; i < TeamInstructions::instructionCount; i++) mask |= kAll[i];
+  const std::string got = HudIndicators::InstructionsText(mask);
+  EXPECT_LE(got.size(), 64u) << "too long for the HUD strip: " << got;
+}

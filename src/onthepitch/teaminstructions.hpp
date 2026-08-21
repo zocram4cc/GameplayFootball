@@ -79,6 +79,13 @@ void Apply(const State& state, blunted::Properties& tactics);
 // One line for the on-screen feedback when a hotkey is pressed.
 std::string Describe(const State& state);
 
+// The instructions a team carries into a match, kept in its tactics beside the
+// philosophy so the game plan can set them before kick-off and the database stores
+// them. They used to live only on the controller and reset every match, which left
+// them reachable only from the touchline once play had begun.
+void Save(const State& state, blunted::Properties& properties);
+State Load(const blunted::Properties& properties);
+
 }  // namespace TeamInstructions
 
 #endif

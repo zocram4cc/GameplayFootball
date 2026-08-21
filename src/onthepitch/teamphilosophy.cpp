@@ -122,10 +122,18 @@ float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide) {
 }
 
 // The key philosophy is stored under, which has the philosophy menu instead.
-static const char* kPhilosophyKey = "philosophy";
+// The tactics keys with an editor of their own, which are therefore not sliders:
+// the philosophy menu, and the instructions the game plan and the touchline set.
+static const char* kNonSliderKeys[] = {"philosophy", "mentality", "instructions"};
 
 bool IsSliderTactic(const std::string& tacticName) {
-  return !tacticName.empty() && tacticName != kPhilosophyKey;
+  if (tacticName.empty())
+    return false;
+  for (const char* key : kNonSliderKeys) {
+    if (tacticName == key)
+      return false;
+  }
+  return true;
 }
 
 }  // namespace TeamPhilosophy

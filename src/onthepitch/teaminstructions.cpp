@@ -172,4 +172,32 @@ std::string Describe(const State& state) {
   return description;
 }
 
+// The tactics keys. Named for what they are, and refused by
+// TeamPhilosophy::IsSliderTactic so they do not join the numeric sliders.
+static const char* kMentalityKey = "mentality";
+static const char* kInstructionsKey = "instructions";
+
+void Save(const State& state, blunted::Properties& properties) {
+  properties.Set(kMentalityKey, static_cast<float>(state.mentality));
+  properties.Set(kInstructionsKey, static_cast<float>(state.instructions));
+}
+
+State Load(const blunted::Properties& properties) {
+  State state;
+  // -1 for absent, because 0 is a mentality (balanced is 2) and reading a missing
+  // key as 0 would silently set one.
+  const int mentality = static_cast<int>(properties.GetReal(kMentalityKey, -1.0f));
+  if (mentality >= 0 && mentality < e_Mentality_Count)
+    state.mentality = static_cast<e_Mentality>(mentality);
+  const float saved = properties.GetReal(kInstructionsKey, 0.0f);
+  if (saved > 0.0f) {
+    // Only the bits that name an instruction; anything else in there is not ours.
+    InstructionMask mask = static_cast<InstructionMask>(saved);
+    InstructionMask known = instructionsNone;
+    for (int i = 0; i < instructionCount; i++) known |= GetInstructionAt(i);
+    state.instructions = mask & known;
+  }
+  return state;
+}
+
 }  // namespace TeamInstructions

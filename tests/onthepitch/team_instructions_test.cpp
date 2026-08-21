@@ -8,6 +8,7 @@
 
 #include "base/properties.hpp"
 #include "onthepitch/teaminstructions.hpp"
+#include "onthepitch/teamphilosophy.hpp"
 
 using blunted::Properties;
 
@@ -291,4 +292,70 @@ TEST(TeamInstructionsPresetTest, TheFaceButtonInstructionsAreTheHandyFour) {
     instructions.insert(static_cast<int>(instruction));
   }
   EXPECT_EQ(static_cast<int>(instructions.size()), TeamInstructions::quickInstructionCount);
+}
+
+// Setting the advanced instructions before kick-off.
+//
+// They lived only on the TeamAIController and started at their defaults every match,
+// so a manager could only reach them from the touchline once play had begun - which
+// makes them useless for a side you are not going to be shouting at. They are now
+// carried in the team's tactics beside the philosophy, which is what the game plan
+// edits and what the database stores.
+
+TEST(InstructionsInTactics, ASavedStateComesBackTheSame) {
+  TeamInstructions::State state;
+  state.mentality = TeamInstructions::e_Mentality_Attacking;
+  TeamInstructions::Toggle(state, TeamInstructions::e_Instruction_TikiTaka);
+  TeamInstructions::Toggle(state, TeamInstructions::e_Instruction_CentreShading);
+
+  blunted::Properties props;
+  TeamInstructions::Save(state, props);
+  const TeamInstructions::State back = TeamInstructions::Load(props);
+
+  EXPECT_EQ(back.mentality, state.mentality);
+  EXPECT_EQ(back.instructions, state.instructions);
+}
+
+TEST(InstructionsInTactics, TacticsWithNothingSavedGiveTheDefaults) {
+  blunted::Properties props;
+  const TeamInstructions::State back = TeamInstructions::Load(props);
+  EXPECT_EQ(back.mentality, TeamInstructions::e_Mentality_Balanced);
+  EXPECT_EQ(back.instructions, TeamInstructions::instructionsNone);
+}
+
+TEST(InstructionsInTactics, EveryMentalityRoundTrips) {
+  for (int i = 0; i < TeamInstructions::e_Mentality_Count; i++) {
+    TeamInstructions::State state;
+    state.mentality = static_cast<TeamInstructions::e_Mentality>(i);
+    blunted::Properties props;
+    TeamInstructions::Save(state, props);
+    EXPECT_EQ(TeamInstructions::Load(props).mentality, state.mentality) << "mentality " << i;
+  }
+}
+
+TEST(InstructionsInTactics, EveryInstructionRoundTrips) {
+  for (int i = 0; i < TeamInstructions::instructionCount; i++) {
+    TeamInstructions::State state;
+    TeamInstructions::Toggle(state, TeamInstructions::GetInstructionAt(i));
+    blunted::Properties props;
+    TeamInstructions::Save(state, props);
+    EXPECT_TRUE(TeamInstructions::Has(TeamInstructions::Load(props),
+                                      TeamInstructions::GetInstructionAt(i)))
+        << "instruction " << i << " did not survive";
+  }
+}
+
+TEST(InstructionsInTactics, NonsenseInTheTacticsIsIgnoredRatherThanTrusted) {
+  blunted::Properties props;
+  props.Set("mentality", 99.0f);
+  props.Set("instructions", -3.0f);
+  const TeamInstructions::State back = TeamInstructions::Load(props);
+  EXPECT_LT(back.mentality, TeamInstructions::e_Mentality_Count);
+  EXPECT_GE(back.mentality, 0);
+}
+
+TEST(InstructionsInTactics, TheKeysAreNotOfferedAsSliders) {
+  // they would otherwise join the tactics sliders, the way philosophy did
+  EXPECT_FALSE(TeamPhilosophy::IsSliderTactic("mentality"));
+  EXPECT_FALSE(TeamPhilosophy::IsSliderTactic("instructions"));
 }
