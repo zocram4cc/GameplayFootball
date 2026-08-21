@@ -2439,6 +2439,45 @@ void Match::RequestFoulReplay(unsigned long foulTime_ms, int foulType) {
   foulReplayDue_ms = FoulSequence::ReplayFiresAt_ms(foulTime_ms, foulType);
 }
 
+// Asks for a replay, and only pauses the match if something is listening.
+//
+// The replay page is what applies the recorded frames (Match::ProcessReplayMessages
+// runs in the paused branch of Process), and the only listener is the GamePage's,
+// connected while that page exists. A replay requested while another page held the
+// screen therefore paused the match with nothing to unpause it: the match froze and
+// no replay ever played, which is the "gets stuck and never plays" report.
+// The frame count of the celebration clip filed under this specialvar2, or 0 when
+// there is none. The clips are what say how long a celebration runs; nothing used to
+// ask them, so the intro was held for a flat 1900 ms and the performance for a flat
+// nine seconds whatever the animation did.
+int Match::CelebrationClipFrames(int specialVar2) const {
+  if (!anims)
+    return 0;
+  const std::vector<Animation*>& all = anims->GetAnimations();
+  for (Animation* anim : all) {
+    if (!anim)
+      continue;
+    if (atoi(anim->GetVariable("specialvar2").c_str()) != specialVar2)
+      continue;
+    if (anim->GetVariable("type").compare("goalcelebration") != 0 &&
+        atoi(anim->GetVariable("specialvar1").c_str()) == 0)
+      continue;
+    return anim->GetFrameCount();
+  }
+  return 0;
+}
+
+void Match::RequestExtendedReplay() {
+  if (sig_OnExtendedReplayMoment.num_slots() == 0) {
+    Log(e_Notice, "Match", "RequestExtendedReplay",
+        "replay skipped: nothing is listening, so the match is left running");
+    replayStartOffset_ms = 0;
+    return;
+  }
+  pause = true;
+  sig_OnExtendedReplayMoment(this);
+}
+
 void Match::ProcessFoulReplay() {
   if (foulReplayDue_ms == 0 || actualTime_ms < foulReplayDue_ms)
     return;
@@ -2450,8 +2489,7 @@ void Match::ProcessFoulReplay() {
           int_to_str((int)elapsed) + " ms, replay reaches " +
           int_to_str((int)replayStartOffset_ms) + " ms back");
   foulReplayDue_ms = 0;
-  pause = true;
-  sig_OnExtendedReplayMoment(this);
+  RequestExtendedReplay();
 }
 
 Substitutions::e_Result Match::RequestSubstitution(int teamID, Player* playerOut,
@@ -3270,6 +3308,19 @@ void Match::UpdateIngameCamera() {
           goalCelebrationYaw = std::atan2(facing.coords[0], -facing.coords[1]);
           for (size_t i = 0; i < goalCamNames.size(); i++)
             if (goalCamNames[i] == wanted) goalCelebrationCamera = (int)i;
+          // Ask the clips how long they are, so the intro is held for its own length
+          // and the performance runs to the end of the loop rather than to a timer.
+          const int introFrames = CelebrationClipFrames(chosen.var);
+          const int loopFrames = CelebrationClipFrames(GoalCelebration::LoopVariable(chosen.var));
+          goalCelebrationIntroHold_ms = GoalCelebration::IntroHold_ms(introFrames);
+          goalCelebrationLength_ms =
+              GoalSequence::CelebrationLength_ms(
+                  GoalCelebration::CelebrationTotal_ms(introFrames, loopFrames));
+          Log(e_Notice, "Match", "UpdateIngameCamera",
+              "celebration length: intro " + int_to_str((int)goalCelebrationIntroHold_ms) +
+                  " ms, whole performance " + int_to_str((int)goalCelebrationLength_ms) +
+                  " ms (intro " + int_to_str(introFrames) + " frames, loop " +
+                  int_to_str(loopFrames) + ")");
           Log(e_Notice, "Match", "UpdateIngameCamera",
               "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), " +
                   (assigned.empty() ? "drawn for" : "assigned to") + " player " + scorer +
@@ -3359,14 +3410,14 @@ void Match::UpdateIngameCamera() {
     // goalScoredTimer - do that first and the trigger below is never reached.
     const unsigned long goalTime_ms = actualTime_ms - goalScoredTimer;
     if (replayStartOffset_ms == 0 &&
-        actualTime_ms >= GoalSequence::ReplayFiresAt_ms(goalTime_ms, cutsceneEnd_ms)) {
+        actualTime_ms >= GoalSequence::ReplayFiresAt_ms(goalTime_ms, cutsceneEnd_ms,
+                                                       goalCelebrationLength_ms)) {
       replayStartOffset_ms = GoalSequence::ReplayStartOffset_ms(goalScoredTimer);
       replayCamera = kReplayCameraBehindGoal;
       Log(e_Notice, "Match", "UpdateIngameCamera",
           "goal replay: celebration ran " + int_to_str((int)goalScoredTimer) +
               " ms, replay reaches " + int_to_str((int)replayStartOffset_ms) + " ms back");
-      pause = true;
-      sig_OnExtendedReplayMoment(this);
+      RequestExtendedReplay();
     }
   }
 
