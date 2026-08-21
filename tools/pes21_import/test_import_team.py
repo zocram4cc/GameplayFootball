@@ -139,3 +139,35 @@ class PortraitBindings(unittest.TestCase):
     def test_portraits_of_another_teams_prefix_are_not_claimed(self):
         models = {"450": "media/players/custom/ink_2401"}
         self.assertEqual(import_team.bind_portraits(models, ["XXX01 - x.png"], "lcg"), {})
+
+
+class BasePartsToDrop(unittest.TestCase):
+    """Which of the stock body's parts a composited import replaces.
+
+    A face-slot import brings its own head, so the stock face, eyes and scalp have to
+    go or they sit inside it and fight it for depth. A hair-only export brings no head
+    at all - the 4cc packs ship plenty (fcl_hair.fmdl) - and dropping the stock face
+    for one of those leaves a player with no head, which is exactly what shipped.
+    """
+
+    def test_a_face_import_replaces_the_stock_head(self):
+        drop = import_team.base_parts_to_drop(["face_high", "hair_high"])
+        self.assertIn("face", drop)
+        self.assertIn("eyes", drop)
+
+    def test_a_hair_only_import_keeps_the_stock_head(self):
+        drop = import_team.base_parts_to_drop(["fcl_hair"])
+        self.assertNotIn("face", drop)
+        self.assertNotIn("eyes", drop)
+
+    def test_an_accessory_import_keeps_everything(self):
+        drop = import_team.base_parts_to_drop(["stim_bsm", "pouch"])
+        self.assertNotIn("face", drop)
+        self.assertNotIn("eyes", drop)
+
+    def test_a_head_named_mesh_counts_as_a_face(self):
+        self.assertIn("face", import_team.base_parts_to_drop(["head"]))
+        self.assertIn("face", import_team.base_parts_to_drop(["u0XXXp0_head_bsm"]))
+
+    def test_nothing_at_all_drops_nothing(self):
+        self.assertEqual(import_team.base_parts_to_drop([]), set())

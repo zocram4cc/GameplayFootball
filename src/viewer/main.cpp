@@ -173,18 +173,41 @@ class TurntableTask : public IUserTask {
   void GetPhase() override {}
   void ProcessPhase() override {}
 
-  // Presents before the first one worth keeping. The pipeline needs a couple of
-  // frames to fill and one more stale frame follows the first recorded one: measured
-  // over 12- and 8-shot runs, 5 is where every recorded frame comes back drawn.
-  static const int kWarmupFrames = 5;
+  // Presents before the first one worth keeping. The pipeline holds several frames in
+  // flight, and those land in the recording after it opens: at five, a --shots 1 run
+  // recorded nothing but background and --shots 3 gave one drawn frame of four. Twelve
+  // is past the deepest staleness measured, so every recorded frame has the model in
+  // it - which is what a one-shot audit of ninety-three models needs.
+  static const int kWarmupFrames = 12;
+
+  // And at least this long on the clock, because the geometry loads asynchronously.
+  static const unsigned long kWarmupMilliseconds = 1500;
+
+  // Frames the recorder writes before a live one lands. Measured: a four-shot run put
+  // its first live frame in file position four.
+  static const int kRecorderLeadIn = 4;
 
   void PutPhase() override {
-    if (warmup < kWarmupFrames) {
+    // Warm up by the clock as well as by frame count. The frame count alone was not
+    // enough: the model's geometry loads on worker threads, so the early frames are
+    // an empty scene and a one-shot run recorded nothing but background. Whichever
+    // gate is later wins.
+    if (warmupStart_ms == 0)
+      warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    const bool framesReady = warmup >= kWarmupFrames;
+    const bool clockReady =
+        EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >= kWarmupMilliseconds;
+    if (!framesReady || !clockReady) {
       warmup++;
-      // Recording starts once the pipeline is drawing, so the file holds exactly the
-      // shots asked for rather than the warm-up as well.
-      if (warmup == kWarmupFrames)
+      // Recording starts once the pipeline is drawing the model, so the file holds
+      // exactly the shots asked for rather than the warm-up as well.
+      if (framesReady && clockReady)
         StartFrameRecording(out);
+      return;
+    }
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
       return;
     }
     ViewerCamera::Shot turned = shot;
@@ -201,7 +224,11 @@ class TurntableTask : public IUserTask {
     pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
     camera->SetRotation(pitch);
     drawn++;
-    if (frames > 0 && drawn >= frames)
+    // The recorder writes the presented buffer, which lags the scene by a few frames:
+    // the first frames in the file are the empty scene from before the model was
+    // drawn, however long the warm-up. So draw the lead-in as well and let the caller
+    // take the last `frames`; the count is printed rather than left to be discovered.
+    if (frames > 0 && drawn >= frames + kRecorderLeadIn)
       EnvironmentManager::GetInstance().SignalQuit();
   }
 
@@ -216,6 +243,8 @@ class TurntableTask : public IUserTask {
   int frames = 0;
   int drawn = 0;
   int warmup = 0;
+  unsigned long warmupStart_ms = 0;
+  bool recording = false;
   std::string out;
 };
 
@@ -348,7 +377,9 @@ int main(int argc, const char** argv) {
 
     Run();
     StopFrameRecording();
-    std::cout << "drew " << turntable->Drawn() << " frame(s) to " << options.out << "\n";
+    std::cout << "drew " << turntable->Drawn() << " frame(s) to " << options.out
+              << "; the first 4 are pipeline lead-in, the last " << options.shots
+              << " are the shots\n";
     sequence.reset();
   }
 

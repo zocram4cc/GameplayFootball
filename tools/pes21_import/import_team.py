@@ -173,6 +173,51 @@ def bind_portraits(model_bindings, portrait_files, prefix, names=None):
     return bound
 
 
+# The stock body's parts, and which of them a composited import replaces.
+#
+# A face-slot import brings its own head: left in place, the stock face, eyes and
+# scalp sit inside it and fight it for depth, which reads as a dark doubled head. But
+# the 4cc packs ship plenty of hair-only exports (fcl_hair.fmdl) and accessory packs,
+# and dropping the stock face for one of those leaves a player with no head at all -
+# which is what shipped for hdg_stims and face_100117.
+FACE_WORDS = ("face", "head", "visage")
+HAIR_WORDS = ("hair", "scalp")
+
+
+def mesh_names(fmdl_path, fmdl_lib):
+    """The mesh names an fmdl carries, by their base texture - which is how the 4cc
+    exports say what a mesh is. Returns [] when the file cannot be read, so a
+    composite falls back to dropping nothing rather than guessing."""
+    try:
+        sys.path.insert(0, fmdl_lib)
+        import FmdlFile
+        import fmdl_to_fullbody
+        fmdl = FmdlFile.FmdlFile()
+        fmdl.readFile(fmdl_path)
+        names = []
+        for mesh in fmdl.meshes:
+            base = fmdl_to_fullbody.mesh_base_texture(mesh)
+            if base:
+                names.append(base)
+        return names
+    except Exception:
+        return []
+
+
+def base_parts_to_drop(import_mesh_names):
+    """-> the set of stock body parts this import stands in for."""
+    drop = set()
+    for name in import_mesh_names:
+        words = re.split(r"[^a-z0-9]+", (name or "").lower())
+        if any(word in FACE_WORDS for word in words):
+            drop.update(("face", "eyes", "scalp", "hair"))
+        elif any(word in HAIR_WORDS for word in words):
+            # The stock body has no hair mesh of its own, so this drops nothing
+            # today; naming it keeps the rule honest if one is ever added.
+            drop.update(("scalp", "hair"))
+    return drop
+
+
 def install_dir(game_dir, prefix, export_id):
     return os.path.join(game_dir, "media", "players", "custom",
                         "%s_%s" % (prefix, export_id))
@@ -224,9 +269,13 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
         # A face-slot model is a head and hair, nothing else. Imported on its
         # own it is a head floating where the body should be; it has to be
         # composited over a skinned body.
-        command += ["--base", base_ase,
-                    # the stock head would otherwise sit inside the imported one
-                    "--drop-base-parts", "eyes,face,scalp,hair"]
+        command += ["--base", base_ase]
+        # And only the stock parts this import actually stands in for are dropped:
+        # a hair-only or accessory export brings no head, and dropping the stock
+        # face for one of those leaves the player without one.
+        drop = base_parts_to_drop(mesh_names(fmdl, fmdl_lib))
+        if drop:
+            command += ["--drop-base-parts", ",".join(sorted(drop))]
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return "FAILED: " + (result.stderr.strip().splitlines() or ["?"])[-1]
