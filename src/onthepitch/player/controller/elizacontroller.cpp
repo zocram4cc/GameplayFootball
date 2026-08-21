@@ -1438,7 +1438,8 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
       command.specialVar2 = filmed;
     } else {
       command.specialVar2 =
-          GoalCelebration::Phase(match->GetGoalScoredTimer(), GoalCelebration::kIntroHold_ms) ==
+          GoalCelebration::Phase(match->GetGoalScoredTimer(),
+                                 match->GetCelebrationIntroHold_ms()) ==
                   GoalCelebration::e_Loop
               ? GoalCelebration::LoopVariable(madeGoal)
               : madeGoal;
