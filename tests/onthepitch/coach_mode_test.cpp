@@ -250,45 +250,83 @@ TEST(CoachModeArrangements, PlayerVersusCPUIsUntouched) {
   EXPECT_TRUE(CoachMode::AIManagerRuns(setup, 1));
 }
 
-// The line the select-sides screen shows. Coach mode had no presence outside
-// hotkey routing, so the screen that assigns a bench is where it has to be said.
+// The lines the select-sides screen shows. Coach mode had no presence outside
+// hotkey routing, so the screen that assigns a bench is where it has to be said -
+// and read at a glance, which one run-on paragraph is not.
 
 TEST(CoachModeTip, ANormalMatchGetsNoTip) {
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanPlayers, CoachMode::e_TeamControl_AI);
-  EXPECT_TRUE(CoachMode::Tip(setup, "Home", "Away").empty());
+  EXPECT_TRUE(CoachMode::TipLines(setup, "Home", "Away").empty());
 }
 
 TEST(CoachModeTip, ItNamesTheCoachedSide) {
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
-  const std::string got = CoachMode::Tip(setup, "Home", "Away");
-  EXPECT_NE(got.find("Home"), std::string::npos) << got;
-  EXPECT_EQ(got.find("Away"), std::string::npos) << got;
+  const std::vector<std::string> got = CoachMode::TipLines(setup, "Home", "Away");
+  ASSERT_FALSE(got.empty());
+  EXPECT_NE(got.at(0).find("Home"), std::string::npos) << got.at(0);
+  EXPECT_EQ(got.at(0).find("Away"), std::string::npos) << got.at(0);
 }
 
-TEST(CoachModeTip, AManagerDuelNamesBothBenches) {
+TEST(CoachModeTip, AManagerDuelClaimsBothBenchesWithoutNamingThem) {
+  // two club names of any length overrun the line, and both benches being yours
+  // says everything the naming would have
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_HumanCoach);
-  const std::string got = CoachMode::Tip(setup, "Home", "Away");
-  EXPECT_NE(got.find("Home"), std::string::npos) << got;
-  EXPECT_NE(got.find("Away"), std::string::npos) << got;
+  const std::vector<std::string> got = CoachMode::TipLines(setup, "Home", "Away");
+  ASSERT_FALSE(got.empty());
+  EXPECT_NE(got.at(0).find("Both"), std::string::npos) << got.at(0);
+  EXPECT_EQ(got.at(0).find("Home"), std::string::npos) << got.at(0);
 }
 
-TEST(CoachModeTip, ItSaysHowToDriveIt) {
+TEST(CoachModeTip, AVeryLongClubNameIsTrimmedRatherThanOverrunning) {
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
-  const std::string got = CoachMode::Tip(setup, "Home", "Away");
-  EXPECT_NE(got.find("RT"), std::string::npos) << got;
-  EXPECT_NE(got.find("F5"), std::string::npos) << got;
+  const std::vector<std::string> got =
+      CoachMode::TipLines(setup, std::string(90, 'x'), "Away");
+  ASSERT_FALSE(got.empty());
+  EXPECT_LE(got.at(0).size(), 78u) << got.at(0);
+  EXPECT_NE(got.at(0).find("..."), std::string::npos) << got.at(0);
 }
 
-TEST(CoachModeTip, AnUnnamedTeamDoesNotProduceARaggedTip) {
+TEST(CoachModeTip, ItSaysHowToDriveItOnBothInputs) {
   const CoachMode::Setup setup =
       CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
-  const std::string got = CoachMode::Tip(setup, "", "Away");
-  EXPECT_FALSE(got.empty());
-  EXPECT_EQ(got.find("  "), std::string::npos) << "double space: " << got;
+  const std::vector<std::string> got = CoachMode::TipLines(setup, "Home", "Away");
+  ASSERT_EQ(got.size(), 3u);
+  EXPECT_NE(got.at(1).find("RT"), std::string::npos) << got.at(1);
+  EXPECT_NE(got.at(2).find("F5"), std::string::npos) << got.at(2);
+}
+
+TEST(CoachModeTip, OnlyADuelMentionsSwitchingBenches) {
+  // Shift is the other bench, so it says nothing when there is only one
+  const std::vector<std::string> single = CoachMode::TipLines(
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI), "H", "A");
+  const std::vector<std::string> duel = CoachMode::TipLines(
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_HumanCoach),
+      "H", "A");
+  ASSERT_EQ(single.size(), 3u);
+  ASSERT_EQ(duel.size(), 3u);
+  EXPECT_EQ(single.at(2).find("Shift"), std::string::npos) << single.at(2);
+  EXPECT_NE(duel.at(2).find("Shift"), std::string::npos) << duel.at(2);
+}
+
+TEST(CoachModeTip, AnUnnamedTeamDoesNotProduceARaggedLine) {
+  const CoachMode::Setup setup =
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_AI);
+  const std::vector<std::string> got = CoachMode::TipLines(setup, "", "Away");
+  ASSERT_FALSE(got.empty());
+  EXPECT_EQ(got.at(0).find("  "), std::string::npos) << "double space: " << got.at(0);
+  EXPECT_EQ(got.at(0).find(" ."), std::string::npos) << "space before stop: " << got.at(0);
+}
+
+TEST(CoachModeTip, EachLineFitsTheMenu) {
+  const std::vector<std::string> got = CoachMode::TipLines(
+      CoachMode::Create(CoachMode::e_TeamControl_HumanCoach, CoachMode::e_TeamControl_HumanCoach),
+      "Helldivers Battle Regiment", "Legendary Cup Gladiators");
+  for (unsigned int i = 0; i < got.size(); i++)
+    EXPECT_LE(got.at(i).size(), 78u) << "line " << i << ": " << got.at(i);
 }
 
 TEST(CoachModeDescribe, NamesEachSidesRole) {

@@ -6,6 +6,8 @@
 #include "controllerselect.hpp"
 
 #include "../main.hpp"
+#include "../data/teamdata.hpp"
+#include "../onthepitch/coachmode.hpp"
 #include "hid/gamepad.hpp"
 #include "hid/keyboard.hpp"
 #include "mainmenu.hpp"
@@ -145,9 +147,20 @@ ControllerSelectPage::ControllerSelectPage(Gui2WindowManager* windowManager,
   // One line naming the arrangement and the keys that change it. Without this the
   // screen assigns benches with no indication that it does, which is how coach mode
   // came to be undiscoverable.
-  modeCaption = new Gui2Caption(windowManager, "caption_controllermode", 0, 88, 100, 4, "");
+  modeCaption = new Gui2Caption(windowManager, "caption_controllermode", 4, 84, 92, 3, "");
   this->AddView(modeCaption);
   modeCaption->Show();
+
+  // The coach mode tip, under the arrangement it describes. Three short lines rather
+  // than a paragraph: who has the bench, then the pad, then the keyboard. Hidden
+  // outright when nobody is coaching, because then there is nothing to say.
+  for (int i = 0; i < kTipLineCount; i++) {
+    Gui2Caption* line = new Gui2Caption(windowManager, "caption_coachtip" + int_to_str(i), 4,
+                                        88.0f + 3.0f * i, 92, 2.5f, "");
+    this->AddView(line);
+    line->Hide();
+    tipCaptions.push_back(line);
+  }
   streamerMode = GetConfiguration()->GetBool("coach_mode", false);
   UpdateModeCaption();
 
@@ -250,8 +263,30 @@ void ControllerSelectPage::UpdateModeCaption() {
       playing[teamID]++;
   }
   const CoachMode::Setup setup = CoachMode::FromSelections(playing, coaching, streamerMode);
-  std::string line = streamerMode ? TR("controllerselect_streamer") : CoachMode::Describe(setup);
-  modeCaption->SetCaption(line + "   " + TR("controllerselect_coach_keys"));
+  modeCaption->SetCaption(streamerMode ? TR("controllerselect_streamer")
+                                       : CoachMode::Describe(setup));
+
+  // The names cost a database read each, so only when the arrangement changed to one
+  // that will actually print them.
+  std::string names[2];
+  if (CoachMode::IsCoachMode(setup)) {
+    for (int team = 0; team < 2; team++) {
+      const int databaseID = GetMenuTask()->GetTeamID(team);
+      if (databaseID <= 0)
+        continue;
+      TeamData teamData(databaseID);
+      names[team] = teamData.GetName();
+    }
+  }
+  const std::vector<std::string> tip = CoachMode::TipLines(setup, names[0], names[1]);
+  for (unsigned int i = 0; i < tipCaptions.size(); i++) {
+    if (i < tip.size()) {
+      tipCaptions.at(i)->SetCaption(tip.at(i));
+      tipCaptions.at(i)->Show();
+    } else {
+      tipCaptions.at(i)->Hide();
+    }
+  }
 }
 
 void ControllerSelectPage::Process() {
