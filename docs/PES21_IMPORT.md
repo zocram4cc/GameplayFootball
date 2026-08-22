@@ -54,6 +54,22 @@ like its master — so `retarget.resolve_bone` collapses them losslessly
 `pes_skl.py`). What IS lost: Fox's runtime constraints (twist
 distribution, clavicle aim) — GF does not emulate them.
 
+**Why the fingers cannot simply be added back.** Skin weights ride vertex colours,
+and the engine reads a channel as `jointID = floor(colour * 255 / 10)`
+(`humanoidbase.cpp`) — so the rig has room for **25 joints and no more**. Twenty are
+in use. PES's hand rig is `skh_*` at three bones a finger, thirty across two hands,
+which does not fit in the five that are left and would not fit if the whole rig were
+free. Importing PES's finger animation therefore means changing how a weight is
+stored, not adding channels to a clip, and that reaches every model, every animation
+and the skinning path.
+
+What is done instead: `hand_pose.py` curls the hands out of PES's splayed bind pose
+once, at conversion, so they hold a natural shape rather than a modelling pose. They
+are the right size at any player's build — the engine multiplies every vertex of the
+fullbody geometry by `zMultiplier = height / defaultPlayerHeight` before skinning it,
+and the hands are meshes inside that geometry rather than something attached to it
+(pinned by `SkinningTransform.AHandScalesWithThePlayer`).
+
 | Thing | Format | Where |
 |---|---|---|
 | Player model | 3ds Max ASE `GEOMOBJECT`s with skin weights in vertex colours (channel = jointID·10 + weight·9, three influences) referenced by an `.object` XML; default body = the imported PES base player (`fullbody_pes`, config key `player_body`) | `data/media/objects/players/` |
