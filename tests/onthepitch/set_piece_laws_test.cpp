@@ -146,3 +146,117 @@ TEST(BallRadius, APlayerAlreadyBackIsLeftWhereHeIs) {
   EXPECT_FLOAT_EQ(x, 20.0f);
   EXPECT_FLOAT_EQ(y, 3.0f);
 }
+
+// How clear is clear.
+//
+// Recorded in a match: the opponents did walk out of the box, and the kick went the
+// moment the last of them crossed the line - with him still standing on it, half a
+// step from where he had been. The clearing happened and bought nothing.
+//
+// The gate that lets the taker kick therefore has to be a little wider than the area
+// itself, and narrower than the place the players are walking to, or a man who stops
+// exactly on his target would never quite satisfy it.
+
+TEST(SetPieceLaws, TheGateIsWiderThanTheAreaAndInsideTheWalk) {
+  EXPECT_GT(SetPieceLaws::kGateMargin, 0.0f);
+  EXPECT_LT(SetPieceLaws::kGateMargin, SetPieceLaws::kClearanceMargin);
+}
+
+TEST(SetPieceLaws, StandingOnTheLineStillHoldsTheKick) {
+  const float pitchHalfW = 55.0f;
+  const int side = 1;
+  // Just outside the 16.5 m line: out of the area by the letter, not out of the way.
+  const float x = pitchHalfW - SetPieceLaws::kAreaDepth - 0.2f;
+  EXPECT_FALSE(SetPieceLaws::InsidePenaltyArea(x, 0.0f, side, pitchHalfW));
+  EXPECT_TRUE(SetPieceLaws::IntrudesOnPenaltyArea(x, 0.0f, side, pitchHalfW));
+}
+
+TEST(SetPieceLaws, AManOnHisClearingTargetLetsTheKickGo) {
+  const float pitchHalfW = 55.0f;
+  const int side = 1;
+  float x = 0.0f, y = 0.0f;
+  SetPieceLaws::ClearingTarget(pitchHalfW - 4.0f, 2.0f, side, pitchHalfW, &x, &y);
+  EXPECT_FALSE(SetPieceLaws::IntrudesOnPenaltyArea(x, y, side, pitchHalfW));
+}
+
+TEST(SetPieceLaws, EveryClearingTargetSatisfiesTheGate) {
+  // Whatever corner of the area he starts in, walking to his target is enough.
+  const float pitchHalfW = 55.0f;
+  for (int side = -1; side <= 1; side += 2) {
+    for (float depth = 0.0f; depth <= SetPieceLaws::kAreaDepth; depth += 1.5f) {
+      for (float y = -SetPieceLaws::kAreaHalfWidth; y <= SetPieceLaws::kAreaHalfWidth;
+           y += 2.5f) {
+        const float x = (pitchHalfW - depth) * static_cast<float>(side);
+        float outX = 0.0f, outY = 0.0f;
+        SetPieceLaws::ClearingTarget(x, y, side, pitchHalfW, &outX, &outY);
+        EXPECT_FALSE(SetPieceLaws::IntrudesOnPenaltyArea(outX, outY, side, pitchHalfW))
+            << "from x " << x << " y " << y;
+      }
+    }
+  }
+}
+
+TEST(SetPieceLaws, BackingOffToTheEdgeOfNineMetresStillHoldsIt) {
+  // 9.16 m from the ball is legal and useless: he is still on top of the kick.
+  EXPECT_FALSE(SetPieceLaws::InsideBallRadius(SetPieceLaws::kRetreatRadius + 0.01f, 0.0f,
+                                              0.0f, 0.0f));
+  EXPECT_TRUE(SetPieceLaws::IntrudesOnBallRadius(SetPieceLaws::kRetreatRadius + 0.01f, 0.0f,
+                                                 0.0f, 0.0f));
+}
+
+TEST(SetPieceLaws, EveryRetreatTargetSatisfiesTheGate) {
+  for (float angle = 0.0f; angle < 6.28f; angle += 0.7f) {
+    for (float distance = 0.0f; distance < SetPieceLaws::kRetreatRadius; distance += 1.5f) {
+      const float x = 12.0f + distance * std::cos(angle);
+      const float y = 3.0f + distance * std::sin(angle);
+      float outX = 0.0f, outY = 0.0f;
+      SetPieceLaws::RetreatTarget(x, y, 12.0f, 3.0f, &outX, &outY);
+      EXPECT_FALSE(SetPieceLaws::IntrudesOnBallRadius(outX, outY, 12.0f, 3.0f))
+          << "from x " << x << " y " << y;
+    }
+  }
+}
+
+TEST(SetPieceLaws, AManInTheGateBandIsAlsoSentOut) {
+  // Half a metre outside the painted line: he holds the kick up, so he has to be
+  // asked to move, or nothing releases it and every restart waits out the cap.
+  const float pitchHalfW = 55.0f;
+  const int side = 1;
+  const float x = pitchHalfW - SetPieceLaws::kAreaDepth - 0.5f;
+  ASSERT_TRUE(SetPieceLaws::IntrudesOnPenaltyArea(x, 0.0f, side, pitchHalfW));
+  float outX = x, outY = 0.0f;
+  SetPieceLaws::ClearingTarget(x, 0.0f, side, pitchHalfW, &outX, &outY);
+  EXPECT_NE(outX, x);
+  EXPECT_FALSE(SetPieceLaws::IntrudesOnPenaltyArea(outX, outY, side, pitchHalfW));
+}
+
+TEST(SetPieceLaws, AManWellClearIsLeftWhereHeIs) {
+  const float pitchHalfW = 55.0f;
+  const int side = 1;
+  const float x = pitchHalfW - SetPieceLaws::kAreaDepth - 8.0f;
+  float outX = x, outY = 3.0f;
+  SetPieceLaws::ClearingTarget(x, 3.0f, side, pitchHalfW, &outX, &outY);
+  EXPECT_FLOAT_EQ(outX, x);
+  EXPECT_FLOAT_EQ(outY, 3.0f);
+}
+
+TEST(SetPieceLaws, EveryStartingPointInTheGateLeavesIt) {
+  // Swept over the whole gate region, including the band outside the paint and the
+  // corners, where going sideways alone is not enough.
+  const float pitchHalfW = 55.0f;
+  for (int side = -1; side <= 1; side += 2) {
+    for (float depth = -SetPieceLaws::kGateMargin; depth <= SetPieceLaws::kAreaDepth +
+                                                                SetPieceLaws::kGateMargin;
+         depth += 0.7f) {
+      for (float y = -(SetPieceLaws::kAreaHalfWidth + SetPieceLaws::kGateMargin);
+           y <= SetPieceLaws::kAreaHalfWidth + SetPieceLaws::kGateMargin; y += 1.3f) {
+        const float x = (pitchHalfW - depth) * static_cast<float>(side);
+        if (!SetPieceLaws::IntrudesOnPenaltyArea(x, y, side, pitchHalfW)) continue;
+        float outX = 0.0f, outY = 0.0f;
+        SetPieceLaws::ClearingTarget(x, y, side, pitchHalfW, &outX, &outY);
+        EXPECT_FALSE(SetPieceLaws::IntrudesOnPenaltyArea(outX, outY, side, pitchHalfW))
+            << "from x " << x << " y " << y;
+      }
+    }
+  }
+}

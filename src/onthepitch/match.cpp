@@ -75,7 +75,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   replayState->dirty = false;
 
-  resetNetting = false;
+
   nettingHasChanged = false;
 
   matchDurationMinutes = kDefaultMatchDurationMinutes;
@@ -5208,79 +5208,155 @@ void Match::PrepareGoalNetting() {
     }
   }
 
+  // Which meshes are netting, and where every corner of them lives.
+  //
+  // This used to be decided per vertex, by whether it sat more than 6 cm beyond the
+  // goal line - "don't catch woodwork, only netting.. DIRTY HAXX", and it caught a
+  // triangle's far corners while leaving the ones on the line behind, which cannot
+  // make a surface. The netting is the meshes wearing the netting texture, which is
+  // how the swap above already finds them: sixteen of them, eight per goal, and the
+  // woodwork is not among them.
+  //
+  // A triangle mesh here is a soup - three corners per face, an interior vertex
+  // appearing in as many faces as touch it - so the same point of net arrives up to
+  // six times. Simulated as separate points a shared corner would pull apart, so the
+  // cloth is built over distinct positions and every copy is written from the one
+  // that owns it.
+  std::map<std::tuple<int, int, int>, int> welded[2];
+  std::vector<Vector3> weldedRest[2];
+  std::vector<int> weldedFaces[2];
   for (unsigned int m = 0; m < triangleMesh.size(); m++) {
-    for (int i = 0; i < triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();
-         i += 3) {
-      int goalID = -1;
-      if (triangleMesh.at(m).vertices[i + 0] < -pitchHalfW - 0.06f)
-        goalID = 0;  // don't catch woodwork, only netting.. DIRTY HAXX
-      if (triangleMesh.at(m).vertices[i + 0] > pitchHalfW + 0.06f)
-        goalID = 1;
-      if (goalID >= 0) {
-        nettingMeshesSrc[goalID].push_back(Vector3(triangleMesh.at(m).vertices[i + 0],
-                                                   triangleMesh.at(m).vertices[i + 1],
-                                                   triangleMesh.at(m).vertices[i + 2]));
-        nettingMeshes[goalID].push_back(&(triangleMesh.at(m).vertices[i]));
+    if (!triangleMesh.at(m).material.diffuseTexture) continue;
+    if (triangleMesh.at(m).material.diffuseTexture->GetIdentString().find("goalnetting") ==
+        std::string::npos)
+      continue;
+    const int floats = triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();
+    for (int i = 0; i + 8 < floats; i += 9) {
+      // Whole triangles, sorted by which half they are in. A net panel never
+      // straddles the halfway line, so its own corners never disagree.
+      const float centre = (triangleMesh.at(m).vertices[i + 0] +
+                            triangleMesh.at(m).vertices[i + 3] +
+                            triangleMesh.at(m).vertices[i + 6]) / 3.0f;
+      const int goalID = centre < 0.0f ? 0 : 1;
+      for (int corner = 0; corner < 3; corner++) {
+        const int at = i + corner * 3;
+        const Vector3 position(triangleMesh.at(m).vertices[at + 0],
+                               triangleMesh.at(m).vertices[at + 1],
+                               triangleMesh.at(m).vertices[at + 2]);
+        const std::tuple<int, int, int> key(std::lround(position.coords[0] * 1000.0f),
+                                            std::lround(position.coords[1] * 1000.0f),
+                                            std::lround(position.coords[2] * 1000.0f));
+        std::map<std::tuple<int, int, int>, int>::iterator found = welded[goalID].find(key);
+        if (found == welded[goalID].end()) {
+          found = welded[goalID].insert(std::make_pair(key,
+                                                       (int)weldedRest[goalID].size())).first;
+          weldedRest[goalID].push_back(position);
+        }
+        nettingMeshesSrc[goalID].push_back(position);
+        nettingMeshes[goalID].push_back(&(triangleMesh.at(m).vertices[at]));
+        nettingWeld[goalID].push_back(found->second);
+        weldedFaces[goalID].push_back(found->second);
       }
+    }
+  }
+
+  // Where the net is held.
+  //
+  // Not its border: it has none. PES models netting two-sided - measured on this
+  // goal, 1496 of its edges are used by more than two triangles and not one is used
+  // by a single triangle - so the whole thing is a closed bag and reading a free
+  // edge off it finds nothing. Hung from nothing it fell 2.63 m on the first two
+  // seconds of settling.
+  //
+  // What holds a goal net is the goal. The woodwork here is only the posts and the
+  // crossbar - a 10 cm frame on the goalmouth plane, no rear stanchion - so the net
+  // is tied along its mouth, pegged to the ground all round its foot, and carried
+  // along its rear top edge, which is where a goal's rear support runs. Everything
+  // between is free, which is what lets a shot billow it.
+  //
+  // Taken from each net's own bounds rather than the pitch constants, so a stadium
+  // whose goals are modelled deeper or taller holds together the same way.
+  for (int goalID = 0; goalID < 2; goalID++) {
+    if (weldedRest[goalID].empty()) continue;
+    const std::vector<Vector3>& points = weldedRest[goalID];
+    float minX = points[0].coords[0], maxX = minX;
+    float minZ = points[0].coords[2], maxZ = minZ;
+    for (const Vector3& p : points) {
+      minX = std::min(minX, p.coords[0]);
+      maxX = std::max(maxX, p.coords[0]);
+      minZ = std::min(minZ, p.coords[2]);
+      maxZ = std::max(maxZ, p.coords[2]);
+    }
+    // The mouth is the end nearest the halfway line; the back is the other one.
+    const bool negativeGoal = points[0].coords[0] < 0.0f;
+    const float mouthX = negativeGoal ? maxX : minX;
+    const float backX = negativeGoal ? minX : maxX;
+
+    std::vector<bool> held =
+        VerticesOnPlane(points, 0, mouthX, kNettingAttachment_m);  // tied to the woodwork
+    UnionInto(held, VerticesOnPlane(points, 2, minZ, kNettingAttachment_m));  // pegged down
+    UnionInto(held, Both(VerticesOnPlane(points, 0, backX, kNettingAttachment_m),
+                         VerticesOnPlane(points, 2, maxZ, kNettingAttachment_m)));
+
+    nettingCloth[goalID].Build(points, held, LinksFromTriangles(weldedFaces[goalID]));
+    // Taut in the file, so let it take up its own sag before anyone sees it.
+    for (int i = 0; i < kNettingSettleSteps; i++) {
+      nettingCloth[goalID].Step(kNettingStep_s, Vector3(0, 0, -kNettingGravity),
+                                kNettingDamping, kNettingIterations);
+    }
+    Log(e_Notice, "Match", "PrepareGoalNetting",
+        "goal " + int_to_str(goalID) + ": " + int_to_str((int)points.size()) +
+            " net point(s) from " + int_to_str((int)nettingMeshes[goalID].size()) +
+            " corner(s), " + int_to_str((int)std::count(held.begin(), held.end(), true)) +
+            " held, sag " + int_to_str((int)(nettingCloth[goalID].Displacement() * 1000)) +
+            " mm");
+  }
+  WriteGoalNetting();
+  nettingHasChanged = true;
+}
+
+// The cloth's points scattered back over every copy of them the mesh holds.
+void Match::WriteGoalNetting() {
+  for (int goalID = 0; goalID < 2; goalID++) {
+    const std::vector<Vector3>& points = nettingCloth[goalID].Positions();
+    if (points.empty()) continue;
+    for (unsigned int i = 0; i < nettingMeshes[goalID].size(); i++) {
+      const Vector3& p = points[nettingWeld[goalID][i]];
+      nettingMeshes[goalID][i][0] = p.coords[0];
+      nettingMeshes[goalID][i][1] = p.coords[1];
+      nettingMeshes[goalID][i][2] = p.coords[2];
     }
   }
 }
 
 void Match::UpdateGoalNetting(bool ballTouchesNet) {
   nettingHasChanged = false;
-  int sideID = (ball->GetBallGeom()->GetPosition().coords[0] < 0) ? 0 : 1;
-  if (ballTouchesNet) {
-    // find vertex closest to ball
-    float shortestDistance = 100000.0f;
-    // int shortestDistanceID = 0;
-    for (unsigned int i = 0; i < nettingMeshes[sideID].size(); i++) {
-      Vector3 vertex = nettingMeshesSrc[sideID][i];
-      float distance = vertex.GetDistance(ball->GetBallGeom()->GetPosition());
-      if (distance < shortestDistance) {
-        shortestDistance = distance;
-        // shortestDistanceID = i;
-      }
-    }
 
-    // pull vertices towards ball - the closer, the more intense
-    for (unsigned int i = 0; i < nettingMeshes[sideID].size(); i++) {
-      const Vector3& vertex = nettingMeshesSrc[sideID][i];
-      float falloffDistance = 4.0f;
-      // float influenceBias = clamp(1.0f - (vertex.GetDistance(ball->GetBallGeom()->GetPosition())
-      // - shortestDistance) / falloffDistance, 0.0f, 1.0f);
-      float influenceBias =
-          pow(clamp((shortestDistance + 0.0001f) /
-                        (vertex.GetDistance(ball->GetBallGeom()->GetPosition()) + 0.0001f),
-                    0.0f, 1.0f),
-              1.5f);
-      // net is stuck to woodwork so lay off there
-      float woodworkTensionBiasInv = clamp(
-          (fabs(ball->GetBallGeom()->GetPosition().coords[0]) - pitchHalfW) * 2.0f, 0.0f, 1.0f);
-      influenceBias *= woodworkTensionBiasInv;
-      // http://www.wolframalpha.com/input/?i=sin%28x+*+pi+-+0.5+*+pi%29+*+0.5+%2B+0.5+from+x+%3D+0+to+1
-      influenceBias = sin(influenceBias * pi - 0.5f * pi) * 0.5f + 0.5f;
-      if (influenceBias > 0.0f) {
-        Vector3 result =
-            vertex * (1.0f - influenceBias) + ball->GetBallGeom()->GetPosition() * influenceBias;
-        static_cast<float*>(nettingMeshes[sideID][i])[0] = result.coords[0];
-        static_cast<float*>(nettingMeshes[sideID][i])[1] = result.coords[1];
-        static_cast<float*>(nettingMeshes[sideID][i])[2] = result.coords[2];
-      }
-    }
-    resetNetting = true;  // make sure to reset next time
-    nettingHasChanged = true;
+  // The net used to be moved by hand: on the frame the ball touched it every vertex
+  // was dragged straight at the ball by how close it was, and on the frame the ball
+  // left, all of them were written back to the pose in the file. It had no weight,
+  // no give and no memory - it snapped out and snapped back.
+  //
+  // Now the ball only pushes the net out of its own way and the cloth does the rest,
+  // so it billows, comes back and settles.
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  const float elapsed = (now - nettingTime_ms) * 0.001f;
+  nettingTime_ms = now;
+  if (elapsed <= 0.0f) return;
 
-  } else if (resetNetting) {  // ball doesn't touch net (anymore), reset
-    for (int sideID = 0; sideID < 2; sideID++) {
-      for (unsigned int i = 0; i < nettingMeshes[sideID].size(); i++) {
-        static_cast<float*>(nettingMeshes[sideID][i])[0] = nettingMeshesSrc[sideID][i].coords[0];
-        static_cast<float*>(nettingMeshes[sideID][i])[1] = nettingMeshesSrc[sideID][i].coords[1];
-        static_cast<float*>(nettingMeshes[sideID][i])[2] = nettingMeshesSrc[sideID][i].coords[2];
-      }
-    }
-    resetNetting = false;
+  const int sideID = (ball->GetBallGeom()->GetPosition().coords[0] < 0) ? 0 : 1;
+  for (int goalID = 0; goalID < 2; goalID++) {
+    Cloth& cloth = nettingCloth[goalID];
+    if (cloth.Empty()) continue;
+    const bool pushed = ballTouchesNet && goalID == sideID;
+    if (pushed) cloth.Push(ball->GetBallGeom()->GetPosition(), kNettingBallRadius);
+    // A net at rest is most of a match. Its sag holds it a long way from the pose in
+    // the file for good, so what says it has stopped is that it is not moving.
+    if (!pushed && cloth.Speed() < kNettingSettled_m) continue;
+    cloth.Step(elapsed, Vector3(0, 0, -kNettingGravity), kNettingDamping, kNettingIterations);
     nettingHasChanged = true;
   }
+  if (nettingHasChanged) WriteGoalNetting();
 }
 
 void Match::UploadGoalNetting() {

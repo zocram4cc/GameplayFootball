@@ -186,6 +186,7 @@ set(LOADERS_SOURCES
         src/utils/faceanim.cpp
         src/utils/facerigdata.cpp
         src/utils/camtrack.cpp
+        src/utils/cloth.cpp
    src/utils/instancelist.cpp
         src/utils/entrancechoreo.cpp
         src/onthepitch/player/humanoid/facerig.cpp

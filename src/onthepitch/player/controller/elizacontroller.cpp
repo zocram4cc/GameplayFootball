@@ -144,8 +144,8 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
             pending, match->GetReferee()->GetBuffer().restartPos.coords[0], defendedSide,
             pitchHalfW)) {
       const Vector3 here = player->GetPosition();
-      if (SetPieceLaws::InsidePenaltyArea(here.coords[0], here.coords[1], defendedSide,
-                                         pitchHalfW)) {
+      if (SetPieceLaws::IntrudesOnPenaltyArea(here.coords[0], here.coords[1], defendedSide,
+                                             pitchHalfW)) {
         float targetX = here.coords[0], targetY = here.coords[1];
         SetPieceLaws::ClearingTarget(here.coords[0], here.coords[1], defendedSide, pitchHalfW,
                                     &targetX, &targetY);
@@ -167,8 +167,8 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     if (!ourKick && SetPieceLaws::ClearsTheBallRadius(pending)) {
       const Vector3 here = player->GetPosition();
       const Vector3 ball = match->GetBall()->Predict(0).Get2D();
-      if (SetPieceLaws::InsideBallRadius(here.coords[0], here.coords[1], ball.coords[0],
-                                        ball.coords[1])) {
+      if (SetPieceLaws::IntrudesOnBallRadius(here.coords[0], here.coords[1], ball.coords[0],
+                                            ball.coords[1])) {
         float targetX = here.coords[0], targetY = here.coords[1];
         SetPieceLaws::RetreatTarget(here.coords[0], here.coords[1], ball.coords[0],
                                    ball.coords[1], &targetX, &targetY);

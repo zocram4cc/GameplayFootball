@@ -81,6 +81,11 @@ protected:
   RefereeBuffer buffer;
   // Whether the "goal kick held" notice has already been logged for this restart.
   bool clearingLogged = false;
+  // When the current restart was first held for a player in the way, so the release
+  // can say how long the taker waited and how far the man had gone.
+  unsigned long clearingHeldFrom_ms = 0;
+  float clearingNearest_m = 0.0f;
+  std::string clearingRule;
 
   int afterSetPieceRelaxTime_ms;  // throw-ins cause immediate new throw-ins, because ball is still
                                   // outside the lines at the moment of throwing ;)
