@@ -36,6 +36,7 @@ import sys
 
 import ase_util
 import retarget
+import seams
 
 GF_JOINT_ORDER = list(retarget.GF_JOINT_ORDER)
 JOINT_ID = dict(retarget.JOINT_ID)
@@ -102,6 +103,29 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
 # An influence this small is noise: the engine drops any channel decoding to
 # <= 0.01 anyway, and keeping it costs one of the three slots.
 MIN_INFLUENCE = 0.02
+
+
+def decode_color(color):
+    """Three ASE colour channels -> [(jointID, weight)], as the engine reads them.
+
+    The inverse of encode_color, and the engine's own arithmetic
+    (humanoidbase.cpp): round the channel to 0..255, the joint is that over ten and
+    the weight the remainder over nine, and what survives is renormalised. Used where
+    a pass has to reason about weights that have already been written - reconciling a
+    seam between two parts, where what matters is what the engine will actually skin
+    with rather than what the source said.
+    """
+    joints = []
+    for channel in color:
+        raw = int(round(channel * 255))
+        joint = raw // 10
+        weight = (raw - joint * 10) / 9.0
+        if weight > MIN_INFLUENCE:
+            joints.append((joint, weight))
+    total = sum(weight for _, weight in joints)
+    if total <= 0.0:
+        return []
+    return [(joint, weight / total) for joint, weight in joints]
 
 
 def encode_color(joints):
@@ -429,6 +453,21 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             # (4cc exports double every mesh so they hid this; Konami's
             # single-sided originals do not.)
             faces.append((tri[0], tri[2], tri[1]))
+
+    # A character is grouped by texture, and two groups that cover the same place -
+    # a sleeve's texture against a torso's - are weighted independently, so where
+    # they meet one comes through the other as soon as the joint between them turns
+    # (seams.py). Reconciled before anything is cut or written, over the whole
+    # character at once.
+    if len(groups) > 1:
+        parts = [(group[0], group[1], group[2]) for group in groups]
+        agreed = seams.reconcile(parts)
+        changed, migrated = seams.reconciled_count(parts, agreed)
+        for group, (_, vertices, _) in zip(groups, agreed):
+            group[1] = vertices
+        if changed:
+            print("  seams: %d vertex weight(s) reconciled between groups, %d changed bone"
+                  % (changed, migrated))
 
     if max_edge != 0.0:
         # The cut follows the mesh rather than a fixed metre value. An absolute 0.15 m
