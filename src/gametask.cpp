@@ -226,7 +226,8 @@ void GameTask::PutPhase() {
       TaskManager::GetInstance().EnqueueWork(updateFullbodyModel, true);
     }
 
-    match->UploadGoalNetting();  // won't this block the whole process thing too? (opengl busy ==
+    match->UploadGoalNetting();
+    match->UploadCornerFlags();  // won't this block the whole process thing too? (opengl busy ==
                                  // wait, while mutex locked == no process)
   }
 

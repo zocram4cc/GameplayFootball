@@ -288,3 +288,54 @@ TEST(Cloth, VerticesNearAnAxisAreHeld) {
   EXPECT_TRUE(held[1]);
   EXPECT_FALSE(held[2]);
 }
+
+TEST(Cloth, AFlagHangsFromItsPole) {
+  // A corner flag is one prop: a pole on the axis, a disc round its foot and two
+  // panels hanging off one side. Pinning what is near the axis holds the pole and
+  // the disc rigid and leaves the cloth free, without knowing which mesh is which.
+  std::vector<Vector3> rest;
+  std::vector<bool> fixed;
+  // pole: a column of points on the axis
+  for (int i = 0; i <= 8; i++) rest.push_back(Vector3(0, 0, i * 0.2f));
+  // the panel: a 3x3 grid hanging out to -x from the top of the pole
+  for (int row = 0; row < 3; row++)
+    for (int col = 0; col < 3; col++)
+      rest.push_back(Vector3(-col * 0.2f, 0, 1.6f - row * 0.15f));
+  fixed = blunted::VerticesNearAxis(rest, Vector3(0, 0, 0), Vector3(0, 0, 1), 0.12f);
+  // The pole is held, and so is the panel's attached edge; the outer corners are not.
+  for (int i = 0; i <= 8; i++) EXPECT_TRUE(fixed[i]) << "pole point " << i;
+  EXPECT_TRUE(fixed[9]);
+  EXPECT_FALSE(fixed[11]);
+
+  std::vector<std::pair<int, int>> links;
+  for (int i = 0; i < 8; i++) links.push_back({i, i + 1});
+  for (int row = 0; row < 3; row++)
+    for (int col = 0; col < 3; col++) {
+      const int at = 9 + row * 3 + col;
+      if (col < 2) links.push_back({at, at + 1});
+      if (row < 2) links.push_back({at, at + 3});
+    }
+  Cloth cloth;
+  cloth.Build(rest, fixed, links);
+  const Vector3 tipWas = cloth.Positions()[9 + 2];
+  for (int i = 0; i < 400; i++) cloth.Step(0.02f, kGravity, 0.94f, 3);
+  // The pole did not move and the free corner of the flag dropped.
+  EXPECT_FLOAT_EQ(cloth.Positions()[8].coords[2], 1.6f);
+  EXPECT_LT(cloth.Positions()[9 + 2].coords[2], tipWas.coords[2]);
+}
+
+TEST(Cloth, WindPushesAFlagOut) {
+  Cloth still;
+  Cloth blown;
+  const std::vector<Vector3> rest = {Vector3(0, 0, 1.6f), Vector3(-0.3f, 0, 1.6f)};
+  const std::vector<bool> fixed = {true, false};
+  still.Build(rest, fixed, {{0, 1}});
+  blown.Build(rest, fixed, {{0, 1}});
+  for (int i = 0; i < 200; i++) {
+    still.Step(0.02f, kGravity, 0.94f, 3);
+    blown.Step(0.02f, kGravity + Vector3(0, 14.0f, 0), 0.94f, 3);
+  }
+  // Blown sideways, the free end swings out of the plane it hung in.
+  EXPECT_NEAR(still.Positions()[1].coords[1], 0.0f, 1e-3f);
+  EXPECT_GT(blown.Positions()[1].coords[1], 0.05f);
+}
