@@ -14,6 +14,7 @@
 #include "match.hpp"
 #include "matchprogression.hpp"
 #include "offsiderule.hpp"
+#include "setpiecelaws.hpp"
 #include "refereeprofile.hpp"
 #include "scene/objectfactory.hpp"
 
@@ -26,7 +27,11 @@ Referee::Referee(Match* match) : match(match) {
   buffer.restartPos = Vector3(0, 0, 0);
   buffer.taker = nullptr;
   buffer.endPhase = true;
+  buffer.prepared = false;
+  buffer.started = false;
   buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
 
   // Referee temperament, configurable per match; "standard" reproduces the
   // historical thresholds.
@@ -126,6 +131,8 @@ void Referee::Process() {
         buffer.startTime = buffer.prepareTime + 2000;
         buffer.restartPos = Vector3(0);
         buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
         buffer.endPhase = true;
         if (match->GetMatchPhase() == e_MatchPhase_1stHalf ||
             match->GetMatchPhase() == e_MatchPhase_1stExtraTime) {
@@ -202,6 +209,8 @@ void Referee::Process() {
         }
 
         buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
       }
     }
 
@@ -228,6 +237,8 @@ void Referee::Process() {
             buffer.restartPos.coords[1] = -pitchHalfH;
           buffer.restartPos.coords[2] = 0;
           buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
         }
       }
     }
@@ -237,14 +248,14 @@ void Referee::Process() {
   } else {  // not in play, maybe something needs to happen?
 
     if (!match->IsInPlay() && !match->IsInSetPiece() && buffer.active == true) {
-      if (buffer.stopTime + 300 == match->GetActualTime_ms() && buffer.endPhase == false &&
+      if (buffer.stopTime + 300 <= match->GetActualTime_ms() && buffer.endPhase == false &&
           buffer.desiredSetPiece != e_SetPiece_KickOff) {
         whistle[1]->SetGain(0.3 * GetConfiguration()->GetReal("audio_volume", 0.5));
         whistle[1]->Poke(e_SystemType_Audio);
       }
 
       // Play has stopped: settle any bookings owed from advantages played.
-      if (CardBook::HasPending(cardBook) && buffer.stopTime + 300 == match->GetActualTime_ms())
+      if (CardBook::HasPending(cardBook) && buffer.stopTime + 300 <= match->GetActualTime_ms())
         IssueDeferredCards();
 
       // Hold the kickoff for the match entrance. The teams walk out and line up
@@ -254,13 +265,16 @@ void Referee::Process() {
       // re-prepared at the end of the entrance to put them back on their marks.
       if (match->IsInEntrance() && buffer.desiredSetPiece == e_SetPiece_KickOff &&
           buffer.prepareTime < match->GetEntranceEndTime_ms()) {
-        if (buffer.prepareTime == match->GetActualTime_ms())
+        if (!buffer.prepared && buffer.prepareTime <= match->GetActualTime_ms()) {
+          buffer.prepared = true;
           PrepareSetPiece(buffer.desiredSetPiece);
+        }
         buffer.prepareTime = match->GetEntranceEndTime_ms();
         buffer.startTime = buffer.prepareTime + 2000;
       }
 
-      if (buffer.prepareTime == match->GetActualTime_ms()) {
+      if (!buffer.prepared && buffer.prepareTime <= match->GetActualTime_ms()) {
+        buffer.prepared = true;
         if (buffer.endPhase == true) {
           if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {
             match->SetMatchPhase(e_MatchPhase_1stHalf);
@@ -277,7 +291,61 @@ void Referee::Process() {
         PrepareSetPiece(buffer.desiredSetPiece);
       }
 
-      if (buffer.startTime == match->GetActualTime_ms()) {
+      // Law 16: the taker waits for the opponents to leave the penalty area. They walk
+      // out on their own (elizacontroller.cpp); this holds the whistle until they have,
+      // for a bounded time so a wedged player cannot freeze the match.
+      Team* restartTeam = match->GetTeam(buffer.teamID);
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms() &&
+          SetPieceLaws::ClearsThePenaltyArea(buffer.desiredSetPiece, buffer.restartPos.coords[0],
+                                             restartTeam->GetSide(), pitchHalfW)) {
+        Team* takerTeam = restartTeam;
+        Team* opponents = match->GetTeam(abs(buffer.teamID - 1));
+        std::vector<Player*> squad;
+        opponents->GetActivePlayers(squad);
+        int intruders = 0;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          if (SetPieceLaws::InsidePenaltyArea(at.coords[0], at.coords[1], takerTeam->GetSide(),
+                                             pitchHalfW))
+            intruders++;
+        }
+        (void)opponents;
+        if (!SetPieceLaws::MayRestart(intruders, match->GetActualTime_ms() - buffer.prepareTime)) {
+          buffer.startTime = match->GetActualTime_ms() + 10;
+          if (!clearingLogged) {
+            clearingLogged = true;
+            Log(e_Notice, "Referee", "Process",
+                "restart held: " + int_to_str(intruders) + " opponent(s) still in the area");
+          }
+        }
+      }
+
+      // Law 13: and the same wait for a free kick or a corner, measured from the ball.
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms() &&
+          SetPieceLaws::ClearsTheBallRadius(buffer.desiredSetPiece)) {
+        std::vector<Player*> squad;
+        match->GetTeam(abs(buffer.teamID - 1))->GetActivePlayers(squad);
+        const Vector3 ball = match->GetBall()->Predict(0).Get2D();
+        int tooClose = 0;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          if (SetPieceLaws::InsideBallRadius(at.coords[0], at.coords[1], ball.coords[0],
+                                            ball.coords[1]))
+            tooClose++;
+        }
+        if (!SetPieceLaws::MayRestart(tooClose, match->GetActualTime_ms() - buffer.prepareTime)) {
+          buffer.startTime = match->GetActualTime_ms() + 10;
+          if (!clearingLogged) {
+            clearingLogged = true;
+            Log(e_Notice, "Referee", "Process",
+                "restart held: " + int_to_str(tooClose) + " opponent(s) inside nine metres");
+          }
+        }
+      }
+
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms()) {
+        buffer.started = true;
+        clearingLogged = false;
         // blow whistle and wait for set piece taker to touch the ball
         whistle[1]->SetGain(0.3 * GetConfiguration()->GetReal("audio_volume", 0.5));
         whistle[1]->Poke(e_SystemType_Audio);
@@ -338,6 +406,10 @@ void Referee::IssueDeferredCards() {
     // directly-whistled card path does.
     buffer.prepareTime += 6000;
     buffer.startTime = buffer.prepareTime + 2000;
+    // Delayed, so both stages come round again - as they did when these were exact
+    // time comparisons.
+    buffer.prepared = false;
+    buffer.started = false;
     if (lastDeferredPlayer) match->SetCutsceneParticipants(lastDeferredPlayer, nullptr);
     match->StartCutscene(anyRedShown ? "foul/card_red" : "foul/card_yellow", 5.0f);
   }
@@ -358,6 +430,8 @@ void Referee::AlterSetPiecePrepareTime(unsigned long newTime_ms) {
   if (buffer.active) {
     buffer.prepareTime = newTime_ms;
     buffer.startTime = buffer.prepareTime + 2000;
+    buffer.prepared = false;
+    buffer.started = false;
   }
 }
 
@@ -389,6 +463,8 @@ void Referee::BallTouched() {
               OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
           buffer.teamID = abs(lastTouchTeamID - 1);
           buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
           {
             PlayerData* offsidePlayerData = playerIter->first->GetPlayerData();
             match->ShowBanner(lastTouchTeamID, "Offside",
@@ -636,6 +712,8 @@ bool Referee::CheckFoul() {
     }
     buffer.teamID = foul.foulVictim->GetTeam()->GetID();
     buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
     std::string bannerTitle = "Foul";
     if (foul.foulType == 2) {
       bannerTitle = "Yellow Card";

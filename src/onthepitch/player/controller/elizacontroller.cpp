@@ -30,6 +30,7 @@
 #include "data/playertraits.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
+#include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/penaltyshootoutcontroller.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 #include "strategies/offtheball/default_def.hpp"
@@ -128,6 +129,59 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
       command.desiredDirection = player->GetDirectionVec();
     }
     command.desiredVelocityFloat = idleVelocity;
+
+    // Law 16: the opponents leave the penalty area before a goal kick is taken. They
+    // walk out under their own steam - the taker waits for them (referee.cpp) - rather
+    // than being teleported clear at the whistle. Without this a striker standing in
+    // the six-yard box when the kick was awarded simply stayed there, and the kick
+    // could be played to his feet.
+    const e_SetPiece pending = team->GetController()->GetSetPieceType();
+    const bool ourKick = team->GetController()->GetPieceTaker() != nullptr;
+    // The box being kicked out of is the taker's own, which is the side we attack.
+    const int defendedSide = -team->GetSide();
+    if (!ourKick &&
+        SetPieceLaws::ClearsThePenaltyArea(
+            pending, match->GetReferee()->GetBuffer().restartPos.coords[0], defendedSide,
+            pitchHalfW)) {
+      const Vector3 here = player->GetPosition();
+      if (SetPieceLaws::InsidePenaltyArea(here.coords[0], here.coords[1], defendedSide,
+                                         pitchHalfW)) {
+        float targetX = here.coords[0], targetY = here.coords[1];
+        SetPieceLaws::ClearingTarget(here.coords[0], here.coords[1], defendedSide, pitchHalfW,
+                                    &targetX, &targetY);
+        const Vector3 target(targetX, targetY, 0);
+        command.desiredDirection = (target - here).GetNormalized(player->GetDirectionVec());
+        // Jogging, not sprinting: a player asked to step out of the box is not in a
+        // hurry, and a sprint reads as a scramble.
+        command.desiredVelocityFloat = walkVelocity;
+        command.useDesiredLookAt = true;
+        command.desiredLookAt = target;
+        commandQueue.push_back(command);
+        return;
+      }
+    }
+
+    // Law 13: and at a free kick or a corner they stand off the ball. A defender who
+    // was standing over it backs straight out of the circle - facing the ball, because
+    // that is what a man retreating from a free kick does - rather than being shoved.
+    if (!ourKick && SetPieceLaws::ClearsTheBallRadius(pending)) {
+      const Vector3 here = player->GetPosition();
+      const Vector3 ball = match->GetBall()->Predict(0).Get2D();
+      if (SetPieceLaws::InsideBallRadius(here.coords[0], here.coords[1], ball.coords[0],
+                                        ball.coords[1])) {
+        float targetX = here.coords[0], targetY = here.coords[1];
+        SetPieceLaws::RetreatTarget(here.coords[0], here.coords[1], ball.coords[0],
+                                   ball.coords[1], &targetX, &targetY);
+        const Vector3 target(targetX, targetY, 0);
+        command.desiredDirection = (target - here).GetNormalized(player->GetDirectionVec());
+        command.desiredVelocityFloat = walkVelocity;
+        command.useDesiredLookAt = true;
+        command.desiredLookAt = ball;
+        commandQueue.push_back(command);
+        return;
+      }
+    }
+
     if (!match->IsInSetPiece()) {
       command.desiredDirection =
           (player->GetDirectionVec() * 0.6f +

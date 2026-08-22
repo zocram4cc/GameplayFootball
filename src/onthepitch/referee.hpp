@@ -27,6 +27,14 @@ struct RefereeBuffer {
   Vector3 restartPos;
   Player* taker;
   bool endPhase;
+  // Each stage of a restart fires once, when its moment has passed rather than on the
+  // exact tick it falls on. The comparisons here were `==` against the match clock,
+  // which only holds while that clock advances in single steps: under a time scale, or
+  // any frame long enough to skip a tick, the whistle was never blown and the restart
+  // was simply lost - a stoppage that never restarted. Measured: a full match under a
+  // 10x scale produced three kick-offs and not one other set piece.
+  bool prepared;
+  bool started;
 };
 
 struct Foul {
@@ -71,6 +79,8 @@ protected:
   std::shared_ptr<Scene3D> scene3D;
 
   RefereeBuffer buffer;
+  // Whether the "goal kick held" notice has already been logged for this restart.
+  bool clearingLogged = false;
 
   int afterSetPieceRelaxTime_ms;  // throw-ins cause immediate new throw-ins, because ball is still
                                   // outside the lines at the moment of throwing ;)
