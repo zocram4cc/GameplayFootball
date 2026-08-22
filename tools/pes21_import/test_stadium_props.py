@@ -26,6 +26,7 @@ Run: python3 -m unittest test_stadium_props -v
 import math
 import unittest
 
+import stadium_staff
 import stadium_props
 
 
@@ -497,8 +498,6 @@ class DressedMeshByMesh(unittest.TestCase):
         self.assertEqual(stadium_props.dressed_meshes([]), [])
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class APropIsOnePieceOfFurniture(unittest.TestCase):
@@ -563,3 +562,58 @@ class APropIsOnePieceOfFurniture(unittest.TestCase):
         place = stadium_props.prop_placement([[]])
         self.assertAlmostEqual(place["lift"], 0.0)
         self.assertEqual(stadium_props.place_prop_mesh([], place), [])
+
+
+class GroundFootprint(unittest.TestCase):
+    """Where a prop stands: on what touches the grass, not on its own average.
+
+    PES's corner flag is a pole with 0.61 m of cloth hanging off one side of it.
+    Centring the whole prop put the pole 0.30 m off the corner - measured on the
+    installed stadiums, 0.17 m outside the goal line and 0.25 m inside the touchline.
+    """
+
+    def test_pole_with_an_overhang_stands_on_its_pole(self):
+        # A pole on the origin, with a flag hanging out to -x near the top.
+        pole = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.0, 0.0, 1.6)]
+        cloth = [(-0.6, 0.0, 1.3), (0.0, 0.0, 1.6), (-0.6, 0.0, 1.6)]
+        dx, dy = stadium_props.ground_footprint_offset(pole + cloth)
+        self.assertAlmostEqual(dx, -0.01, places=3)
+        self.assertAlmostEqual(dy, 0.0, places=3)
+
+    def test_whole_prop_centring_is_what_moved_it(self):
+        pole = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.0, 0.0, 1.6)]
+        cloth = [(-0.6, 0.0, 1.3), (0.0, 0.0, 1.6), (-0.6, 0.0, 1.6)]
+        dx, _ = stadium_staff.footprint_offset(pole + cloth)
+        self.assertAlmostEqual(dx, 0.29, places=3)
+
+    def test_a_prop_that_all_touches_the_ground_is_unchanged(self):
+        flat = [(1.0, 2.0, 0.0), (3.0, 2.0, 0.0), (3.0, 4.0, 0.0)]
+        self.assertEqual(stadium_props.ground_footprint_offset(flat),
+                         stadium_staff.footprint_offset(flat))
+
+    def test_one_point_of_contact_lands_on_the_mark(self):
+        # A prop balanced on a single vertex stands on that vertex, not on its bulk.
+        spike = [(0.0, 0.0, 0.0), (4.0, 0.0, 1.0), (4.0, 4.0, 1.0)]
+        self.assertEqual(stadium_props.ground_footprint_offset(spike), (0.0, 0.0))
+
+    def test_the_band_only_takes_the_bottom(self):
+        # A tripod's feet, with a metre of lens above them, stand on the feet.
+        feet = [(-0.2, 0.0, 0.0), (0.2, 0.0, 0.0), (0.0, 0.2, 0.02)]
+        lens = [(3.0, 0.0, 1.2), (3.4, 0.0, 1.2), (3.2, 0.4, 1.2)]
+        dx, dy = stadium_props.ground_footprint_offset(feet + lens)
+        self.assertAlmostEqual(dx, 0.0, places=3)
+        self.assertAlmostEqual(dy, -0.1, places=3)
+
+    def test_the_flag_lands_on_the_corner(self):
+        pole = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.0, 0.0, 1.6)]
+        cloth = [(-0.6, 0.0, 1.3), (0.0, 0.0, 1.6), (-0.6, 0.0, 1.6)]
+        placement = stadium_props.prop_placement([pole, cloth])
+        placed = stadium_props.place_prop_mesh(pole, placement)
+        # The pole's own axis, once placed, is on the mark.
+        xs = [v[0] for v in placed]
+        self.assertAlmostEqual(0.5 * (min(xs) + max(xs)), 0.0, places=3)
+        self.assertAlmostEqual(min(v[2] for v in placed), 0.0, places=3)
+
+
+if __name__ == "__main__":
+    unittest.main()
