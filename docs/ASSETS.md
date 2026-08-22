@@ -82,6 +82,26 @@ Note `--shirt-body`: the uniform-mapped torso is the part whose material is
 `u0<team>p<n>` kit sheet land on the right panels. Extract `dt00_x64.cpk.bak`
 rather than the live `dt00`, which the 4cc mod edits.
 
+**Seams.** A PES player is a dozen shells that overlap rather than meet, each weighted
+on its own, and where two of them cover the same place they disagree. On the stock
+body `shirt` and `sleeves` share no vertex position at all, but 328 of the shirt's
+vertices lie within 20 mm of a sleeve vertex, and 198 of those pairs named a different
+set of joints: the shirt at the shoulder was chest 0.89 plus clavicle 0.11 where the
+sleeve at the same place was chest 0.44 plus shoulder 0.56. Turn the shoulder and the
+sleeve swings while the shirt stays - the visible seam between arm and body.
+
+`seams.py` reconciles them, in both writers, because both have the problem: a skin
+weight is a property of a place on the body rather than of the garment covering it, so
+overlapping vertices blend what they already say, by distance, three times over. Two
+guards keep it honest - nothing inside a single part is touched, and two surfaces that
+name no joint in common are left alone, because a player's arms hang beside his ribs
+in the bind pose and blending those would drag his chest along with his elbow.
+
+Measured on the stock body: shirt against sleeves goes from 60% of boundary pairs
+disagreeing to 4%, and the mean weight difference across every overlapping surface
+from 0.146 to 0.068. 12,886 weights move, 879 of them onto a different dominant bone,
+all of them at seams. The worst left is socks against boots at 15%.
+
 ## 3. Cutscenes: camerawork, choreography, celebrations
 
     python3 tools/pes21_import/export_cutscenes.py "/path/to/PES21/Data" \

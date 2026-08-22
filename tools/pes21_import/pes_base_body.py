@@ -60,6 +60,7 @@ import sys
 import ase_util
 import retarget
 import face_weights
+import seams
 import hand_pose
 import pes_skl
 from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
@@ -924,6 +925,7 @@ def assemble(args):
         print("  eye socket shift: %.4f %.4f %.4f" % eye_shift)
 
         total_v = total_f = 0
+        built = []
         for name, path, keep, biggest, kit_kind, material, inset, garment, skl \
                 in pieces:
             fmdl = load_fmdl(path, args.fmdl_lib)
@@ -935,6 +937,18 @@ def assemble(args):
                                           eye_shift if name == "eyes" else None,
                                           leg_hidden if name == "thighs" else None,
                                           args.kit_uv)
+            built.append((name, vertices, faces, material))
+
+        # A player is a dozen shells that overlap rather than meet, each weighted on
+        # its own, and where two of them cover the same place they have to move
+        # together or one comes through the other (seams.py). Done over the whole body
+        # at once, because a seam is between parts by definition.
+        parts = [(name, vertices, faces) for name, vertices, faces, _ in built]
+        agreed = seams.reconcile(parts)
+        changed, migrated = seams.reconciled_count(parts, agreed)
+        print("  seams: %d vertex weight(s) reconciled between parts, %d changed bone"
+              % (changed, migrated))
+        for (name, vertices, faces), (_, _, _, material) in zip(agreed, built):
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
