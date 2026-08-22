@@ -349,16 +349,50 @@ def prop_placement(meshes):
     footprint centring did the same sideways, pushing a flag that hangs to one side
     of the pole back onto the pole's axis.
 
-    So both are measured once over every vertex the prop has, and every one of its
-    meshes is placed with that: the pole still stands on the grass, and the flag keeps
-    its height and its overhang.
+    So both are measured once for the whole prop and every one of its meshes is
+    placed with that: the pole still stands on the grass, and the flag keeps its
+    height and its overhang.
+
+    The lift is the whole prop's - the lowest point of any of its meshes. The
+    sideways offset is only what stands on the ground (ground_footprint_offset),
+    because a prop meets its mark on its feet and not on its average.
     """
     everything = [v for mesh in meshes for v in mesh]
     if not everything:
         return {"dx": 0.0, "dy": 0.0, "lift": 0.0}
-    dx, dy = stadium_staff.footprint_offset(everything)
+    dx, dy = ground_footprint_offset(everything)
     lift = -min(v[2] for v in everything)
     return {"dx": dx, "dy": dy, "lift": lift}
+
+
+# How thick a slice off the bottom of a prop counts as touching the ground.
+# PES's corner flag disc is 3 cm proud of the grass and its pole base sits on it;
+# a tripod's feet are a couple of centimetres of geometry. Five is enough for both
+# and short enough that no flag, board or lens gets in.
+GROUND_BAND = 0.05
+
+
+def ground_footprint_offset(vertices, band=GROUND_BAND):
+    """-> (dx, dy) bringing what the prop STANDS ON onto its own origin.
+
+    A prop does not stand on its average. PES's corner flag is a 1.62 m pole with
+    0.61 m of cloth hanging off one side of it, and centring the whole prop put the
+    pole 0.30 m off the corner - measured on the installed stadiums, 0.17 m outside
+    the goal line and 0.25 m inside the touchline, which is the half-overhang.
+
+    So the mark is met by the part that touches the grass: the vertices within
+    `band` of the prop's lowest point - the flag's disc, a tripod's feet, a board's
+    base.
+
+    There is no case with nothing to stand on. The prop is lifted by its own lowest
+    point (prop_placement), so whatever is in this slice is what meets the ground,
+    even where that is a single vertex - and a single point of contact is exactly
+    what should land on the mark.
+    """
+    if not vertices:
+        return (0.0, 0.0)
+    floor = min(v[2] for v in vertices)
+    return stadium_staff.footprint_offset([v for v in vertices if v[2] <= floor + band])
 
 
 def place_prop_mesh(vertices, placement):
