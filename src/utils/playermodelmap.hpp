@@ -17,6 +17,10 @@ std::map<int, std::string> ParsePlayerModelMap(std::istream& in);
 // returns "" when the player has no custom model.
 const std::string& GetPlayerModelDir(int databaseID);
 
+// Cached load of media/players/playercelebrations.cfg (same format): the celebration
+// a player is assigned by name, or "" when he has none and the draw decides.
+const std::string& GetPlayerCelebration(int databaseID);
+
 // Cached load of media/players/playerportraits.cfg (same format);
 // returns "" when the player has no portrait.
 const std::string& GetPlayerPortrait(int databaseID);

@@ -3376,15 +3376,16 @@ void Match::UpdateIngameCamera() {
       // celebration by name ("celebration" in his player data), and anyone without one
       // draws from the filmed set (goalcelebration.hpp).
       if (goalCelebrationIndex < 0 && !goalCelebrations.empty()) {
-        const std::string assigned =
-            lastGoalScorer && lastGoalScorer->GetPlayerData()
-                ? GetConfiguration()->Get(
-                      ("celebration_" +
-                       int_to_str(lastGoalScorer->GetPlayerData()->GetDatabaseID()))
-                          .c_str(),
-                      "")
-                : "";
-        const int seed = GetScore(0) + GetScore(1) * 3 + lastGoalTeamID * 7;
+        const int scorerID = lastGoalScorer && lastGoalScorer->GetPlayerData()
+                                 ? lastGoalScorer->GetPlayerData()->GetDatabaseID()
+                                 : 0;
+        // His own, by name, from media/players/playercelebrations.cfg - or from a
+        // config key, which is how a single player is overridden without editing a
+        // file. Failing both, the draw below is seeded from who he is.
+        std::string assigned = GetPlayerCelebration(scorerID);
+        if (assigned.empty())
+          assigned = GetConfiguration()->Get(("celebration_" + int_to_str(scorerID)).c_str(), "");
+        const int seed = GoalCelebration::SeedFor(scorerID);
         goalCelebrationIndex = GoalCelebration::Choose(goalCelebrations, assigned, seed);
         goalCelebrationCamera = -1;
         if (goalCelebrationIndex >= 0) {

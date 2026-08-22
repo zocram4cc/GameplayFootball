@@ -43,6 +43,16 @@ std::vector<Celebration> Parse(const std::string& text) {
   return set;
 }
 
+int SeedFor(int databaseID) {
+  // A cheap avalanche so neighbouring ids do not land on neighbouring celebrations:
+  // squad numbers are consecutive, and consecutive draws would give a whole back four
+  // the same three performances.
+  unsigned int x = static_cast<unsigned int>(databaseID) * 2654435761u;
+  x ^= x >> 15;
+  x ^= x >> 13;
+  return static_cast<int>(x & 0x7fffffffu);
+}
+
 int Choose(const std::vector<Celebration>& set, const std::string& assigned, int seed) {
   if (set.empty()) return -1;
 

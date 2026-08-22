@@ -42,6 +42,11 @@ std::vector<Celebration> Parse(const std::string& text);
 // an unfilmed celebration at random would leave the goal with no camerawork at all.
 int Choose(const std::vector<Celebration>& set, const std::string& assigned, int seed);
 
+// The seed for a scorer's draw: his own database id, so his celebration is his and
+// stays his. The seed used to be the score and the scoring side, which at 0-0 gave
+// every scorer in the match the same performance and left forty imported ones unseen.
+int SeedFor(int databaseID);
+
 // Which angle to use. `attackingSide` is the side of the pitch being attacked (-1 or
 // +1): the camera to take is the one looking back up the pitch the scorer is running
 // into, so his crowd is behind him rather than the half he came from.
