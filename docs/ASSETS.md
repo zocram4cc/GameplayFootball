@@ -116,6 +116,44 @@ it raised or the vista disappears. `convert_stadiums.sh` passes 6000, at which
 the pieces that would have been dropped are recognised as backdrop and go to the
 sky object rather than into the scene.
 
+**A stadium standing on nothing is this setting, not the pack.** Four of the nine
+installed grounds had no up-facing surface at all around the pitch, and what shows
+through the hole is the sky fill `postprocess.frag` paints below the horizon - which
+on st002 is a flat blue-purple slab beyond the touchline. Measured as coverage of the
+ring outside the pitch (the 8 m cells from ±60 x ±40 out to ±112 x ±88 that any
+near-ground up-facing face covers): st041 100%, st011 99%, st060 98%, st017 89%,
+st043 56%, **st002 16%, st056 8%, st031 2%, st019 0%**.
+
+On st002 the cause was one mesh. Its terrain is `center1`'s mesh 29 - 9,326 faces on
+`stadium.dds`, spanning 4,107 m - with mesh 30 its outline shell. Both are visible
+passes, neither is a sky dome, and at 6000 the current tool writes both; the installed
+scene was converted with a limit somewhere between 4,028 m (its sky dome, kept) and
+4,107 m, so the ground was cut off and the dome above it was not. Re-converted at
+6000, coverage goes 16% -> 100% and the run-off, track and hoardings are there.
+st056 goes 8% -> 100% the same way.
+
+Two stadiums cannot be fixed this way. st019's pack genuinely has no surroundings:
+its scene is five distant backdrop pieces, the nearest hundreds of metres out, and its
+`pitch/` package stops at ±53 x ±43. st031 and st043 ship no scene under `#Win` in
+the 4cc stadium cpks at all - only `light/`, `pitch/` and `sourceimages/` - so their
+scenes come from the base game's own stadium data.
+
+The 4cc stadium packs are two cpks, and the later one wins where both carry a slot
+(st002, st011, st019, st041, st060, st065):
+
+    python3 tools/pes21_import/cpk.py <PES>/download/4cc_30_stadiums.cpk stad30
+    python3 tools/pes21_import/cpk.py <PES>/download/4cc_32_stadiums2.cpk stad32
+    python3 tools/pes21_import/fpk.py "stad32/Asset/model/bg/st002/#Win/st002.fpk" scenes
+    python3 tools/pes21_import/stadium_to_gf.py \
+        scenes/Assets/pes16/model/bg/st002/scenes \
+        data/media/objects/stadiums/pes_st002 \
+        --fmdl-lib "4cc Blender Starter Pack/scripts/addons/pes-fmdl" \
+        --textures "stad32/Asset/model/bg/st002/sourceimages/tga/#windx11" \
+        --name pes_st002 --max-extent 6000
+
+Delete the `.geomcache` files beside the `.ase` afterwards or the engine reads the old
+geometry back.
+
 Three things about these conversions are worth knowing, because each one produced
 a stadium that looked broken in a way that had nothing to do with the pack:
 

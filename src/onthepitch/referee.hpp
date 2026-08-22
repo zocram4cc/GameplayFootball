@@ -86,6 +86,7 @@ protected:
   unsigned long clearingHeldFrom_ms = 0;
   float clearingNearest_m = 0.0f;
   std::string clearingRule;
+  bool clearingAnnounced = false;
 
   int afterSetPieceRelaxTime_ms;  // throw-ins cause immediate new throw-ins, because ball is still
                                   // outside the lines at the moment of throwing ;)
