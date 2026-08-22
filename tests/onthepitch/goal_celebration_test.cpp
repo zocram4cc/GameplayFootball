@@ -10,6 +10,7 @@
 // any camera for any celebration - which is one of the reasons a long-lens shot ended
 // up jammed against a scorer's head.
 
+#include <cmath>
 #include <gtest/gtest.h>
 
 #include "onthepitch/goalcelebration.hpp"
@@ -300,4 +301,61 @@ TEST(CelebrationIdentity, AnAssignmentStillWins) {
 TEST(CelebrationIdentity, APlayerWithNoDatabaseIdStillCelebrates) {
   const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
   EXPECT_GE(GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(0)), 0);
+}
+
+// Where the scorer runs, and when he stops running to perform.
+
+namespace {
+constexpr float kHalfW = 55.0f, kHalfH = 34.0f;
+}
+
+TEST(CelebrationRun, HeStopsShortOfTheCornerFlag) {
+  float x = 0.0f, y = 0.0f;
+  GoalCelebration::RunTarget(0.0f, 0.0f, 1, 1, kHalfW, kHalfH, &x, &y);
+  EXPECT_LT(x, kHalfW - GoalCelebration::kGoalLineInset_m + 0.01f);
+  EXPECT_LT(y, kHalfH - GoalCelebration::kTouchlineInset_m + 0.01f);
+}
+
+TEST(CelebrationRun, TheRunIsCapped) {
+  float x = 0.0f, y = 0.0f;
+  // from the far corner, the near one is over 100 m away
+  GoalCelebration::RunTarget(-50.0f, -30.0f, 1, 1, kHalfW, kHalfH, &x, &y);
+  const float dx = x + 50.0f, dy = y + 30.0f;
+  EXPECT_NEAR(std::sqrt(dx * dx + dy * dy), GoalCelebration::kMaxRun_m, 0.1f);
+}
+
+TEST(CelebrationRun, HeRunsTowardsTheHalfHeScoredIn) {
+  float x = 0.0f, y = 0.0f;
+  GoalCelebration::RunTarget(0.0f, 0.0f, 1, 1, kHalfW, kHalfH, &x, &y);
+  EXPECT_GT(x, 0.0f);
+  GoalCelebration::RunTarget(0.0f, 0.0f, -1, -1, kHalfW, kHalfH, &x, &y);
+  EXPECT_LT(x, 0.0f);
+  EXPECT_LT(y, 0.0f);
+}
+
+TEST(CelebrationRun, AScorerAlreadyThereDoesNotRunPastIt) {
+  float x = 0.0f, y = 0.0f;
+  GoalCelebration::RunTarget(48.0f, 30.0f, 1, 1, kHalfW, kHalfH, &x, &y);
+  EXPECT_LE(x, kHalfW - GoalCelebration::kGoalLineInset_m + 0.01f);
+  EXPECT_LE(y, kHalfH - GoalCelebration::kTouchlineInset_m + 0.01f);
+}
+
+TEST(CelebrationRun, TheTargetStaysOnThePitch) {
+  float x = 0.0f, y = 0.0f;
+  for (int side = -1; side <= 1; side += 2) {
+    for (int near = -1; near <= 1; near += 2) {
+      GoalCelebration::RunTarget(0.0f, 0.0f, side, near, kHalfW, kHalfH, &x, &y);
+      EXPECT_LT(std::fabs(x), kHalfW);
+      EXPECT_LT(std::fabs(y), kHalfH);
+    }
+  }
+}
+
+TEST(CelebrationArrival, HePerformsWhenHeGetsThere) {
+  EXPECT_TRUE(GoalCelebration::HasArrived(1.0f, 500));
+  EXPECT_FALSE(GoalCelebration::HasArrived(9.0f, 500));
+}
+
+TEST(CelebrationArrival, ABlockedScorerStillCelebrates) {
+  EXPECT_TRUE(GoalCelebration::HasArrived(30.0f, GoalCelebration::kApproachCap_ms));
 }

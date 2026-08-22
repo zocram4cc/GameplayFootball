@@ -1427,7 +1427,11 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
   signed int ySide = team->GetSide();
   if (team->GetLastTouchPlayer())
     ySide = (team->GetLastTouchPlayer()->GetPosition().coords[1] > 0) ? 1 : -1;
-  Vector3 celebrationPosition = Vector3(pitchHalfW * xSide, pitchHalfH * ySide, 0);
+  // A dozen metres towards the crowd in the corner of the half he scored in, not the
+  // corner flag itself: he used to be sent to the exact corner and then frozen there.
+  float runX = player->GetPosition().coords[0], runY = player->GetPosition().coords[1];
+  GoalCelebration::RunTarget(runX, runY, xSide, ySide, pitchHalfW, pitchHalfH, &runX, &runY);
+  Vector3 celebrationPosition = Vector3(runX, runY, 0);
 
   Vector3 desiredDirection = (celebrationPosition - player->GetPosition()).GetNormalized();
   float desiredVelocityFloat =
@@ -1472,8 +1476,15 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
   // The performance runs for as long as its clip does, rather than for a flat slice
   // of the stoppage: a 5.2 s celebration was being cut at 4 s, which dropped the
   // scorer out of his pose and into ordinary play with the camera still on him.
-  if (GoalCelebration::IsPerforming(match->GetGoalScoredTimer(),
-                                    match->GetCelebrationLength_ms())) {
+  // He performs when he gets there. Two seconds after the goal the performance used to
+  // take over wherever he had reached, which is a man stopping dead mid-stride and
+  // dancing on the spot - and a blocked scorer still celebrates, on the cap.
+  const float toTarget = (celebrationPosition - player->GetPosition()).GetLength();
+  const bool ready =
+      match->GetLastGoalScorer() != player ||
+      GoalCelebration::HasArrived(toTarget, match->GetGoalScoredTimer());
+  if (ready && GoalCelebration::IsPerforming(match->GetGoalScoredTimer(),
+                                             match->GetCelebrationLength_ms())) {
     PlayerCommand command;
     command.desiredFunctionType = e_FunctionType_Special;
     command.useSpecialVar1 = true;
