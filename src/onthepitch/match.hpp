@@ -395,6 +395,11 @@ public:
 
   void UploadGoalNetting();
   void WriteGoalNetting();
+  void PrepareCornerFlags();
+  void UpdateCornerFlags();
+  void WriteCornerFlags();
+  void UploadCornerFlags();
+  Vector3 FlagWind(unsigned long time_ms) const;
 
   unsigned long GetPreviousProcessTime_ms() {
     return previousProcessTime_ms;
@@ -842,6 +847,25 @@ protected:
   static constexpr float kNettingBallRadius = 0.11f;
   // How close to the woodwork, the ground or the rear support counts as tied to it.
   static constexpr float kNettingAttachment_m = 0.02f;
+
+  std::vector<float*> flagMeshes[4];
+  std::vector<int> flagWeld[4];
+  Cloth flagCloth[4];
+  unsigned long flagTime_ms = 0;
+  bool flagsHaveChanged = false;
+
+  // The corner flag's pole is 2 cm across and stands on a disc 20 cm across. Holding
+  // everything within 12 cm of the axis keeps both rigid and still leaves the panels -
+  // which reach 0.6 m out - free to hang.
+  static constexpr float kFlagPoleRadius_m = 0.12f;
+  static constexpr float kFlagFootBand_m = 0.05f;
+  static constexpr float kFlagDamping = 0.94f;
+  static constexpr int kFlagSettleSteps = 60;
+  // A light breeze, and how fast it comes and goes. Strong enough to lift a flag off
+  // its pole and nowhere near enough to stand it out straight.
+  static constexpr float kFlagWind_mps2 = 3.4f;
+  static constexpr float kFlagGustRate = 0.55f;
+  static constexpr float kFlagWindHeading = 1.05f;
 
   // boost::intrusive_ptr<Light> lightTest[100];
 

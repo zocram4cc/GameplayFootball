@@ -640,6 +640,8 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     propsNode->SetLocalMode(e_LocalMode_Absolute);
     GetScene3D()->AddNode(propsNode);
     Log(e_Notice, "Match", "Match", "pitch furniture: " + propsObject);
+    // After the node exists, or there is nothing to read the flags out of.
+    PrepareCornerFlags();
   }
 
   // And the crowd in the stands. PES gives every ground the same spectators and
@@ -4196,6 +4198,7 @@ void Match::Put() {
     }
 
     UpdateGoalNetting(GetBall()->BallTouchesNet());
+    UpdateCornerFlags();
 
     // replay
     CaptureReplayFrame(fetchedbuf_actualTime_ms + fetchedbuf_timeDelta);
@@ -5327,6 +5330,148 @@ void Match::WriteGoalNetting() {
       nettingMeshes[goalID][i][2] = p.coords[2];
     }
   }
+}
+
+// The corner flags, as cloth on a pole.
+//
+// A corner flag is one prop, not a cloth and a stick: PES models it as a pole, a disc
+// round its foot and two panels hanging off one side of the top, all in the same
+// export. Rather than work out which of its meshes is the flag - the pole and the big
+// panel even share a texture - the whole prop is simulated and everything within the
+// pole's own radius of the pole's axis is held. The pole and the disc are all inside
+// that, so they stay exactly where stadium_props put them; the panels reach out to
+// 0.6 m, so they hang and blow.
+void Match::PrepareCornerFlags() {
+  if (!propsNode) return;
+  boost::intrusive_ptr<Geometry> props =
+      boost::static_pointer_cast<Geometry>(propsNode->GetObject("props"));
+  if (!props) return;
+  std::vector<MaterializedTriangleMesh>& triangleMesh =
+      props->GetGeometryData()->GetResource()->GetTriangleMeshesRef();
+
+  // PES names every piece of corner-flag art cf_*, which is what separates the flags
+  // from the paramedics, the cameras and the tunnel barrier in the same file.
+  std::map<std::tuple<int, int, int>, int> welded[4];
+  std::vector<Vector3> weldedRest[4];
+  std::vector<int> weldedFaces[4];
+  for (unsigned int m = 0; m < triangleMesh.size(); m++) {
+    if (!triangleMesh.at(m).material.diffuseTexture) continue;
+    const std::string ident = triangleMesh.at(m).material.diffuseTexture->GetIdentString();
+    if (ident.find("/cf_") == std::string::npos && ident.find("cf_") != 0) continue;
+    const int floats = triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();
+    for (int i = 0; i + 8 < floats; i += 9) {
+      // Which corner it belongs to. The four flags are 110 m apart, so the sign of a
+      // triangle's own centre settles it without knowing anything about mesh order.
+      const float cx = (triangleMesh.at(m).vertices[i + 0] + triangleMesh.at(m).vertices[i + 3] +
+                        triangleMesh.at(m).vertices[i + 6]) / 3.0f;
+      const float cy = (triangleMesh.at(m).vertices[i + 1] + triangleMesh.at(m).vertices[i + 4] +
+                        triangleMesh.at(m).vertices[i + 7]) / 3.0f;
+      const int corner = (cx < 0.0f ? 0 : 1) + (cy < 0.0f ? 0 : 2);
+      for (int c = 0; c < 3; c++) {
+        const int at = i + c * 3;
+        const Vector3 position(triangleMesh.at(m).vertices[at + 0],
+                               triangleMesh.at(m).vertices[at + 1],
+                               triangleMesh.at(m).vertices[at + 2]);
+        const std::tuple<int, int, int> key(std::lround(position.coords[0] * 1000.0f),
+                                            std::lround(position.coords[1] * 1000.0f),
+                                            std::lround(position.coords[2] * 1000.0f));
+        std::map<std::tuple<int, int, int>, int>::iterator found = welded[corner].find(key);
+        if (found == welded[corner].end()) {
+          found = welded[corner].insert(std::make_pair(key, (int)weldedRest[corner].size())).first;
+          weldedRest[corner].push_back(position);
+        }
+        flagMeshes[corner].push_back(&(triangleMesh.at(m).vertices[at]));
+        flagWeld[corner].push_back(found->second);
+        weldedFaces[corner].push_back(found->second);
+      }
+    }
+  }
+
+  for (int corner = 0; corner < 4; corner++) {
+    const std::vector<Vector3>& points = weldedRest[corner];
+    if (points.empty()) continue;
+    // The pole's axis, taken from the prop rather than from the pitch: the lowest
+    // slice of it is the disc it stands on, and the disc is centred on the pole.
+    float floor = points[0].coords[2];
+    for (const Vector3& p : points) floor = std::min(floor, p.coords[2]);
+    float sumX = 0.0f, sumY = 0.0f;
+    int feet = 0;
+    for (const Vector3& p : points) {
+      if (p.coords[2] > floor + kFlagFootBand_m) continue;
+      sumX += p.coords[0];
+      sumY += p.coords[1];
+      feet++;
+    }
+    if (!feet) continue;
+    const Vector3 axis(sumX / feet, sumY / feet, 0.0f);
+    flagCloth[corner].Build(points,
+                            VerticesNearAxis(points, axis, Vector3(0, 0, 1), kFlagPoleRadius_m),
+                            LinksFromTriangles(weldedFaces[corner]));
+    for (int i = 0; i < kFlagSettleSteps; i++) {
+      flagCloth[corner].Step(kNettingStep_s, Vector3(0, 0, -kNettingGravity), kFlagDamping,
+                             kNettingIterations);
+    }
+  }
+  WriteCornerFlags();
+  flagsHaveChanged = true;
+  int flags = 0, held = 0, points = 0;
+  for (int corner = 0; corner < 4; corner++) {
+    if (flagCloth[corner].Empty()) continue;
+    flags++;
+    points += (int)flagCloth[corner].Positions().size();
+    held += (int)flagMeshes[corner].size();
+  }
+  int sag = 0;
+  for (int corner = 0; corner < 4; corner++)
+    sag = std::max(sag, (int)(flagCloth[corner].Displacement() * 1000));
+  Log(e_Notice, "Match", "PrepareCornerFlags",
+      int_to_str(flags) + " corner flag(s) as cloth: " + int_to_str(points) + " point(s) from " +
+          int_to_str(held) + " corner(s), hanging " + int_to_str(sag) + " mm off the pose in the file");
+}
+
+// The breeze the flags hang in. Not weather - the engine has none - but a light,
+// steady push with a slow gust on it, so four flags on the same pitch move together
+// the way they would and none of them ever hangs perfectly still.
+Vector3 Match::FlagWind(unsigned long time_ms) const {
+  const float t = time_ms * 0.001f;
+  const float gust = kFlagWind_mps2 * (0.65f + 0.35f * std::sin(t * kFlagGustRate));
+  return Vector3(gust * std::cos(kFlagWindHeading), gust * std::sin(kFlagWindHeading),
+                 -kNettingGravity);
+}
+
+void Match::UpdateCornerFlags() {
+  flagsHaveChanged = false;
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  const float elapsed = (now - flagTime_ms) * 0.001f;
+  flagTime_ms = now;
+  if (elapsed <= 0.0f) return;
+  const Vector3 wind = FlagWind(now);
+  for (int corner = 0; corner < 4; corner++) {
+    if (flagCloth[corner].Empty()) continue;
+    // No sleeping: the wind never stops, so a flag is never done moving.
+    flagCloth[corner].Step(elapsed, wind, kFlagDamping, kNettingIterations);
+    flagsHaveChanged = true;
+  }
+  if (flagsHaveChanged) WriteCornerFlags();
+}
+
+void Match::WriteCornerFlags() {
+  for (int corner = 0; corner < 4; corner++) {
+    const std::vector<Vector3>& points = flagCloth[corner].Positions();
+    if (points.empty()) continue;
+    for (unsigned int i = 0; i < flagMeshes[corner].size(); i++) {
+      const Vector3& p = points[flagWeld[corner][i]];
+      flagMeshes[corner][i][0] = p.coords[0];
+      flagMeshes[corner][i][1] = p.coords[1];
+      flagMeshes[corner][i][2] = p.coords[2];
+    }
+  }
+}
+
+void Match::UploadCornerFlags() {
+  if (!flagsHaveChanged || !propsNode) return;
+  boost::static_pointer_cast<Geometry>(propsNode->GetObject("props"))
+      ->OnUpdateGeometryData(false);
 }
 
 void Match::UpdateGoalNetting(bool ballTouchesNet) {
