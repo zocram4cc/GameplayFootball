@@ -686,6 +686,10 @@ protected:
   std::vector<CutsceneSequence::Stage> cutsceneQueue;
   // Whether PES filmed the running category at all.
   bool cutsceneHasCamera = false;
+  // Where the goal celebration is staged: the scorer's run target, decided when the
+  // celebration is chosen and held while it plays.
+  Vector3 goalCelebrationSubject;
+
   // The incident's own place, held for the whole cutscene (see CutsceneAnchorPosition).
   Vector3 cutsceneAnchor;
   bool cutsceneAnchorLatched = false;
