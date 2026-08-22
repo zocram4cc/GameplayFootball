@@ -3388,6 +3388,19 @@ void Match::UpdateIngameCamera() {
         const int seed = GoalCelebration::SeedFor(scorerID);
         goalCelebrationIndex = GoalCelebration::Choose(goalCelebrations, assigned, seed);
         goalCelebrationCamera = -1;
+        // The place the shot is set for: where he is running to, so he arrives into
+        // frame rather than towing the camera behind him.
+        if (lastGoalScorer) {
+          const Vector3 at = lastGoalScorer->GetPosition();
+          const int attackedSide = -teams[lastGoalTeamID]->GetSide();
+          const int nearSide = at.coords[1] >= 0.0f ? 1 : -1;
+          float targetX = at.coords[0], targetY = at.coords[1];
+          GoalCelebration::RunTarget(at.coords[0], at.coords[1], attackedSide, nearSide,
+                                     pitchHalfW, pitchHalfH, &targetX, &targetY);
+          goalCelebrationSubject = Vector3(targetX, targetY, 0.0f);
+        } else {
+          goalCelebrationSubject = ball->Predict(0).Get2D();
+        }
         if (goalCelebrationIndex >= 0) {
           const GoalCelebration::Celebration& chosen = goalCelebrations[goalCelebrationIndex];
           // the scorer, so the line says whose celebration this is rather than only
@@ -3443,9 +3456,12 @@ void Match::UpdateIngameCamera() {
       // frames 1.85 m of subject - a man. So the shot is staged on the scorer rather
       // than re-aimed at him, and PES's distance, lens, clip planes and camera move
       // come with it unchanged.
-      Vector3 subject = lastGoalScorer
-                            ? lastGoalScorer->GetPosition()
-                            : ball->Predict(0).Get2D();
+      // Where the celebration will happen, decided once: the scorer's run target, not
+      // wherever he is this frame. Re-staging on a moving man dragged the whole
+      // authored rig along with him, so PES's camera move played out against a
+      // sliding origin and framed nothing in particular. In PES the shot is set and
+      // the scorer arrives into it, which is what he now does (RunTarget).
+      const Vector3 subject = goalCelebrationSubject;
       frame = StageCamTrackFrame(
           frame, {subject.coords[0], subject.coords[1], 0.0f}, goalCelebrationYaw);
       // never underground, whatever the staging lands on
