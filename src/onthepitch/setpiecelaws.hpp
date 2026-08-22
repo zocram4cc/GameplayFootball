@@ -36,6 +36,21 @@ bool ClearsThePenaltyArea(e_SetPiece setPiece, float restartX = 0.0f, int takerS
 // side that team defends).
 bool InsidePenaltyArea(float x, float y, int side, float pitchHalfW);
 
+// How far beyond the line an opponent must be before the taker will kick.
+//
+// Being out of the area is not the same as being out of the way. Recorded in a match:
+// the opponents walked out and the kick went off the moment the last of them crossed
+// the line, with him standing on it, half a step from where he started - the clearing
+// happened and bought nothing.
+//
+// So the taker's gate is the area grown by this much. It is smaller than
+// kClearanceMargin on purpose: the players walk to the line plus that, and a gate as
+// wide as their destination would be satisfied only if they overshot it.
+constexpr float kGateMargin = 1.0f;
+
+// Whether an opponent is close enough to the area to hold the restart up.
+bool IntrudesOnPenaltyArea(float x, float y, int side, float pitchHalfW);
+
 // Where a player standing inside that area should go: straight out of the nearest edge,
 // which is what a defender ambling out of the box actually does. Returns (x, y).
 void ClearingTarget(float x, float y, int side, float pitchHalfW, float* outX, float* outY);
@@ -50,6 +65,9 @@ bool ClearsTheBallRadius(e_SetPiece setPiece);
 
 // Whether a player is closer to the ball than the law allows.
 bool InsideBallRadius(float x, float y, float ballX, float ballY);
+
+// Whether he is close enough to it to hold the restart up (see kGateMargin).
+bool IntrudesOnBallRadius(float x, float y, float ballX, float ballY);
 
 // Where a player standing too close should go: straight out along the line from the
 // ball, which is a defender backing off rather than running round. Returns (x, y).

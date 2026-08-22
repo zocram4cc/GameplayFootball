@@ -8,6 +8,7 @@
 
 #include <fstream>
 #include <mutex>
+#include "utils/cloth.hpp"
 #include "utils/camtrack.hpp"
 #include "prematchtimeline.hpp"
 #include "prematchshotpair.hpp"
@@ -393,6 +394,7 @@ public:
   }
 
   void UploadGoalNetting();
+  void WriteGoalNetting();
 
   unsigned long GetPreviousProcessTime_ms() {
     return previousProcessTime_ms;
@@ -805,7 +807,6 @@ protected:
 
   std::vector<std::unique_ptr<ReplaySpatial>> replay;
   blunted::circular_buffer<ReplayBallTouchesNetFrame> replayBallTouchesNetFrames;
-  bool resetNetting;
   bool nettingHasChanged;
 
   float excitement;
@@ -824,6 +825,23 @@ protected:
 
   std::vector<Vector3> nettingMeshesSrc[2];
   std::vector<float*> nettingMeshes[2];
+  // Which cloth point each of those corners is a copy of.
+  std::vector<int> nettingWeld[2];
+  Cloth nettingCloth[2];
+  unsigned long nettingTime_ms = 0;
+
+  // A football net is light and tied down all round, so it barely sags - but it does
+  // give, and that is the whole difference. Settled once at load over two seconds of
+  // steps, it holds that pose until the ball arrives.
+  static constexpr float kNettingGravity = 9.81f;
+  static constexpr float kNettingDamping = 0.86f;
+  static constexpr int kNettingIterations = 3;
+  static constexpr float kNettingStep_s = 0.02f;
+  static constexpr int kNettingSettleSteps = 100;
+  static constexpr float kNettingSettled_m = 0.0004f;
+  static constexpr float kNettingBallRadius = 0.11f;
+  // How close to the woodwork, the ground or the rear support counts as tied to it.
+  static constexpr float kNettingAttachment_m = 0.02f;
 
   // boost::intrusive_ptr<Light> lightTest[100];
 

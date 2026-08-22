@@ -305,15 +305,31 @@ void Referee::Process() {
         int intruders = 0;
         for (unsigned int i = 0; i < squad.size(); i++) {
           const Vector3 at = squad.at(i)->GetPosition();
-          if (SetPieceLaws::InsidePenaltyArea(at.coords[0], at.coords[1], takerTeam->GetSide(),
-                                             pitchHalfW))
+          if (SetPieceLaws::IntrudesOnPenaltyArea(at.coords[0], at.coords[1],
+                                                 takerTeam->GetSide(), pitchHalfW))
             intruders++;
         }
         (void)opponents;
+        // How far past the area's edge the nearest of them is, for the release notice.
+        // Negative while a man is still inside it.
+        float nearest = 1e9f;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          const int side = takerTeam->GetSide();
+          const float depthIn = pitchHalfW - at.coords[0] * static_cast<float>(side);
+          const float pastDepth = depthIn - SetPieceLaws::kAreaDepth;
+          const float pastWidth = std::fabs(at.coords[1]) - SetPieceLaws::kAreaHalfWidth;
+          nearest = std::min(nearest, std::max(pastDepth, pastWidth));
+        }
+        if (nearest < 1e8f) {
+          clearingNearest_m = nearest;
+          clearingRule = "the area";
+        }
         if (!SetPieceLaws::MayRestart(intruders, match->GetActualTime_ms() - buffer.prepareTime)) {
           buffer.startTime = match->GetActualTime_ms() + 10;
           if (!clearingLogged) {
             clearingLogged = true;
+            clearingHeldFrom_ms = match->GetActualTime_ms();
             Log(e_Notice, "Referee", "Process",
                 "restart held: " + int_to_str(intruders) + " opponent(s) still in the area");
           }
@@ -327,16 +343,24 @@ void Referee::Process() {
         match->GetTeam(abs(buffer.teamID - 1))->GetActivePlayers(squad);
         const Vector3 ball = match->GetBall()->Predict(0).Get2D();
         int tooClose = 0;
+        float nearest = 1e9f;
         for (unsigned int i = 0; i < squad.size(); i++) {
           const Vector3 at = squad.at(i)->GetPosition();
-          if (SetPieceLaws::InsideBallRadius(at.coords[0], at.coords[1], ball.coords[0],
-                                            ball.coords[1]))
+          if (SetPieceLaws::IntrudesOnBallRadius(at.coords[0], at.coords[1], ball.coords[0],
+                                                ball.coords[1]))
             tooClose++;
+          const float dx = at.coords[0] - ball.coords[0], dy = at.coords[1] - ball.coords[1];
+          nearest = std::min(nearest, std::sqrt(dx * dx + dy * dy) - SetPieceLaws::kRetreatRadius);
+        }
+        if (nearest < 1e8f) {
+          clearingNearest_m = nearest;
+          clearingRule = "nine metres";
         }
         if (!SetPieceLaws::MayRestart(tooClose, match->GetActualTime_ms() - buffer.prepareTime)) {
           buffer.startTime = match->GetActualTime_ms() + 10;
           if (!clearingLogged) {
             clearingLogged = true;
+            clearingHeldFrom_ms = match->GetActualTime_ms();
             Log(e_Notice, "Referee", "Process",
                 "restart held: " + int_to_str(tooClose) + " opponent(s) inside nine metres");
           }
@@ -345,6 +369,16 @@ void Referee::Process() {
 
       if (!buffer.started && buffer.startTime <= match->GetActualTime_ms()) {
         buffer.started = true;
+        if (clearingLogged) {
+          // How long the taker actually waited, and how far the nearest opponent had
+          // got by the time he kicked. Both are the point of the law: a restart that
+          // is released while a man is still standing on the line has cleared nothing.
+          Log(e_Notice, "Referee", "Process",
+              "restart released after " +
+                  int_to_str((int)(match->GetActualTime_ms() - clearingHeldFrom_ms)) +
+                  " ms: nearest opponent " + int_to_str((int)(clearingNearest_m * 100)) +
+                  " cm clear of " + clearingRule);
+        }
         clearingLogged = false;
         // blow whistle and wait for set piece taker to touch the ball
         whistle[1]->SetGain(0.3 * GetConfiguration()->GetReal("audio_volume", 0.5));

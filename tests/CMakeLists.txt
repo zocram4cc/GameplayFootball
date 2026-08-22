@@ -325,6 +325,20 @@ target_include_directories(gameplayfootball_instancelist_tests PRIVATE
 target_link_libraries(gameplayfootball_instancelist_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_instancelist_tests DISCOVERY_MODE PRE_TEST)
 
+# The stadium's hanging surfaces - netting, corner flags, banners.
+add_executable(gameplayfootball_cloth_tests
+  utils/cloth_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/cloth.cpp
+)
+target_include_directories(gameplayfootball_cloth_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_cloth_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_cloth_tests DISCOVERY_MODE PRE_TEST)
+
 # Camera track loader unit tests (imported PES camerawork)
 add_executable(gameplayfootball_camtrack_tests
   base/camtrack_test.cpp

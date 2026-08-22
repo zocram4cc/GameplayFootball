@@ -23,10 +23,29 @@ bool InsidePenaltyArea(float x, float y, int side, float pitchHalfW) {
   return depthIn >= 0.0f && depthIn <= kAreaDepth && std::fabs(y) <= kAreaHalfWidth;
 }
 
+bool IntrudesOnPenaltyArea(float x, float y, int side, float pitchHalfW) {
+  if (side == 0)
+    return false;
+  // The same area, grown by the gate margin on the three sides a player can leave by.
+  // The goal line is not one of them: a man behind it is out of play, not in the way.
+  const float depthIn = (pitchHalfW - x * static_cast<float>(side));
+  return depthIn >= 0.0f && depthIn <= kAreaDepth + kGateMargin &&
+         std::fabs(y) <= kAreaHalfWidth + kGateMargin;
+}
+
+bool IntrudesOnBallRadius(float x, float y, float ballX, float ballY) {
+  const float dx = x - ballX, dy = y - ballY;
+  const float want = kRetreatRadius + kGateMargin;
+  return dx * dx + dy * dy < want * want;
+}
+
 void ClearingTarget(float x, float y, int side, float pitchHalfW, float* outX, float* outY) {
   *outX = x;
   *outY = y;
-  if (!InsidePenaltyArea(x, y, side, pitchHalfW))
+  // The gate's region, not the painted one. A man half a metre outside the line holds
+  // the restart up; if he were not asked to move as well, nothing would ever release
+  // it and every goal kick would wait out the six-second cap.
+  if (!IntrudesOnPenaltyArea(x, y, side, pitchHalfW))
     return;
 
   // Two ways out: up the pitch over the 16.5 m line, or sideways over the 20.15 m one.
@@ -39,6 +58,15 @@ void ClearingTarget(float x, float y, int side, float pitchHalfW, float* outX, f
   } else {
     const float sign = y >= 0.0f ? 1.0f : -1.0f;
     *outY = sign * (kAreaHalfWidth + kClearanceMargin);
+  }
+  // Out of the gate as well as out of the area, whichever edge he left by: a man sent
+  // sideways from deep inside keeps his x, and that x may still be within the gate's
+  // depth.
+  if (IntrudesOnPenaltyArea(*outX, *outY, side, pitchHalfW)) {
+    const float sign = *outY >= 0.0f ? 1.0f : -1.0f;
+    *outY = sign * (kAreaHalfWidth + kClearanceMargin);
+    if (IntrudesOnPenaltyArea(*outX, *outY, side, pitchHalfW))
+      *outX = lineX - static_cast<float>(side) * kClearanceMargin;
   }
 }
 
@@ -58,7 +86,7 @@ bool InsideBallRadius(float x, float y, float ballX, float ballY) {
 void RetreatTarget(float x, float y, float ballX, float ballY, float* outX, float* outY) {
   *outX = x;
   *outY = y;
-  if (!InsideBallRadius(x, y, ballX, ballY))
+  if (!IntrudesOnBallRadius(x, y, ballX, ballY))
     return;
   float dx = x - ballX, dy = y - ballY;
   float length = std::sqrt(dx * dx + dy * dy);
