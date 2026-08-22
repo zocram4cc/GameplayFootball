@@ -2219,6 +2219,7 @@ void Match::UpdateCutsceneChoreo() {
   // could raise it, which is why an offside was never seen.
   if (!CutscenePlayback::IsPlaying(cutscenePlayback)) {
     activeCutsceneChoreo = nullptr;
+    cutsceneAnchorLatched = false;
     cutsceneCast.clear();
     cutsceneOfficialCast.clear();
     cutscenePrimary = nullptr;
@@ -2236,6 +2237,7 @@ void Match::UpdateCutsceneChoreo() {
       activeStagingAnchoring == CutsceneViewer::Anchoring::IncidentLocal
           ? CutsceneAnchorPosition().Get2D()
           : Vector3(0, 0, 0);
+
   for (auto& cast : cutsceneCast) {
     Vector3 position;
     radian yaw = 0;
@@ -2364,6 +2366,11 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   // the camera. With nothing at all to show, there is no cutscene.
   if (!haveCamera && !activeCutsceneChoreo) return;
   cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
+  // Where this incident happened, decided once and held: everything staged or aimed
+  // for the rest of the cutscene is measured from here.
+  cutsceneAnchorLatched = false;
+  cutsceneAnchor = CutsceneAnchorPosition();
+  cutsceneAnchorLatched = true;
   CutscenePlayback::Start(cutscenePlayback, (unsigned long)(seconds * 1000.0f));
   Log(e_Notice, "Match", "StartCutscene",
       "category " + category + (haveCamera ? "" : " (choreography only)") + ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
@@ -2889,6 +2896,12 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
 }
 
 Vector3 Match::CutsceneAnchorPosition() const {
+  // Fixed for the life of the cutscene. It used to be recomputed every frame from the
+  // offender's current position - and the staging writes that position, offset by this
+  // very value, so each frame moved him further out: measured at -97, -115, -144,
+  // -163 m and still going, which is the cast sliding sideways out of the stadium.
+  if (cutsceneAnchorLatched)
+    return cutsceneAnchor;
   // The offender if the referee named one, otherwise wherever the ball stopped:
   // at a stoppage that is the incident.
   // The offender if the referee named one; failing that the spot he is restarting

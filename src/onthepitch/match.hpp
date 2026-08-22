@@ -686,6 +686,9 @@ protected:
   std::vector<CutsceneSequence::Stage> cutsceneQueue;
   // Whether PES filmed the running category at all.
   bool cutsceneHasCamera = false;
+  // The incident's own place, held for the whole cutscene (see CutsceneAnchorPosition).
+  Vector3 cutsceneAnchor;
+  bool cutsceneAnchorLatched = false;
   // The cutscene's clock: accumulated from the match's frame deltas, so it stops when
   // the match does and can be skipped (CutscenePlayback).
   CutscenePlayback::State cutscenePlayback;
