@@ -42,6 +42,30 @@ std::vector<Celebration> Parse(const std::string& text);
 // an unfilmed celebration at random would leave the goal with no camerawork at all.
 int Choose(const std::vector<Celebration>& set, const std::string& assigned, int seed);
 
+// Where the scorer runs before he performs.
+//
+// He used to be sent to the corner itself - Vector3(pitchHalfW * xSide, pitchHalfH *
+// ySide) - and the performance command then outranked his movement two seconds in,
+// wherever he had got to. So he either froze mid-run or stood in the corner flag and
+// performed there. PES runs him a dozen metres towards the crowd in the corner of the
+// half he has just scored in, and he performs when he arrives.
+//
+// `attackedSide` is the half the goal was scored in (-1 or +1), `nearSide` which
+// touchline he is nearer. Returns (x, y) well inside the pitch.
+constexpr float kMaxRun_m = 16.0f;
+constexpr float kTouchlineInset_m = 3.0f;
+constexpr float kGoalLineInset_m = 6.0f;
+
+void RunTarget(float fromX, float fromY, int attackedSide, int nearSide, float pitchHalfW,
+               float pitchHalfH, float* outX, float* outY);
+
+// Whether he has arrived and may perform. `waited_ms` is the time since the goal: a
+// scorer who cannot get there - blocked, or knocked over - still celebrates.
+constexpr unsigned long kApproachCap_ms = 2800;
+constexpr float kArrivalRadius_m = 2.0f;
+
+bool HasArrived(float distanceToTarget_m, unsigned long waited_ms);
+
 // The seed for a scorer's draw: his own database id, so his celebration is his and
 // stays his. The seed used to be the score and the scoring side, which at 0-0 gave
 // every scorer in the match the same performance and left forty imported ones unseen.

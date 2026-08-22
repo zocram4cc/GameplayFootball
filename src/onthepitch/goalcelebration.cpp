@@ -1,4 +1,6 @@
 #include "goalcelebration.hpp"
+
+#include <cmath>
 #include "goalsequence.hpp"
 
 #include <cstdlib>
@@ -41,6 +43,29 @@ std::vector<Celebration> Parse(const std::string& text) {
   }
   flush();
   return set;
+}
+
+void RunTarget(float fromX, float fromY, int attackedSide, int nearSide, float pitchHalfW,
+               float pitchHalfH, float* outX, float* outY) {
+  // The corner of the half he scored in, pulled inside the lines so he ends up on the
+  // grass in front of the crowd rather than inside the corner flag.
+  const float cornerX = (pitchHalfW - kGoalLineInset_m) * static_cast<float>(attackedSide >= 0 ? 1 : -1);
+  const float cornerY = (pitchHalfH - kTouchlineInset_m) * static_cast<float>(nearSide >= 0 ? 1 : -1);
+  const float dx = cornerX - fromX, dy = cornerY - fromY;
+  const float distance = std::sqrt(dx * dx + dy * dy);
+  if (distance <= kMaxRun_m || distance < 1e-4f) {
+    // Near enough already: he runs the rest of the way rather than past it.
+    *outX = cornerX;
+    *outY = cornerY;
+    return;
+  }
+  const float t = kMaxRun_m / distance;
+  *outX = fromX + dx * t;
+  *outY = fromY + dy * t;
+}
+
+bool HasArrived(float distanceToTarget_m, unsigned long waited_ms) {
+  return distanceToTarget_m <= kArrivalRadius_m || waited_ms >= kApproachCap_ms;
 }
 
 int SeedFor(int databaseID) {
