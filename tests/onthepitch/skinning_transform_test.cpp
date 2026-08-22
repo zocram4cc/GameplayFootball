@@ -25,6 +25,7 @@
 
 #include "base/math/quaternion.hpp"
 #include "base/math/vector3.hpp"
+#include "gamedefines.hpp"
 #include "onthepitch/player/humanoid/skinning.hpp"
 
 using blunted::Quaternion;
@@ -175,4 +176,38 @@ TEST(SkinningTransform, ThreeInfluencesTheRigsMaximumStillAgree) {
   }
 
   ExpectClose(Apply(blended, vertex, true), perInfluence);
+}
+
+// A player's hands are the same body as the rest of him.
+//
+// PES authors one hand and the import composites it onto every character, so the
+// question is whether a short player gets a short player's hands. He does, and by the
+// same arithmetic as everything else: humanoidbase multiplies every vertex of the
+// fullbody geometry by zMultiplier = height / defaultPlayerHeight before skinning it,
+// and the hand is meshes inside that geometry rather than a thing attached to it.
+//
+// Pinned here because it is the kind of property that a later optimisation - skinning
+// the hands on their own, say - would quietly break.
+TEST(SkinningTransform, AHandScalesWithThePlayer) {
+  const Vector3 wrist(0.604f, -0.07f, 1.064f);       // retarget.py's left_hand
+  const Vector3 fingertip(0.604f, -0.07f, 0.884f);   // 18 cm along the hand
+  Quaternion identity;
+  identity.SetAngleAxis(0.0f, Vector3(0, 0, 1));
+
+  const float shortPlayer = 1.70f / defaultPlayerHeight;
+  const float tallPlayer = 2.05f / defaultPlayerHeight;
+
+  const JointTransform low = Skinning::MakeJointTransform(identity, wrist, wrist, shortPlayer);
+  const JointTransform high = Skinning::MakeJointTransform(identity, wrist, wrist, tallPlayer);
+
+  const Vector3 lowTip = Apply(low, fingertip * shortPlayer, true);
+  const Vector3 highTip = Apply(high, fingertip * tallPlayer, true);
+  const Vector3 lowWrist = Apply(low, wrist * shortPlayer, true);
+  const Vector3 highWrist = Apply(high, wrist * tallPlayer, true);
+
+  const float shortHand = (lowTip - lowWrist).GetLength();
+  const float tallHand = (highTip - highWrist).GetLength();
+  EXPECT_GT(tallHand, shortHand);
+  // And in proportion: the ratio of the hands is the ratio of the players.
+  EXPECT_NEAR(tallHand / shortHand, 2.05f / 1.70f, 1e-4f);
 }
