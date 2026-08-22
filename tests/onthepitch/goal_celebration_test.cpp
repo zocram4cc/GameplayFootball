@@ -243,3 +243,61 @@ TEST(CelebrationWindow, ItNeverOutlastsTheGoalSequence) {
   // have players posing as the game kicks off again
   EXPECT_FALSE(GoalCelebration::IsPerforming(30000, 5200));
 }
+
+// Whose celebration this is.
+//
+// The draw was seeded from the score and the scoring side - so at 0-0 every scorer in
+// the match gave the same celebration, and the variety in 40 imported performances
+// went unseen. A man's own celebration should be his: stable across matches, and not
+// his team-mate's.
+
+namespace {
+
+std::vector<GoalCelebration::Celebration> FilmedSet(int howMany) {
+  std::vector<GoalCelebration::Celebration> set;
+  for (int i = 0; i < howMany; i++) {
+    GoalCelebration::Celebration one;
+    one.name = "celebrate_" + std::to_string(i);
+    one.var = 100 + i;
+    one.cameras.push_back("cam_" + std::to_string(i));
+    set.push_back(one);
+  }
+  return set;
+}
+
+}  // namespace
+
+TEST(CelebrationIdentity, TheSameManCelebratesTheSameWayTwice) {
+  // nothing but his own id decides it, so the score cannot move it
+  const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
+  const int first = GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(452));
+  const int again = GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(452));
+  EXPECT_EQ(first, again);
+}
+
+TEST(CelebrationIdentity, DifferentMenGetDifferentCelebrations) {
+  const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
+  std::set<int> chosen;
+  for (int id = 450; id < 473; id++)
+    chosen.insert(GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(id)));
+  // a squad of 23 drawing from 40 performances should not collapse onto a handful
+  EXPECT_GE(chosen.size(), 12u) << "only " << chosen.size() << " celebrations across a squad";
+}
+
+TEST(CelebrationIdentity, TheWholeSetGetsUsedAcrossALeague) {
+  const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
+  std::set<int> chosen;
+  for (int id = 1; id < 500; id++)
+    chosen.insert(GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(id)));
+  EXPECT_EQ(chosen.size(), set.size()) << "some performances are never drawn";
+}
+
+TEST(CelebrationIdentity, AnAssignmentStillWins) {
+  const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
+  EXPECT_EQ(GoalCelebration::Choose(set, "celebrate_7", GoalCelebration::SeedFor(452)), 7);
+}
+
+TEST(CelebrationIdentity, APlayerWithNoDatabaseIdStillCelebrates) {
+  const std::vector<GoalCelebration::Celebration> set = FilmedSet(40);
+  EXPECT_GE(GoalCelebration::Choose(set, "", GoalCelebration::SeedFor(0)), 0);
+}

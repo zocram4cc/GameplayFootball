@@ -39,6 +39,19 @@ const std::string& GetPlayerModelDir(int databaseID) {
   return it == map.end() ? empty : it->second;
 }
 
+const std::string& GetPlayerCelebration(int databaseID) {
+  static const std::string empty;
+  static bool loaded = false;
+  static std::map<int, std::string> map;
+  if (!loaded) {
+    loaded = true;
+    std::ifstream file("media/players/playercelebrations.cfg");
+    if (file.good()) map = ParsePlayerModelMap(file);
+  }
+  auto it = map.find(databaseID);
+  return it == map.end() ? empty : it->second;
+}
+
 const std::string& GetPlayerPortrait(int databaseID) {
   static const std::string empty;
   static bool loaded = false;
