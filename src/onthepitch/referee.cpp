@@ -325,6 +325,16 @@ void Referee::Process() {
           clearingNearest_m = nearest;
           clearingRule = "the area";
         }
+        if (!clearingAnnounced) {
+          clearingAnnounced = true;
+          // One line per restart that the law touches: which kind, and how many of them
+          // have to move. A restart that never reports anyone is a restart where the
+          // area was already clear, which is worth being able to tell apart from a
+          // clearing that silently did nothing.
+          Log(e_Notice, "Referee", "Process",
+              "clearing the area for set piece " + int_to_str((int)buffer.desiredSetPiece) +
+                  ": " + int_to_str(intruders) + " opponent(s) to move");
+        }
         if (!SetPieceLaws::MayRestart(intruders, match->GetActualTime_ms() - buffer.prepareTime)) {
           buffer.startTime = match->GetActualTime_ms() + 10;
           if (!clearingLogged) {
@@ -356,6 +366,13 @@ void Referee::Process() {
           clearingNearest_m = nearest;
           clearingRule = "nine metres";
         }
+        if (!clearingAnnounced) {
+          clearingAnnounced = true;
+          Log(e_Notice, "Referee", "Process",
+              "standing them off the ball for set piece " +
+                  int_to_str((int)buffer.desiredSetPiece) + ": " + int_to_str(tooClose) +
+                  " opponent(s) to move");
+        }
         if (!SetPieceLaws::MayRestart(tooClose, match->GetActualTime_ms() - buffer.prepareTime)) {
           buffer.startTime = match->GetActualTime_ms() + 10;
           if (!clearingLogged) {
@@ -380,6 +397,7 @@ void Referee::Process() {
                   " cm clear of " + clearingRule);
         }
         clearingLogged = false;
+        clearingAnnounced = false;
         // blow whistle and wait for set piece taker to touch the ball
         whistle[1]->SetGain(0.3 * GetConfiguration()->GetReal("audio_volume", 0.5));
         whistle[1]->Poke(e_SystemType_Audio);
