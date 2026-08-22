@@ -531,6 +531,7 @@ set(GAME_SOURCES
    src/onthepitch/match.cpp
    src/onthepitch/prematchtimeline.cpp
    src/onthepitch/referee.cpp
+   src/onthepitch/setpiecelaws.cpp
    src/onthepitch/AIsupport/mentalimage.cpp
    src/onthepitch/AIsupport/AIfunctions.cpp
    src/onthepitch/playerbody.cpp
