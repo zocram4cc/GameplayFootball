@@ -99,8 +99,32 @@ in the bind pose and blending those would drag his chest along with his elbow.
 
 Measured on the stock body: shirt against sleeves goes from 60% of boundary pairs
 disagreeing to 4%, and the mean weight difference across every overlapping surface
-from 0.146 to 0.068. 12,886 weights move, 879 of them onto a different dominant bone,
-all of them at seams. The worst left is socks against boots at 15%.
+from 0.146 to 0.068. The blend runs on the influence lists rather than on the vertex
+colours now the fingers are rigged — a hand vertex can be on joint 44 and the colour
+a glove vertex beside it carries cannot say so — so a re-run reports 13,444 weights
+moved, 933 of them onto a different dominant bone, all of them at seams. The worst
+left is socks against boots at 15%.
+
+The same run writes `fullbody_pes.weights`, the sidecar the vertex colours cannot
+hold: **20,157 vertices, 3,689 of them on a finger** (6,626 finger influences), and
+1,646 vertices on four bones, which no colour could have carried at all.
+
+## 2b. The finger poses
+
+PES models a hand flat with the fingers spread and poses it at runtime from a library
+of one-frame ganis, not from the body animation. Import that library:
+
+    python3 tools/pes21_import/hand_poses.py \
+        --frig <dt13>/common/anime/FoxAnim/Hand/CharacterAssets/pes_human_hand_141203.frig \
+        --ganis <dt13>/common/anime/FoxAnim/Hand/Animations \
+        --out data/media/objects/players/handposes.txt \
+        --poses normal,relax,move_nigiri,clap,taore,open_full_ball,kp_hold
+
+Those seven are the ones `handrig.cpp` selects between; drop `--poses` to convert all
+162. Extract dt13 with `cpk.py` if it is not already unpacked. Skip this step and the
+match log says `hand rig: no pose library, fingers stay in bind pose` and the hands
+keep PES's splayed modelling pose. With it, the log says `hand rig: 38 finger
+joint(s) bound, 7 pose(s), resting on normal`.
 
 ## 3. Cutscenes: camerawork, choreography, celebrations
 
