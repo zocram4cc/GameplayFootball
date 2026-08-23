@@ -798,8 +798,11 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
         [(v[0], v[3]) for group in groups for v in group[1]],
         base_ase=base_ase)
     if sidecar:
-        print("  skin weights: %d vertex/vertices in %s"
-              % (sidecar, os.path.basename(weights_path(ase_path))))
+        # The composite path is where the base body's fingers ride through, so say
+        # whether they made it - assemble() reports the same for the stock body.
+        print("  skin weights: %d vertex/vertices in %s, %d of them on a finger"
+              % (sidecar, os.path.basename(weights_path(ase_path)),
+                 count_finger_lines(weights_path(ase_path))))
 
     object_path = os.path.join(out_dir, "fullbody.object")
     open(object_path, "w").write(

@@ -70,8 +70,14 @@ bool ParseInfluence(const std::string& token, SkinInfluence& out) {
 }
 
 bool ParseCoordinate(const std::string& token, float& out) {
+  // Parsed the way the ASE loader parses a vertex position - atof, narrowed to
+  // float (aseloader.cpp) - and not with strtof. The two round differently in
+  // decimal->double->float tie cases, our positions carry seven significant digits
+  // against float's six, and the lookup is by exact equality: a coordinate that
+  // lands one ULP away from its ASE twin silently costs that vertex its fingers.
   char* end = nullptr;
-  const float value = strtof(token.c_str(), &end);
+  const float value = (float)atof(token.c_str());
+  strtod(token.c_str(), &end);
   if (end != token.c_str() + token.size() || !std::isfinite(value)) return false;
   out = value;
   return true;
