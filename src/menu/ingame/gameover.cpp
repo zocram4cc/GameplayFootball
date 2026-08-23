@@ -246,6 +246,15 @@ void GameOverPage::Process() {
     const int passAccuracy2 = passes2 > 0 ? (matchData->GetPassesCompleted(1) * 100) / passes2 : 0;
     printf("[balance-passing] passes %i-%i | accuracy %i%%-%i%%\n", passes1, passes2, passAccuracy1,
            passAccuracy2);
+#ifndef NDEBUG
+    // Questionable-play deny list, debug-only: no quality guarantee should depend on
+    // somebody counting frames by hand.
+    printf("[deny-list] pass-to-opponent %i-%i | gk-lost %i-%i | own-third-giveaway %i-%i | bad-plays %i\n",
+           matchData->GetBadPassToOpponent(0), matchData->GetBadPassToOpponent(1),
+           matchData->GetGoalkeeperLost(0), matchData->GetGoalkeeperLost(1),
+           matchData->GetOwnThirdGiveaway(0), matchData->GetOwnThirdGiveaway(1),
+           matchData->GetBadPlayTotal());
+#endif
     printf(
         "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "
         "%i%%-%i%%\n",

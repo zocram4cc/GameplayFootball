@@ -699,6 +699,24 @@ void Humanoid::Process() {
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->AddPassAttempt(team->GetID());
+        // Debug-only deny-list: was this pass taken by the goalkeeper, and from the
+        // team's own third straight into the opposition's hands? Those are the two
+        // "questionable play" events the match goal counts (the receiver-side half of
+        // both is RecordBallTouch).
+#ifndef NDEBUG
+        if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
+          match->GetMatchData()->SetPendingPassGoalkeeper();
+        }
+        {
+          const Vector3 here = CastPlayer()->GetPosition();
+          const int side = team->GetSide();
+          // Own third: nearer the passer's own goal line than the halfway line.
+          const float ownThird = pitchHalfW * 0.5f * static_cast<float>(side);
+          if (side != 0 && here.coords[0] * static_cast<float>(side) > ownThird) {
+            match->GetMatchData()->SetPendingPassOwnThird();
+          }
+        }
+#endif
         CastPlayer()->UpdatePossessionStats(false);
         if (targetPlayer)
           targetPlayer->UpdatePossessionStats(false);
