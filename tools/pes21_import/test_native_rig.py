@@ -49,10 +49,18 @@ class SklParser(unittest.TestCase):
 
 
 class SkeletonTables(unittest.TestCase):
-    def test_twenty_joints_within_weight_encoding_headroom(self):
-        self.assertEqual(len(retarget.GF_JOINT_ORDER), 20)
-        # channel = jointID*10 + weight*9 must fit a byte
-        self.assertLessEqual(max(retarget.JOINT_ID.values()) * 10 + 9, 255)
+    def test_body_joints_are_the_first_twenty(self):
+        # the fingers came later and were appended; the body's IDs may not move
+        self.assertEqual(len(retarget.GF_BODY_NODES), 20)
+        self.assertEqual(retarget.GF_JOINT_ORDER[:20],
+                         [name for name, _, _ in retarget.GF_BODY_NODES])
+
+    def test_body_joints_stay_inside_the_vertex_colour_range(self):
+        # a vertex colour channel is jointID*10 + weight*9 and must fit a
+        # byte, so that encoding reaches joint 25 and no further. That ceiling
+        # is why the fingers need the sidecar weight file (skinweights.cpp).
+        self.assertLessEqual(retarget.JOINT_ID["right_hand"] * 10 + 9, 255)
+        self.assertGreater(max(retarget.JOINT_ID.values()) * 10 + 9, 255)
 
     def test_legacy_names_all_present(self):
         legacy = ["body", "middle", "neck", "head",
@@ -107,8 +115,8 @@ class HelperCollapse(unittest.TestCase):
             "dsk_hem_ba_fake_l": "left_thigh",
             "tip_dsk_sleeve_03_r": "right_shoulder",
             "pos_arm_target_05_l": "left_shoulder",
-            "skh_index_dip_l": "left_hand",
-            "skh_thumb_mcp_r": "right_hand",
+            "skh_index_dip_l": "left_index_dip",
+            "skh_thumb_mcp_r": "right_thumb_mcp",
             "skf_jaw": "head",
             "dsk_earlobe_r": "head",
         }

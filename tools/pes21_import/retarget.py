@@ -1,24 +1,30 @@
 """PES <-> GameplayFootball skeleton bridge.
 
 Since the native-rig migration the engine's skeleton IS the PES animated
-rig, 1:1: GameplayFootball's player.object carries twenty nodes, one per
-bone of PES's body animation rig (body_skel.frig), at the PES bind
-positions (Fox coords mapped (x, y, z) -> (x, -z, y) into GF's Z-up,
-faces -Y frame), with identity bind rotations (Fox skeletons are
-world-aligned). The sixteen legacy node names are kept -- engine code
-refers to them -- and four nodes are new: hip (dsk_hip), chest (sk_chest),
-left_clavicle / right_clavicle (sk_shoulder_l/r).
+rig: GameplayFootball's player.object carries PES's twenty body bones
+(body_skel.frig) plus PES's own hand rig (pes_human_hand_141203.frig,
+nineteen skh_* bones a hand), at the PES bind positions (Fox coords mapped
+(x, y, z) -> (x, -z, y) into GF's Z-up, faces -Y frame), with identity bind
+rotations (Fox skeletons are world-aligned). The sixteen legacy node names
+are kept -- engine code refers to them.
 
-Everything else PES has (dsk_* skin helpers, skh_* fingers, skf_* face
-muscles, cloth bones) is never independently animated by the body ganis;
-under the engine's inverse-bind skinning, collapsing such a bone onto the
-animated bone it rigidly follows is mathematically lossless, so skin
-weights resolve through HELPER_TO_GF/resolve_bone below. (What IS lost:
-Fox's runtime constraints -- twist distribution on dsk_forearm/dsk_thigh,
-clavicle aim -- which GF does not emulate. Documented, not accidental.)
+Joint IDs are the twenty body joints first, in the order they have always
+had, then the thirty-eight finger joints: a model converted before the
+fingers existed addresses joints by number, so the body's numbers may never
+move (the engine builds the same order in jointorder.cpp).
 
-The authoritative bone data comes from the base package's body.skl
-(pes_skl.py); PES_BIND below matches it and body_skel.frig.
+What PES has and this does not: skf_* face muscles (the FaceRig deforms
+those instead), dsk_* skin helpers and cloth bones. Those are never
+independently animated by the body ganis, and under the engine's
+inverse-bind skinning collapsing such a bone onto the animated bone it
+rigidly follows is mathematically lossless, so their skin weights resolve
+through HELPER_TO_GF/resolve_bone below. (What IS lost: Fox's runtime
+constraints -- twist distribution on dsk_forearm/dsk_thigh, clavicle aim --
+which GF does not emulate. Documented, not accidental.)
+
+The authoritative bone data comes from the base package's body.skl and
+hand_l.skl / hand_r.skl (pes_skl.py); PES_BIND below matches them, and the
+body half matches body_skel.frig.
 """
 
 # ---------------------------------------------------------------------------
@@ -63,8 +69,15 @@ PES_POS_TO_M = 1.0 / 128000.0
 PES_POS_TO_M_GAMEPLAY = 1.0 / 20480.0
 
 # Bind pose (Fox coords: Y up, +Z forward, metres), from the base package's
-# body.skl (== the fmdl bone tables); animation frames are world-aligned
-# (identity bind rotations - Fox skeletons store positions only).
+# body.skl and hand_l.skl / hand_r.skl (== the fmdl bone tables); animation
+# frames are world-aligned (identity bind rotations - Fox skeletons store
+# positions only). Four decimals, which is 0.05 mm - test_hand_rig holds the
+# finger half against the two .skl files to within 0.1 mm.
+#
+# The finger bones are parentless in hand_[lr].skl, as every Fox helper bone
+# is; the chains below are the anatomy, and match the unit order of the hand
+# rig pes_human_hand_141203.frig (thumb, index, middle, pinky, ring - the
+# thumb has three bones, the rest four).
 PES_BIND = {
     # bone: (global bind position, parent)
     "motion":        ((0.0000, 0.9921, -0.0184), None),        # = dsk_hip pos
@@ -87,6 +100,46 @@ PES_BIND = {
     "sk_upperarm_r": ((-0.1950, 1.4671, 0.0335), "sk_shoulder_r"),
     "sk_forearm_r":  ((-0.3991, 1.2620, 0.0138), "sk_upperarm_r"),
     "sk_hand_r":     ((-0.6035, 1.0639, 0.0695), "sk_forearm_r"),
+
+    # PES's hand rig, from hand_l.skl / hand_r.skl
+    "skh_thumb_mata_l":  ((0.6147, 1.0545, 0.0881), "sk_hand_l"),
+    "skh_thumb_mcp_l":   ((0.6269, 1.0178, 0.1276), "skh_thumb_mata_l"),
+    "skh_thumb_pip_l":   ((0.6420, 1.0002, 0.1472), "skh_thumb_mcp_l"),
+    "skh_index_mata_l":  ((0.6473, 1.0347, 0.0795), "sk_hand_l"),
+    "skh_index_mcp_l":   ((0.6656, 1.0105, 0.0997), "skh_index_mata_l"),
+    "skh_index_pip_l":   ((0.6897, 0.9758, 0.1107), "skh_index_mcp_l"),
+    "skh_index_dip_l":   ((0.7032, 0.9564, 0.1169), "skh_index_pip_l"),
+    "skh_middle_mata_l": ((0.6476, 1.0352, 0.0727), "sk_hand_l"),
+    "skh_middle_mcp_l":  ((0.6689, 1.0061, 0.0741), "skh_middle_mata_l"),
+    "skh_middle_pip_l":  ((0.6963, 0.9688, 0.0759), "skh_middle_mcp_l"),
+    "skh_middle_dip_l":  ((0.7116, 0.9479, 0.0769), "skh_middle_pip_l"),
+    "skh_pinky_mata_l":  ((0.6118, 1.0580, 0.0563), "sk_hand_l"),
+    "skh_pinky_mcp_l":   ((0.6536, 1.0105, 0.0334), "skh_pinky_mata_l"),
+    "skh_pinky_pip_l":   ((0.6722, 0.9832, 0.0212), "skh_pinky_mcp_l"),
+    "skh_pinky_dip_l":   ((0.6826, 0.9678, 0.0143), "skh_pinky_pip_l"),
+    "skh_ring_mata_l":   ((0.6474, 1.0348, 0.0655), "sk_hand_l"),
+    "skh_ring_mcp_l":    ((0.6620, 1.0068, 0.0524), "skh_ring_mata_l"),
+    "skh_ring_pip_l":    ((0.6868, 0.9721, 0.0456), "skh_ring_mcp_l"),
+    "skh_ring_dip_l":    ((0.7006, 0.9527, 0.0418), "skh_ring_pip_l"),
+    "skh_thumb_mata_r":  ((-0.6147, 1.0546, 0.0881), "sk_hand_r"),
+    "skh_thumb_mcp_r":   ((-0.6269, 1.0179, 0.1276), "skh_thumb_mata_r"),
+    "skh_thumb_pip_r":   ((-0.6420, 1.0002, 0.1472), "skh_thumb_mcp_r"),
+    "skh_index_mata_r":  ((-0.6473, 1.0347, 0.0795), "sk_hand_r"),
+    "skh_index_mcp_r":   ((-0.6656, 1.0104, 0.0997), "skh_index_mata_r"),
+    "skh_index_pip_r":   ((-0.6898, 0.9758, 0.1107), "skh_index_mcp_r"),
+    "skh_index_dip_r":   ((-0.7032, 0.9564, 0.1169), "skh_index_pip_r"),
+    "skh_middle_mata_r": ((-0.6476, 1.0352, 0.0727), "sk_hand_r"),
+    "skh_middle_mcp_r":  ((-0.6689, 1.0062, 0.0741), "skh_middle_mata_r"),
+    "skh_middle_pip_r":  ((-0.6963, 0.9688, 0.0759), "skh_middle_mcp_r"),
+    "skh_middle_dip_r":  ((-0.7116, 0.9479, 0.0769), "skh_middle_pip_r"),
+    "skh_pinky_mata_r":  ((-0.6118, 1.0581, 0.0563), "sk_hand_r"),
+    "skh_pinky_mcp_r":   ((-0.6536, 1.0106, 0.0334), "skh_pinky_mata_r"),
+    "skh_pinky_pip_r":   ((-0.6722, 0.9832, 0.0212), "skh_pinky_mcp_r"),
+    "skh_pinky_dip_r":   ((-0.6826, 0.9679, 0.0143), "skh_pinky_pip_r"),
+    "skh_ring_mata_r":   ((-0.6474, 1.0348, 0.0655), "sk_hand_r"),
+    "skh_ring_mcp_r":    ((-0.6621, 1.0068, 0.0524), "skh_ring_mata_r"),
+    "skh_ring_pip_r":    ((-0.6868, 0.9721, 0.0456), "skh_ring_mcp_r"),
+    "skh_ring_dip_r":    ((-0.7007, 0.9527, 0.0418), "skh_ring_pip_r"),
 }
 
 
@@ -96,10 +149,12 @@ def fox_to_gf(v):
 
 
 # ---------------------------------------------------------------------------
-# The engine's native skeleton: GF node -> PES bone, in player.object DFS
-# order. The list order IS the joint-ID order (vertex-colour weight
-# encoding: channel = jointID*10 + weight*9).
-GF_NODES = [
+# The engine's native skeleton: GF node -> PES bone. The list order IS the
+# joint-ID order, and the twenty body joints come first because a model
+# converted before the fingers existed names its joints by number. Within
+# each group the order is player.object DFS order, which is how the engine
+# rebuilds the same numbering (jointorder.cpp).
+GF_BODY_NODES = [
     # (GF node, PES bone, GF parent)
     ("body",           "motion",        None),
     ("hip",            "dsk_hip",       "body"),
@@ -122,6 +177,35 @@ GF_NODES = [
     ("right_elbow",    "sk_forearm_r",  "right_shoulder"),
     ("right_hand",     "sk_hand_r",     "right_elbow"),
 ]
+
+# PES's hand rig, both hands. Names follow PES's own: mata is the metacarpal
+# base, then mcp / pip / dip up the finger. The order is the hand rig's unit
+# order, so a pose's channels arrive in the order they were authored in.
+_FINGER_SEGMENTS = {
+    "thumb": ("mata", "mcp", "pip"),        # PES gives the thumb three bones
+    "index": ("mata", "mcp", "pip", "dip"),
+    "middle": ("mata", "mcp", "pip", "dip"),
+    "pinky": ("mata", "mcp", "pip", "dip"),
+    "ring": ("mata", "mcp", "pip", "dip"),
+}
+_FINGER_ORDER = ("thumb", "index", "middle", "pinky", "ring")
+
+
+def _finger_nodes():
+    out = []
+    for side, suffix in (("left", "_l"), ("right", "_r")):
+        for finger in _FINGER_ORDER:
+            segments = _FINGER_SEGMENTS[finger]
+            for i, segment in enumerate(segments):
+                node = "%s_%s_%s" % (side, finger, segment)
+                bone = "skh_%s_%s%s" % (finger, segment, suffix)
+                parent = ("%s_hand" % side if i == 0 else
+                          "%s_%s_%s" % (side, finger, segments[i - 1]))
+                out.append((node, bone, parent))
+    return out
+
+
+GF_NODES = GF_BODY_NODES + _finger_nodes()
 
 GF_JOINT_ORDER = [name for name, _, _ in GF_NODES]
 JOINT_ID = {name: i for i, name in enumerate(GF_JOINT_ORDER)}
@@ -223,7 +307,11 @@ _HELPER_FAMILIES = [
     ("dsk_upperarm_", {"_l": "left_shoulder", "_r": "right_shoulder"}),
     ("dsk_ear", {"_l": "head", "_r": "head"}),
     ("tip_dsk_toe", {"_l": "left_ankle", "_r": "right_ankle"}),
-    # fingers (hand_[lr].skl / hand meshes) and face muscles
+    # Face muscles collapse onto the head - the FaceRig deforms those
+    # instead of rotating them. Fingers do NOT: every skh_* bone of PES's
+    # hand rig is a GF joint of its own (GF_NODES above), and reaches this
+    # table only if PES ships a name the rig does not have - a glove or
+    # cloth variant - in which case the wrist is where it belongs.
     ("skh_", {"_l": "left_hand", "_r": "right_hand"}),
     ("skf_", {"_l": "head", "_r": "head", "": "head"}),
 ]
