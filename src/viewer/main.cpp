@@ -99,6 +99,7 @@ boost::intrusive_ptr<Geometry> GetSmallDebugCircle1() { return boost::intrusive_
 boost::intrusive_ptr<Geometry> GetSmallDebugCircle2() { return boost::intrusive_ptr<Geometry>(); }
 boost::intrusive_ptr<Geometry> GetLargeDebugCircle() { return boost::intrusive_ptr<Geometry>(); }
 void SetGreenDebugPilon(const Vector3&) {}
+void SetBlueDebugPilon(const Vector3&) {}
 void SetYellowDebugPilon(const Vector3&) {}
 void SetRedDebugPilon(const Vector3&) {}
 boost::intrusive_ptr<Image2D> GetDebugOverlay() { return boost::intrusive_ptr<Image2D>(); }
