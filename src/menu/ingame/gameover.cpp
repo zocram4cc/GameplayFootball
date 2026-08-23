@@ -254,6 +254,11 @@ void GameOverPage::Process() {
            matchData->GetGoalkeeperLost(0), matchData->GetGoalkeeperLost(1),
            matchData->GetOwnThirdGiveaway(0), matchData->GetOwnThirdGiveaway(1),
            matchData->GetBadPlayTotal());
+    // Failure breakdown: where the incomplete passes actually went.
+    printf("[pass-fail] intercept %i-%i out %i-%i trap %i-%i\n",
+           matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
+           matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
+           matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
 #endif
     printf(
         "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "

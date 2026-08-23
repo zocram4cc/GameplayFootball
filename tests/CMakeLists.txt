@@ -586,6 +586,43 @@ target_link_libraries(gameplayfootball_league_integration_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_league_integration_tests DISCOVERY_MODE PRE_TEST)
 
+# Pass-failure breakdown: intercept vs out-of-bounds vs bad trap. The counters
+# live behind #ifndef NDEBUG in the game, so this target undefines NDEBUG and
+# exercises the guarded behaviour that ships compiled-out of release builds.
+add_executable(gameplayfootball_pass_failure_tests
+  onthepitch/pass_failure_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/matchdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/teamdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/database.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/xmlloader.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/properties.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/log.cpp
+)
+
+# Release test builds define NDEBUG; the debug-only counters under test would
+# compile away entirely, so take it back off for this target only.
+target_compile_options(gameplayfootball_pass_failure_tests PRIVATE -UNDEBUG)
+
+target_include_directories(gameplayfootball_pass_failure_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
+)
+
+target_link_libraries(gameplayfootball_pass_failure_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+  SQLite::SQLite3
+)
+
+gtest_discover_tests(gameplayfootball_pass_failure_tests DISCOVERY_MODE PRE_TEST)
+
 # Simulation-depth unit tests (SIMULATION_IMPROVEMENT_PROPOSAL.md / TECHNICAL_ROADMAP.md).
 # These cover pure-logic simulation modules, so they build without SDL/OpenGL.
 add_executable(gameplayfootball_simulation_tests
