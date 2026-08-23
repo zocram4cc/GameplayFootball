@@ -24,7 +24,7 @@ public:
   void Exit();
 
   void InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
-                   std::map<Vector3, Vector3>& colorCoords);
+                   SkinWeights& skinWeights);
 
   Match* GetMatch() { return match; }
   TeamAIController* GetController() { return teamController.get(); }
@@ -147,11 +147,11 @@ protected:
   // shared body when he has none. Starters and substitutes both go through here.
   void ActivateWithModel(Player* player, int formationIndex,
                          boost::intrusive_ptr<Node> fullbodyNode,
-                         std::map<Vector3, Vector3>& colorCoords);
+                         SkinWeights& skinWeights);
   boost::intrusive_ptr<Node> fullbodyNode;
   // source nodes for imported per-player models; kept alive for the match
   std::vector<boost::intrusive_ptr<Node>> customBodyNodes;
-  std::map<Vector3, Vector3> playerColorCoords;
+  SkinWeights playerSkinWeights;
 };
 
 #endif

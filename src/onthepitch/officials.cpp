@@ -15,7 +15,7 @@
 #include "utils/objectloader.hpp"
 
 Officials::Officials(Match* match, boost::intrusive_ptr<Node> fullbodySourceNode,
-                     std::map<Vector3, Vector3>& colorCoords,
+                     SkinWeights& skinWeights,
                      boost::intrusive_ptr<Resource<Surface>> kit,
                      std::shared_ptr<AnimCollection>)
     : match(match) {
@@ -30,10 +30,10 @@ Officials::Officials(Match* match, boost::intrusive_ptr<Node> fullbodySourceNode
   linesmen[0] = std::make_unique<PlayerOfficial>(e_OfficialType_Linesman, match, playerData.get());
   linesmen[1] = std::make_unique<PlayerOfficial>(e_OfficialType_Linesman, match, playerData.get());
 
-  referee->Activate(playerNode, fullbodySourceNode, colorCoords, kit, match->GetAnimCollection());
-  linesmen[0]->Activate(playerNode, fullbodySourceNode, colorCoords, kit,
+  referee->Activate(playerNode, fullbodySourceNode, skinWeights, kit, match->GetAnimCollection());
+  linesmen[0]->Activate(playerNode, fullbodySourceNode, skinWeights, kit,
                         match->GetAnimCollection());
-  linesmen[1]->Activate(playerNode, fullbodySourceNode, colorCoords, kit,
+  linesmen[1]->Activate(playerNode, fullbodySourceNode, skinWeights, kit,
                         match->GetAnimCollection());
   playerNode->Exit();
   playerNode.reset();

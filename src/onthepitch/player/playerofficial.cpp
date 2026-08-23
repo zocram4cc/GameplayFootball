@@ -30,11 +30,11 @@ RefereeController* PlayerOfficial::CastController() {
 
 void PlayerOfficial::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
                               boost::intrusive_ptr<Node> fullbodySourceNode,
-                              std::map<Vector3, Vector3>& colorCoords,
+                              SkinWeights& skinWeights,
                               boost::intrusive_ptr<Resource<Surface>> kit,
                               std::shared_ptr<AnimCollection> animCollection) {
   isActive = true;
-  humanoid = new HumanoidBase(this, match, humanoidSourceNode, fullbodySourceNode, colorCoords,
+  humanoid = new HumanoidBase(this, match, humanoidSourceNode, fullbodySourceNode, skinWeights,
                               animCollection, match->GetDynamicNode(), kit, 0);
 
   CastHumanoid()->ResetPosition(Vector3(0), Vector3(0));

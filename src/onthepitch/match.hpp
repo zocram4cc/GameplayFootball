@@ -768,7 +768,7 @@ protected:
   bool gameOver;
 
   boost::intrusive_ptr<Node> fullbodyNode;
-  std::map<Vector3, Vector3> colorCoords;
+  SkinWeights skinWeights;
 
   std::unique_ptr<ValueHistory<float>> possessionSideHistory;
 

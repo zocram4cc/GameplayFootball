@@ -170,7 +170,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
 
   Log(e_Notice, "Match", "Match", "Fullbody object: getting vertex colors");
 
-  GetVertexColors(colorCoords, "media/objects/players/models/" + bodyName + ".ase");
+  LoadSkinWeights(skinWeights, "media/objects/players/models/" + bodyName + ".ase");
 
   designatedPossessionPlayer = 0;
 
@@ -184,8 +184,8 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   teams[1] = nullptr;
   teams[0] = std::make_unique<Team>(0, this, matchData->GetTeamData(0));
   teams[1] = std::make_unique<Team>(1, this, matchData->GetTeamData(1));
-  teams[0]->InitPlayers(fullbodyNode, colorCoords);
-  teams[1]->InitPlayers(fullbodyNode, colorCoords);
+  teams[0]->InitPlayers(fullbodyNode, skinWeights);
+  teams[1]->InitPlayers(fullbodyNode, skinWeights);
 
   std::vector<Player*> activePlayers;
   teams[0]->GetActivePlayers(activePlayers);
@@ -202,7 +202,7 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   boost::intrusive_ptr<Resource<Surface>> kit = ResourceManagerPool::GetInstance()
                                                     .GetManager<Surface>(e_ResourceType_Surface)
                                                     ->Fetch(kitFilename);
-  officials = std::make_unique<Officials>(this, fullbodyNode, colorCoords, kit, anims);
+  officials = std::make_unique<Officials>(this, fullbodyNode, skinWeights, kit, anims);
 
   dynamicNode->AddObject(officials->GetYellowCardGeom());
   dynamicNode->AddObject(officials->GetRedCardGeom());

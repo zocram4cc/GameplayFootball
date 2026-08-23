@@ -36,7 +36,7 @@ public:
   // get ready for some action
   virtual void Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
                         boost::intrusive_ptr<Node> fullbodySourceNode,
-                        std::map<Vector3, Vector3>& colorCoords,
+                        SkinWeights& skinWeights,
                         boost::intrusive_ptr<Resource<Surface>> kit,
                         std::shared_ptr<AnimCollection> animCollection);
   // go back to bench/take a shower

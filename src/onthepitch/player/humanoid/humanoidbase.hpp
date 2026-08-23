@@ -204,7 +204,7 @@ class HumanoidBase {
 public:
   HumanoidBase(PlayerBase* player, Match* match, boost::intrusive_ptr<Node> humanoidSourceNode,
                boost::intrusive_ptr<Node> fullbodySourceNode,
-               std::map<Vector3, Vector3>& colorCoords,
+               SkinWeights& skinWeights,
                std::shared_ptr<AnimCollection> animCollection,
                boost::intrusive_ptr<Node> fullbodyTargetNode,
                boost::intrusive_ptr<Resource<Surface>> kit, int bodyUpdatePhaseOffset);
@@ -214,7 +214,7 @@ public:
   // "debug_face_closeup_seconds" camera to find a face worth filming)
   bool HasActiveFaceRig() const { return faceRig.IsActive(); }
 
-  void PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords);
+  void PrepareFullbodyModel(SkinWeights& skinWeights);
   void UpdateFullbodyNodes();
   bool NeedsModelUpdate();
   void UpdateFullbodyModel(bool updateSrc = false);

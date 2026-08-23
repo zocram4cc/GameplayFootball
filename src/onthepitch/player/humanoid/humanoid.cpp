@@ -73,12 +73,12 @@ const bool enableControlledBallCollisions = true;
 
 Humanoid::Humanoid(Player* player, boost::intrusive_ptr<Node> humanoidSourceNode,
                    boost::intrusive_ptr<Node> fullbodySourceNode,
-                   std::map<Vector3, Vector3>& colorCoords,
+                   SkinWeights& skinWeights,
                    std::shared_ptr<AnimCollection> animCollection,
                    boost::intrusive_ptr<Node> fullbodyTargetNode,
                    boost::intrusive_ptr<Resource<Surface>> kit, int bodyUpdatePhaseOffset)
     : HumanoidBase(player, player->GetTeam()->GetMatch(), humanoidSourceNode, fullbodySourceNode,
-                   colorCoords, animCollection, fullbodyTargetNode, kit, bodyUpdatePhaseOffset) {
+                   skinWeights, animCollection, fullbodyTargetNode, kit, bodyUpdatePhaseOffset) {
   team = CastPlayer()->GetTeam();
 
   stat_GetBodyBallDistanceAdvantage_RadiusDeny = 0;
