@@ -63,6 +63,18 @@ public:
   size_t VertexColourCount() const { return colours.size(); }
   size_t SidecarVertexCount() const { return sidecar.size(); }
 
+  // Drops every influence naming a joint the skeleton does not have, and
+  // renormalises what survives.
+  //
+  // The colour decode could never name a joint past 25 - floor(255 * 0.1) - so the
+  // old path was structurally in bounds. The sidecar is editable text with no such
+  // ceiling, and an influence's jointID is used as a raw index into jointTransforms
+  // every skinning frame: "99:1.0" parses cleanly and reads past the end of the
+  // array. A sidecar vertex losing everything falls back to its colour; one with no
+  // colour either rides the body root, because the engine asserts that every vertex
+  // rides something.
+  void ClampToJointCount(int jointCount);
+
   // The influences driving a vertex: the sidecar's if it names this one, else the
   // decoded vertex colour. Null when the model knows nothing about the position.
   const std::vector<SkinInfluence>* Find(const Vector3& position) const;

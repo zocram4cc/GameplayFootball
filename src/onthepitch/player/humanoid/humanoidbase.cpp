@@ -323,6 +323,11 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
     joints.push_back(joint);
   }
 
+  // A weight file is editable text and a jointID is a raw index into
+  // jointTransforms: bound everything to the skeleton actually loaded, or a
+  // hand-edited sidecar reads past the array every skinning frame.
+  skinWeights.ClampToJointCount((int)joints.size());
+
   boost::intrusive_ptr<Resource<GeometryData>> fullbodyGeometryData =
       boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->GetGeometryData();
   fullbodyGeometryData->resourceMutex.lock();

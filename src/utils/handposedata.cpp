@@ -24,9 +24,11 @@ bool HandPoseData::Load(std::istream& in) {
 
   std::string line;
   if (!std::getline(in, line)) return false;
-  if (line.compare(0, 16, "# gfhandposes 1") != 0 &&
-      line.compare(0, 15, "# gfhandposes 1") != 0)
-    return false;
+  // The first clause of what stood here compared sixteen characters against a
+  // fifteen-character literal - dead for any full-length line. And exactly version
+  // 1: a prefix match would read "# gfhandposes 10" as this format.
+  while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+  if (line != "# gfhandposes 1") return false;
 
   HandPose* current = nullptr;
   while (std::getline(in, line)) {

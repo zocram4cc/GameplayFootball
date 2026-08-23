@@ -270,19 +270,27 @@ def write_sidecar(ase_path, vertices, base_ase=None):
     return len(text.splitlines()) - 1
 
 
-def count_finger_vertices(vertices):
-    """-> how many DISTINCT positions in `vertices` ride a joint past the body.
+def count_finger_lines(path):
+    """-> how many lines of the written sidecar carry a finger joint.
 
-    Distinct, because that is what render_weights writes: a body's part list holds a
-    seam corner once per part that meets there, so counting the list over-reports the
-    file it names.
+    Read from the file rather than recomputed from the part list, because the two
+    have already disagreed once: the list carries a seam corner once per part that
+    meets there, and its copies can disagree about a weak finger influence that the
+    top-four cut then drops. Whatever render_weights decided, this is what it wrote.
     """
-    seen = set()
-    for position, joints in vertices:
-        if not any(joint >= len(retarget.GF_BODY_NODES) for joint, _ in joints):
+    if not os.path.exists(path):
+        return 0
+    count = 0
+    for line in open(path):
+        if line.startswith("#"):
             continue
-        seen.add(tuple("%.6f" % c for c in position))
-    return len(seen)
+        fields = line.split()
+        if len(fields) < 4:
+            continue
+        if any(int(field.split(":")[0]) >= len(retarget.GF_BODY_NODES)
+               for field in fields[3:]):
+            count += 1
+    return count
 
 
 def build_bone_map(fmdl):
