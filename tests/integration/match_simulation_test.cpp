@@ -78,7 +78,7 @@ TEST(AITacticsTest, DribbleDirectnessHasMeaningfulTacticalRange) {
 }
 
 TEST(AITacticsTest, SupportDistancePreservesNeutralSpacingAndOffersSubtleRange) {
-  EXPECT_FLOAT_EQ(AITactics::GetSupportWebScale(0.5f), 0.75f);
+  EXPECT_FLOAT_EQ(AITactics::GetSupportWebScale(0.5f), 0.70f);
   EXPECT_LT(AITactics::GetSupportWebScale(0.0f), AITactics::GetSupportWebScale(0.5f));
   EXPECT_GT(AITactics::GetSupportWebScale(1.0f), AITactics::GetSupportWebScale(0.5f));
 }

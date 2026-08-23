@@ -103,12 +103,12 @@ bool PrefersShortPassing(e_Philosophy philosophy) {
 float GetPassErrorMultiplier(e_Philosophy philosophy, float supportDistance) {
   // Longer support links mean longer, riskier balls.
   const float support = std::max(0.0f, std::min(supportDistance, 1.0f));
-  float multiplier = 0.85f + support * 0.4f;  // 0.85 tight .. 1.25 stretched
+  float multiplier = 0.70f + support * 0.35f;  // 0.70 tight .. 1.05 stretched
 
   if (philosophy == e_Philosophy_TikiTaka)
-    multiplier *= 0.82f;  // drilled short passing
+    multiplier *= 0.72f;  // drilled short passing
 
-  return std::max(0.5f, std::min(multiplier, 1.4f));
+  return std::max(0.45f, std::min(multiplier, 1.4f));
 }
 
 float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide) {
