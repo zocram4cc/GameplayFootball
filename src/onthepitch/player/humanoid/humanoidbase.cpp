@@ -14,6 +14,7 @@
 #include "../playerbase.hpp"
 #include "humanoid.hpp"
 #include "humanoid_utils.hpp"
+#include "jointorder.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "scene/objectfactory.hpp"
 #include "utils/animationextensions/footballanimationextension.hpp"
@@ -46,7 +47,7 @@ void FillTemporalHumanoidNodes(boost::intrusive_ptr<Node> targetNode,
 HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
                            boost::intrusive_ptr<Node> humanoidSourceNode,
                            boost::intrusive_ptr<Node> fullbodySourceNode,
-                           std::map<Vector3, Vector3>& colorCoords,
+                           SkinWeights& skinWeights,
                            std::shared_ptr<AnimCollection> animCollection,
                            boost::intrusive_ptr<Node> fullbodyTargetNode,
                            boost::intrusive_ptr<Resource<Surface>> kit, int bodyUpdatePhaseOffset)
@@ -158,7 +159,7 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   FillNodeMap(humanoidNode, nodeMap);
   FillTemporalHumanoidNodes(humanoidNode, buf_TemporalHumanoidNodes);
 
-  PrepareFullbodyModel(colorCoords);
+  PrepareFullbodyModel(skinWeights);
   buf_bodyUpdatePhase = 0;
 
   // imported faces: expression rig when the player's model dir ships one;
@@ -259,7 +260,7 @@ HumanoidBase::~HumanoidBase() {
     printf("done\n");
 }
 
-void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords) {
+void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
   if (Verbose())
     printf("prepare full body model.. ");
 
@@ -278,8 +279,21 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
   animApplyBuffer.anim->Apply(nodeMap, animApplyBuffer.frameNum, 0, animApplyBuffer.smooth,
                               animApplyBuffer.smoothFactor, animApplyBuffer.position,
                               animApplyBuffer.orientation, animApplyBuffer.offsets, 0, false, true);
+  std::vector<boost::intrusive_ptr<Node>> dfsNodes;
+  humanoidNode->GetNodes(dfsNodes, true);
+
+  // Joint IDs are not the tree's depth-first order any more. PES's hand rig hangs
+  // nineteen finger bones off each wrist, and depth-first those land between
+  // left_hand and right_clavicle - which would renumber the right arm and make
+  // every already-converted body drive it from a finger. jointorder.hpp states the
+  // order instead: the twenty body joints, then everything else.
+  std::vector<std::string> dfsNames;
+  dfsNames.reserve(dfsNodes.size());
+  for (unsigned int i = 0; i < dfsNodes.size(); i++)
+    dfsNames.push_back(dfsNodes[i]->GetName());
   std::vector<boost::intrusive_ptr<Node>> jointsVec;
-  humanoidNode->GetNodes(jointsVec, true);
+  jointsVec.reserve(dfsNodes.size());
+  for (int index : JointOrder::Permutation(dfsNames)) jointsVec.push_back(dfsNodes[index]);
 
   // joints
 
@@ -365,49 +379,32 @@ void HumanoidBase::PrepareFullbodyModel(std::map<Vector3, Vector3>& colorCoords)
       WeightedVertex weightedVertex;
       weightedVertex.vertexID = v / 3;
 
-      if (colorCoords.find(vertexPos) == colorCoords.end()) {
+      const std::vector<SkinInfluence>* influences = skinWeights.Find(vertexPos);
+      if (!influences) {
         fprintf(stderr,
-                "color coord not found: %f, %f, %f (geometry '%s', %zu colorCoords)\n",
+                "skin weight not found: %f, %f, %f (geometry '%s', %zu colour "
+                "vertices, %zu sidecar vertices)\n",
                 vertexPos.coords[0], vertexPos.coords[1], vertexPos.coords[2],
                 fullbodyNode->GetObject("fullbody")
                     ? boost::static_pointer_cast<Geometry>(
                           fullbodyNode->GetObject("fullbody"))
                           ->GetGeometryData()->GetIdentString().c_str()
                     : "?",
-                colorCoords.size());
+                skinWeights.VertexColourCount(), skinWeights.SidecarVertexCount());
         fflush(stderr);
       }
-      assert(colorCoords.find(vertexPos) != colorCoords.end());
-      const Vector3& color = colorCoords.find(vertexPos)->second;
+      assert(influences);
       uniqueMesh.data[v + 0] *= zMultiplier;
       uniqueMesh.data[v + 1] *= zMultiplier;
       uniqueMesh.data[v + 2] *= zMultiplier;
 
-      float totalWeight = 0.0;
-      WeightedBone weightedBones[3];
-      for (int c = 0; c < 3; c++) {
-        int jointID = floor(color.coords[c] * 0.1);
-        float weight = (color.coords[c] - jointID * 10.0) / 9.0;
-
-        weightedBones[c].jointID = jointID;
-        weightedBones[c].weight = weight;
-
-        totalWeight += weight;
-      }
-
-      // total weight has to be 1.0;
-      for (int c = 0; c < 3; c++) {
-        if (c == 0) {
-          if (weightedBones[c].weight == 0.f)
-            printf("offending jointID: %i (coord %i) (vertexpos %f, %f, %f)\n",
-                   weightedBones[c].jointID, c, vertexPos.coords[0], vertexPos.coords[1],
-                   vertexPos.coords[2]);
-          assert(weightedBones[c].weight != 0.f);
-        }
-        if (weightedBones[c].weight > 0.01f) {
-          weightedBones[c].weight /= totalWeight;
-          weightedVertex.bones.push_back(weightedBones[c]);
-        }
+      // Every vertex rides something: nothing else can be skinned at all.
+      assert(!influences->empty());
+      for (const SkinInfluence& influence : *influences) {
+        WeightedBone bone;
+        bone.jointID = influence.jointID;
+        bone.weight = influence.weight;
+        weightedVertex.bones.push_back(bone);
       }
 
       weightedVerticesVec.at(subgeom).push_back(weightedVertex);

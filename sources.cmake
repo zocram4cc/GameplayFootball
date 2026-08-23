@@ -191,6 +191,8 @@ set(LOADERS_SOURCES
         src/utils/entrancechoreo.cpp
         src/onthepitch/player/humanoid/facerig.cpp
         src/onthepitch/player/humanoid/skinning.cpp
+        src/onthepitch/player/humanoid/skinweights.cpp
+        src/onthepitch/player/humanoid/jointorder.cpp
         src/loaders/oggloader.cpp
         src/loaders/wavloader.cpp
         )

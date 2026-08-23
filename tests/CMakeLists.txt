@@ -50,6 +50,26 @@ target_link_libraries(gameplayfootball_skinning_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_skinning_tests DISCOVERY_MODE PRE_TEST)
 
+# Where a skin weight comes from (vertex colours, or the sidecar that can name a
+# finger joint) and which joint its number means.
+add_executable(gameplayfootball_skinweights_tests
+  onthepitch/skin_weights_test.cpp
+  onthepitch/joint_order_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/jointorder.cpp
+)
+
+target_include_directories(gameplayfootball_skinweights_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_skinweights_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_skinweights_tests DISCOVERY_MODE PRE_TEST)
+
 # Which grass tile the procedural pitch is generated from
 add_executable(gameplayfootball_pitchturf_tests
   onthepitch/pitch_turf_test.cpp

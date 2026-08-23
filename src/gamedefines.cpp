@@ -13,10 +13,9 @@ struct index3 {
   int index[3];
 };
 
-void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
-                     const std::string& aseFilename) {
+void LoadSkinWeights(SkinWeights& weights, const std::string& aseFilename) {
   if (Verbose())
-    printf("loading vertex colors.. ");
+    printf("loading skin weights.. ");
 
   std::vector<Vector3> vertices;
   std::vector<Vector3> colors;
@@ -31,7 +30,7 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
   file.open(filename.c_str(), std::ios::in);
 
   if (file.fail())
-    Log(e_FatalError, "", "GetVertexColors", "file not found or empty: " + filename);
+    Log(e_FatalError, "", "LoadSkinWeights", "file not found or empty: " + filename);
 
   while (file.getline(line, 32767)) {
     // Only five keywords matter here, and an imported body is hundreds of
@@ -61,13 +60,8 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
 
         for (unsigned int i = 0; i < colorFaces.size(); i++) {
           for (unsigned int v = 0; v < 3; v++) {
-            Vector3 coord = vertices.at(faces.at(i).index[v]);
-            Vector3 color = colors.at(colorFaces.at(i).index[v]);
-            if (colorCoords.find(coord) == colorCoords.end()) {
-              colorCoords.insert(std::pair<Vector3, Vector3>(coord, color));
-            } else {
-              // assert(colorCoords.find(coord)->second == color);
-            }
+            weights.AddVertexColour(vertices.at(faces.at(i).index[v]),
+                                    colors.at(colorFaces.at(i).index[v]));
           }
         }
 
@@ -122,6 +116,12 @@ void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
   }
 
   file.close();
+
+  // The sidecar is what can name a finger joint at all; a model without one, or
+  // with one that does not parse, keeps the three-channel colours it always had.
+  const std::string sidecar = SkinWeights::SidecarPath(filename);
+  if (weights.LoadSidecar(sidecar) && Verbose())
+    printf("(sidecar %zu vertices) ", weights.SidecarVertexCount());
 
   if (Verbose())
     printf("1\n");

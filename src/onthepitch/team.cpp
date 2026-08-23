@@ -73,11 +73,11 @@ void Team::Exit() {
 // rest of the match, however carefully his own had been imported.
 void Team::ActivateWithModel(Player* player, int formationIndex,
                              boost::intrusive_ptr<Node> fullbodyNode,
-                             std::map<Vector3, Vector3>& colorCoords) {
+                             SkinWeights& skinWeights) {
   boost::intrusive_ptr<Resource<Surface>> kit = FetchKit(formationIndex);
   const std::string& modelDir = GetPlayerModelDir(player->GetPlayerData()->GetDatabaseID());
   if (modelDir.empty()) {
-    player->Activate(playerNode, fullbodyNode, colorCoords, kit,
+    player->Activate(playerNode, fullbodyNode, skinWeights, kit,
                      match->GetAnimCollection());
     return;
   }
@@ -87,14 +87,14 @@ void Team::ActivateWithModel(Player* player, int formationIndex,
   customBodyNodes.push_back(customBody);  // must not die before Exit()
   // the model's ase carries the directory name (unique resource key)
   const std::string& baseName = modelDir.substr(modelDir.find_last_of('/') + 1);
-  std::map<Vector3, Vector3> customColors;
-  GetVertexColors(customColors, modelDir + "/fullbody_" + baseName + ".ase");
-  player->Activate(playerNode, customBody, customColors, kit,
+  SkinWeights customWeights;
+  LoadSkinWeights(customWeights, modelDir + "/fullbody_" + baseName + ".ase");
+  player->Activate(playerNode, customBody, customWeights, kit,
                    match->GetAnimCollection());
 }
 
 void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
-                       std::map<Vector3, Vector3>& colorCoords) {
+                       SkinWeights& skinWeights) {
   // first, load 1 instance of a player
 
   Log(e_Notice, "Team", "InitPlayers", "Loading player template instance");
@@ -108,7 +108,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
   // Kept so substitutes can be activated mid-match.
   this->fullbodyNode = fullbodyNode;
-  this->playerColorCoords = colorCoords;
+  this->playerSkinWeights = skinWeights;
 
   Log(e_Notice, "Team", "Team", "Creating players");
 
@@ -124,7 +124,7 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
     if (i < activePlayerCount) {
       // activate playerCount players (the starting eleven, usually)
-      ActivateWithModel(player, i, fullbodyNode, colorCoords);
+      ActivateWithModel(player, i, fullbodyNode, skinWeights);
     }
   }
 
@@ -218,7 +218,7 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
   // position in this vector, so the two players swap places in it.
   std::swap(players.at(indexOut), players.at(indexIn));
 
-  ActivateWithModel(playerIn, indexOut, fullbodyNode, playerColorCoords);
+  ActivateWithModel(playerIn, indexOut, fullbodyNode, playerSkinWeights);
   playerIn->ResetPosition(replacedPosition, Vector3(0));
 
   // Nobody may be left pointing at the player who just walked off.

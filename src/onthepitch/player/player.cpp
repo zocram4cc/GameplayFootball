@@ -92,12 +92,12 @@ Team* Player::GetTeam() {
 
 void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
                       boost::intrusive_ptr<Node> fullbodySourceNode,
-                      std::map<Vector3, Vector3>& colorCoords,
+                      SkinWeights& skinWeights,
                       boost::intrusive_ptr<Resource<Surface>> kit,
                       std::shared_ptr<AnimCollection> animCollection) {
   assert(!isActive);
 
-  humanoid = new Humanoid(this, humanoidSourceNode, fullbodySourceNode, colorCoords, animCollection,
+  humanoid = new Humanoid(this, humanoidSourceNode, fullbodySourceNode, skinWeights, animCollection,
                           GetTeam()->GetSceneNode(), kit, GetTeam()->GetID());
 
   controller = new ElizaController(match);

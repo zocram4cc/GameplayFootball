@@ -12,6 +12,7 @@
 #include "defines.hpp"
 #include "gametypes.hpp"
 #include "onthepitch/velocitystate.hpp"
+#include "onthepitch/player/humanoid/skinweights.hpp"
 
 using namespace blunted;
 
@@ -252,7 +253,9 @@ public:
 
 using PassRatings = std::vector<PassRating>;
 
-void GetVertexColors(std::map<Vector3, Vector3>& colorCoords,
+// Every skin weight a model carries: the ASE's vertex colours, and the sidecar
+// weight file beside it when there is one (skinweights.hpp).
+void LoadSkinWeights(blunted::SkinWeights& weights,
                      const std::string& aseFilename =
                          "media/objects/players/models/fullbody.ase");
 
