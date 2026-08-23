@@ -67,7 +67,7 @@ def nearest_joints(position, joint_positions, count=3, falloff=0.35):
 
 
 def vertex_joints(vertex, bone_to_joint, joint_positions=None):
-    """-> [(jointID, weight)] top-3, normalized, engine-encodable."""
+    """-> [(jointID, weight)], the strongest MAX_INFLUENCES, normalized."""
     position = fox_to_gf(vertex.position) if joint_positions else None
 
     if not vertex.boneMapping:
@@ -91,7 +91,7 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
         joint = JOINT_ID["middle"]
         weights[joint] = weights.get(joint, 0.0) + unmapped
 
-    top = sorted(weights.items(), key=lambda kv: -kv[1])[:3]
+    top = sorted(weights.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
     total = sum(w for _, w in top)
     if total <= 0:
         if position is not None:
@@ -101,8 +101,15 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
 
 
 # An influence this small is noise: the engine drops any channel decoding to
-# <= 0.01 anyway, and keeping it costs one of the three slots.
+# <= 0.01 anyway, and keeping it costs one of the slots.
 MIN_INFLUENCE = 0.02
+
+# How many bones may drive one vertex. PES's own maximum, measured over the base
+# package's parts (hand_l, hand_r, arm, glove_pl_short_l, eye, facial - 14,175
+# vertices): the count of non-zero bone weights is 1, 2, 3 or 4 and never a fifth.
+# The vertex colours can only carry three, so the fourth reaches the engine
+# through the sidecar weight file (skinweights.hpp).
+MAX_INFLUENCES = 4
 
 
 def decode_color(color):
@@ -141,13 +148,23 @@ def encode_color(joints):
     dragging shoulder and hip vertices toward bones they barely belong to.
     What survives is renormalised here so the authored proportions come back
     out the other side.
+
+    A finger joint cannot be written at all - the encoding stops at joint 25 -
+    so it collapses onto the wrist it hangs off, which is the hand this engine
+    drew before the fingers were rigged. The real weights go in the sidecar
+    (render_weights below); these colours are what is left for a model or an
+    engine that has none.
     """
-    kept = [(j, w) for j, w in joints if w > MIN_INFLUENCE]
-    kept.sort(key=lambda jw: -jw[1])       # channel 0 carries the strongest
+    collapsed = {}
+    for joint, weight in joints:
+        joint = retarget.colour_fallback_joint(joint)
+        collapsed[joint] = collapsed.get(joint, 0.0) + weight
+    kept = [(j, w) for j, w in collapsed.items() if w > MIN_INFLUENCE]
+    kept.sort(key=lambda jw: (-jw[1], jw[0]))   # channel 0 carries the strongest
     kept = kept[:3]
     if not kept:
         # Every vertex must ride something: the engine asserts on channel 0.
-        kept = [(joints[0][0] if joints else 0, 1.0)]
+        kept = [(retarget.colour_fallback_joint(joints[0][0]) if joints else 0, 1.0)]
     total = sum(w for _, w in kept)
     channels = []
     for j, w in kept:
@@ -156,6 +173,43 @@ def encode_color(joints):
     while len(channels) < 3:
         channels.append(0.0)
     return channels
+
+
+WEIGHTS_HEADER = "# gfweights 1"
+
+
+def render_weights(vertices):
+    """[(position, [(jointID, weight)])] -> the sidecar text, or None.
+
+    None when nothing in the model names a joint the vertex colours could not
+    have carried anyway: a sidecar that says only what the .ase already says is
+    another file to keep in step for no gain.
+
+    Positions are written with the six decimals the ASE writers use, because
+    the engine looks a weight up by exact float equality on the position - the
+    same decimal text parses to the same float.
+    """
+    lines = [WEIGHTS_HEADER]
+    seen = set()
+    needed = False
+    for position, joints in vertices:
+        key = tuple("%.6f" % c for c in position)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept = sorted(((j, w) for j, w in joints if w > 0.0),
+                      key=lambda jw: (-jw[1], jw[0]))[:MAX_INFLUENCES]
+        total = sum(w for _, w in kept)
+        if total <= 0.0:
+            continue
+        if any(joint >= len(retarget.GF_BODY_NODES) for joint, _ in kept) or \
+                len(kept) > 3:
+            needed = True
+        lines.append(" ".join(key) + " " +
+                     " ".join("%d:%.6f" % (j, w / total) for j, w in kept))
+    if not needed:
+        return None
+    return "\n".join(lines) + "\n"
 
 
 def build_bone_map(fmdl):
