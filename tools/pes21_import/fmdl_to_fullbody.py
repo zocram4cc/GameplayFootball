@@ -270,6 +270,21 @@ def write_sidecar(ase_path, vertices, base_ase=None):
     return len(text.splitlines()) - 1
 
 
+def count_finger_vertices(vertices):
+    """-> how many DISTINCT positions in `vertices` ride a joint past the body.
+
+    Distinct, because that is what render_weights writes: a body's part list holds a
+    seam corner once per part that meets there, so counting the list over-reports the
+    file it names.
+    """
+    seen = set()
+    for position, joints in vertices:
+        if not any(joint >= len(retarget.GF_BODY_NODES) for joint, _ in joints):
+            continue
+        seen.add(tuple("%.6f" % c for c in position))
+    return len(seen)
+
+
 def build_bone_map(fmdl):
     """fmdl bone table -> {bone name: GF joint id} via retarget.resolve_bone."""
     positions = {}

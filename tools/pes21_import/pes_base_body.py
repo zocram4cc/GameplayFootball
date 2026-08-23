@@ -62,8 +62,8 @@ import retarget
 import face_weights
 import seams
 import pes_skl
-from fmdl_to_fullbody import (vertex_joints, encode_color, build_bone_map,
-                              weights_path, write_sidecar)
+from fmdl_to_fullbody import (count_finger_vertices, vertex_joints, encode_color,
+                              build_bone_map, weights_path, write_sidecar)
 
 
 def source_uv(vertex_uv):
@@ -969,8 +969,7 @@ def assemble(args):
     # (skinweights.hpp). This is also why the hands are no longer curled at
     # conversion: they have joints now, and the engine poses them (handrig.hpp).
     carried = write_sidecar(ase_path, skins)
-    fingers = sum(1 for _, joints in skins
-                  if any(j >= len(retarget.GF_BODY_NODES) for j, _ in joints))
+    fingers = count_finger_vertices(skins)
     print("  skin weights: %d vertex/vertices in %s, %d of them on a finger"
           % (carried, os.path.basename(weights_path(ase_path)), fingers))
 
