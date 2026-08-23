@@ -279,3 +279,28 @@ class WritersCallWhatExists(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CountsMatchTheFile(unittest.TestCase):
+    """What the conversion says it wrote has to be what is in the file.
+
+    render_weights writes one line per distinct position; a model's part list holds
+    the same corner several times over, once per part that meets there. Counting
+    fingers over the part list said 3,689 for a stock body whose sidecar holds 3,254
+    - a number that names a file and disagrees with it is worse than no number.
+    """
+
+    def test_the_finger_count_is_the_one_in_the_file(self):
+        wrist = f.JOINT_ID["left_hand"]
+        finger = len(retarget.GF_BODY_NODES) + 1
+        here = (0.6, -0.07, 1.06)
+        # the same position three times, as a seam between three parts gives it
+        skins = [(here, [(finger, 1.0)])] * 3 + [((0.0, 0.0, 1.0), [(wrist, 1.0)])]
+        text = f.render_weights(skins)
+        lines = [l for l in text.splitlines() if not l.startswith("#")]
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(f.count_finger_vertices(skins), 1)
+
+    def test_a_body_only_model_counts_none(self):
+        self.assertEqual(f.count_finger_vertices(
+            [((0.0, 0.0, 1.0), [(f.JOINT_ID["chest"], 1.0)])]), 0)
