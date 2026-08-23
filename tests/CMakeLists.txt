@@ -623,6 +623,28 @@ target_link_libraries(gameplayfootball_pass_failure_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_pass_failure_tests DISCOVERY_MODE PRE_TEST)
 
+# Pass-error tuning: the multiplier/web-scale bar a drilled short-passing
+# style has to meet. Pure logic, no SDL dependency.
+add_executable(gameplayfootball_pass_error_tests
+  onthepitch/pass_error_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/properties.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/log.cpp
+)
+
+target_include_directories(gameplayfootball_pass_error_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
+)
+
+target_link_libraries(gameplayfootball_pass_error_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_pass_error_tests DISCOVERY_MODE PRE_TEST)
+
 # Simulation-depth unit tests (SIMULATION_IMPROVEMENT_PROPOSAL.md / TECHNICAL_ROADMAP.md).
 # These cover pure-logic simulation modules, so they build without SDL/OpenGL.
 add_executable(gameplayfootball_simulation_tests

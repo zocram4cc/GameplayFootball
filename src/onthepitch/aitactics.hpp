@@ -111,7 +111,7 @@ inline float GetDribbleForwardDrive(float dribbleOffensiveness, float roleMindse
 // Neutral remains the historical 0.75 force-field scale. Lower values create
 // shorter passing links; higher values spread support players a little wider.
 inline float GetSupportWebScale(float supportDistance) {
-  return 0.65f + ClampSetting(supportDistance) * 0.20f;
+  return 0.60f + ClampSetting(supportDistance) * 0.20f;
 }
 
 // Defenders still join possession play, but centre-backs retain more of their
