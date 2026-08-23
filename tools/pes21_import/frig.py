@@ -39,6 +39,27 @@ class Frig:
         self.bone_hashes = []    # in table order; index = bone index
 
 
+def bone_table(blob: bytes):
+    """-> (rig name, [bone hash]) from the header alone.
+
+    The unit records are the fiddly part of a .frig and a caller that only
+    wants to know which bones a rig drives does not need them - the hand-pose
+    import (hand_poses.py) reads the bone order and nothing else.
+    """
+    (_magic, name_off, _x, _unit_count, _track_count,
+     _file_size, bone_table_off) = struct.unpack_from("<7I", blob, 0)
+    end = blob.find(b"\0", name_off)
+    name = blob[name_off:end].decode("ascii", "replace")
+    (bone_count,) = struct.unpack_from("<I", blob, bone_table_off)
+    hashes = []
+    at = bone_table_off + 8
+    while at + 4 <= len(blob) and len(hashes) < bone_count:
+        (h,) = struct.unpack_from("<I", blob, at)
+        hashes.append(h)
+        at += 8
+    return name, hashes
+
+
 def parse(blob: bytes) -> Frig:
     rig = Frig()
     (rig.magic, name_off, _x, rig.unit_count, rig.track_count,

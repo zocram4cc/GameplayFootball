@@ -41,6 +41,11 @@ __pycache__/
 data/media/cutscenes/
 data/media/objects/players/models/fullbody_pes.ase
 data/media/objects/players/models/fullbody_pes.ase.geomcache
+data/media/objects/players/models/fullbody_pes.object
+data/media/objects/players/models/fullbody_pes.weights
+data/media/objects/players/models/faceweights.txt
+data/media/objects/players/handposes.txt
+data/media/objects/players/expressions/
 data/media/objects/players/textures/pes_base_*.png
 data/media/objects/players/textures/2hug_*.png
 data/media/ui/pes/
