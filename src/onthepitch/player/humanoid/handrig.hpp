@@ -78,6 +78,7 @@ public:
 
   bool IsActive() const { return active; }
   int BoundJointCount() const { return (int)nodes.size(); }
+  int PoseCount() const { return (int)data.PoseCount(); }
 
 private:
   HandPoseData data;

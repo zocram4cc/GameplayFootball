@@ -193,7 +193,9 @@ def render_weights(vertices):
     seen = set()
     needed = False
     for position, joints in vertices:
-        key = tuple("%.6f" % c for c in position)
+        # a position already in the file's own decimal form passes through: a
+        # composite merges the base body's lines with its own
+        key = tuple(c if isinstance(c, str) else "%.6f" % c for c in position)
         if key in seen:
             continue
         seen.add(key)
@@ -210,6 +212,62 @@ def render_weights(vertices):
     if not needed:
         return None
     return "\n".join(lines) + "\n"
+
+
+def weights_path(ase_path):
+    """The sidecar that belongs to a model: <model>.ase -> <model>.weights."""
+    root, ext = os.path.splitext(ase_path)
+    return (root if ext else ase_path) + ".weights"
+
+
+def read_weights(path):
+    """The inverse of render_weights: [(position strings, [(jointID, weight)])].
+
+    Positions come back as the file's own text, so merging two sidecars cannot
+    move a vertex by a rounding step.
+    """
+    if not os.path.exists(path):
+        return []
+    out = []
+    with open(path) as handle:
+        first = handle.readline().strip()
+        if first != WEIGHTS_HEADER:
+            return []
+        for line in handle:
+            fields = line.split()
+            if len(fields) < 4:
+                continue
+            joints = []
+            for field in fields[3:]:
+                joint, _, weight = field.partition(":")
+                joints.append((int(joint), float(weight)))
+            out.append((tuple(fields[:3]), joints))
+    return out
+
+
+def write_sidecar(ase_path, vertices, base_ase=None):
+    """Writes <model>.weights beside `ase_path`; -> how many vertices it holds.
+
+    `base_ase`: on a composite (--base) the stock body's geometry is carried
+    over verbatim, so its weights have to come too or the body under the import
+    loses its hands. The import's own vertices go first, so where the two cover
+    the same place the import wins - it is the surface being drawn.
+
+    Zero means no sidecar was needed, and any file left by a previous run is
+    removed: skinning a changed mesh from stale weights is worse than skinning
+    it from its colours.
+    """
+    merged = list(vertices)
+    if base_ase:
+        merged += read_weights(weights_path(base_ase))
+    text = render_weights(merged)
+    path = weights_path(ase_path)
+    if text is None:
+        if os.path.exists(path):
+            os.remove(path)
+        return 0
+    open(path, "w").write(text)
+    return len(text.splitlines()) - 1
 
 
 def build_bone_map(fmdl):
@@ -501,7 +559,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                                                joint_positions))
                     pos = fox_to_gf(vertex.position)
                     color = encode_color(skin)
-                    vertices.append((pos, uv, color))
+                    vertices.append((pos, uv, color, skin))
                 tri.append(index[key])
             # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse.
             # (4cc exports double every mesh so they hid this; Konami's
@@ -514,11 +572,12 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # (seams.py). Reconciled before anything is cut or written, over the whole
     # character at once.
     if len(groups) > 1:
-        parts = [(group[0], group[1], group[2]) for group in groups]
-        agreed = seams.reconcile(parts)
-        changed, migrated = seams.reconciled_count(parts, agreed)
-        for group, (_, vertices, _) in zip(groups, agreed):
-            group[1] = vertices
+        before = [[(v[0], v[3]) for v in group[1]] for group in groups]
+        agreed = seams.reconcile_skins(before)
+        changed, migrated = seams.reconciled_count(before, agreed)
+        for group, blended in zip(groups, agreed):
+            group[1] = [v[:2] + (encode_color(joints), joints)
+                        for v, (_, joints) in zip(group[1], blended)]
         if changed:
             print("  seams: %d vertex weight(s) reconciled between groups, %d changed bone"
                   % (changed, migrated))
@@ -671,7 +730,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t*MESH_NUMVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_NUMFACES %d\n" % len(faces))
             out.write("\t\t*MESH_VERTEX_LIST {\n")
-            for i, (pos, _, _) in enumerate(vertices):
+            for i, (pos, _, _, _) in enumerate(vertices):
                 out.write("\t\t\t*MESH_VERTEX %d\t%.6f\t%.6f\t%.6f\n"
                       % (i, pos[0], pos[1], pos[2]))
             out.write("\t\t}\n\t\t*MESH_FACE_LIST {\n")
@@ -681,7 +740,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t}\n")
             out.write("\t\t*MESH_NUMTVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_TVERTLIST {\n")
-            for i, (_, uv, _) in enumerate(vertices):
+            for i, (_, uv, _, _) in enumerate(vertices):
                 u, v = (uv.u, 1.0 - uv.v) if uv is not None else (0.0, 0.0)
                 out.write("\t\t\t*MESH_TVERT %d\t%.6f\t%.6f\t0.0\n" % (i, u, v))
             out.write("\t\t}\n")
@@ -692,7 +751,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t}\n")
             out.write("\t\t*MESH_NUMCVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_CVERTLIST {\n")
-            for i, (_, _, color) in enumerate(vertices):
+            for i, (_, _, color, _) in enumerate(vertices):
                 out.write("\t\t\t*MESH_VERTCOL %d\t%.3f\t%.3f\t%.3f\n"
                       % (i, color[0], color[1], color[2]))
             out.write("\t\t}\n")
@@ -701,12 +760,23 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             for i, (a, b, c) in enumerate(faces):
                 out.write("\t\t\t*MESH_CFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
             out.write("\t\t}\n")
-            gf_verts = [pos for (pos, _, _) in vertices]
+            gf_verts = [pos for (pos, _, _, _) in vertices]
             ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
             out.write("\t}\n")
             out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")
             out.write("\t*PROP_RECVSHADOW 1\n\t*MATERIAL_REF %d\n}\n"
                       % (group_refs[slot] if group_refs else slot))
+
+    # The weights the vertex colours could not carry. PES weights a vertex to up
+    # to four bones and the finger joints are past what a colour can name, so the
+    # real weights ride a sidecar and the colours are the fallback (skinweights.hpp).
+    sidecar = write_sidecar(
+        ase_path,
+        [(v[0], v[3]) for group in groups for v in group[1]],
+        base_ase=base_ase)
+    if sidecar:
+        print("  skin weights: %d vertex/vertices in %s"
+              % (sidecar, os.path.basename(weights_path(ase_path))))
 
     object_path = os.path.join(out_dir, "fullbody.object")
     open(object_path, "w").write(

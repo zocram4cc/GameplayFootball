@@ -179,7 +179,20 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   // PES's finger poses. The library is shared - it is PES's own hand rig, not a
   // property of any one model - so it lives beside the stock body and every
   // player, imported or not, poses from it (handrig.hpp).
-  if (handRig.Load("media/objects/players")) handRig.Bind(nodeMap);
+  //
+  // Said out loud once per player: whether the fingers are rigged at all is not
+  // otherwise visible from a running match, and a skeleton or a pose file that
+  // quietly failed to load looks exactly like a hand that never moves.
+  if (handRig.Load("media/objects/players")) {
+    handRig.Bind(nodeMap);
+    Log(e_Notice, "HumanoidBase", "HumanoidBase",
+        "hand rig: " + int_to_str(handRig.BoundJointCount()) + " finger joint(s) bound, " +
+            int_to_str(handRig.PoseCount()) + " pose(s), resting on " +
+            std::string(HandPoseName(ChooseHandPose(e_FunctionType_None, 0.0f))));
+  } else {
+    Log(e_Notice, "HumanoidBase", "HumanoidBase",
+        "hand rig: no pose library, fingers stay in bind pose");
+  }
 
   // hairstyle. The default PES base body ships its own scalp and hair, so
   // the legacy hairstyle meshes only apply on the legacy "fullbody" body

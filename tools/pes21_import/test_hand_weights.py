@@ -14,6 +14,9 @@ engine without the sidecar has always drawn.
 Run: python3 -m unittest test_hand_weights -v
 """
 
+import os
+import shutil
+import tempfile
 import unittest
 
 import fmdl_to_fullbody as f
@@ -130,7 +133,7 @@ class SeamsWithFourInfluences(unittest.TestCase):
         # arms hang beside ribs in the bind pose - so each names both.)
         parts = [[((0.6, 0.0, 1.0), [(wrist, 0.9), (finger, 0.1)])],
                  [((0.6005, 0.0, 1.0), [(finger, 0.9), (wrist, 0.1)])]]
-        agreed = seams.reconcile_skins(parts)
+        agreed = seams.reconcile(parts)
         for part in agreed:
             joints = dict(part[0][1])
             self.assertIn(finger, joints)
@@ -142,16 +145,109 @@ class SeamsWithFourInfluences(unittest.TestCase):
         joints = [(1, 0.4), (2, 0.3), (3, 0.2), (4, 0.1)]
         parts = [[((0.0, 0.0, 0.0), list(joints))],
                  [((0.001, 0.0, 0.0), list(joints))]]
-        agreed = seams.reconcile_skins(parts)
+        agreed = seams.reconcile(parts)
         self.assertEqual(len(agreed[0][0][1]), 4)
         self.assertAlmostEqual(sum(w for _, w in agreed[0][0][1]), 1.0, places=5)
 
     def test_a_vertex_with_no_neighbour_is_untouched(self):
         parts = [[((0.0, 0.0, 0.0), [(1, 0.6), (2, 0.4)])],
                  [((5.0, 0.0, 0.0), [(3, 1.0)])]]
-        agreed = seams.reconcile_skins(parts)
+        agreed = seams.reconcile(parts)
         self.assertEqual(agreed[0][0][1], [(1, 0.6), (2, 0.4)])
         self.assertEqual(agreed[1][0][1], [(3, 1.0)])
+
+
+class SidecarFile(unittest.TestCase):
+    """The file as it lands beside a model, including on a composite."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="gf_sidecar_")
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def _ase(self, name="fullbody_x.ase"):
+        path = os.path.join(self.dir, name)
+        open(path, "w").write("*3DSMAX_ASCIIEXPORT\t200\n")
+        return path
+
+    def test_the_engine_and_the_writer_agree_on_the_name(self):
+        # skinweights.cpp SidecarPath does the same thing on the other side of
+        # the fence; if these two ever disagree the engine silently skins from
+        # the vertex colours and nobody's fingers move.
+        header = open(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "src/onthepitch/player/humanoid/skinweights.cpp")).read()
+        self.assertIn('".weights"', header)
+        self.assertEqual(os.path.basename(f.weights_path("d/fullbody_test.ase")),
+                         "fullbody_test.weights")
+
+    def test_the_sidecar_sits_beside_the_ase(self):
+        self.assertEqual(f.weights_path("a/b/fullbody_x.ase"), "a/b/fullbody_x.weights")
+        self.assertEqual(f.weights_path("noext"), "noext.weights")
+
+    def test_a_finger_weighted_model_writes_one(self):
+        ase = self._ase()
+        finger = retarget.JOINT_ID["left_index_pip"]
+        written = f.write_sidecar(ase, [((0.0, 0.0, 0.0), [(finger, 1.0)])])
+        self.assertEqual(written, 1)
+        self.assertTrue(os.path.exists(f.weights_path(ase)))
+        self.assertIn("%d:" % finger, open(f.weights_path(ase)).read())
+
+    def test_a_body_only_model_writes_none_and_leaves_no_stale_file(self):
+        ase = self._ase()
+        stale = f.weights_path(ase)
+        open(stale, "w").write("# gfweights 1\n0.0 0.0 0.0 44:1.0\n")
+        written = f.write_sidecar(ase, [((0.0, 0.0, 0.0), [(9, 1.0)])])
+        self.assertEqual(written, 0)
+        # a model that no longer needs one must not keep the last run's file:
+        # the engine would skin from weights for geometry that has changed
+        self.assertFalse(os.path.exists(stale))
+
+    def test_it_round_trips(self):
+        ase = self._ase()
+        finger = retarget.JOINT_ID["right_ring_dip"]
+        f.write_sidecar(ase, [((0.5, -0.25, 1.0), [(finger, 0.75), (19, 0.25)])])
+        back = f.read_weights(f.weights_path(ase))
+        self.assertEqual(len(back), 1)
+        position, joints = back[0]
+        self.assertEqual(position, ("0.500000", "-0.250000", "1.000000"))
+        self.assertEqual(joints[0][0], finger)
+        self.assertAlmostEqual(joints[0][1], 0.75, places=5)
+
+    def test_reading_a_file_that_is_not_there_is_empty(self):
+        self.assertEqual(f.read_weights(os.path.join(self.dir, "nope.weights")), [])
+
+    def test_a_composite_keeps_the_base_bodys_weights(self):
+        # --base carries the stock body's geometry over verbatim, so its finger
+        # weights have to come with it or the body under the import loses its hands
+        base = self._ase("fullbody_pes.ase")
+        f.write_sidecar(base, [((1.0, 0.0, 0.0),
+                                [(retarget.JOINT_ID["left_thumb_mcp"], 1.0)])])
+        ase = self._ase("fullbody_import.ase")
+        written = f.write_sidecar(
+            ase, [((0.0, 0.0, 0.0), [(retarget.JOINT_ID["right_pinky_dip"], 1.0)])],
+            base_ase=base)
+        self.assertEqual(written, 2)
+        text = open(f.weights_path(ase)).read()
+        self.assertIn("1.000000 0.000000 0.000000", text)
+        self.assertIn("0.000000 0.000000 0.000000", text)
+
+    def test_the_import_wins_where_it_covers_the_base(self):
+        base = self._ase("fullbody_pes.ase")
+        f.write_sidecar(base, [((0.0, 0.0, 0.0), [(20, 1.0)])])
+        ase = self._ase("fullbody_import.ase")
+        f.write_sidecar(ase, [((0.0, 0.0, 0.0), [(40, 1.0)])], base_ase=base)
+        first = open(f.weights_path(ase)).read().splitlines()[1]
+        self.assertIn("40:", first)
+
+    def test_a_composite_over_a_base_without_one_still_writes_its_own(self):
+        base = self._ase("fullbody_pes.ase")
+        ase = self._ase("fullbody_import.ase")
+        written = f.write_sidecar(
+            ase, [((0.0, 0.0, 0.0), [(retarget.JOINT_ID["left_index_dip"], 1.0)])],
+            base_ase=base)
+        self.assertEqual(written, 1)
 
 
 if __name__ == "__main__":
