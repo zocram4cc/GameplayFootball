@@ -133,6 +133,120 @@
 								<name>left_hand</name>
 								<position>0.2044, -0.0557, -0.1981</position>
 								<rotation>0, 0, 0, 0</rotation>
+
+								<node>
+									<name>left_thumb_mata</name>
+									<position>0.0112, -0.0186, -0.0094</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>left_thumb_mcp</name>
+										<position>0.0122, -0.0395, -0.0367</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>left_thumb_pip</name>
+											<position>0.0151, -0.0196, -0.0176</position>
+											<rotation>0, 0, 0, 0</rotation>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>left_index_mata</name>
+									<position>0.0438, -0.01, -0.0292</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>left_index_mcp</name>
+										<position>0.0183, -0.0202, -0.0242</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>left_index_pip</name>
+											<position>0.0241, -0.011, -0.0347</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>left_index_dip</name>
+												<position>0.0135, -0.0062, -0.0194</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>left_middle_mata</name>
+									<position>0.0441, -0.0032, -0.0287</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>left_middle_mcp</name>
+										<position>0.0213, -0.0014, -0.0291</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>left_middle_pip</name>
+											<position>0.0274, -0.0018, -0.0373</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>left_middle_dip</name>
+												<position>0.0153, -0.001, -0.0209</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>left_pinky_mata</name>
+									<position>0.0083, 0.0132, -0.0059</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>left_pinky_mcp</name>
+										<position>0.0418, 0.0229, -0.0475</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>left_pinky_pip</name>
+											<position>0.0186, 0.0122, -0.0273</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>left_pinky_dip</name>
+												<position>0.0104, 0.0069, -0.0154</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>left_ring_mata</name>
+									<position>0.0439, 0.004, -0.0291</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>left_ring_mcp</name>
+										<position>0.0146, 0.0131, -0.028</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>left_ring_pip</name>
+											<position>0.0248, 0.0068, -0.0347</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>left_ring_dip</name>
+												<position>0.0138, 0.0038, -0.0194</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
 							</node>
 						</node>
 					</node>
@@ -165,6 +279,120 @@
 								<name>right_hand</name>
 								<position>-0.2044, -0.0557, -0.1981</position>
 								<rotation>0, 0, 0, 0</rotation>
+
+								<node>
+									<name>right_thumb_mata</name>
+									<position>-0.0112, -0.0186, -0.0093</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>right_thumb_mcp</name>
+										<position>-0.0122, -0.0395, -0.0367</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>right_thumb_pip</name>
+											<position>-0.0151, -0.0196, -0.0177</position>
+											<rotation>0, 0, 0, 0</rotation>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>right_index_mata</name>
+									<position>-0.0438, -0.01, -0.0292</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>right_index_mcp</name>
+										<position>-0.0183, -0.0202, -0.0243</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>right_index_pip</name>
+											<position>-0.0242, -0.011, -0.0346</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>right_index_dip</name>
+												<position>-0.0134, -0.0062, -0.0194</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>right_middle_mata</name>
+									<position>-0.0441, -0.0032, -0.0287</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>right_middle_mcp</name>
+										<position>-0.0213, -0.0014, -0.029</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>right_middle_pip</name>
+											<position>-0.0274, -0.0018, -0.0374</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>right_middle_dip</name>
+												<position>-0.0153, -0.001, -0.0209</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>right_pinky_mata</name>
+									<position>-0.0083, 0.0132, -0.0058</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>right_pinky_mcp</name>
+										<position>-0.0418, 0.0229, -0.0475</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>right_pinky_pip</name>
+											<position>-0.0186, 0.0122, -0.0274</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>right_pinky_dip</name>
+												<position>-0.0104, 0.0069, -0.0153</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
+
+								<node>
+									<name>right_ring_mata</name>
+									<position>-0.0439, 0.004, -0.0291</position>
+									<rotation>0, 0, 0, 0</rotation>
+
+									<node>
+										<name>right_ring_mcp</name>
+										<position>-0.0147, 0.0131, -0.028</position>
+										<rotation>0, 0, 0, 0</rotation>
+
+										<node>
+											<name>right_ring_pip</name>
+											<position>-0.0247, 0.0068, -0.0347</position>
+											<rotation>0, 0, 0, 0</rotation>
+
+											<node>
+												<name>right_ring_dip</name>
+												<position>-0.0139, 0.0038, -0.0194</position>
+												<rotation>0, 0, 0, 0</rotation>
+											</node>
+										</node>
+									</node>
+								</node>
 							</node>
 						</node>
 					</node>

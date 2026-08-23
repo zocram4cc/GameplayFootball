@@ -1,8 +1,12 @@
 """Writes data/media/objects/players/player.object from retarget.GF_NODES.
 
-The engine's skeleton is defined once, in retarget.py (the PES animated rig,
-1:1); this generator keeps the XML in sync so joint IDs (DFS order), bind
-offsets and the vertex-colour weight encoding can never drift apart.
+The engine's skeleton is defined once, in retarget.py (the PES animated body
+rig plus PES's hand rig, 1:1); this generator keeps the XML in sync so bind
+offsets and joint numbering can never drift apart. Joint IDs are NOT the
+file's DFS order any more - the twenty body joints come first and the
+thirty-eight finger joints follow, so a model converted before the fingers
+existed still names the same bones (the engine builds that order in
+jointorder.cpp; retarget.GF_JOINT_ORDER is the same list).
 
 Bind rotations are identity: the PES rig is world-aligned, and every stock
 GF animation keys all legacy nodes anyway (Animation::Apply REPLACES node
