@@ -154,9 +154,17 @@ st056 goes 8% -> 100% the same way.
 
 Two stadiums cannot be fixed this way. st019's pack genuinely has no surroundings:
 its scene is five distant backdrop pieces, the nearest hundreds of metres out, and its
-`pitch/` package stops at ±53 x ±43. st031 and st043 ship no scene under `#Win` in
-the 4cc stadium cpks at all - only `light/`, `pitch/` and `sourceimages/` - so their
-scenes come from the base game's own stadium data.
+`pitch/` package stops at ±53 x ±43.
+
+st031 and st043 cannot be re-converted from what is on this machine, and not because
+of a setting: neither ships a scene under `#Win` in either 4cc stadium cpk - only
+`light/`, `pitch/` and `sourceimages/` - and their `sourceimages` there hold nothing
+but pitch art (`pitch_scratch_bsm_alp.ftex`, `pitch.ftex`, `pitch_nrm.ftex`). The
+installed stadiums meanwhile carry whole texture sets those cpks have never heard of
+(`bg001.png`, `text1.png` for st031; `BenuldysSignBaked.png`,
+`1stplacetrophybaked.png` for st043 - which is benuldys, the pack with the 4.7 km
+backdrop). So both were converted from separate pack downloads, and re-importing them
+needs those packs again rather than a different `--max-extent`.
 
 The 4cc stadium packs are two cpks, and the later one wins where both carry a slot
 (st002, st011, st019, st041, st060, st065):
