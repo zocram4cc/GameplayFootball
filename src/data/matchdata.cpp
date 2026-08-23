@@ -35,9 +35,14 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
 
 void MatchData::AddPossessionTime_10ms(int teamID) {
   possessionTime_ms[teamID] += 10;
+#ifndef NDEBUG
+  // The debug match clock: the own-third giveaway window is measured against
+  // it (see SetPendingOwnThirdGiveaway / AddShot). Release builds have no
+  // pending store, so there is nothing to advance.
+  matchTime_ms += 10;
+#endif
   if (teamID == 0)
     possession60seconds = std::max(possession60seconds - 0.01f, -60.0f);
   else if (teamID == 1)
     possession60seconds = std::min(possession60seconds + 0.01f, 60.0f);
-  // printf("pos60s: %f\n", possession60seconds);
 }

@@ -708,7 +708,8 @@ void Humanoid::Process() {
         // Debug-only deny-list: was this pass taken by the goalkeeper, and from the
         // team's own third straight into the opposition's hands? Those are the two
         // "questionable play" events the match goal counts (the receiver-side half of
-        // both is RecordBallTouch).
+        // both is RecordBallTouch). An own-third giveaway is only stamped as pending:
+        // it counts once the intercepting team makes a shot within twelve seconds.
 #ifndef NDEBUG
         if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
           match->GetMatchData()->SetPendingPassGoalkeeper();
@@ -720,6 +721,9 @@ void Humanoid::Process() {
           const float ownThird = pitchHalfW * 0.5f * static_cast<float>(side);
           if (side != 0 && here.coords[0] * static_cast<float>(side) > ownThird) {
             match->GetMatchData()->SetPendingPassOwnThird();
+          }
+          if (match->GetMatchData()->PendingPassOwnThird()) {
+            match->GetMatchData()->SetPendingOwnThirdGiveaway(team->GetID());
           }
         }
 #endif

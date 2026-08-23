@@ -214,3 +214,56 @@ TEST_F(PassFailure, BadTrapCountsAgainstTheReceiver) {
 
 }
 
+// A giveaway in the team's own third is only a "bad play" if it actually
+// hurts: the opposition must turn it into a shot within 12 seconds. A
+// giveaway that leads to nothing (or to the giver-away regaining the ball
+// first) must not be counted at all.
+TEST_F(PassFailure, OwnThirdGiveawayOnlyCountsIfShotFollows) {
+  matchData->AddPassAttempt(0);
+  matchData->SetPendingPassOwnThird();
+  matchData->RecordBallTouch(1);  // team 0 gives it away in its own third
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);  // not yet - no shot
+
+  // The intercepting team shoots inside the window: now the giveaway counts.
+  matchData->AddShot(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 1);
+}
+
+// Twelve seconds pass with no shot (the window is inclusive, so the shot must
+// land strictly inside it): the chance came to nothing and stays uncounted.
+TEST_F(PassFailure, OwnThirdGiveawayExpiresWithoutShot) {
+  matchData->AddPassAttempt(0);
+  matchData->SetPendingPassOwnThird();
+  matchData->RecordBallTouch(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+
+  for (int tick = 0; tick < 1210; ++tick) matchData->AddPossessionTime_10ms(1);
+  matchData->AddShot(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+}
+
+TEST_F(PassFailure, OwnThirdGiveawayClearedWhenTeamRegainsBall) {
+  matchData->AddPassAttempt(0);
+  matchData->SetPendingPassOwnThird();
+  matchData->RecordBallTouch(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+
+  // Team 0 wins the ball straight back: no danger ever materialised.
+  matchData->RecordBallTouch(0);
+  matchData->AddShot(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+}
+
+// The pending giveaway must never leak across a restart either: a set piece
+// wipes it just like AddShot or a regain does.
+TEST_F(PassFailure, OwnThirdGiveawayClearedOnResetPendingPass) {
+  matchData->AddPassAttempt(0);
+  matchData->SetPendingPassOwnThird();
+  matchData->RecordBallTouch(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+
+  matchData->ResetPendingPass();
+  matchData->AddShot(1);
+  EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
+}
+
