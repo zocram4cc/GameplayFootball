@@ -573,7 +573,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # character at once.
     if len(groups) > 1:
         before = [[(v[0], v[3]) for v in group[1]] for group in groups]
-        agreed = seams.reconcile_skins(before)
+        agreed = seams.reconcile(before)
         changed, migrated = seams.reconciled_count(before, agreed)
         for group, blended in zip(groups, agreed):
             group[1] = [v[:2] + (encode_color(joints), joints)
