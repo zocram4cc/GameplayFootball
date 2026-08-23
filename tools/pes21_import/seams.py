@@ -25,10 +25,13 @@ an artist weighted a surface across itself is the artist's business.
 
 import math
 
-# Three influences per vertex is what the engine's vertex colours carry
-# (fmdl_to_fullbody.encode_color), so a blend that produced four would be truncated by
-# whoever wrote it out, silently and at the wrong end.
-MAX_INFLUENCES = 3
+# How many bones a blended vertex may end up on. PES's own maximum, measured over
+# the base package's parts (14,175 vertices: 1, 2, 3 or 4 non-zero bone weights,
+# never a fifth), and what the sidecar weight file carries
+# (fmdl_to_fullbody.MAX_INFLUENCES). The vertex colours still take the strongest
+# three of them, so a blend that produces four is not truncated by surprise at the
+# wrong end - encode_color picks, and the sidecar keeps all four.
+MAX_INFLUENCES = 4
 
 # How far apart two surfaces can be and still be the same place on the body. The
 # shoulder's shells sit 3 to 20 mm apart, and 20 mm is under half the thickness of the
@@ -165,6 +168,21 @@ def disagreement(parts, radius=DEFAULT_RADIUS):
 # weight one radius further along a surface, and enough of them would soften the
 # elbow along with the seam.
 DEFAULT_PASSES = 3
+
+
+def reconcile_skins(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):
+    """Influence lists, with overlapping vertices agreed.
+
+    `parts` is [[(position, [(jointID, weight)])]] - the weights themselves,
+    before anything has been squeezed into a vertex colour. That matters now the
+    fingers are rigged: a hand vertex can be on joint 44 and the colour a glove
+    vertex beside it carries cannot say so, so blending what the colours hold
+    would reconcile the two surfaces onto the fallback instead of onto the finger.
+    """
+    agreed = parts
+    for _ in range(max(1, passes)):
+        agreed = agree(agreed, radius=radius)
+    return agreed
 
 
 def reconcile(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):

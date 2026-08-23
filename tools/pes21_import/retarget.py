@@ -213,6 +213,36 @@ GF_PARENT = {name: parent for name, _, parent in GF_NODES}
 PES_OF_GF = {name: bone for name, bone, _ in GF_NODES}
 GF_OF_PES = {bone: name for name, bone, _ in GF_NODES}
 
+# The vertex-colour weight encoding is jointID*10 + weight*9 and has to fit a
+# byte, so the highest joint a weight of any size can name is (255 - 9) / 10 = 24.
+# (The engine's decode, floor(channel / 10), reads 255 as joint 25 - but only at
+# weight 0.56, so 25 is not a joint anything can be fully bound to.) The body rig
+# fits inside that; the fingers start at 20 and run to 57, which is what the
+# sidecar weight file (skinweights.hpp) exists for.
+MAX_VERTEX_COLOUR_JOINT = 24
+
+
+def colour_fallback_joint(joint_id):
+    """The joint a vertex colour names instead of `joint_id`.
+
+    An .ase's colours are the fallback for an engine or a model without the
+    sidecar, and they belong to the body rig: anything outside its twenty joints
+    collapses onto the animated body joint it hangs off. For a finger that is
+    the wrist - exactly the flat splayed hand this engine drew before the
+    fingers were rigged.
+
+    Five finger joints (20-24) would fit the byte, and collapsing them anyway is
+    the point: a fallback that drove two knuckles from a colour and left the
+    other thirty-three at the wrist would be a hand half in each pose.
+    """
+    name = GF_JOINT_ORDER[joint_id]
+    while JOINT_ID[name] >= len(GF_BODY_NODES):
+        parent = GF_PARENT[name]
+        if parent is None:
+            return 0
+        name = parent
+    return JOINT_ID[name]
+
 
 def _build_gf_bind():
     """GF node -> (local offset from parent, parent), GF coords, from PES_BIND."""
