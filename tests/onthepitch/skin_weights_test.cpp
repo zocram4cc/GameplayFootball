@@ -232,3 +232,113 @@ TEST(SkinWeights, TheSidecarPathSitsBesideTheModel) {
             "media/objects/players/models/fullbody_pes.weights");
   EXPECT_EQ(SkinWeights::SidecarPath("no_suffix"), "no_suffix.weights");
 }
+
+// A weight file is editable text, and an editable number ends up as an array index.
+//
+// The colour path could never name a joint past 25 - floor(255 * 0.1) - so the old
+// decode was structurally in bounds. The sidecar has no such ceiling: "99:1.0"
+// parses cleanly, lands in WeightedBone.jointID, and is used as a raw index into
+// jointTransforms every skinning frame. skinweights.hpp promises a hand-edited file
+// "costs the fingers, not the match", so the bound has to be enforced here.
+
+TEST(SkinWeights, AJointPastTheSkeletonIsDropped) {
+  const std::string path = TempPath("clamp");
+  Write(path, "# gfweights 1\n0.500000 0.500000 0.500000 5:0.500000 99:0.500000\n");
+  SkinWeights weights;
+  ASSERT_TRUE(weights.LoadSidecar(path));
+  weights.ClampToJointCount(58);
+  const std::vector<SkinInfluence>* found = weights.Find(Vector3(0.5f, 0.5f, 0.5f));
+  ASSERT_NE(found, nullptr);
+  ASSERT_EQ(found->size(), 1u);
+  EXPECT_EQ(found->at(0).jointID, 5);
+  EXPECT_FLOAT_EQ(found->at(0).weight, 1.0f);  // renormalised over what survives
+}
+
+TEST(SkinWeights, AVertexLosingEveryInfluenceFallsBackToItsColour) {
+  const std::string path = TempPath("clamp_all");
+  Write(path, "# gfweights 1\n0.500000 0.500000 0.500000 99:1.000000\n");
+  SkinWeights weights;
+  weights.AddVertexColour(Vector3(0.5f, 0.5f, 0.5f), Vector3(Channel(3, 1.0f), 0, 0));
+  ASSERT_TRUE(weights.LoadSidecar(path));
+  weights.ClampToJointCount(58);
+  const std::vector<SkinInfluence>* found = weights.Find(Vector3(0.5f, 0.5f, 0.5f));
+  ASSERT_NE(found, nullptr);
+  ASSERT_FALSE(found->empty());
+  EXPECT_EQ(found->at(0).jointID, 3);  // the sidecar entry is gone, the colour is not
+}
+
+TEST(SkinWeights, ASidecarLineMatchingNoVertexJustDisappears) {
+  // Every vertex the engine looks up has a colour - AddVertexColour runs for every
+  // vertex read from the ASE - so a clamped-away sidecar line whose position matches
+  // no vertex is never asked for. It must simply be gone, not shadow anything.
+  const std::string path = TempPath("clamp_bare");
+  Write(path, "# gfweights 1\n0.500000 0.500000 0.500000 99:1.000000\n");
+  SkinWeights weights;
+  ASSERT_TRUE(weights.LoadSidecar(path));
+  weights.ClampToJointCount(58);
+  EXPECT_FALSE(weights.HasSidecar());
+  EXPECT_EQ(weights.Find(Vector3(0.5f, 0.5f, 0.5f)), nullptr);
+}
+
+TEST(SkinWeights, TheColourPathIsClampedForALegacySkeleton) {
+  // floor(255 * 0.1) = 25, so a corrupt colour can name joint 24 on a 20-node
+  // skeleton. Rare, but the same out-of-bounds index.
+  SkinWeights weights;
+  weights.AddVertexColour(Vector3(1, 2, 3), Vector3(Channel(24, 1.0f), 0, 0));
+  weights.ClampToJointCount(20);
+  const std::vector<SkinInfluence>* found = weights.Find(Vector3(1, 2, 3));
+  ASSERT_NE(found, nullptr);
+  ASSERT_EQ(found->size(), 1u);
+  EXPECT_EQ(found->at(0).jointID, 0);
+}
+
+TEST(SkinWeights, InBoundsInfluencesAreUntouchedByTheClamp) {
+  const std::string path = TempPath("clamp_none");
+  Write(path, "# gfweights 1\n0.500000 0.500000 0.500000 5:0.250000 44:0.750000\n");
+  SkinWeights weights;
+  ASSERT_TRUE(weights.LoadSidecar(path));
+  weights.ClampToJointCount(58);
+  const std::vector<SkinInfluence>* found = weights.Find(Vector3(0.5f, 0.5f, 0.5f));
+  ASSERT_NE(found, nullptr);
+  ASSERT_EQ(found->size(), 2u);
+  EXPECT_FLOAT_EQ(found->at(0).weight + found->at(1).weight, 1.0f);
+}
+
+TEST(SkinWeights, AFutureVersionIsRejectedNotHalfRead) {
+  const std::string path = TempPath("v10");
+  Write(path, "# gfweights 10\n0.5 0.5 0.5 5:1.0\n");
+  SkinWeights weights;
+  EXPECT_FALSE(weights.LoadSidecar(path));
+}
+
+TEST(SkinWeights, ACarriageReturnOnTheHeaderIsForgiven) {
+  const std::string path = TempPath("crlf");
+  Write(path, "# gfweights 1\r\n0.500000 0.500000 0.500000 5:1.000000\n");
+  SkinWeights weights;
+  EXPECT_TRUE(weights.LoadSidecar(path));
+  EXPECT_TRUE(weights.HasSidecar());
+}
+
+// One weight file, two parsers, one truth.
+//
+// The writer's tests (test_hand_weights.py) and these each pinned their own side of
+// the "%.6f position, joint:weight" contract, so the two could drift apart with both
+// suites green - the header-exactness asymmetry this fixed was exactly that. The
+// golden file under tests/golden/ is read by BOTH, and this asserts the engine's
+// side of it; test_hand_weights.GoldenFile asserts the tools read the same numbers.
+TEST(SkinWeights, TheGoldenFileReadsAsWritten) {
+  SkinWeights weights;
+  ASSERT_TRUE(weights.LoadSidecar(std::string(GF_GOLDEN_DIR) + "/gfweights_v1.weights"));
+  ASSERT_EQ(weights.SidecarVertexCount(), 2u);
+  const std::vector<SkinInfluence>* hand = weights.Find(Vector3(0.604f, -0.07f, 1.064f));
+  ASSERT_NE(hand, nullptr);
+  ASSERT_EQ(hand->size(), 4u);
+  EXPECT_EQ(hand->at(0).jointID, 15);
+  EXPECT_FLOAT_EQ(hand->at(0).weight, 0.4f);
+  EXPECT_EQ(hand->at(3).jointID, 46);
+  EXPECT_FLOAT_EQ(hand->at(3).weight, 0.1f);
+  const std::vector<SkinInfluence>* chest = weights.Find(Vector3(0.0f, 0.0f, 1.0f));
+  ASSERT_NE(chest, nullptr);
+  ASSERT_EQ(chest->size(), 1u);
+  EXPECT_EQ(chest->at(0).jointID, 9);
+}

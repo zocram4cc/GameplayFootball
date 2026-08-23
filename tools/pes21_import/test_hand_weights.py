@@ -277,30 +277,74 @@ class WritersCallWhatExists(unittest.TestCase):
             self.assertIn("write_sidecar(", self._source(module), module)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class CountsMatchTheFile(unittest.TestCase):
     """What the conversion says it wrote has to be what is in the file.
 
-    render_weights writes one line per distinct position; a model's part list holds
-    the same corner several times over, once per part that meets there. Counting
-    fingers over the part list said 3,689 for a stock body whose sidecar holds 3,254
-    - a number that names a file and disagrees with it is worse than no number.
+    Counting fingers over the part list said 3,689 for a stock body whose sidecar
+    holds 3,254 - the list carries a seam corner once per part that meets there. So
+    the count now comes from the file itself: parse what was written, count the
+    lines carrying a finger joint. Exact by construction, whatever render_weights
+    does about duplicates, zero weights or the top-four cut.
     """
 
-    def test_the_finger_count_is_the_one_in_the_file(self):
-        wrist = f.JOINT_ID["left_hand"]
+    def test_the_count_is_read_from_the_file(self):
         finger = len(retarget.GF_BODY_NODES) + 1
-        here = (0.6, -0.07, 1.06)
-        # the same position three times, as a seam between three parts gives it
-        skins = [(here, [(finger, 1.0)])] * 3 + [((0.0, 0.0, 1.0), [(wrist, 1.0)])]
-        text = f.render_weights(skins)
-        lines = [l for l in text.splitlines() if not l.startswith("#")]
-        self.assertEqual(len(lines), 2)
-        self.assertEqual(f.count_finger_vertices(skins), 1)
+        out = tempfile.mkdtemp()
+        try:
+            ase = os.path.join(out, "fullbody_c.ase")
+            open(ase, "w").write("x")
+            here = (0.6, -0.07, 1.06)
+            skins = ([(here, [(finger, 1.0)])] * 3 +
+                     [((0.0, 0.0, 1.0), [(f.JOINT_ID["left_hand"], 1.0)])])
+            f.write_sidecar(ase, skins)
+            self.assertEqual(f.count_finger_lines(f.weights_path(ase)), 1)
+        finally:
+            shutil.rmtree(out)
 
-    def test_a_body_only_model_counts_none(self):
-        self.assertEqual(f.count_finger_vertices(
-            [((0.0, 0.0, 1.0), [(f.JOINT_ID["chest"], 1.0)])]), 0)
+    def test_a_missing_file_counts_zero(self):
+        self.assertEqual(f.count_finger_lines("/nowhere/no.weights"), 0)
+
+    def test_a_line_the_top_four_cut_left_body_only_is_not_counted(self):
+        # A weak finger influence squeezed out by four stronger body joints never
+        # reaches the file, so it must not reach the count either.
+        finger = len(retarget.GF_BODY_NODES) + 1
+        out = tempfile.mkdtemp()
+        try:
+            ase = os.path.join(out, "fullbody_c2.ase")
+            open(ase, "w").write("x")
+            skins = [((1.0, 2.0, 3.0),
+                      [(1, 0.24), (2, 0.24), (3, 0.24), (4, 0.24), (finger, 0.04)]),
+                     ((4.0, 5.0, 6.0), [(finger, 1.0)])]
+            f.write_sidecar(ase, skins)
+            self.assertEqual(f.count_finger_lines(f.weights_path(ase)), 1)
+        finally:
+            shutil.rmtree(out)
+
+
+
+
+class GoldenFile(unittest.TestCase):
+    """The same file the engine's SkinWeights.TheGoldenFileReadsAsWritten reads.
+
+    Each side used to pin only its own half of the "%.6f position, joint:weight"
+    contract, so the parsers could drift with both suites green - the engine took
+    "# gfweights 10" for version 1 while the tools rejected it, and neither suite
+    could see it. One checked-in file read by both pins the contract itself.
+    """
+
+    GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "..", "..", "tests", "golden", "gfweights_v1.weights")
+
+    def test_the_tools_read_the_same_numbers(self):
+        loaded = f.read_weights(self.GOLDEN)
+        self.assertEqual(len(loaded), 2)
+        by_pos = {pos: joints for pos, joints in loaded}
+        hand = by_pos[("0.604000", "-0.070000", "1.064000")]
+        self.assertEqual(hand, [(15, 0.4), (44, 0.3), (45, 0.2), (46, 0.1)])
+        self.assertEqual(by_pos[("0.000000", "0.000000", "1.000000")], [(9, 1.0)])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -223,5 +223,30 @@ class RealPesData(unittest.TestCase):
         self.assertGreater(bend("skh_ring_pip_l"), 60.0)
 
 
+
+
+class EngineCoverage(unittest.TestCase):
+    """The exporter warns when a pose the engine picks is not in the export.
+
+    ChooseHandPose (handrig.cpp) returns seven names; an export made with --poses
+    that omits one silently degrades that state to bind. The names are pinned here
+    so renaming one in the engine without the exporter noticing fails a test.
+    """
+
+    def test_all_seven_present_is_no_warning(self):
+        poses = {name: {} for name in hand_poses.ENGINE_POSES}
+        self.assertEqual(hand_poses.missing_engine_poses(poses), [])
+
+    def test_a_missing_selected_pose_is_named(self):
+        poses = {name: {} for name in hand_poses.ENGINE_POSES if name != "kp_hold"}
+        self.assertEqual(hand_poses.missing_engine_poses(poses), ["kp_hold"])
+
+    def test_the_seven_are_the_engines_seven(self):
+        # From handrig.cpp ChooseHandPose: one per e_HandPose state.
+        self.assertEqual(sorted(hand_poses.ENGINE_POSES),
+                         sorted(["normal", "relax", "move_nigiri", "clap", "taore",
+                                 "open_full_ball", "kp_hold"]))
+
+
 if __name__ == "__main__":
     unittest.main()

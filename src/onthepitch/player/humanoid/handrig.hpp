@@ -11,9 +11,14 @@
 // So the engine picks by name too. tools/pes21_import/hand_poses.py converts the
 // library to media/objects/players/handposes.txt (mirroring PES's one authored hand
 // onto both), ChooseHandPose decides which one from what a body is doing, and the
-// rig blends the finger nodes toward it each frame. A clip that carries finger
-// channels of its own overrides nothing here: Animation::Apply runs first and this
-// only touches joints a pose names.
+// rig blends the finger nodes toward it each frame.
+//
+// The rig WINS over a clip's own finger channels: every converted pose names all 38
+// finger joints, and Apply() sets each of them after Animation::Apply has run. No
+// shipped clip authors a finger channel - measured, 4,389 of 4,389 body clips carry
+// only the twenty body bones - so today there is nothing to lose. The first clip
+// that does author one will fight the blend; when that clip exists, Apply should
+// skip the joints it keyed, and not before, because dead flexibility is a cost too.
 
 #ifndef _HPP_ONTHEPITCH_PLAYER_HUMANOID_HANDRIG
 #define _HPP_ONTHEPITCH_PLAYER_HUMANOID_HANDRIG

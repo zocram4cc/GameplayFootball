@@ -87,7 +87,11 @@ bool SkinWeights::LoadSidecar(const std::string& path) {
   if (!std::getline(file, line)) return false;
   // The header is what tells a weight file from anything else that happens to sit
   // beside a model; without it nothing here is trusted.
-  if (line.compare(0, 13, "# gfweights 1") != 0) return false;
+  // Exactly version 1, as the Python side reads it (read_weights): a prefix match
+  // would take "# gfweights 10" for version 1 here while the tools reject it, and a
+  // format bump must fail loudly on the older reader, not silently half-parse.
+  while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+  if (line != "# gfweights 1") return false;
 
   std::map<Vector3, std::vector<SkinInfluence>> loaded;
   while (std::getline(file, line)) {
@@ -130,6 +134,46 @@ bool SkinWeights::LoadSidecar(const std::string& path) {
   if (loaded.empty()) return false;
   sidecar = std::move(loaded);
   return true;
+}
+
+namespace {
+
+// -> whether the vertex still rides anything after the cut.
+bool ClampList(std::vector<SkinInfluence>& influences, int jointCount) {
+  std::vector<SkinInfluence> kept;
+  float total = 0.0f;
+  for (const SkinInfluence& influence : influences) {
+    if (influence.jointID >= jointCount) continue;
+    kept.push_back(influence);
+    total += influence.weight;
+  }
+  if (kept.empty() || total <= 0.0f) return false;
+  for (SkinInfluence& influence : kept) influence.weight /= total;
+  influences.swap(kept);
+  return true;
+}
+
+}  // namespace
+
+void SkinWeights::ClampToJointCount(int jointCount) {
+  for (std::map<Vector3, std::vector<SkinInfluence>>::iterator it = sidecar.begin();
+       it != sidecar.end();) {
+    if (ClampList(it->second, jointCount)) {
+      ++it;
+      continue;
+    }
+    // Nothing valid left: the colour path takes over for this vertex, so the entry
+    // must go rather than shadow it with an empty list.
+    it = sidecar.erase(it);
+  }
+  for (std::map<Vector3, std::vector<SkinInfluence>>::iterator it = colours.begin();
+       it != colours.end(); ++it) {
+    if (!ClampList(it->second, jointCount)) {
+      // No colour survives either. Every vertex must ride something (humanoidbase
+      // asserts it), so the body root carries it rather than nothing.
+      it->second.assign(1, SkinInfluence{0, 1.0f});
+    }
+  }
 }
 
 const std::vector<SkinInfluence>* SkinWeights::Find(const Vector3& position) const {

@@ -196,3 +196,18 @@ TEST(HandPoseBlending, AFullStepLandsExactlyOnThePose) {
   BlendHandPose(current, target, 1.0f);
   EXPECT_NEAR(Angle(current["left_index_dip"]), 33.0f, 0.01f);
 }
+
+TEST(HandPoseData, AFutureVersionIsRejectedNotHalfRead) {
+  // A prefix match would take "# gfhandposes 10" for version 1 and mis-read
+  // whatever that format turns out to mean. The tools reject it; so must this.
+  std::istringstream in("# gfhandposes 10\npose relax\nleft_index_pip 0 0 0 1\n");
+  HandPoseData data;
+  EXPECT_FALSE(data.Load(in));
+}
+
+TEST(HandPoseData, ACarriageReturnOnTheHeaderIsForgiven) {
+  std::istringstream in("# gfhandposes 1\r\npose relax\nleft_index_pip 0 0 0 1\n");
+  HandPoseData data;
+  EXPECT_TRUE(data.Load(in));
+  EXPECT_EQ(data.PoseCount(), 1u);
+}

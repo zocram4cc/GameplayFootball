@@ -59,6 +59,9 @@ add_executable(gameplayfootball_skinweights_tests
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/jointorder.cpp
 )
 
+target_compile_definitions(gameplayfootball_skinweights_tests PRIVATE
+  GF_GOLDEN_DIR="${PROJECT_SOURCE_DIR}/tests/golden"
+)
 target_include_directories(gameplayfootball_skinweights_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
 )

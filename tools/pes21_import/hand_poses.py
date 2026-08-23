@@ -209,6 +209,18 @@ def convert(frig_path, gani_dir, wanted=None):
     return poses
 
 
+# Every pose ChooseHandPose (handrig.cpp) can return. An export that omits one is
+# legal - the rig degrades that state to the bind pose - but nobody chooses that by
+# accident, so it is said out loud at export time rather than discovered on a pitch.
+ENGINE_POSES = ("normal", "relax", "move_nigiri", "clap", "taore",
+                "open_full_ball", "kp_hold")
+
+
+def missing_engine_poses(poses):
+    """-> the engine-selected pose names this export will not carry."""
+    return [name for name in ENGINE_POSES if name not in poses]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--frig", required=True,
@@ -224,6 +236,9 @@ def main():
     poses = convert(args.frig, args.ganis, wanted)
     if not poses:
         raise SystemExit("no hand ganis found in %s" % args.ganis)
+    for name in sorted(missing_engine_poses(poses)):
+        print("WARNING: the engine selects pose '%s' (handrig.cpp) and this file "
+              "will not carry it - that state degrades to the bind pose" % name)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     open(args.out, "w").write(render(poses))
 
