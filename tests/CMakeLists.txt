@@ -70,6 +70,47 @@ target_link_libraries(gameplayfootball_skinweights_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_skinweights_tests DISCOVERY_MODE PRE_TEST)
 
+# Which finger pose a player wears, and where the pose library comes from.
+add_executable(gameplayfootball_handpose_tests
+  onthepitch/hand_pose_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/handposedata.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/handrig.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/types/refcounted.cpp
+)
+
+target_include_directories(gameplayfootball_handpose_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_handpose_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_handpose_tests DISCOVERY_MODE PRE_TEST)
+
+# That a .anim may carry finger channels, and a clip without them leaves the
+# fingers to the hand rig.
+add_executable(gameplayfootball_animclip_tests
+  utils/anim_finger_channels_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/animation.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/animationextensions/footballanimationextension.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/xmlloader.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+)
+
+target_include_directories(gameplayfootball_animclip_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_animclip_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_animclip_tests DISCOVERY_MODE PRE_TEST)
+
 # Which grass tile the procedural pitch is generated from
 add_executable(gameplayfootball_pitchturf_tests
   onthepitch/pitch_turf_test.cpp

@@ -8,6 +8,7 @@
 
 #include "../../../gamedefines.hpp"
 #include "onthepitch/player/humanoid/facerig.hpp"
+#include "onthepitch/player/humanoid/handrig.hpp"
 #include "onthepitch/player/humanoid/skinning.hpp"
 #include "../../../utils.hpp"
 #include "../../AIsupport/mentalimage.hpp"
@@ -391,6 +392,7 @@ protected:
 
   boost::intrusive_ptr<Node> fullbodyNode;
   FaceRig faceRig;
+  HandRig handRig;
   std::vector<FloatArray> uniqueFullbodyMesh;
   std::vector<std::vector<WeightedVertex>> weightedVerticesVec;  // < subgeoms < vertices > >
   unsigned int fullbodySubgeomCount;

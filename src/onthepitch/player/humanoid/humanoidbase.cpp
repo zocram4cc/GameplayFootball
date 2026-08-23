@@ -176,6 +176,11 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
     }
   }
 
+  // PES's finger poses. The library is shared - it is PES's own hand rig, not a
+  // property of any one model - so it lives beside the stock body and every
+  // player, imported or not, poses from it (handrig.hpp).
+  if (handRig.Load("media/objects/players")) handRig.Bind(nodeMap);
+
   // hairstyle. The default PES base body ships its own scalp and hair, so
   // the legacy hairstyle meshes only apply on the legacy "fullbody" body
   // (override with player_hairstyles true/false).
@@ -948,6 +953,17 @@ void HumanoidBase::Put() {
       fetchedbuf_animApplyBuffer.smoothFactor, fetchedbuf_animApplyBuffer.position,
       fetchedbuf_animApplyBuffer.orientation, fetchedbuf_animApplyBuffer.offsets, &movementHistory,
       timeDiff_ms, fetchedbuf_animApplyBuffer.noPos, false);
+
+  // The clip has had its say; the fingers are what it does not carry. PES drives
+  // them from a pose library rather than from the body animation, and so does this
+  // (handrig.hpp). A clip that DOES author finger channels wins, because Apply()
+  // above has already set those nodes and this only blends the ones a pose names.
+  if (handRig.IsActive()) {
+    handRig.Apply(ChooseHandPose(currentAnim && currentAnim->anim
+                                     ? currentAnim->functionType
+                                     : e_FunctionType_None,
+                                 spatialState.floatVelocity));
+  }
 
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
