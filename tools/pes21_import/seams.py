@@ -170,46 +170,28 @@ def disagreement(parts, radius=DEFAULT_RADIUS):
 DEFAULT_PASSES = 3
 
 
-def reconcile_skins(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):
+def reconcile(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):
     """Influence lists, with overlapping vertices agreed.
 
-    `parts` is [[(position, [(jointID, weight)])]] - the weights themselves,
-    before anything has been squeezed into a vertex colour. That matters now the
-    fingers are rigged: a hand vertex can be on joint 44 and the colour a glove
-    vertex beside it carries cannot say so, so blending what the colours hold
-    would reconcile the two surfaces onto the fallback instead of onto the finger.
-    """
-    agreed = parts
-    for _ in range(max(1, passes)):
-        agreed = agree(agreed, radius=radius)
-    return agreed
+    `parts` is [[(position, [(jointID, weight)])]] - one list per body part, the
+    weights themselves, before anything has been squeezed into a vertex colour.
+    Returned in the same shape, so a caller hands over what it was going to write
+    and writes the result instead. A vertex with no neighbour in another part comes
+    back untouched, which is all of them away from a seam.
 
-
-def reconcile(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):
-    """Body parts as the ASE writers hold them, with their seam weights agreed.
-
-    `parts` is [(name, vertices, faces)] and a vertex is the writer's own tuple,
-    (position, uv, colour) or (position, uv, colour, normal) - only the colour
-    changes, and only for vertices that overlap another part, so whatever else the
-    tuple carries comes back untouched.
+    The weights and not the colours, now the fingers are rigged: a hand vertex can
+    be on joint 44 and the colour a glove vertex beside it carries cannot say so,
+    so blending what the colours hold would reconcile the two surfaces onto the
+    fallback wrist instead of onto the finger.
 
     Kept here rather than in either writer because both of them have the problem:
     pes_base_body assembles PES's own shells into the stock body, and
     fmdl_to_fullbody composites an imported character over it.
     """
-    from fmdl_to_fullbody import decode_color, encode_color
-
-    fields = [[(vertex[0], decode_color(vertex[2])) for vertex in vertices]
-              for _, vertices, _ in parts]
-    agreed = fields
+    agreed = parts
     for _ in range(max(1, passes)):
         agreed = agree(agreed, radius=radius)
-    out = []
-    for (name, vertices, faces), blended in zip(parts, agreed):
-        rebuilt = [vertex[:2] + (encode_color(joints),) + tuple(vertex[3:])
-                   for vertex, (_, joints) in zip(vertices, blended)]
-        out.append((name, rebuilt, faces))
-    return out
+    return agreed
 
 
 def reconciled_count(before, after):
@@ -219,16 +201,12 @@ def reconciled_count(before, after):
     vertex onto a different bone is not, and enough passes of any smoothing will do
     it.
     """
-    from fmdl_to_fullbody import decode_color
-
     moved = migrated = 0
-    for (_, a, _), (_, b, _) in zip(before, after):
-        for va, vb in zip(a, b):
-            if va[2] == vb[2]:
+    for a, b in zip(before, after):
+        for (_, was), (_, now) in zip(a, b):
+            if was == now:
                 continue
             moved += 1
-            was = decode_color(va[2])
-            now = decode_color(vb[2])
             if was and now and was[0][0] != now[0][0]:
                 migrated += 1
     return moved, migrated

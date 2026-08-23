@@ -61,9 +61,9 @@ import ase_util
 import retarget
 import face_weights
 import seams
-import hand_pose
 import pes_skl
-from fmdl_to_fullbody import vertex_joints, encode_color, build_bone_map
+from fmdl_to_fullbody import (vertex_joints, encode_color, build_bone_map,
+                              weights_path, write_sidecar)
 
 
 def source_uv(vertex_uv):
@@ -662,7 +662,10 @@ def covered_ranges(garment_meshes, margin=0.015):
 def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
                  rebind=None, dedupe=None, shift=None, hidden=None,
                  kit_uv_mode="native"):
-    """-> (vertices [(pos, uv, color, normal)], faces) in GF coords.
+    """-> (vertices [(pos, uv, color, normal, skin)], faces) in GF coords.
+
+    `color` is the three-channel fallback, `skin` the influence list the sidecar
+    weight file carries - the fingers live past what a colour can name.
 
     inset pushes vertices along their inverse normal (metres): skin pieces
     that live under garments (arms in sleeves, thighs in shorts) get a few
@@ -742,7 +745,7 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
                             pos = tuple(c + d for c, d in zip(pos, delta))
                     if shift:
                         pos = tuple(c + d for c, d in zip(pos, shift))
-                    vertices.append((pos, uv, encode_color(skin), normal))
+                    vertices.append((pos, uv, encode_color(skin), normal, skin))
                 tri.append(index[key])
             # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse
             faces.append((tri[0], tri[2], tri[1]))
@@ -760,7 +763,7 @@ def write_geomobject(out, name, vertices, faces, material_ref):
     out.write("\t\t*MESH_NUMVERTEX %d\n" % len(vertices))
     out.write("\t\t*MESH_NUMFACES %d\n" % len(faces))
     out.write("\t\t*MESH_VERTEX_LIST {\n")
-    for i, (pos, _, _, _) in enumerate(vertices):
+    for i, (pos, _, _, _, _) in enumerate(vertices):
         out.write("\t\t\t*MESH_VERTEX %d\t%.6f\t%.6f\t%.6f\n" % (i, *pos))
     out.write("\t\t}\n\t\t*MESH_FACE_LIST {\n")
     for i, (a, b, c) in enumerate(faces):
@@ -769,7 +772,7 @@ def write_geomobject(out, name, vertices, faces, material_ref):
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMTVERTEX %d\n" % len(vertices))
     out.write("\t\t*MESH_TVERTLIST {\n")
-    for i, (_, uv, _, _) in enumerate(vertices):
+    for i, (_, uv, _, _, _) in enumerate(vertices):
         out.write("\t\t\t*MESH_TVERT %d\t%.6f\t%.6f\t0.0\n" % (i, uv[0], uv[1]))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
@@ -779,7 +782,7 @@ def write_geomobject(out, name, vertices, faces, material_ref):
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMCVERTEX %d\n" % len(vertices))
     out.write("\t\t*MESH_CVERTLIST {\n")
-    for i, (_, _, color, _) in enumerate(vertices):
+    for i, (_, _, color, _, _) in enumerate(vertices):
         out.write("\t\t\t*MESH_VERTCOL %d\t%.3f\t%.3f\t%.3f\n" % (i, *color))
     out.write("\t\t}\n")
     out.write("\t\t*MESH_NUMCVFACES %d\n" % len(faces))
@@ -943,26 +946,33 @@ def assemble(args):
         # its own, and where two of them cover the same place they have to move
         # together or one comes through the other (seams.py). Done over the whole body
         # at once, because a seam is between parts by definition.
-        parts = [(name, vertices, faces) for name, vertices, faces, _ in built]
-        agreed = seams.reconcile(parts)
-        changed, migrated = seams.reconciled_count(parts, agreed)
+        before = [[(v[0], v[4]) for v in vertices]
+                  for _, vertices, _, _ in built]
+        agreed = seams.reconcile(before)
+        changed, migrated = seams.reconciled_count(before, agreed)
         print("  seams: %d vertex weight(s) reconciled between parts, %d changed bone"
               % (changed, migrated))
-        for (name, vertices, faces), (_, _, _, material) in zip(agreed, built):
+        skins = []
+        for (name, vertices, faces, material), blended in zip(built, agreed):
+            vertices = [v[:2] + (encode_color(joints), v[3], joints)
+                        for v, (_, joints) in zip(vertices, blended)]
+            skins += [(v[0], v[4]) for v in vertices]
             write_geomobject(out, name, vertices, faces, mat_index[material])
             total_v += len(vertices)
             total_f += len(faces)
             print("  %-8s %5d verts %5d faces (%s)" %
                   (name, len(vertices), len(faces), material))
 
-    # PES models its hands flat with the fingers spread and poses them at runtime from
-    # finger channels this rig does not have (retarget.py collapses skh_* onto the
-    # wrist), so a bind-pose hand sits on every player as a flat paddle. Curl it once,
-    # here, so the resting pose is a hand rather than a blade.
-    posed, moved = hand_pose.pose_ase(open(ase_path, errors="replace").read())
-    if moved:
-        open(ase_path, "w").write(posed)
-        print("  curled %s" % ", ".join("%s (%d verts)" % (k, moved[k]) for k in sorted(moved)))
+    # The weights the vertex colours cannot carry. PES weights a vertex to up to
+    # four bones and the finger joints are past what a colour can name, so the real
+    # weights ride a sidecar and the colours stay as the fallback
+    # (skinweights.hpp). This is also why the hands are no longer curled at
+    # conversion: they have joints now, and the engine poses them (handrig.hpp).
+    carried = write_sidecar(ase_path, skins)
+    fingers = sum(1 for _, joints in skins
+                  if any(j >= len(retarget.GF_BODY_NODES) for j, _ in joints))
+    print("  skin weights: %d vertex/vertices in %s, %d of them on a finger"
+          % (carried, os.path.basename(weights_path(ase_path)), fingers))
 
     open(os.path.join(args.out_dir, "fullbody_pes.object"), "w").write(
         "<object>\n\n\t<geometry>\n"
@@ -973,8 +983,8 @@ def assemble(args):
         "\t</geometry>\n\n</object>\n")
 
     # FaceRig weight map for the default head
-    weights_path = os.path.join(args.out_dir, "faceweights.txt")
-    face_weights.export(args.face, weights_path, args.fmdl_lib)
+    face_weights_path = os.path.join(args.out_dir, "faceweights.txt")
+    face_weights.export(args.face, face_weights_path, args.fmdl_lib)
     print("total: %d verts, %d faces -> %s" % (total_v, total_f, ase_path))
 
 

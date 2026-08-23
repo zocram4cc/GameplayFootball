@@ -192,33 +192,35 @@ class Passes(unittest.TestCase):
         self.assertLess(apart(one), apart(parts))
 
     def test_reconcile_reports_what_it_moved(self):
-        from fmdl_to_fullbody import encode_color
-        shirt = [("shirt", [((0.19, 0.0, 1.42), (0.0, 0.0), encode_color([(6, 0.89), (11, 0.11)]), None)], [])]
-        sleeve = [("sleeves", [((0.193, 0.0, 1.421), (0.0, 0.0), encode_color([(6, 0.44), (12, 0.56)]), None)], [])]
-        parts = shirt + sleeve
+        shirt = [((0.19, 0.0, 1.42), [(6, 0.89), (11, 0.11)])]
+        sleeve = [((0.193, 0.0, 1.421), [(6, 0.44), (12, 0.56)])]
+        parts = [shirt, sleeve]
         out = seams.reconcile(parts)
         changed, migrated = seams.reconciled_count(parts, out)
         self.assertGreater(changed, 0)
         self.assertLessEqual(migrated, changed)
 
+    def test_reconcile_leaves_a_lone_vertex_alone(self):
+        parts = [[((0.0, 0.0, 0.0), [(6, 1.0)])],
+                 [((5.0, 0.0, 0.0), [(12, 1.0)])]]
+        out = seams.reconcile(parts)
+        self.assertEqual(seams.reconciled_count(parts, out), (0, 0))
 
-class TupleShapes(unittest.TestCase):
-    """Both writers' vertex tuples, since both have the problem."""
 
-    def _parts(self, tail):
-        from fmdl_to_fullbody import encode_color
-        return [("shirt", [((0.19, 0.0, 1.42), (0.0, 0.0),
-                            encode_color([(6, 0.89), (11, 0.11)])) + tail], []),
-                ("sleeves", [((0.193, 0.0, 1.421), (0.0, 0.0),
-                              encode_color([(6, 0.44), (12, 0.56)])) + tail], [])]
+class WeightsNotColours(unittest.TestCase):
+    """The blend runs on the influence lists, not on what a colour can hold.
 
-    def test_a_three_part_vertex_round_trips(self):
-        out = seams.reconcile(self._parts(()))
-        self.assertEqual(len(out[0][1][0]), 3)
-        self.assertGreater(seams.reconciled_count(self._parts(()), out)[0], 0)
+    A hand vertex can be on joint 44 and the colour a glove vertex beside it
+    carries cannot say so, so reconciling the colours would agree the two
+    surfaces onto the fallback wrist instead of onto the finger.
+    """
 
-    def test_a_four_part_vertex_keeps_its_normal(self):
-        normal = ((0.0, 0.0, 1.0),)
-        out = seams.reconcile(self._parts(normal))
-        self.assertEqual(len(out[0][1][0]), 4)
-        self.assertEqual(out[0][1][0][3], normal[0])
+    def test_a_joint_no_colour_could_carry_survives(self):
+        import retarget
+        finger = retarget.JOINT_ID["left_index_dip"]
+        self.assertGreater(finger, retarget.MAX_VERTEX_COLOUR_JOINT)
+        parts = [[((0.6, 0.0, 1.0), [(finger, 0.8), (15, 0.2)])],
+                 [((0.6008, 0.0, 1.0), [(finger, 0.6), (15, 0.4)])]]
+        out = seams.reconcile(parts)
+        for part in out:
+            self.assertIn(finger, dict(part[0][1]))
