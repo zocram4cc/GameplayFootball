@@ -64,6 +64,7 @@ public:
       // an opponent. Debug-only - this is a quality signal, not a rule.
 #ifndef NDEBUG
       AddBadPassToOpponent(pendingPassTeamID);
+      passFailIntercept[pendingPassTeamID]++;  // breakdown: intercepted in flight
       if (lastWasGoalkeeper) AddGoalkeeperLost(pendingPassTeamID);
       if (lastWasOwnThird) {
         // Gave it away in the team's own third: only counts when the opposition
@@ -76,8 +77,21 @@ public:
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
   }
+  // The ball left the pitch while a pass was still in flight: count it as an
+  // out-of-bounds failure for the passer, then close the passing sequence.
+  // Debug-only: the breakdown exists to steer tuning, not to change it.
+  void FailPendingPassOutOfBounds() {
+#ifndef NDEBUG
+    if (pendingPassTeamID >= 0)
+      passFailOob[pendingPassTeamID]++;
+#endif
+    ResetPendingPass();
+  }
   int GetPassAttempts(int teamID) const { return passAttempts[teamID]; }
   int GetPassesCompleted(int teamID) const { return passesCompleted[teamID]; }
+  int GetPassFailIntercept(int teamID) const { return passFailIntercept[teamID]; }
+  int GetPassFailOutOfBounds(int teamID) const { return passFailOob[teamID]; }
+  int GetPassFailBadTrap(int teamID) const { return passFailTrap[teamID]; }
 
   // foul tracking
   void AddFoul(int teamID) { foulsCommitted[teamID]++; }
@@ -108,6 +122,11 @@ public:
   int GetBadPassToOpponent(int teamID) const { return badPassToOpponent[teamID]; }
   int GetGoalkeeperLost(int teamID) const { return goalkeeperLost[teamID]; }
   int GetOwnThirdGiveaway(int teamID) const { return ownThirdGiveaway[teamID]; }
+  void AddPassFailBadTrap(int teamID) {
+#ifndef NDEBUG
+    passFailTrap[teamID]++;
+#endif
+  }
   int GetBadPlayTotal() const { return badPass; }
 
   // whether this match's result has already been written to match history
@@ -122,6 +141,9 @@ protected:
   int badPassToOpponent[2] = {0, 0};
   int goalkeeperLost[2] = {0, 0};
   int ownThirdGiveaway[2] = {0, 0};
+  int passFailIntercept[2] = {0, 0};
+  int passFailTrap[2] = {0, 0};
+  int passFailOob[2] = {0, 0};
   int badPassTeam = -1;
   bool pendingPassIsGoalkeeper = false;
   bool pendingPassOwnThird = false;

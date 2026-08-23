@@ -164,6 +164,9 @@ void Referee::Process() {
         foul.foulType = 0;
       if (isFoul == false) {
         match->StopPlay();
+        // A pending pass died here rather than by interception: count it as
+        // out-of-bounds before the restart is set up.
+        match->GetMatchData()->FailPendingPassOutOfBounds();
 
         // corner, goal kick or kick off?
         signed int lastSide = -1;
@@ -221,6 +224,8 @@ void Referee::Process() {
         foul.advantage = false;
         if (!CheckFoul()) {
           match->StopPlay();
+          match->GetMatchData()->FailPendingPassOutOfBounds();
+
           Team* lastTouchTeam = match->GetLastTouchTeam();
           if (lastTouchTeam == nullptr)
             lastTouchTeam = match->GetTeam(0);

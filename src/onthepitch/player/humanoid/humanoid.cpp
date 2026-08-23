@@ -574,6 +574,12 @@ void Humanoid::Process() {
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->RecordBallTouch(team->GetID());
         CastPlayer()->UpdatePossessionStats(false);
+#ifndef NDEBUG
+        // The pass arrived but the receiver failed to kill it (breakdown:
+        // trap). Counted before RecordBallTouch, which closes the sequence.
+        if (!CastPlayer()->HasPossession())
+          match->GetMatchData()->AddPassFailBadTrap(team->GetID());
+#endif
       }
 
       else if (currentAnim->functionType == e_FunctionType_BallControl) {
