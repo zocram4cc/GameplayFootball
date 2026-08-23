@@ -15,6 +15,7 @@ Run: python3 -m unittest test_hand_weights -v
 """
 
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -248,6 +249,32 @@ class SidecarFile(unittest.TestCase):
             ase, [((0.0, 0.0, 0.0), [(retarget.JOINT_ID["left_index_dip"], 1.0)])],
             base_ase=base)
         self.assertEqual(written, 1)
+
+
+class WritersCallWhatExists(unittest.TestCase):
+    """The seam pass and the sidecar are only useful if the writers reach them.
+
+    Renaming seams.reconcile left both writers calling a name that had gone, and
+    every unit test passed: nothing here exercises convert() or assemble(), which
+    need a real .fmdl. A re-import of four packs found it instead - 60-odd models
+    failed one at a time. These check the call by name so the next rename cannot
+    be silent.
+    """
+
+    def _source(self, name):
+        return open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name)).read()
+
+    def test_both_writers_reconcile_seams_through_a_function_that_exists(self):
+        for module in ("fmdl_to_fullbody.py", "pes_base_body.py"):
+            text = self._source(module)
+            calls = re.findall(r"seams\.(\w+)\(", text)
+            self.assertTrue(calls, module)
+            for call in calls:
+                self.assertTrue(hasattr(seams, call), "%s: seams.%s" % (module, call))
+
+    def test_both_writers_write_the_sidecar(self):
+        for module in ("fmdl_to_fullbody.py", "pes_base_body.py"):
+            self.assertIn("write_sidecar(", self._source(module), module)
 
 
 if __name__ == "__main__":
