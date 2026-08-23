@@ -21,7 +21,7 @@ public:
   TeamData* GetTeamData(int id) { return teamData[id].get(); }
   int GetGoalCount(int id) { return goalCount[id]; }
   void SetGoalCount(int id, int amount) { goalCount[id] = amount; }
-  void AddPossessionTime_10ms(int teamID);
+  void AddPossessionTime_10ms(int teamID);  // also advances the debug match clock
   unsigned long GetPossessionTime_ms(int teamID) { return possessionTime_ms[teamID]; }
   float GetPossessionFactor_60seconds() {
     return possession60seconds / 60.0f * 0.5f + 0.5f;
@@ -34,6 +34,18 @@ public:
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
+    // An own-third giveaway only becomes a counted "bad play" if it actually
+    // hurts: whoever picked the passer's pocket must turn it into a shot within
+    // twelve seconds of match time. Otherwise the giveaway came to nothing and
+    // stays uncounted.
+#ifndef NDEBUG
+    if (pendingOwnThirdGiveawayTeam >= 0 && teamID == (pendingOwnThirdGiveawayTeam ^ 1) &&
+        matchTime_ms - pendingOwnThirdTime_ms <= ownThirdGiveawayWindow_ms) {
+      ownThirdGiveaway[pendingOwnThirdGiveawayTeam]++;
+      badPass++;
+    }
+    pendingOwnThirdGiveawayTeam = -1;
+#endif
   }
   int GetShots(int teamID) { return shots[teamID]; }
   void AddShotOnTarget(int teamID) { shotsOnTarget[teamID] += 1; }
@@ -49,11 +61,24 @@ public:
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
+#ifndef NDEBUG
+    pendingOwnThirdGiveawayTeam = -1;
+#endif
   }
   void SetPendingPassGoalkeeper() { pendingPassIsGoalkeeper = true; }
   bool PendingPassIsGoalkeeper() const { return pendingPassIsGoalkeeper; }
   void SetPendingPassOwnThird() { pendingPassOwnThird = true; }
   bool PendingPassOwnThird() const { return pendingPassOwnThird; }
+
+  // Debug-only measurement, see RecordBallTouch: an own-third giveaway is
+  // stamped here with its team and match time; AddShot decides whether it was
+  // punished within ownThirdGiveawayWindow_ms.
+  void SetPendingOwnThirdGiveaway(int teamID) {
+#ifndef NDEBUG
+    pendingOwnThirdGiveawayTeam = teamID;
+    pendingOwnThirdTime_ms = matchTime_ms;
+#endif
+  }
   void RecordBallTouch(int receivingTeamID) {
     const bool lastWasGoalkeeper = pendingPassIsGoalkeeper;
     const bool lastWasOwnThird = pendingPassOwnThird;
@@ -67,12 +92,20 @@ public:
       passFailIntercept[pendingPassTeamID]++;  // breakdown: intercepted in flight
       if (lastWasGoalkeeper) AddGoalkeeperLost(pendingPassTeamID);
       if (lastWasOwnThird) {
-        // Gave it away in the team's own third: only counts when the opposition
-        // turn it into a shot in the next few seconds, which is tracked separately.
-        AddOwnThirdGiveaway(pendingPassTeamID);
+        // Gave it away in the team's own third. Not counted yet: only a shot
+        // by the intercepting side within twelve seconds settles it as a bad
+        // play (see AddShot).
+        SetPendingOwnThirdGiveaway(pendingPassTeamID);
       }
 #endif
     }
+#ifndef NDEBUG
+    else if (receivingTeamID == pendingOwnThirdGiveawayTeam) {
+      // The giveaway team won the ball straight back: no shot ever followed,
+      // so the pending giveaway is dropped instead of punished later.
+      pendingOwnThirdGiveawayTeam = -1;
+    }
+#endif
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
@@ -84,6 +117,9 @@ public:
 #ifndef NDEBUG
     if (pendingPassTeamID >= 0)
       passFailOob[pendingPassTeamID]++;
+    // The sequence is over either way: a pending giveaway can no longer be
+    // punished once the ball has gone out off the interception.
+    pendingOwnThirdGiveawayTeam = -1;
 #endif
     ResetPendingPass();
   }
@@ -113,11 +149,14 @@ public:
     badPass++;
 #endif
   }
-  void AddOwnThirdGiveaway(int teamID) {
+  int GetOwnThirdGiveawayCountdown_ms() {
 #ifndef NDEBUG
-    ownThirdGiveaway[teamID]++;
-    badPass++;
+    if (pendingOwnThirdGiveawayTeam < 0)
+      return 0;
+    const unsigned long elapsed = matchTime_ms - pendingOwnThirdTime_ms;
+    return static_cast<int>(ownThirdGiveawayWindow_ms > elapsed ? ownThirdGiveawayWindow_ms - elapsed : 0);
 #endif
+    return 0;
   }
   int GetBadPassToOpponent(int teamID) const { return badPassToOpponent[teamID]; }
   int GetGoalkeeperLost(int teamID) const { return goalkeeperLost[teamID]; }
@@ -148,8 +187,19 @@ protected:
   bool pendingPassIsGoalkeeper = false;
   bool pendingPassOwnThird = false;
 
+  // Debug-only pending own-third giveaway: which team gave it away, and at
+  // what match time. Set on the intercepting touch (RecordBallTouch), settled
+  // by AddShot or cleared on a regain/restart.
+  int pendingOwnThirdGiveawayTeam = -1;
+  unsigned long pendingOwnThirdTime_ms = 0;
+  // How long the intercepting side has to make the giveaway count as danger.
+  static constexpr unsigned long ownThirdGiveawayWindow_ms = 12000;
+  // Monotonic stand-in for the match clock, advanced by AddPossessionTime_10ms:
+  // keeps this data layer engine-independent so tests need no Match object.
+  unsigned long matchTime_ms = 0;
   unsigned long possessionTime_ms[2];
   float possession60seconds;  // -600 to 600 for possession of team 1 / 2 respectively
+
   int shots[2];
   int shotsOnTarget[2];
 
