@@ -4,9 +4,8 @@
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-#include <atomic>
-
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -37,7 +36,8 @@ struct SourceStamp {
 // machine that has never parsed the .ase itself.
 bool StatSource(const std::string& filename, SourceStamp& stamp) {
   FILE* file = fopen(filename.c_str(), "rb");
-  if (!file) return false;
+  if (!file)
+    return false;
 
   unsigned long long hash = 14695981039346656037ull;  // FNV-1a
   unsigned long long size = 0;
@@ -59,8 +59,10 @@ bool StatSource(const std::string& filename, SourceStamp& stamp) {
 
 bool ReadString(FILE* file, std::string& out) {
   unsigned int length = 0;
-  if (fread(&length, sizeof(length), 1, file) != 1) return false;
-  if (length > (1u << 20)) return false;  // a texture path, not a novel
+  if (fread(&length, sizeof(length), 1, file) != 1)
+    return false;
+  if (length > (1u << 20))
+    return false;  // a texture path, not a novel
   out.resize(length);
   return length == 0 || fread(&out[0], 1, length, file) == length;
 }
@@ -68,7 +70,8 @@ bool ReadString(FILE* file, std::string& out) {
 void WriteString(FILE* file, const std::string& text) {
   const unsigned int length = (unsigned int)text.size();
   fwrite(&length, sizeof(length), 1, file);
-  if (length) fwrite(text.data(), 1, length, file);
+  if (length)
+    fwrite(text.data(), 1, length, file);
 }
 
 // Not every texture reference is a file. A player's kit, for one, is
@@ -77,15 +80,18 @@ void WriteString(FILE* file, const std::string& text) {
 // disk can be reconstructed from a cache, so both ends check before trusting
 // one. An empty slot (a material with no bump map, say) is fine.
 bool TextureIsOnDisk(const std::string& name) {
-  if (name.empty()) return true;   // no texture is fine
+  if (name.empty())
+    return true;  // no texture is fine
   FILE* file = fopen(name.c_str(), "rb");
-  if (!file) return false;
+  if (!file)
+    return false;
   fclose(file);
   return true;
 }
 
 boost::intrusive_ptr<Resource<Surface>> FetchTexture(const std::string& name) {
-  if (name.empty()) return boost::intrusive_ptr<Resource<Surface>>();
+  if (name.empty())
+    return boost::intrusive_ptr<Resource<Surface>>();
   return ResourceManagerPool::GetInstance()
       .GetManager<Surface>(e_ResourceType_Surface)
       ->Fetch(name, true, true);
@@ -102,7 +108,8 @@ bool LoadGeometryCache(const std::string& aseFilename,
   // Open the cache before hashing the source: with no cache present, hashing
   // tens of megabytes would be pure waste on every single load.
   FILE* file = fopen(GeometryCachePath(aseFilename).c_str(), "rb");
-  if (!file) return false;
+  if (!file)
+    return false;
 
   SourceStamp source;
   if (!StatSource(aseFilename, source)) {
@@ -116,12 +123,17 @@ bool LoadGeometryCache(const std::string& aseFilename,
     unsigned int version = 0;
     SourceStamp stamped;
     unsigned int meshCount = 0;
-    if (fread(magic, 1, 4, file) != 4 || memcmp(magic, kMagic, 4) != 0) break;
-    if (fread(&version, sizeof(version), 1, file) != 1 || version != kVersion) break;
-    if (fread(&stamped, sizeof(stamped), 1, file) != 1) break;
+    if (fread(magic, 1, 4, file) != 4 || memcmp(magic, kMagic, 4) != 0)
+      break;
+    if (fread(&version, sizeof(version), 1, file) != 1 || version != kVersion)
+      break;
+    if (fread(&stamped, sizeof(stamped), 1, file) != 1)
+      break;
     // the .ase is editable; a changed one invalidates whatever we cached
-    if (stamped.size != source.size || stamped.hash != source.hash) break;
-    if (fread(&meshCount, sizeof(meshCount), 1, file) != 1) break;
+    if (stamped.size != source.size || stamped.hash != source.hash)
+      break;
+    if (fread(&meshCount, sizeof(meshCount), 1, file) != 1)
+      break;
 
     std::vector<std::pair<Material, std::pair<float*, int>>> meshes;
     std::vector<std::vector<unsigned int>> indexLists;
@@ -129,13 +141,13 @@ bool LoadGeometryCache(const std::string& aseFilename,
     for (unsigned int m = 0; m < meshCount && !failed; m++) {
       Material material;
       std::string diffuse, normal, specular, illumination;
-      if (!ReadString(file, diffuse) || !ReadString(file, normal) ||
-          !ReadString(file, specular) || !ReadString(file, illumination)) {
+      if (!ReadString(file, diffuse) || !ReadString(file, normal) || !ReadString(file, specular) ||
+          !ReadString(file, illumination)) {
         failed = true;
         break;
       }
-      if (!TextureIsOnDisk(diffuse) || !TextureIsOnDisk(normal) ||
-          !TextureIsOnDisk(specular) || !TextureIsOnDisk(illumination)) {
+      if (!TextureIsOnDisk(diffuse) || !TextureIsOnDisk(normal) || !TextureIsOnDisk(specular) ||
+          !TextureIsOnDisk(illumination)) {
         failed = true;
         break;
       }
@@ -151,8 +163,7 @@ bool LoadGeometryCache(const std::string& aseFilename,
         failed = true;
         break;
       }
-      material.self_illumination.Set(selfIllumination[0], selfIllumination[1],
-                                     selfIllumination[2]);
+      material.self_illumination.Set(selfIllumination[0], selfIllumination[1], selfIllumination[2]);
 
       int verticesDataSize = 0;
       unsigned int indexCount = 0;
@@ -175,8 +186,7 @@ bool LoadGeometryCache(const std::string& aseFilename,
         break;
       }
       std::vector<unsigned int> indices(indexCount);
-      if (indexCount &&
-          fread(&indices[0], sizeof(unsigned int), indexCount, file) != indexCount) {
+      if (indexCount && fread(&indices[0], sizeof(unsigned int), indexCount, file) != indexCount) {
         delete[] vertices;
         failed = true;
         break;
@@ -186,7 +196,8 @@ bool LoadGeometryCache(const std::string& aseFilename,
     }
 
     if (failed) {
-      for (auto& mesh : meshes) delete[] mesh.second.first;
+      for (auto& mesh : meshes)
+        delete[] mesh.second.first;
       break;
     }
 
@@ -207,7 +218,8 @@ void SaveGeometryCache(const std::string& aseFilename,
                        boost::intrusive_ptr<Resource<GeometryData>> resource,
                        const std::vector<std::array<std::string, 4>>& texturePaths) {
   SourceStamp source;
-  if (!StatSource(aseFilename, source)) return;
+  if (!StatSource(aseFilename, source))
+    return;
 
   const std::string path = GeometryCachePath(aseFilename);
   // A unique temporary per writer. The same .ase is routinely loaded by more
@@ -216,14 +228,14 @@ void SaveGeometryCache(const std::string& aseFilename,
   // a shared "<path>.tmp" had those writers interleaving into one stream -
   // which is why exactly the shared meshes failed to cache. The rename is
   // atomic, so whichever finishes last simply wins with identical content.
-  const std::string temporary = path + ".tmp." + int_to_str((int)getpid()) + "." +
-                                int_to_str((int)kTempCounter.fetch_add(1));
+  const std::string temporary =
+      path + ".tmp." + int_to_str((int)getpid()) + "." + int_to_str((int)kTempCounter.fetch_add(1));
   FILE* file = fopen(temporary.c_str(), "wb");
-  if (!file) return;  // read-only install: parsing again is the only cost
+  if (!file)
+    return;  // read-only install: parsing again is the only cost
 
   resource->resourceMutex.lock();
-  std::vector<MaterializedTriangleMesh>& meshes =
-      resource->GetResource()->GetTriangleMeshesRef();
+  std::vector<MaterializedTriangleMesh>& meshes = resource->GetResource()->GetTriangleMeshesRef();
 
   // Only geometry whose textures all came off disk can be rebuilt from a
   // cache. A mesh the parse did not report paths for, or whose paths do not
@@ -255,7 +267,8 @@ void SaveGeometryCache(const std::string& aseFilename,
 
   for (size_t m = 0; m < meshes.size(); m++) {
     MaterializedTriangleMesh& mesh = meshes[m];
-    for (int i = 0; i < 4; i++) WriteString(file, texturePaths[m][i]);
+    for (int i = 0; i < 4; i++)
+      WriteString(file, texturePaths[m][i]);
     fwrite(&mesh.material.shininess, sizeof(float), 1, file);
     fwrite(&mesh.material.specular_amount, sizeof(float), 1, file);
     fwrite(mesh.material.self_illumination.coords, sizeof(float), 3, file);
@@ -264,7 +277,8 @@ void SaveGeometryCache(const std::string& aseFilename,
     fwrite(mesh.vertices, sizeof(float), (size_t)mesh.verticesDataSize, file);
     const unsigned int indexCount = (unsigned int)mesh.indices.size();
     fwrite(&indexCount, sizeof(indexCount), 1, file);
-    if (indexCount) fwrite(&mesh.indices[0], sizeof(unsigned int), indexCount, file);
+    if (indexCount)
+      fwrite(&mesh.indices[0], sizeof(unsigned int), indexCount, file);
   }
   resource->resourceMutex.unlock();
 
