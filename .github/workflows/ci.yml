@@ -161,7 +161,7 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
-          brew update
+          HOMEBREW_NO_AUTO_UPDATE=1 brew update || true
           HOMEBREW_NO_AUTO_UPDATE=1 brew install \
             cmake \
             sdl2 sdl2_image sdl2_ttf sdl2_gfx \

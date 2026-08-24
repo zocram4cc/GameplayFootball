@@ -184,6 +184,7 @@ install() {
 # ── Build the package list for the detected distro ───────────────────────────
 # Each distro names the same libraries differently. These arrays hold the
 # canonical package names verified against each family's repositories.
+case "${PM}" in
   apt)
     CORE_PKGS=(cmake build-essential libboost-dev libsqlite3-dev libsdl2-dev)
     GAME_PKGS=(libgl1-mesa-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
