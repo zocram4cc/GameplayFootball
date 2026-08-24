@@ -22,7 +22,7 @@ TEST(CamTrack, ParsesFrames) {
   auto f0 = track.Sample(0.0f);
   EXPECT_FLOAT_EQ(f0.position[0], 82.33f);
   EXPECT_FLOAT_EQ(f0.fov, 67.381f);
-  EXPECT_FLOAT_EQ(f0.near, 0.5f);
+  EXPECT_FLOAT_EQ(f0.nearPlane, 0.5f);
 }
 
 TEST(CamTrack, InterpolatesBetweenFrames) {
@@ -67,7 +67,7 @@ TEST(CamTrackRetarget, AimsAtTarget) {
   frame.position = {0.0f, -10.0f, 2.0f};
   frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};  // authored: looking down
   frame.fov = 0.9f;                           // authored: super-telephoto
-  frame.near = 35.0f;                         // authored: subject past 35m
+  frame.nearPlane = 35.0f;                    // authored: subject past 35m
   auto out = blunted::RetargetCamTrackFrame(frame, {0.0f, 0.0f, 2.0f}, 1.5f,
                                             0.75f);
   // position untouched (target is 10m away, beyond the minimum distance)
@@ -81,8 +81,8 @@ TEST(CamTrackRetarget, AimsAtTarget) {
   // 2*atan(0.75/10) = 8.578 deg
   EXPECT_NEAR(out.fov, 8.578f, 0.01f);
   // near clip pulled in so the subject can't be culled
-  EXPECT_LT(out.near, 10.0f);
-  EXPECT_GE(out.near, 0.1f);
+  EXPECT_LT(out.nearPlane, 10.0f);
+  EXPECT_GE(out.nearPlane, 0.1f);
 }
 
 TEST(CamTrackRetarget, KeepsAuthoredWideLens) {
@@ -90,11 +90,11 @@ TEST(CamTrackRetarget, KeepsAuthoredWideLens) {
   frame.position = {0.0f, -10.0f, 2.0f};
   frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
   frame.fov = 40.0f;
-  frame.near = 0.5f;
+  frame.nearPlane = 0.5f;
   auto out = blunted::RetargetCamTrackFrame(frame, {0.0f, 0.0f, 2.0f}, 1.5f,
                                             0.75f);
-  EXPECT_NEAR(out.fov, 40.0f, 1e-4);   // wide authored lens is kept
-  EXPECT_NEAR(out.near, 0.5f, 1e-4);   // sane authored near is kept
+  EXPECT_NEAR(out.fov, 40.0f, 1e-4);      // wide authored lens is kept
+  EXPECT_NEAR(out.nearPlane, 0.5f, 1e-4); // sane authored near is kept
 }
 
 TEST(CamTrackRetarget, PushesBackWhenInsideMinimumDistance) {
@@ -248,12 +248,12 @@ TEST(CamTrackStage, KeepsTheLensPesChose) {
   frame.position = {0.0f, -99.0f, 1.5f};
   frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
   frame.fov = 0.91f;
-  frame.near = 35.0f;
-  frame.far = 400.0f;
+  frame.nearPlane = 35.0f;
+  frame.farPlane = 400.0f;
   auto out = blunted::StageCamTrackFrame(frame, {10.0f, 10.0f, 0.0f}, 0.0f);
   EXPECT_FLOAT_EQ(out.fov, 0.91f);
-  EXPECT_FLOAT_EQ(out.near, 35.0f);
-  EXPECT_FLOAT_EQ(out.far, 400.0f);
+  EXPECT_FLOAT_EQ(out.nearPlane, 35.0f);
+  EXPECT_FLOAT_EQ(out.farPlane, 400.0f);
 }
 
 TEST(CamTrackStage, TurnsWithTheSubject) {
