@@ -30,8 +30,8 @@ import ted  # noqa: E402
 from import_team import base_parts_to_drop, install_kit_texture, mesh_names  # noqa: E402
 
 
-def import_player(fmdl, dest, fmdl_lib, max_tris, max_edge, base_ase, face_dir=None,
-                  force=False):
+def import_player(fmdl, dest, rel, game_dir, fmdl_lib, max_tris, max_edge, base_ase,
+                  face_dir=None, force=False):
     """One player's fullbody: the mesh composited over the stock body, with the
     pack's face dropped in when the player has a face folder."""
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
@@ -41,15 +41,11 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, max_edge, base_ase, face_dir=N
     command = [sys.executable,
                os.path.join(HERE, "fmdl_to_fullbody.py"),
                fmdl, dest, "--fmdl-lib", fmdl_lib,
+               "--texture", os.path.join(rel, "body.png"),
                "--max-tris", str(max_tris), "--max-edge", str(max_edge)]
     # A face-slot body is headless and needs the stock body beneath it.
     if base_ase:
         command += ["--base", base_ase]
-        if face_dir:
-            face = os.path.abspath(os.path.join(os.path.dirname(fmdl), "..", "..",
-                                                "Faces", face_dir, "face_high.fmdl"))
-            if os.path.exists(face):
-                command += ["--face", face]
         drop = base_parts_to_drop(mesh_names(fmdl, fmdl_lib))
         if drop:
             command += ["--drop-base-parts", ",".join(sorted(drop))]
@@ -97,12 +93,12 @@ def main():
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
         status = "dry-run"
         if not args.dry_run:
-            status = import_player(body, dest, args.fmdl_lib, args.max_tris,
-                                   args.max_edge, args.base,
+            status = import_player(body, dest, rel, args.game_dir, args.fmdl_lib,
+                                   args.max_tris, args.max_edge, args.base,
                                    face_dir=pair if pair else None, force=args.force)
             if status == "imported":
                 install_kit_texture(args.pack_dir, dest)
-        lines.append((db, rel))
+                lines.append((db, rel))
         print("  %-6d %-28s %-22s %s" % (db, body_dir or "-", pair or "(baked face)", status))
 
     if lines and not args.dry_run:
