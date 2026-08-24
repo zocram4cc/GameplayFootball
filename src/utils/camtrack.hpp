@@ -16,8 +16,8 @@ struct CamTrackFrame {
   std::array<float, 3> position{};
   std::array<float, 4> rotation{};  // x, y, z, w
   float fov = 35.0f;
-  float near = 0.5f;
-  float far = 400.0f;
+  float nearPlane = 0.5f;
+  float farPlane = 400.0f;
 };
 
 // The view axis (local -Z) of a camera rotation quaternion (x, y, z, w).

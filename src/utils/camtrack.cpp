@@ -114,9 +114,9 @@ CamTrackFrame RetargetCamTrackFrame(const CamTrackFrame& frame,
   out.fov = std::max(frame.fov, neededFov);
 
   // never near-clip the subject (some tracks ship a 35m near override)
-  out.near = std::min(frame.near, std::max(0.1f, distance * 0.5f));
+  out.nearPlane = std::min(frame.nearPlane, std::max(0.1f, distance * 0.5f));
   // and never far-clip it either
-  out.far = std::max(frame.far, distance + 50.0f);
+  out.farPlane = std::max(frame.farPlane, distance + 50.0f);
 
   return out;
 }
@@ -160,8 +160,8 @@ bool CamTrack::Load(std::istream& in) {
     frame.position = {values[1], values[2], values[3]};
     frame.rotation = {values[4], values[5], values[6], values[7]};
     frame.fov = values[8];
-    frame.near = values[9];
-    frame.far = values[10];
+    frame.nearPlane = values[9];
+    frame.farPlane = values[10];
 
     // A row whose frame number does not follow the one before it begins a new
     // cut: the export concatenates PES's cuts and each keeps its own numbering,
@@ -230,8 +230,8 @@ CamTrackFrame CamTrack::Sample(float frame) const {
   for (int c = 0; c < 4; c++) out.rotation[c] *= invLen;
 
   out.fov = a.fov + (b.fov - a.fov) * t;
-  out.near = a.near + (b.near - a.near) * t;
-  out.far = a.far + (b.far - a.far) * t;
+  out.nearPlane = a.nearPlane + (b.nearPlane - a.nearPlane) * t;
+  out.farPlane = a.farPlane + (b.farPlane - a.farPlane) * t;
   return out;
 }
 

@@ -2969,8 +2969,8 @@ void Match::UpdateIngameCamera() {
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);
       cameraFOV = frame.fov;
-      cameraNearCap = std::max(0.1f, frame.near);
-      cameraFarCap = frame.far;
+      cameraNearCap = std::max(0.1f, frame.nearPlane);
+      cameraFarCap = frame.farPlane;
       // Where the camera ended up relative to the incident it is filming. The
       // one number that says whether an incident-local shot was placed at the
       // challenge or left sitting by the centre spot ("debug_cutscene_report").
@@ -3117,8 +3117,8 @@ void Match::UpdateIngameCamera() {
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                               frame.rotation[3]);
         cameraFOV = frame.fov;
-        cameraNearCap = std::max(0.1f, frame.near);
-        cameraFarCap = frame.far;
+        cameraNearCap = std::max(0.1f, frame.nearPlane);
+        cameraFarCap = frame.farPlane;
         RememberPrematchCamera();
         return;
       }
@@ -3153,8 +3153,8 @@ void Match::UpdateIngameCamera() {
           cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                                 frame.rotation[3]);
           cameraFOV = frame.fov;
-          cameraNearCap = std::max(0.1f, frame.near);
-          cameraFarCap = frame.far;
+          cameraNearCap = std::max(0.1f, frame.nearPlane);
+          cameraFarCap = frame.farPlane;
           RememberPrematchCamera();
           return;
         }
@@ -3510,8 +3510,8 @@ void Match::UpdateIngameCamera() {
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);
       cameraFOV = frame.fov;
-      cameraNearCap = std::max(0.1f, frame.near);
-      cameraFarCap = frame.far;
+      cameraNearCap = std::max(0.1f, frame.nearPlane);
+      cameraFarCap = frame.farPlane;
       trackApplied = true;
     }
 
@@ -3588,8 +3588,8 @@ void Match::UpdateIngameCamera() {
       CamTrackFrame frame;
       frame.position = {camPos.coords[0], camPos.coords[1], camPos.coords[2]};
       frame.fov = 24.0f;
-      frame.near = 0.1f;
-      frame.far = 300.0f;
+      frame.nearPlane = 0.1f;
+      frame.farPlane = 300.0f;
       frame = RetargetCamTrackFrame(
           frame, {head.coords[0], head.coords[1], head.coords[2]}, 1.0f,
           0.28f);
@@ -3599,8 +3599,8 @@ void Match::UpdateIngameCamera() {
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);
       cameraFOV = frame.fov;
-      cameraNearCap = frame.near;
-      cameraFarCap = frame.far;
+      cameraNearCap = frame.nearPlane;
+      cameraFarCap = frame.farPlane;
     }
   }
 
@@ -3618,8 +3618,8 @@ void Match::UpdateIngameCamera() {
       CamTrackFrame frame;
       frame.position = {camPos.coords[0], camPos.coords[1], camPos.coords[2]};
       frame.fov = 32.0f;
-      frame.near = 0.1f;
-      frame.far = 300.0f;
+      frame.nearPlane = 0.1f;
+      frame.farPlane = 300.0f;
       frame = RetargetCamTrackFrame(
           frame, {centre.coords[0], centre.coords[1], centre.coords[2]}, 1.0f, 0.5f);
       cameraNodePosition =
@@ -3628,8 +3628,8 @@ void Match::UpdateIngameCamera() {
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                             frame.rotation[3]);
       cameraFOV = frame.fov;
-      cameraNearCap = frame.near;
-      cameraFarCap = frame.far;
+      cameraNearCap = frame.nearPlane;
+      cameraFarCap = frame.farPlane;
     }
   }
 }
