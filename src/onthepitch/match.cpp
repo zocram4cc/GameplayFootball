@@ -2382,6 +2382,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
 
 void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   matchPhase = newMatchPhase;
+  matchData->RecordPassRestart();
   if (matchPhase == e_MatchPhase_1stHalf)
     matchTime_ms = 0;
   else if (matchPhase == e_MatchPhase_2ndHalf) {

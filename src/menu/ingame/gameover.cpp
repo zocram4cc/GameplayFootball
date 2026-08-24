@@ -274,6 +274,10 @@ void GameOverPage::Process() {
            matchData->GetGhostTouch(1, 0, 4), matchData->GetGhostTouch(1, 1, 0),
            matchData->GetGhostTouch(1, 1, 1), matchData->GetGhostTouch(1, 1, 2),
            matchData->GetGhostTouch(1, 1, 3), matchData->GetGhostTouch(1, 1, 4));
+    printf("[pass-gk] %i-%i\n", matchData->GetPassGoalkeeperCatch(0),
+           matchData->GetPassGoalkeeperCatch(1));
+    printf("[pass-restart] %i-%i\n", matchData->GetPassRestart(0),
+           matchData->GetPassRestart(1));
     // Chosen pass-length distribution and support-web width for the whole
     // match, next to the failure breakdown: selection and execution on one
     // card.

@@ -1482,6 +1482,7 @@ SetPieceParams TeamAIController::GetSetPieceParams(e_SetPiece setPiece) {
 }
 
 void TeamAIController::Reset() {
+  match->GetMatchData()->RecordPassRestart();
   taker = 0;
 
   setPieceType = e_SetPiece_None;
