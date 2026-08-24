@@ -117,6 +117,9 @@ function(gf_find_boost)
     HINTS
       "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
       "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+      "${CMAKE_PREFIX_PATH}/include"
+      "/opt/homebrew/include"
+      "/usr/local/include"
   )
   message(STATUS "gf_find_boost: header-only fallback search result: ${GF_BOOST_HEADER_DIR}")
   if(GF_BOOST_HEADER_DIR)
