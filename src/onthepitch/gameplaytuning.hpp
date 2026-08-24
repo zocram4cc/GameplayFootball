@@ -25,8 +25,8 @@ inline float GetFirstTouchContextPenalty(float opponentDistance, float calmness,
   const float ballPace = Clamp01((incomingBallSpeed - 4.0f) / 10.0f);
   const float blindSide = Clamp01((0.25f - incomingFacingAlignment) / 1.25f);
 
-  const float pressurePenalty = pressure * (1.0f - composure * 0.65f) * 0.08f;
-  const float orientationPenalty = ballPace * blindSide * (1.0f - composure * 0.4f) * 0.08f;
+  const float pressurePenalty = pressure * (1.0f - composure * 0.80f) * 0.08f;
+  const float orientationPenalty = ballPace * blindSide * (1.0f - composure * 0.60f) * 0.08f;
   return std::min(pressurePenalty + orientationPenalty, 0.14f);
 }
 

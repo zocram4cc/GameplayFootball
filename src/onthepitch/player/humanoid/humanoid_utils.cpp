@@ -226,7 +226,7 @@ void GetDifficultyFactors(Match* match, Player* player, const Vector3& positionO
   ballMovementFactor = clamp(ballMovementFactor, 0.0f, 0.9f);
 
   float skillPenaltyMultiplier =
-      (1.0f - player->GetStat("technical_ballcontrol") * 0.5f) * random(0.5f, 1.0f);
+      (1.0f - player->GetStat("technical_ballcontrol") * 0.70f) * random(0.5f, 1.0f);
   distanceFactor *= skillPenaltyMultiplier;
   heightFactor *= skillPenaltyMultiplier;
   ballMovementFactor *= skillPenaltyMultiplier;
