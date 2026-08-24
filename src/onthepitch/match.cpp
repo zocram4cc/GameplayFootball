@@ -2405,6 +2405,23 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   if (matchPhase == e_MatchPhase_2ndHalf) {
     teams[0]->RelaxFatigue(0.05f);
     teams[1]->RelaxFatigue(0.05f);
+#ifndef NDEBUG
+    // [pass-dist] per-half instrumentation, printed at the break: the chosen
+    // pass-length distribution and the support-web width each team played
+    // with, so pass selection and execution can be told apart when accuracy
+    // moves.
+    for (int teamID = 0; teamID < 2; teamID++) {
+      const MatchData* md = GetMatchData();
+      printf(
+          "[pass-dist] half1 t%i %s | bands %i/%i/%i/%i/%i/%i | rms %.1fm | web "
+          "%.1fm\n",
+          teamID, teams[teamID]->GetTeamData()->GetName().c_str(),
+          md->GetPassDistanceBand(teamID, 0), md->GetPassDistanceBand(teamID, 1),
+          md->GetPassDistanceBand(teamID, 2), md->GetPassDistanceBand(teamID, 3),
+          md->GetPassDistanceBand(teamID, 4), md->GetPassDistanceBand(teamID, 5),
+          md->GetPassDistanceMeanRms_m(teamID), md->GetSupportWebWidthMean_m(teamID));
+    }
+#endif
   }
 
   // Ends have just changed, so put both teams back out on the ones they swapped to.

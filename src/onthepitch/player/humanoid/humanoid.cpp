@@ -503,6 +503,9 @@ void Humanoid::Process() {
     team->SetLastTouchPlayer(CastPlayer(), GetTouchTypeForBodyPart(currentAnim->anim->GetVariable(
                                                "touch_bodypart")));  //, e_TouchType_Accidental);
     CastPlayer()->UpdatePossessionStats(false);
+    // [pass-fail] sink: a body collision that kills a pass in flight is never
+    // a trap anim, so it would vanish from the breakdown without this count.
+    match->GetMatchData()->AddGhostTouch(team->GetID(), 3);
   }
   // ---------------------- / EXPERIMENTAL ------------------------------------------------
 
@@ -705,6 +708,18 @@ void Humanoid::Process() {
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->AddPassAttempt(team->GetID());
+#ifndef NDEBUG
+        // [pass-dist] instrumentation: how far the AI actually chose to play
+        // this ball, measured to where the receiver is predicted to be.
+        if (targetPlayer) {
+          const Vector3 targetPos =
+              targetPlayer->GetPosition() + targetPlayer->GetMovement() * 0.3f;
+          match->GetMatchData()->AddPassDistance(team->GetID(),
+                                                 (targetPos - CastPlayer()->GetPosition())
+                                                     .Get2D()
+                                                     .GetLength());
+        }
+#endif
         // Debug-only deny-list: was this pass taken by the goalkeeper, and from the
         // team's own third straight into the opposition's hands? Those are the two
         // "questionable play" events the match goal counts (the receiver-side half of
@@ -902,6 +917,7 @@ void Humanoid::Process() {
             CastPlayer(),
             e_TouchType_Accidental);  // it's not truly accidental, but the resulting direction
                                       // somewhat is, so goalies may fetch these balls
+        match->GetMatchData()->AddGhostTouch(team->GetID(), 0);  // interfere
       }
 
       else if (currentAnim->functionType == e_FunctionType_Deflect) {
@@ -944,9 +960,9 @@ void Humanoid::Process() {
             printf("bumpyridebias (deflect): %f\n", bumpyRideBias);
 
           match->GetBall()->Touch(touchVec);
-          match->GetBall()->SetRotation(0, 0, 0, 0.2f * (1.0f - bumpyRideBias));
         }
         team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Accidental);
+        match->GetMatchData()->AddGhostTouch(team->GetID(), 1);  // failed deflect
       }
 
       else if (currentAnim->functionType == e_FunctionType_Sliding) {
@@ -962,6 +978,7 @@ void Humanoid::Process() {
         match->GetBall()->Touch(touchVec);
 
         team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Accidental);
+        match->GetMatchData()->AddGhostTouch(team->GetID(), 2);  // slide
       }
     }
   }
@@ -985,6 +1002,7 @@ void Humanoid::Process() {
       match->GetBall()->SetPosition(bodyPart->GetDerivedPosition() +
                                     bodyPart->GetDerivedRotation() * Vector3(0, 0, -0.36f));
       team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Intentional_Nonkicked);
+      match->GetMatchData()->AddGhostTouch(team->GetID(), 4);  // keeper holds the ball
     } else {
       // no longer retaining
       match->SetBallRetainer(0);

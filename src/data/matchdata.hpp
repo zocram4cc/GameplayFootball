@@ -7,14 +7,17 @@
 #define _HPP_MATCHDATA
 
 #include <array>
+#include <cmath>
 #include <memory>
 
 #include "../gamedefines.hpp"
 #include "defines.hpp"
 #include "teamdata.hpp"
-
 class MatchData {
 public:
+  // Band edges in metres: <5, 5-10, 10-15, 15-25, 25-40, >=40.
+  static constexpr int passDistanceBandCount = 6;
+
   MatchData(int team1DatabaseID, int team2DatabaseID);
   virtual ~MatchData() = default;
 
@@ -166,6 +169,83 @@ public:
     passFailTrap[teamID]++;
 #endif
   }
+
+  // Debug-only instrumentation behind the [pass-dist] card line: how far the
+  // AI actually plays its passes, binned, plus the running second moment so a
+  // root-mean-square length can be printed without keeping every sample.
+  void AddPassDistance(int teamID, float distance_m) {
+#ifndef NDEBUG
+    const int band = PassDistanceBand(distance_m);
+    if (band >= 0 && band < passDistanceBandCount) passDistanceBands[teamID][band]++;
+    passDistanceSum2[teamID] += static_cast<unsigned long long>(distance_m * distance_m * 100.0f);
+    passDistanceCount[teamID]++;
+#endif
+  }
+  // Debug-only: mean spread of each player's nearest teammates while the
+  // support web is computed - the width the passing network really offers.
+  void AddSupportWebSample(int teamID, float width_m) {
+#ifndef NDEBUG
+    supportWebSum[teamID] += width_m;
+    supportWebSamples[teamID]++;
+#endif
+  }
+
+  // Debug-only: touches that never reach RecordBallTouch (interfere, failed
+  // deflect, slide, body collision, keeper retention) while a pass is still
+  // pending. These are the leaks the [pass-fail] breakdown cannot see;
+  // attributed to the team whose pass was in flight, split by whether the
+  // toucher was an opponent. Kinds: 0 interfere, 1 deflect-fail, 2 slide,
+  // 3 body collision, 4 keeper-retain.
+  void AddGhostTouch(int touchingTeamID, int kind) {
+#ifndef NDEBUG
+    if (pendingPassTeamID < 0 || kind < 0 || kind >= ghostKindCount) return;
+    const bool hostile = touchingTeamID != pendingPassTeamID;
+    ghostTouches[hostile ? 1 : 0][pendingPassTeamID][kind]++;
+#endif
+  }
+  static constexpr int ghostKindCount = 5;
+  int GetGhostTouch(int hostile, int teamID, int kind) const {
+#ifndef NDEBUG
+    return ghostTouches[hostile][teamID][kind];
+#else
+    (void)hostile; (void)teamID; (void)kind; return 0;
+#endif
+  }
+
+  static int PassDistanceBand(float distance_m) {
+    if (distance_m < 5.0f) return 0;
+    if (distance_m < 10.0f) return 1;
+    if (distance_m < 15.0f) return 2;
+    if (distance_m < 25.0f) return 3;
+    if (distance_m < 40.0f) return 4;
+    return 5;
+  }
+  int GetPassDistanceBand(int teamID, int band) const {
+#ifndef NDEBUG
+    return passDistanceBands[teamID][band];
+#else
+    (void)teamID; (void)band; return 0;
+#endif
+  }
+  // Root-mean-square chosen pass length in metres.
+  float GetPassDistanceMeanRms_m(int teamID) const {
+#ifndef NDEBUG
+    if (passDistanceCount[teamID] == 0) return 0.0f;
+    return std::sqrt(static_cast<float>(passDistanceSum2[teamID]) /
+                     static_cast<float>(passDistanceCount[teamID]) / 100.0f);
+#else
+    (void)teamID; return 0.0f;
+#endif
+  }
+  float GetSupportWebWidthMean_m(int teamID) const {
+#ifndef NDEBUG
+    return supportWebSamples[teamID] > 0 ? supportWebSum[teamID] / supportWebSamples[teamID]
+                                         : 0.0f;
+#else
+    (void)teamID; return 0.0f;
+#endif
+  }
+  int ghostTouches[2][2][ghostKindCount] = {};
   int GetBadPlayTotal() const { return badPass; }
 
   // whether this match's result has already been written to match history
@@ -183,6 +263,11 @@ protected:
   int passFailIntercept[2] = {0, 0};
   int passFailTrap[2] = {0, 0};
   int passFailOob[2] = {0, 0};
+  int passDistanceBands[2][passDistanceBandCount] = {};
+  unsigned long long passDistanceSum2[2] = {0, 0};
+  int passDistanceCount[2] = {0, 0};
+  float supportWebSum[2] = {0.0f, 0.0f};
+  int supportWebSamples[2] = {0, 0};
   int badPassTeam = -1;
   bool pendingPassIsGoalkeeper = false;
   bool pendingPassOwnThird = false;

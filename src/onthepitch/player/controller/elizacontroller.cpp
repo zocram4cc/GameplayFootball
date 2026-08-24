@@ -830,6 +830,23 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
 
   const float webScale = AITactics::GetSupportWebScale(
       team->GetController()->GetLiveTacticReal("support_distance", 0.5f));
+#ifndef NDEBUG
+  // [pass-dist] instrumentation: the mean spread of this player's nearest
+  // teammates is the width of the passing network he actually lives in.
+  {
+    std::vector<Player*> nearMates;
+    AI_GetClosestPlayers(team, currentPos, false, nearMates, 5);
+    float mateSpreadSum = 0.0f;
+    int mateCount = 0;
+    for (Player* mate : nearMates) {
+      if (mate == CastPlayer() || mate->GetFormationEntry().role == e_PlayerRole_GK) continue;
+      mateSpreadSum += (mate->GetPosition() - player->GetPosition()).Get2D().GetLength();
+      mateCount++;
+    }
+    if (mateCount > 0)
+      match->GetMatchData()->AddSupportWebSample(team->GetID(), mateSpreadSum / mateCount);
+  }
+#endif
 
   switch (CastPlayer()->GetDynamicFormationEntry().role) {
     case e_PlayerRole_CB:

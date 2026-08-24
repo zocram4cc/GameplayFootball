@@ -259,6 +259,30 @@ void GameOverPage::Process() {
            matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
            matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
            matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
+    // Touches that never reached RecordBallTouch while a pass was pending:
+    // the sink the [pass-fail] breakdown cannot see. hostile = an opponent's
+    // body killed our pass in flight; kinds are interfere/deflect/slide/
+    // collision/keeper.
+    printf("[pass-ghost] friendly %i/%i/%i/%i/%i-%i/%i/%i/%i/%i | hostile %i/%i/%i/%i/%i-%i/%i/%i/%i/%i\n",
+           matchData->GetGhostTouch(0, 0, 0), matchData->GetGhostTouch(0, 0, 1),
+           matchData->GetGhostTouch(0, 0, 2), matchData->GetGhostTouch(0, 0, 3),
+           matchData->GetGhostTouch(0, 0, 4), matchData->GetGhostTouch(0, 1, 0),
+           matchData->GetGhostTouch(0, 1, 1), matchData->GetGhostTouch(0, 1, 2),
+           matchData->GetGhostTouch(0, 1, 3), matchData->GetGhostTouch(0, 1, 4),
+           matchData->GetGhostTouch(1, 0, 0), matchData->GetGhostTouch(1, 0, 1),
+           matchData->GetGhostTouch(1, 0, 2), matchData->GetGhostTouch(1, 0, 3),
+           matchData->GetGhostTouch(1, 0, 4), matchData->GetGhostTouch(1, 1, 0),
+           matchData->GetGhostTouch(1, 1, 1), matchData->GetGhostTouch(1, 1, 2),
+           matchData->GetGhostTouch(1, 1, 3), matchData->GetGhostTouch(1, 1, 4));
+    // Chosen pass-length distribution and support-web width for the whole
+    // match, next to the failure breakdown: selection and execution on one
+    // card.
+    printf("[pass-dist] bands %i/%i/%i/%i/%i/%i | rms %.1fm-%.1fm | web %.1fm-%.1fm\n",
+           matchData->GetPassDistanceBand(0, 0), matchData->GetPassDistanceBand(0, 1),
+           matchData->GetPassDistanceBand(0, 2), matchData->GetPassDistanceBand(0, 3),
+           matchData->GetPassDistanceBand(0, 4), matchData->GetPassDistanceBand(0, 5),
+           matchData->GetPassDistanceMeanRms_m(0), matchData->GetPassDistanceMeanRms_m(1),
+           matchData->GetSupportWebWidthMean_m(0), matchData->GetSupportWebWidthMean_m(1));
 #endif
     printf(
         "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "
