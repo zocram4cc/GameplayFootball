@@ -115,3 +115,4 @@ data/pens/
 # The 4cc replay wipe, decoded from its movie by import_wipe.py: PES-derived
 # frames, so tools only - see docs/ASSETS.md.
 data/media/textures/wipe/
+.measure/
