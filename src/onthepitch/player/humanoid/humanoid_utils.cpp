@@ -23,6 +23,7 @@
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../gameplaytuning.hpp"
+#include "../../teamphilosophy.hpp"
 #include "../../match.hpp"
 #include "../playerbase.hpp"
 #include "animcollection.hpp"
@@ -430,9 +431,12 @@ Vector3 GetTrapVector(Match* match, Player* player, const Vector3& nextStartPos,
   Vector3 ballControl = GetBallControlVector(
       ball, player, nextStartPos, nextStartAngle, nextBodyAngle, outgoingMovement, currentAnim,
       frameNum, spatialState, positionOffset, xRot, yRot, distanceFactor);
-
   ballControl.coords[2] +=
       ball->GetMovement().coords[2] * heightFactor * 1.0f + heightFactor * 4.0f;
+
+  if (player->GetTeam()->GetController()->GetPhilosophy() ==
+      TeamPhilosophy::e_Philosophy_TikiTaka)
+    ballControl *= GameplayTuning::GetTikiTrapVectorTweak();
 
   return ballControl * (1.0f - ballMovementFactor) + ball->GetMovement() * ballMovementFactor;
 }
