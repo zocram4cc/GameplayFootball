@@ -266,4 +266,33 @@ TEST_F(PassFailure, OwnThirdGiveawayClearedOnResetPendingPass) {
   matchData->AddShot(1);
   EXPECT_EQ(matchData->GetOwnThirdGiveaway(0), 0);
 }
+TEST_F(PassFailure, GoalkeeperCatchClosesPendingPass) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordPassGoalkeeperCatch();
+  EXPECT_EQ(matchData->GetPassGoalkeeperCatch(0), 1);
+  EXPECT_EQ(matchData->GetPassGoalkeeperCatch(1), 0);
+
+  // The catch ends the pass, so a later opponent touch is not an intercept.
+  matchData->RecordBallTouch(1);
+  EXPECT_EQ(matchData->GetPassFailIntercept(0), 0);
+}
+
+TEST_F(PassFailure, RestartCountsAndClosesPendingPass) {
+  matchData->AddPassAttempt(1);
+  matchData->RecordPassRestart();
+  EXPECT_EQ(matchData->GetPassRestart(0), 0);
+  EXPECT_EQ(matchData->GetPassRestart(1), 1);
+
+  matchData->RecordBallTouch(0);
+  EXPECT_EQ(matchData->GetPassFailIntercept(1), 0);
+}
+
+TEST_F(PassFailure, AttributionIgnoresClosedPass) {
+  matchData->RecordPassGoalkeeperCatch();
+  matchData->RecordPassRestart();
+  EXPECT_EQ(matchData->GetPassGoalkeeperCatch(0), 0);
+  EXPECT_EQ(matchData->GetPassGoalkeeperCatch(1), 0);
+  EXPECT_EQ(matchData->GetPassRestart(0), 0);
+  EXPECT_EQ(matchData->GetPassRestart(1), 0);
+}
 

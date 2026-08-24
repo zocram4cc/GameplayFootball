@@ -1003,6 +1003,8 @@ void Humanoid::Process() {
                                     bodyPart->GetDerivedRotation() * Vector3(0, 0, -0.36f));
       team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Intentional_Nonkicked);
       match->GetMatchData()->AddGhostTouch(team->GetID(), 4);  // keeper holds the ball
+      if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
+        match->GetMatchData()->RecordPassGoalkeeperCatch();
     } else {
       // no longer retaining
       match->SetBallRetainer(0);

@@ -68,6 +68,35 @@ public:
     pendingOwnThirdGiveawayTeam = -1;
 #endif
   }
+  void RecordPassGoalkeeperCatch() {
+#ifndef NDEBUG
+    if (pendingPassTeamID >= 0) passGoalkeeperCatch[pendingPassTeamID]++;
+#endif
+    ResetPendingPass();
+  }
+  void RecordPassRestart() {
+#ifndef NDEBUG
+    if (pendingPassTeamID >= 0) passRestart[pendingPassTeamID]++;
+#endif
+    ResetPendingPass();
+  }
+  int GetPassGoalkeeperCatch(int teamID) const {
+#ifndef NDEBUG
+    return passGoalkeeperCatch[teamID];
+#else
+    (void)teamID;
+    return 0;
+#endif
+  }
+  int GetPassRestart(int teamID) const {
+#ifndef NDEBUG
+    return passRestart[teamID];
+#else
+    (void)teamID;
+    return 0;
+#endif
+  }
+
   void SetPendingPassGoalkeeper() { pendingPassIsGoalkeeper = true; }
   bool PendingPassIsGoalkeeper() const { return pendingPassIsGoalkeeper; }
   void SetPendingPassOwnThird() { pendingPassOwnThird = true; }
@@ -263,6 +292,10 @@ protected:
   int passFailIntercept[2] = {0, 0};
   int passFailTrap[2] = {0, 0};
   int passFailOob[2] = {0, 0};
+#ifndef NDEBUG
+  int passGoalkeeperCatch[2] = {0, 0};
+  int passRestart[2] = {0, 0};
+#endif
   int passDistanceBands[2][passDistanceBandCount] = {};
   unsigned long long passDistanceSum2[2] = {0, 0};
   int passDistanceCount[2] = {0, 0};
