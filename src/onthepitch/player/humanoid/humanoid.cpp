@@ -3197,9 +3197,9 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   // apply stats. The stat weighs heavier than it used to: an elite passer keeps
   // his passing in the low-to-mid 80s, a poor one well under 60.
   if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.65f);
+    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.80f);
   if (functionType == e_FunctionType_HighPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_highpass") * 0.65f);
+    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_highpass") * 0.80f);
 
   // The team's style shapes precision too: a drilled short-passing side knocks
   // it around more cleanly, a long-ball side accepts more risk per pass.
