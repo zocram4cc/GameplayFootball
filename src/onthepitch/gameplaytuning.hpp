@@ -30,6 +30,9 @@ inline float GetFirstTouchContextPenalty(float opponentDistance, float calmness,
   return std::min(pressurePenalty + orientationPenalty, 0.14f);
 }
 
+// Tiki-taka keeps first touches close enough to sustain short passing links.
+inline float GetTikiTrapVectorTweak() { return 0.85f; }
+
 // How open the game is. The stock engine only let a player shoot inside a tight
 // window near the goal, which produced three or four shots a match; these two
 // knobs open that up and are tunable from the config.

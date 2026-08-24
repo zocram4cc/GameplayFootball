@@ -8,6 +8,7 @@
 
 using blunted::Properties;
 
+
 TEST(GameplayTuningTest, DefaultsOpenTheGameUpComparedToTheStockEngine) {
   const Properties config;
   // The stock engine only shot from inside a 16 metre window.
@@ -73,4 +74,8 @@ TEST(GameplayTuningKeeperTest, ReactionStillSeparatesKeepersWithoutFreezingThem)
   const float great = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
   EXPECT_GT(great, poor);
   EXPECT_LT(great - poor, 0.3f) << "the gap should be a shade, not a wall";
+}
+
+TEST(GameplayTuningTrapTest, TikiTakaUsesACloserFirstTouchVector) {
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTikiTrapVectorTweak(), 0.85f);
 }
