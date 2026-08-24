@@ -158,9 +158,11 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
           brew update
-          brew install \
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install \
             cmake \
             sdl2 sdl2_image sdl2_ttf sdl2_gfx \
             boost openal-soft sqlite
