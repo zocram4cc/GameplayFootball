@@ -11,7 +11,8 @@
 # Usage:
 #   scripts/setup_linux_deps.sh [--minimal] [--with-tools] [--detect] [--help]
 #
-#   --minimal      Boost + SQLite only (headless unit tests, no game binary)
+#   --minimal      Boost + SQLite + SDL2 headers (headless unit tests, no game
+#                  binary; SDL headers still needed for gamedefines.hpp)
 #   --with-tools   Also clang-format, clang-tidy, doxygen, graphviz, ninja
 #   --detect       Only print the detected package manager and exit
 #   (default)      Full game build dependencies including SDL2/OpenGL/OpenAL/Xvfb
@@ -183,9 +184,8 @@ install() {
 # ── Build the package list for the detected distro ───────────────────────────
 # Each distro names the same libraries differently. These arrays hold the
 # canonical package names verified against each family's repositories.
-case "${PM}" in
   apt)
-    CORE_PKGS=(cmake build-essential libboost-dev libsqlite3-dev)
+    CORE_PKGS=(cmake build-essential libboost-dev libsqlite3-dev libsdl2-dev)
     GAME_PKGS=(libgl1-mesa-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
                libsdl2-gfx-dev libopenal-dev xvfb)
     TOOLS_PKGS=(ninja-build clang clang-format clang-tidy doxygen graphviz)
