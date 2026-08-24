@@ -186,7 +186,7 @@ install() {
 # canonical package names verified against each family's repositories.
 case "${PM}" in
   apt)
-    CORE_PKGS=(cmake build-essential libboost-dev libsqlite3-dev libsdl2-dev libsdl2-image-dev libsdl2-gfx-dev)
+    CORE_PKGS=(cmake build-essential libboost-dev libsqlite3-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev)
     GAME_PKGS=(libgl1-mesa-dev libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev \
                libsdl2-gfx-dev libopenal-dev xvfb)
     TOOLS_PKGS=(ninja-build clang clang-format clang-tidy doxygen graphviz)

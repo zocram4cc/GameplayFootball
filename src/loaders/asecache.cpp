@@ -1,8 +1,9 @@
 #include "asecache.hpp"
 
 #include <sys/stat.h>
+#ifndef _WIN32
 #include <unistd.h>
-
+#endif
 #include <atomic>
 
 #include <array>
