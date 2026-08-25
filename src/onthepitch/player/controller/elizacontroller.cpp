@@ -1201,7 +1201,7 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         CastPlayer()->GetStat("mental_calmness"), CastPlayer()->GetPlayerData()->GetAge(),
         pressuringOpponents);
     if (MatchPressure::ShouldStumble(stumbleChance, random(0.0f, 1.0f))) {
-      _AddPanicPass(commandQueue);
+      _AddPanicPass(commandQueue, opponentPlayerImages);
       if (Verbose())
         printf("panic under pressure! chance %f, %i opponents\n", stumbleChance,
                pressuringOpponents);
@@ -1221,13 +1221,13 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       if ((bestMateRating.player == 0 ||
            bestMateRating.passRating < panicProneness * goalCloseness) &&
           possessionAmount < 0.9f + panicProneness * goalCloseness * 0.8f) {
-        _AddPanicPass(commandQueue);
+        _AddPanicPass(commandQueue, opponentPlayerImages);
         if (Verbose())
           printf("panic! %f, %f, %f\n", possessionAmount, panicProneness, goalCloseness);
       }
     } else {  // keeper
       if (possessionAmount < 3.0f) {
-        _AddPanicPass(commandQueue);
+        _AddPanicPass(commandQueue, opponentPlayerImages);
       }
     }
   }
@@ -1337,7 +1337,8 @@ void ElizaController::_AddPass(std::vector<PlayerCommand>& commandQueue, Player*
   commandQueue.push_back(command);
 }
 
-void ElizaController::_AddPanicPass(std::vector<PlayerCommand>& commandQueue) {
+void ElizaController::_AddPanicPass(std::vector<PlayerCommand>& commandQueue,
+                                    const std::vector<PlayerImage>& opponentPlayerImages) {
   int yside = signSide(player->GetDirectionVec().coords[1]);  // > 0 ? 1 : -1;
   Vector3 sensibleAwayDir =
       ((player->GetDirectionVec() * Vector3(0.8f, 1.0f, 0.0f)).GetNormalized() +
@@ -1346,12 +1347,26 @@ void ElizaController::_AddPanicPass(std::vector<PlayerCommand>& commandQueue) {
       Vector3(0, 0, 0.3f);
   sensibleAwayDir.Normalize(player->GetDirectionVec());
 
+  // A blind hoof in one fixed direction was a gift to the nearest interceptor
+  // at exactly the moments the carrier is most vulnerable. Probe the default
+  // direction and its two neighbours; kick into the safest lane. If every
+  // lane is hopeless, the desperate clearance stands.
+  float laneOdds[3];
+  Vector3 laneDirs[3];
+  for (int probe = -1; probe <= 1; probe++) {
+    laneDirs[probe + 1] = sensibleAwayDir.GetRotated2D(probe * 0.25f * pi);
+    laneOdds[probe + 1] =
+        _GetPassingOdds(player->GetPosition() + laneDirs[probe + 1] * 18.0f,
+                        e_FunctionType_HighPass, opponentPlayerImages, 1.0f);
+  }
+  const Vector3 panicDir = laneDirs[GameplayTuning::GetSafestPanicLane(laneOdds)];
+
   PlayerCommand command;
   command.useDesiredMovement = false;
   command.useDesiredLookAt = false;
 
-  command.touchInfo.inputDirection = sensibleAwayDir;
-  command.touchInfo.desiredDirection = sensibleAwayDir;
+  command.touchInfo.inputDirection = panicDir;
+  command.touchInfo.desiredDirection = panicDir;
   command.touchInfo.autoDirectionBias = 0.0f;
   command.touchInfo.autoPowerBias = 0.0f;
 
@@ -1437,13 +1452,13 @@ float ElizaController::_GetPassingOdds(const Vector3& target, e_FunctionType pas
                      opponentPlayerImages.at(opp).movement * 0.2f;
     nearestOpponentDistance = std::min(nearestOpponentDistance, (oppPos - target).GetLength());
   }
-  danger += GameplayTuning::GetReceiverPressureDanger(nearestOpponentDistance);
 
   if (passType == e_FunctionType_HighPass)
     danger += 0.4f;  // just don't prefer high passing when low passing is applicable as well
   danger = NormalizedClamp(
       danger, 0.0f, secondScale);  // 1 super dangerous dude is basically the same as 100% danger
-  float odds = 1.0f - danger;
+  float odds = (1.0f - danger) *
+               (1.0f - GameplayTuning::GetReceiverPressureDanger(nearestOpponentDistance));
 
   return odds;
 }

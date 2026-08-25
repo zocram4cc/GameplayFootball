@@ -67,12 +67,25 @@ inline float GetPassErrorLoft(float difficultyFactor, bool groundPass) {
   return difficultyFactor * (groundPass ? 1.25f : 5.0f);
 }
 
-// Extra danger (in seconds, same currency as the interception loop) for a
-// pass aimed at a marked receiver. The lane check alone let a target with a
-// marker on his shoulder score the same as a free man. Capped well below the
-// one-second danger scale so an open lane to a pressed man is still playable.
+// Odds multiplier for a pass aimed at a marked receiver, applied AFTER the
+// lane danger is normalized. The first cut added seconds before the clamp,
+// which saturated (and vanished) exactly under a real press, where lane
+// danger alone already exceeded 0.65. As a multiplier it always bites: a
+// marked target's odds drop by up to 35% whatever the lane looks like.
 inline float GetReceiverPressureDanger(float nearestOpponentDistance) {
   return 0.35f * (1.0f - Clamp01((nearestOpponentDistance - 1.0f) / 6.0f));
+}
+
+// Lane pick for a panic clearance. The controller probes the default away
+// direction and its two neighbours, and the best-scoring lane wins - unless
+// every lane is hopeless, in which case the default desperate clearance
+// stands (index 1).
+inline int GetSafestPanicLane(const float odds[3], float panicLaneFloor = 0.15f) {
+  int best = 0;
+  for (int i = 1; i < 3; i++)
+    if (odds[i] > odds[best]) best = i;
+  if (odds[best] < panicLaneFloor) return 1;
+  return best;
 }
 
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
