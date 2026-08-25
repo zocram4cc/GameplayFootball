@@ -284,3 +284,23 @@ TEST(GameplayTuningPassTest, PassLeadKeepsGrowingWithDistance) {
   // At long range the lead must far exceed the old 0.7 s saturation.
   EXPECT_GT(GameplayTuning::GetPassLeadTime(30.0f), 2.0f);
 }
+
+// A pass in flight toward me is a run-to-meet instruction: the passer leads
+// by flight time, so holding the strategy route means meeting the ball in
+// the wrong spot (batch 8: lead without convergence scored 47.8%, the worst
+// of the series). The convergence decision is a contract in itself: only in
+// open play, only for the designated receiver, only while the ball is loose,
+// and only when my team played the pass.
+
+TEST(GameplayTuningPassTest, ConvergeOnlyOnOwnTeamsLoosePassInOpenPlay) {
+  EXPECT_TRUE(GameplayTuning::ShouldMeetInFlightPass(true, false, true, false, true));
+  // Opponent's pass: that is defending, handled elsewhere.
+  EXPECT_FALSE(GameplayTuning::ShouldMeetInFlightPass(true, false, true, false, false));
+  // Ball held by anyone: no in-flight pass to meet.
+  EXPECT_FALSE(GameplayTuning::ShouldMeetInFlightPass(true, false, true, true, true));
+  // Not the designated receiver: keep the strategy route.
+  EXPECT_FALSE(GameplayTuning::ShouldMeetInFlightPass(true, false, false, false, true));
+  // Set piece or dead ball: choreography owns the run.
+  EXPECT_FALSE(GameplayTuning::ShouldMeetInFlightPass(false, false, true, false, true));
+  EXPECT_FALSE(GameplayTuning::ShouldMeetInFlightPass(true, true, true, false, true));
+}
