@@ -144,3 +144,52 @@ TEST(GameplayTuningTrapTest, TrapCatchRadiusIsConfigurableAndClamped) {
   config.Set("gameplay_trap_touchable_distance", blunted::real(9.0f));
   EXPECT_FLOAT_EQ(GameplayTuning::GetTrapTouchableDistance(config), 1.0f);
 }
+
+// The touch check that follows the catch radius is still binary: miss the
+// window by a hair and the ball gets no touch event at all, it simply runs
+// through. That gate is the dominant, untouched sink in the pass-failure
+// breakdown (trap 8-24 per side). Headless probing of a live match found the
+// gate rejecting touches that missed the 0.8 m window by only centimetres
+// even on a slow ball (dist 0.84 m, speed 4.45 m/s) - animation-blend slop
+// that has nothing to do with ball speed - so the gate needs a modest
+// baseline on top of the speed-proportional widening: a fast ball is still
+// harder to line up exactly and earns extra slack.
+
+TEST(GameplayTuningTrapTest, AcceptGateHasAModestBaselineEvenForASlowBall) {
+  EXPECT_NEAR(GameplayTuning::GetTrapAcceptGateScale(2.0f), 1.15f, 0.001f);
+}
+
+TEST(GameplayTuningTrapTest, AcceptGateWidensForFastBallsButNeverExplodes) {
+  float slow = GameplayTuning::GetTrapAcceptGateScale(2.0f);
+  float fast = GameplayTuning::GetTrapAcceptGateScale(16.0f);
+  EXPECT_GT(fast, slow);
+  EXPECT_LE(GameplayTuning::GetTrapAcceptGateScale(200.0f), 1.5f);
+}
+
+// The exact near-miss a headless probe caught live: a slow ball (4.45 m/s)
+// landed 0.84 m from the touch point with a 0.11 m height delta, just
+// outside the stock 0.8 m window, so the stock gate discarded it with no
+// touch at all even though speed was not the problem. The softened gate
+// must still accept it.
+TEST(GameplayTuningTrapTest, ProbeObservedNearMissThatUsedToVanish) {
+  const float touchableDistance = 0.8f;
+  const float heightThreshold = 1.0f;
+  const float ballSpeed = 4.45f;
+  const float scale = GameplayTuning::GetTrapAcceptGateScale(ballSpeed);
+
+  const float fullBallDistance = 0.8427f;
+  const float heightDelta = 0.112f;
+
+  EXPECT_FALSE(fullBallDistance < touchableDistance);  // stock gate: no touch
+  EXPECT_TRUE(fullBallDistance < touchableDistance * scale);   // softened: touch
+  EXPECT_TRUE(heightDelta < heightThreshold * scale);
+}
+
+// A genuinely bad miss (over a metre off) must stay a miss regardless of
+// speed: the gate eases near-misses, it does not start catching balls that
+// sail well past the receiver.
+TEST(GameplayTuningTrapTest, AcceptGateNeverRescuesAGenuinelyBadMiss) {
+  const float touchableDistance = 0.8f;
+  const float scale = GameplayTuning::GetTrapAcceptGateScale(7.72f);
+  EXPECT_FALSE(1.219f < touchableDistance * scale);
+}
