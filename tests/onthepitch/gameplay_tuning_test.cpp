@@ -248,3 +248,23 @@ TEST(GameplayTuningPanicTest, DesperateClearanceSurvivesHopelessLanes) {
   const float blocked[3] = {0.05f, 0.14f, 0.0f};
   EXPECT_EQ(GameplayTuning::GetSafestPanicLane(blocked), 1);
 }
+
+// The receive blend preserves incoming momentum when the touch is mistimed
+// (bumpyRideBias -> 1), which is fair for a jogged pass but absurd for a
+// rocket: a slightly late touch on a 20 m/s ball kept nearly the full 20 m/s
+// and rolled away - the dominant bad-trap failure. Hard incoming balls must
+// be damped; soft ones keep the stock feel.
+
+TEST(GameplayTuningTrapTest, HardIncomingPassesAreKilledNotPreserved) {
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTrapKillStrength(6.0f), 0.0f);
+  EXPECT_GT(GameplayTuning::GetTrapKillStrength(20.0f),
+            GameplayTuning::GetTrapKillStrength(8.0f));
+}
+
+TEST(GameplayTuningTrapTest, ALateTouchOnARocketKeepsAtMost60Percent) {
+  const float bias = 0.8f;  // a badly mistimed touch
+  const float preserved = bias * (1.0f - GameplayTuning::GetTrapKillStrength(20.0f));
+  EXPECT_LE(preserved, 0.6f);
+  // A soft pass is untouched by the kill term.
+  EXPECT_FLOAT_EQ(0.8f * (1.0f - GameplayTuning::GetTrapKillStrength(5.0f)), 0.8f);
+}
