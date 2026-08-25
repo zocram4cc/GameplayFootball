@@ -44,6 +44,20 @@ inline float GetTrapTouchableDistance(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_trap_touchable_distance", 0.8f), 0.2f, 1.0f);
 }
 
+// The touch check that follows this radius is otherwise binary: miss the
+// window by a hair and the ball gets no touch event at all, it runs straight
+// through. That gate is the dominant, untouched sink in the pass-failure
+// breakdown (trap 8-24 per side). A live headless probe caught it rejecting
+// a touch that missed by centimetres on a slow ball (0.84 m at 4.45 m/s):
+// animation-blend slop that has nothing to do with speed, hence the modest
+// baseline. A fast incoming ball is still harder to line up exactly, so the
+// gate widens further with speed on top of that. General: every philosophy
+// and skill tier gets it; GetDifficultyFactors still decides how well the
+// touch lands.
+inline float GetTrapAcceptGateScale(float ballSpeed) {
+  return 1.15f + 0.20f * Clamp01((ballSpeed - 4.0f) / 16.0f);
+}
+
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.

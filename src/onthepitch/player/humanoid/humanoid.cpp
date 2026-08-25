@@ -29,6 +29,7 @@
 #include "data/playertraits.hpp"
 #include "humanoid_utils.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 #include "systems/graphics/graphics_scene.hpp"
 #include "systems/graphics/graphics_system.hpp"
@@ -547,8 +548,13 @@ void Humanoid::Process() {
     bumpyRideBias = curve(bumpyRideBias, 0.5f);
     Vector3 currentBallVec = match->GetBall()->GetMovement();
 
-    if (fullBallDistance < touchableDistance &&
-        fabs(desiredBallHeight - match->GetBall()->Predict(0).coords[2]) < 1.0f) {
+    // Fast balls are harder to line up exactly; widen the accept gate with
+    // incoming speed instead of dropping an otherwise-good touch outright.
+    const float acceptGateScale =
+        GameplayTuning::GetTrapAcceptGateScale(currentBallVec.GetLength());
+    if (fullBallDistance < touchableDistance * acceptGateScale &&
+        fabs(desiredBallHeight - match->GetBall()->Predict(0).coords[2]) <
+            1.0f * acceptGateScale) {
       radian nextBodyAngle = startAngle + currentAnim->anim->GetOutgoingAngle() +
                              currentAnim->anim->GetOutgoingBodyAngle() +
                              currentAnim->rotationSmuggle.end;
