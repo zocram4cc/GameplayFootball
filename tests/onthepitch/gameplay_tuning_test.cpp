@@ -120,3 +120,27 @@ TEST(GameplayTuningTrapTest, TighterWebEasesMore) {
   EXPECT_LT(tightD, wideD);
   EXPECT_LT(tightH, wideH);
 }
+
+// Trap failures dominate the pass breakdown (trap 9-24 per side vs intercept
+// 4-6), and most of them never reach a trap anim at all: a ball landing more
+// than the stock 0.4 m from the anim's touch point is simply untouchable. A
+// configurable catch radius lets receivers chest/body-trap balls that would
+// otherwise sail through - the same generosity PES receivers get. General:
+// every philosophy and every skill tier profits, positioning not tiers.
+
+TEST(GameplayTuningTrapTest, TrapCatchRadiusDefaultIsMoreGenerousThanStock) {
+  const blunted::Properties config;
+  EXPECT_GT(GameplayTuning::GetTrapTouchableDistance(config), 0.4f);
+}
+
+TEST(GameplayTuningTrapTest, TrapCatchRadiusIsConfigurableAndClamped) {
+  blunted::Properties config;
+  config.Set("gameplay_trap_touchable_distance", blunted::real(0.5f));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTrapTouchableDistance(config), 0.5f);
+
+  config.Set("gameplay_trap_touchable_distance", blunted::real(0.05f));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTrapTouchableDistance(config), 0.2f);
+
+  config.Set("gameplay_trap_touchable_distance", blunted::real(9.0f));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTrapTouchableDistance(config), 1.0f);
+}
