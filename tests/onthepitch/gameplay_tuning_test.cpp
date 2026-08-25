@@ -79,3 +79,44 @@ TEST(GameplayTuningTrapTest, SupportWebImprovesTrapPrediction) {
   EXPECT_LT(GameplayTuning::GetTrapPredictionAssist(0.20f),
             GameplayTuning::GetTrapPredictionAssist(1.0f));
 }
+
+// The assist used to be multiplied in before the 0..1 difficulty clamps, so
+// whenever a receiver's difficulty factors were saturated (fast ball, far
+// offset - exactly the tight-web case) the clamp swallowed it whole. It must
+// survive saturation: applied last, it always bites.
+
+TEST(GameplayTuningTrapTest, AssistSurvivesSaturatedDifficultyFactors) {
+  float distanceFactor = 1.0f;
+  float heightFactor = 1.0f;
+  float ballMovementFactor = 0.9f;
+  GameplayTuning::ApplyTrapPredictionAssist(distanceFactor, heightFactor,
+                                            ballMovementFactor, 0.20f);
+  EXPECT_LT(distanceFactor, 1.0f);
+  EXPECT_LT(heightFactor, 1.0f);
+  EXPECT_LT(ballMovementFactor, 0.9f);
+}
+
+TEST(GameplayTuningTrapTest, AssistNeverAmplifiesOrNegates) {
+  float distanceFactor = 0.0f;
+  float heightFactor = 0.7f;
+  float ballMovementFactor = 0.5f;
+  GameplayTuning::ApplyTrapPredictionAssist(distanceFactor, heightFactor,
+                                            ballMovementFactor, 1.0f);
+  EXPECT_FLOAT_EQ(distanceFactor, 0.0f);  // nothing to ease stays eased to nothing
+  EXPECT_FLOAT_EQ(heightFactor, 0.7f);    // wide web: identity
+  EXPECT_FLOAT_EQ(ballMovementFactor, 0.5f);
+
+  GameplayTuning::ApplyTrapPredictionAssist(distanceFactor, heightFactor,
+                                            ballMovementFactor, 0.20f);
+  EXPECT_GT(heightFactor, 0.0f);
+  EXPECT_LT(heightFactor, 0.7f);
+}
+
+TEST(GameplayTuningTrapTest, TighterWebEasesMore) {
+  float tightD = 1.0f, tightH = 1.0f, tightM = 0.9f;
+  float wideD = 1.0f, wideH = 1.0f, wideM = 0.9f;
+  GameplayTuning::ApplyTrapPredictionAssist(tightD, tightH, tightM, 0.20f);
+  GameplayTuning::ApplyTrapPredictionAssist(wideD, wideH, wideM, 1.0f);
+  EXPECT_LT(tightD, wideD);
+  EXPECT_LT(tightH, wideH);
+}

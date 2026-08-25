@@ -224,12 +224,6 @@ void GetDifficultyFactors(Match* match, Player* player, const Vector3& positionO
     }
   }
 
-  const float trapPredictionAssist = GameplayTuning::GetTrapPredictionAssist(
-      player->GetTeam()->GetController()->GetLiveTacticReal("support_distance", 0.5f));
-  distanceFactor *= trapPredictionAssist;
-  heightFactor *= trapPredictionAssist;
-  ballMovementFactor *= trapPredictionAssist;
-  ballMovementFactor = clamp(ballMovementFactor, 0.0f, 0.9f);
 
   float skillPenaltyMultiplier =
       (1.0f - player->GetStat("technical_ballcontrol") * 0.70f) * random(0.5f, 1.0f);
@@ -239,6 +233,10 @@ void GetDifficultyFactors(Match* match, Player* player, const Vector3& positionO
   distanceFactor = clamp(distanceFactor, 0.0f, 1.0f);
   heightFactor = clamp(heightFactor, 0.0f, 1.0f);
   ballMovementFactor = clamp(ballMovementFactor, 0.0f, 1.0f);
+  // Applied after the clamps: a saturated trap must still be eased, or the
+  // assist is multiplied away exactly when tight-web passes need it most.
+  GameplayTuning::ApplyTrapPredictionAssist(distanceFactor, heightFactor, ballMovementFactor,
+      player->GetTeam()->GetController()->GetLiveTacticReal("support_distance", 0.5f));
   if (Verbose())
     printf(
         "skill multiplier: %f.. makes for result: distancefactor: %f; heightfactor: %f; "
