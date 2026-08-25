@@ -96,6 +96,7 @@ gtest_discover_tests(gameplayfootball_handpose_tests DISCOVERY_MODE PRE_TEST)
 # That a .anim may carry finger channels, and a clip without them leaves the
 # fingers to the hand rig.
 add_executable(gameplayfootball_animclip_tests
+  utils/movement_history_test.cpp
   utils/anim_finger_channels_test.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/animation.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/animationextensions/footballanimationextension.cpp

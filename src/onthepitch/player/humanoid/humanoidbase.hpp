@@ -11,6 +11,7 @@
 #include "onthepitch/player/humanoid/handrig.hpp"
 #include "onthepitch/player/humanoid/skinning.hpp"
 #include "../../../utils.hpp"
+#include "../../../utils/movementhistory.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "animcollection.hpp"
 #include "base/math/vector3.hpp"
@@ -511,7 +512,7 @@ protected:
   std::vector<Vector3> preferredDirectionVecs;
   std::vector<radian> preferredDirectionAngles;
 
-  MovementHistory movementHistory;
+  MovementHistoryBuffer movementHistory;
 };
 
 #endif
