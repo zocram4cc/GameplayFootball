@@ -844,7 +844,9 @@ protected:
   static constexpr float kNettingStep_s = 0.02f;
   static constexpr int kNettingSettleSteps = 100;
   static constexpr float kNettingSettled_m = 0.0004f;
-  static constexpr float kNettingBallRadius = 0.11f;
+  // Cloth::Push's radius for the ball comes from ballphysics.hpp's
+  // kNettingPushRadius_m instead of a value here, so the constant that must
+  // clear the net's own point spacing lives next to the tests that pin it.
   // How close to the woodwork, the ground or the rear support counts as tied to it.
   static constexpr float kNettingAttachment_m = 0.02f;
 
