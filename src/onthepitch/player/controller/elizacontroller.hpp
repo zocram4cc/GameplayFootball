@@ -56,7 +56,8 @@ protected:
                             float& rawInputVelocity);
 
   void _AddPass(std::vector<PlayerCommand>& commandQueue, Player* target, e_FunctionType passType);
-  void _AddPanicPass(std::vector<PlayerCommand>& commandQueue);
+  void _AddPanicPass(std::vector<PlayerCommand>& commandQueue,
+                          const std::vector<PlayerImage>& opponentPlayerImages);
   float _GetPassingOdds(Player* targetPlayer, e_FunctionType passType,
                         const std::vector<PlayerImage>& opponentPlayerImages,
                         float ballVelocityMultiplier = 1.0f);

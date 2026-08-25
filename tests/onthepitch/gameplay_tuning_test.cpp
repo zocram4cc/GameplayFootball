@@ -230,3 +230,21 @@ TEST(GameplayTuningPassTest, ReceiverPressureNeverDominatesTheLane) {
   EXPECT_LE(GameplayTuning::GetReceiverPressureDanger(0.0f), 0.5f);
   EXPECT_GE(GameplayTuning::GetReceiverPressureDanger(3.0f), 0.0f);
 }
+
+// A panic pass used to be a blind hoof in one fixed direction - a gift to the
+// nearest interceptor at exactly the moments the carrier is most vulnerable.
+// The controller now probes three lanes and kicks into the safest; the pick
+// itself is pure: best lane wins, but if every lane is hopeless the original
+// desperate clearance stands (a defender's hoefunction must survive).
+
+TEST(GameplayTuningPanicTest, PanicPickTakesTheSafestLane) {
+  const float odds[3] = {0.2f, 0.8f, 0.5f};
+  EXPECT_EQ(GameplayTuning::GetSafestPanicLane(odds), 1);
+  const float left[3] = {0.9f, 0.1f, 0.4f};
+  EXPECT_EQ(GameplayTuning::GetSafestPanicLane(left), 0);
+}
+
+TEST(GameplayTuningPanicTest, DesperateClearanceSurvivesHopelessLanes) {
+  const float blocked[3] = {0.05f, 0.14f, 0.0f};
+  EXPECT_EQ(GameplayTuning::GetSafestPanicLane(blocked), 1);
+}
