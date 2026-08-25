@@ -107,18 +107,6 @@ inline float GetPassLeadTime(float distance) {
   return 0.3f + distance / 12.0f;
 }
 
-// Whether this player should bend his run onto a pass that is in flight.
-// The passer leads by flight time (GetPassLeadTime), so the receiver must
-// run to the arrival point - holding the strategy route means meeting the
-// ball in the wrong spot. Only in open play, only for the designated
-// receiver, only while the ball is loose, and only when his own team played
-// the pass (chasing an opponent's pass is defending, handled elsewhere).
-inline bool ShouldMeetInFlightPass(bool inPlay, bool inSetPiece,
-                                   bool isDesignatedReceiver, bool ballRetained,
-                                   bool lastTouchOwnTeam) {
-  return inPlay && !inSetPiece && isDesignatedReceiver && !ballRetained && lastTouchOwnTeam;
-}
-
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.
