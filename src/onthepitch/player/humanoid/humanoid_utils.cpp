@@ -223,6 +223,12 @@ void GetDifficultyFactors(Match* match, Player* player, const Vector3& positionO
       ballMovementFactor += lastTouchBiasPenalty * 0.1f;
     }
   }
+
+  const float trapPredictionAssist = GameplayTuning::GetTrapPredictionAssist(
+      player->GetTeam()->GetController()->GetLiveTacticReal("support_distance", 0.5f));
+  distanceFactor *= trapPredictionAssist;
+  heightFactor *= trapPredictionAssist;
+  ballMovementFactor *= trapPredictionAssist;
   ballMovementFactor = clamp(ballMovementFactor, 0.0f, 0.9f);
 
   float skillPenaltyMultiplier =

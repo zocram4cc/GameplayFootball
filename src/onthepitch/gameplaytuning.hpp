@@ -30,6 +30,12 @@ inline float GetFirstTouchContextPenalty(float opponentDistance, float calmness,
   return std::min(pressurePenalty + orientationPenalty, 0.14f);
 }
 
+// A shorter support web gives receivers a more predictable first touch.
+// This assist is deliberately broad: positioning, not player tiers, controls it.
+inline float GetTrapPredictionAssist(float supportDistance) {
+  return 1.0f - 0.12f * (1.0f - Clamp01(supportDistance));
+}
+
 // How open the game is. The stock engine only let a player shoot inside a tight
 // window near the goal, which produced three or four shots a match; these two
 // knobs open that up and are tunable from the config.
