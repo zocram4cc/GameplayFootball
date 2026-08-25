@@ -88,6 +88,15 @@ inline int GetSafestPanicLane(const float odds[3], float panicLaneFloor = 0.15f)
   return best;
 }
 
+// How much of a hard incoming ball's momentum the receiver scrubs off. The
+// bumpyRide blend preserves incoming momentum on a mistimed touch, which is
+// fair for a jogged pass but absurd for a rocket: a slightly late touch kept
+// nearly the full incoming speed and rolled away - the dominant bad-trap
+// failure. Damping ramps in above jogging pace; soft passes are untouched.
+inline float GetTrapKillStrength(float incomingBallSpeed) {
+  return 0.5f * Clamp01((incomingBallSpeed - 6.0f) / 14.0f);
+}
+
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.

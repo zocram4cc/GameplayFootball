@@ -573,7 +573,9 @@ void Humanoid::Process() {
           touchVec *= 1.35f;
         }
 
-        touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
+        touchVec = touchVec * (1.0f - bumpyRideBias) +
+                   currentBallVec * bumpyRideBias *
+                       (1.0f - GameplayTuning::GetTrapKillStrength(currentBallVec.GetLength()));
         if (player->GetDebug() && bumpyRideBias > 0.01f)
           printf("bumpyridebias (trap): %f\n", bumpyRideBias);
 
@@ -604,7 +606,9 @@ void Humanoid::Process() {
           touchVec *= 1.35f;
         }
 
-        touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
+        touchVec = touchVec * (1.0f - bumpyRideBias) +
+                   currentBallVec * bumpyRideBias *
+                       (1.0f - GameplayTuning::GetTrapKillStrength(currentBallVec.GetLength()));
         if (player->GetDebug() && bumpyRideBias > 0.01f)
           printf("bumpyridebias (ballcontrol): %f\n", bumpyRideBias);
 
