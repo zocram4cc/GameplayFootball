@@ -516,7 +516,9 @@ void Humanoid::Process() {
         ->GetTouchPos(currentAnim->touchFrame, desiredBallPosition);
     float desiredBallHeight = desiredBallPosition.coords[2];
 
-    float touchableDistance = 0.4f;
+    static const float trapTouchableDistance =
+        GetConfiguration()->GetReal("gameplay_trap_touchable_distance", 0.8f);
+    float touchableDistance = trapTouchableDistance;
 
     float fullBallDistance =
         (match->GetBall()->Predict(0) - (currentAnim->touchPos + currentAnim->positionOffset))

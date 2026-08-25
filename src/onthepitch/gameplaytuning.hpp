@@ -36,6 +36,14 @@ inline float GetTrapPredictionAssist(float supportDistance) {
   return 1.0f - 0.12f * (1.0f - Clamp01(supportDistance));
 }
 
+// How far from the anim's touch point a receiver may still kill the ball.
+// The stock 0.4 m window is the single largest source of pass failure: balls
+// landing just outside it are simply untouchable. Config-tunable, general for
+// every philosophy and skill tier.
+inline float GetTrapTouchableDistance(const blunted::Properties& config) {
+  return blunted::clamp(config.GetReal("gameplay_trap_touchable_distance", 0.8f), 0.2f, 1.0f);
+}
+
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.
