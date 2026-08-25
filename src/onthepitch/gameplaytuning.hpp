@@ -58,6 +58,23 @@ inline float GetTrapAcceptGateScale(float ballSpeed) {
   return 1.15f + 0.20f * Clamp01((ballSpeed - 4.0f) / 16.0f);
 }
 
+// Error loft on an outgoing touch. The stock code added difficultyFactor *
+// 5.0 m/s of vertical velocity on any bad roll, lofting ground passes into
+// balls the receiver's 1 m height gate and sub-metre touch radius can never
+// accept - a self-inflicted trap failure. A misplayed short pass should be
+// misdirected or underhit, not chipped; aerial balls keep the full loft.
+inline float GetPassErrorLoft(float difficultyFactor, bool groundPass) {
+  return difficultyFactor * (groundPass ? 1.25f : 5.0f);
+}
+
+// Extra danger (in seconds, same currency as the interception loop) for a
+// pass aimed at a marked receiver. The lane check alone let a target with a
+// marker on his shoulder score the same as a free man. Capped well below the
+// one-second danger scale so an open lane to a pressed man is still playable.
+inline float GetReceiverPressureDanger(float nearestOpponentDistance) {
+  return 0.35f * (1.0f - Clamp01((nearestOpponentDistance - 1.0f) / 6.0f));
+}
+
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.

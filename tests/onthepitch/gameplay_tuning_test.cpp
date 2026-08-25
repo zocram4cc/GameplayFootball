@@ -193,3 +193,40 @@ TEST(GameplayTuningTrapTest, AcceptGateNeverRescuesAGenuinelyBadMiss) {
   const float scale = GameplayTuning::GetTrapAcceptGateScale(7.72f);
   EXPECT_FALSE(1.219f < touchableDistance * scale);
 }
+
+// A short pass is a ground pass. The stock touch code added up to 5 m/s of
+// vertical velocity on a bad roll (difficultyFactor * 5.0 * random(0.2, 1)),
+// lofting exactly the passes whose receivers gate on |height delta| < 1.0 m
+// and a sub-metre touch radius - a self-inflicted trap failure. A misplayed
+// short pass should stay on the deck (wrong direction, wrong weight), while
+// aerial balls keep the full loft error.
+
+TEST(GameplayTuningPassTest, MisplayedShortPassesStayOnTheDeck) {
+  const float difficulty = 0.6f;
+  EXPECT_LT(GameplayTuning::GetPassErrorLoft(difficulty, true),
+            GameplayTuning::GetPassErrorLoft(difficulty, false));
+  // Even a fully botched ground pass must not clear the receiver's 1 m
+  // height gate on its own.
+  EXPECT_LE(GameplayTuning::GetPassErrorLoft(1.0f, true), 1.5f);
+}
+
+TEST(GameplayTuningPassTest, PassErrorLoftScalesWithDifficulty) {
+  EXPECT_LT(GameplayTuning::GetPassErrorLoft(0.1f, true),
+            GameplayTuning::GetPassErrorLoft(0.9f, true));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetPassErrorLoft(0.0f, false), 0.0f);
+}
+
+// The passing odds only priced the lane (interception); a target with a
+// marker on his shoulder scored the same as a free man, so the passer kept
+// picking marked men and the receiving-end failure never entered the choice.
+
+TEST(GameplayTuningPassTest, MarkedReceiversAreWorseTargets) {
+  EXPECT_GT(GameplayTuning::GetReceiverPressureDanger(0.5f),
+            GameplayTuning::GetReceiverPressureDanger(4.0f));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetReceiverPressureDanger(10.0f), 0.0f);
+}
+
+TEST(GameplayTuningPassTest, ReceiverPressureNeverDominatesTheLane) {
+  EXPECT_LE(GameplayTuning::GetReceiverPressureDanger(0.0f), 0.5f);
+  EXPECT_GE(GameplayTuning::GetReceiverPressureDanger(3.0f), 0.0f);
+}
