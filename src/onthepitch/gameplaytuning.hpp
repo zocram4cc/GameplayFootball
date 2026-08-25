@@ -36,6 +36,17 @@ inline float GetTrapPredictionAssist(float supportDistance) {
   return 1.0f - 0.12f * (1.0f - Clamp01(supportDistance));
 }
 
+// Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
+// far offset - exactly the tight-web case) still gets eased instead of being
+// swallowed by the clamp. Never amplifies and never negates.
+inline void ApplyTrapPredictionAssist(float& distanceFactor, float& heightFactor,
+                                      float& ballMovementFactor, float supportDistance) {
+  const float assist = GetTrapPredictionAssist(supportDistance);
+  distanceFactor *= assist;
+  heightFactor *= assist;
+  ballMovementFactor *= assist;
+}
+
 // How open the game is. The stock engine only let a player shoot inside a tight
 // window near the goal, which produced three or four shots a match; these two
 // knobs open that up and are tunable from the config.
