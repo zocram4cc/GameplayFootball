@@ -22,7 +22,6 @@
 
 #include "../../main.hpp"
 #include "../aitactics.hpp"
-#include "../gameplaytuning.hpp"
 #include "../ball.hpp"
 #include "../match.hpp"
 #include "../matchmentality.hpp"
@@ -1338,8 +1337,12 @@ void AI_GetPass(Player* player, e_FunctionType passType, const Vector3& inputDir
   if (forcedTargetPlayer) {
     bestTargetPlayer = forcedTargetPlayer;
 
-    float passDuration = GameplayTuning::GetPassLeadTime(
-        (forcedTargetPlayer->GetPosition() - playerPos).GetLength());
+    float passDuration = 0.3f + (forcedTargetPlayer->GetPosition() - playerPos).GetLength() *
+                                    0.05f;  // educated guess
+    passDuration = std::pow(clamp(passDuration, 0.0f, 1.0f), 0.7f) *
+                   0.7f;  // after this time, the player is supposed to have
+                          // been able to stop
+
     autoTarget = forcedTargetPlayer->GetPosition() +
                  forcedTargetPlayer->GetMovement() * passDuration;  // correct for pass duration
 
@@ -1349,8 +1352,11 @@ void AI_GetPass(Player* player, e_FunctionType passType, const Vector3& inputDir
 
     for (int i = 0; i < (signed int)players.size(); i++) {
       if (players.at(i) != player /* && players.at(i)->IsActive()*/) {
-        float passDuration = GameplayTuning::GetPassLeadTime(
-            (players.at(i)->GetPosition() - playerPos).GetLength());
+        float passDuration = 0.3f + (players.at(i)->GetPosition() - playerPos).GetLength() *
+                                        0.05f;  // educated guess
+        passDuration = std::pow(clamp(passDuration, 0.0f, 1.0f), 0.7f) *
+                       0.7f;  // after this time, the player is supposed to have
+                              // been able to stop
 
         Vector3 targetPos =
             players.at(i)->GetPosition() +
