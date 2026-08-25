@@ -97,16 +97,6 @@ inline float GetTrapKillStrength(float incomingBallSpeed) {
   return 0.5f * Clamp01((incomingBallSpeed - 6.0f) / 14.0f);
 }
 
-// How long a pass of the given distance takes to reach its target, used to
-// lead the receiver. The stock formula saturated at 0.7 s beyond ~14 m while
-// a 15 m ground pass takes ~2.5 s to arrive: balls were led for a third of
-// their flight and landed in space the receiver had already left, forcing a
-// late recovery trap - the upstream cause of the bad-trap sink. 12 m/s is
-// the effective ground speed after friction.
-inline float GetPassLeadTime(float distance) {
-  return 0.3f + distance / 12.0f;
-}
-
 // Applied AFTER the 0..1 difficulty clamps, so a saturated trap (fast ball,
 // far offset - exactly the tight-web case) still gets eased instead of being
 // swallowed by the clamp. Never amplifies and never negates.
