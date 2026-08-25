@@ -268,3 +268,19 @@ TEST(GameplayTuningTrapTest, ALateTouchOnARocketKeepsAtMost60Percent) {
   // A soft pass is untouched by the kill term.
   EXPECT_FLOAT_EQ(0.8f * (1.0f - GameplayTuning::GetTrapKillStrength(5.0f)), 0.8f);
 }
+
+// The pass lead model saturated at 0.7 s for any pass beyond ~14 m, while a
+// 15 m ground pass takes ~2.5 s to arrive: balls were led for a third of
+// their flight and landed in space the receiver had already left. The lead
+// must keep growing with distance - no saturation.
+
+TEST(GameplayTuningPassTest, PassLeadKeepsGrowingWithDistance) {
+  EXPECT_FLOAT_EQ(GameplayTuning::GetPassLeadTime(0.0f), 0.3f);
+  // Constant effective speed means linear growth; the property that matters
+  // is no saturation: the second 15 m must add at least as much lead as the
+  // first.
+  EXPECT_GE(GameplayTuning::GetPassLeadTime(30.0f) - GameplayTuning::GetPassLeadTime(15.0f),
+            GameplayTuning::GetPassLeadTime(15.0f) - GameplayTuning::GetPassLeadTime(0.0f));
+  // At long range the lead must far exceed the old 0.7 s saturation.
+  EXPECT_GT(GameplayTuning::GetPassLeadTime(30.0f), 2.0f);
+}
