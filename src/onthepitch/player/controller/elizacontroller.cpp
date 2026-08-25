@@ -452,24 +452,6 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     forceMagnet = true;
   }
 
-  // A pass in flight toward me is a run-to-meet instruction: the passer
-  // leads by flight time (GameplayTuning::GetPassLeadTime), so holding the
-  // strategy route means meeting the ball in the wrong spot. Bend the run
-  // toward the arrival point and commit to it.
-  if (GameplayTuning::ShouldMeetInFlightPass(
-          match->IsInPlay(), match->IsInSetPiece(),
-          match->GetDesignatedPossessionPlayer() == player,
-          match->GetBallRetainer() != 0,
-          match->GetLastTouchTeamID() == team->GetID())) {
-    Vector3 chasePos =
-        match->GetBall()->Predict(CastPlayer()->GetTimeNeededToGetToBall_ms()).Get2D();
-    Vector3 toChase = chasePos - player->GetPosition();
-    if (toChase.GetLength() > 0.5f) {
-      rawInputDirection = (rawInputDirection + toChase.GetNormalized(0)).GetNormalized(0);
-      rawInputVelocityFloat = std::max(rawInputVelocityFloat, 0.85f);
-    }
-  }
-
   _SetInput(rawInputDirection, rawInputVelocityFloat);
   if (rawInputDirection.GetLength() != 0)
     lastDesiredDirection = rawInputDirection;
