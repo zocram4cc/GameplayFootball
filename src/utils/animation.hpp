@@ -10,6 +10,7 @@
 #include "defines.hpp"
 #include "scene/scene3d/node.hpp"
 #include "utils/xmlloader.hpp"
+#include "utils/movementhistory.hpp"
 
 namespace blunted {
 
@@ -47,14 +48,10 @@ struct BiasedOffset {
 
 static std::map<std::string, BiasedOffset> emptyOffsets;
 
-struct MovementHistoryEntry {
-  std::string nodeName;
-  Vector3 position;
-  Quaternion orientation;
-  int timeDiff_ms;
-};
-
-using MovementHistory = std::vector<MovementHistoryEntry>;
+// MovementHistoryEntry / MovementHistory now live in movementhistory.hpp,
+// together with the cross-thread safe buffer that owns them.
+using MovementHistoryEntry = blunted::MovementHistoryEntry;
+using MovementHistory = std::vector<blunted::MovementHistoryEntry>;
 
 // usage
 //

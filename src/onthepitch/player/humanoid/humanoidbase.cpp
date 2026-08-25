@@ -964,14 +964,19 @@ void HumanoidBase::Put() {
 
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
+  // A concurrent ResetPosition (Process phase) may have requested a reset;
+  // consume it here, on the Put thread, so Apply never iterates a vector that
+  // is being cleared underneath it (2HUG crash: vector::at on a shrunken
+  // history during foul-replay cutscenes).
+  movementHistory.ConsumeResetRequest();
+
   // printf("anim ptr: %i\n", fetchedbuf_animApplyBuffer.anim);
   // printf("nodemap size: %i\n", nodeMap.size());
   fetchedbuf_animApplyBuffer.anim->Apply(
       nodeMap, fetchedbuf_animApplyBuffer.frameNum, -1, fetchedbuf_animApplyBuffer.smooth,
       fetchedbuf_animApplyBuffer.smoothFactor, fetchedbuf_animApplyBuffer.position,
-      fetchedbuf_animApplyBuffer.orientation, fetchedbuf_animApplyBuffer.offsets, &movementHistory,
-      timeDiff_ms, fetchedbuf_animApplyBuffer.noPos, false);
-
+      fetchedbuf_animApplyBuffer.orientation, fetchedbuf_animApplyBuffer.offsets,
+      &movementHistory.Get(), timeDiff_ms, fetchedbuf_animApplyBuffer.noPos, false);
   // The clip has had its say; the fingers are what it does not carry. PES drives
   // them from a pose library rather than from the body animation, and so does this
   // (handrig.hpp). A clip that DOES author finger channels wins, because Apply()
@@ -1235,8 +1240,11 @@ void HumanoidBase::ResetPosition(const Vector3& newPos, const Vector3& focusPos)
   decayingPositionOffset = Vector3(0);
   decayingDifficultyFactor = 0.0f;
 
-  movementHistory.clear();
-
+  // Do NOT clear the movement history here: this runs on the Process thread
+  // while the Put thread may be inside Animation::Apply iterating it (2HUG
+  // heap crash). Request the reset; HumanoidBase::Put consumes it before its
+  // next Apply.
+  movementHistory.RequestReset();
   // clear temporalsmoother vars
   // todo: not sure if we may access buf_ vars here
   /*
