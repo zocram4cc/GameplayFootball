@@ -74,3 +74,8 @@ TEST(GameplayTuningKeeperTest, ReactionStillSeparatesKeepersWithoutFreezingThem)
   EXPECT_GT(great, poor);
   EXPECT_LT(great - poor, 0.3f) << "the gap should be a shade, not a wall";
 }
+TEST(GameplayTuningTrapTest, SupportWebImprovesTrapPrediction) {
+  EXPECT_LT(GameplayTuning::GetTrapPredictionAssist(0.20f), 0.95f);
+  EXPECT_LT(GameplayTuning::GetTrapPredictionAssist(0.20f),
+            GameplayTuning::GetTrapPredictionAssist(1.0f));
+}
