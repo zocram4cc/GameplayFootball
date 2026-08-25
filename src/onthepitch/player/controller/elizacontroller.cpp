@@ -1429,9 +1429,18 @@ float ElizaController::_GetPassingOdds(const Vector3& target, e_FunctionType pas
     }
   }
 
+  // Pressure at the receiving end, not just along the lane: a target with a
+  // marker on his shoulder used to score the same as a free man.
+  float nearestOpponentDistance = 1000.0f;
+  for (unsigned int opp = 0; opp < opponentPlayerImages.size(); opp++) {
+    Vector3 oppPos = opponentPlayerImages.at(opp).position +
+                     opponentPlayerImages.at(opp).movement * 0.2f;
+    nearestOpponentDistance = std::min(nearestOpponentDistance, (oppPos - target).GetLength());
+  }
+  danger += GameplayTuning::GetReceiverPressureDanger(nearestOpponentDistance);
+
   if (passType == e_FunctionType_HighPass)
     danger += 0.4f;  // just don't prefer high passing when low passing is applicable as well
-
   danger = NormalizedClamp(
       danger, 0.0f, secondScale);  // 1 super dangerous dude is basically the same as 100% danger
   float odds = 1.0f - danger;

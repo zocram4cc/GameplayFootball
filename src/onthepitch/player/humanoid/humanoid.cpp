@@ -3280,7 +3280,10 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   resultTouch = resultTouch * (1.0f - ballMovementFactor) +
                 match->GetBall()->GetMovement() * ballMovementFactor;
 
-  resultTouch.coords[2] += difficultyFactor * 5.0f * random(0.2f, 1.0f);
+  const bool groundPass = functionType == e_FunctionType_ShortPass ||
+                          functionType == e_FunctionType_LongPass;
+  resultTouch.coords[2] +=
+      GameplayTuning::GetPassErrorLoft(difficultyFactor, groundPass) * random(0.2f, 1.0f);
 
   // printf("difficulty: %f\n", difficultyFactor);
   if (Verbose())
