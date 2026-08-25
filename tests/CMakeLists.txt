@@ -24,6 +24,7 @@ add_executable(gameplayfootball_math_tests
   base/math_test.cpp
   base/skinning_math_test.cpp
   onthepitch/ball_physics_test.cpp
+  onthepitch/net_geom_test.cpp
 )
 
 target_link_libraries(gameplayfootball_math_tests PRIVATE

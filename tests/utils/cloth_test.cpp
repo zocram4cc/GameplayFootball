@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include "onthepitch/ballphysics.hpp"
 #include "utils/cloth.hpp"
 
 using blunted::Cloth;
@@ -144,6 +145,29 @@ TEST(Cloth, PushMovesPointsOutOfTheBall) {
   EXPECT_NEAR((p - Vector3(0, 0.1f, 1)).GetLength(), 0.5f, 1e-4f);
   // Pushed away from the centre, not through it.
   EXPECT_LT(p.coords[1], 0.1f);
+}
+
+// A ball centred exactly between two of the imported net's own points misses
+// both of them at the old push radius (the ball's own physical size, 0.11m),
+// which is what made contact look like it did nothing to the net: the mesh
+// point nearest the ball was routinely farther away than that. The imported
+// net settles to about one point every 0.35m (PrepareGoalNetting logs "553
+// net point(s)" per goal over its ~63 sq. m of side/rear/top netting), so the
+// worst-case gap from a ball sitting between two of them is half that, 0.175m.
+TEST(Cloth, TheOldBallRadiusMissesARealisticallySpacedNetPoint) {
+  Cloth cloth;
+  cloth.Build({Vector3(0, -0.175f, 0), Vector3(0, 0.175f, 0)}, {false, false}, {});
+  cloth.Push(Vector3(0, 0, 0), 0.11f);
+  EXPECT_FLOAT_EQ(cloth.Positions()[0].coords[1], -0.175f);
+  EXPECT_FLOAT_EQ(cloth.Positions()[1].coords[1], 0.175f);
+}
+
+TEST(Cloth, TheFixedPushRadiusReachesARealisticallySpacedNetPoint) {
+  Cloth cloth;
+  cloth.Build({Vector3(0, -0.175f, 0), Vector3(0, 0.175f, 0)}, {false, false}, {});
+  cloth.Push(Vector3(0, 0, 0), kNettingPushRadius_m);
+  EXPECT_NE(cloth.Positions()[0].coords[1], -0.175f);
+  EXPECT_NE(cloth.Positions()[1].coords[1], 0.175f);
 }
 
 TEST(Cloth, PushLeavesFixedPointsAlone) {

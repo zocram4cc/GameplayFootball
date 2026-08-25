@@ -200,14 +200,9 @@ BallSpatialInfo Ball::CalculatePrediction() {
     float frictionFactor = groundInteraction.frictionFactor;
     float grassInfluenceBias = groundInteraction.grassInfluenceBias;
 
-    float netAbsorbInv = 0.95f;
-    float powFactor = 2.6f;
-    float powerFac = 1.8f;  // lol varnames
     float postAbsorbInv = 0.8f;
     float ballRadius = physicsConfig.ballRadius;
     float postRadius = 0.07f;
-
-    netAbsorbInv = std::pow(netAbsorbInv, timeStep * 100.0f);
 
     // woodwork
 
@@ -315,85 +310,22 @@ BallSpatialInfo Ball::CalculatePrediction() {
     // netting
 
     if (predictTime_ms <= 10 && netting_enabled) {
-      bool ballIsInGoal = match->IsBallInGoal();
-      signed int inGoal = ballIsInGoal ? 1 : -1;
+      GoalNettingConfig nettingConfig;
+      nettingConfig.pitchHalfW = pitchHalfW;
+      nettingConfig.goalDepth = goalDepth;
+      nettingConfig.goalHeight = goalHeight;
+      nettingConfig.goalHalfWidth = goalHalfWidth;
+      nettingConfig.ballRadius = ballRadius;
 
-      bool behindBackline = fabs(nextPos.coords[0]) > pitchHalfW + 0.11f;
-      bool behindGoalBack = fabs(nextPos.coords[0]) > pitchHalfW + goalDepth + 0.11f;
-      bool beforeGoalBack = fabs(nextPos.coords[0]) < pitchHalfW + goalDepth - 0.11f;
-      bool belowGoalHeight = nextPos.coords[2] < goalHeight + 0.11f;
-      bool aboveGoalHeight = nextPos.coords[2] > goalHeight - 0.11f;
-      bool betweenGoalWidth = fabs(nextPos.coords[1]) < goalHalfWidth - 0.11f;
-      bool asideGoalWidth = fabs(nextPos.coords[1]) > goalHalfWidth + 0.11f;
+      BallPhysicsState nettingState{nextPos, momentumPredict};
+      const GoalNettingResult nettingResult = ApplyGoalNettingCollision(
+          nettingState, match->IsBallInGoal(), nettingConfig, timeStep);
+      nextPos = nettingState.position;
+      momentumPredict = nettingState.momentum;
 
-      // side netting
-
-      if ((ballIsInGoal && !betweenGoalWidth && behindBackline)) {
-        float netDist;
-        netDist = fabs(fabs(nextPos.coords[1]) - goalHalfWidth);
-        netDist = clamp(netDist, 0, 1);
-        float power = std::pow(netDist, powFactor) * -signSide(nextPos.coords[1]) * inGoal;
-
-        // net is stuck to woodwork so lay off there
-        float woodworkTensionBiasInv =
-            clamp((fabs(momentumPredict.coords[0]) - pitchHalfW) * 2.0f, 0.0f, 1.0f);
-        float adaptedPowerFac = powerFac + (1.0f - woodworkTensionBiasInv) * 3.0f;
-
-        momentumPredict.coords[1] =
-            momentumPredict.coords[1] * netAbsorbInv +
-            power * adaptedPowerFac * (100 * timeStep);  // + -momentumPredict.coords[1] * netDist;
-
-        if (predictTime_ms == 10)
-          ballTouchesNet = true;
-      }
-
-      // rear netting
-
-      //      if ((fabs(nextPos.coords[0]) > (pitchHalfW + 2.5) - 0.11 && ballIsInGoal)/* ||
-      //          (fabs(nextPos.coords[0]) < (pitchHalfW + 2.5) + 0.11 && !ballIsInGoal) todo
-      //          disabled: too hard to code :p */) {
-
-      if (( ballIsInGoal && !beforeGoalBack && behindBackline)/* ||
-          (!ballIsInGoal && !asideGoalWidth && behindBackline && !behindGoalBack && belowGoalHeight ** todo disabled: too hard to code :p */) {
-        float netDist;
-        netDist = fabs(fabs(nextPos.coords[0]) - (pitchHalfW + goalDepth));
-        netDist = clamp(netDist, 0, 1);
-        float power = std::pow(netDist, powFactor) * -signSide(nextPos.coords[0]) * inGoal;
-        momentumPredict.coords[0] =
-            momentumPredict.coords[0] * netAbsorbInv + power * powerFac * (100 * timeStep);
-
-        if (predictTime_ms == 10)
-          ballTouchesNet = true;
-      }
-
-      // top netting
-
-      //      if (((nextPos.coords[2] > 2.5 - 0.11 && ballIsInGoal)/*( ||
-      //           (nextPos.coords[2] < 2.5 + 0.11 && !ballIsInGoal) todo disabled: too hard to code
-      //           :p */) &&
-      //          fabs(nextPos.coords[0]) > pitchHalfW) {
-
-      if ((ballIsInGoal && !belowGoalHeight &&
-           behindBackline)) {  // todo: from above. so hard to code. wow.
-
-        float netDist;
-        netDist = fabs(fabs(nextPos.coords[2]) - goalHeight);
-        netDist = clamp(netDist, 0, 1);
-        float power = std::pow(netDist, powFactor) * -inGoal;
-
-        // net is stuck to woodwork so lay off there
-        float woodworkTensionBiasInv =
-            clamp((fabs(momentumPredict.coords[0]) - pitchHalfW) * 2.0f, 0.0f, 1.0f);
-        float adaptedPowerFac = powerFac + (1.0f - woodworkTensionBiasInv) * 3.0f;
-
-        momentumPredict.coords[2] =
-            momentumPredict.coords[2] * netAbsorbInv + power * adaptedPowerFac * (100 * timeStep);
-
-        if (predictTime_ms == 10)
-          ballTouchesNet = true;
-      }
-
-    }  // </goal collisions>
+      if (predictTime_ms == 10 && nettingResult.touchedNet)
+        ballTouchesNet = true;
+    }
 
     // calculate rotation
 

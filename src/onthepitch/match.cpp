@@ -11,6 +11,7 @@
 #include "../data/playertraits.hpp"
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
+#include "ballphysics.hpp"
 #include "aimanager.hpp"
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
@@ -5512,7 +5513,7 @@ void Match::UpdateGoalNetting(bool ballTouchesNet) {
     Cloth& cloth = nettingCloth[goalID];
     if (cloth.Empty()) continue;
     const bool pushed = ballTouchesNet && goalID == sideID;
-    if (pushed) cloth.Push(ball->GetBallGeom()->GetPosition(), kNettingBallRadius);
+    if (pushed) cloth.Push(ball->GetBallGeom()->GetPosition(), kNettingPushRadius_m);
     // A net at rest is most of a match. Its sag holds it a long way from the pose in
     // the file for good, so what says it has stopped is that it is not moving.
     if (!pushed && cloth.Speed() < kNettingSettled_m) continue;
