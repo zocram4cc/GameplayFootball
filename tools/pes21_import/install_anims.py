@@ -71,7 +71,7 @@ def intro_of(path):
 
 # --- match classes ----------------------------------------------------------
 
-MATCH_CLASSES = ("sliding", "interfere", "keeper", "trick", "movement")
+MATCH_CLASSES = ("sliding", "interfere", "keeper", "trick", "movement", "trap")
 
 # GF files match clips under <type>/<incoming velocity>/, and the selector
 # leans on that reading being right, so the directory is derived, not chosen.
@@ -136,7 +136,8 @@ def prepare_match_anim(path, anim_class):
     contact = None
     if anim_class != "movement":
         finder = {"keeper": am.keeper_contact,
-                  "trick": am.touch_contact}.get(anim_class, am.sliding_contact)
+                  "trick": am.touch_contact,
+                  "trap": am.touch_contact}.get(anim_class, am.sliding_contact)
         contact = finder(anim)
         if contact is None or contact["frame"] >= anim.last_frame:
             return None, None, "no ball contact"
@@ -188,7 +189,6 @@ def prepare_match_anim(path, anim_class):
                                            shot_height=am.BALL_RADIUS))
             variables["incomingballdirection_maxdeviation"] = "0.5"
             variables["type"] = "interfere"
-            subdir = os.path.join("interfere", velocity, "pes")
     elif anim_class == "trick":
         if lie is not None:
             return None, None, "goes to ground: not a touch"
@@ -199,6 +199,20 @@ def prepare_match_anim(path, anim_class):
         # `anim_experimental` is set (AnimCollection::Load).
         variables["type"] = "ballcontrol"
         subdir = os.path.join("ballcontrol", velocity, "experimental")
+    elif anim_class == "trap":
+        if lie is not None:
+            return None, None, "goes to ground: not a trap"
+        # A trap receives a ball that is arriving, so the selector matches on
+        # the incoming ball direction like interfere does; the touch keyframe
+        # (appended below) is what lets GetBestCheatableAnimID check that the
+        # clip can actually reach the ball before it wins first refusal.
+        variables["incomingballdirection"] = _vector(
+            am.incoming_ball_direction(contact["position"],
+                                       shot_distance=3.0,
+                                       shot_height=am.BALL_RADIUS))
+        variables["incomingballdirection_maxdeviation"] = "0.5"
+        variables["type"] = "trap"
+        subdir = os.path.join("trap", velocity, "pes")
     else:
         kind = _classify_keeper(os.path.basename(path))
         if kind is None:
