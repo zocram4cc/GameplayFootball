@@ -244,8 +244,10 @@ void GameOverPage::Process() {
     const int passes2 = matchData->GetPassAttempts(1);
     const int passAccuracy1 = passes1 > 0 ? (matchData->GetPassesCompleted(0) * 100) / passes1 : 0;
     const int passAccuracy2 = passes2 > 0 ? (matchData->GetPassesCompleted(1) * 100) / passes2 : 0;
-    printf("[balance-passing] passes %i-%i | accuracy %i%%-%i%%\n", passes1, passes2, passAccuracy1,
-           passAccuracy2);
+    const int cleanPct1 = passes1 > 0 ? (matchData->GetCleanCompletions(0) * 100) / passes1 : 0;
+    const int cleanPct2 = passes2 > 0 ? (matchData->GetCleanCompletions(1) * 100) / passes2 : 0;
+    printf("[balance-passing] passes %i-%i | accuracy %i%%-%i%% | clean %i%%-%i%%\n", passes1, passes2,
+           passAccuracy1, passAccuracy2, cleanPct1, cleanPct2);
 #ifndef NDEBUG
     // Questionable-play deny list, debug-only: no quality guarantee should depend on
     // somebody counting frames by hand.

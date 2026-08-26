@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <vector>
 
 #include "../gamedefines.hpp"
 #include "defines.hpp"
@@ -112,10 +113,17 @@ public:
 #endif
   }
   void RecordBallTouch(int receivingTeamID) {
+    lastTouchTeamID = receivingTeamID;
+    ResolveExpiredCleanChecks();
     const bool lastWasGoalkeeper = pendingPassIsGoalkeeper;
     const bool lastWasOwnThird = pendingPassOwnThird;
     if (pendingPassTeamID == receivingTeamID) {
       passesCompleted[receivingTeamID]++;
+      // A completion only counts as CLEAN once the receiving team is still
+      // the last team to touch the ball cleanCompletionWindow_ms later; see
+      // ResolveExpiredCleanChecks. This runs in release too, since it feeds
+      // the [balance-passing] accuracy line rather than debug instrumentation.
+      pendingCleanChecks.push_back({receivingTeamID, matchTime_ms + cleanCompletionWindow_ms});
     } else if (pendingPassTeamID >= 0) {
       // A pending pass met by the OTHER team: the passer just played it straight to
       // an opponent. Debug-only - this is a quality signal, not a rule.
@@ -142,6 +150,27 @@ public:
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
   }
+  // Lazily settles any clean-completion window whose deadline has passed:
+  // CLEAN if the completing team is still the ball's last-touch team once the
+  // deadline arrives, otherwise SCRAPPY (the ball changed hands within
+  // cleanCompletionWindow_ms of the reception). Called from RecordBallTouch
+  // (a touch event) and FailPendingPassOutOfBounds (an out event) so it is
+  // never more than one event stale. Not guarded by NDEBUG: these counters
+  // feed the [balance-passing] accuracy line in release builds too.
+  void ResolveExpiredCleanChecks() {
+    while (!pendingCleanChecks.empty() &&
+           pendingCleanChecks.front().deadline_ms <= matchTime_ms) {
+      const int completingTeam = pendingCleanChecks.front().teamID;
+      if (lastTouchTeamID == completingTeam)
+        cleanCompletions[completingTeam]++;
+      else
+        scrappyCompletions[completingTeam]++;
+      pendingCleanChecks.erase(pendingCleanChecks.begin());
+    }
+  }
+  int GetCleanCompletions(int teamID) const { return cleanCompletions[teamID]; }
+  int GetScrappyCompletions(int teamID) const { return scrappyCompletions[teamID]; }
+  int GetPendingCleanCheckCount() const { return static_cast<int>(pendingCleanChecks.size()); }
   // The ball left the pitch while a pass was still in flight: count it as an
   // out-of-bounds failure for the passer, then close the passing sequence.
   // Debug-only: the breakdown exists to steer tuning, not to change it.
@@ -153,6 +182,9 @@ public:
     // punished once the ball has gone out off the interception.
     pendingOwnThirdGiveawayTeam = -1;
 #endif
+    // The ball leaving play is an out event too: a clean-completion window
+    // may have quietly expired while nobody else touched the ball.
+    ResolveExpiredCleanChecks();
     ResetPendingPass();
   }
   int GetPassAttempts(int teamID) const { return passAttempts[teamID]; }
@@ -292,6 +324,19 @@ protected:
   int passFailIntercept[2] = {0, 0};
   int passFailTrap[2] = {0, 0};
   int passFailOob[2] = {0, 0};
+  // Clean-completion tracking (release-safe, see RecordBallTouch and
+  // ResolveExpiredCleanChecks): a pending check names the team that just
+  // completed a pass and the match time its window closes.
+  struct PendingCleanCheck {
+    int teamID;
+    unsigned long deadline_ms;
+  };
+  int cleanCompletions[2] = {0, 0};
+  int scrappyCompletions[2] = {0, 0};
+  // Which team touched the ball last, updated on every RecordBallTouch call.
+  int lastTouchTeamID = -1;
+  static constexpr unsigned long cleanCompletionWindow_ms = 1500;
+  std::vector<PendingCleanCheck> pendingCleanChecks;
 #ifndef NDEBUG
   int passGoalkeeperCatch[2] = {0, 0};
   int passRestart[2] = {0, 0};
