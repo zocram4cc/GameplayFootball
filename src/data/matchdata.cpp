@@ -24,6 +24,12 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
   passAttempts[1] = 0;
   passesCompleted[0] = 0;
   passesCompleted[1] = 0;
+  cleanCompletions[0] = 0;
+  cleanCompletions[1] = 0;
+  scrappyCompletions[0] = 0;
+  scrappyCompletions[1] = 0;
+  lastTouchTeamID = -1;
+  pendingCleanChecks.clear();
   pendingPassTeamID = -1;
 
   foulsCommitted[0] = 0;
@@ -35,12 +41,10 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
 
 void MatchData::AddPossessionTime_10ms(int teamID) {
   possessionTime_ms[teamID] += 10;
-#ifndef NDEBUG
-  // The debug match clock: the own-third giveaway window is measured against
-  // it (see SetPendingOwnThirdGiveaway / AddShot). Release builds have no
-  // pending store, so there is nothing to advance.
+  // The match clock: the own-third giveaway window (debug-only) and the
+  // clean-completion window (release-safe, see ResolveExpiredCleanChecks)
+  // are both measured against it.
   matchTime_ms += 10;
-#endif
   if (teamID == 0)
     possession60seconds = std::max(possession60seconds - 0.01f, -60.0f);
   else if (teamID == 1)

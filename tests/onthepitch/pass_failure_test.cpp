@@ -296,3 +296,88 @@ TEST_F(PassFailure, AttributionIgnoresClosedPass) {
   EXPECT_EQ(matchData->GetPassRestart(1), 0);
 }
 
+// Clean-completion tracking: a pass that completes starts a 1.5s window
+// (MatchData::cleanCompletionWindow_ms). Whichever team is still the ball's
+// last-touch team once the window elapses settles the check - CLEAN for the
+// completing team, SCRAPPY otherwise. Unlike the rest of this file these
+// counters are not behind #ifndef NDEBUG: they feed the [balance-passing]
+// accuracy line in release builds too.
+TEST_F(PassFailure, CleanCompletionResolvesCleanWhenSameTeamHoldsPastWindow) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);  // pass completes for team 0
+  EXPECT_EQ(matchData->GetPendingCleanCheckCount(), 1);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 0);
+
+  // Advance past the 1.5s window with no other touches, then let team 0
+  // touch the ball again - it is still the last team to have touched it.
+  for (int tick = 0; tick < 160; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->RecordBallTouch(0);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 1);
+  EXPECT_EQ(matchData->GetScrappyCompletions(0), 0);
+  EXPECT_EQ(matchData->GetPendingCleanCheckCount(), 0);
+}
+
+TEST_F(PassFailure, CleanCompletionResolvesScrappyWhenOpponentTouchesAfterWindow) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);  // pass completes for team 0
+
+  for (int tick = 0; tick < 160; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->RecordBallTouch(1);  // opponent is first to touch it after the window
+  EXPECT_EQ(matchData->GetScrappyCompletions(0), 1);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 0);
+  EXPECT_EQ(matchData->GetPendingCleanCheckCount(), 0);
+}
+
+// An opponent touch inside the 1.5s window must not pre-resolve the check:
+// the pass already completed, so only the state of play once the window has
+// fully elapsed decides clean vs scrappy.
+TEST_F(PassFailure, CleanCompletionWindowDoesNotResolveEarly) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);  // pass completes for team 0
+
+  // Well inside the window: the opponent gets a touch on it...
+  for (int tick = 0; tick < 50; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->RecordBallTouch(1);
+  EXPECT_EQ(matchData->GetPendingCleanCheckCount(), 1);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 0);
+  EXPECT_EQ(matchData->GetScrappyCompletions(0), 0);
+
+  // ...but team 0 wins it straight back and still holds it once the window
+  // elapses: the reception counts as clean, not scrappy.
+  matchData->RecordBallTouch(0);
+  for (int tick = 0; tick < 110; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->RecordBallTouch(0);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 1);
+  EXPECT_EQ(matchData->GetScrappyCompletions(0), 0);
+}
+
+// The ball going out of play is an out event too: it must resolve an
+// expired window even when nobody else touches the ball.
+TEST_F(PassFailure, CleanCompletionResolvesOnOutOfBoundsEvent) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);  // pass completes for team 0
+
+  for (int tick = 0; tick < 160; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->AddPassAttempt(0);
+  matchData->FailPendingPassOutOfBounds();
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 1);
+  EXPECT_EQ(matchData->GetPendingCleanCheckCount(), 0);
+}
+
+TEST_F(PassFailure, CleanCompletionCountersResetPerMatch) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);
+  for (int tick = 0; tick < 160; ++tick) matchData->AddPossessionTime_10ms(0);
+  matchData->RecordBallTouch(0);
+  EXPECT_EQ(matchData->GetCleanCompletions(0), 1);
+
+  // A new match starts with a fresh MatchData: nothing carries over, and no
+  // clean check is left pending from a previous game.
+  MatchData fresh(1, 2);
+  EXPECT_EQ(fresh.GetCleanCompletions(0), 0);
+  EXPECT_EQ(fresh.GetCleanCompletions(1), 0);
+  EXPECT_EQ(fresh.GetScrappyCompletions(0), 0);
+  EXPECT_EQ(fresh.GetScrappyCompletions(1), 0);
+  EXPECT_EQ(fresh.GetPendingCleanCheckCount(), 0);
+}
+
