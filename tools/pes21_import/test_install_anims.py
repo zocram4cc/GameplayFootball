@@ -13,6 +13,7 @@ needs its own pair: the controller asks for the intro, then asks for the loop
 Run: python3 -m unittest test_install_anims -v
 """
 
+import os
 import unittest
 
 import install_anims
@@ -55,3 +56,51 @@ class TheClassALoopIsInstalledAs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TheTrapClass(unittest.TestCase):
+    """Trap is the receive family: the dominant pass-failure sink (62% of
+    logged failures) runs through it, and the stock set is 40 clips across
+    three velocity buckets. The imported batch competes for first refusal
+    like sliding/interfere do, with the stock clip falling back whenever an
+    imported one cannot reach the ball."""
+
+    POOL = os.path.join("..", "..", "data", "imports", "pes21", "animations")
+
+    def a_pool_trap_clip(self):
+        if not os.path.isdir(self.POOL):
+            self.skipTest("import pool not present")
+        for root, _, files in os.walk(self.POOL):
+            for f in files:
+                if "trap" in f and f.endswith(".anim"):
+                    return os.path.join(root, f)
+        self.skipTest("no trap clips in pool")
+
+    def test_trap_is_a_match_class(self):
+        self.assertIn("trap", install_anims.MATCH_CLASSES)
+        self.assertIn("trap", sorted(set(install_anims.CLASSES) | set(install_anims.MATCH_CLASSES)))
+
+    def test_an_upright_trap_installs_into_the_trap_family(self):
+        subdir, stem, text = install_anims.prepare_match_anim(
+            self.a_pool_trap_clip(), "trap")
+        self.assertIsNotNone(subdir)
+        parts = subdir.split(os.sep)
+        self.assertEqual(parts[0], "trap")
+        self.assertIn(parts[1], install_anims.VELOCITY_DIRS)
+        self.assertEqual(parts[2], "pes")
+        self.assertIn("<type>\n\ttrap\n</type>", text)
+        self.assertIn("<incomingballdirection>", text)
+        self.assertIn("extension,football,", text)
+
+    def test_a_trap_that_ends_on_the_deck_is_rejected(self):
+        # fk() adds a constant body height, so a prone fixture cannot be
+        # built by mutating curves; patch the lie detector instead - the
+        # contract under test is the rejection branch, not the detector.
+        clip = self.a_pool_trap_clip()
+        real_lie = install_anims.am.lie_state
+        install_anims.am.lie_state = lambda anim: "lay_back"
+        try:
+            subdir, stem, reason = install_anims.prepare_match_anim(clip, "trap")
+        finally:
+            install_anims.am.lie_state = real_lie
+        self.assertIsNone(subdir)
+        self.assertIn("ground", reason)
