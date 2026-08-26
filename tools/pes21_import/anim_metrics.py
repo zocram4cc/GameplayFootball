@@ -212,6 +212,52 @@ def outgoing_velocity(anim):
     return _edge_velocity(anim.player, False)
 
 
+def receiver_velocity_bucket(anim, foot_source=None):
+    """The velocity bucket a receiving player should match this anim at.
+
+    The player track only moves when the *whole* body translates -- a
+    sprinting forward receiving a pass in place has a stationary root but
+    is still moving. Without the second signal every imported trap clip
+    lands in `idle/`, the cheat check rejects every one for a sprint
+    receiver, and the engine falls back to the stock set. We combine the
+    two: a clip with low root motion but a foot-plant cadence at
+    reception-stationary pace gets bumped out of `idle` by the cadence.
+    """
+    _, root_speed = incoming_velocity(anim)
+    root_bucket = quantize_velocity(root_speed)
+    if root_bucket > 0.0:
+        return root_bucket
+    if foot_source is None:
+        foot_source = foot_plants
+    try:
+        cadence = foot_source(anim)
+    except (TypeError, AttributeError):
+        # TypeError: test stub passed the list directly.
+        # AttributeError: stub has no .nodes for the real fk() to walk.
+        # Both mean the caller already gave us the cadence; use it as-is.
+        try:
+            cadence = foot_source()
+        except TypeError:
+            cadence = foot_source  # already a list
+    if not cadence or len(cadence) < 2:
+        return 0.0
+    span_frames = anim.last_frame
+    if span_frames <= 0:
+        return 0.0
+    # Degenerate-cadence guard: a real clip plants at most a few times per
+    # second per leg; a stub or broken anim with a plant every frame is
+    # noise, not motion. Treat > 4 plants/sec per leg-side as suspect
+    # and fall back to idle -- a sprinting receiver (the very case this
+    # function is meant to catch) would still cross 1.8 m/s with proper
+    # foot cadence in the 2-4 plants/sec range, not 13.
+    plants_per_sec = (len(cadence) - 1) / (span_frames * 0.01)
+    if plants_per_sec > 8.0:
+        return 0.0
+    speed_mps = plants_per_sec * 0.7
+    return quantize_velocity(speed_mps)
+
+
+
 def incoming_body_angle(anim):
     return modulate(gf_euler(anim.nodes["body"][0][1:5])[2])
 
