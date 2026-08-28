@@ -758,6 +758,7 @@ std::optional<PlayAction> MatchSession::Play(bool home, Picker& picker,
   act.endStop = e->endStop;
   act.home = home;
   act.pname = e->pname;
+  act.louder = e->louder;
   return act;
 }
 
@@ -807,7 +808,7 @@ void MatchSession::OnHornPaused(bool home, double now) {
   side.playingUid = -1;
   if (!e) return;
   double pos = side.playSeek + (now - side.playStarted) * side.playSpeed;
-  auto d = durations_.find(side.playFile);
+  auto d = durations_.find(CacheKey(home, side.playFile));
   if (d != durations_.end() && d->second > 0 && e->loop)
     pos = std::fmod(pos, d->second);
   e->position = pos;
@@ -909,6 +910,7 @@ std::optional<PlayAction> MatchSession::Chant(bool home) {
   act.loop = false;
   act.home = home;
   act.pname = "chant";
+  act.louder = e.louder;
   return act;
 }
 
@@ -948,8 +950,8 @@ std::optional<PlayAction> MatchSession::OnEvent(bool home, const std::string& et
   return act;
 }
 
-void MatchSession::SetDuration(const std::string& file, double seconds) {
-  durations_[file] = seconds;
+void MatchSession::SetDuration(bool home, const std::string& file, double seconds) {
+  durations_[CacheKey(home, file)] = seconds;
 }
 
 double MatchSession::CachedPosition(bool home, const std::string& file) const {

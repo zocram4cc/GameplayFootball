@@ -210,6 +210,7 @@ struct PlayAction {
   bool endStop = false;
   bool home = true;
   std::string pname;
+  bool louder = false;   // normalization boost marker
 };
 
 class MatchSession {
@@ -245,7 +246,7 @@ class MatchSession {
                                     const std::string& player, int minute);
 
   // The engine learned a file's duration (seconds); resume positions wrap.
-  void SetDuration(const std::string& file, double seconds);
+  void SetDuration(bool home, const std::string& file, double seconds);
   double CachedPosition(bool home, const std::string& file) const;
 
  private:

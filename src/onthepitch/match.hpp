@@ -114,6 +114,8 @@ struct MissingAnim {
   mutable radian angleDifference;
 };
 */
+class RigdioDirector;
+
 
 class Match {
 public:
@@ -202,6 +204,9 @@ public:
   // How far into the presentation we are, in real seconds.
   float GetEntranceElapsedSeconds() const;
   unsigned long GetEntranceEndTime_ms() const { return introCutsceneEnd_ms; }
+  // The whole presentation's length in real seconds (0 = no entrance). The
+  // rigdio music director schedules the away and home anthems off it.
+  float GetEntranceTotalSeconds() const { return entranceSeconds; }
   // Which beat of the pre-match presentation is on air, and what it wants
   // drawn over it (docs/PRESENTATION_SPEC.md section 1). The formation
   // graphic reads its cue from here rather than working out its own
@@ -520,6 +525,9 @@ protected:
   bool entranceActive = false;
   unsigned long entranceRealStart_ms = 0;
   float entranceSeconds = 0.0f;
+  // The match-music player: anthems, goal horns, victory anthems and chants
+  // from the teams' rigdio exports (rigdiodirector.hpp, docs/RIGDIO.md).
+  std::unique_ptr<RigdioDirector> rigdio;
   // imported PES camerawork ("intro_cutscene_track" .camtrack path, or the
   // track picked out of media/cutscenes/ent/<entrance_id>/ by stadium)
   // PES stages an entrance as several authored shots cut back to back; they
