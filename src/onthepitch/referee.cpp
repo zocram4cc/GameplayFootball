@@ -468,7 +468,10 @@ void Referee::IssueDeferredCards() {
     buffer.prepared = false;
     buffer.started = false;
     if (lastDeferredPlayer) match->SetCutsceneParticipants(lastDeferredPlayer, nullptr);
-    match->StartCutscene(anyRedShown ? "foul/card_red" : "foul/card_yellow", 5.0f);
+    // Same source of truth as the directly-whistled card above (foulType 2 is
+    // the booking length; a red uses the same ceremony).
+    match->StartCutscene(anyRedShown ? "foul/card_red" : "foul/card_yellow",
+                         FoulSequence::CutsceneLength_ms(2) / 1000.0f);
   }
 }
 
@@ -794,11 +797,16 @@ bool Referee::CheckFoul() {
     // a foul the referee waves away with a word - the telling-off shots.
     // the offender and the man he fouled play themselves in the cutscene
     match->SetCutsceneParticipants(foul.foulPlayer, foul.foulVictim);
+    // Length comes from FoulSequence, which is also what schedules the replay
+    // and the restart behind it. Hardcoding it here meant lengthening the
+    // cutscene moved the replay but not the shot it was waiting on.
+    const float cutsceneSeconds = FoulSequence::CutsceneLength_ms(foul.foulType) / 1000.0f;
     if (foul.foulType >= 2) {
       match->AddLostTime(MatchProgression::e_Stoppage_Card);
-      match->StartCutscene(foul.foulType == 3 ? "foul/card_red" : "foul/card_yellow", 5.0f);
+      match->StartCutscene(foul.foulType == 3 ? "foul/card_red" : "foul/card_yellow",
+                           cutsceneSeconds);
     } else {
-      match->StartCutscene("foul/warning", 3.5f);
+      match->StartCutscene("foul/warning", cutsceneSeconds);
     }
     // Then a close-up replay of the challenge, once that cutscene has run.
     match->RequestFoulReplay(match->GetActualTime_ms(), foul.foulType);
