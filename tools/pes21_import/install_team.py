@@ -223,22 +223,30 @@ def install(database, team, tactics, dry_run=False):
         tag = art_tag(name)
         logo = "images_teams/%s/%s_logo.png" % (tag, tag)
         kit = "images_teams/%s/%s" % (tag, tag)
+        # The pack's own colours, when it stated them. Not decoration: the
+        # scoreboard, the crowd banners and the stats overlay all read these,
+        # and TeamData falls back to black on white for a team without them.
+        colour1 = team.get("colour1")
+        colour2 = team.get("colour2")
         row = cur.execute("select id from teams where name = ?", (name,)).fetchone()
         if row:
             team_row = row[0]
             cur.execute("update teams set shortname = ?, tactics_xml = ?, "
-                        "tactics_factory_xml = ?, logo_url = ?, kit_url = ? "
+                        "tactics_factory_xml = ?, logo_url = ?, kit_url = ?, "
+                        "color1 = coalesce(?, color1), color2 = coalesce(?, color2) "
                         "where id = ?",
-                        (team["abbreviation"][:3], xml, xml, logo, kit, team_row))
+                        (team["abbreviation"][:3], xml, xml, logo, kit,
+                         colour1, colour2, team_row))
             cur.execute("delete from players where team_id = ?", (team_row,))
         else:
             league = cur.execute("select league_id from teams where league_id is not null "
                                  "limit 1").fetchone()
             cur.execute("insert into teams(league_id, name, shortname, tactics_xml, "
-                        "tactics_factory_xml, logo_url, kit_url) "
-                        "values (?, ?, ?, ?, ?, ?, ?)",
+                        "tactics_factory_xml, logo_url, kit_url, color1, color2) "
+                        "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (league[0] if league else 1, name,
-                         team["abbreviation"][:3], xml, xml, logo, kit))
+                         team["abbreviation"][:3], xml, xml, logo, kit,
+                         colour1, colour2))
             team_row = cur.lastrowid
 
         # The squad in order. The number is the shirt; formationorder is the slot, and

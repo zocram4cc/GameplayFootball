@@ -797,3 +797,22 @@ gtest_discover_tests(gameplayfootball_career_tests
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   DISCOVERY_MODE PRE_TEST
 )
+
+# A team's colour out of the database: two teams store "#RRGGBB" and atof made
+# that black, so /lcg/ and /ink/ played under a black scoreboard.
+add_executable(gameplayfootball_colourstring_tests
+  base/colour_string_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/types/refcounted.cpp
+)
+
+target_include_directories(gameplayfootball_colourstring_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(gameplayfootball_colourstring_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+
+gtest_discover_tests(gameplayfootball_colourstring_tests DISCOVERY_MODE PRE_TEST)

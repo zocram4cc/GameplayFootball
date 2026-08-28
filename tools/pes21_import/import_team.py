@@ -351,6 +351,37 @@ def install_art(pack_dir, game_dir, tag, dry_run=False):
     return written
 
 
+def read_pack_colours(pack_dir):
+    """-> (first, second) as the database stores them, or (None, None).
+
+    Every pack states its identity in Note.txt:
+
+        Team Colours:
+        - 1st: 255 232 0
+        - 2nd: 54 52 50
+
+    and the import used to drop it, leaving color1/color2 NULL. They are not
+    decoration: the scoreboard, the crowd banners and the stats overlay all
+    read them, and TeamData falls back to black on white for a team without
+    them, so /hdg/ played in yellow and appeared in the HUD in black.
+    """
+    # Every pack writes the note, none agree on the name: "Note.txt",
+    # "2hug note.txt", "DBG note.txt".
+    notes = [f for f in os.listdir(pack_dir) if re.match(r"^.*note\.txt$", f, re.I)] \
+        if os.path.isdir(pack_dir) else []
+    if not notes:
+        return (None, None)
+    found = {}
+    for line in open(os.path.join(pack_dir, sorted(notes)[0]), "r", errors="replace"):
+        match = re.match(r"^\s*-\s*(1st|2nd)\s*:\s*(\d+)\s+(\d+)\s+(\d+)\s*$", line, re.I)
+        if match:
+            # DBG zero-pads its channels ("041 081 156"); the database and
+            # GetVectorFromString both want plain numbers.
+            found[match.group(1).lower()] = ", ".join(
+                str(int(channel)) for channel in match.group(2, 3, 4))
+    return (found.get("1st"), found.get("2nd"))
+
+
 def install_portraits(pack_dir, game_dir, tag, by_shirt, dry_run=False):
     """Converts the pack's portraits and binds them to their players.
 
@@ -501,6 +532,7 @@ def main():
                 export["abbreviation"].lower()
         database = args.database or os.path.join(
             args.game_dir, "databases", "default", "database.sqlite")
+        export["colour1"], export["colour2"] = read_pack_colours(args.pack_dir)
         tactics = install_team.parse_tactics(args.tactics) or {
             "team_pressure": 0.5, "counter_attack": 0.5, "support_distance": 0.5}
         team_row, by_shirt = install_team.install(database, export, tactics,
