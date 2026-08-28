@@ -419,6 +419,72 @@ def install_portraits(pack_dir, game_dir, tag, by_shirt, dry_run=False):
     return written
 
 
+def portrait_shirt(filename):
+    """-> the shirt a portrait file belongs to, or None.
+
+    Packs write the name three ways and all three put the shirt last in the
+    leading token: "player_78301.png" carries the full PES id, "XXX01 - Bullet
+    Sponge.png" leaves the team a placeholder and adds the player's name, and
+    an already-installed "player_604.png" carries the database id it was bound
+    to. The last two digits of that token are the shirt in every case.
+    """
+    token = os.path.splitext(os.path.basename(filename))[0].split(" - ")[0].strip()
+    match = re.search(r"(\d{2})$", token)
+    return int(match.group(1)) if match else None
+
+
+def relink_portraits(game_dir, database):
+    """Rewrites playerportraits.cfg from the portraits on disk. -> lines written.
+
+    The config binds a portrait to a database id, and those ids move: every
+    re-import deletes and re-inserts the squad. All 75 entries in this repo's
+    config had come adrift that way - the files were all there and every path
+    resolved, but not one id still belonged to the player it was written for.
+    They had landed on the stock teams, so the first thing to actually draw a
+    portrait would have put 2HUG's faces on Masterdam.
+
+    Rebuilt rather than appended: an entry that cannot be regenerated from a
+    file on disk and a player in the database is stale by definition.
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(database)
+    try:
+        teams = conn.execute("select id, name from teams").fetchall()
+        squads = {}
+        for team_id, name in teams:
+            squads[install_team.art_tag(name)] = {
+                order + 1: row[0] for order, row in enumerate(conn.execute(
+                    "select id from players where team_id = ? order by formationorder",
+                    (team_id,)))}
+    finally:
+        conn.close()
+
+    lines = []
+    root = os.path.join(game_dir, "imports")
+    for tag in sorted(os.listdir(root)) if os.path.isdir(root) else []:
+        by_shirt = squads.get(tag)
+        portraits = os.path.join(root, tag, "portraits")
+        if not by_shirt or not os.path.isdir(portraits):
+            continue
+        for name in sorted(os.listdir(portraits)):
+            if not name.lower().endswith(".png"):
+                continue
+            shirt = portrait_shirt(name)
+            if shirt is None or shirt not in by_shirt:
+                continue
+            lines.append("%d imports/%s/portraits/%s" % (by_shirt[shirt], tag, name))
+
+    path = os.path.join(game_dir, "media", "players", "playerportraits.cfg")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as out:
+        out.write("# imported portraits: \"<databaseID> <png path>\"\n")
+        out.write("# Rebuilt by import_team.py: database ids move on every\n")
+        out.write("# re-import, so this is regenerated rather than appended to.\n")
+        out.write("\n".join(lines) + ("\n" if lines else ""))
+    return lines
+
+
 def append_config(path, lines):
     """Appends "<id> <path>" lines, skipping ids the file already binds."""
     existing = open(path).read() if os.path.exists(path) else ""
@@ -545,11 +611,15 @@ def main():
         print("   art: %s" % (", ".join(art) if art else "none found in the pack"))
         portraits = install_portraits(args.pack_dir, args.game_dir, tag,
                                       by_shirt, args.dry_run)
-        if portraits and not args.dry_run:
-            append_config(
-                os.path.join(args.game_dir, "media", "players", "playerportraits.cfg"),
-                ["%d %s" % pair for pair in portraits])
-        print("   portraits: %d" % len(portraits))
+        if not args.dry_run:
+            # Rebuilt across every team, not appended for this one: the ids of
+            # every squad already installed move whenever any of them is
+            # re-imported.
+            bound = relink_portraits(args.game_dir, database)
+            print("   portraits: %d converted, %d bound across all teams"
+                  % (len(portraits), len(bound)))
+        else:
+            print("   portraits: %d" % len(portraits))
     elif not args.prefix:
         print("give the team's .ted, or --prefix if you only want the models")
         return 1

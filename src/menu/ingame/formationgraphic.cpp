@@ -12,6 +12,7 @@
 #include "formationgraphiclayout.hpp"
 #include "main.hpp"
 #include "utils/gui2/windowmanager.hpp"
+#include "utils/playermodelmap.hpp"
 #include "utils/localization.hpp"
 
 namespace blunted {
@@ -345,9 +346,24 @@ void Gui2FormationGraphic::FillForTeam(int teamID) {
 
     StarterWidgets& sw = starters[i];
     sw.icon->SetPosition(px - iconWidth * 0.5f, py - iconHeight * 0.5f);
+    // A player the pack shipped a portrait for is drawn as his face, the way
+    // the broadcast does it; the jersey silhouette is what the rest fall back
+    // to. Imported packs carry one per squad member, so a mixed fixture shows
+    // faces for the team that has them and jerseys for the team that does not,
+    // rather than nothing for either.
+    const PlayerData* starterData = teamData->GetPlayerData(i);
+    const std::string& portrait =
+        starterData ? GetPlayerPortrait(starterData->GetDatabaseID()) : std::string();
+    const bool hasPortrait = !portrait.empty();
+    sw.icon->LoadImage(hasPortrait ? portrait : std::string("media/ui/pes/jersey_icon.png"));
     // The number sits on the jersey's chest, which is the lower two thirds
-    // of the silhouette (the top third is collar and shoulders).
-    sw.number->SetPosition(px - iconWidth * 0.30f, py - iconHeight * 0.14f);
+    // of the silhouette (the top third is collar and shoulders). A portrait
+    // has a face there, so the number goes to the corner instead of across
+    // the man's nose.
+    if (hasPortrait)
+      sw.number->SetPosition(px + iconWidth * 0.14f, py + iconHeight * 0.16f);
+    else
+      sw.number->SetPosition(px - iconWidth * 0.30f, py - iconHeight * 0.14f);
     sw.number->SetText(int_to_str(FormationGraphicLayout::SquadNumberForSlot(i)));
 
     if (sw.nickname) {

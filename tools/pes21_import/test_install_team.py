@@ -603,3 +603,83 @@ class TheTeamPlaysInItsOwnColours(unittest.TestCase):
             self.assertEqual(got[0], "1, 1, 1")
         finally:
             os.unlink(path)
+
+
+class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
+    """playerportraits.cfg binds a portrait to a database id, and those ids
+    move: every re-import deletes and re-inserts the squad. All 75 entries in
+    this repo had come adrift that way - every file present, every path
+    resolving, not one id still belonging to the player it was written for.
+    They had drifted onto the stock teams, so the first thing to actually draw
+    a portrait would have put 2HUG's faces on Masterdam."""
+
+    def setUp(self):
+        self.game = tempfile.mkdtemp()
+        handle, self.db = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        conn = sqlite3.connect(self.db)
+        conn.executescript(SCHEMA)
+        conn.commit()
+        conn.close()
+        install_team.install(self.db, TEAM, TACTICS)
+        self.tag = install_team.art_tag(TEAM["team"])
+
+    def tearDown(self):
+        os.unlink(self.db)
+
+    def add_portraits(self, names):
+        from PIL import Image
+        out = os.path.join(self.game, "imports", self.tag, "portraits")
+        os.makedirs(out, exist_ok=True)
+        for name in names:
+            Image.new("RGBA", (4, 4), (0, 0, 0, 255)).save(os.path.join(out, name))
+
+    def shirt_of(self, db_id):
+        conn = sqlite3.connect(self.db)
+        try:
+            row = conn.execute("select formationorder from players where id = ?",
+                               (db_id,)).fetchone()
+        finally:
+            conn.close()
+        return row[0] + 1
+
+    def test_the_shirt_is_found_in_all_three_naming_styles(self):
+        self.assertEqual(import_team.portrait_shirt("player_78301.png"), 1)
+        self.assertEqual(import_team.portrait_shirt("XXX07 - Bullet Sponge.png"), 7)
+        self.assertEqual(import_team.portrait_shirt("player_604.png"), 4)
+
+    def test_a_name_with_no_shirt_in_it_is_skipped(self):
+        self.assertIsNone(import_team.portrait_shirt("logo.png"))
+
+    def test_each_portrait_binds_to_the_player_wearing_that_shirt(self):
+        self.add_portraits(["XXX01 - Keeper.png", "XXX09 - Striker.png"])
+        lines = import_team.relink_portraits(self.game, self.db)
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            db_id, path = line.split(" ", 1)
+            self.assertEqual(self.shirt_of(int(db_id)),
+                             import_team.portrait_shirt(path))
+
+    def test_a_reinstall_moves_every_id_and_the_binding_follows(self):
+        self.add_portraits(["XXX05 - Someone.png"])
+        before = import_team.relink_portraits(self.game, self.db)
+        install_team.install(self.db, TEAM, TACTICS)
+        after = import_team.relink_portraits(self.game, self.db)
+        self.assertNotEqual(before, after)
+        self.assertEqual(self.shirt_of(int(after[0].split(" ", 1)[0])), 5)
+
+    def test_the_config_is_rebuilt_not_appended(self):
+        """A stale entry must not survive a rebuild."""
+        path = os.path.join(self.game, "media", "players", "playerportraits.cfg")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").write("999999 imports/gone/portraits/ghost.png\n")
+        self.add_portraits(["XXX03 - Real.png"])
+        import_team.relink_portraits(self.game, self.db)
+        self.assertNotIn("ghost.png", open(path).read())
+
+    def test_a_portrait_for_a_shirt_nobody_wears_is_dropped(self):
+        self.add_portraits(["XXX99 - Nobody.png"])
+        self.assertEqual(import_team.relink_portraits(self.game, self.db), [])
+
+    def test_a_team_with_no_portraits_simply_has_none(self):
+        self.assertEqual(import_team.relink_portraits(self.game, self.db), [])
