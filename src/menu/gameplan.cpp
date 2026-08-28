@@ -99,6 +99,7 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridNav->AddView(buttonFormation, 5, 0);
   gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
+  map->sig_OnOpenPlayerMenu.connect([this](int slotIndex) { GoPlayerMenu(slotIndex); });
   grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
 
   grid->UpdateLayout(0.0);
@@ -168,13 +169,14 @@ void GamePlanPage::Deactivate() {
   grid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);
 }
 
-void GamePlanPage::Reactivate() {
+void GamePlanPage::Reactivate(Gui2View* focusTarget) {
   grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
   grid->UpdateLayout(0.0);
   gridNav->Show();
   // Restore keyboard/gamepad focus after returning from a sub-menu, otherwise
-  // navigation can be left dangling.
-  buttonTactics->SetFocus();
+  // navigation can be left dangling. A caller resuming pitch interaction
+  // (the per-player menu) passes the map itself instead of the default.
+  (focusTarget ? focusTarget : static_cast<Gui2View*>(buttonTactics))->SetFocus();
 }
 
 Vector3 GamePlanPage::GetButtonColor(int id) {
@@ -363,6 +365,21 @@ void GamePlanPage::ApplyFormationShape(const Formations::Shape& shape) {
   buttonFormation->SetCaption(Localization::GetInstance().Translate("gameplan_formation") + ": " +
                               name);
 
+  // The pitch map reads TeamData's FormationEntry array directly, not the
+  // tactics string just written above - before this, picking a formation
+  // here changed nothing the map showed until a live match's AI controller
+  // separately reshaped itself. Reassign every slot from the new layout so
+  // the map (and a save) agree with what was just chosen.
+  const std::vector<Formations::Slot> layout = Formations::GetLayoutForShape(shape);
+  for (int i = 0; i < playerNum && i < (int)layout.size(); i++) {
+    FormationEntry entry;
+    entry.role = layout.at(i).role;
+    entry.databasePosition = layout.at(i).position;
+    entry.position = entry.databasePosition * 0.6f + GetDefaultRolePosition(entry.role) * 0.4f;
+    teamData->SetFormationEntry(i, entry);
+  }
+  map->Refresh();
+
   Match* match = GetGameTask()->GetMatch();
   if (match)
     match->GetTeam(teamID)->GetController()->ApplyFormationShape(shape);
@@ -447,6 +464,72 @@ void GamePlanPage::FormationMenuOnClick(int formationIndex) {
   for (unsigned int i = 0; i < buttons.size(); i++) {
     buttons.at(i)->SetColor(static_cast<int>(i) == formationIndex ? Vector3(80, 160, 80)
                                                                   : Vector3(60, 60, 60));
+  }
+}
+
+void GamePlanPage::GoPlayerMenu(int slotIndex) {
+  Deactivate();
+  playerMenuSlotIndex = slotIndex;
+
+  playerMenu = new GamePlanSubMenu(windowManager, map, grid, "player_submenu");
+  playerMenu->sig_OnClose.connect([this](...) { Reactivate(map); });
+
+  PlayerData* playerData = teamData->GetPlayerData(slotIndex);
+  const FormationEntry currentEntry = teamData->GetFormationEntry(slotIndex);
+
+  int row = 0;
+  playerMenu
+      ->AddButton("player_caption_name",
+                  playerData ? playerData->GetLastName()
+                             : Localization::GetInstance().Translate("gameplan_player"),
+                  row++, 0, Vector3(40, 40, 40))
+      ->SetActive(false);
+
+  // Ten roles, current one highlighted; picking one keeps the player on the
+  // same tactical spot and just changes what he is asked to do there.
+  for (int i = 0; i < 10; i++) {
+    const e_PlayerRole role = static_cast<e_PlayerRole>(i);
+    const bool isCurrent = role == currentEntry.role;
+    Gui2Button* button =
+        playerMenu->AddButton("player_role_" + int_to_str(i), GetRoleName(role), row++, 0,
+                              isCurrent ? Vector3(80, 160, 80) : Vector3(60, 60, 60));
+    button->sig_OnClick.connect([this, role](Gui2Button*) { PlayerMenuRoleOnClick(role); });
+    if (isCurrent)
+      button->SetFocus();
+  }
+
+  // A shortcut into the existing whole-team formation picker: PES frames
+  // this as one submenu ("change formation and role"; the pause modal's tab
+  // row puts Preset Tactics beside Team Sheet/Edit Position - Enrichment
+  // Addendum). GamePlanSubMenu occupies the nav cell itself, so opening a
+  // second one requires closing this one first rather than nesting.
+  Gui2Button* formationButton = playerMenu->AddButton(
+      "player_menu_formation", Localization::GetInstance().Translate("gameplan_formation"), row++,
+      0, Vector3(60, 60, 90));
+  formationButton->sig_OnClick.connect([this](Gui2Button*) {
+    grid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);
+    playerMenu->Exit();
+    delete playerMenu;
+    playerMenu = nullptr;
+    GoFormationMenu();
+  });
+
+  playerMenu->Show();
+}
+
+void GamePlanPage::PlayerMenuRoleOnClick(e_PlayerRole role) {
+  FormationEntry entry = teamData->GetFormationEntry(playerMenuSlotIndex);
+  entry.role = role;
+  entry.position = entry.databasePosition * 0.6f + GetDefaultRolePosition(role) * 0.4f;
+  teamData->SetFormationEntry(playerMenuSlotIndex, entry);
+  map->Refresh();
+
+  // buttons[0] is the inactive name caption and the last is the formation
+  // shortcut; the ten in between are the role picks, in e_PlayerRole order.
+  const std::vector<Gui2Button*>& buttons = playerMenu->GetAllButtons();
+  for (unsigned int i = 1; i + 1 < buttons.size(); i++) {
+    const e_PlayerRole candidate = static_cast<e_PlayerRole>(i - 1);
+    buttons.at(i)->SetColor(candidate == role ? Vector3(80, 160, 80) : Vector3(60, 60, 60));
   }
 }
 

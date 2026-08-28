@@ -80,6 +80,16 @@ std::vector<Slot> GetLayout(e_Formation formation);
 // The formation_xml TeamData parses, for seed data and for saving a choice.
 std::string BuildFormationXml(e_Formation formation);
 
+// The formation_xml TeamData actually parses: the team's own, falling back to
+// the factory formation, falling back to a plain 4-4-2 when neither carries a
+// full eleven. An import can leave both empty (see tests/data/formation_fallback_test.cpp)
+// and a TeamData that parses nothing leaves every FormationEntry at its
+// default - position (0,0), role CM - so all eleven cards land on the centre
+// spot. A formation with fewer than eleven "<pN>" slots is treated the same
+// as an empty one; a partial pile is still a pile.
+bool HasElevenSlots(const std::string& formationXml);
+std::string ResolveFormationXml(const std::string& ownXml, const std::string& factoryXml);
+
 // Closest offered formation to a desired outfield shape.
 e_Formation FromShape(const Shape& shape);
 
