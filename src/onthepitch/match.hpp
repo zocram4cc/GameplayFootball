@@ -53,6 +53,11 @@
 #include "types/messagequeue.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 
+namespace RemoteControl {
+class Server;
+struct Command;
+}  // namespace RemoteControl
+
 struct ReplaySpatialFrame {
   unsigned long frameTime_ms;
   Vector3 position;
@@ -443,6 +448,16 @@ protected:
   void CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBounce>& p1Bounce,
                               std::vector<PlayerBounce>& p2Bounce);
   void CheckBallCollisions();
+
+  // The optional remote-control channel (remotecontrolserver.hpp): commands
+  // from an attached web panel are drained and applied on this thread, and a
+  // state snapshot is published for it to read back. Null - and costing
+  // nothing - unless the config names a remote_control_port.
+  void ProcessRemoteControl();
+  void ApplyRemoteCommand(const RemoteControl::Command& command);
+  void PublishRemoteState();
+  std::unique_ptr<RemoteControl::Server> remoteControl;
+  unsigned long lastRemoteStatePublish_ms = 0;
 
   void PrepareGoalNetting();
   void UpdateGoalNetting(bool ballTouchesNet = false);

@@ -69,6 +69,17 @@ private:
   std::vector<Command> commands;
 };
 
+// Reassembles the byte chunks a TCP read produces into protocol lines.
+// A peer that never sends a newline is capped, not accumulated.
+class LineBuffer {
+public:
+  std::vector<std::string> Append(const char* data, size_t length);
+
+private:
+  std::string pending;
+  bool discarding = false;
+};
+
 // ── State read-back ─────────────────────────────────────────────────────────
 
 struct PlayerState {
