@@ -122,3 +122,12 @@ data/media/textures/wipe/
 .exports/
 data/music/
 data/media/players/custom
+
+# Team crests and kits produced by tools/pes21_import/import_team.py from a
+# user's own 4cc packs. Derived art is never committed - the importer is the
+# deliverable, not its output. The game's original teams stay tracked.
+data/databases/default/images_teams/*/
+!data/databases/default/images_teams/1bundesliga/
+!data/databases/default/images_teams/eredivisie/
+!data/databases/default/images_teams/premierleague/
+!data/databases/default/images_teams/primeradivision/
