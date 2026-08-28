@@ -47,6 +47,11 @@ import ted
 
 EXPORT_DIR_RE = re.compile(r"^([kgf])(\d+)\s*-\s*(.+)$")
 
+# The engine's own skinned body, put under a pack that ships none. Relative to
+# the game directory, and the repository's own asset rather than PES's, so an
+# import composited onto it stays distributable.
+STOCK_BODY_REL = "media/objects/players/models/fullbody.ase"
+
 
 def find_players(pack_dir, kind="Boots", model_name="boots.fmdl"):
     """-> [(export_id, player_name, fmdl_path)] in export order."""
@@ -647,7 +652,25 @@ def main():
         # body. An export that leaves the rig's joints bare is a prop PES draws over
         # its own body, and binding it in place of that body leaves only the prop.
         verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
-        bindable = may_bind_as_body(verdict, composited=bool(args.base))
+        composited = bool(args.base)
+
+        # A pack that ships no head is drawn over PES's base body, and it is the
+        # importer's job to put that body under it rather than the user's.
+        # Measured on HDG: 2402 and 2421 have no head of their own (0 and 2
+        # vertices above the head joint) while 2411 is whole - one command cannot
+        # ask which is which. Thirty of the ninety-three installed bodies are in
+        # the same position (docs/PES21_IMPORT.md).
+        stock_body = os.path.join(args.game_dir, STOCK_BODY_REL)
+        if (not args.dry_run and not composited and verdict != "whole"
+                and os.path.isfile(stock_body)):
+            status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
+                                   rel + "/body.png", True, args.max_edge, stock_body)
+            verdict = describe_import(dest, args.prefix, export_id)
+            composited = True
+            print("       %s ships no body of its own; composited over %s"
+                  % (export_id, os.path.basename(stock_body)))
+
+        bindable = may_bind_as_body(verdict, composited=composited)
         print("%-6s %-28s %-34s %s%s" % (export_id, name[:28], rel, status,
                                          "" if bindable else "  NOT BOUND: " + verdict))
         if db_id is not None and bindable:

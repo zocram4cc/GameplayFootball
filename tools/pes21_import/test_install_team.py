@@ -683,3 +683,28 @@ class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
 
     def test_a_team_with_no_portraits_simply_has_none(self):
         self.assertEqual(import_team.relink_portraits(self.game, self.db), [])
+
+
+class APackWithNoBodyGetsOneUnderIt(unittest.TestCase):
+    """A 4cc export is often not a body at all but a set of slot overrides drawn
+    over PES's own base body - thirty of the ninety-three installed bodies are
+    (docs/PES21_IMPORT.md). Measured on HDG: 2402 and 2421 have no head of their
+    own, 2411 is whole. One command cannot ask the user which is which."""
+
+    def test_a_whole_export_stands_on_its_own(self):
+        self.assertTrue(import_team.may_bind_as_body("whole", composited=False))
+
+    def test_an_export_that_leaves_the_rig_bare_may_not_replace_a_body(self):
+        self.assertFalse(import_team.may_bind_as_body("needs base", composited=False))
+        self.assertFalse(import_team.may_bind_as_body("carries scenery", composited=False))
+
+    def test_the_same_export_may_once_a_body_is_under_it(self):
+        for verdict in ("needs base", "carries scenery", "missing"):
+            self.assertTrue(import_team.may_bind_as_body(verdict, composited=True),
+                            verdict)
+
+    def test_the_stock_body_is_the_engines_own(self):
+        """Composited onto PES's body an import could not be distributed; this
+        one is the repository's."""
+        self.assertTrue(import_team.STOCK_BODY_REL.startswith("media/objects/players/"))
+        self.assertNotIn("pes", import_team.STOCK_BODY_REL.lower())
