@@ -6,7 +6,7 @@ coloured, and three formation presets. This writes that into the `teams` and
 `players` tables the engine reads, beside the 4cc teams already there (/a/, /lcg/,
 /ink/, 2HUG).
 
-Two things it is careful about.
+Three things it is careful about.
 
 It is idempotent. An import that appends is one you can run exactly once, and every
 importer here gets run again the moment a pack is updated - so the team is matched by
@@ -18,6 +18,12 @@ support_distance: TeamData injects those three in memory after the XML is read
 (EnsureTacticDefinition), so a team that has never been saved through the menu has no
 stored value for them. Writing them makes the setup data the pack author owns instead
 of a default nobody can see or edit.
+
+And every player's stats are converted from his own decoded PES ratings
+(stat_profile_xml), not looked up from a "gold/silver/bronze" template keyed on
+which tier ted.py thinks he is. The 4cc's tier rules move between tournaments
+and between packs of the same one; reading his real bytes needs no update when
+they do, and does not flatten a hand-edited player back onto his tier's mould.
 
   python3 install_team.py <file.ted> <database.sqlite> [--tactics k=v,k=v] [--dry-run]
 """
@@ -76,6 +82,81 @@ ROLE_BIAS = {
 }
 
 
+# ted.read_players decodes every one of a player's own PES ratings straight off
+# his record - the same "Player entry" bytes the real EDIT format uses, not a
+# 4cc-specific stat block. This maps those onto the engine's own stat keys one
+# at a time, rather than classifying a player into "gold/silver/bronze" first
+# and looking a template rating up: the 4cc's tier rules (what a gold rates,
+# how many silvers a squad gets) shift between tournaments and even between
+# packs of the same one, and a lookup table would need updating every time they
+# did, silently, wherever an importer forgot to. It would also flatten out any
+# player a pack author hand-edited off his tier's template - a real difference
+# in the file, not a typo to be corrected away.
+#
+# The engine's stat set is coarser than PES's: it has no place kicking, curl,
+# jump, physical-contact, or goalkeeping-specific keys, so those PES stats go
+# unused here, and it has no separate key for Dribbling versus Tight
+# Possession, so only the more literally-named one is mapped. Ball Winning
+# feeds both tackle keys, since PES does not split it the way the engine does.
+PES_TO_ENGINE_STAT = {
+    "offensive_awareness": "mental_offensivepositioning",
+    "ball_control": "technical_ballcontrol",
+    "low_pass": "technical_shortpass",
+    "lofted_pass": "technical_highpass",
+    "finishing": "technical_shot",
+    "speed": "physical_velocity",
+    "acceleration": "physical_acceleration",
+    "balance": "physical_balance",
+    "stamina": "physical_stamina",
+    "aggression": "mental_workrate",
+    "defensive_awareness": "mental_defensivepositioning",
+    "heading": "technical_header",
+    "dribbling": "technical_dribble",
+    "kicking_power": "physical_shotpower",
+}
+BALL_WINNING_KEYS = ("technical_standingtackle", "technical_slidingtackle")
+
+
+def pes_to_base(value):
+    """A PES 40-99 stat value -> the engine's own 0..1 base_stat scale.
+
+    Confirmed by the shipped teams' own flat BASE_STAT (0.62): that is
+    (76.6 - 40) / 59, and 76.6 is a plausible "regular"-tier player's own mean
+    rating under this exact formula, before any team had a real stat to read.
+    """
+    return min(1.0, max(0.0, (value - 40) / 59.0))
+
+
+def stat_profile_xml(stats, role, seed):
+    """One player's stats, as the engine's profile_xml, converted straight from
+    his own decoded PES ratings.
+
+    Same shape as profile_xml - role bias, then the same deterministic wobble -
+    except each key that has a named PES analogue starts from that stat's own
+    value, per player, rather than one flat number for the player's whole
+    profile. A key with no PES analogue (mental_vision and the like) starts
+    from this player's own mean rating across every stat he does have: his own
+    overall level, not a guess at what that key specifically should be.
+    """
+    bias = ROLE_BIAS.get(role, {})
+    mean_pes = sum(stats.values()) / len(stats)
+    pes_by_key = {engine_key: stats[pes_stat]
+                  for pes_stat, engine_key in PES_TO_ENGINE_STAT.items()}
+    for key in BALL_WINNING_KEYS:
+        pes_by_key[key] = stats["ball_winning"]
+    lines = []
+    for key in STAT_KEYS:
+        pes_value = pes_by_key.get(key, mean_pes)
+        # a settled +-0.05 wobble, from the name and the seed and nothing else
+        # crc32, not hash(): Python randomises string hashing per process, so hash()
+        # would give a different team every time the importer ran.
+        digest = zlib.crc32(("%s:%d" % (key, seed)).encode()) & 0xffff
+        wobble = (digest / 65535.0 - 0.5) * 0.10
+        value = pes_to_base(pes_value) + bias.get(key, 0.0) + wobble
+        lines.append("<%s>%.6f</%s>" % (key, min(1.0, max(0.0, value)), key))
+    return "\n".join(lines) + "\n"
+
+
 def profile_xml(base_stat, role, seed):
     """One player's stats, as the engine's profile_xml.
 
@@ -119,7 +200,7 @@ def tactics_xml(tactics):
 
 
 def install(database, team, tactics, dry_run=False):
-    """Writes `team` into `database`. Returns the team's row id.
+    """Writes `team` into `database`. -> (team row id, {shirt number: player row id}).
 
     Raises rather than half-writing when there is no squad to install: a team with no
     players crashes the engine at kickoff, and an empty roster means the export was
@@ -161,23 +242,35 @@ def install(database, team, tactics, dry_run=False):
             team_row = cur.lastrowid
 
         # The squad in order. The number is the shirt; formationorder is the slot, and
-        # the keeper takes the first of them.
+        # the keeper takes the first of them. The row id each player lands on is
+        # kept against that shirt number, because a 4cc pack names its model
+        # exports by shirt (<k2411 - Name> is number 11) and playermodels.cfg has
+        # to bind the model to the row the player actually got. Renumbering the
+        # database and re-keying the models by hand is what broke them before.
+        by_shirt = {}
         for slot, entry in enumerate(team["squad"]):
             player = (team["players"][slot] if slot < len(team["players"])
                       else {"name": "Player %d" % entry["number"]})
             role = KEEPER_ROLE if slot == 0 else FIELD_ROLES[(slot - 1) % len(FIELD_ROLES)]
+            stats = player.get("stats")
+            if stats:
+                base_stat = pes_to_base(sum(stats.values()) / len(stats))
+                profile = stat_profile_xml(stats, role, slot)
+            else:
+                base_stat = BASE_STAT
+                profile = profile_xml(BASE_STAT, role, slot)
             cur.execute(
                 "insert into players(team_id, nationalteam_id, firstname, lastname, role, "
                 "age, base_stat, profile_xml, skincolor, hairstyle, haircolor, height, "
                 "weight, formationorder, nationalteamformationorder) "
                 "values (?, 0, '', ?, ?, 25, ?, ?, 1, 'short01', 'black', 1.8, 75.0, ?, 0)",
-                (team_row, player["name"][:64], role, BASE_STAT,
-                 profile_xml(BASE_STAT, role, slot), slot))
+                (team_row, player["name"][:64], role, base_stat, profile, slot))
+            by_shirt[entry["number"]] = cur.lastrowid
         if dry_run:
             conn.rollback()
         else:
             conn.commit()
-        return team_row
+        return team_row, by_shirt
     finally:
         conn.close()
 
@@ -206,7 +299,7 @@ def main():
     export, _ = ted.read_export(args.ted)
     tactics = parse_tactics(args.tactics) or {
         "team_pressure": 0.5, "counter_attack": 0.5, "support_distance": 0.5}
-    row = install(args.database, export, tactics, args.dry_run)
+    row, _ = install(args.database, export, tactics, args.dry_run)
     coloured = sum(1 for p in export["players"] if p.get("name_colour"))
     print("%s -> %s: team row %d, %d player(s), %d coloured name(s), %d slider(s)%s"
           % (os.path.basename(args.ted), os.path.basename(args.database), row,

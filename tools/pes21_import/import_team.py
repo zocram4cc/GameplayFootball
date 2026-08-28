@@ -1,4 +1,25 @@
-"""Imports a whole 4cc aesthetic export as a playable team.
+"""Imports a whole 4cc team - models, squad, tactics - in one command.
+
+    python3 import_team.py path/to/AET/ path/to/team.ted
+
+and that is the whole procedure. No follow-up script, no manual install step,
+no hand-written playermodels.cfg lines. Nothing PES-derived is ever committed
+to this repo, so this command is how a user gets a team at all; anything it
+does not do is something they cannot have.
+
+It does, in order:
+
+  1. reads the .ted - team name, abbreviation, squad, per-player stats, name
+     colours, formation and tactical sliders
+  2. writes the team, its players and its tactics into the database, and keeps
+     the row id each player landed on
+  3. converts every boots.fmdl in the pack into the engine's fullbody format
+  4. binds each model to its player's row in playermodels.cfg
+
+Step 4 is why 2 has to come first. A 4cc pack names its exports by shirt
+number - <k2411 - Name> is number 11 - so each model can be bound to the row
+its player actually got. Renumbering the database and re-keying the models by
+hand is what silently unbound both squads before.
 
 The exports all share one layout - the one the 2HUG and HDG packs use:
 
@@ -6,20 +27,11 @@ The exports all share one layout - the one the 2HUG and HDG packs use:
     <pack>/Gloves/<gNNNN - Player Name>/glove_*.fmdl   (keepers, optional)
     <pack>/Faces/<fNNNN - Player Name>/face.fmdl       (optional)
 
-so importing a team is mechanical: convert every boots model into the engine's
-fullbody format, install it under a directory named after the pack and the
-player's export id, and write the playermodels.cfg lines that bind them to
-database players.
+The models land in data/media/players/custom/<prefix>_<export id>/, the prefix
+taken from the team's own abbreviation. Nothing is overwritten without --force.
 
-  python3 import_team.py <pack-dir> --prefix 2hug --fmdl-lib <pes-fmdl dir>
-                         [--first-db-id 393] [--max-tris 20000] [--dry-run]
-
---first-db-id assigns consecutive database ids to the players in export order;
-pass --db-ids to map them explicitly. Nothing is overwritten without --force.
-
-The models land in data/media/players/custom/<prefix>_<export id>/ and the
-config lines are appended to data/media/players/playermodels.cfg, matching how
-the existing packs are installed (see docs/PES21_IMPORT.md).
+Without a .ted it still imports models alone, but then --prefix is yours to
+give and the database is left untouched (see docs/PES21_IMPORT.md).
 """
 
 import argparse
@@ -29,7 +41,9 @@ import subprocess
 import sys
 
 import body_coverage
+import install_team
 import retarget
+import ted
 
 EXPORT_DIR_RE = re.compile(r"^([kgf])(\d+)\s*-\s*(.+)$")
 
@@ -282,15 +296,59 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
     return "imported"
 
 
+def find_fmdl_lib(hint=""):
+    """-> the pes-fmdl directory holding FmdlFile.py, or "".
+
+    A tool dependency, not per-team data, so it has no business being on the
+    command line of every import. Explicit argument first, then PES_FMDL_LIB,
+    then a search of the tree for the 4cc Blender Starter Pack the packs are
+    distributed alongside.
+    """
+    for candidate in (hint, os.environ.get("PES_FMDL_LIB", "")):
+        if candidate and os.path.exists(os.path.join(candidate, "FmdlFile.py")):
+            return candidate
+    here = os.path.dirname(os.path.abspath(__file__))
+    for base, dirs, files in os.walk(os.path.normpath(os.path.join(here, "..", ".."))):
+        if "FmdlFile.py" in files:
+            return base
+        # the game's own data and build trees cannot hold it and are large
+        dirs[:] = [d for d in dirs if d not in (".git", "build", "data")]
+    return ""
+
+
+def shirt_number(export_id):
+    """-> the shirt a <kNNNN - Name> export belongs to.
+
+    4cc packs number their exports by shirt in the last two digits: HDG ships
+    k2402, k2411 and k2421 for numbers 2, 11 and 21 against a squad numbered
+    1..23. That is the only link between a model on disk and a player in the
+    database, so it is what binds them.
+    """
+    return int(export_id) % 100
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("pack_dir")
-    parser.add_argument("--prefix", required=True,
-                        help="directory prefix, e.g. 2hug / hdg / a")
-    parser.add_argument("--fmdl-lib", required=True)
+    parser = argparse.ArgumentParser(
+        description=__doc__.split("\n")[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("pack_dir", help="the AET pack directory")
+    parser.add_argument("ted", nargs="?", default="",
+                        help="the team's .ted export; without it no database "
+                             "work is done and --prefix is required")
+    parser.add_argument("--prefix", default="",
+                        help="directory prefix, e.g. 2hug / hdg / a "
+                             "(default: the team's own abbreviation)")
+    parser.add_argument("--fmdl-lib", default="",
+                        help="pes-fmdl directory (default: PES_FMDL_LIB, or found "
+                             "in the 4cc Blender Starter Pack)")
     parser.add_argument("--game-dir", default="data")
+    parser.add_argument("--database", default="",
+                        help="default: <game-dir>/databases/default/database.sqlite")
+    parser.add_argument("--tactics", default="",
+                        help="sliders to write, k=v,k=v; see install_team")
     parser.add_argument("--first-db-id", type=int, default=0,
-                        help="assign consecutive database ids from here")
+                        help="assign consecutive database ids from here; only for "
+                             "a pack imported without its .ted")
     parser.add_argument("--db-ids", default="",
                         help="explicit comma-separated database ids, in export order")
     # A ceiling, enforced by refusal rather than by cutting limbs off. Two
@@ -317,17 +375,44 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    args.fmdl_lib = find_fmdl_lib(args.fmdl_lib)
+    if not args.fmdl_lib:
+        print("no pes-fmdl library found; pass --fmdl-lib or set PES_FMDL_LIB")
+        return 1
+
     players = find_players(args.pack_dir)
     if not players:
         print("no <kNNNN - Name>/boots.fmdl exports under", args.pack_dir)
+        return 1
+
+    # The database first, so each model can be bound to the row its player
+    # actually landed on rather than to a number guessed ahead of time.
+    by_shirt = {}
+    if args.ted:
+        export, _ = ted.read_export(args.ted)
+        if not args.prefix:
+            args.prefix = re.sub(r"[^a-z0-9]", "", export["team"].lower()) or \
+                export["abbreviation"].lower()
+        database = args.database or os.path.join(
+            args.game_dir, "databases", "default", "database.sqlite")
+        tactics = install_team.parse_tactics(args.tactics) or {
+            "team_pressure": 0.5, "counter_attack": 0.5, "support_distance": 0.5}
+        team_row, by_shirt = install_team.install(database, export, tactics,
+                                                  args.dry_run)
+        print("%s -> team row %d, %d player(s), %d slider(s)%s"
+              % (export["team"], team_row, len(export["squad"]), len(tactics),
+                 "  (dry run, rolled back)" if args.dry_run else ""))
+    elif not args.prefix:
+        print("give the team's .ted, or --prefix if you only want the models")
         return 1
 
     explicit = [int(x) for x in args.db_ids.split(",") if x.strip()]
     lines = []
     for index, (export_id, name, fmdl) in enumerate(players):
         dest = install_dir(args.game_dir, args.prefix, export_id)
-        db_id = (explicit[index] if index < len(explicit)
-                 else (args.first_db_id + index if args.first_db_id else None))
+        db_id = (by_shirt.get(shirt_number(export_id))
+                 or (explicit[index] if index < len(explicit) else None)
+                 or (args.first_db_id + index if args.first_db_id else None))
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
         status = "dry-run"
         if not args.dry_run:
