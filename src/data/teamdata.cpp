@@ -10,6 +10,7 @@
 
 #include "../main.hpp"
 #include "base/utils.hpp"
+#include "data/formations.hpp"
 #include "utils/database.hpp"
 
 namespace {
@@ -128,6 +129,12 @@ TeamData::TeamData(int teamDatabaseID) : databaseID(teamDatabaseID) {
   }
 
   // team formation
+
+  // An import can leave both formation_xml and formation_factory_xml empty (see
+  // Formations::ResolveFormationXml) - a team with no formation would otherwise
+  // leave every FormationEntry at its default (position 0,0, role CM), piling
+  // all eleven cards on the centre spot wherever the lineup is drawn.
+  formationString = Formations::ResolveFormationXml(formationString, factoryFormationString);
 
   XMLLoader loader;
   XMLTree tree = loader.Load(formationString);
