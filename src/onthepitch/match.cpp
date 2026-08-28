@@ -2197,18 +2197,7 @@ void Match::StartCutsceneChoreo(const std::string& category) {
 
     Player* cast = nullptr;
     if (slot.role == e_ChoreoRole_Official) {
-      // e_ChoreoRole_Official is "referee or assistant", and which one it is
-      // depends on the incident. An offside is the assistant's call - he is the
-      // man with the flag up - so casting the referee in that slot put the wrong
-      // official through the flag animation and left the assistant standing on
-      // the touchline doing nothing. Everything else is the referee's own.
-      PlayerOfficial* official = officials ? officials->GetReferee() : nullptr;
-      if (officials && activeCutsceneCategory.compare(0, 7, "offside") == 0) {
-        const Vector3 where = CutsceneAnchorPosition();
-        official = where.coords[1] >= 0.0f ? officials->GetLinesmanNorth()
-                                           : officials->GetLinesmanSouth();
-      }
-      if (official) {
+      if (PlayerOfficial* official = OfficialForCutscene()) {
         cutsceneOfficialCast.push_back({official, &slot, clip->second.get()});
         continue;
       }
@@ -3108,6 +3097,34 @@ void Match::SetCameraParams(float zoom, float height, float fov, float angleFact
   cameraUserHeight = height;
   cameraUserFOV = fov;
   cameraUserAngleFactor = angleFactor;
+}
+
+PlayerOfficial* Match::OfficialForCutscene() const {
+  if (!officials) return nullptr;
+
+  // An offside is the assistant's decision - he is the man with the flag up, and
+  // casting the referee put the wrong official through the flag animation while
+  // the assistant stood on the touchline doing nothing. Take the one running the
+  // touchline the offence was nearest; they cover opposite halves.
+  if (activeCutsceneCategory.compare(0, 7, "offside") == 0) {
+    return CutsceneAnchorPosition().coords[1] >= 0.0f ? officials->GetLinesmanNorth()
+                                                      : officials->GetLinesmanSouth();
+  }
+
+  // A substitution is run from the touchline, and the referee is out on the grass
+  // when it happens. PES films the official who actually manages it - the fourth
+  // official with the board - and this engine has no such man: Officials builds a
+  // referee and two assistants and nothing else. The assistant on the near
+  // touchline is the closest correct stand-in, and is at least in the right place;
+  // a real fourth official at the halfway line is the faithful answer and is not
+  // modelled yet.
+  if (activeCutsceneCategory.compare(0, 6, "change") == 0) {
+    return CutsceneAnchorPosition().coords[1] >= 0.0f ? officials->GetLinesmanNorth()
+                                                      : officials->GetLinesmanSouth();
+  }
+
+  // Everything else is the referee's own: he books, he sends off, he restarts.
+  return officials->GetReferee();
 }
 
 Vector3 Match::CutsceneAnchorPosition() const {
