@@ -10,8 +10,13 @@ torso, a figure framed to nothing by a backdrop mesh 362 m across.
 The test is geometric rather than by mesh name, because names are the pack
 author's business: for each joint of the native rig, is there any geometry near
 it? Measured over the models that do render whole - the stock body, lcg_2709,
-ateam_70201, hdg_2402 - the furthest any joint sits from the nearest vertex is
-0.18 m, so 0.20 m separates them from lcg_2702, which leaves 17 of 20 joints bare.
+ateam_70201 - the furthest any joint sits from the nearest vertex is 0.18 m, so
+0.20 m separates them from lcg_2702, which leaves 17 of 20 joints bare.
+
+hdg_2402 was cited here as a fourth reference and should not have been: it
+ships no head at all, and proximity could not tell, because a collar ring sits
+0.083 m under the head joint. A model that misses the check was calibrating
+the check. head_vertex_count is what catches that case.
 
 Run: python3 -m unittest test_body_coverage -v
 """
@@ -89,3 +94,35 @@ class TheVerdict(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AHeadThatIsNotThere(unittest.TestCase):
+    """Proximity cannot answer this one. hdg_2402 ships no head - its pack
+    folder is "k2402 - Helldiver Headless" and PES's base body supplies it -
+    yet its nearest vertex to the head joint is 0.083 m, because an open
+    collar ring sits right under the joint. It passed as "whole"."""
+
+    # The head check needs the neck, since it measures along neck -> head.
+    RIG = dict(BIND, neck=(0.0, 0.0, 1.5))
+
+    def test_a_collar_under_the_joint_is_not_a_head(self):
+        collar = [(0.0, 0.0, 1.6 - 0.08), (0.05, 0.0, 1.6 - 0.09)]
+        self.assertEqual(body_coverage.head_vertex_count(collar, self.RIG), 0)
+
+    def test_geometry_above_the_joint_is_a_head(self):
+        head = [(0.0, 0.0, 1.6 + 0.10 + i * 0.001) for i in range(64)]
+        self.assertGreaterEqual(body_coverage.head_vertex_count(head, self.RIG),
+                                body_coverage.HEAD_MIN_VERTICES)
+
+    def test_a_headless_model_needs_the_base_body(self):
+        """Every joint clothed and still not a whole body."""
+        at_joints = [self.RIG[j] for j in self.RIG]
+        call, detail = body_coverage.verdict(at_joints, self.RIG)
+        self.assertEqual(call, "needs base")
+        self.assertIn("no head of its own", detail)
+
+    def test_a_headed_model_is_whole(self):
+        clothed = [self.RIG[j] for j in self.RIG]
+        clothed += [(0.0, 0.0, 1.6 + 0.10 + i * 0.001) for i in range(64)]
+        call, _ = body_coverage.verdict(clothed, self.RIG)
+        self.assertEqual(call, "whole")
