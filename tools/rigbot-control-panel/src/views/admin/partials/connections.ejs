@@ -1,0 +1,22 @@
+<table>
+    <thead>
+        <tr>
+            <th>Socket ID</th>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <% connections.forEach(conn => { %>
+            <tr>
+                <td><%= conn.id %></td>
+                <td><%= conn.username %></td>
+                <td><%= conn.role %></td>
+                <td>
+                    <button hx-post="/admin/api/kick/<%= conn.id %>">Kick</button>
+                </td>
+            </tr>
+        <% }) %>
+    </tbody>
+</table>

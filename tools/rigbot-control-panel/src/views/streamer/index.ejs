@@ -1,0 +1,117 @@
+<h1>Streamer Dashboard</h1>
+
+<div style="margin-bottom: 1rem;">
+    <h2>Streamer Token</h2>
+    <p>Use this token in the rigbot application to connect to the server.</p>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <input type="text" id="streamer-token" value="<%= streamerToken?.value || 'Not Generated' %>" readonly size="50">
+        <button onclick="copyToken()">Copy</button>
+    </div>
+</div>
+
+<script>
+    function copyToken() {
+        const tokenInput = document.getElementById('streamer-token');
+        tokenInput.select();
+        tokenInput.setSelectionRange(0, 99999); // For mobile devices
+        document.execCommand('copy');
+        alert('Copied the token: ' + tokenInput.value);
+    }
+</script>
+
+<div id="status-dashboard" style="margin-top: 1rem; padding: 1rem; border: 1px solid #ccc; background-color: #f9f9f9;">
+    <h3>Live Status</h3>
+    <p><strong>Bot State:</strong> <span id="bot-state">--</span></p>
+    <p><strong>Game Clock:</strong> <span id="game-clock">--:--</span></p>
+    <p><strong>Score:</strong> <span id="score">-</span></p>
+    <div id="event-log" style="margin-top: 1rem; padding-top: 0.5rem; height: 100px; overflow-y: scroll; border-top: 1px solid #eee; font-family: monospace;"></div>
+</div>
+
+<div style="display: flex; gap: 2rem;">
+    <div>
+        <h2>Settings</h2>
+        <form hx-post="/streamer/settings">
+            <label for="stream_url">Stream URL:</label>
+            <input type="text" id="stream_url" name="stream_url" value="<%= streamUrl?.value || '' %>" size="50">
+            <button type="submit">Save</button>
+        </form>
+    </div>
+</div>
+
+<div style="display: flex; gap: 2rem; margin-top: 2rem;">
+    <div id="chat-a-container">
+        <h2>Chat with Team A</h2>
+        <div id="chat-a-messages" style="height: 200px; width: 300px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 5px;"></div>
+        <input id="chat-a-input" type="text" placeholder="Type a message...">
+        <button id="chat-a-send">Send to A</button>
+    </div>
+    <div id="chat-b-container">
+        <h2>Chat with Team B</h2>
+        <div id="chat-b-messages" style="height: 200px; width: 300px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 5px;"></div>
+        <input id="chat-b-input" type="text" placeholder="Type a message...">
+        <button id="chat-b-send">Send to B</button>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+
+    const botStateSpan = document.getElementById('bot-state');
+    const gameClockSpan = document.getElementById('game-clock');
+    const scoreSpan = document.getElementById('score');
+    const eventLogDiv = document.getElementById('event-log');
+
+    function logEvent(message) {
+        const p = document.createElement('p');
+        p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        eventLogDiv.prepend(p); // Add new events to the top
+    }
+
+    socket.on('streamer:state', (data) => {
+        if (botStateSpan) botStateSpan.innerText = data.state;
+        if (gameClockSpan) gameClockSpan.innerText = data.clock;
+        if (scoreSpan) scoreSpan.innerText = `${data.home_score} - ${data.away_score}`;
+    });
+
+    socket.on('streamer:goal_scored', (data) => {
+        logEvent(`GOAL! Scorer: ${data.scorer} for ${data.team}. New score: ${data.home_score} - ${data.away_score}`);
+    });
+
+    socket.on('match:end', () => {
+        logEvent('Match has ended.');
+    });
+
+    function setupChat(team) {
+        const messagesDiv = document.getElementById(`chat-${team.toLowerCase()}-messages`);
+        const input = document.getElementById(`chat-${team.toLowerCase()}-input`);
+        const sendButton = document.getElementById(`chat-${team.toLowerCase()}-send`);
+
+        function addChatMessage(from, message) {
+            const p = document.createElement('p');
+            p.innerHTML = `<strong>${from}:</strong> ${message}`;
+            messagesDiv.appendChild(p);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        sendButton.addEventListener('click', () => {
+            const message = input.value;
+            if (message) {
+                socket.emit('chat:message', { to: team, message });
+                input.value = '';
+            }
+        });
+
+        return { addChatMessage };
+    }
+
+    const chatA = setupChat('A');
+    const chatB = setupChat('B');
+
+    socket.on('chat:message', (data) => {
+        if (data.team === 'A') {
+            chatA.addChatMessage(data.from, data.message);
+        } else if (data.team === 'B') {
+            chatB.addChatMessage(data.from, data.message);
+        }
+    });
+</script>

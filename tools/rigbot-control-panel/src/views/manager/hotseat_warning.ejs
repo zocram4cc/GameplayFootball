@@ -1,0 +1,41 @@
+<div id="hotseat-warning" style="display: none; background-color: #ffdddd; border: 1px solid #ff0000; padding: 15px; margin-bottom: 20px;">
+    <p><strong>Warning:</strong> Another manager is already connected.</p>
+    <p id="hotseat-manager-list"></p>
+    <button id="hotseat-take-control">Take Control</button>
+</div>
+
+<script>
+    // This script should be included in any manager view
+    const hotseatWarningDiv = document.getElementById('hotseat-warning');
+    const hotseatManagerList = document.getElementById('hotseat-manager-list');
+    const hotseatTakeControlButton = document.getElementById('hotseat-take-control');
+
+    if (typeof socket !== 'undefined') {
+        socket.on('manager:existing_session', (data) => {
+            hotseatManagerList.innerText = `You are about to disconnect your co-manager(s): ${data.managers.join(', ')}`;
+            hotseatWarningDiv.style.display = 'block';
+        });
+
+        hotseatTakeControlButton.addEventListener('click', () => {
+            socket.emit('manager:force_disconnect');
+        });
+
+        socket.on('manager:force_disconnect_success', () => {
+            hotseatWarningDiv.style.display = 'none';
+            alert('You have taken control of the session.');
+        });
+
+        socket.on('disconnect', (reason) => {
+            if (reason === 'io server disconnect') {
+                // This is the most reliable way to know the server disconnected this socket.
+                // We assume for a manager, this is always a hot-seat situation.
+                alert('A new manager has connected for your team. This session is now inactive.');
+                const controls = document.getElementById('controls');
+                if(controls) {
+                    controls.style.display = 'none';
+                }
+                hotseatWarningDiv.style.display = 'none'; // Hide warning if it was shown
+            }
+        });
+    }
+</script>

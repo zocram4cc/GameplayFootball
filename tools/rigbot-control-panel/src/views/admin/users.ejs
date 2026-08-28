@@ -1,0 +1,31 @@
+<div id="admin-users-wrapper">
+    <h1>User Management</h1>
+
+    <h2>Generate Registration Link</h2>
+    <form hx-post="/admin/users" hx-target="#user-management-content" hx-swap="innerHTML">
+        <input name="username" placeholder="Username" required>
+        <div>
+            <label><input type="checkbox" name="roles" value="ADMIN"> Admin</label>
+            <label><input type="checkbox" name="roles" value="MANAGER"> Manager</label>
+            <label><input type="checkbox" name="roles" value="COMMENTATOR"> Commentator</label>
+            <label><input type="checkbox" name="roles" value="STREAMER"> Streamer</label>
+        </div>
+        <select name="teamId">
+            <option value="">No Team</option>
+            <% teams.forEach(team => { %>
+                <option value="<%= team.id %>"><%= team.name %></option>
+            <% }) %>
+        </select>
+        <button type="submit">Generate Link</button>
+    </form>
+
+    <h2>Create Team</h2>
+    <form hx-post="/admin/teams" hx-target="#user-management-content" hx-swap="innerHTML">
+        <input name="name" placeholder="Team Name" required>
+        <button type="submit">Create Team</button>
+    </form>
+
+    <div id="user-management-content">
+        <%- include('user_management_content', { users, tokens, baseUrl, teams }) %>
+    </div>
+</div>

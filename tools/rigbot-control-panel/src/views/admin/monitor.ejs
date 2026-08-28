@@ -1,0 +1,55 @@
+<h1>Connection Monitor</h1>
+<div hx-get="/admin/api/connections" hx-trigger="load, every 5s, updateConnections from:body"></div>
+
+<div style="display: flex; gap: 2rem; margin-top: 2rem;">
+    <div id="chat-a-container">
+        <h2>Chat with Team A</h2>
+        <div id="chat-a-messages" style="height: 200px; width: 300px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 5px;"></div>
+        <input id="chat-a-input" type="text" placeholder="Type a message...">
+        <button id="chat-a-send">Send to A</button>
+    </div>
+    <div id="chat-b-container">
+        <h2>Chat with Team B</h2>
+        <div id="chat-b-messages" style="height: 200px; width: 300px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 5px;"></div>
+        <input id="chat-b-input" type="text" placeholder="Type a message...">
+        <button id="chat-b-send">Send to B</button>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+
+    function setupChat(team) {
+        const messagesDiv = document.getElementById(`chat-${team.toLowerCase()}-messages`);
+        const input = document.getElementById(`chat-${team.toLowerCase()}-input`);
+        const sendButton = document.getElementById(`chat-${team.toLowerCase()}-send`);
+
+        function addChatMessage(from, message) {
+            const p = document.createElement('p');
+            p.innerHTML = `<strong>${from}:</strong> ${message}`;
+            messagesDiv.appendChild(p);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        sendButton.addEventListener('click', () => {
+            const message = input.value;
+            if (message) {
+                socket.emit('chat:message', { to: team, message });
+                input.value = '';
+            }
+        });
+
+        return { addChatMessage };
+    }
+
+    const chatA = setupChat('A');
+    const chatB = setupChat('B');
+
+    socket.on('chat:message', (data) => {
+        if (data.team === 'A') {
+            chatA.addChatMessage(data.from, data.message);
+        } else if (data.team === 'B') {
+            chatB.addChatMessage(data.from, data.message);
+        }
+    });
+</script>

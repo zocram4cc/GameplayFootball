@@ -1,0 +1,68 @@
+<h1>Manager Dashboard</h1>
+<%- include('hotseat_warning.ejs') %>
+<h2>Upcoming Matches</h2>
+
+<% if (matches && matches.length > 0) { %>
+    <table class="styled-table">
+        <thead>
+            <tr>
+                <th>Cup Day</th>
+                <th>Game Version</th>
+                <th>Opponent</th>
+                <th>Tactics Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% matches.forEach(match => { %>
+                <% const opponent = match.teamAId === currentUserTeamId ? match.teamB : match.teamA; %>
+                <tr>
+                    <td><%= match.cupDay.name %></td>
+                    <td><%= match.cupDay.gameVersion %></td>
+                    <td><%= opponent.name %></td>
+                    <td>
+                        <%
+                            const isTeamA = match.teamAId === currentUserTeamId;
+                            const tactics = isTeamA ? match.teamATacticsJson : match.teamBTacticsJson;
+                            const savedBy = isTeamA ? match.teamATacticsSavedBy : match.teamBTacticsSavedBy;
+                            const savedAt = isTeamA ? match.teamATacticsSavedAt : match.teamBTacticsSavedAt;
+                        %>
+                        <% if (tactics && tactics.presets && tactics.presets.length > 0) { %>
+                            <p>
+                                Saved by: <strong><%= savedBy || 'N/A' %></strong><br>
+                                <% if (savedAt) { %>
+                                    At: <%= new Date(savedAt).toLocaleString() %><br>
+                                <% } %>
+                                Presets: <%= tactics.presets.length %><br>
+                                Start Preset: <%= tactics.startPreset %>
+                            </p>
+                        <% } else { %>
+                            <p>No tactics set.</p>
+                        <% } %>
+                    </td>
+                    <td>
+                        <a href="/manager/match/<%= match.id %>/tactics" class="button">Set Tactics</a>
+                    </td>
+                </tr>
+            <% }); %>
+        </tbody>
+    </table>
+<% } else { %>
+    <p>You have no upcoming matches scheduled.</p>
+<% } %>
+
+<hr style="margin: 2rem 0;">
+
+<% if (streamUrl && streamUrl.value) { %>
+    <h3>Live Stream</h3>
+    <iframe width="1280" height="720" src="<%= streamUrl.value %>" frameborder="0" allowfullscreen></iframe>
+<% } %>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io();
+    socket.on('match:start', (data) => {
+        // A match has started, reload the page to get the active match view
+        window.location.reload();
+    });
+</script>

@@ -1,0 +1,9 @@
+<h1>Register Account for <%= username %></h1>
+<form hx-post="/register" hx-target="body">
+    <input type="hidden" name="token" value="<%= token %>">
+    <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required>
+    </div>
+    <button type="submit">Set Password and Register</button>
+</form>
