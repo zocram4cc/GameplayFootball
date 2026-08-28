@@ -836,7 +836,7 @@ TEST(RigdioSession, HornResumesAcrossGoals) {
   // THE cross-goal persistence contract: two goals, one file, the second
   // play resumes where the kickoff pause left off.
   MatchSession s = sesshelp::Make();
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   auto first = s.OnGoal(true, "Nobody", 5, 100.0);
   ASSERT_TRUE(first.has_value());
   EXPECT_DOUBLE_EQ(first->seekSeconds, 0.0);
@@ -850,7 +850,7 @@ TEST(RigdioSession, HornResumesAcrossGoals) {
 
 TEST(RigdioSession, ResumePositionWrapsAtDuration) {
   MatchSession s = sesshelp::Make();
-  s.SetDuration("h_goal.mp3", 60.0);
+  s.SetDuration(true, "h_goal.mp3", 60.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 130.0);  // 130 s into a 60 s loop -> 10 s
   EXPECT_DOUBLE_EQ(s.CachedPosition(true, "h_goal.mp3"), 10.0);
@@ -863,7 +863,7 @@ TEST(RigdioSession, SyncNoStillResumesTheSameEntry) {
   std::string homeNoSync =
       "name;hteam\nsync;no\ngoal;h_goal.mp3\n";
   MatchSession s = sesshelp::Make(homeNoSync);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   s.OnGoal(true, "Nobody", 5, 100.0);
   s.OnHornPaused(true, 130.0);
   auto second = s.OnGoal(true, "Nobody", 40, 900.0);
@@ -877,7 +877,7 @@ TEST(RigdioSession, SyncNoDoesNotShareAcrossEntries) {
       "goal;same.mp3;goals == 1\n"
       "goal;same.mp3;goals >= 2\n";
   MatchSession s = sesshelp::Make(homeNoSync);
-  s.SetDuration("same.mp3", 300.0);
+  s.SetDuration(true, "same.mp3", 300.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 25.0);
   auto second = s.OnGoal(true, "Nobody", 30, 100.0);
@@ -889,7 +889,7 @@ TEST(RigdioSession, StartInstructionSeeksOnlyFirstPlay) {
   std::string home =
       "name;hteam\ngoal;h_goal.mp3;start 0:30\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   auto first = s.OnGoal(true, "Nobody", 5, 0.0);
   ASSERT_TRUE(first.has_value());
   EXPECT_DOUBLE_EQ(first->seekSeconds, 30.0);  // the start seek
@@ -906,7 +906,7 @@ TEST(RigdioSession, DifferentEntrySameFileSharesPosition) {
       "goal;same.mp3;goals == 1\n"
       "goal;same.mp3;goals >= 2\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("same.mp3", 300.0);
+  s.SetDuration(true, "same.mp3", 300.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 25.0);
   auto second = s.OnGoal(true, "Nobody", 30, 100.0);
@@ -921,7 +921,7 @@ TEST(RigdioSession, SidesDoNotSharePositionsForSameFilename) {
   std::string home = "name;hteam\ngoal;goalhorn.mp3\n";
   std::string away = "name;ateam\ngoal;goalhorn.mp3\n";
   MatchSession s = sesshelp::Make(home, away);
-  s.SetDuration("goalhorn.mp3", 300.0);
+  s.SetDuration(true, "goalhorn.mp3", 300.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 30.0);
   EXPECT_DOUBLE_EQ(s.CachedPosition(true, "goalhorn.mp3"), 30.0);
@@ -935,7 +935,7 @@ TEST(RigdioSession, EndStopClearsThePositionCache) {
   std::string home =
       "name;hteam\ngoal;h_goal.mp3;end stop;start 0:10\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   auto first = s.OnGoal(true, "Nobody", 5, 0.0);
   EXPECT_DOUBLE_EQ(first->seekSeconds, 10.0);
   EXPECT_FALSE(first->loop);
@@ -1043,7 +1043,7 @@ TEST(RigdioSession, PauseRestartOverriddenBySyncCache) {
   std::string home =
       "name;hteam\ngoal;h_goal.mp3;pause restart\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 40.0);
   auto second = s.OnGoal(true, "Nobody", 30, 100.0);
@@ -1055,7 +1055,7 @@ TEST(RigdioSession, PauseRestartWorksWithSyncNo) {
   std::string home =
       "name;hteam\nsync;no\ngoal;h_goal.mp3;pause restart;start 0:05\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   auto first = s.OnGoal(true, "Nobody", 5, 0.0);
   EXPECT_DOUBLE_EQ(first->seekSeconds, 5.0);
   s.OnHornPaused(true, 40.0);
@@ -1067,7 +1067,7 @@ TEST(RigdioSession, PauseRestartWorksWithSyncNo) {
 TEST(RigdioSession, SpeedRidesOnTheAction) {
   std::string home = "name;hteam\ngoal;h_goal.mp3;speed 1.5\n";
   MatchSession s = sesshelp::Make(home);
-  s.SetDuration("h_goal.mp3", 300.0);
+  s.SetDuration(true, "h_goal.mp3", 300.0);
   auto act = s.OnGoal(true, "Nobody", 5, 0.0);
   ASSERT_TRUE(act.has_value());
   EXPECT_DOUBLE_EQ(act->speed, 1.5);
