@@ -160,6 +160,21 @@ target_include_directories(gameplayfootball_scenelighting_tests PRIVATE
 target_link_libraries(gameplayfootball_scenelighting_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_scenelighting_tests DISCOVERY_MODE PRE_TEST)
 
+# The rigdio .4ccm music-export parser, condition grammar, and selection
+# (docs/RIGDIO.md) — pure, no audio device, no match.
+add_executable(gameplayfootball_rigdio_tests
+  utils/rigdio_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/rigdio.cpp
+)
+target_include_directories(gameplayfootball_rigdio_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_compile_definitions(gameplayfootball_rigdio_tests PRIVATE
+  TESTDATA_EXPORTS="${PROJECT_SOURCE_DIR}/.exports"
+)
+target_link_libraries(gameplayfootball_rigdio_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_rigdio_tests DISCOVERY_MODE PRE_TEST)
+
 # Which celebration a scorer performs, and which camera films it
 add_executable(gameplayfootball_goalcelebration_tests
   onthepitch/goal_celebration_test.cpp

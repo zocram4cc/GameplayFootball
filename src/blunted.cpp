@@ -12,6 +12,7 @@
 #include "framework/scheduler.hpp"
 #include "loaders/aseloader.hpp"
 #include "loaders/imageloader.hpp"
+#include "loaders/mp3loader.hpp"
 #include "loaders/oggloader.hpp"
 #include "loaders/wavloader.hpp"
 #include "managers/environmentmanager.hpp"
@@ -50,6 +51,7 @@ ASELoader* aseLoader;
 ImageLoader* imageLoader;
 WAVLoader* wavLoader;
 OGGLoader* oggLoader;
+MP3Loader* mp3Loader;
 
 Scheduler* scheduler;
 
@@ -116,6 +118,8 @@ void Initialize(Properties& config) {
   soundBufferResourceManager->RegisterLoader("wav", wavLoader);
   oggLoader = new OGGLoader();
   soundBufferResourceManager->RegisterLoader("ogg", oggLoader);
+  mp3Loader = new MP3Loader();
+  soundBufferResourceManager->RegisterLoader("mp3", mp3Loader);
 
   TTF_Init();
 
@@ -163,10 +167,12 @@ void Exit() {
   delete imageLoader;
   delete wavLoader;
   delete oggLoader;
+  delete mp3Loader;
   aseLoader = nullptr;
   imageLoader = nullptr;
   wavLoader = nullptr;
   oggLoader = nullptr;
+  mp3Loader = nullptr;
 
   Log(e_Notice, "blunted", "Exit", "exiting systemmanager");
   SystemManager::GetInstance().Exit();

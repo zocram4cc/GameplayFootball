@@ -171,6 +171,7 @@ set(LOADERS_HEADERS
         src/onthepitch/player/humanoid/facerig.hpp
         src/onthepitch/player/humanoid/skinning.hpp
         src/loaders/oggloader.hpp
+        src/loaders/mp3loader.hpp
         src/loaders/wavloader.hpp
         src/loaders/imageloader.hpp
         )
@@ -196,6 +197,7 @@ set(LOADERS_SOURCES
         src/onthepitch/player/humanoid/handrig.cpp
         src/utils/handposedata.cpp
         src/loaders/oggloader.cpp
+        src/loaders/mp3loader.cpp
         src/loaders/wavloader.cpp
         )
 
@@ -494,6 +496,8 @@ set(GAME_HEADERS
    src/onthepitch/team.hpp
    src/onthepitch/match.hpp
    src/onthepitch/prematchtimeline.hpp
+   src/onthepitch/rigdiodirector.hpp
+   src/utils/rigdio.hpp
    src/onthepitch/AIsupport/AIfunctions.hpp
    src/onthepitch/AIsupport/mentalimage.hpp
    src/onthepitch/teamAIcontroller.hpp
@@ -538,6 +542,8 @@ set(GAME_SOURCES
    src/onthepitch/goalsequence.cpp
    src/onthepitch/match.cpp
    src/onthepitch/prematchtimeline.cpp
+   src/onthepitch/rigdiodirector.cpp
+   src/utils/rigdio.cpp
    src/onthepitch/referee.cpp
    src/onthepitch/setpiecelaws.cpp
    src/onthepitch/AIsupport/mentalimage.cpp

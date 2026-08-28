@@ -39,6 +39,10 @@ public:
   boost::intrusive_ptr<Resource<SoundBuffer>> GetSoundBuffer();
 
   virtual void Poke(e_SystemType targetSystemType);
+  // Pause keeps the source position; Poke (play) resumes it. Seek moves the
+  // play head, in seconds. Both exist for the rigdio music director.
+  virtual void Pause();
+  virtual void Seek(float seconds);
 
   virtual void RecursiveUpdateSpatialData(e_SpatialDataType spatialDataType,
                                           e_SystemType excludeSystem = e_SystemType_None);
@@ -60,6 +64,8 @@ public:
   virtual void OnUnload() = 0;
   virtual void OnMove(const Vector3& position) = 0;
   virtual void OnPoke() = 0;
+  virtual void OnPause() = 0;
+  virtual void OnSeek(float seconds) = 0;
 
   virtual void SetRadius(float radius) = 0;
   virtual void SetLoop(bool loop) = 0;

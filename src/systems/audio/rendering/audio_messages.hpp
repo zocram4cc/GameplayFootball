@@ -76,6 +76,33 @@ protected:
   int audioSoundBufferID;
 };
 
+class AudioRendererMessage_PauseAudioSoundBuffer : public Command {
+public:
+  AudioRendererMessage_PauseAudioSoundBuffer(int audioSoundBufferID)
+      : Command("audiomsg_PauseAudioSoundBuffer"), audioSoundBufferID(audioSoundBufferID) {};
+
+protected:
+  virtual bool Execute(void* caller = nullptr);
+
+  int audioSoundBufferID;
+};
+
+// Seeks a source to a position in seconds. Separate from Config so that
+// routine gain/pitch updates never move the play head.
+class AudioRendererMessage_SeekAudioSoundBuffer : public Command {
+public:
+  AudioRendererMessage_SeekAudioSoundBuffer(int audioSoundBufferID, float seconds)
+      : Command("audiomsg_SeekAudioSoundBuffer"),
+        audioSoundBufferID(audioSoundBufferID),
+        seconds(seconds) {};
+
+protected:
+  virtual bool Execute(void* caller = nullptr);
+
+  int audioSoundBufferID;
+  float seconds;
+};
+
 class AudioRendererMessage_ConfigAudioSoundBuffer : public Command {
 public:
   AudioRendererMessage_ConfigAudioSoundBuffer(int audioSoundBufferID, float gain = 0.1,

@@ -17,6 +17,7 @@
 #include "base/log.hpp"
 #include "coachmode.hpp"
 #include "cutsceneplayback.hpp"
+#include "rigdiodirector.hpp"
 #include "competitionemblem.hpp"
 #include "entrancecast.hpp"
 #include "teamflag.hpp"
@@ -883,6 +884,10 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
     GetScene3D()->AddObject(teamChant[t]);
   }
 
+  // The match-music player: each team's rigdio export, if one is installed
+  // (docs/RIGDIO.md). Inert when neither team ships music.
+  rigdio = std::make_unique<RigdioDirector>(this);
+
   // match params
 
   matchTime_ms = 0;
@@ -1164,6 +1169,10 @@ void Match::Exit() {
 
   scene3D->DeleteObject(crowd01);
   scene3D->DeleteObject(crowd02);
+  if (rigdio) {
+    rigdio->Exit();
+    rigdio.reset();
+  }
 
   radar->Exit();
   radar.reset();
@@ -2470,6 +2479,9 @@ signed int Match::GetBestPossessionTeamID() {
 
 void Match::GameOver() {
   gameOver = true;
+
+  // Full time: the winner's victory anthem plays over the closing ceremony.
+  if (rigdio) rigdio->OnFullTime();
 
   // The closing ceremony, which PES plays as a run of shots and we were dropping
   // entirely: 140 imported tracks of this ground's crowd, the winners, the losers,
@@ -4154,6 +4166,7 @@ void Match::Process() {
   ProcessFoulReplay();
   UpdateBallHeatmap();
   UpdateCrowdAudio();
+  if (rigdio) rigdio->Update();
 
   if (autoUpdateIngameCamera)
     UpdateIngameCamera();
