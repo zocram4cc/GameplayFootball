@@ -29,6 +29,20 @@ enum e_CommandType {
   e_CommandType_Instruction,   // instruction <side> <name> on|off
   e_CommandType_Substitution,  // sub <side> <playerOutId> <playerInId>
   e_CommandType_State,         // state
+  e_CommandType_Auth,          // auth <streamer key>
+  e_CommandType_Schedule,      // schedule <t1> <t2> <mins> <kit1> <kit2> <stadium…>
+  e_CommandType_Resume,        // resume: release a half-time / extra-time hold
+};
+
+// What a schedule command asks for: the same choices the quick-match menu
+// makes, delivered over the wire instead.
+struct Schedule {
+  int team1Id = 0;
+  int team2Id = 0;
+  float durationMinutes = 0.0f;
+  int team1KitNum = 1;
+  int team2KitNum = 1;
+  std::string stadiumObject;
 };
 
 struct Command {
@@ -39,6 +53,7 @@ struct Command {
   bool enable = false;
   int playerOutId = 0;
   int playerInId = 0;
+  Schedule schedule;
 };
 
 // One protocol line into a command. Anything malformed is refused and cmd is
@@ -57,6 +72,20 @@ bool ApplyTactic(const Command& cmd, blunted::Properties& userProperties);
 bool ApplyPhilosophy(const Command& cmd, blunted::Properties& userProperties);
 bool ApplyInstruction(const Command& cmd, TeamInstructions::State& state);
 bool ApplyMentality(const Command& cmd, TeamInstructions::State& state);
+
+// Whether a keyed channel lets a line through. A channel with no key is open
+// (the mode was entered without one); a keyed channel refuses everything from
+// a connection until it authenticates with the streamer key.
+enum e_GateResult {
+  e_GateResult_Refuse = 0,
+  e_GateResult_Authed,
+  e_GateResult_Pass,
+};
+e_GateResult GateLine(const std::string& requiredKey, bool authed, const Command& cmd);
+
+// Writes a schedule into the live configuration: the launch keys the
+// self-driving menu path reads on its way into a match.
+void ApplySchedule(const Command& cmd, blunted::Properties& config);
 
 // Commands cross from the socket thread to the match thread through here.
 class CommandQueue {
@@ -104,6 +133,8 @@ struct Snapshot {
   int phase = 0;  // e_MatchPhase
   bool inPlay = false;
   bool substitutionWindow = false;
+  // A half-time / extra-time hold is on; play resumes when the streamer says so.
+  bool holding = false;
   TeamState teams[2];
 };
 

@@ -20,10 +20,11 @@ class Server {
 public:
   ~Server();
 
-  // Binds 127.0.0.1:<port> and starts the accept/read thread.
-  // Returns false (and logs) when the port cannot be bound; the match
-  // carries on without a control channel, exactly as if none was asked for.
-  bool Start(int port);
+  // Binds 127.0.0.1:<port> and starts the accept/read thread. A non-empty
+  // streamer key makes every connection authenticate with "auth <key>" before
+  // anything else is accepted. Returns false (and logs) when the port cannot
+  // be bound; the engine carries on as if no channel was asked for.
+  bool Start(int port, const std::string& streamerKey);
   void Stop();
 
   CommandQueue& GetQueue() { return queue; }
@@ -35,6 +36,7 @@ private:
   void Run();
 
   int listenFd = -1;
+  std::string streamerKey;
   std::thread thread;
   std::atomic<bool> stopping{false};
   CommandQueue queue;

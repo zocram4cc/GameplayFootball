@@ -47,6 +47,7 @@
 #include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
 #include "remotecontrolserver.hpp"
+#include "../remotecontrolmode.hpp"
 
 // Long enough that a replay fired AFTER the celebration can still reach back
 // past the goal to the build-up. See onthepitch/goalsequence.hpp, which owns
@@ -189,13 +190,9 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   teams[0]->InitPlayers(fullbodyNode, skinWeights);
   teams[1]->InitPlayers(fullbodyNode, skinWeights);
 
-  // The optional remote-control channel: a web panel steering tactics and
-  // substitutions over localhost. Absent config key, absent channel.
-  const int remoteControlPort = GetConfiguration()->GetInt("remote_control_port", 0);
-  if (remoteControlPort > 0) {
-    remoteControl = std::make_unique<RemoteControl::Server>();
-    if (!remoteControl->Start(remoteControlPort)) remoteControl.reset();
-  }
+  // The remote-control channel, when the engine is in remote-control mode.
+  // The mode owns the server; the match only drains and publishes.
+  remoteControl = RemoteControlMode::GetServer();
 
   std::vector<Player*> activePlayers;
   teams[0]->GetActivePlayers(activePlayers);
@@ -1116,8 +1113,8 @@ void Match::Exit() {
 
   possessionSideHistory.reset();
 
-  // The control channel references teams and players; it goes first.
-  remoteControl.reset();
+  // The mode owns the control server; this match just stops talking to it.
+  remoteControl = nullptr;
 
   anims.reset();
   teams[0]->Exit();
@@ -2728,6 +2725,17 @@ void Match::ApplyRemoteCommand(const RemoteControl::Command& command) {
       break;
     }
 
+    case RemoteControl::e_CommandType_Resume:
+      // Releases the half-time / extra-time hold; the phase menu consumes it.
+      RemoteControlMode::RequestResume();
+      Log(e_Notice, "RemoteControl", "Apply", "resume requested by panel");
+      break;
+
+    case RemoteControl::e_CommandType_Schedule:
+      Log(e_Warning, "RemoteControl", "Apply",
+          "refused schedule: a match is already running");
+      break;
+
     default:
       break;
   }
@@ -2741,6 +2749,7 @@ void Match::PublishRemoteState() {
   snapshot.phase = static_cast<int>(matchPhase);
   snapshot.inPlay = inPlay;
   snapshot.substitutionWindow = IsSubstitutionWindow();
+  snapshot.holding = RemoteControlMode::IsHolding();
 
   for (int side = 0; side < 2; side++) {
     Team* team = teams[side].get();
