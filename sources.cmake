@@ -462,6 +462,7 @@ set(GAME_HEADERS
    src/onthepitch/teaminstructions.hpp
    src/onthepitch/teamphilosophy.hpp
    src/onthepitch/remotecontrol.hpp
+   src/onthepitch/remotecontrolserver.hpp
    src/onthepitch/ballphysics.hpp
    src/onthepitch/gameplaytuning.hpp
    src/onthepitch/humanspeed.hpp
@@ -577,6 +578,7 @@ set(GAME_SOURCES
    src/onthepitch/teaminstructions.cpp
    src/onthepitch/teamphilosophy.cpp
    src/onthepitch/remotecontrol.cpp
+   src/onthepitch/remotecontrolserver.cpp
 )
 
 set(HID_HEADERS

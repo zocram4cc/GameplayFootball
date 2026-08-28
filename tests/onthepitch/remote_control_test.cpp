@@ -314,3 +314,35 @@ TEST(RemoteControlNames, EveryMentalityReachableByWireName) {
     EXPECT_EQ(mentality, state.mentality) << wire;
   }
 }
+
+// ── LineBuffer: TCP chunks into protocol lines ──────────────────────────────
+
+TEST(RemoteControlLineBuffer, ReassemblesLinesAcrossChunks) {
+  RemoteControl::LineBuffer buffer;
+  std::vector<std::string> lines = buffer.Append("tactic 0 team_pr", 16);
+  EXPECT_TRUE(lines.empty());
+  lines = buffer.Append("essure 0.8\nstate\n", 17);
+  ASSERT_EQ(2u, lines.size());
+  EXPECT_EQ("tactic 0 team_pressure 0.8", lines[0]);
+  EXPECT_EQ("state", lines[1]);
+}
+
+TEST(RemoteControlLineBuffer, KeepsTrailingPartialLine) {
+  RemoteControl::LineBuffer buffer;
+  std::vector<std::string> lines = buffer.Append("state\nsta", 9);
+  ASSERT_EQ(1u, lines.size());
+  lines = buffer.Append("te\n", 3);
+  ASSERT_EQ(1u, lines.size());
+  EXPECT_EQ("state", lines[0]);
+}
+
+TEST(RemoteControlLineBuffer, DropsAbsurdlyLongLines) {
+  // A peer that never sends a newline must not grow the buffer forever.
+  RemoteControl::LineBuffer buffer;
+  const std::string garbage(8192, 'x');
+  EXPECT_TRUE(buffer.Append(garbage.c_str(), garbage.size()).empty());
+  // Once over the limit the junk is discarded, and the next real line works.
+  std::vector<std::string> lines = buffer.Append("\nstate\n", 7);
+  ASSERT_EQ(1u, lines.size());
+  EXPECT_EQ("state", lines[0]);
+}

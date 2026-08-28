@@ -266,4 +266,32 @@ std::string ToJson(const Snapshot& snapshot) {
   return out;
 }
 
+
+std::vector<std::string> LineBuffer::Append(const char* data, size_t length) {
+  // ponytail: 4 KB is generous for a protocol whose longest line is a tactic
+  // name and a float; raise it if the protocol ever grows structured input.
+  const size_t maxLine = 4096;
+  std::vector<std::string> lines;
+  for (size_t i = 0; i < length; i++) {
+    const char c = data[i];
+    if (c == '\n') {
+      if (!discarding && !pending.empty()) {
+        if (pending.back() == '\r') pending.pop_back();
+        if (!pending.empty()) lines.push_back(pending);
+      }
+      pending.clear();
+      discarding = false;
+      continue;
+    }
+    if (discarding) continue;
+    if (pending.size() >= maxLine) {
+      pending.clear();
+      discarding = true;
+      continue;
+    }
+    pending += c;
+  }
+  return lines;
+}
+
 }  // namespace RemoteControl

@@ -46,6 +46,7 @@
 #include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
+#include "remotecontrolserver.hpp"
 
 // Long enough that a replay fired AFTER the celebration can still reach back
 // past the goal to the build-up. See onthepitch/goalsequence.hpp, which owns
@@ -187,6 +188,14 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   teams[1] = std::make_unique<Team>(1, this, matchData->GetTeamData(1));
   teams[0]->InitPlayers(fullbodyNode, skinWeights);
   teams[1]->InitPlayers(fullbodyNode, skinWeights);
+
+  // The optional remote-control channel: a web panel steering tactics and
+  // substitutions over localhost. Absent config key, absent channel.
+  const int remoteControlPort = GetConfiguration()->GetInt("remote_control_port", 0);
+  if (remoteControlPort > 0) {
+    remoteControl = std::make_unique<RemoteControl::Server>();
+    if (!remoteControl->Start(remoteControlPort)) remoteControl.reset();
+  }
 
   std::vector<Player*> activePlayers;
   teams[0]->GetActivePlayers(activePlayers);
@@ -1106,6 +1115,9 @@ void Match::Exit() {
     scene3D->PrintTree();
 
   possessionSideHistory.reset();
+
+  // The control channel references teams and players; it goes first.
+  remoteControl.reset();
 
   anims.reset();
   teams[0]->Exit();
@@ -2635,6 +2647,140 @@ void Match::ExecutePendingSubstitutions() {
   }
 }
 
+// ── The remote-control channel ──────────────────────────────────────────────
+// Everything below runs on the match thread; the socket thread only ever
+// touches the queue and the published state string.
+
+void Match::ProcessRemoteControl() {
+  for (const RemoteControl::Command& command : remoteControl->GetQueue().Drain())
+    ApplyRemoteCommand(command);
+
+  const unsigned long now_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  if (now_ms - lastRemoteStatePublish_ms >= 100) {
+    lastRemoteStatePublish_ms = now_ms;
+    PublishRemoteState();
+  }
+}
+
+void Match::ApplyRemoteCommand(const RemoteControl::Command& command) {
+  Team* team = GetTeam(command.side);
+  if (!team || !team->GetController()) return;
+  TeamAIController* controller = team->GetController();
+  Properties& userProperties = team->GetTeamData()->GetTacticsWritable().userProperties;
+  const std::string prefix = "team " + int_to_str(command.side) + ": ";
+
+  switch (command.type) {
+    case RemoteControl::e_CommandType_Tactic:
+      if (!RemoteControl::ApplyTactic(command, userProperties)) {
+        Log(e_Warning, "RemoteControl", "Apply", prefix + "refused tactic " + command.name);
+        return;
+      }
+      controller->UpdateTactics();
+      Log(e_Notice, "RemoteControl", "Apply",
+          prefix + "tactic " + command.name + " = " + real_to_str(command.value));
+      break;
+
+    case RemoteControl::e_CommandType_Philosophy:
+      if (!RemoteControl::ApplyPhilosophy(command, userProperties)) {
+        Log(e_Warning, "RemoteControl", "Apply", prefix + "refused philosophy " + command.name);
+        return;
+      }
+      controller->UpdateTactics();
+      Log(e_Notice, "RemoteControl", "Apply",
+          prefix + "philosophy = " + userProperties.Get("philosophy"));
+      break;
+
+    case RemoteControl::e_CommandType_Mentality:
+    case RemoteControl::e_CommandType_Instruction: {
+      TeamInstructions::State& instructions = controller->GetInstructions();
+      const bool applied = command.type == RemoteControl::e_CommandType_Mentality
+                               ? RemoteControl::ApplyMentality(command, instructions)
+                               : RemoteControl::ApplyInstruction(command, instructions);
+      if (!applied) {
+        Log(e_Warning, "RemoteControl", "Apply", prefix + "refused instruction " + command.name);
+        return;
+      }
+      // Saved beside the philosophy so a controller Reset (half-time, for one)
+      // reloads what the panel set rather than what the match started with.
+      TeamInstructions::Save(instructions, userProperties);
+      controller->UpdateTactics();
+      Log(e_Notice, "RemoteControl", "Apply",
+          prefix + "instructions: " + TeamInstructions::Describe(instructions));
+      break;
+    }
+
+    case RemoteControl::e_CommandType_Substitution: {
+      Player* playerOut = team->GetPlayer(command.playerOutId);
+      Player* playerIn = team->GetPlayer(command.playerInId);
+      if (!playerOut || !playerIn) {
+        Log(e_Warning, "RemoteControl", "Apply",
+            prefix + "refused sub, unknown player id " +
+                int_to_str(!playerOut ? command.playerOutId : command.playerInId));
+        return;
+      }
+      const Substitutions::e_Result result =
+          RequestSubstitution(command.side, playerOut, playerIn);
+      Log(result == Substitutions::e_Result_Accepted ? e_Notice : e_Warning, "RemoteControl",
+          "Apply",
+          prefix + "sub out " + playerOut->GetPlayerData()->GetLastName() + " in " +
+              playerIn->GetPlayerData()->GetLastName() + " -> result " +
+              int_to_str(static_cast<int>(result)));
+      break;
+    }
+
+    default:
+      break;
+  }
+}
+
+void Match::PublishRemoteState() {
+  RemoteControl::Snapshot snapshot;
+  snapshot.score[0] = matchData->GetGoalCount(0);
+  snapshot.score[1] = matchData->GetGoalCount(1);
+  snapshot.matchTime_ms = matchTime_ms;
+  snapshot.phase = static_cast<int>(matchPhase);
+  snapshot.inPlay = inPlay;
+  snapshot.substitutionWindow = IsSubstitutionWindow();
+
+  for (int side = 0; side < 2; side++) {
+    Team* team = teams[side].get();
+    if (!team || !team->GetController()) continue;
+    TeamAIController* controller = team->GetController();
+    RemoteControl::TeamState& teamState = snapshot.teams[side];
+
+    teamState.name = team->GetTeamData()->GetName();
+    teamState.philosophy = TeamPhilosophy::GetName(controller->GetPhilosophy());
+
+    const TeamInstructions::State& instructions = controller->GetInstructions();
+    teamState.mentality =
+        RemoteControl::WireName(TeamInstructions::GetMentalityName(instructions.mentality));
+    for (int i = 0; i < TeamInstructions::instructionCount; i++) {
+      const TeamInstructions::e_Instruction instruction = TeamInstructions::GetInstructionAt(i);
+      if (TeamInstructions::Has(instructions, instruction))
+        teamState.instructions.push_back(
+            RemoteControl::WireName(TeamInstructions::GetInstructionName(instruction)));
+    }
+
+    const map_Properties* liveTactics = controller->GetLiveTactics().GetProperties();
+    for (const auto& entry : *liveTactics) {
+      if (TeamPhilosophy::IsSliderTactic(entry.first))
+        teamState.tactics.push_back(
+            {entry.first, controller->GetLiveTacticReal(entry.first.c_str(), 0.5f)});
+    }
+
+    for (const auto& player : team->GetAllPlayers()) {
+      RemoteControl::PlayerState playerState;
+      playerState.id = player->GetID();
+      if (player->GetPlayerData()) playerState.name = player->GetPlayerData()->GetLastName();
+      playerState.role = GetRoleName(player->GetFormationEntry().role);
+      playerState.onPitch = player->IsActive();
+      teamState.players.push_back(playerState);
+    }
+  }
+
+  remoteControl->PublishState(RemoteControl::ToJson(snapshot));
+}
+
 void Match::ProcessAutoSubstitutions() {
   // Only at stoppages during normal play, and no more than one decision per
   // second. A shootout is not a stoppage to make substitutions in, and neither
@@ -3654,6 +3800,10 @@ void Match::Process() {
     SetSunParams();
     UserEventManager::GetInstance().SetKeyboardState(SDLK_F1, false);
   }
+
+  // Commands from the attached control panel, applied on this thread before
+  // the tick they steer.
+  if (remoteControl) ProcessRemoteControl();
 
   // The cutscene's clock runs on the match's own delta, so pausing holds it where it
   // is. Space skips it, as PES lets you skip a cutscene.
