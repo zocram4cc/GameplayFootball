@@ -60,10 +60,27 @@ class TheContainer(unittest.TestCase):
         self.assertFalse(key == ted.SAMPLE_KEY)
 
 
-def record(name, shirt, extra="PLACEHOLDER", magic=b""):
+def set_bits(rec, byte_offset, bit_offset, nbits, value):
+    """The write side of ted.get_bits, for building synthetic records."""
+    for i in range(nbits):
+        total_bit = bit_offset + i
+        byte_i = byte_offset + total_bit // 8
+        bit_i = total_bit % 8
+        if value & (1 << i):
+            rec[byte_i] |= 1 << bit_i
+        else:
+            rec[byte_i] &= ~(1 << bit_i) & 0xff
+
+
+def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=None):
     rec = bytearray(ted.PLAYER_RECORD_SIZE)
     if magic:
         rec[0:4] = magic
+    if player_id is not None:
+        struct.pack_into("<I", rec, ted.REC_ID, player_id)
+    for stat_name, byte_off, bit_off in ted.STAT_FIELDS:
+        if stats and stat_name in stats:
+            set_bits(rec, byte_off, bit_off, 7, stats[stat_name])
     rec[ted.REC_NAME:ted.REC_NAME + len(name)] = name.encode()
     rec[ted.REC_SHIRT_NAME:ted.REC_SHIRT_NAME + len(shirt)] = shirt.encode()
     rec[ted.REC_EXTRA:ted.REC_EXTRA + len(extra)] = extra.encode()
@@ -123,6 +140,57 @@ class ThePlayerRecords(unittest.TestCase):
     def test_an_empty_record_ends_the_roster(self):
         players = self.roster(record("A", "AA"), bytes(ted.PLAYER_RECORD_SIZE))
         self.assertEqual(len(players), 1)
+
+
+class ThePlayerStats(unittest.TestCase):
+    """Every stat is read from its own byte:bit - the same offsets the wiki
+    gives for the PES EDIT format's Player entry, because that is exactly what
+    a record's first 240 bytes are, id included. No tier lookup: a hand-edited
+    player who does not match his tier's own template is read exactly as he
+    is, not corrected back to it - and a tournament that changes what a gold
+    rates next season needs nothing here to change with it.
+    """
+
+    def roster(self, *records):
+        plain = payload(ted.PLAYER_TABLE_OFFSET)
+        for rec in records:
+            plain += rec
+        return ted.read_players(bytes(plain))
+
+    def test_the_id_is_a_plain_four_byte_int(self):
+        players = self.roster(record("Bullet Sponge", "JUST SHOOT IT", player_id=80301))
+        self.assertEqual(players[0]["id"], 80301)
+
+    def test_a_stat_comes_back_as_its_own_pes_value(self):
+        players = self.roster(record("Gold", "G", stats={"offensive_awareness": 99}))
+        self.assertEqual(players[0]["stats"]["offensive_awareness"], 99)
+
+    def test_every_named_stat_is_present(self):
+        players = self.roster(record("Nobody", "N"))
+        for stat_name, _, _ in ted.STAT_FIELDS:
+            self.assertIn(stat_name, players[0]["stats"])
+
+    def test_adjacent_stats_sharing_a_byte_do_not_bleed_into_each_other(self):
+        # Offensive Awareness (bits 0-6) and Ball Control (bits 7-13) share 0x0E
+        players = self.roster(record("Two Stats", "T",
+                                      stats={"offensive_awareness": 40, "ball_control": 99}))
+        self.assertEqual(players[0]["stats"]["offensive_awareness"], 40)
+        self.assertEqual(players[0]["stats"]["ball_control"], 99)
+
+    def test_a_stat_that_crosses_a_byte_boundary_round_trips(self):
+        # Lofted Pass starts at bit 6 of 0x11 and finishes inside 0x12
+        players = self.roster(record("Crosses", "C", stats={"lofted_pass": 77}))
+        self.assertEqual(players[0]["stats"]["lofted_pass"], 77)
+
+    def test_two_players_can_disagree_with_their_own_tier(self):
+        # real packs do this: one silver reads Defensive Awareness 60, its
+        # squadmate under the same colour mark reads 50 - a real per-player
+        # value, not a typo to be normalised away
+        players = self.roster(
+            record("Normal Silver", "A", stats={"defensive_awareness": 60}),
+            record("Odd Silver", "B", stats={"defensive_awareness": 50}))
+        self.assertEqual(players[0]["stats"]["defensive_awareness"], 60)
+        self.assertEqual(players[1]["stats"]["defensive_awareness"], 50)
 
 
 def team_payload():
