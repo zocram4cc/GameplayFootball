@@ -30,6 +30,7 @@ public:
   virtual int CreateAudioSoundBuffer(const WavData* wavData);
   virtual void DeleteAudioSoundBuffer(int audioSoundBufferID);
   virtual void PlayAudioSoundBuffer(int audioSoundBufferID);
+  virtual void PauseAudioSoundBuffer(int audioSoundBufferID);
 
   virtual void SetListenerParameters(const Vector3& position, const Vector3& velocity,
                                      const Quaternion& orientation);

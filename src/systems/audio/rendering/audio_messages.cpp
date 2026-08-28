@@ -33,6 +33,23 @@ bool AudioRendererMessage_PlayAudioSoundBuffer::Execute(void* caller) {
   return true;
 }
 
+bool AudioRendererMessage_PauseAudioSoundBuffer::Execute(void* caller) {
+  AudioRenderer* renderer = static_cast<AudioRenderer*>(caller);
+
+  renderer->PauseAudioSoundBuffer(audioSoundBufferID);
+
+  return true;
+}
+
+bool AudioRendererMessage_SeekAudioSoundBuffer::Execute(void* caller) {
+  AudioRenderer* renderer = static_cast<AudioRenderer*>(caller);
+
+  renderer->SetSourceParameter(audioSoundBufferID, e_AudioRenderer_SourceParameter_Offset,
+                               seconds);
+
+  return true;
+}
+
 bool AudioRendererMessage_ConfigAudioSoundBuffer::Execute(void* caller) {
   AudioRenderer* renderer = static_cast<AudioRenderer*>(caller);
 

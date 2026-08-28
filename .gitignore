@@ -99,6 +99,7 @@ data/menu_smoke_*.config
 !data/menu_smoke_full_match.config
 !data/menu_smoke_quick_match.config
 !data/menu_smoke_gamepad_match.config
+!data/menu_smoke_rigdio.config
 !data/menu_smoke_league*.config
 !data/menu_smoke_career.config
 !data/menu_smoke_credits.config
@@ -116,3 +117,8 @@ data/pens/
 # frames, so tools only - see docs/ASSETS.md.
 data/media/textures/wipe/
 .measure/
+
+# rigdio test inputs: community audio exports are never committed
+.exports/
+data/music/
+data/media/players/custom
