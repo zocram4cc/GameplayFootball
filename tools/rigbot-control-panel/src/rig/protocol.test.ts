@@ -137,6 +137,9 @@ test('engineConfig boots straight into remote-control mode', () => {
   assert.match(text, /"remote_control_mode" "true"/);
   assert.match(text, /"remote_control_key" "s3cret"/);
   assert.match(text, /"remote_control_port" "44700"/);
+  // Without this the engine is a "release" build and boots into an intro page
+  // that waits for a keypress no headless rig will ever send.
+  assert.match(text, /"debug" "true"/);
   // No match keys: the engine waits limp until a schedule command arrives.
   assert.doesNotMatch(text, /showcase_team/);
   assert.doesNotMatch(text, /menu_smoke_test_full_match/);

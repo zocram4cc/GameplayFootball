@@ -126,8 +126,16 @@ void Server::Run() {
             if (gate == e_GateResult_Refuse) {
               Log(e_Warning, "RemoteControl", "Run",
                   client.authed ? "refused line: " + line : "refused line before auth");
-              const char refused[] = "err auth\n";
-              send(client.fd, refused, sizeof(refused) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
+              // "err auth" strictly answers a failed handshake; anything else
+              // refused gets its own word, so the panel's handshake state
+              // machine never confuses the two.
+              const bool authAttempt = cmd.type == e_CommandType_Auth;
+              const char refusedAuth[] = "err auth\n";
+              const char refused[] = "err refused\n";
+              if (authAttempt)
+                send(client.fd, refusedAuth, sizeof(refusedAuth) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
+              else
+                send(client.fd, refused, sizeof(refused) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
               continue;
             }
             if (gate == e_GateResult_Authed) {

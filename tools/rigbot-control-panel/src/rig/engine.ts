@@ -86,18 +86,26 @@ export class EngineLink extends EventEmitter {
       const line = this.pending.slice(0, index);
       this.pending = this.pending.slice(index + 1);
       if (!line) continue;
-      if (this.authWaiter && (line === 'ok auth' || line === 'err auth')) {
+      // Handshake and refusal notices never answer a state request, whether
+      // or not a handshake is in flight - a stray one must not eat a waiter.
+      if (line === 'ok auth' || line === 'err auth') {
         const waiter = this.authWaiter;
         this.authWaiter = null;
+        if (!waiter) continue;
         if (line === 'ok auth') waiter.ready();
         else waiter.failed(new Error('engine refused the auth key'));
         continue;
       }
+      if (line.startsWith('err ')) continue; // e.g. "err refused"
       const state = parseState(line);
       const waiter = this.waiters.shift();
-      if (!state) continue; // "{}" before the first publish, or garbage
-      if (waiter) waiter.resolve(state);
-      this.emit('state', state);
+      if (state) {
+        if (waiter) waiter.resolve(state);
+        this.emit('state', state);
+      } else if (waiter) {
+        // "{}": connected, but nothing published yet (no match running).
+        waiter.reject(new Error('engine has no state yet'));
+      }
     }
   }
 

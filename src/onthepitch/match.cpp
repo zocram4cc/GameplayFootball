@@ -2770,19 +2770,31 @@ void Match::PublishRemoteState() {
             RemoteControl::WireName(TeamInstructions::GetInstructionName(instruction)));
     }
 
+    // Slider keys come off the live set (it knows every tactic this build
+    // has), but the values reported are the user's own slider positions -
+    // the space commands speak, the same one the game-plan menu shows. The
+    // effective live value is base + philosophy + instructions on top and
+    // would make the panel's sliders drift on their own.
+    const Properties& userTactics = team->GetTeamData()->GetTactics().userProperties;
     const map_Properties* liveTactics = controller->GetLiveTactics().GetProperties();
     for (const auto& entry : *liveTactics) {
       if (TeamPhilosophy::IsSliderTactic(entry.first))
         teamState.tactics.push_back(
-            {entry.first, controller->GetLiveTacticReal(entry.first.c_str(), 0.5f)});
+            {entry.first, userTactics.GetReal(entry.first.c_str(), 0.5f)});
     }
 
     for (const auto& player : team->GetAllPlayers()) {
       RemoteControl::PlayerState playerState;
       playerState.id = player->GetID();
       if (player->GetPlayerData()) playerState.name = player->GetPlayerData()->GetLastName();
-      playerState.role = GetRoleName(player->GetFormationEntry().role);
       playerState.onPitch = player->IsActive();
+      // A formation entry exists only for the players on the pitch; asking
+      // for a bench player's asserts. The bench keeps its database role.
+      if (playerState.onPitch) {
+        playerState.role = GetRoleName(player->GetFormationEntry().role);
+      } else if (player->GetPlayerData() && !player->GetPlayerData()->GetRoles().empty()) {
+        playerState.role = GetRoleName(player->GetPlayerData()->GetRoles().front());
+      }
       teamState.players.push_back(playerState);
     }
   }
