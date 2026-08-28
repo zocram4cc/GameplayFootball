@@ -6,6 +6,7 @@
 // shot is a static camera 5.6 m from the origin; used as a world position it
 // filmed every foul from the centre spot.
 
+#include <cmath>
 #include <gtest/gtest.h>
 
 #include "onthepitch/cutsceneviewer.hpp"
@@ -218,4 +219,91 @@ TEST(RefereeFollow, ItStandsAsideForAnImportedShot) {
 
 TEST(RefereeFollow, ItStillFilmsAStoppageWithNothingElseToShow) {
   EXPECT_TRUE(CutsceneViewer::RefereeFollowMayTakeCamera(false));
+}
+
+// Which assistant gives an offside, and where he stands to give it.
+//
+// PES ships no offside camerawork in any generation - measured over PES16, 17, 19
+// and 21: zero canm streams in every offside pack, and PES17/19's cut records name
+// an empty clip - and no authored world position either (PES19's actor record puts
+// slot 23 at the origin, yaw 0). So the placement is the engine's to get right, and
+// it was getting it wrong twice over.
+//
+// An assistant runs one touchline for the whole match and gives the offsides he
+// is positioned to see. The pick reads each man's own LIVE y rather than an
+// assumed spawn constant or accessor name - that exact assumption (index 0 is
+// always the -y man) was the original bug: officials.cpp spawns linesman 0 on
+// the -y touchline but names the accessor `GetLinesmanNorth()`, and the code
+// this replaced picked `y >= 0 ? North : South`, casting the assistant standing
+// on the *opposite* touchline; staging him at the incident then put that wrong
+// man in the middle of the pitch.
+
+TEST(OffsideAssistant, TheAssistantOnTheNearTouchlineGivesIt) {
+  // linesman 0 lives near -y (as officials.cpp spawns him); an offence near
+  // his touchline is his, whichever half of the pitch length it happened in
+  EXPECT_EQ(CutsceneViewer::OffsideAssistantMark(30.0f, -12.0f, -36.5f, 36.5f, 55.0f, 36.0f)
+                .linesman,
+            0);
+  EXPECT_EQ(CutsceneViewer::OffsideAssistantMark(-30.0f, -12.0f, -36.5f, 36.5f, 55.0f, 36.0f)
+                .linesman,
+            0);
+}
+
+TEST(OffsideAssistant, TheOtherTouchlineIsTheOtherMans) {
+  EXPECT_EQ(
+      CutsceneViewer::OffsideAssistantMark(30.0f, 12.0f, -36.5f, 36.5f, 55.0f, 36.0f).linesman,
+      1);
+  EXPECT_EQ(
+      CutsceneViewer::OffsideAssistantMark(-30.0f, 12.0f, -36.5f, 36.5f, 55.0f, 36.0f).linesman,
+      1);
+}
+
+// The regression, made explicit: swap which man lives on which touchline and
+// the pick must follow THEM, not a hardcoded index.
+TEST(OffsideAssistant, ItReadsLivePositionRatherThanAnAssumedIndex) {
+  const CutsceneViewer::AssistantMark mark =
+      CutsceneViewer::OffsideAssistantMark(30.0f, -12.0f, 36.5f, -36.5f, 55.0f, 36.0f);
+  EXPECT_EQ(mark.linesman, 1);      // linesman 1 is now the -y man
+  EXPECT_FLOAT_EQ(mark.y, -36.0f);  // and the mark follows him, not index 0
+}
+
+TEST(OffsideAssistant, HeStandsOnHisOwnTouchlineLevelWithTheOffsideLine) {
+  const CutsceneViewer::AssistantMark mark =
+      CutsceneViewer::OffsideAssistantMark(30.0f, -12.0f, -36.5f, 36.5f, 55.0f, 36.0f);
+  EXPECT_FLOAT_EQ(mark.x, 30.0f);   // level with the offence: the offside line
+  EXPECT_FLOAT_EQ(mark.y, -36.0f);  // on his touchline, not in the middle
+}
+
+TEST(OffsideAssistant, AndTheOtherManRunsTheOtherTouchline) {
+  const CutsceneViewer::AssistantMark mark =
+      CutsceneViewer::OffsideAssistantMark(-20.0f, 30.0f, -36.5f, 36.5f, 55.0f, 36.0f);
+  EXPECT_FLOAT_EQ(mark.x, -20.0f);
+  EXPECT_FLOAT_EQ(mark.y, 36.0f);
+}
+
+// The regression this exists to stop: the man must never be left near the middle.
+TEST(OffsideAssistant, HeIsNeverInTheMiddleOfThePitch) {
+  for (float x : {-50.0f, -20.0f, 0.0f, 20.0f, 50.0f}) {
+    for (float y : {-30.0f, -5.0f, 0.0f, 5.0f, 30.0f}) {
+      const CutsceneViewer::AssistantMark mark =
+          CutsceneViewer::OffsideAssistantMark(x, y, -36.5f, 36.5f, 55.0f, 36.0f);
+      EXPECT_FLOAT_EQ(std::fabs(mark.y), 36.0f) << "at (" << x << "," << y << ")";
+    }
+  }
+}
+
+// An offside can be given as deep as the goal line, but the man does not stand
+// behind it.
+TEST(OffsideAssistant, HeNeverStandsBehindAGoalLine) {
+  EXPECT_FLOAT_EQ(
+      CutsceneViewer::OffsideAssistantMark(70.0f, 2.0f, -36.5f, 36.5f, 55.0f, 36.0f).x, 55.0f);
+  EXPECT_FLOAT_EQ(
+      CutsceneViewer::OffsideAssistantMark(-70.0f, 2.0f, -36.5f, 36.5f, 55.0f, 36.0f).x, -55.0f);
+}
+
+// Deep in a corner is exactly where offsides happen; the mark must survive it
+// rather than being clamped ten metres up the pitch as a substitution is.
+TEST(OffsideAssistant, ADeepOffsideKeepsItsOwnLine) {
+  EXPECT_FLOAT_EQ(
+      CutsceneViewer::OffsideAssistantMark(51.0f, 30.0f, -36.5f, 36.5f, 55.0f, 36.0f).x, 51.0f);
 }

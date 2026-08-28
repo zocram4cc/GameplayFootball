@@ -179,10 +179,16 @@ RECORD_SIZES = {
     0x03: 0x0BC,
     0x04: 0x16C,   # actor animation cut (*.gani)
     0x05: 0x1BC,   # model / skeleton (*.fpk, *.skl)
-    0x06: 0x11C,   # camera cut (*.canm)
+    0x06: 0x11C,   # camera cut (*.canm) - PES17-21's size; see CAMERA_CUT_SIZES
     0x07: 0x144,
     0x08: 0x060,
 }
+# PES16's camera-cut record is 8 bytes shorter (0x114, 276 bytes) than every
+# later generation's (0x11C, 284): measured across every foul/goal pack in
+# PES16/17/19. It lacks the trailing per-slot blend array and frame-rate float
+# PES17 added; the fields actually used here (start frame, canm name,
+# near/far) sit at identical offsets in both, well inside the shorter one.
+CAMERA_CUT_SIZES = (0x114, 0x11C)
 TAG_ACTOR_CUT = 0x04
 TAG_CAMERA_CUT = 0x06
 
@@ -425,11 +431,16 @@ class CameraCut:
         self.kind = data[0xB0]
         self.unknown_b4 = struct.unpack_from("<I", data, 0xB4)[0]
         self.blend = list(data[0xD8:0xF0])
-        self.trailing = struct.unpack_from("<11f", data, 0xF0)
+        # PES16's record ends here (276 bytes total) - it does not carry the
+        # trailing frame-rate float PES17 added at +0xF0.
+        self.trailing = struct.unpack_from("<11f", data, 0xF0) if len(data) >= 0xF0 + 44 else ()
 
     @property
     def frame_rate(self):
-        return self.trailing[10]
+        # PES ships every camera at a constant 30 fps regardless of
+        # generation (measured across all four), so that is the honest
+        # default for a record too short to carry the field.
+        return self.trailing[10] if len(self.trailing) > 10 else 30.0
 
     @property
     def unknown04_float(self):
@@ -516,7 +527,7 @@ def parse_fdc(blob, path=""):
         fdc.cpk_path = entry.name
         for rec in sub:
             fdc.records.setdefault(rec.tag, []).append(rec)
-            if rec.tag == TAG_CAMERA_CUT and rec.size == RECORD_SIZES[TAG_CAMERA_CUT]:
+            if rec.tag == TAG_CAMERA_CUT and rec.size in CAMERA_CUT_SIZES:
                 fdc.cuts.append(CameraCut(rec.data))
             elif rec.tag == TAG_ACTOR_CUT and rec.size == RECORD_SIZES[TAG_ACTOR_CUT]:
                 fdc.actors.append(ActorCut(rec.data))
