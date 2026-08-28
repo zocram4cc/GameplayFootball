@@ -333,9 +333,17 @@ void GraphicsTaskCommand_EnqueueView::EnqueueShadowMap(boost::intrusive_ptr<Ligh
                                                                    visibleGeometry, bounding);
     // std::static_pointer_cast<Scene3D>(scene)->GetObjects<Geometry>(e_ObjectType_Geometry,
     // visibleGeometry);
+    // Disabled as well as shadowless. The colour pass above drops anything that
+    // is not enabled; this one only ever asked whether the geometry casts at all,
+    // so a disabled object went on casting a shadow it no longer had a body for.
+    // The walkout set is hidden that way rather than deleted - deleting it under
+    // the graphics thread crashes - so the ring of pennant bearers left a dozen
+    // shadows standing on the centre circle for the whole match.
     for (auto iter = visibleGeometry.begin(); iter != visibleGeometry.end();) {
-      if (!(*iter)->GetCastShadow()) iter = visibleGeometry.erase(iter);
-      else iter++;
+      if (!(*iter)->GetCastShadow() || !(*iter)->IsEnabled())
+        iter = visibleGeometry.erase(iter);
+      else
+        iter++;
     }
     light->EnqueueShadowMap(camera, visibleGeometry);
   }
