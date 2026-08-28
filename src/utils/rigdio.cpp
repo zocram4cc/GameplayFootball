@@ -618,35 +618,334 @@ CheckResult CheckEntry(Entry& e, const GameState& gs, bool home) {
   return CheckResult::Yes;
 }
 
-Entry* Picker::Pick(const GameState&, bool, const Rng&, const Entry*) {
-  return nullptr;  // not implemented
+Entry* Picker::Pick(const GameState& gs, bool home, const Rng& rng,
+                    const Entry* skip) {
+  // Assign stable identities once (Python compares object identity).
+  for (size_t i = 0; i < entries_.size(); i++)
+    if (entries_[i].uid < 0) entries_[i].uid = (int)i;
+  const int skipUid = skip ? skip->uid : -1;
+  auto isSkip = [&](const Entry& e) { return skip && e.uid == skipUid; };
+
+  // Warcry mode with all-randomise warcries: unconditioned random warcry.
+  if (warcryArmed) {
+    std::vector<Entry*> warcries;
+    bool allRandom = true;
+    for (Entry& e : entries_)
+      if (e.warcry && !isSkip(e)) {
+        warcries.push_back(&e);
+        if (!e.randomise) allRandom = false;
+      }
+    if (!warcries.empty() && allRandom)
+      return warcries[rng((int)warcries.size())];
+  }
+
+  // The main walk: file order, first match, permanent removal on unload.
+  for (size_t i = 0; i < entries_.size();) {
+    if (isSkip(entries_[i])) { i++; continue; }
+    const CheckResult checked = CheckEntry(entries_[i], gs, home);
+    if (checked == CheckResult::Unload) {
+      entries_.erase(entries_.begin() + i);  // gone for the whole match
+      continue;
+    }
+    if (checked == CheckResult::Crash) return nullptr;  // whole pick aborts
+
+    // All-randomise (same pname, warcries not counted): random pick from the
+    // player's non-warcry entries, conditions notwithstanding.
+    if (entries_[i].randomise && !entries_[i].warcry) {
+      bool randomSong = true;
+      for (const Entry& f : entries_)
+        if (!f.randomise && !f.warcry && f.pname == entries_[i].pname) {
+          randomSong = false;
+          break;
+        }
+      if (randomSong) {
+        std::vector<Entry*> pool;
+        for (Entry& e : entries_)
+          if (e.pname == entries_[i].pname && !e.warcry) pool.push_back(&e);
+        warcryArmed = true;
+        return pool[rng((int)pool.size())];
+      }
+    }
+
+    if (checked == CheckResult::Yes) {
+      if (warcryArmed) return &entries_[i];  // warcry or not
+      if (!entries_[i].warcry) {
+        warcryArmed = true;  // re-armed once a non-warcry entry is chosen
+        return &entries_[i];
+      }
+    }
+    i++;
+  }
+
+  // Advance fallbacks: first non-warcry that isn't the skipped entry,
+  // conditions unchecked; then the skipped entry itself.
+  if (skip) {
+    for (Entry& e : entries_)
+      if (!isSkip(e) && !e.warcry) {
+        warcryArmed = true;
+        return &e;
+      }
+    warcryArmed = true;
+    for (Entry& e : entries_)
+      if (e.uid == skipUid) return &e;
+  }
+  return nullptr;
 }
 
 MatchSession::MatchSession(TeamMusic homeTeam, TeamMusic awayTeam,
                            const std::string& gametype, Rng rng)
     : home_(std::move(homeTeam)), away_(std::move(awayTeam)), rng_(std::move(rng)) {
   gs_.gametype = gametype;
+  gs_.names[0] = home_.tname;
+  gs_.names[1] = away_.tname;
+  sync_[0] = home_.sync;
+  sync_[1] = away_.sync;
+  for (int t = 0; t < 2; t++) {
+    const TeamMusic& team = t == 0 ? home_ : away_;
+    for (const auto& kv : team.players)
+      sides_[t].pickers.emplace(kv.first, Picker(kv.second));
+    auto chants = team.players.find("chant");
+    sides_[t].chantPlayCounts.assign(
+        chants == team.players.end() ? 0 : chants->second.size(), 0);
+  }
 }
 
 MatchSession::Side& MatchSession::SideFor(bool home) { return sides_[home ? 0 : 1]; }
 
-std::optional<PlayAction> MatchSession::OnGoal(bool, const std::string&, int, double) {
-  return std::nullopt;  // not implemented
+
+// ConditionPlayer.play(): position restore order is cache, then the
+// first-play start seek on top of it.
+std::optional<PlayAction> MatchSession::Play(bool home, Picker& picker,
+                                             Entry* e, double now,
+                                             bool isGoalhorn) {
+  if (!e) return std::nullopt;
+  Side& side = SideFor(home);
+  double seek = e->position;
+  if (sync_[home ? 0 : 1] && isGoalhorn && !e->warcry) {
+    auto it = positionCache_.find(e->file);
+    if (it != positionCache_.end()) seek = it->second;
+  }
+  if (e->firstPlay) {
+    if (e->hasStart) seek = e->startSeconds;
+    e->firstPlay = false;
+  }
+  e->position = seek;
+
+  side.playing = &picker;
+  side.playingUid = e->uid;
+  side.playingIsGoalhorn = isGoalhorn;
+  side.playStarted = now;
+  side.playSeek = seek;
+  side.playSpeed = e->speed;
+  side.playFile = e->file;
+
+  PlayAction act;
+  act.file = e->file;
+  act.seekSeconds = seek;
+  act.speed = e->speed;
+  act.loop = e->loop;
+  act.isWarcry = e->warcry;
+  act.advance = e->advance;
+  act.endStop = e->endStop;
+  act.home = home;
+  act.pname = e->pname;
+  return act;
 }
-void MatchSession::OnHornPaused(bool, double) {}
-std::optional<PlayAction> MatchSession::OnHornEnded(bool, double) { return std::nullopt; }
-std::optional<PlayAction> MatchSession::Anthem(bool, double) { return std::nullopt; }
-std::optional<PlayAction> MatchSession::Victory(bool, double) { return std::nullopt; }
-std::optional<PlayAction> MatchSession::Chant(bool) { return std::nullopt; }
-void MatchSession::ChantEnded() {}
-std::optional<PlayAction> MatchSession::OnEvent(bool, const std::string&, const std::string&, int) {
+
+namespace {
+
+Entry* FindByUid(Picker* picker, int uid) {
+  if (!picker || uid < 0) return nullptr;
+  for (Entry& e : picker->entries())
+    if (e.uid == uid) return &e;
+  return nullptr;
+}
+
+}  // namespace
+
+std::optional<PlayAction> MatchSession::OnGoal(bool home, const std::string& scorer,
+                                               int minute, double now) {
+  // playSong() pauses whatever was playing before picking.
+  OnHornPaused(home, now);
+
+  // The streamer presses the scorer's button if he has one, else "goal".
+  const TeamMusic& team = home ? home_ : away_;
+  std::string pname = "goal";
+  const std::string wanted = Lower(scorer);
+  for (const auto& kv : team.players) {
+    if (IsReserved(kv.first)) continue;
+    if (Lower(kv.first) == wanted) {
+      pname = kv.first;
+      break;
+    }
+  }
+
+  // The goal is counted BEFORE the horn is chosen.
+  gs_.Score(pname, home);
+  gs_.minute = minute;
+
+  Side& side = SideFor(home);
+  auto it = side.pickers.find(pname);
+  if (it == side.pickers.end()) return std::nullopt;  // no goal list at all
+  Entry* e = it->second.Pick(gs_, home, rng_);
+  return Play(home, it->second, e, now, true);
+}
+
+void MatchSession::OnHornPaused(bool home, double now) {
+  Side& side = SideFor(home);
+  Entry* e = FindByUid(side.playing, side.playingUid);
+  side.playing = nullptr;
+  side.playingUid = -1;
+  if (!e) return;
+  double pos = side.playSeek + (now - side.playStarted) * side.playSpeed;
+  auto d = durations_.find(side.playFile);
+  if (d != durations_.end() && d->second > 0 && e->loop)
+    pos = std::fmod(pos, d->second);
+  e->position = pos;
+  // The sync cache is written BEFORE the pause-restart seek, which is why
+  // pause;restart is inert while sync is on (docs/RIGDIO.md section 4).
+  if (sync_[home ? 0 : 1] && side.playingIsGoalhorn && !e->warcry)
+    positionCache_[side.playFile] = pos;
+  if (e->pauseRestart && e->pauseEvery > 0) {
+    e->pauseCount++;
+    if (e->pauseCount % e->pauseEvery == 0) e->position = e->startSeconds;
+  }
+}
+
+std::optional<PlayAction> MatchSession::OnHornEnded(bool home, double now) {
+  Side& side = SideFor(home);
+  Picker* picker = side.playing;
+  Entry* e = FindByUid(picker, side.playingUid);
+  side.playing = nullptr;
+  side.playingUid = -1;
+  if (!e) return std::nullopt;
+
+  if (e->endStop) {
+    // EndInstruction.run -> reloadSong: cache cleared, first play re-armed.
+    e->position = 0.0;
+    e->firstPlay = true;
+    positionCache_.erase(e->file);
+    return std::nullopt;
+  }
+  if (e->warcry) {
+    // WarcryInstruction.run: warcry off, play the first non-warcry match.
+    e->position = 0.0;
+    picker->warcryArmed = false;
+    Entry* next = picker->Pick(gs_, home, rng_);
+    return Play(home, *picker, next, now, side.playingIsGoalhorn);
+  }
+  if (e->advance) {
+    e->position = 0.0;
+    Entry skipCopy = *e;  // Pick may reshuffle the vector under `e`
+    Entry* next = picker->Pick(gs_, home, rng_, &skipCopy);
+    return Play(home, *picker, next, now, side.playingIsGoalhorn);
+  }
+  // Looping entries are looped by the audio layer; nothing to do.
   return std::nullopt;
 }
-void MatchSession::SetDuration(const std::string&, double) {}
-double MatchSession::CachedPosition(const std::string&) const { return 0.0; }
 
-std::optional<PlayAction> MatchSession::Play(bool, Picker&, Entry*, double, bool) {
-  return std::nullopt;  // not implemented
+std::optional<PlayAction> MatchSession::Anthem(bool home, double now) {
+  Side& side = SideFor(home);
+  auto it = side.pickers.find("anthem");
+  if (it == side.pickers.end()) return std::nullopt;
+  Entry* e = it->second.Pick(gs_, home, rng_);
+  return Play(home, it->second, e, now, false);
+}
+
+std::optional<PlayAction> MatchSession::Victory(bool home, double now) {
+  Side& side = SideFor(home);
+  auto it = side.pickers.find("victory");
+  if (it == side.pickers.end()) return std::nullopt;
+  Entry* e = it->second.Pick(gs_, home, rng_);
+  return Play(home, it->second, e, now, false);
+}
+
+std::optional<PlayAction> MatchSession::Chant(bool home) {
+  if (chantActive_) return std::nullopt;  // one at a time
+  const TeamMusic& team = home ? home_ : away_;
+  auto chants = team.players.find("chant");
+  if (chants == team.players.end() || chants->second.empty())
+    return std::nullopt;
+  Side& side = SideFor(home);
+
+  // Exponential-decay weighting over the non-unrandom pool:
+  // weight = 0.3 ^ times_played (chantswindow.py).
+  std::vector<size_t> pool;
+  std::vector<double> weights;
+  double total = 0.0;
+  for (size_t i = 0; i < chants->second.size(); i++) {
+    if (chants->second[i].unrandom) continue;
+    pool.push_back(i);
+    const double w = std::pow(0.3, side.chantPlayCounts[i]);
+    weights.push_back(w);
+    total += w;
+  }
+  if (pool.empty()) return std::nullopt;
+  const double r = total * (double)rng_(1000000) / 1000000.0;
+  size_t chosen = pool.back();
+  double acc = 0.0;
+  for (size_t k = 0; k < pool.size(); k++) {
+    acc += weights[k];
+    if (r < acc) { chosen = pool[k]; break; }
+  }
+  side.chantPlayCounts[chosen]++;
+  chantActive_ = true;
+
+  // Chants reload before playing: always from the top (or the start seek).
+  const Entry& e = chants->second[chosen];
+  PlayAction act;
+  act.file = e.file;
+  act.seekSeconds = e.hasStart ? e.startSeconds : 0.0;
+  act.speed = e.speed;
+  act.loop = false;
+  act.home = home;
+  act.pname = "chant";
+  return act;
+}
+
+void MatchSession::ChantEnded() { chantActive_ = false; }
+
+std::optional<PlayAction> MatchSession::OnEvent(bool home, const std::string& etype,
+                                                const std::string& player,
+                                                int minute) {
+  const TeamMusic& team = home ? home_ : away_;
+  auto clips = team.events.find(etype);
+  if (clips == team.events.end()) return std::nullopt;
+  Side& side = SideFor(home);
+  auto last = side.lastEventMinute.find(etype);
+  if (last != side.lastEventMinute.end() && minute <= last->second)
+    return std::nullopt;  // once per game minute per type
+
+  // event.py keys players upper-cased and picks a random clip.
+  std::string upper = player;
+  for (char& c : upper)
+    if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
+  std::vector<const Entry*> mine;
+  for (const Entry& e : clips->second) {
+    std::string p = e.pname;
+    for (char& c : p)
+      if (c >= 'a' && c <= 'z') c -= 'a' - 'A';
+    if (p == upper) mine.push_back(&e);
+  }
+  if (mine.empty()) return std::nullopt;
+  side.lastEventMinute[etype] = minute;
+  const Entry& e = *mine[rng_((int)mine.size())];
+  PlayAction act;
+  act.file = e.file;
+  act.speed = e.speed;
+  act.loop = false;
+  act.home = home;
+  act.pname = e.pname;
+  return act;
+}
+
+void MatchSession::SetDuration(const std::string& file, double seconds) {
+  durations_[file] = seconds;
+}
+
+double MatchSession::CachedPosition(const std::string& file) const {
+  auto it = positionCache_.find(file);
+  return it == positionCache_.end() ? 0.0 : it->second;
 }
 
 }  // namespace rigdio

@@ -96,6 +96,14 @@ struct Entry {
 
   // Selection state.
   bool firstPlay = true;     // start-seek arming (reset by reload semantics)
+  // The entry's own playback position (rigdio: each entry keeps its mpv
+  // player for the whole match, so the same entry resumes even without
+  // sync); the file-keyed cache in MatchSession is what sync adds.
+  double position = 0.0;
+
+  // Stable identity inside a Picker (the vector reshuffles on unload); the
+  // advance `skip` is matched on this, as Python matches object identity.
+  int uid = -1;
   int pauseCount = 0;        // pause restart every n
 };
 
@@ -253,13 +261,14 @@ class MatchSession {
   struct Side {
     std::map<std::string, Picker> pickers;  // per player key incl. reserved
     Picker* playing = nullptr;              // picker owning the live horn
-    Entry* playingEntry = nullptr;
+    int playingUid = -1;                    // entry uid within it
+    bool playingIsGoalhorn = false;
     double playStarted = 0.0;
     double playSeek = 0.0;
-    // decay-weighted random chants
-    std::vector<int> chantPlayCounts;
-    int lastEventMinute_red = -1, lastEventMinute_yellow = -1,
-        lastEventMinute_owngoal = -1, lastEventMinute_sub = -1;
+    double playSpeed = 1.0;
+    std::string playFile;
+    std::vector<int> chantPlayCounts;             // decay-weighted random
+    std::map<std::string, int> lastEventMinute;   // per event type
   };
   Side sides_[2];
 
