@@ -363,4 +363,236 @@ TEST(RigdioParse, MissingConditionArgumentsFailLikeRigdio) {
   EXPECT_FALSE(Parse("name;x\ngoal;a.mp3;start\n", "f").ok);   // IndexError
 }
 
+// --- songCheck (rigparse.py) -------------------------------------------------
+
+TEST(RigdioSongCheck, ExactFileWins) {
+  EXPECT_EQ(SongCheck("a.mp3", true, {"a.mp3", "b.mp3"}, true), "a.mp3");
+}
+
+TEST(RigdioSongCheck, CaseInsensitiveFallback) {
+  EXPECT_EQ(SongCheck("Goalhorn.MP3", false, {"goalhorn.mp3"}, true),
+            "goalhorn.mp3");
+}
+
+TEST(RigdioSongCheck, MissingReturnsNameUnchanged) {
+  EXPECT_EQ(SongCheck("a.mp3", false, {"b.mp3"}, true), "a.mp3");
+}
+
+TEST(RigdioSongCheck, NormalizedVariantPreferredWhenNotNormalizing) {
+  // normalize off: the _normalized stem wins even over an existing exact file.
+  EXPECT_EQ(SongCheck("a.mp3", true, {"a.mp3", "A_normalized.ogg"}, false),
+            "A_normalized.ogg");
+}
+
+TEST(RigdioSongCheck, NormalizedVariantIsLastResortWhenNormalizing) {
+  EXPECT_EQ(SongCheck("a.mp3", false, {"a_normalized.mp3"}, true),
+            "a_normalized.mp3");
+}
+
+// --- GameState (gamestate.py) ------------------------------------------------
+
+TEST(RigdioGameState, ScoreCreditsTeamAndPlayer) {
+  GameState gs;
+  gs.Score("P", true);
+  gs.Score("P", true);
+  gs.Score("Q", false);
+  EXPECT_EQ(gs.TeamScore(true), 2);
+  EXPECT_EQ(gs.TeamScore(false), 1);
+  EXPECT_EQ(gs.OpponentScore(true), 1);
+  EXPECT_EQ(gs.PlayerGoals("P", true), 2);
+  EXPECT_EQ(gs.PlayerGoals("P", false), 0);
+  EXPECT_EQ(gs.PlayerGoals("nobody", true), 0);
+}
+
+// --- condition evaluation (condition.py check methods) ------------------------
+
+namespace evalhelp {
+
+Entry ParseEntry(const std::string& fields) {
+  ParseResult r = Parse("name;me\ngoal;g.mp3;" + fields + "\n", "f");
+  EXPECT_TRUE(r.ok) << r.error;
+  return r.team.players.at("goal")[0];
+}
+
+}  // namespace evalhelp
+
+TEST(RigdioCheck, GoalsCountsThePnameNotTheTeam) {
+  GameState gs;
+  gs.Score("A", true);
+  gs.Score("goal", true);
+  Entry e = evalhelp::ParseEntry("goals == 1");
+  // pname is "goal": only the generic tally counts.
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  gs.Score("goal", true);
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, TeamGoalsAndLead) {
+  GameState gs;
+  gs.Score("A", true);
+  gs.Score("B", true);
+  gs.Score("C", false);
+  Entry tg = evalhelp::ParseEntry("teamgoals >= 2");
+  EXPECT_EQ(CheckEntry(tg, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(tg, gs, false), CheckResult::No);
+  Entry lead = evalhelp::ParseEntry("lead == 1");
+  EXPECT_EQ(CheckEntry(lead, gs, true), CheckResult::Yes);
+  Entry behind = evalhelp::ParseEntry("lead < 0");
+  EXPECT_EQ(CheckEntry(behind, gs, false), CheckResult::Yes);
+}
+
+TEST(RigdioCheck, FirstIsTeamScoreExactlyOne) {
+  GameState gs;
+  gs.Score("A", true);
+  Entry e = evalhelp::ParseEntry("first");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  gs.Score("A", true);
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, ComebackNeedsOpponentGoalsAndNotLeading) {
+  GameState gs;
+  Entry e = evalhelp::ParseEntry("comeback");
+  gs.Score("A", true);  // 1-0 up: no comeback
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+  gs.Score("X", false);
+  gs.Score("X", false);  // 1-2 down
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  gs.Score("A", true);  // 2-2: still counts (<=)
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  gs.Score("A", true);  // 3-2 up: no
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, HomeAndNotHome) {
+  GameState gs;
+  Entry home = evalhelp::ParseEntry("home");
+  EXPECT_EQ(CheckEntry(home, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(home, gs, false), CheckResult::No);
+  Entry away = evalhelp::ParseEntry("not home");
+  EXPECT_EQ(CheckEntry(away, gs, false), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(away, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, EveryDividesPnameGoals) {
+  GameState gs;
+  Entry e = evalhelp::ParseEntry("every 2");
+  gs.Score("goal", true);
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+  gs.Score("goal", true);
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+}
+
+TEST(RigdioCheck, OpponentMatchesLoadedName) {
+  GameState gs;
+  gs.names[0] = "me";
+  gs.names[1] = "hdg";
+  Entry e = evalhelp::ParseEntry("opponent hdg dbg");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(e, gs, false), CheckResult::No);  // our name is "me"
+  // Case-sensitive: loaded names are lowercased, so "HDG" never matches.
+  Entry upper = evalhelp::ParseEntry("opponent HDG");
+  EXPECT_EQ(CheckEntry(upper, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, MatchTypeAndKnockoutsExpansion) {
+  GameState gs;
+  gs.gametype = "Final";
+  Entry e = evalhelp::ParseEntry("match knockouts");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  gs.gametype = "group";
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+  Entry g = evalhelp::ParseEntry("match GROUP boss");
+  EXPECT_EQ(CheckEntry(g, gs, true), CheckResult::Yes);
+}
+
+TEST(RigdioCheck, OnceIsTrueThenUnloads) {
+  GameState gs;
+  Entry e = evalhelp::ParseEntry("once");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Unload);
+}
+
+TEST(RigdioCheck, TimeComparesGoalMinuteAndUnloadsWhenPast) {
+  GameState gs;
+  gs.minute = 10;
+  Entry early = evalhelp::ParseEntry("time <= 15");
+  EXPECT_EQ(CheckEntry(early, gs, true), CheckResult::Yes);
+  gs.minute = 20;
+  // past the threshold with an unloadable operator -> Unload
+  EXPECT_EQ(CheckEntry(early, gs, true), CheckResult::Unload);
+  Entry late = evalhelp::ParseEntry("time > 80");
+  gs.minute = 85;
+  EXPECT_EQ(CheckEntry(late, gs, true), CheckResult::Yes);
+  gs.minute = 40;
+  EXPECT_EQ(CheckEntry(late, gs, true), CheckResult::No);  // > never unloads
+}
+
+TEST(RigdioCheck, MostGoalsSelfAndSpecified) {
+  GameState gs;
+  gs.Score("A B", true);
+  gs.Score("A B", true);
+  gs.Score("B", true);
+  ParseResult r = Parse(
+      "name;me\n"
+      "goal;g.mp3\n"
+      "A B;a.mp3;mostgoals\n"
+      "B;b.mp3;mostgoals\n"
+      "C;c.mp3;mostgoals [A B]\n"
+      "D;d.mp3;mostgoals B\n",
+      "f");
+  ASSERT_TRUE(r.ok) << r.error;
+  Entry a = r.team.players.at("A B")[0];
+  Entry b = r.team.players.at("B")[0];
+  Entry c = r.team.players.at("C")[0];
+  Entry d = r.team.players.at("D")[0];
+  EXPECT_EQ(CheckEntry(a, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(b, gs, true), CheckResult::No);
+  // mostgoals [A B]: the SPECIFIED player's tally is compared. Note the
+  // brackets: only multi-word values may carry them (a single-token "[A]"
+  // IndexErrors rigdio's tokenizer and fails the load).
+  EXPECT_EQ(CheckEntry(c, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(d, gs, true), CheckResult::No);
+}
+
+TEST(RigdioCheck, SpecialIsAlwaysFalse) {
+  GameState gs;
+  // Single-word labels are written without brackets (rigdj only brackets
+  // values containing spaces; "[MVP]" as one token fails the load).
+  ParseResult r = Parse(
+      "name;me\n"
+      "victory;v.mp3;special MVP\n"
+      "victory;w.mp3;special [John 1000 MVP]\n",
+      "f");
+  ASSERT_TRUE(r.ok) << r.error;
+  EXPECT_EQ(CheckEntry(r.team.players.at("victory")[0], gs, true),
+            CheckResult::No);
+  EXPECT_EQ(CheckEntry(r.team.players.at("victory")[1], gs, true),
+            CheckResult::No);
+}
+
+TEST(RigdioCheck, CrashingConditionAborts) {
+  GameState gs;
+  gs.Score("goal", true);
+  Entry e = evalhelp::ParseEntry("goals >= x");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Crash);
+}
+
+TEST(RigdioCheck, AllConditionsMustPass) {
+  GameState gs;
+  gs.Score("goal", true);
+  Entry e = evalhelp::ParseEntry("goals == 1;home");
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Yes);
+  EXPECT_EQ(CheckEntry(e, gs, false), CheckResult::No);
+}
+
+TEST(RigdioCheck, NotPropagatesUnload) {
+  GameState gs;
+  Entry e = evalhelp::ParseEntry("not once");
+  // First check: once yields True -> not -> No.
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::No);
+  // Second: once raises UnloadSong; it propagates through not.
+  EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Unload);
+}
+
 }  // namespace
