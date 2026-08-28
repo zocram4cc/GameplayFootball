@@ -322,9 +322,14 @@ def select_meshes(meshes, max_tris, source_dir=None):
     Drops the redundant (duplicate copies, PES passes this engine does not
     render) and the hidden (kit-hiding, below), and NEVER a visible mesh:
     dbg_2014's character is 154,799 faces over 11 meshes, and cutting it to a
-    100,000-triangle budget amputated its legs. max_tris is only reported on -
-    an over-budget character ships whole, and any capacity concern is the
-    engine's to solve (LOD/decimation), not an importer's to cut limbs off.
+    100,000-triangle budget amputated its legs.
+
+    A character over `max_tris` is refused rather than trimmed. Shipping it
+    whole regardless was the other way to be wrong: the engine skins every
+    unique vertex of every player on the CPU each body tick and has no LOD, so
+    an unbounded import quietly breaches a ceiling nothing downstream enforces.
+    Raising the cap is a decision for whoever runs the import, not a silent
+    default.
 
     Kit-hiding: a multi-form 4cc fmdl carries every character the player can
     be (dbg_2009: goku, vegeta, broly, roshi, jackiechun...), each form's
@@ -363,8 +368,23 @@ def select_meshes(meshes, max_tris, source_dir=None):
                  ", ".join(hidden)))
     total = sum(len(m.faces) for m in kept)
     if max_tris and total > max_tris:
-        print("  %d faces exceeds the %d budget; keeping the character whole "
-              "rather than amputating it" % (total, max_tris))
+        # Refuse, rather than either of the two ways this has been wrong before.
+        # Amputating to fit cut dbg_2014's legs off and lcg_2709's head; shipping
+        # whole regardless replaced that with a silent breach of the runtime's
+        # ceiling, and the runtime has no LOD to absorb it: HumanoidBase CPU-skins
+        # every unique vertex of every player each body tick, so two squads of
+        # over-budget characters is hundreds of megabytes of vertex data skinned
+        # per tick. Measured on the DBG pack, the biggest single character is
+        # 212k triangles and a starting eleven is 1.83M, so a real 4cc model fits
+        # the default below comfortably and only a pathological one trips this.
+        #
+        # Failing here makes that the operator's decision - raise the cap
+        # deliberately, or decimate the source - instead of the importer quietly
+        # choosing for them. import_team reports it as a failed import.
+        raise ValueError(
+            "%d faces exceeds the %d triangle budget. The character is not "
+            "amputated to fit: either raise --max-tris knowing 22 of these are "
+            "skinned per tick, or decimate the source mesh." % (total, max_tris))
     return kept
 
 
@@ -487,20 +507,36 @@ def find_texture_file(source_dir, name):
     return None
 
 
+# How opaque a texture may be and still count as a kit-hider. Measured, not
+# guessed: all 26 hider textures in the DBG pack peak at alpha 2, and the
+# nearest genuine artwork to the line is k2016's aura_scroll at 38. Anything
+# in between is unclaimed, so the threshold sits low in the gap.
+HIDER_MAX_ALPHA = 8
+
+
 def texture_is_hider(path):
     """Whether this texture exists to hide its mesh: fully transparent.
 
     That is the 4cc kit-hiding convention - real art with alpha in it (dbg's
-    logo is 59% opaque, kidbuu 57%) stays art. Unreadable files are not
-    hiders; they fall through to the missing-texture path.
+    logo is 59% opaque, kidbuu 57%) stays art. The tolerance is not defensive
+    rounding: every hider in the DBG pack peaks at alpha 2 rather than 0.
+
+    A texture that cannot be read is not treated as a hider, but it is said
+    out loud. Swallowing the error silently turns kit-hiding off for a whole
+    pack and reimports every multi-form character as a chimera, with a clean
+    parse and a healthy mesh count reporting nothing wrong - which is the
+    exact failure AGENTS.md exists to prevent.
     """
     try:
         from PIL import Image
         image = Image.open(path)
         image.load()
         alpha = image.convert("RGBA").getchannel("A")
-        return alpha.getextrema()[1] <= 8
-    except Exception:
+        return alpha.getextrema()[1] <= HIDER_MAX_ALPHA
+    except Exception as error:
+        print("  cannot read %s (%s: %s); treating it as visible art, so any "
+              "mesh it hides will be imported"
+              % (os.path.basename(path), type(error).__name__, error))
         return False
 
 

@@ -59,13 +59,32 @@ def fake_mesh(faces, material="body", texture=None, seed=0.0):
 
 
 class BudgetNeverAmputates(unittest.TestCase):
-    def test_a_character_bigger_than_the_budget_ships_whole(self):
+    def test_a_character_within_the_budget_ships_whole(self):
         """dbg_2014: every distinct mesh is part of the character; dropping
-        any of them tears the body apart."""
+        any of them tears the body apart. Nothing is trimmed to fit."""
         meshes = [fake_mesh(60000, seed=1.0), fake_mesh(60000, seed=2.0),
                   fake_mesh(40000, seed=3.0)]
-        kept = fmdl_to_fullbody.select_meshes(meshes, 100000)
+        kept = fmdl_to_fullbody.select_meshes(meshes, 250000)
         self.assertEqual(len(kept), 3)
+
+    def test_a_character_over_the_budget_is_refused_not_trimmed(self):
+        """The two ways this has been wrong: trimming to fit amputated real
+        characters, and shipping whole regardless breached a runtime ceiling
+        nothing downstream enforces - the engine CPU-skins every vertex of
+        every player each tick and has no LOD. So it fails, loudly, and
+        raising the cap is the operator's call."""
+        meshes = [fake_mesh(60000, seed=1.0), fake_mesh(60000, seed=2.0),
+                  fake_mesh(40000, seed=3.0)]
+        with self.assertRaises(ValueError) as raised:
+            fmdl_to_fullbody.select_meshes(meshes, 100000)
+        # The message has to name both numbers or it cannot be acted on.
+        self.assertIn("160000", str(raised.exception))
+        self.assertIn("100000", str(raised.exception))
+
+    def test_no_budget_means_no_ceiling(self):
+        """An explicit 0/None is the deliberate opt-out."""
+        meshes = [fake_mesh(500000, seed=1.0)]
+        self.assertEqual(len(fmdl_to_fullbody.select_meshes(meshes, None)), 1)
 
     def test_duplicate_copies_are_still_removed(self):
         """4cc fmdls ship every mesh twice; the copy is redundant, not fidelity."""
