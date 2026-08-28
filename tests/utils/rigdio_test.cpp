@@ -6,6 +6,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+
+#ifndef TESTDATA_EXPORTS
+#define TESTDATA_EXPORTS ""
+#endif
 using namespace rigdio;
 
 namespace {
@@ -586,6 +593,472 @@ TEST(RigdioCheck, AllConditionsMustPass) {
   EXPECT_EQ(CheckEntry(e, gs, false), CheckResult::No);
 }
 
+// --- selection (legacy.py PlayerManager.getSong) -------------------------------
+
+namespace pickhelp {
+
+// Deterministic "random": always picks index 0 unless told otherwise.
+Rng Fixed(int v = 0) {
+  return [v](int n) { return v < n ? v : n - 1; };
+}
+
+Picker From(const std::string& fourccm, const std::string& key) {
+  ParseResult r = Parse(fourccm, "f");
+  EXPECT_TRUE(r.ok) << r.error;
+  return Picker(r.team.players.at(key));
+}
+
+}  // namespace pickhelp
+
+TEST(RigdioPick, FirstPassingEntryInFileOrder) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;one.mp3;goals == 1\n"
+      "goal;two.mp3;goals == 2\n"
+      "goal;any.mp3\n",
+      "goal");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed())->file, "one.mp3");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed())->file, "two.mp3");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed())->file, "any.mp3");
+}
+
+TEST(RigdioPick, NothingMatchesMeansNothingPlays) {
+  GameState gs;
+  Picker p = pickhelp::From("name;x\ngoal;one.mp3;goals == 1\n", "goal");
+  gs.Score("goal", true);
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed()), nullptr);
+}
+
+TEST(RigdioPick, UnloadRemovesEntryPermanently) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;once.mp3;once\n"
+      "goal;fallback.mp3\n",
+      "goal");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed())->file, "once.mp3");
+  gs.Score("goal", true);
+  // Second check of `once` raises UnloadSong: removed, fallback plays...
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed())->file, "fallback.mp3");
+  EXPECT_EQ(p.entries().size(), 1u);  // ...and it is gone for good.
+}
+
+TEST(RigdioPick, CrashingEntryAbortsTheWholePick) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;bad.mp3;goals >= x\n"
+      "goal;good.mp3\n",
+      "goal");
+  gs.Score("goal", true);
+  // rigdio's eval NameError propagates: nothing plays, nothing is removed.
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed()), nullptr);
+  EXPECT_EQ(p.entries().size(), 2u);
+}
+
+TEST(RigdioPick, AllRandomisePicksRandomIgnoringConditions) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;a.mp3;randomise;goals == 5\n"
+      "goal;b.mp3;randomise\n"
+      "goal;c.mp3;randomise\n",
+      "goal");
+  gs.Score("goal", true);
+  // Conditions are ignored once the all-randomise rule engages: index 0 is
+  // returned even though its goals == 5 fails.
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(0))->file, "a.mp3");
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(2))->file, "c.mp3");
+}
+
+TEST(RigdioPick, PartialRandomiseFallsThroughToPriority) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;a.mp3;randomise;goals == 1\n"
+      "goal;b.mp3;goals == 1\n"
+      "goal;c.mp3\n",
+      "goal");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(1))->file, "a.mp3");
+  gs.Score("goal", true);
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(1))->file, "c.mp3");
+}
+
+TEST(RigdioPick, WarcryPlaysThenChainsToNonWarcry) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "victory;cry.ogg;warcry\n"
+      "victory;anthem.mp3\n",
+      "victory");
+  // Armed: the warcry wins even though the anthem also passes.
+  Entry* first = p.Pick(gs, true, pickhelp::Fixed());
+  ASSERT_NE(first, nullptr);
+  EXPECT_EQ(first->file, "cry.ogg");
+  EXPECT_TRUE(first->warcry);
+  // The warcry ended: the chain picks the first non-warcry entry...
+  p.warcryArmed = false;
+  Entry* second = p.Pick(gs, true, pickhelp::Fixed());
+  ASSERT_NE(second, nullptr);
+  EXPECT_EQ(second->file, "anthem.mp3");
+  // ...and re-arms for the next trigger (PlayerManager sets warcry = True).
+  EXPECT_TRUE(p.warcryArmed);
+}
+
+TEST(RigdioPick, RandomisedWarcriesPickRandomly) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "victory;cry1.ogg;warcry;randomise\n"
+      "victory;cry2.ogg;warcry;randomise\n"
+      "victory;anthem.mp3\n",
+      "victory");
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(1))->file, "cry2.ogg");
+}
+
+TEST(RigdioPick, AdvanceSkipsTheEndedEntry) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;a.mp3;advance\n"
+      "goal;b.mp3\n",
+      "goal");
+  gs.Score("goal", true);
+  Entry* a = p.Pick(gs, true, pickhelp::Fixed());
+  EXPECT_EQ(a->file, "a.mp3");
+  // a.mp3 ended (advance): rerun with skip.
+  Entry* b = p.Pick(gs, true, pickhelp::Fixed(), a);
+  ASSERT_NE(b, nullptr);
+  EXPECT_EQ(b->file, "b.mp3");
+}
+
+TEST(RigdioPick, AdvanceFallsBackToSkippedWhenAlone) {
+  GameState gs;
+  Picker p = pickhelp::From("name;x\ngoal;a.mp3;advance\n", "goal");
+  gs.Score("goal", true);
+  Entry* a = p.Pick(gs, true, pickhelp::Fixed());
+  ASSERT_NE(a, nullptr);
+  // No other entry: the final fallback replays the skipped song itself.
+  EXPECT_EQ(p.Pick(gs, true, pickhelp::Fixed(), a), a);
+}
+
+TEST(RigdioPick, AdvanceFallbackIgnoresConditions) {
+  GameState gs;
+  Picker p = pickhelp::From(
+      "name;x\n"
+      "goal;a.mp3;advance\n"
+      "goal;b.mp3;goals == 99\n",
+      "goal");
+  gs.Score("goal", true);
+  Entry* a = p.Pick(gs, true, pickhelp::Fixed());
+  // b fails its condition, but the advance fallback takes the first
+  // non-warcry entry that isn't the skipped one - conditions unchecked.
+  Entry* b = p.Pick(gs, true, pickhelp::Fixed(), a);
+  ASSERT_NE(b, nullptr);
+  EXPECT_EQ(b->file, "b.mp3");
+}
+
+// --- MatchSession: what the streamer's hands do ------------------------------
+
+namespace sesshelp {
+
+const char* kHome =
+    "name;hteam\n"
+    "anthem;h_anthem.mp3\n"
+    "victory;h_victory.mp3\n"
+    "goal;h_goal.mp3\n"
+    "chant;h_chant1.mp3\n"
+    "chant;h_chant2.mp3;unrandom\n"
+    "Scorer;h_scorer.mp3;goals == 1\n"
+    "Scorer;h_scorer2.mp3;goals >= 2\n";
+
+const char* kAway =
+    "name;ateam\n"
+    "anthem;a_anthem.mp3\n"
+    "victory;a_victory.mp3\n"
+    "goal;a_goal.mp3\n";
+
+MatchSession Make(const std::string& home = kHome,
+                  const std::string& away = kAway, int rngPick = 0) {
+  ParseResult h = Parse(home, "h");
+  ParseResult a = Parse(away, "a");
+  EXPECT_TRUE(h.ok) << h.error;
+  EXPECT_TRUE(a.ok) << a.error;
+  return MatchSession(h.team, a.team, "group",
+                      [rngPick](int n) { return rngPick < n ? rngPick : n - 1; });
+}
+
+}  // namespace sesshelp
+
+TEST(RigdioSession, TeamNamesAreLoadedIntoState) {
+  MatchSession s = sesshelp::Make();
+  EXPECT_EQ(s.State().names[0], "hteam");
+  EXPECT_EQ(s.State().names[1], "ateam");
+}
+
+TEST(RigdioSession, GoalCreditsScorerBeforeSelecting) {
+  MatchSession s = sesshelp::Make();
+  auto act = s.OnGoal(true, "Scorer", 10, 100.0);
+  ASSERT_TRUE(act.has_value());
+  EXPECT_EQ(act->file, "h_scorer.mp3");  // goals == 1 passed: counted first
+  EXPECT_EQ(s.State().TeamScore(true), 1);
+  EXPECT_EQ(s.State().PlayerGoals("Scorer", true), 1);
+}
+
+TEST(RigdioSession, ScorerNameMatchIsCaseInsensitive) {
+  MatchSession s = sesshelp::Make();
+  auto act = s.OnGoal(true, "SCORER", 10, 100.0);
+  ASSERT_TRUE(act.has_value());
+  EXPECT_EQ(act->file, "h_scorer.mp3");
+  // The tally is credited under the .4ccm pname.
+  EXPECT_EQ(s.State().PlayerGoals("Scorer", true), 1);
+}
+
+TEST(RigdioSession, UnknownScorerUsesTheGoalButton) {
+  MatchSession s = sesshelp::Make();
+  auto act = s.OnGoal(true, "Nobody", 10, 100.0);
+  ASSERT_TRUE(act.has_value());
+  EXPECT_EQ(act->file, "h_goal.mp3");
+  // Credited as pname "goal", exactly like the streamer's goal button.
+  EXPECT_EQ(s.State().PlayerGoals("goal", true), 1);
+  EXPECT_EQ(s.State().PlayerGoals("Nobody", true), 0);
+  EXPECT_EQ(s.State().TeamScore(true), 1);
+}
+
+TEST(RigdioSession, HornResumesAcrossGoals) {
+  // THE cross-goal persistence contract: two goals, one file, the second
+  // play resumes where the kickoff pause left off.
+  MatchSession s = sesshelp::Make();
+  s.SetDuration("h_goal.mp3", 300.0);
+  auto first = s.OnGoal(true, "Nobody", 5, 100.0);
+  ASSERT_TRUE(first.has_value());
+  EXPECT_DOUBLE_EQ(first->seekSeconds, 0.0);
+  s.OnHornPaused(true, 130.0);  // kicked off 30 s into the horn
+  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 30.0);
+  auto second = s.OnGoal(true, "Nobody", 40, 900.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_EQ(second->file, "h_goal.mp3");
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 30.0);  // resumed, not restarted
+}
+
+TEST(RigdioSession, ResumePositionWrapsAtDuration) {
+  MatchSession s = sesshelp::Make();
+  s.SetDuration("h_goal.mp3", 60.0);
+  s.OnGoal(true, "Nobody", 5, 0.0);
+  s.OnHornPaused(true, 130.0);  // 130 s into a 60 s loop -> 10 s
+  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 10.0);
+}
+
+TEST(RigdioSession, SyncNoStillResumesTheSameEntry) {
+  // Every entry owns its player for the whole match, so the SAME entry
+  // resumes even with sync;no. What sync adds is sharing across different
+  // entries of the same file (legacy.py _position_cache comment).
+  std::string homeNoSync =
+      "name;hteam\nsync;no\ngoal;h_goal.mp3\n";
+  MatchSession s = sesshelp::Make(homeNoSync);
+  s.SetDuration("h_goal.mp3", 300.0);
+  s.OnGoal(true, "Nobody", 5, 100.0);
+  s.OnHornPaused(true, 130.0);
+  auto second = s.OnGoal(true, "Nobody", 40, 900.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 30.0);  // its own position
+}
+
+TEST(RigdioSession, SyncNoDoesNotShareAcrossEntries) {
+  std::string homeNoSync =
+      "name;hteam\nsync;no\n"
+      "goal;same.mp3;goals == 1\n"
+      "goal;same.mp3;goals >= 2\n";
+  MatchSession s = sesshelp::Make(homeNoSync);
+  s.SetDuration("same.mp3", 300.0);
+  s.OnGoal(true, "Nobody", 5, 0.0);
+  s.OnHornPaused(true, 25.0);
+  auto second = s.OnGoal(true, "Nobody", 30, 100.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 0.0);  // a different entry: fresh
+}
+
+TEST(RigdioSession, StartInstructionSeeksOnlyFirstPlay) {
+  std::string home =
+      "name;hteam\ngoal;h_goal.mp3;start 0:30\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("h_goal.mp3", 300.0);
+  auto first = s.OnGoal(true, "Nobody", 5, 0.0);
+  ASSERT_TRUE(first.has_value());
+  EXPECT_DOUBLE_EQ(first->seekSeconds, 30.0);  // the start seek
+  s.OnHornPaused(true, 20.0);                  // played 30..50
+  auto second = s.OnGoal(true, "Nobody", 20, 100.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 50.0);  // resumed, not re-seeked
+}
+
+TEST(RigdioSession, DifferentEntrySameFileSharesPosition) {
+  // The cache is keyed by file, not entry (rigdio keys on abspath).
+  std::string home =
+      "name;hteam\n"
+      "goal;same.mp3;goals == 1\n"
+      "goal;same.mp3;goals >= 2\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("same.mp3", 300.0);
+  s.OnGoal(true, "Nobody", 5, 0.0);
+  s.OnHornPaused(true, 25.0);
+  auto second = s.OnGoal(true, "Nobody", 30, 100.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 25.0);
+}
+
+TEST(RigdioSession, EndStopClearsThePositionCache) {
+  std::string home =
+      "name;hteam\ngoal;h_goal.mp3;end stop;start 0:10\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("h_goal.mp3", 300.0);
+  auto first = s.OnGoal(true, "Nobody", 5, 0.0);
+  EXPECT_DOUBLE_EQ(first->seekSeconds, 10.0);
+  EXPECT_FALSE(first->loop);
+  // Natural EOF with end stop: reloadSong semantics - cache cleared,
+  // first-play seek re-armed, nothing new starts.
+  auto after = s.OnHornEnded(true, 250.0);
+  EXPECT_FALSE(after.has_value());
+  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 0.0);
+  auto second = s.OnGoal(true, "Nobody", 40, 500.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 10.0);  // start seek runs again
+}
+
+TEST(RigdioSession, VictoryWarcryChainsIntoAnthem) {
+  std::string home =
+      "name;hteam\n"
+      "victory;cry.ogg;warcry\n"
+      "victory;anthem.mp3\n";
+  MatchSession s = sesshelp::Make(home);
+  auto cry = s.Victory(true, 0.0);
+  ASSERT_TRUE(cry.has_value());
+  EXPECT_EQ(cry->file, "cry.ogg");
+  EXPECT_TRUE(cry->isWarcry);
+  EXPECT_FALSE(cry->loop);
+  // The warcry hit EOF: the chain hands over to the anthem.
+  auto chained = s.OnHornEnded(true, 8.0);
+  ASSERT_TRUE(chained.has_value());
+  EXPECT_EQ(chained->file, "anthem.mp3");
+}
+
+TEST(RigdioSession, AdvanceEntryChainsOnEnd) {
+  std::string home =
+      "name;hteam\n"
+      "goal;a.mp3;advance\n"
+      "goal;b.mp3\n";
+  MatchSession s = sesshelp::Make(home);
+  auto a = s.OnGoal(true, "Nobody", 5, 0.0);
+  ASSERT_TRUE(a.has_value());
+  EXPECT_EQ(a->file, "a.mp3");
+  EXPECT_TRUE(a->advance);
+  auto b = s.OnHornEnded(true, 60.0);
+  ASSERT_TRUE(b.has_value());
+  EXPECT_EQ(b->file, "b.mp3");
+}
+
+TEST(RigdioSession, AnthemAndVictoryPickPerSide) {
+  MatchSession s = sesshelp::Make();
+  auto away = s.Anthem(false, 0.0);
+  ASSERT_TRUE(away.has_value());
+  EXPECT_EQ(away->file, "a_anthem.mp3");
+  EXPECT_TRUE(away->loop);  // anthems loop in rigdio
+  auto home = s.Anthem(true, 30.0);
+  ASSERT_TRUE(home.has_value());
+  EXPECT_EQ(home->file, "h_anthem.mp3");
+  auto vic = s.Victory(true, 0.0);
+  ASSERT_TRUE(vic.has_value());
+  EXPECT_EQ(vic->file, "h_victory.mp3");
+  EXPECT_FALSE(vic->loop);  // victory never loops
+}
+
+TEST(RigdioSession, ChantsFireOneAtATimeAndHonourUnrandom) {
+  MatchSession s = sesshelp::Make();
+  auto c1 = s.Chant(true);
+  ASSERT_TRUE(c1.has_value());
+  // h_chant2 is unrandom: never in the random pool.
+  EXPECT_EQ(c1->file, "h_chant1.mp3");
+  EXPECT_FALSE(c1->loop);
+  // Denied while one is active.
+  EXPECT_FALSE(s.Chant(true).has_value());
+  EXPECT_FALSE(s.Chant(false).has_value());
+  s.ChantEnded();
+  EXPECT_TRUE(s.Chant(true).has_value());
+}
+
+TEST(RigdioSession, TeamWithoutChantsFiresNothing) {
+  MatchSession s = sesshelp::Make();
+  EXPECT_FALSE(s.Chant(false).has_value());  // away has no chants
+  // ...and that did not lock the chant slot.
+  EXPECT_TRUE(s.Chant(true).has_value());
+}
+
+TEST(RigdioSession, EventsFireOncePerMinutePerType) {
+  std::string home =
+      "name;hteam\n"
+      "goal;g.mp3\n"
+      "P;oops.mp3;event owngoal\n";
+  MatchSession s = sesshelp::Make(home);
+  auto e1 = s.OnEvent(true, "owngoal", "P", 10);
+  ASSERT_TRUE(e1.has_value());
+  EXPECT_EQ(e1->file, "oops.mp3");
+  EXPECT_FALSE(e1->loop);
+  // Same minute: suppressed (event.py checkAndPlay: etime > last).
+  EXPECT_FALSE(s.OnEvent(true, "owngoal", "P", 10).has_value());
+  EXPECT_TRUE(s.OnEvent(true, "owngoal", "P", 11).has_value());
+  // Unknown player or type: nothing.
+  EXPECT_FALSE(s.OnEvent(true, "owngoal", "Q", 20).has_value());
+  EXPECT_FALSE(s.OnEvent(true, "red", "P", 20).has_value());
+  // Player matching is upper-cased in event.py.
+  EXPECT_TRUE(s.OnEvent(true, "owngoal", "p", 30).has_value());
+}
+
+TEST(RigdioSession, PauseRestartOverriddenBySyncCache) {
+  // Faithful quirk: with sync on, the cache is saved BEFORE the restart
+  // seek, so pause;restart has no audible effect (docs/RIGDIO.md section 4).
+  std::string home =
+      "name;hteam\ngoal;h_goal.mp3;pause restart\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("h_goal.mp3", 300.0);
+  s.OnGoal(true, "Nobody", 5, 0.0);
+  s.OnHornPaused(true, 40.0);
+  auto second = s.OnGoal(true, "Nobody", 30, 100.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 40.0);
+}
+
+TEST(RigdioSession, PauseRestartWorksWithSyncNo) {
+  std::string home =
+      "name;hteam\nsync;no\ngoal;h_goal.mp3;pause restart;start 0:05\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("h_goal.mp3", 300.0);
+  auto first = s.OnGoal(true, "Nobody", 5, 0.0);
+  EXPECT_DOUBLE_EQ(first->seekSeconds, 5.0);
+  s.OnHornPaused(true, 40.0);
+  auto second = s.OnGoal(true, "Nobody", 30, 100.0);
+  ASSERT_TRUE(second.has_value());
+  EXPECT_DOUBLE_EQ(second->seekSeconds, 5.0);  // restarted at start time
+}
+
+TEST(RigdioSession, SpeedRidesOnTheAction) {
+  std::string home = "name;hteam\ngoal;h_goal.mp3;speed 1.5\n";
+  MatchSession s = sesshelp::Make(home);
+  s.SetDuration("h_goal.mp3", 300.0);
+  auto act = s.OnGoal(true, "Nobody", 5, 0.0);
+  ASSERT_TRUE(act.has_value());
+  EXPECT_DOUBLE_EQ(act->speed, 1.5);
+  // Position advances at playback speed.
+  s.OnHornPaused(true, 20.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 30.0);
+}
+
 TEST(RigdioCheck, NotPropagatesUnload) {
   GameState gs;
   Entry e = evalhelp::ParseEntry("not once");
@@ -595,4 +1068,192 @@ TEST(RigdioCheck, NotPropagatesUnload) {
   EXPECT_EQ(CheckEntry(e, gs, true), CheckResult::Unload);
 }
 
+
+// --- fidelity against the real exports ---------------------------------------
+//
+// Reads the community exports linked from exports.txt when present (they are
+// never committed; set GF_RIGDIO_EXPORTS or keep them in .exports/). Every
+// expectation here states what rigdio v2.2.0 itself would do with the file.
+
+namespace fidelity {
+
+namespace fs = std::filesystem;
+
+fs::path ExportRoot() {
+  const char* env = std::getenv("GF_RIGDIO_EXPORTS");
+  if (env && *env) return fs::path(env);
+  return fs::path(TESTDATA_EXPORTS);
+}
+
+// The folder holding the given team's .4ccm, or empty.
+fs::path FindFourccm(const std::string& team, const std::string& name) {
+  fs::path root = ExportRoot() / team;
+  std::error_code ec;
+  for (fs::recursive_directory_iterator it(root, ec), end; it != end;
+       it.increment(ec)) {
+    if (ec) break;
+    if (it->path().filename() == name) return it->path();
+  }
+  return {};
+}
+
+struct Loaded {
+  ParseResult parsed;
+  std::vector<std::string> listing;   // folder's direct children
+  std::vector<std::string> missing;   // unresolvable files, rigdio-style
+};
+
+Loaded Load(const std::string& team, const std::string& name) {
+  Loaded out;
+  fs::path file = FindFourccm(team, name);
+  if (file.empty()) return out;
+  std::ifstream in(file);
+  std::string text((std::istreambuf_iterator<char>(in)),
+                   std::istreambuf_iterator<char>());
+  out.parsed = Parse(text, file.stem().string());
+  for (const auto& e : fs::directory_iterator(file.parent_path()))
+    out.listing.push_back(e.path().filename().string());
+  if (out.parsed.ok) {
+    auto resolve = [&](const Entry& e) {
+      const bool exact = fs::exists(file.parent_path() / e.file);
+      const std::string got =
+          SongCheck(e.file, exact, out.listing, out.parsed.team.normalize);
+      if (!fs::exists(file.parent_path() / got)) out.missing.push_back(e.file);
+    };
+    // Only the entries rigdio itself would load (players + events), before
+    // the goal-fallback duplication skews the count.
+    for (const auto& kv : out.parsed.team.players)
+      for (const Entry& e : kv.second)
+        if (e.pname == kv.first) resolve(e);
+    for (const auto& kv : out.parsed.team.events)
+      for (const Entry& e : kv.second) resolve(e);
+  }
+  return out;
+}
+
+#define REQUIRE_EXPORT(loaded, team)                                       \
+  if ((loaded).listing.empty())                                            \
+    GTEST_SKIP() << "export for " << (team) << " not present";
+
+}  // namespace fidelity
+
+TEST(RigdioFidelity, HdgParsesCleanAndComplete) {
+  fidelity::Loaded l = fidelity::Load("hdg", "hdg.4ccm");
+  REQUIRE_EXPORT(l, "hdg");
+  ASSERT_TRUE(l.parsed.ok) << l.parsed.error;
+  const TeamMusic& t = l.parsed.team;
+  EXPECT_EQ(t.tname, "hdg");
+  EXPECT_TRUE(t.sync);
+  EXPECT_TRUE(t.normalize);
+  EXPECT_EQ(t.players.at("anthem").size(), 1u);
+  EXPECT_EQ(t.players.at("victory").size(), 4u);
+  EXPECT_EQ(t.players.at("goal").size(), 1u);
+  EXPECT_EQ(t.players.at("chant").size(), 7u);
+  // 5 named players, each with the goal entry appended.
+  EXPECT_EQ(t.players.size(), 4u + 5u);
+  EXPECT_EQ(t.players.at("John Helldiver").size(), 2u);
+  // start 0:30.5 on the arrowhead horn.
+  EXPECT_DOUBLE_EQ(t.players.at("Chief Vagueposting Officer")[0].startSeconds,
+                   30.5);
+  // Every referenced file resolves (the .mp4 chant EXISTS - decoding it is
+  // the engine's documented divergence, not a missing file).
+  EXPECT_TRUE(l.missing.empty());
+}
+
+TEST(RigdioFidelity, HdgVictoryLadder) {
+  fidelity::Loaded l = fidelity::Load("hdg", "hdg.4ccm");
+  REQUIRE_EXPORT(l, "hdg");
+  ASSERT_TRUE(l.parsed.ok);
+  GameState gs;
+  Picker p(l.parsed.team.players.at("victory"));
+  // Warcry mode: warcry1 wins; specials are false; the anthem waits.
+  Entry* cry = p.Pick(gs, true, [](int n) { return 0; });
+  ASSERT_NE(cry, nullptr);
+  EXPECT_EQ(cry->file, "victory_warcry1.ogg");
+  // The warcry ends: the chain must land on victory_anthem.mp3, skipping
+  // the two special warcries.
+  p.warcryArmed = false;
+  Entry* anthem = p.Pick(gs, true, [](int n) { return 0; });
+  ASSERT_NE(anthem, nullptr);
+  EXPECT_EQ(anthem->file, "victory_anthem.mp3");
+}
+
+TEST(RigdioFidelity, TwoHugParsesCleanAndLaddersByGoals) {
+  fidelity::Loaded l = fidelity::Load("2hug", "2hug.4ccm");
+  REQUIRE_EXPORT(l, "2hug");
+  ASSERT_TRUE(l.parsed.ok) << l.parsed.error;
+  const TeamMusic& t = l.parsed.team;
+  EXPECT_EQ(t.tname, "2hug");
+  EXPECT_EQ(t.players.at("goal").size(), 3u);
+  EXPECT_EQ(t.players.at("chant").size(), 6u);
+  EXPECT_TRUE(l.missing.empty()) << l.missing[0];
+
+  // Pls Rember's ladder: goals == 1 / == 2 / >= 3, then the goal fallback.
+  GameState gs;
+  Picker p(t.players.at("Pls Rember"));
+  auto rng = [](int n) { return 0; };
+  gs.Score("Pls Rember", true);
+  EXPECT_EQ(p.Pick(gs, true, rng)->file, "pls rember Goalhorn.mp3");
+  gs.Score("Pls Rember", true);
+  EXPECT_EQ(p.Pick(gs, true, rng)->file, "Rember1.mp3");
+  gs.Score("Pls Rember", true);
+  EXPECT_EQ(p.Pick(gs, true, rng)->file, "Rember2.mp3");
+  gs.Score("Pls Rember", true);
+  EXPECT_EQ(p.Pick(gs, true, rng)->file, "Rember2.mp3");  // >= 3 still true
+}
+
+TEST(RigdioFidelity, TwoHugTenguPartialRandomiseIsPriority) {
+  // Only 2 of Tengu Thursday's 4 entries carry randomise: the all-randomise
+  // rule must NOT engage; file order decides.
+  fidelity::Loaded l = fidelity::Load("2hug", "2hug.4ccm");
+  REQUIRE_EXPORT(l, "2hug");
+  ASSERT_TRUE(l.parsed.ok);
+  GameState gs;
+  Picker p(l.parsed.team.players.at("Tengu Thursday"));
+  gs.Score("Tengu Thursday", true);
+  EXPECT_EQ(p.Pick(gs, true, [](int n) { return 1; })->file, "tengu 1.mp3");
+}
+
+TEST(RigdioFidelity, DbgVgl26MissingFilesMatchRigdio) {
+  fidelity::Loaded l = fidelity::Load("dbg", "dbgvgl26.4ccm");
+  REQUIRE_EXPORT(l, "dbg");
+  ASSERT_TRUE(l.parsed.ok) << l.parsed.error;
+  const TeamMusic& t = l.parsed.team;
+  EXPECT_EQ(t.tname, "dbg");
+  EXPECT_EQ(t.players.at("anthem").size(), 5u);
+  EXPECT_EQ(t.players.at("victory").size(), 6u);
+  EXPECT_EQ(t.players.at("chant").size(), 26u);
+  // rigdio would REFUSE this export: exactly these three files are
+  // unresolvable (docs/RIGDIO.md divergence #1 logs-and-continues).
+  EXPECT_EQ(l.missing,
+            (std::vector<std::string>{"gogetagoalhorn.mp3",
+                                      "Gogeta_Da_Brace_Horn_2021.mp3",
+                                      "GogetaDaHattrickHorn.mp3",
+                                      "gogetagoalhorn.mp3"}));
+}
+
+TEST(RigdioFidelity, DbgAnthemsAllRandomise) {
+  fidelity::Loaded l = fidelity::Load("dbg", "dbgvgl26.4ccm");
+  REQUIRE_EXPORT(l, "dbg");
+  ASSERT_TRUE(l.parsed.ok);
+  GameState gs;
+  Picker p(l.parsed.team.players.at("anthem"));
+  // All five anthems carry randomise: any index is reachable.
+  EXPECT_EQ(p.Pick(gs, true, [](int n) { return 4; })->file,
+            "Anthem - Tenkaichi 3.mp3");
+  EXPECT_EQ(p.Pick(gs, true, [](int n) { return 0; })->file,
+            "Anthem - Budokai 3 (Main).mp3");
+}
+
+TEST(RigdioFidelity, DbgSpecialVictoryAnthemsNeverAutoPlay) {
+  fidelity::Loaded l = fidelity::Load("dbg", "dbgvgl26.4ccm");
+  REQUIRE_EXPORT(l, "dbg");
+  ASSERT_TRUE(l.parsed.ok);
+  GameState gs;
+  Picker p(l.parsed.team.players.at("victory"));
+  // The default VA is first in file order; the five MVP specials are false.
+  Entry* e = p.Pick(gs, true, [](int n) { return 0; });
+  ASSERT_NE(e, nullptr);
+  EXPECT_EQ(e->file, "VA - Dan Dan Kokoro Hikareteku.mp3");
+}
 }  // namespace

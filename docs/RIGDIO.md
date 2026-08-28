@@ -203,8 +203,11 @@ Playback state across goals (`sync`, default on):
   play restores the cached position instead.
 - `end stop` reaching EOF, or rigdio's reset button, clears the file's cache
   entry and re-arms the first-play seek.
-- With `sync;no`, nothing is cached and every play starts from the beginning
-  (or the `start` time).
+- With `sync;no` the file cache is off, but a given entry still resumes its
+  own position — every entry keeps its own player for the whole match. What
+  the flag removes is the sharing across different entries of the same file
+  (and cache survival across rigdio's team reloads, which have no engine
+  equivalent).
 
 Anthems and victory anthems: same selection walk, no position cache. The
 away anthem is played first; starting the home anthem pauses (fades) the

@@ -169,6 +169,9 @@ add_executable(gameplayfootball_rigdio_tests
 target_include_directories(gameplayfootball_rigdio_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src
 )
+target_compile_definitions(gameplayfootball_rigdio_tests PRIVATE
+  TESTDATA_EXPORTS="${PROJECT_SOURCE_DIR}/.exports"
+)
 target_link_libraries(gameplayfootball_rigdio_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_rigdio_tests DISCOVERY_MODE PRE_TEST)
 
