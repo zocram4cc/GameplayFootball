@@ -249,13 +249,8 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   if (introTrack.empty() && !entranceDisabled) {
     // "media/objects/stadiums/pes_st060/..." -> "st060"
     std::string stadiumToken;
-    {
-      const std::string stadiumPath =
-          GetConfiguration()->Get("stadium_object", "");
-      const size_t at = stadiumPath.find("st");
-      if (at != std::string::npos && at + 5 <= stadiumPath.size())
-        stadiumToken = stadiumPath.substr(at, 5);
-    }
+    stadiumToken =
+        EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
     const std::string entranceRoot =
         GetConfiguration()->Get("entrance_dir", "media/cutscenes/ent");
     std::vector<std::string> entranceDirs;
@@ -278,6 +273,34 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
             entry.path().filename().string().find(stadiumToken) != std::string::npos)
           stadiumMatches.push_back(path);
       }
+    }
+    // A shot authored for THIS ground, wherever it comes from, beats one
+    // authored for another.
+    //
+    // PES writes its entrance cameras per stadium - the filename carries the
+    // code - and a family that has no shot for the ground being played falls
+    // back to st000's, which is a camera placed at another stadium's tunnel
+    // mouth. On Planet Namek that puts the lens among the walking players:
+    // two of them fill the frame and are cut off at the bottom.
+    //
+    // So when the named family has nothing for this stadium, the other
+    // families are asked before settling for a foreign camera. Entrance 020
+    // has no st017 shot; 001 and 011 do.
+    if (stadiumMatches.empty() && !stadiumToken.empty() && !entranceID.empty()) {
+      for (const auto& entry : std::filesystem::directory_iterator(entranceRoot, ec)) {
+        if (!entry.is_directory()) continue;
+        for (const auto& shot : std::filesystem::directory_iterator(entry.path(), ec)) {
+          if (shot.path().extension() != ".camtrack") continue;
+          if (shot.path().filename().string().find(stadiumToken) != std::string::npos)
+            stadiumMatches.push_back(shot.path().string());
+        }
+      }
+      if (!stadiumMatches.empty())
+        Log(e_Notice, "Match", "Match",
+            "entrance " + entranceID + " has no " + stadiumToken +
+                " shot; borrowing " + int_to_str((int)stadiumMatches.size()) +
+                " from another family rather than filming this ground with "
+                "another ground's camera");
     }
     const std::vector<std::string>& pick =
         stadiumMatches.empty() ? candidates : stadiumMatches;
