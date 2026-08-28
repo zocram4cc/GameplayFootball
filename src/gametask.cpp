@@ -227,6 +227,7 @@ void GameTask::PutPhase() {
     }
 
     match->UploadGoalNetting();
+    match->UploadPennantCloth();
     match->UploadCornerFlags();  // won't this block the whole process thing too? (opengl busy ==
                                  // wait, while mutex locked == no process)
   }

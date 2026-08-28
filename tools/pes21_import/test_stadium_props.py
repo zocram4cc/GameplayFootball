@@ -617,3 +617,64 @@ class GroundFootprint(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ThePennantIsHeldNotDropped(unittest.TestCase):
+    """PES drives the circle flag as cloth and ships it in its rest pose: flat,
+    its rim at 0.10 m, a metre under the ring of hands holding it. Imported
+    static it renders as a dark disc lying on the centre circle inside a ring of
+    men holding nothing, which is how it shipped."""
+
+    def bearer_ring(self, hand_z=1.10, radius=8.27, count=24):
+        """A ring of men: feet on the grass, hands out at hand_z, heads above."""
+        import math
+        out = []
+        for i in range(count):
+            a = 2 * math.pi * i / count
+            for z in (0.0, 0.05, 0.5, hand_z, hand_z, hand_z, 1.7, 1.8):
+                out.append((radius * math.cos(a), radius * math.sin(a), z))
+        return out
+
+    def flat_flag(self, rim_z=0.10, radius=8.27, count=40):
+        import math
+        out = []
+        for i in range(count):
+            a = 2 * math.pi * i / count
+            out.append((radius * math.cos(a), radius * math.sin(a), rim_z))
+            out.append((radius * 0.5 * math.cos(a), radius * 0.5 * math.sin(a), rim_z))
+        return out
+
+    def test_the_hands_are_found_between_the_feet_and_the_heads(self):
+        self.assertAlmostEqual(
+            stadium_props.hand_height(self.bearer_ring(), 8.27), 1.10, places=2)
+
+    def test_a_shorter_set_is_measured_not_assumed(self):
+        self.assertAlmostEqual(
+            stadium_props.hand_height(self.bearer_ring(hand_z=0.90), 8.27), 0.90,
+            places=2)
+
+    def test_the_flag_is_raised_to_the_hands(self):
+        lift = stadium_props.pennant_face_lift(
+            [self.flat_flag()], [self.bearer_ring()])
+        self.assertAlmostEqual(lift, 1.00, places=2)
+
+    def test_a_flag_already_in_the_hands_is_left_alone(self):
+        lift = stadium_props.pennant_face_lift(
+            [self.flat_flag(rim_z=1.10)], [self.bearer_ring()])
+        self.assertEqual(lift, 0.0)
+
+    def test_a_flag_above_the_hands_is_never_pulled_down(self):
+        lift = stadium_props.pennant_face_lift(
+            [self.flat_flag(rim_z=1.60)], [self.bearer_ring()])
+        self.assertEqual(lift, 0.0)
+
+    def test_bearers_with_no_hand_band_leave_it_where_it_is(self):
+        """Nothing between knee and shoulder is not a set of bearers, and
+        guessing a height for it would drop the flag somewhere arbitrary."""
+        posts = [(8.27, 0.0, z) for z in (0.0, 0.1, 0.2, 1.9, 2.0)]
+        self.assertEqual(
+            stadium_props.pennant_face_lift([self.flat_flag()], [posts]), 0.0)
+
+    def test_nothing_to_measure_is_not_an_error(self):
+        self.assertEqual(stadium_props.pennant_face_lift([], []), 0.0)
+        self.assertEqual(stadium_props.pennant_face_lift([self.flat_flag()], []), 0.0)

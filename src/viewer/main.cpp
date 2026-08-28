@@ -23,11 +23,17 @@
 // the recording stream opens against the swap chain rather than in step with it. A
 // frame with no variance in it is one of those and can be dropped.
 
+#include <algorithm>
+#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
+#include <tuple>
+
+#include "utils/cloth.hpp"
 #include <vector>
 
 #include "base/log.hpp"
@@ -115,6 +121,14 @@ struct Options {
   float fov = 35.0f;
   float pitch = 0.25f;
   bool wireframe = false;
+  // Drive the cloth simulation instead of a turntable, and shoot a ball through
+  // it. The point is to see whether a surface actually moves: the netting, the
+  // corner flags and the pennant all run the same Cloth, and a still frame of
+  // any of them looks the same whether it is simulating or frozen.
+  bool cloth = false;
+  // Which meshes are the cloth, by a substring of their texture's name - the
+  // same test the match uses to tell netting from woodwork.
+  std::string clothTexture = "goalnetting";
 };
 
 Options Parse(int argc, const char** argv) {
@@ -127,6 +141,8 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--fov" && hasNext) options.fov = atof(argv[++i]);
     else if (arg == "--pitch" && hasNext) options.pitch = atof(argv[++i]);
     else if (arg == "--wireframe") options.wireframe = true;
+    else if (arg == "--cloth") options.cloth = true;
+    else if (arg == "--cloth-texture" && hasNext) options.clothTexture = argv[++i];
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -187,6 +203,124 @@ std::string ResolveModelPath(const std::string& model, std::string& scratch) {
   scratch = wrapper.string();
   return scratch;
 }
+
+// A surface, built as cloth and shot at.
+//
+// Whether the netting, the corner flags and the pennant actually simulate is not
+// answerable from a still: a frozen cloth and a settling one look the same in one
+// frame. This builds the same Cloth the match builds, from the same meshes picked
+// by the same texture test, drives a ball through it and lets the frames show
+// what happens.
+struct ClothRig {
+  Cloth cloth;
+  std::vector<float*> corners;   // into the live vertex buffer
+  std::vector<int> weld;         // which simulated point each corner follows
+  std::list<boost::intrusive_ptr<Geometry>> geometry;
+  Vector3 low, high;             // the surface's own bounds, for aiming the ball
+
+  bool Build(boost::intrusive_ptr<Node> node, const std::string& textureMark) {
+    node->GetObjects<Geometry>(e_ObjectType_Geometry, geometry, true);
+    std::map<std::tuple<int, int, int>, int> welded;
+    std::vector<Vector3> rest;
+    std::vector<int> faces;
+    for (boost::intrusive_ptr<Geometry>& geom : geometry) {
+      std::vector<MaterializedTriangleMesh>& meshes =
+          geom->GetGeometryData()->GetResource()->GetTriangleMeshesRef();
+      for (unsigned int m = 0; m < meshes.size(); m++) {
+        if (!meshes.at(m).material.diffuseTexture) continue;
+        if (meshes.at(m).material.diffuseTexture->GetIdentString().find(textureMark) ==
+            std::string::npos)
+          continue;
+        const int floats = meshes.at(m).verticesDataSize / GetTriangleMeshElementCount();
+        for (int i = 0; i + 8 < floats; i += 9) {
+          for (int c = 0; c < 3; c++) {
+            const int at = i + c * 3;
+            const Vector3 p(meshes.at(m).vertices[at + 0], meshes.at(m).vertices[at + 1],
+                            meshes.at(m).vertices[at + 2]);
+            const std::tuple<int, int, int> key(std::lround(p.coords[0] * 1000.0f),
+                                                std::lround(p.coords[1] * 1000.0f),
+                                                std::lround(p.coords[2] * 1000.0f));
+            std::map<std::tuple<int, int, int>, int>::iterator found = welded.find(key);
+            if (found == welded.end()) {
+              found = welded.insert(std::make_pair(key, (int)rest.size())).first;
+              rest.push_back(p);
+            }
+            corners.push_back(&(meshes.at(m).vertices[at]));
+            weld.push_back(found->second);
+            faces.push_back(found->second);
+          }
+        }
+      }
+    }
+    if (rest.empty()) return false;
+
+    low = rest[0];
+    high = rest[0];
+    for (const Vector3& p : rest) {
+      for (int a = 0; a < 3; a++) {
+        low.coords[a] = std::min(low.coords[a], p.coords[a]);
+        high.coords[a] = std::max(high.coords[a], p.coords[a]);
+      }
+    }
+    // The match's own rule for a goal net, restated on this model's bounds: tied
+    // along its mouth, pegged down all round its foot, carried along its rear top
+    // edge (match.cpp, PrepareGoalNetting). Everything between is free to billow.
+    //
+    // Per side, because goals.ase holds both of them. Measured over the pair, the
+    // "mouth" plane lands 57 m away at the far goal and pins almost nothing that
+    // is really tied to anything, and the net then falls for as long as you watch
+    // it - 3.0 m and still going after sixty frames.
+    std::vector<bool> held(rest.size(), false);
+    for (int side = 0; side < 2; side++) {
+      std::vector<Vector3> half;
+      std::vector<int> back;
+      for (unsigned int i = 0; i < rest.size(); i++) {
+        if ((rest[i].coords[0] < 0.0f) != (side == 0)) continue;
+        half.push_back(rest[i]);
+        back.push_back(i);
+      }
+      if (half.empty()) continue;
+      Vector3 lo = half[0], hi = half[0];
+      for (const Vector3& p : half) {
+        for (int a = 0; a < 3; a++) {
+          lo.coords[a] = std::min(lo.coords[a], p.coords[a]);
+          hi.coords[a] = std::max(hi.coords[a], p.coords[a]);
+        }
+      }
+      const bool negative = side == 0;
+      const float mouthX = negative ? hi.coords[0] : lo.coords[0];
+      const float backX = negative ? lo.coords[0] : hi.coords[0];
+      std::vector<bool> mine = VerticesOnPlane(half, 0, mouthX, 0.02f);
+      UnionInto(mine, VerticesOnPlane(half, 2, lo.coords[2], 0.02f));
+      UnionInto(mine, Both(VerticesOnPlane(half, 0, backX, 0.02f),
+                           VerticesOnPlane(half, 2, hi.coords[2], 0.02f)));
+      for (unsigned int i = 0; i < mine.size(); i++)
+        if (mine[i]) held[back[i]] = true;
+      // Aim the ball at this goal rather than across the pitch at the other one.
+      if (side == 0) {
+        low = lo;
+        high = hi;
+      }
+    }
+    cloth.Build(rest, held, LinksFromTriangles(faces));
+    std::cout << "cloth: " << rest.size() << " point(s), "
+              << std::count(held.begin(), held.end(), true) << " held, "
+              << corners.size() << " corner(s)" << std::endl;
+    return true;
+  }
+
+  void Write() {
+    const std::vector<Vector3>& points = cloth.Positions();
+    if (points.empty()) return;
+    for (unsigned int i = 0; i < corners.size(); i++) {
+      const Vector3& p = points[weld[i]];
+      corners[i][0] = p.coords[0];
+      corners[i][1] = p.coords[1];
+      corners[i][2] = p.coords[2];
+    }
+    for (boost::intrusive_ptr<Geometry>& geom : geometry) geom->OnUpdateGeometryData(false);
+  }
+};
 
 }  // namespace
 
@@ -280,6 +414,101 @@ class TurntableTask : public IUserTask {
   std::string out;
 };
 
+// Holds the camera still and shoots a ball through the cloth.
+//
+// The camera does not turn: a turntable and a moving cloth are impossible to tell
+// apart in a contact sheet, and the whole question is whether the surface moves.
+// The ball crosses the mouth over the run, pushing the net ahead of it the way the
+// match does (Cloth::Push, match.cpp UpdateGoalNetting), and the frames after it
+// has gone through show whether the net comes back.
+class ClothShotTask : public IUserTask {
+ public:
+  ClothShotTask(ClothRig* rig, boost::intrusive_ptr<Node> cameraNode,
+                boost::intrusive_ptr<Camera> camera, const ViewerCamera::Shot& shot,
+                int frames, const std::string& out)
+      : rig(rig), cameraNode(cameraNode), camera(camera), shot(shot), frames(frames),
+        out(out) {}
+
+  // Placed once and left there. A turntable and a moving cloth are impossible to
+  // tell apart in a contact sheet, so the camera holds still and only the net moves.
+  void PlaceCamera() {
+    ViewerCamera::Shot from = shot;
+    // Round in front of the goalmouth rather than square on the side, so the ball
+    // comes towards the camera and the billow is across the frame.
+    from.yaw = 0.9f;
+    const std::array<float, 3> eye = ViewerCamera::Position(from);
+    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
+    Quaternion yaw;
+    yaw.SetAngleAxis(from.yaw, Vector3(0, 0, 1));
+    cameraNode->SetRotation(yaw);
+    Quaternion pitch;
+    pitch.SetAngleAxis(0.5f * pi - from.pitch, Vector3(1, 0, 0));
+    camera->SetRotation(pitch);
+  }
+
+  void GetPhase() override {}
+  void ProcessPhase() override {}
+
+  void PutPhase() override {
+    // Every tick: the scheduler resets nothing, but placing it once during warm-up
+    // and never again put the camera back at the origin for the first live frames.
+    PlaceCamera();
+    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    const bool ready =
+        warmup >= TurntableTask::kWarmupFrames &&
+        EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
+            TurntableTask::kWarmupMilliseconds;
+    if (!ready) {
+      warmup++;
+      return;
+    }
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
+      // Let it take up its own sag before the ball arrives, exactly as the match
+      // does, so what the shot shows is the shot and not the settling.
+      for (int i = 0; i < 60; i++)
+        rig->cloth.Step(0.01f, Vector3(0, 0, -6.0f), 0.97f, 4);
+      rig->Write();
+      return;
+    }
+
+    // The ball's flight: in through the mouth, across the goal, out the back. Timed
+    // off the frame counter rather than the clock so the run is the same every time.
+    const float t = frames > 0 ? (float)drawn / (float)frames : 0.0f;
+    const float travel = std::min(1.0f, t * 2.2f);  // through by halfway, then watch
+    const bool negative = rig->low.coords[0] < 0.0f;
+    const float mouthX = negative ? rig->high.coords[0] : rig->low.coords[0];
+    const float backX = negative ? rig->low.coords[0] : rig->high.coords[0];
+    const Vector3 ball(mouthX + (backX - mouthX) * travel,
+                       (rig->low.coords[1] + rig->high.coords[1]) * 0.5f,
+                       rig->low.coords[2] + (rig->high.coords[2] - rig->low.coords[2]) * 0.45f);
+    if (travel < 1.0f) rig->cloth.Push(ball, 0.11f);
+    rig->cloth.Step(0.016f, Vector3(0, 0, -6.0f), 0.97f, 4);
+    rig->Write();
+    if (drawn % 10 == 0)
+      std::cout << "  frame " << drawn << " ball x " << ball.coords[0] << " sag "
+                << (int)(rig->cloth.Displacement() * 1000) << " mm" << std::endl;
+    drawn++;
+    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
+      EnvironmentManager::GetInstance().SignalQuit();
+  }
+
+  std::string GetName() const override { return "clothshot"; }
+
+ private:
+  ClothRig* rig;
+  boost::intrusive_ptr<Node> cameraNode;
+  boost::intrusive_ptr<Camera> camera;
+  ViewerCamera::Shot shot;
+  int frames = 0;
+  int drawn = 0;
+  int warmup = 0;
+  unsigned long warmupStart_ms = 0;
+  bool recording = false;
+  std::string out;
+};
+
 int main(int argc, const char** argv) {
   const Options options = Parse(argc, argv);
   if (options.model.empty()) {
@@ -343,11 +572,26 @@ int main(int argc, const char** argv) {
   // The model's own bounds decide the shot, which is why a viewer needs no
   // configuration to frame something it has never seen.
   const AABB bounds = node->GetAABB();
-  ViewerCamera::Shot shot = ViewerCamera::Frame(
-      {bounds.minxyz.coords[0], bounds.minxyz.coords[1], bounds.minxyz.coords[2]},
-      {bounds.maxxyz.coords[0], bounds.maxxyz.coords[1], bounds.maxxyz.coords[2]},
-      options.fov);
-  shot.pitch = options.pitch;
+  ClothRig clothRig;
+  if (options.cloth && !clothRig.Build(node, options.clothTexture)) {
+    std::cout << "no mesh in " << options.model << " wears a texture named '"
+              << options.clothTexture << "' - nothing to simulate\n";
+    return 2;
+  }
+  // Framed on the cloth rather than the whole model when there is one: goals.ase
+  // holds both goals 115 m apart, and a shot that takes in the pair puts the net
+  // being hit a few pixels across.
+  const std::array<float, 3> framedLow =
+      options.cloth ? std::array<float, 3>{clothRig.low.coords[0], clothRig.low.coords[1],
+                                           clothRig.low.coords[2]}
+                    : std::array<float, 3>{bounds.minxyz.coords[0], bounds.minxyz.coords[1],
+                                           bounds.minxyz.coords[2]};
+  const std::array<float, 3> framedHigh =
+      options.cloth ? std::array<float, 3>{clothRig.high.coords[0], clothRig.high.coords[1],
+                                           clothRig.high.coords[2]}
+                    : std::array<float, 3>{bounds.maxxyz.coords[0], bounds.maxxyz.coords[1],
+                                           bounds.maxxyz.coords[2]};
+  ViewerCamera::Shot shot = ViewerCamera::Frame(framedLow, framedHigh, options.fov);
 
   boost::intrusive_ptr<Camera> camera = boost::static_pointer_cast<Camera>(
       ObjectFactory::GetInstance().CreateObject("camera", e_ObjectType_Camera));
@@ -394,17 +638,23 @@ int main(int argc, const char** argv) {
               << " geometry object(s) in the scene, " << enabled << " enabled\n";
   }
 
+
   if (options.shots > 0) {
     // The same path the game records a showcase through: every presented frame goes
     // to a fifo or a file, and the caller turns it into stills. A viewer that wrote
     // its own PNGs would be a second answer to a question already answered.
-    std::shared_ptr<TurntableTask> turntable(
-        new TurntableTask(cameraNode, camera, shot, options.shots, options.out));
+    std::shared_ptr<IUserTask> driver;
+    if (options.cloth)
+      driver = std::shared_ptr<IUserTask>(
+          new ClothShotTask(&clothRig, cameraNode, camera, shot, options.shots, options.out));
+    else
+      driver = std::shared_ptr<IUserTask>(
+          new TurntableTask(cameraNode, camera, shot, options.shots, options.out));
     std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 0, true));
     // The order the game's own graphics sequence uses: the user task writes the
     // camera in its Put phase, then the graphics Get phase reads it and enqueues the
     // view. Getting first renders the frame before the camera has been placed.
-    sequence->AddUserTaskEntry(turntable, e_TaskPhase_Put);
+    sequence->AddUserTaskEntry(driver, e_TaskPhase_Put);
     sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
     sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Process);
     sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Put);
@@ -412,7 +662,7 @@ int main(int argc, const char** argv) {
 
     Run();
     StopFrameRecording();
-    std::cout << "drew " << turntable->Drawn() << " frame(s) to " << options.out
+    std::cout << "drew frames to " << options.out
               << "; the first 4 are pipeline lead-in, the last " << options.shots
               << " are the shots\n";
     sequence.reset();
