@@ -6,6 +6,56 @@ treated as ceremony.
 
 ---
 
+## PES is the reference; the engine adapts to it
+
+The governing rule, above every other rule in this file. Where PES 2021 and
+this engine disagree about a format, a skeleton, a rig or a convention, **PES
+wins and the engine changes.** The import is 1:1 and lossless. Simplifying the
+imported side to fit what the engine already does is always the wrong
+direction, however much smaller the diff, and however well it renders.
+
+Two standing violations, both mine, both expensive.
+
+### The skeleton was decimated to fit the engine
+
+PES body animations drive 21 nodes. Native GF animations drive 16. The
+difference is `chest`, `head`, `hip` and both clavicles - and rather than teach
+the engine the other five, the retarget collapsed the clavicles, the
+belly/chest spine chain and the wrists onto the 16-node skeleton it already
+had. `gani_to_anim.py` documents this in its own docstring as though it were a
+feature.
+
+The same reflex re-parented PES's 38 finger bones onto a wrist the engine could
+already animate. Hand geometry then lands on those finger joints - measured at
+3.3 cm on `lcg_2709`, closer than the wrist - and `HandRig` curls them every
+frame, so a palm-sized chunk of mesh rides on a pinky. 34 of the 107 imported
+models have at least one unbound arm joint and nine have no arm chain at all.
+
+The fix I was about to write for that - fold finger influence into the wrist -
+was the identical mistake a third time: another collapse to spare the engine a
+change. The correct fix is that the engine carries PES's hand rig 1:1.
+
+### One-shot scripts instead of tools
+
+`tools/pes21_import` holds 114 Python files, and the most recent was added
+minutes after this rule was agreed. Many exist to answer one question once:
+a measurement, a histogram, a render for a single screenshot. They are not
+tools a user has any use for, they are notes that happen to execute.
+
+A user must be able to start from a stock PES21 install and their own 4cc packs
+and get everything the repo ships, using tools in the repo. That is what the
+tools are for. Prefer extending one that exists; a new file has to be something
+that user would run, not something an agent ran once.
+
+### The test, applied before writing anything
+
+Am I changing the engine, or am I shaving the PES data so the engine does not
+have to change? Only the first is allowed. If a conversion is described as
+"collapsing", "simplifying", "flattening" or "good enough for our rig", it is
+the second one wearing a different word.
+
+---
+
 ## An imported model is not troubleshot until you have looked at it
 
 **Every model that goes through the PES import must be screenshotted and the
