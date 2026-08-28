@@ -162,6 +162,48 @@ bool ParseLine(const std::string& line, Command& cmd) {
     return true;
   }
 
+  if (verb == "auth" && tokens.size() == 2) {
+    cmd.type = e_CommandType_Auth;
+    cmd.name = tokens[1];
+    return true;
+  }
+
+  if (verb == "resume" && tokens.size() == 1) {
+    cmd.type = e_CommandType_Resume;
+    return true;
+  }
+
+  if (verb == "schedule" && tokens.size() >= 7) {
+    if (!ParseInt(tokens[1], cmd.schedule.team1Id) ||
+        !ParseInt(tokens[2], cmd.schedule.team2Id) ||
+        !ParseFloat(tokens[3], cmd.schedule.durationMinutes) ||
+        !ParseInt(tokens[4], cmd.schedule.team1KitNum) ||
+        !ParseInt(tokens[5], cmd.schedule.team2KitNum) || cmd.schedule.durationMinutes <= 0.0f) {
+      cmd = Command();
+      return false;
+    }
+    // The stadium is the rest of the line - 4cc stadium directories contain
+    // spaces. Walk past the six leading fields positionally; a find() on the
+    // token text would stop at an earlier identical token.
+    size_t position = 0;
+    for (int field = 0; field < 6; field++) {
+      position = line.find_first_not_of(" \t", position);
+      position = line.find_first_of(" \t", position);
+    }
+    position = line.find_first_not_of(" \t", position);
+    std::string stadium = position == std::string::npos ? "" : line.substr(position);
+    while (!stadium.empty() && (stadium.back() == '\r' || stadium.back() == ' '))
+      stadium.pop_back();
+    // Never a path that escapes the run tree.
+    if (stadium.empty() || stadium[0] == '/' || stadium.find("..") != std::string::npos) {
+      cmd = Command();
+      return false;
+    }
+    cmd.schedule.stadiumObject = stadium;
+    cmd.type = e_CommandType_Schedule;
+    return true;
+  }
+
   if (verb == "sub" && tokens.size() == 4) {
     if (!ParseSide(tokens[1], cmd.side)) return false;
     if (!ParseInt(tokens[2], cmd.playerOutId) || !ParseInt(tokens[3], cmd.playerInId)) {
@@ -236,6 +278,30 @@ bool ApplyMentality(const Command& cmd, TeamInstructions::State& state) {
   return false;
 }
 
+
+e_GateResult GateLine(const std::string& requiredKey, bool authed, const Command& cmd) {
+  if (cmd.type == e_CommandType_Auth)
+    return cmd.name == requiredKey || requiredKey.empty() ? e_GateResult_Authed
+                                                          : e_GateResult_Refuse;
+  if (requiredKey.empty() || authed) return e_GateResult_Pass;
+  return e_GateResult_Refuse;
+}
+
+void ApplySchedule(const Command& cmd, blunted::Properties& config) {
+  config.SetInt("showcase_team1", cmd.schedule.team1Id);
+  config.SetInt("showcase_team2", cmd.schedule.team2Id);
+  config.Set("match_duration_minutes", cmd.schedule.durationMinutes);
+  config.SetInt("team1_kit_num", cmd.schedule.team1KitNum);
+  config.SetInt("team2_kit_num", cmd.schedule.team2KitNum);
+  config.Set("stadium_object", cmd.schedule.stadiumObject);
+  // The self-driving menu path that carries the engine into the match, with
+  // both benches answering to the panel rather than the CPU manager.
+  config.SetBool("menu_smoke_test_full_match", true);
+  config.SetBool("quick_start", false);
+  config.SetBool("coach_mode", true);
+  config.SetBool("substitutions_enabled", true);
+}
+
 void CommandQueue::Push(const Command& cmd) {
   std::lock_guard<std::mutex> lock(mutex);
   commands.push_back(cmd);
@@ -258,6 +324,8 @@ std::string ToJson(const Snapshot& snapshot) {
   out += snapshot.inPlay ? "true" : "false";
   out += ",\"sub_window\":";
   out += snapshot.substitutionWindow ? "true" : "false";
+  out += ",\"hold\":";
+  out += snapshot.holding ? "true" : "false";
   out += ",\"teams\":[";
   AppendTeam(out, snapshot.teams[0]);
   out += ',';

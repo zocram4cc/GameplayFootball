@@ -449,14 +449,14 @@ protected:
                               std::vector<PlayerBounce>& p2Bounce);
   void CheckBallCollisions();
 
-  // The optional remote-control channel (remotecontrolserver.hpp): commands
-  // from an attached web panel are drained and applied on this thread, and a
-  // state snapshot is published for it to read back. Null - and costing
-  // nothing - unless the config names a remote_control_port.
+  // The remote-control channel (remotecontrolmode.hpp): commands from the
+  // attached web panel are drained and applied on this thread, and a state
+  // snapshot is published for it to read back. Null - and costing nothing -
+  // unless the engine is in remote-control mode; the mode owns the server.
   void ProcessRemoteControl();
   void ApplyRemoteCommand(const RemoteControl::Command& command);
   void PublishRemoteState();
-  std::unique_ptr<RemoteControl::Server> remoteControl;
+  RemoteControl::Server* remoteControl = nullptr;
   unsigned long lastRemoteStatePublish_ms = 0;
 
   void PrepareGoalNetting();

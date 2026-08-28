@@ -28,6 +28,7 @@
 #include "league/league_system.hpp"
 #include "league/league_team.hpp"
 #include "mainmenu.hpp"
+#include "remotecontrol.hpp"
 #include "settings.hpp"
 #include "startmatch/loadingmatch.hpp"
 #include "startmatch/matchoptions.hpp"
@@ -68,6 +69,10 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
 
     case e_PageID_ControllerSelect:
       page = new ControllerSelectPage(windowManager, pageData);
+      break;
+
+    case e_PageID_RemoteControl:
+      page = new RemoteControlPage(windowManager, pageData);
       break;
 
     case e_PageID_TeamSelect:

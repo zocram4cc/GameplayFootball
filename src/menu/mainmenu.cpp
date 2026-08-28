@@ -10,6 +10,7 @@
 #include <set>
 
 #include "../main.hpp"
+#include "../remotecontrolmode.hpp"
 #include "blunted.hpp"
 #include "controllerselect.hpp"
 #include "credits.hpp"
@@ -180,6 +181,8 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   buttons.push_back(new Gui2Button(windowManager, "button_main_settings", 0, 0, 34, 5, "Settings"));
   buttons.push_back(new Gui2Button(windowManager, "button_main_credits", 0, 0, 34, 5, "Credits"));
   buttons.push_back(
+      new Gui2Button(windowManager, "button_main_remote", 0, 0, 34, 5, "Remote Control"));
+  buttons.push_back(
       new Gui2Button(windowManager, "button_main_quit", 0, 0, 34, 5, "Quit to Desktop"));
 
   if (!IsReleaseVersion()) {
@@ -192,11 +195,12 @@ MainMenuPage::MainMenuPage(Gui2WindowManager* windowManager, const Gui2PageData&
   buttons.at(2)->sig_OnClick.connect([this](...) { GoCareerMode(); });
   buttons.at(3)->sig_OnClick.connect([this](...) { GoSettings(); });
   buttons.at(4)->sig_OnClick.connect([this](...) { GoCredits(); });
+  buttons.at(5)->sig_OnClick.connect([this](...) { GoRemoteControl(); });
   if (!IsReleaseVersion()) {
-    buttons.at(5)->sig_OnClick.connect(std::bind(&MenuTask::QuitGame, GetMenuTask()));
-    buttons.at(6)->sig_OnClick.connect([this](...) { GoImportDB(); });
+    buttons.at(6)->sig_OnClick.connect(std::bind(&MenuTask::QuitGame, GetMenuTask()));
+    buttons.at(7)->sig_OnClick.connect([this](...) { GoImportDB(); });
   } else {
-    buttons.at(5)->sig_OnClick.connect([this](...) { GoOutro(); });
+    buttons.at(6)->sig_OnClick.connect([this](...) { GoOutro(); });
   }
 
   for (unsigned int i = 0; i < buttons.size(); i++) {
@@ -253,7 +257,15 @@ MainMenuPage::~MainMenuPage() {}
 void MainMenuPage::Process() {
   Gui2Page::Process();
 
-  if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&
+  // Remote-control mode outranks every smoke path: an active mode returns to
+  // its waiting page after a match, and a config asking for the mode enters it
+  // without a keyboard - the headless rig's way in.
+  if (!autoAdvanceTriggered &&
+      (RemoteControlMode::IsActive() ||
+       GetConfiguration()->GetBool("remote_control_mode", false))) {
+    autoAdvanceTriggered = true;
+    GoRemoteControl();
+  } else if (!autoAdvanceTriggered && MenuSmokeAutoQuickMatchEnabled() &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
           pageCreatedTime_ms + kMenuSmokeAdvanceDelay_ms) {
     autoAdvanceTriggered = true;
@@ -293,6 +305,16 @@ void MainMenuPage::GoControllerSelect() {
   Properties properties;
   properties.SetBool("isInGame", false);
   windowManager->GetPageFactory()->CreatePage((int)e_PageID_ControllerSelect, properties, 0);
+
+  delete this;
+}
+
+void MainMenuPage::GoRemoteControl() {
+  this->Exit();
+
+  pageData.properties->Set("selectedButtonID", 5);
+  Properties properties;
+  windowManager->GetPageFactory()->CreatePage((int)e_PageID_RemoteControl, properties, 0);
 
   delete this;
 }

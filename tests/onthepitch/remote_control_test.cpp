@@ -235,6 +235,7 @@ RemoteControl::Snapshot MakeSnapshot() {
   snapshot.phase = 1;
   snapshot.inPlay = true;
   snapshot.substitutionWindow = false;
+  snapshot.holding = true;  // a half-time hold awaiting the streamer's release
 
   RemoteControl::TeamState& home = snapshot.teams[0];
   home.name = "HDG";
@@ -265,6 +266,7 @@ TEST(RemoteControlSnapshot, ToJsonCarriesMatchAndTeamState) {
   EXPECT_NE(std::string::npos, json.find("\"phase\":1"));
   EXPECT_NE(std::string::npos, json.find("\"in_play\":true"));
   EXPECT_NE(std::string::npos, json.find("\"sub_window\":false"));
+  EXPECT_NE(std::string::npos, json.find("\"hold\":true"));
   EXPECT_NE(std::string::npos, json.find("\"name\":\"HDG\""));
   EXPECT_NE(std::string::npos, json.find("\"philosophy\":\"gegenpressing\""));
   EXPECT_NE(std::string::npos, json.find("\"mentality\":\"attacking\""));
@@ -345,4 +347,98 @@ TEST(RemoteControlLineBuffer, DropsAbsurdlyLongLines) {
   std::vector<std::string> lines = buffer.Append("\nstate\n", 7);
   ASSERT_EQ(1u, lines.size());
   EXPECT_EQ("state", lines[0]);
+}
+
+// ── Remote-control mode: auth and panel-driven match scheduling ─────────────
+
+TEST(RemoteControlParse, AuthCommand) {
+  RemoteControl::Command cmd;
+  ASSERT_TRUE(RemoteControl::ParseLine("auth s3cret-key_1", cmd));
+  EXPECT_EQ(RemoteControl::e_CommandType_Auth, cmd.type);
+  EXPECT_EQ("s3cret-key_1", cmd.name);
+  EXPECT_FALSE(RemoteControl::ParseLine("auth", cmd));
+  EXPECT_FALSE(RemoteControl::ParseLine("auth two tokens", cmd));
+}
+
+TEST(RemoteControlParse, ScheduleCommand) {
+  RemoteControl::Command cmd;
+  ASSERT_TRUE(RemoteControl::ParseLine(
+      "schedule 11 9 5 1 2 media/objects/stadiums/pes_st002/pes_st002.object", cmd));
+  EXPECT_EQ(RemoteControl::e_CommandType_Schedule, cmd.type);
+  EXPECT_EQ(11, cmd.schedule.team1Id);
+  EXPECT_EQ(9, cmd.schedule.team2Id);
+  EXPECT_FLOAT_EQ(5.0f, cmd.schedule.durationMinutes);
+  EXPECT_EQ(1, cmd.schedule.team1KitNum);
+  EXPECT_EQ(2, cmd.schedule.team2KitNum);
+  EXPECT_EQ("media/objects/stadiums/pes_st002/pes_st002.object", cmd.schedule.stadiumObject);
+}
+
+TEST(RemoteControlParse, ScheduleStadiumMayContainSpaces) {
+  // 4cc stadium directories have spaces ("043 - benuldys"); the stadium is
+  // the rest of the line.
+  RemoteControl::Command cmd;
+  ASSERT_TRUE(RemoteControl::ParseLine(
+      "schedule 1 2 10 1 1 media/objects/stadiums/043 - benuldys/stadium.object", cmd));
+  EXPECT_EQ("media/objects/stadiums/043 - benuldys/stadium.object", cmd.schedule.stadiumObject);
+}
+
+TEST(RemoteControlParse, ScheduleRejectsMalformedAndUnsafe) {
+  RemoteControl::Command cmd;
+  EXPECT_FALSE(RemoteControl::ParseLine("schedule 11 9 5 1 2", cmd));  // no stadium
+  EXPECT_FALSE(RemoteControl::ParseLine("schedule x 9 5 1 2 media/s.object", cmd));
+  EXPECT_FALSE(RemoteControl::ParseLine("schedule 11 9 -5 1 2 media/s.object", cmd));
+  // A stadium path never escapes the run tree.
+  EXPECT_FALSE(RemoteControl::ParseLine("schedule 11 9 5 1 2 /etc/passwd", cmd));
+  EXPECT_FALSE(RemoteControl::ParseLine("schedule 11 9 5 1 2 media/../../../x.object", cmd));
+}
+
+TEST(RemoteControlGate, NoKeyMeansOpen) {
+  RemoteControl::Command state;
+  ASSERT_TRUE(RemoteControl::ParseLine("state", state));
+  EXPECT_EQ(RemoteControl::e_GateResult_Pass, RemoteControl::GateLine("", false, state));
+}
+
+TEST(RemoteControlGate, KeyedChannelRefusesEverythingUntilAuth) {
+  RemoteControl::Command state, auth, wrongAuth;
+  ASSERT_TRUE(RemoteControl::ParseLine("state", state));
+  ASSERT_TRUE(RemoteControl::ParseLine("auth right-key", auth));
+  ASSERT_TRUE(RemoteControl::ParseLine("auth wrong-key", wrongAuth));
+
+  EXPECT_EQ(RemoteControl::e_GateResult_Refuse, RemoteControl::GateLine("right-key", false, state));
+  EXPECT_EQ(RemoteControl::e_GateResult_Refuse,
+            RemoteControl::GateLine("right-key", false, wrongAuth));
+  EXPECT_EQ(RemoteControl::e_GateResult_Authed, RemoteControl::GateLine("right-key", false, auth));
+  // Once authed, commands pass; a repeated auth stays authed.
+  EXPECT_EQ(RemoteControl::e_GateResult_Pass, RemoteControl::GateLine("right-key", true, state));
+  EXPECT_EQ(RemoteControl::e_GateResult_Authed, RemoteControl::GateLine("right-key", true, auth));
+}
+
+TEST(RemoteControlSchedule, ApplyWritesTheLaunchKeys) {
+  RemoteControl::Command cmd;
+  ASSERT_TRUE(RemoteControl::ParseLine(
+      "schedule 11 9 5 1 2 media/objects/stadiums/pes_st002/pes_st002.object", cmd));
+
+  Properties config;
+  RemoteControl::ApplySchedule(cmd, config);
+
+  EXPECT_EQ(11, config.GetInt("showcase_team1", -1));
+  EXPECT_EQ(9, config.GetInt("showcase_team2", -1));
+  EXPECT_FLOAT_EQ(5.0f, config.GetReal("match_duration_minutes", -1.0f));
+  EXPECT_EQ(1, config.GetInt("team1_kit_num", -1));
+  EXPECT_EQ(2, config.GetInt("team2_kit_num", -1));
+  EXPECT_EQ("media/objects/stadiums/pes_st002/pes_st002.object",
+            config.Get("stadium_object"));
+  // The self-driving path that carries the menu into the match, with both
+  // benches answering to the panel rather than the CPU manager.
+  EXPECT_TRUE(config.GetBool("menu_smoke_test_full_match", false));
+  EXPECT_TRUE(config.GetBool("coach_mode", false));
+  EXPECT_TRUE(config.GetBool("substitutions_enabled", false));
+}
+
+TEST(RemoteControlParse, ResumeCommand) {
+  // The streamer releasing a half-time / extra-time hold from the panel.
+  RemoteControl::Command cmd;
+  ASSERT_TRUE(RemoteControl::ParseLine("resume", cmd));
+  EXPECT_EQ(RemoteControl::e_CommandType_Resume, cmd.type);
+  EXPECT_FALSE(RemoteControl::ParseLine("resume now", cmd));
 }

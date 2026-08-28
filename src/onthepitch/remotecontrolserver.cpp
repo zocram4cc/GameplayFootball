@@ -4,7 +4,7 @@
 // The control channel is a Linux-rig feature; the game itself never needs it.
 namespace RemoteControl {
 Server::~Server() {}
-bool Server::Start(int) {
+bool Server::Start(int, const std::string&) {
   return false;
 }
 void Server::Stop() {}
@@ -35,6 +35,7 @@ struct Client {
   int fd;
   LineBuffer buffer;
   bool drop;
+  bool authed;
 };
 
 }  // namespace
@@ -43,7 +44,8 @@ Server::~Server() {
   Stop();
 }
 
-bool Server::Start(int port) {
+bool Server::Start(int port, const std::string& key) {
+  streamerKey = key;
   listenFd = socket(AF_INET, SOCK_STREAM, 0);
   if (listenFd < 0) {
     Log(e_Warning, "RemoteControl", "Start", "socket() failed: " + std::string(strerror(errno)));
@@ -120,6 +122,21 @@ void Server::Run() {
               Log(e_Warning, "RemoteControl", "Run", "refused line: " + line);
               continue;
             }
+            const e_GateResult gate = GateLine(streamerKey, client.authed, cmd);
+            if (gate == e_GateResult_Refuse) {
+              Log(e_Warning, "RemoteControl", "Run",
+                  client.authed ? "refused line: " + line : "refused line before auth");
+              const char refused[] = "err auth\n";
+              send(client.fd, refused, sizeof(refused) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
+              continue;
+            }
+            if (gate == e_GateResult_Authed) {
+              client.authed = true;
+              Log(e_Notice, "RemoteControl", "Run", "panel authenticated");
+              const char ok[] = "ok auth\n";
+              send(client.fd, ok, sizeof(ok) - 1, MSG_DONTWAIT | MSG_NOSIGNAL);
+              continue;
+            }
             if (cmd.type == e_CommandType_State) {
               std::string reply;
               {
@@ -147,7 +164,7 @@ void Server::Run() {
     if (fds[0].revents & POLLIN) {
       const int clientFd = accept(listenFd, nullptr, nullptr);
       if (clientFd >= 0) {
-        clients.push_back({clientFd, LineBuffer(), false});
+        clients.push_back({clientFd, LineBuffer(), false, false});
         Log(e_Notice, "RemoteControl", "Run", "panel connected");
       }
     }
