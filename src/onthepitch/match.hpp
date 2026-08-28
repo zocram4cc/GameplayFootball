@@ -14,6 +14,7 @@
 #include "prematchshotpair.hpp"
 #include "goalcelebration.hpp"
 #include "goalsequence.hpp"
+#include "replaywipe.hpp"
 #include "scenelighting.hpp"
 #include "utils/entrancechoreo.hpp"
 #include <iostream>
@@ -52,6 +53,7 @@
 #include "types/lockable.hpp"
 #include "types/messagequeue.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/image.hpp"
 
 namespace RemoteControl {
 class Server;
@@ -540,6 +542,26 @@ protected:
   bool entranceActive = false;
   unsigned long entranceRealStart_ms = 0;
   float entranceSeconds = 0.0f;
+  // The cut from the pre-match presentation to kickoff, covered.
+  //
+  // PES never shows twenty-two players walking off their entrance marks and
+  // onto their kickoff ones. Its wipe covers the screen, the pitch is set
+  // underneath it, and it uncovers on a formation already standing. Ours used
+  // to do the move in plain view, which reads as everyone drifting sideways.
+  //
+  // Same asset and the same timing the replay page uses (replaywipe.hpp): the
+  // snap goes on the frame the matte has everything covered, so it is never
+  // seen.
+  Gui2Image* handoffWipe = nullptr;
+  ReplayWipe::Timing handoffWipeTiming;
+  std::string handoffWipeDir;
+  unsigned long handoffWipeStarted_ms = 0;
+  int handoffWipeFrameOnScreen = -1;
+  bool handoffWipeRunning = false;
+  bool handoffSnapped = false;
+  void StartHandoffWipe();
+  // -> true once the screen is covered, which is when the pitch may be set.
+  bool RunHandoffWipe();
   // The match-music player: anthems, goal horns, victory anthems and chants
   // from the teams' rigdio exports (rigdiodirector.hpp, docs/RIGDIO.md).
   std::unique_ptr<RigdioDirector> rigdio;

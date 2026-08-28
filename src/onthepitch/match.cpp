@@ -943,6 +943,23 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   radar->SetMode(
       Gui2Radar::ParseMode(GetConfiguration()->Get("radar_mode", "transparent")));
 
+  // The wipe that covers the cut from the presentation to kickoff. Full screen
+  // and hidden until it runs; the same frames and sidecar the replay page
+  // plays, so a pack that ships one wipe gets it on both cuts.
+  handoffWipeDir = GetConfiguration()->Get("replay_wipe_dir", "media/textures/wipe/wepes");
+  {
+    std::ifstream sidecar(ReplayWipe::SidecarPath(handoffWipeDir));
+    if (sidecar.good()) {
+      std::stringstream buffer;
+      buffer << sidecar.rdbuf();
+      handoffWipeTiming = ReplayWipe::Parse(buffer.str());
+    }
+  }
+  handoffWipe = new Gui2Image(menuTask->GetWindowManager(), "image_handoff_wipe",
+                              0, 0, 100, 100);
+  root->AddView(handoffWipe);
+  handoffWipe->Hide();
+
   // The player indicators sit in the bottom corners, the way a broadcast puts
   // them: the user's side on the left, the other mirrored on the right.
   for (int side = 0; side < 2; side++) {
@@ -1744,6 +1761,37 @@ void Match::SuppressHudForReplay(bool suppressed) {
   ShowMatchHud(!suppressed && !entranceActive);
   Log(e_Notice, "Match", "SuppressHudForReplay", suppressed ? "replay: match HUD hidden"
                                                            : "replay over: match HUD back");
+}
+
+void Match::StartHandoffWipe() {
+  handoffWipeStarted_ms = EnvironmentManager::GetInstance().GetTime_ms();
+  handoffWipeFrameOnScreen = -1;
+  handoffWipeRunning = true;
+  // The first frame goes up on this tick rather than the next: a wipe that
+  // starts a frame late is a frame of the thing it is there to hide.
+  RunHandoffWipe();
+}
+
+bool Match::RunHandoffWipe() {
+  // No wipe imported is not a reason to hold the kickoff up. Without one the
+  // cut is due immediately and the snap simply happens, as it did before.
+  if (!handoffWipeTiming.valid) return true;
+  if (!handoffWipeRunning) return handoffSnapped;
+  const unsigned long elapsed =
+      EnvironmentManager::GetInstance().GetTime_ms() - handoffWipeStarted_ms;
+  const int frame = ReplayWipe::FrameAt(handoffWipeTiming, elapsed);
+  if (frame == ReplayWipe::kFinished) {
+    handoffWipeRunning = false;
+    handoffWipeFrameOnScreen = -1;
+    if (handoffWipe) handoffWipe->Hide();
+    return true;
+  }
+  if (frame != handoffWipeFrameOnScreen && handoffWipe) {
+    handoffWipeFrameOnScreen = frame;
+    handoffWipe->LoadImage(ReplayWipe::FramePath(handoffWipeDir, frame));
+    handoffWipe->Show();
+  }
+  return ReplayWipe::CutIsDue(handoffWipeTiming, elapsed);
 }
 
 void Match::ShowMatchHud(bool visible) {
@@ -3931,32 +3979,45 @@ void Match::Process() {
       ShowMatchHud(false);
     }
     if (GetEntranceElapsedSeconds() >= entranceSeconds) {
-      entranceActive = false;
-      ShowMatchHud(true);
-      // The walkout set goes back inside: banners, flag bearers, the arch, the
-      // pennant display on the centre circle.
-      //
-      // Hidden rather than deleted. Destroying these nodes here tore live
-      // geometry out from under a rendering graphics thread and crashed on a
-      // null GraphicsGeometry_GeometryInterpreter, intermittently - once in five
-      // headless matches, always on this exact frame. The teardown at the end of
-      // Match already deletes both nodes, and by then the graphics system has
-      // stopped, which is the only point deleting them is safe. Disabling looks
-      // identical and costs a hidden node for the rest of the match.
-      auto hide = [](boost::intrusive_ptr<Node>& node) {
-        if (!node) return;
-        std::list<boost::intrusive_ptr<Object>> objects;
-        node->GetObjects(objects, true);
-        for (auto& object : objects) object->Disable();
-      };
-      if (entrancePropsNode) {
-        hide(entrancePropsNode);
-        Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
+      // Start the wipe and wait for it to cover. Everything below happens on
+      // the covered frame, so the pitch is already set when it uncovers.
+      if (!handoffWipeRunning && !handoffSnapped) StartHandoffWipe();
+      if (RunHandoffWipe()) {
+        handoffSnapped = true;
+        entranceActive = false;
+        ShowMatchHud(true);
+        // Both teams onto their kickoff marks now, under cover, rather than
+        // letting the referee's deferred kickoff walk them there in view. Same
+        // pair the half-time swap uses.
+        ResetSituation(Vector3(0, 0, 0));
+        if (referee) referee->PrepareSetPiece(e_SetPiece_KickOff);
+        // The walkout set goes back inside: banners, flag bearers, the arch,
+        // the pennant display on the centre circle.
+        //
+        // Hidden rather than deleted. Destroying these nodes here tore live
+        // geometry out from under a rendering graphics thread and crashed on a
+        // null GraphicsGeometry_GeometryInterpreter, intermittently - once in
+        // five headless matches, always on this exact frame. The teardown at
+        // the end of Match already deletes both nodes, and by then the
+        // graphics system has stopped, which is the only point deleting them
+        // is safe. Disabling looks identical and costs a hidden node for the
+        // rest of the match.
+        auto hide = [](boost::intrusive_ptr<Node>& node) {
+          if (!node) return;
+          std::list<boost::intrusive_ptr<Object>> objects;
+          node->GetObjects(objects, true);
+          for (auto& object : objects) object->Disable();
+        };
+        if (entrancePropsNode) {
+          hide(entrancePropsNode);
+          Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
+        }
+        hide(pennantNode);
+        Log(e_Notice, "Match", "Process",
+            "pre-match presentation over after " +
+                int_to_str((int)GetEntranceElapsedSeconds()) + "s real / " +
+                int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
       }
-      hide(pennantNode);
-      Log(e_Notice, "Match", "Process",
-          "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
-              "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
     } else {
       // A full second ahead, not one tick. The referee defers the kickoff to
       // this value every tick and re-prepares the set piece the moment
@@ -3967,6 +4028,11 @@ void Match::Process() {
       introCutsceneEnd_ms = actualTime_ms + 1000;
     }
   }
+
+  // The wipe plays out over live football once the snap is done - the whole
+  // animation, the way the replay page plays its own out. Stopping at the cut
+  // would throw away five sixths of it and leave the crest vanishing mid-swing.
+  if (handoffSnapped && handoffWipeRunning) RunHandoffWipe();
 
   ProcessTacticalHotkeys();
 
