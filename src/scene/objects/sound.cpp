@@ -163,6 +163,26 @@ void Sound::Poke(e_SystemType targetSystemType) {
   subjectMutex.unlock();
 }
 
+void Sound::Pause() {
+  subjectMutex.lock();
+  int observersSize = observers.size();
+  for (int i = 0; i < observersSize; i++) {
+    ISoundInterpreter* soundInterpreter = static_cast<ISoundInterpreter*>(observers.at(i).get());
+    soundInterpreter->OnPause();
+  }
+  subjectMutex.unlock();
+}
+
+void Sound::Seek(float seconds) {
+  subjectMutex.lock();
+  int observersSize = observers.size();
+  for (int i = 0; i < observersSize; i++) {
+    ISoundInterpreter* soundInterpreter = static_cast<ISoundInterpreter*>(observers.at(i).get());
+    soundInterpreter->OnSeek(seconds);
+  }
+  subjectMutex.unlock();
+}
+
 void Sound::RecursiveUpdateSpatialData(e_SpatialDataType spatialDataType,
                                        e_SystemType excludeSystem) {
   InvalidateSpatialData();

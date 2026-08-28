@@ -841,7 +841,7 @@ TEST(RigdioSession, HornResumesAcrossGoals) {
   ASSERT_TRUE(first.has_value());
   EXPECT_DOUBLE_EQ(first->seekSeconds, 0.0);
   s.OnHornPaused(true, 130.0);  // kicked off 30 s into the horn
-  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 30.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(true, "h_goal.mp3"), 30.0);
   auto second = s.OnGoal(true, "Nobody", 40, 900.0);
   ASSERT_TRUE(second.has_value());
   EXPECT_EQ(second->file, "h_goal.mp3");
@@ -853,7 +853,7 @@ TEST(RigdioSession, ResumePositionWrapsAtDuration) {
   s.SetDuration("h_goal.mp3", 60.0);
   s.OnGoal(true, "Nobody", 5, 0.0);
   s.OnHornPaused(true, 130.0);  // 130 s into a 60 s loop -> 10 s
-  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 10.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(true, "h_goal.mp3"), 10.0);
 }
 
 TEST(RigdioSession, SyncNoStillResumesTheSameEntry) {
@@ -914,6 +914,23 @@ TEST(RigdioSession, DifferentEntrySameFileSharesPosition) {
   EXPECT_DOUBLE_EQ(second->seekSeconds, 25.0);
 }
 
+TEST(RigdioSession, SidesDoNotSharePositionsForSameFilename) {
+  // rigdio's cache is keyed by ABSOLUTE path; each side has its own export
+  // folder, so identical relative names (goalhorn.mp3 is common) must not
+  // share a resume position across teams.
+  std::string home = "name;hteam\ngoal;goalhorn.mp3\n";
+  std::string away = "name;ateam\ngoal;goalhorn.mp3\n";
+  MatchSession s = sesshelp::Make(home, away);
+  s.SetDuration("goalhorn.mp3", 300.0);
+  s.OnGoal(true, "Nobody", 5, 0.0);
+  s.OnHornPaused(true, 30.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(true, "goalhorn.mp3"), 30.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(false, "goalhorn.mp3"), 0.0);
+  auto awayGoal = s.OnGoal(false, "Nobody", 10, 50.0);
+  ASSERT_TRUE(awayGoal.has_value());
+  EXPECT_DOUBLE_EQ(awayGoal->seekSeconds, 0.0);  // not the home position
+}
+
 TEST(RigdioSession, EndStopClearsThePositionCache) {
   std::string home =
       "name;hteam\ngoal;h_goal.mp3;end stop;start 0:10\n";
@@ -926,7 +943,7 @@ TEST(RigdioSession, EndStopClearsThePositionCache) {
   // first-play seek re-armed, nothing new starts.
   auto after = s.OnHornEnded(true, 250.0);
   EXPECT_FALSE(after.has_value());
-  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 0.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(true, "h_goal.mp3"), 0.0);
   auto second = s.OnGoal(true, "Nobody", 40, 500.0);
   ASSERT_TRUE(second.has_value());
   EXPECT_DOUBLE_EQ(second->seekSeconds, 10.0);  // start seek runs again
@@ -1056,7 +1073,7 @@ TEST(RigdioSession, SpeedRidesOnTheAction) {
   EXPECT_DOUBLE_EQ(act->speed, 1.5);
   // Position advances at playback speed.
   s.OnHornPaused(true, 20.0);
-  EXPECT_DOUBLE_EQ(s.CachedPosition("h_goal.mp3"), 30.0);
+  EXPECT_DOUBLE_EQ(s.CachedPosition(true, "h_goal.mp3"), 30.0);
 }
 
 TEST(RigdioCheck, NotPropagatesUnload) {

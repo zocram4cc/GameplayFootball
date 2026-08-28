@@ -121,16 +121,19 @@ is rewritten to `==`. Anything else → load fails.
 | `every <n>` | pname's goal count % n == 0. Non-numeric or zero `n` only explodes at check time (entry effectively never plays; rest keeps working). |
 | `mostgoals [player]` | pname (or the bracket-quoted named player) has at least as many goals as every scorer on the team. |
 | `once` | passes the first time it is *checked*; every later check unloads the entry permanently (section 6). |
-| `time <op> <minute>` | goal minute `<op> minute` (integers). If the op is one of `<`, `<=`, `==` and the current minute is already past, the entry is unloaded permanently. Non-integer minute → load fails. In rigdio the minute comes from a prompt; the engine uses the match clock. |
 | `special [label]` | always false. Marks a victory-anthem entry as a manually selectable "special VA" (MVP anthems); rigdio lists it in a dropdown and only plays it when the streamer picks it. |
 | `not <condition...>` | negates the single condition built from the remaining tokens (comma-splitting exists in the code but only the first subcondition is checked). |
 
 `or` / `and` / `if` meta-conditions exist in the code but are **commented out
-of the registry** — using them in a .4ccm fails the load.
+of the registry** — using them in a .4ccm fails the load. So is `time`:
+`TimeCondition` is fully implemented (goal-minute prompt, `<`/`<=`/`==`
+unloading) but never registered in v2.2.0's `conditions` dict, so a .4ccm
+using it fails to load in rigdio. The engine registers it anyway —
+divergence #6.
 
 `goals`/`teamgoals`/`lead` with a non-numeric operand parse fine but explode
-at check time (Python `eval`), which in rigdio's UI means that entry
-effectively never plays while everything else keeps working.
+at check time (Python `eval`) — the uncaught exception aborts that whole
+pick; see divergence note 4.
 
 ## 4. Instructions
 
@@ -301,3 +304,9 @@ same trigger). The divergences, all playback/operational:
    uncaught exception in the button callback. The entry list is unchanged.
 5. **Undo, playback-speed slider, manual per-chant buttons, title.log,
    dark mode** — streamer-UI affordances with no engine equivalent.
+6. **`time <op> <minute>` is accepted.** rigdio v2.2.0 ships TimeCondition
+   but never registers it, so any .4ccm using `time` fails rigdio's load
+   outright — no live export can contain it. The engine registers it (the
+   match clock replaces the goal-minute prompt; `<`/`<=`/`==` past their
+   minute unload the entry, as the dormant code specifies). A superset of
+   rigdio: every rigdio-loadable file behaves identically.

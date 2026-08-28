@@ -712,6 +712,15 @@ MatchSession::MatchSession(TeamMusic homeTeam, TeamMusic awayTeam,
 
 MatchSession::Side& MatchSession::SideFor(bool home) { return sides_[home ? 0 : 1]; }
 
+namespace {
+
+// rigdio keys its position cache by ABSOLUTE path; the sides have separate
+// export folders, so an identical relative name must not collide.
+std::string CacheKey(bool home, const std::string& file) {
+  return (home ? "h|" : "a|") + file;
+}
+
+}  // namespace
 
 // ConditionPlayer.play(): position restore order is cache, then the
 // first-play start seek on top of it.
@@ -722,7 +731,7 @@ std::optional<PlayAction> MatchSession::Play(bool home, Picker& picker,
   Side& side = SideFor(home);
   double seek = e->position;
   if (sync_[home ? 0 : 1] && isGoalhorn && !e->warcry) {
-    auto it = positionCache_.find(e->file);
+    auto it = positionCache_.find(CacheKey(home, e->file));
     if (it != positionCache_.end()) seek = it->second;
   }
   if (e->firstPlay) {
@@ -805,7 +814,7 @@ void MatchSession::OnHornPaused(bool home, double now) {
   // The sync cache is written BEFORE the pause-restart seek, which is why
   // pause;restart is inert while sync is on (docs/RIGDIO.md section 4).
   if (sync_[home ? 0 : 1] && side.playingIsGoalhorn && !e->warcry)
-    positionCache_[side.playFile] = pos;
+    positionCache_[CacheKey(home, side.playFile)] = pos;
   if (e->pauseRestart && e->pauseEvery > 0) {
     e->pauseCount++;
     if (e->pauseCount % e->pauseEvery == 0) e->position = e->startSeconds;
@@ -824,7 +833,7 @@ std::optional<PlayAction> MatchSession::OnHornEnded(bool home, double now) {
     // EndInstruction.run -> reloadSong: cache cleared, first play re-armed.
     e->position = 0.0;
     e->firstPlay = true;
-    positionCache_.erase(e->file);
+    positionCache_.erase(CacheKey(home, e->file));
     return std::nullopt;
   }
   if (e->warcry) {
@@ -943,8 +952,8 @@ void MatchSession::SetDuration(const std::string& file, double seconds) {
   durations_[file] = seconds;
 }
 
-double MatchSession::CachedPosition(const std::string& file) const {
-  auto it = positionCache_.find(file);
+double MatchSession::CachedPosition(bool home, const std::string& file) const {
+  auto it = positionCache_.find(CacheKey(home, file));
   return it == positionCache_.end() ? 0.0 : it->second;
 }
 

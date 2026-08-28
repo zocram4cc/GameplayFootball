@@ -105,6 +105,10 @@ void OpenALRenderer::PlayAudioSoundBuffer(int audioSoundBufferID) {
   alSourcePlay(bufferSourceMapping.find(audioSoundBufferID)->second);
 }
 
+void OpenALRenderer::PauseAudioSoundBuffer(int audioSoundBufferID) {
+  alSourcePause(bufferSourceMapping.find(audioSoundBufferID)->second);
+}
+
 void OpenALRenderer::SetListenerParameters(const Vector3& position, const Vector3& velocity,
                                            const Quaternion& orientation) {
   ALfloat listenerPos[] = {position.coords[0], position.coords[1], position.coords[2]};
@@ -135,6 +139,9 @@ void OpenALRenderer::SetSourceParameter(int audioSoundBufferID,
     case e_AudioRenderer_SourceParameter_Pitch:
       //        printf("PITCH: %f\n", value);
       alSourcef(sourceID, AL_PITCH, value);
+      break;
+    case e_AudioRenderer_SourceParameter_Offset:
+      alSourcef(sourceID, AL_SEC_OFFSET, value);
       break;
     default:
       break;

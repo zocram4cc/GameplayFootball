@@ -86,6 +86,26 @@ void AudioSound_SoundInterpreter::OnPoke() {
   renderer->messageQueue.PushMessage(playMsg);
 }
 
+void AudioSound_SoundInterpreter::OnPause() {
+  AudioRenderer* renderer = caller->GetAudioScene()->GetAudioSystem()->GetAudioRenderer();
+  caller->audioSoundBuffer->resourceMutex.lock();
+  boost::intrusive_ptr<AudioRendererMessage_PauseAudioSoundBuffer> pauseMsg(
+      new AudioRendererMessage_PauseAudioSoundBuffer(
+          caller->audioSoundBuffer->GetResource()->GetID()));
+  caller->audioSoundBuffer->resourceMutex.unlock();
+  renderer->messageQueue.PushMessage(pauseMsg);
+}
+
+void AudioSound_SoundInterpreter::OnSeek(float seconds) {
+  AudioRenderer* renderer = caller->GetAudioScene()->GetAudioSystem()->GetAudioRenderer();
+  caller->audioSoundBuffer->resourceMutex.lock();
+  boost::intrusive_ptr<AudioRendererMessage_SeekAudioSoundBuffer> seekMsg(
+      new AudioRendererMessage_SeekAudioSoundBuffer(
+          caller->audioSoundBuffer->GetResource()->GetID(), seconds));
+  caller->audioSoundBuffer->resourceMutex.unlock();
+  renderer->messageQueue.PushMessage(seekMsg);
+}
+
 void AudioSound_SoundInterpreter::UpdateParams() {
   AudioRenderer* renderer = caller->GetAudioScene()->GetAudioSystem()->GetAudioRenderer();
   caller->audioSoundBuffer->resourceMutex.lock();

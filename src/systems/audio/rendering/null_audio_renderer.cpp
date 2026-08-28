@@ -29,6 +29,8 @@ void NullAudioRenderer::DeleteAudioSoundBuffer(int /*audioSoundBufferID*/) {}
 
 void NullAudioRenderer::PlayAudioSoundBuffer(int /*audioSoundBufferID*/) {}
 
+void NullAudioRenderer::PauseAudioSoundBuffer(int /*audioSoundBufferID*/) {}
+
 void NullAudioRenderer::SetListenerParameters(const Vector3& /*position*/,
                                               const Vector3& /*velocity*/,
                                               const Quaternion& /*orientation*/) {}
