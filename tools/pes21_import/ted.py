@@ -21,12 +21,21 @@ Inside the plaintext:
   0x0275  manager name
   0x05c5  squad order: a permutation of 1..39, the starting XI first and the
           bench after it - the same idea as the engine's formationorder
-  0x08e0  player records, 312 bytes each: bit-packed stats, then the player's
-          name as plain ASCII near the end of the record
+  0x08e8  player records, 312 bytes each - byte-for-byte the PES EDIT format's
+          own "Player entry" (240 bytes) followed immediately by its "Player
+          appearance entry" (72 bytes), documented in full at
+          implyingrigged.info/wiki/Pro_Evolution_Soccer_2021/Edit_file. Not a
+          bespoke 4cc format: whoever built the exporter copied the real
+          record straight out of PES's own save structure, id and all.
 
-The stats are bit-packed and are NOT decoded here: without the record spec that
-would be guesswork, and a wrong stat is worse than no stat. What this gives you
-is the roster and the order, which is what the importer needs.
+Each player record's stats are read here field by field, from the same
+byte:bit offsets the wiki gives for the Player entry - not classified into
+"gold/silver/bronze" first. The 4cc's own tournament-to-tournament tier rules
+(what a gold rates, how many silvers a squad gets) shift between seasons and
+even between packs of the same season; a table of those rules would need
+updating every time they did and would silently mis-rate any player a pack
+author hand-edited off the template. Reading the real per-stat bytes needs
+updating for neither.
 
   python3 ted.py <file.ted> [--json] [--dump-plain out.bin]
 """
@@ -64,15 +73,41 @@ FORMATION_SLOTS = 12
 FORMATION_MARKS = 10
 FORMATION_STRIDE = FORMATION_SLOTS + 2 * FORMATION_MARKS + 1
 
-# The roster is a plain array of 312-byte records - 0x08e0 is 19 bytes early - and
-# each carries three fixed fields rather than one printable run to be hunted for.
-# Some records open with a KSSH or KSSP magic and some do not, so the magic is no
-# use for finding them: on HDG's export it marks eight of the twenty-three.
-PLAYER_TABLE_OFFSET = 0x08f3
+# The roster is a plain array of 312-byte records, each one the real PES
+# "Player entry" + "Player appearance entry" pair (see the module docstring).
+# 0x08f3 - REC_NAME's first, colour-hunted guess of where a record starts - was
+# eleven bytes late: it lined a record's own Player Name field up with the
+# wiki's 0x2b instead of its real 0x36, which is why every stat field read
+# eleven bytes downstream of an id also came out wrong. Anchoring on the id
+# instead - a plain 4-byte int, sequential across a roster (80301, 80302, ...)
+# - fixes the whole record at once.
+PLAYER_TABLE_OFFSET = 0x08e8
 PLAYER_RECORD_SIZE = 312
-REC_NAME = 0x2b
-REC_SHIRT_NAME = 0x68
-REC_EXTRA = 0xa5
+REC_ID = 0x00
+REC_NAME = 0x36
+REC_SHIRT_NAME = 0x73
+REC_EXTRA = 0xb0
+
+# Player entry's own stat fields, at the wiki's byte:bit offsets exactly.
+# PES: must be in range [40, 99] for every one of these; STAT_FIELDS omits the
+# motion/edit-flag/registered-position fields the wiki interleaves between
+# them, since those are not stats and this importer has no use for them.
+STAT_FIELDS = (
+    ("offensive_awareness", 0x0E, 0), ("ball_control", 0x0E, 7),
+    ("tight_possession", 0x10, 0), ("low_pass", 0x10, 7),
+    ("lofted_pass", 0x11, 6), ("finishing", 0x12, 5),
+    ("place_kicking", 0x14, 0), ("curl", 0x14, 7),
+    ("speed", 0x15, 6), ("acceleration", 0x16, 5),
+    ("jump", 0x18, 0), ("physical_contact", 0x18, 7),
+    ("balance", 0x19, 6), ("stamina", 0x1A, 5),
+    ("ball_winning", 0x1C, 0), ("aggression", 0x1C, 7),
+    ("gk_awareness", 0x1D, 6), ("gk_catching", 0x1E, 5),
+    ("gk_reach", 0x20, 0), ("defensive_awareness", 0x24, 0),
+    ("gk_clearing", 0x24, 7), ("heading", 0x25, 6),
+    ("dribbling", 0x28, 0), ("gk_reflexes", 0x2C, 6),
+    ("kicking_power", 0x2D, 5),
+)
+
 
 # PES colours a name from markup inside the string, and 4cc packs use it:
 #
@@ -126,6 +161,42 @@ def read_string(plain, offset, limit=64):
     return plain[offset:end].decode("ascii", "replace").strip()
 
 
+def get_bits(plain, byte_offset, bit_offset, nbits):
+    """The wiki's own "byte:bit" addressing: bit 0 is a byte's least significant
+    bit, and a field that does not end on a byte boundary continues into the
+    next byte's low bits. Confirmed against the real, decrypted EDIT export:
+    this reads Offensive Awareness, Ball Control and so on out of it correctly.
+    """
+    val = 0
+    for i in range(nbits):
+        total_bit = bit_offset + i
+        byte_i = byte_offset + total_bit // 8
+        bit_i = total_bit % 8
+        if byte_i >= len(plain):
+            break
+        if plain[byte_i] & (1 << bit_i):
+            val |= 1 << i
+    return val
+
+
+def read_player_id(plain, offset):
+    if offset + 4 > len(plain):
+        return 0
+    return struct.unpack_from("<I", plain, offset)[0]
+
+
+def read_player_stats(plain, offset):
+    """-> {stat: value} for one record, straight off its own bits.
+
+    Every value is PES's own 40-99 rating, read from exactly the byte:bit the
+    wiki gives for the Player entry - not a "gold/silver/bronze" lookup. A
+    tournament's tier rules, and how closely any one player actually sits to
+    them, are both things this function has no opinion on.
+    """
+    return {name: get_bits(plain, offset + byte_off, bit_off, 7)
+            for name, byte_off, bit_off in STAT_FIELDS}
+
+
 def read_squad_order(plain):
     raw = plain[SQUAD_ORDER_OFFSET:SQUAD_ORDER_OFFSET + SQUAD_SIZE]
     return [b for b in raw]
@@ -169,7 +240,8 @@ def strip_markup(text):
 
 
 def read_players(plain):
-    """-> [{name, shirt_name, extra}] in record order, from their own fields.
+    """-> [{id, name, shirt_name, extra, stats}] in record order, from their own
+    fields.
 
     Reading the longest printable run instead was wrong twice on HDG's export: it
     dragged in the colour markup and the stray bytes of the packed block before a
@@ -183,11 +255,13 @@ def read_players(plain):
         if not name:
             break
         players.append({
+            "id": read_player_id(plain, offset + REC_ID),
             "name": name,
             "name_colour": colours[0][1] if colours else None,
             "name_colours": colours,
             "shirt_name": strip_markup(read_string(plain, offset + REC_SHIRT_NAME)),
             "extra": strip_markup(read_string(plain, offset + REC_EXTRA)),
+            "stats": read_player_stats(plain, offset),
         })
         offset += PLAYER_RECORD_SIZE
     return players
