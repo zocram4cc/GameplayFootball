@@ -316,60 +316,55 @@ def _mesh_signature(mesh):
     return tuple(sig)
 
 
-def _mesh_joints(mesh, bone_to_joint, joint_positions=None):
-    """Set of GF joint IDs a mesh's skin weights reference."""
-    joints = set()
-    for vertex in mesh.vertices:
-        for joint_id, _ in vertex_joints(vertex, bone_to_joint, joint_positions):
-            joints.add(joint_id)
-    return joints
+def select_meshes(meshes, max_tris, source_dir=None):
+    """Which of the fmdl's meshes make the model: the visible character, whole.
 
+    Drops the redundant (duplicate copies, PES passes this engine does not
+    render) and the hidden (kit-hiding, below), and NEVER a visible mesh:
+    dbg_2014's character is 154,799 faces over 11 meshes, and cutting it to a
+    100,000-triangle budget amputated its legs. max_tris is only reported on -
+    an over-budget character ships whole, and any capacity concern is the
+    engine's to solve (LOD/decimation), not an importer's to cut limbs off.
 
-def select_meshes(meshes, max_tris, bone_to_joint, joint_positions=None):
-    """Dedupe identical meshes, then pick within the triangle budget.
-
-    Coverage-first: greedy set-cover over the GF joints the skin references
-    (so every limb keeps geometry), then remaining budget fills biggest-first.
+    Kit-hiding: a multi-form 4cc fmdl carries every character the player can
+    be (dbg_2009: goku, vegeta, broly, roshi, jackiechun...), each form's
+    meshes pointing at its own kit-slot texture (<char>_u0XXXp0). PES shows
+    one form per kit by shipping the others' textures fully transparent. A
+    mesh whose resolved texture is such a hider is not part of the model.
+    Needs `source_dir` (the fmdl's folder) to resolve textures; without it,
+    nothing is hidden.
     """
     seen = set()
-    unique = []
+    kept = []
+    hider = {}
     for mesh in meshes:
         # PES ships extra copies of each mesh for passes this engine does not
         # render - the antiblur pass, and an outline shell sitting just outside
         # the body. Keeping them doubles the model and the copies z-fight.
         material = getattr(mesh, "materialInstance", None)
-        if is_non_render_pass(getattr(material, "name", ""), mesh_base_texture(mesh)):
+        name = mesh_base_texture(mesh)
+        if is_non_render_pass(getattr(material, "name", ""), name):
             continue
         sig = _mesh_signature(mesh)
         if sig in seen:
             continue
         seen.add(sig)
-        unique.append(mesh)
-    if not max_tris:
-        return unique
-
-    joints_of = {id(m): _mesh_joints(m, bone_to_joint, joint_positions) for m in unique}
-    kept, used = [], 0
-    covered = set()
-    remaining = sorted(unique, key=lambda m: -len(m.faces))
-    while True:
-        best, best_new = None, 0
-        for m in remaining:
-            new = len(joints_of[id(m)] - covered)
-            if new > best_new and used + len(m.faces) <= max_tris:
-                best, best_new = m, new
-        if best is None:
-            break
-        kept.append(best)
-        used += len(best.faces)
-        covered |= joints_of[id(best)]
-        remaining.remove(best)
-    for m in remaining:
-        if used + len(m.faces) <= max_tris:
-            kept.append(m)
-            used += len(m.faces)
-    order = {id(m): i for i, m in enumerate(unique)}
-    kept.sort(key=lambda m: order[id(m)])
+        if source_dir and name:
+            if name not in hider:
+                path = find_texture_file(source_dir, name)
+                hider[name] = bool(path) and texture_is_hider(path)
+            if hider[name]:
+                continue
+        kept.append(mesh)
+    hidden = sorted(name for name, hides in hider.items() if hides)
+    if hidden:
+        print("  kit-hiding: %d mesh(es) not in this form, dropped (%s)"
+              % (sum(1 for m in meshes if mesh_base_texture(m) in hidden),
+                 ", ".join(hidden)))
+    total = sum(len(m.faces) for m in kept)
+    if max_tris and total > max_tris:
+        print("  %d faces exceeds the %d budget; keeping the character whole "
+              "rather than amputating it" % (total, max_tris))
     return kept
 
 
@@ -433,13 +428,90 @@ def mesh_base_texture(mesh):
     return None
 
 
+TEXTURE_EXTS = (".dds", ".png", ".tga")
+
+# The bare kit-slot texture name (u0<team>p0; 4cc packs placeholder the team as
+# XXX). It names no file anywhere: the engine swaps the team's kit into that
+# slot at run time, so it must never be resolved to baked art - k2010 ships a
+# u0XXXp1.dds that would otherwise be picked up.
+BARE_KIT_SLOT_RE = re.compile(r"^u0\w{3}p0$", re.IGNORECASE)
+
+
+def texture_name_candidates(name):
+    """The file stems a mesh's texture name may ship under.
+
+    Multi-form 4cc models dress each character in a per-character kit-slot
+    texture (<char>_u0XXXp0); the pack ships the actual art per kit as
+    <char>_u0XXXp1/2/3. The import is a single static model, so it wears
+    kit 1. The bare kit slot itself stays with the engine (see above).
+    """
+    if BARE_KIT_SLOT_RE.match(name):
+        return []
+    names = [name]
+    if name.lower().endswith("p0"):
+        names.append(name[:-1] + "1")
+    return names
+
+
+def texture_search_dirs(source_dir):
+    """Where a pack may keep a mesh's texture, most specific first.
+
+    Beside the .fmdl; then the pack's Common/u0<team>p1/ (per-kit shared
+    textures - hdg ships armor_bsm there and nothing beside the fmdl); then
+    Common/ itself (dbg keeps its shared character art there, flat).
+    The pack root is two levels up from the player folder (Boots/kNNNN/..).
+    """
+    dirs = [source_dir]
+    common = os.path.join(os.path.dirname(os.path.dirname(source_dir)), "Common")
+    if os.path.isdir(common):
+        for entry in sorted(os.listdir(common)):
+            if re.match(r"^u0\w{3}p1$", entry, re.IGNORECASE) and \
+                    os.path.isdir(os.path.join(common, entry)):
+                dirs.append(os.path.join(common, entry))
+        dirs.append(common)
+    return dirs
+
+
+def find_texture_file(source_dir, name):
+    """The file a mesh's texture name resolves to in this pack, or None."""
+    candidates = [n.lower() for n in texture_name_candidates(name)]
+    if not candidates:
+        return None
+    for directory in texture_search_dirs(source_dir):
+        entries = sorted(os.listdir(directory))
+        for wanted in candidates:
+            for entry in entries:
+                stem, ext = os.path.splitext(entry)
+                if stem.lower() == wanted and ext.lower() in TEXTURE_EXTS:
+                    return os.path.join(directory, entry)
+    return None
+
+
+def texture_is_hider(path):
+    """Whether this texture exists to hide its mesh: fully transparent.
+
+    That is the 4cc kit-hiding convention - real art with alpha in it (dbg's
+    logo is 59% opaque, kidbuu 57%) stays art. Unreadable files are not
+    hiders; they fall through to the missing-texture path.
+    """
+    try:
+        from PIL import Image
+        image = Image.open(path)
+        image.load()
+        alpha = image.convert("RGBA").getchannel("A")
+        return alpha.getextrema()[1] <= 8
+    except Exception:
+        return False
+
+
 def export_textures(fmdl_path, out_dir, names, prefix):
     """Writes each named source texture next to the model as a .png.
 
-    The pack ships .dds beside the .fmdl; the engine reads PNG (simple,
-    editable formats through and through). Anything that cannot be found or
-    decoded is reported and skipped, leaving that material pointing at a file
-    the loader will complain about rather than silently texturing it wrong.
+    The pack ships .dds - beside the .fmdl, or shared under the pack's
+    Common/ (find_texture_file) - and the engine reads PNG (simple, editable
+    formats through and through). Anything that cannot be found or decoded is
+    reported and skipped, leaving that material pointing at a file the loader
+    will complain about rather than silently texturing it wrong.
     """
     try:
         from PIL import Image
@@ -450,14 +522,9 @@ def export_textures(fmdl_path, out_dir, names, prefix):
     source_dir = os.path.dirname(os.path.abspath(fmdl_path))
     written = {}
     for name in sorted(n for n in names if n):
-        found = None
-        for entry in os.listdir(source_dir):
-            stem, ext = os.path.splitext(entry)
-            if stem.lower() == name.lower() and ext.lower() in (".dds", ".png", ".tga"):
-                found = os.path.join(source_dir, entry)
-                break
+        found = find_texture_file(source_dir, name)
         if not found:
-            print("  texture %-24s NOT FOUND in %s" % (name, source_dir))
+            print("  texture %-24s NOT FOUND in %s or its pack" % (name, source_dir))
             continue
         try:
             image = Image.open(found)
@@ -539,7 +606,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     bone_to_joint = build_bone_map(fmdl)
     joint_positions = retarget.gf_world_bind()
 
-    meshes = select_meshes(fmdl.meshes, max_tris, bone_to_joint, joint_positions)
+    meshes = select_meshes(fmdl.meshes, max_tris,
+                           source_dir=os.path.dirname(os.path.abspath(fmdl_path)))
     if only_meshes is not None:
         meshes = [m for i, m in enumerate(meshes) if i in only_meshes]
 
@@ -825,7 +893,8 @@ if __name__ == "__main__":
     parser.add_argument("--base", default=None,
                         help="stock fullbody.ase to composite the import over")
     parser.add_argument("--max-tris", type=int, default=None,
-                        help="triangle budget (joint coverage first)")
+                        help="advisory triangle budget: exceeding it is "
+                             "reported, never amputated")
     parser.add_argument("--force-joint", type=int, default=None,
                         help="debug: bind every vertex to this joint id")
     parser.add_argument("--only-meshes", default="",
