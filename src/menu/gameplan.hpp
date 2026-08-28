@@ -41,7 +41,11 @@ public:
   virtual void Process();
 
   virtual void Deactivate();
-  virtual void Reactivate();
+  // focusTarget: who gets keyboard/gamepad focus back once the nav column is
+  // restored. Defaults to the tactics button, matching every existing
+  // submenu; the per-player menu passes the pitch map itself, so escaping it
+  // resumes dragging rather than jumping back to the button column.
+  virtual void Reactivate(Gui2View* focusTarget = nullptr);
 
   Vector3 GetButtonColor(int id);
 
@@ -67,6 +71,13 @@ public:
 
   void GoSubstitutionsMenu();
   void SubstitutionsMenuOnClick(Gui2Button* button);
+
+  // The 'x' submenu on a selected pitch card (docs/references
+  // PES21_VGL26_Day3_Enrichment_Addendum.md "Interaction: ... LT RT Switch
+  // Player Icons"): change this one player's role, or jump into the
+  // existing whole-team formation picker.
+  void GoPlayerMenu(int slotIndex);
+  void PlayerMenuRoleOnClick(e_PlayerRole role);
 
   void GoTacticsMenu();
   void TacticsMenuOnChange(Gui2Slider* slider, int id);
@@ -102,6 +113,8 @@ protected:
   Gui2Slider* sliderCustomDefenders = nullptr;
   Gui2Slider* sliderCustomMidfielders = nullptr;
   GamePlanSubMenu* substitutionsMenu;
+  GamePlanSubMenu* playerMenu = nullptr;
+  int playerMenuSlotIndex = -1;
 
   std::vector<TacticsSlider> tacticsSliders;
 
