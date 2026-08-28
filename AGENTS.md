@@ -4,6 +4,32 @@ Rules that exist because breaking them cost real time. Each one names the
 incident that produced it, so it can be argued with on evidence rather than
 treated as ceremony.
 
+
+---
+
+## The day's work lives in `tasks/DD-MM-YY.md`
+
+One file per working day, holding the full state of the todo: every open item
+with the evidence behind it, the files it touches and the next concrete action,
+so it can be picked up without re-deriving anything. Update it as items close;
+it is the handover, not a summary written afterwards.
+
+Record the theories that were *killed*, with what killed them. Six wrong
+explanations of the broken arms were each re-derived from source more than
+once, because nothing had written down that they were already dead.
+
+Earlier investigations survive in their subagent transcripts - `RigdioNative`
+for the rigdio audio integration, `ImportVerify` for model verification. Query
+them before repeating their work.
+
+---
+
+## The suite is green, whoever made it red
+
+A failing test is a failing test. "It was already broken", "that is not my
+area" and "it is unrelated to this change" are not states the suite has: it
+passes or it does not, and a tolerated red test is how a second one gets
+ignored. Fix it or delete it with a reason, in the commit that noticed it.
 ---
 
 ## PES is the reference; the engine adapts to it
@@ -35,17 +61,28 @@ The fix I was about to write for that - fold finger influence into the wrist -
 was the identical mistake a third time: another collapse to spare the engine a
 change. The correct fix is that the engine carries PES's hand rig 1:1.
 
-### One-shot scripts instead of tools
+### Importing a team is one command
 
-`tools/pes21_import` holds 114 Python files, and the most recent was added
-minutes after this rule was agreed. Many exist to answer one question once:
-a measurement, a histogram, a render for a single screenshot. They are not
-tools a user has any use for, they are notes that happen to execute.
+One-off scripts are fine. A measurement, a histogram, a render written to
+answer one question and never run again costs nothing and `tools/pes21_import`
+can hold as many as it needs.
 
-A user must be able to start from a stock PES21 install and their own 4cc packs
-and get everything the repo ships, using tools in the repo. That is what the
-tools are for. Prefer extending one that exists; a new file has to be something
-that user would run, not something an agent ran once.
+What is not fine is the user-facing path being a pile of them. Importing a team
+must be:
+
+```bash
+python3 import_team.py path/to/AET/ path/to/team.ted
+```
+
+and then be **done** - logos, kits, models (properly rigged, not merely
+parsing), medals, tactics, sliders, squad, portraits. No follow-up scripts, no
+manual install step, no "then run install_anims.py". If a step is needed, it
+belongs inside that command.
+
+The reason is the no-assets rule: nothing PES-derived or 4cc-derived is ever
+committed, so every user builds their own data from their own copy of PES21 and
+their own packs. That command *is* the product. Anything it does not do is
+something the user cannot have.
 
 ### The test, applied before writing anything
 
