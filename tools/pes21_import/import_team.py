@@ -293,13 +293,20 @@ def main():
                         help="assign consecutive database ids from here")
     parser.add_argument("--db-ids", default="",
                         help="explicit comma-separated database ids, in export order")
-    # Advisory only: select_meshes never amputates a visible character to fit a
-    # budget. It used to - lcg_2709 lost its head to a 20,000 budget, dbg_2014
-    # lost its legs to a 100,000 one (154,799 faces over 11 meshes) - and a torn
-    # on-budget model is worse than a whole over-budget one. Exceeding the
-    # budget is reported; if it ever becomes a real capacity problem, the
-    # engine's renderer is where an LOD belongs.
-    parser.add_argument("--max-tris", type=int, default=100000)
+    # A ceiling, enforced by refusal rather than by cutting limbs off. Two
+    # earlier settings were both wrong: 20,000 threw lcg_2709's head away whole
+    # and 100,000 amputated dbg_2014's legs (154,799 faces over 11 meshes), so
+    # select_meshes no longer trims a visible character at all. That alone left
+    # the import unbounded, which is its own fault - the engine CPU-skins every
+    # unique vertex of every player each body tick and has no LOD, so nothing
+    # downstream absorbs an oversized model.
+    #
+    # Measured over the DBG pack: the largest single character is 212,417
+    # triangles and a starting eleven is 1.83M. 250,000 admits every real 4cc
+    # character whole while still catching a pathological one, and an
+    # over-budget model now fails the import loudly - so raising this is a
+    # deliberate decision with the cost in view, not a silent default.
+    parser.add_argument("--max-tris", type=int, default=250000)
     parser.add_argument("--max-edge", type=float, default=0.15,
                         help="drop triangles with an edge longer than this "
                              "(metres); see fmdl_to_fullbody")

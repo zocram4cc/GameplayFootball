@@ -107,6 +107,33 @@ class TextureIsHider(PackLayout):
         write_png(path, 120)
         self.assertFalse(fmdl_to_fullbody.texture_is_hider(path))
 
+    def test_the_real_packs_hiders_are_not_quite_zero(self):
+        """The tolerance is load-bearing, not defensive rounding. Every one of
+        the 26 hider textures in the DBG pack peaks at alpha 2 rather than 0,
+        so a `== 0` test would pass this suite while silently reverting every
+        DBG player to the five-form chimera the hiding exists to prevent."""
+        path = os.path.join(self.common, "broly_u0XXXp1.png")
+        write_png(path, 2)
+        self.assertTrue(fmdl_to_fullbody.texture_is_hider(path))
+
+    def test_the_nearest_real_artwork_is_still_not_a_hider(self):
+        """k2016's aura_scroll peaks at alpha 38 - the closest genuine art to
+        the threshold in any of the three packs. It has to stay visible, or
+        the tolerance has been opened too far."""
+        path = os.path.join(self.player, "aura_scroll_u0XXXp1.png")
+        write_png(path, 38)
+        self.assertFalse(fmdl_to_fullbody.texture_is_hider(path))
+
+    def test_a_mostly_transparent_texture_with_opaque_art_is_not_a_hider(self):
+        """Max alpha, not mean: a decal that is bare canvas apart from the
+        mark itself is artwork, and averaging would throw it away."""
+        path = os.path.join(self.common, "decal_u0XXXp1.png")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        image = Image.new("RGBA", (4, 4), (200, 100, 50, 0))
+        image.putpixel((1, 1), (200, 100, 50, 255))
+        image.save(path)
+        self.assertFalse(fmdl_to_fullbody.texture_is_hider(path))
+
 
 if __name__ == "__main__":
     unittest.main()
