@@ -143,7 +143,13 @@ boost::intrusive_ptr<Resource<Surface>> Team::FetchKit(int formationIndex) {
       kitFilename =
           (GetID() == 0) ? "media/textures/almost_white.png" : "media/textures/almost_black.png";
   } else {
-    kitFilename = "media/objects/players/textures/goalie_kit.png";
+    // PES gives every team its own keeper kit and the packs ship it (u<id>g1).
+    // Dressing every keeper on the pitch in one shared shirt is the engine
+    // flattening something the source data has, so the team's own comes first
+    // and the shared one is only the fallback for a team without one.
+    kitFilename = GetTeamData()->GetKitUrl() + "_gk.png";
+    if (!std::filesystem::exists(kitFilename))
+      kitFilename = "media/objects/players/textures/goalie_kit.png";
   }
   return ResourceManagerPool::GetInstance()
       .GetManager<Surface>(e_ResourceType_Surface)

@@ -296,6 +296,63 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
     return "imported"
 
 
+def install_art(pack_dir, game_dir, tag, dry_run=False):
+    """Writes the team's logo and kits where the engine looks for them.
+
+    -> [what was written]. The database rows point at these files, and nothing
+    else creates them: `Team::FetchKit` silently substitutes flat white or flat
+    black for a kit that is not on disk (team.cpp:142), and a missing logo is
+    worse than silent - the scoreboard hands the empty path to the resource
+    manager and the match dies with "There is no loader for
+    databases/default/", which took a whole showcase run down.
+
+    The pack ships the logo as PNG and the kits as DDS, both of which PIL reads
+    directly. Kit `p1`..`p3` are the three outfield kits the engine offers;
+    `g1` is the keeper's and currently has nowhere to go, because GF dresses
+    every keeper in one global `goalie_kit.png` rather than the team's own.
+    """
+    from PIL import Image
+
+    out_dir = os.path.join(game_dir, "databases", "default", "images_teams", tag)
+    written = []
+
+    logo_dir = os.path.join(pack_dir, "Logo")
+    if os.path.isdir(logo_dir):
+        # emblem_0XXX_r.png is the full-size emblem; _l and _ll are its
+        # smaller mips and would install a blurry logo over the good one.
+        emblems = sorted(f for f in os.listdir(logo_dir)
+                         if re.match(r"^emblem_.*_r\.(png|dds)$", f, re.I))
+        if emblems:
+            dest = os.path.join(out_dir, "%s_logo.png" % tag)
+            if not dry_run:
+                os.makedirs(out_dir, exist_ok=True)
+                Image.open(os.path.join(logo_dir, emblems[0])).convert("RGBA").save(dest)
+            written.append(os.path.basename(dest))
+
+    # p1..p3 are the outfield kits the engine offers on the options screen;
+    # g1 is the keeper's own, which PES gives every team and GF used to have
+    # nowhere to put. Installing it as _kit_03 - which is what a hand install
+    # did here once - dresses an outfield player in the keeper's shirt.
+    kit_dir = os.path.join(pack_dir, "Kit Textures")
+    if os.path.isdir(kit_dir):
+        for pattern, name in ((r"^u.*p1\.(dds|png)$", "%s_kit_01.png" % tag),
+                              (r"^u.*p2\.(dds|png)$", "%s_kit_02.png" % tag),
+                              (r"^u.*p3\.(dds|png)$", "%s_kit_03.png" % tag),
+                              (r"^u.*g1\.(dds|png)$", "%s_gk.png" % tag)):
+            source = [f for f in os.listdir(kit_dir) if re.match(pattern, f, re.I)]
+            if not source:
+                continue
+            dest = os.path.join(out_dir, name)
+            if not dry_run:
+                os.makedirs(out_dir, exist_ok=True)
+                Image.open(os.path.join(kit_dir, source[0])).convert("RGBA").save(dest)
+            written.append(name)
+
+    return written
+
+
+
+
 def find_fmdl_lib(hint=""):
     """-> the pes-fmdl directory holding FmdlFile.py, or "".
 
@@ -402,6 +459,9 @@ def main():
         print("%s -> team row %d, %d player(s), %d slider(s)%s"
               % (export["team"], team_row, len(export["squad"]), len(tactics),
                  "  (dry run, rolled back)" if args.dry_run else ""))
+        art = install_art(args.pack_dir, args.game_dir,
+                          install_team.art_tag(export["team"]), args.dry_run)
+        print("   art: %s" % (", ".join(art) if art else "none found in the pack"))
     elif not args.prefix:
         print("give the team's .ted, or --prefix if you only want the models")
         return 1
