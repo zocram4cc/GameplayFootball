@@ -73,6 +73,15 @@ def collect(dirs, ids=None, stadiums=None):
     return found
 
 
+# GF's pitch, from src/gametypes.hpp. Entrances are framed on real pitch
+# landmarks - the centre circle, the tunnel mouth, the line the squads stand on -
+# so PES's 105 x 68 m coordinates have to be stretched onto GF's 110 x 72 or the
+# camera stops about 5% short of where the shot was composed and ends up inside
+# the line-up it is meant to be panning along.
+GF_PITCH_HALF_W = 55.0
+GF_PITCH_HALF_H = 36.0
+
+
 def export(dirs, out_dir, ids=None, stadiums=None, max_per_family=0):
     families = collect(dirs, ids, stadiums)
     written = skipped = 0
@@ -85,7 +94,8 @@ def export(dirs, out_dir, ids=None, stadiums=None, max_per_family=0):
         for name, path in entries:
             dest = os.path.join(dest_dir, os.path.splitext(name)[0] + ".camtrack")
             try:
-                cuts, frames = canm_to_camtrack.export(path, dest)
+                cuts, frames = canm_to_camtrack.export(path, dest, GF_PITCH_HALF_W,
+                                                       GF_PITCH_HALF_H)
             except Exception as exc:  # a pack with no usable camera stream
                 print("SKIP %s: %s" % (name, exc))
                 skipped += 1

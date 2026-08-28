@@ -49,6 +49,15 @@ protected:
   bool slowMotion;
   bool closeWhenAutorunCompletes;
 
+  // A replay the match started for itself, rather than one the user asked for.
+  // PES plays the goal and foul replays as part of the cutscene - clean picture,
+  // no scrub bar, no control hints - and offers "Replay Control" on a button if
+  // you actually want to drive it. GF showed the whole tape-deck chrome over
+  // every automatic replay, which is the one thing the reference never does.
+  bool cinematic;
+  // The only thing drawn over a cinematic replay: the skip/take-control offer.
+  Gui2View* cinematicPrompt;
+
   Gui2Caption* timeLabel;
 
   // The 4cc wipe over the cut, in and out (replaywipe.hpp). One full-screen image
@@ -73,6 +82,9 @@ protected:
   // The replay's own chrome, which has no business being on screen before the cut
   // into it or after the cut out of it.
   void ShowReplayChrome(bool shown);
+  // Hands a cinematic replay over to the user: chrome in, prompt out, and the
+  // page stops closing itself when playback reaches the end.
+  void TakeReplayControl();
 
   // The replay is entered when the incoming wipe covers, and left when the outgoing
   // one does; the page itself lives until the wipe has played out.

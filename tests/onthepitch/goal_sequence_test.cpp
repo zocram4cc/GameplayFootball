@@ -137,9 +137,11 @@ TEST(CelebrationLength, AnUnknownClipFallsBackToTheDefault) {
 }
 
 TEST(CelebrationLength, TheReplayFiresWhenTheClipIsDoneRatherThanAtNineSeconds) {
-  const unsigned long shortClip = GoalSequence::CelebrationLength_ms(5000);
-  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, shortClip), kGoal + 5000)
-      << "a five second celebration should not be held for nine";
+  // Both clips sit above kMinCelebration_ms, so what is under test here is the
+  // clip driving the timing - the floor has its own test above.
+  const unsigned long shortClip = GoalSequence::CelebrationLength_ms(7000);
+  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, shortClip), kGoal + 7000)
+      << "a seven second celebration should not be held for nine";
   const unsigned long longClip = GoalSequence::CelebrationLength_ms(10000);
   EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, longClip), kGoal + 10000)
       << "a ten second celebration should not be cut at nine";

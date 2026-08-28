@@ -25,6 +25,7 @@
 
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -157,6 +158,36 @@ std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
   return out;
 }
 
+// ObjectLoader reads the little XML wrapper an imported model ships beside its
+// mesh, not the mesh itself - and handed a raw .ase it walks off the end of a
+// parse that never matched and takes the process with it. Troubleshooting an
+// import is exactly when you have the .ase path in your hand and not the
+// wrapper's, so accept either: given a mesh, write the wrapper it is missing.
+//
+// The wrapper names its geometry relatively, so it has to sit in the mesh's own
+// directory. Returns the path to load, and sets `scratch` when one was written
+// so the caller can take it away again.
+std::string ResolveModelPath(const std::string& model, std::string& scratch) {
+  scratch.clear();
+  std::filesystem::path path(model);
+  if (path.extension() != ".ase") return model;
+
+  const std::filesystem::path sibling = path.parent_path() / "fullbody.object";
+  if (std::filesystem::exists(sibling)) return sibling.string();
+
+  const std::filesystem::path wrapper =
+      path.parent_path() / (path.stem().string() + ".gfviewer.object");
+  std::ofstream file(wrapper);
+  if (!file.good()) return model;
+  file << "<object>\n\t<geometry>\n\t\t<filename>" << path.filename().string()
+       << "</filename>\n\t\t<name>fullbody</name>\n"
+       << "\t\t<position>0, 0, 0</position>\n\t\t<rotation>0, 0, 0, 0</rotation>\n"
+       << "\t</geometry>\n</object>\n";
+  file.close();
+  scratch = wrapper.string();
+  return scratch;
+}
+
 }  // namespace
 
 // Drives the turntable and stops the run.
@@ -278,9 +309,12 @@ int main(int argc, const char** argv) {
   SceneManager::GetInstance().RegisterScene(scene3D);
 
   ObjectLoader loader;
-  boost::intrusive_ptr<Node> node = loader.LoadObject(scene3D, options.model);
+  std::string scratchWrapper;
+  const std::string modelPath = ResolveModelPath(options.model, scratchWrapper);
+  boost::intrusive_ptr<Node> node = loader.LoadObject(scene3D, modelPath);
   if (!node) {
-    std::cout << "could not load " << options.model << "\n";
+    std::cout << "could not load " << modelPath << "\n";
+    if (!scratchWrapper.empty()) std::filesystem::remove(scratchWrapper);
     return 2;
   }
 
@@ -393,6 +427,8 @@ int main(int argc, const char** argv) {
   cameraNode.reset();
   node->Exit();
   node.reset();
+  // The wrapper written for a raw .ase is scratch, not part of the import.
+  if (!scratchWrapper.empty()) std::filesystem::remove(scratchWrapper);
   viewerScene3D.reset();
   scene3D.reset();
   viewerScene2D.reset();
