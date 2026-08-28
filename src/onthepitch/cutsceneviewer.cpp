@@ -48,6 +48,22 @@ std::pair<float, float> TouchlineMark(float x, float y, float pitchHalfY) {
   return {clampedX, y >= 0.0f ? pitchHalfY : -pitchHalfY};
 }
 
+AssistantMark OffsideAssistantMark(float incidentX, float incidentY, float linesman0Y,
+                                   float linesman1Y, float pitchHalfX, float pitchHalfY) {
+  AssistantMark mark;
+  // Whichever man's own live y shares the incident's sign is on the near
+  // touchline and gives it. If both happen to read the same sign (neither is
+  // meant to ever cross the halfway line of touch), linesman 0 keeps it
+  // rather than leaving the pick undefined.
+  const bool linesman0IsNear = (linesman0Y >= 0.0f) == (incidentY >= 0.0f);
+  mark.linesman = linesman0IsNear ? 0 : 1;
+  const float hisY = mark.linesman == 0 ? linesman0Y : linesman1Y;
+  mark.y = hisY >= 0.0f ? pitchHalfY : -pitchHalfY;
+  mark.x = incidentX > pitchHalfX ? pitchHalfX
+                                  : (incidentX < -pitchHalfX ? -pitchHalfX : incidentX);
+  return mark;
+}
+
 const char* AnchoringName(Anchoring anchoring) {
   switch (anchoring) {
     case Anchoring::IncidentLocal: return "incident-local";
