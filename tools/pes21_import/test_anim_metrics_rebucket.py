@@ -76,16 +76,24 @@ class Rebucket(unittest.TestCase):
     def test_real_pool_trap_with_foot_cadence_no_longer_all_idle(self):
         if not os.path.isdir(self.POOL):
             self.skipTest("import pool not present")
+        # The pool holds no clips at its root - PES ships them under
+        # body_anime_fileN/ - so this has to descend. It used to break out of
+        # the walk after the first directory, which meant it examined a
+        # directory of directories, found no .anim at all and failed on the
+        # empty search rather than on any measurement.
+        examined = 0
         for root, _, files in os.walk(self.POOL):
             for f in files:
                 if "trap" in f and f.endswith(".anim"):
                     anim = am.parse_anim(os.path.join(root, f))
                     # Use the real foot_plants() function as the cadence source.
                     bucket = am.receiver_velocity_bucket(anim, foot_source=am.foot_plants)
+                    examined += 1
                     if bucket > 0.0:
                         return
-            break
-        self.fail("expected at least one pool trap to fall into a non-idle bucket")
+        if not examined:
+            self.skipTest("import pool holds no trap clips")
+        self.fail("all %d pool trap clips bucketed as idle" % examined)
 
 
 if __name__ == "__main__":
