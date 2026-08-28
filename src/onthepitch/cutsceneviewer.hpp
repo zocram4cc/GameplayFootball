@@ -98,6 +98,28 @@ bool AnchorsAtIncident(const std::string& category);
 // between the goal lines so a change never stages itself behind a goal.
 std::pair<float, float> TouchlineMark(float x, float y, float pitchHalfY);
 
+// Which assistant gives an offside, and where he stands to give it.
+struct AssistantMark {
+  int linesman = 0;  // 0 selects linesman0Y's man below, 1 selects linesman1Y's
+  float x = 0.0f;
+  float y = 0.0f;
+};
+
+// PES ships no offside camerawork or authored assistant position in any
+// generation (16 through 21): every offside pack carries zero camera frames, and
+// where a cut record names a clip at all it names an empty one. So the placement
+// is the engine's to get right rather than to import.
+//
+// Each assistant runs one touchline for the whole match and gives the offsides
+// he is positioned to see. Which one that is comes from his own LIVE y
+// (``linesman0Y``/``linesman1Y``), not an assumed spawn constant or accessor
+// name - that exact assumption (index 0 is always the -y man) was the bug:
+// officials.cpp spawns linesman 0 on the -y touchline but names the accessor
+// GetLinesmanNorth(), and the code this replaces picked by that name instead
+// of by where he actually stands.
+AssistantMark OffsideAssistantMark(float incidentX, float incidentY, float linesman0Y,
+                                   float linesman1Y, float pitchHalfX, float pitchHalfY);
+
 Anchoring ClassifyAnchoring(const TrackExtent& extent);
 const char* AnchoringName(Anchoring anchoring);
 

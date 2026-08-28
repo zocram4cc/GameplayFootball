@@ -2331,6 +2331,20 @@ void Match::UpdateCutsceneChoreo() {
       activeStagingAnchoring == CutsceneViewer::Anchoring::IncidentLocal
           ? CutsceneAnchorPosition().Get2D()
           : Vector3(0, 0, 0);
+  // An offside's official gives the decision from his own touchline, not from
+  // the middle of the pitch where the offence itself is staged - PES's own
+  // packs put him at the origin with an in-place animation (measured: PES19's
+  // slot-23 actor record is (0,0,0), yaw 0), so wherever this offset lands him
+  // is exactly where he stands.
+  Vector3 officialStagingOffset = stagingOffset;
+  if (officials && activeCutsceneCategory.compare(0, 7, "offside") == 0 &&
+      activeStagingAnchoring == CutsceneViewer::Anchoring::IncidentLocal) {
+    const Vector3 anchor = CutsceneAnchorPosition();
+    const CutsceneViewer::AssistantMark mark = CutsceneViewer::OffsideAssistantMark(
+        anchor.coords[0], anchor.coords[1], officials->GetLinesmanNorth()->GetPosition().coords[1],
+        officials->GetLinesmanSouth()->GetPosition().coords[1], pitchHalfW, pitchHalfH);
+    officialStagingOffset = Vector3(mark.x, mark.y, 0.0f);
+  }
 
   for (auto& cast : cutsceneCast) {
     Vector3 position;
@@ -2345,8 +2359,8 @@ void Match::UpdateCutsceneChoreo() {
     radian yaw = 0;
     int animFrame = 0;
     activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, position, yaw, animFrame);
-    cast.official->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position + stagingOffset,
-                                                 yaw);
+    cast.official->CastHumanoid()->SetChoreoPose(cast.clip, animFrame,
+                                                 position + officialStagingOffset, yaw);
   }
 }
 
@@ -3178,10 +3192,20 @@ PlayerOfficial* Match::OfficialForCutscene() const {
   // An offside is the assistant's decision - he is the man with the flag up, and
   // casting the referee put the wrong official through the flag animation while
   // the assistant stood on the touchline doing nothing. Take the one running the
-  // touchline the offence was nearest; they cover opposite halves.
+  // touchline the offence happened near - each assistant covers one touchline for
+  // the whole match, read from his own live position rather than an assumed
+  // spawn index or accessor name (officials.cpp spawns linesman 0 on the -y
+  // touchline but the accessor is named GetLinesmanNorth(); picking by name
+  // instead of position was the original bug).
   if (activeCutsceneCategory.compare(0, 7, "offside") == 0) {
-    return CutsceneAnchorPosition().coords[1] >= 0.0f ? officials->GetLinesmanNorth()
-                                                      : officials->GetLinesmanSouth();
+    const Vector3 anchor = CutsceneAnchorPosition();
+    return CutsceneViewer::OffsideAssistantMark(
+               anchor.coords[0], anchor.coords[1],
+               officials->GetLinesmanNorth()->GetPosition().coords[1],
+               officials->GetLinesmanSouth()->GetPosition().coords[1], pitchHalfW, pitchHalfH)
+                   .linesman == 0
+               ? officials->GetLinesmanNorth()
+               : officials->GetLinesmanSouth();
   }
 
   // A substitution is run from the touchline, and the referee is out on the grass
@@ -3190,10 +3214,17 @@ PlayerOfficial* Match::OfficialForCutscene() const {
   // referee and two assistants and nothing else. The assistant on the near
   // touchline is the closest correct stand-in, and is at least in the right place;
   // a real fourth official at the halfway line is the faithful answer and is not
-  // modelled yet.
+  // modelled yet. Same live-position fix as offside: the anchor here is already
+  // the touchline mark (cutsceneAtTouchline).
   if (activeCutsceneCategory.compare(0, 6, "change") == 0) {
-    return CutsceneAnchorPosition().coords[1] >= 0.0f ? officials->GetLinesmanNorth()
-                                                      : officials->GetLinesmanSouth();
+    const Vector3 anchor = CutsceneAnchorPosition();
+    return CutsceneViewer::OffsideAssistantMark(
+               anchor.coords[0], anchor.coords[1],
+               officials->GetLinesmanNorth()->GetPosition().coords[1],
+               officials->GetLinesmanSouth()->GetPosition().coords[1], pitchHalfW, pitchHalfH)
+                   .linesman == 0
+               ? officials->GetLinesmanNorth()
+               : officials->GetLinesmanSouth();
   }
 
   // Everything else is the referee's own: he books, he sends off, he restarts.
@@ -3302,12 +3333,24 @@ void Match::UpdateIngameCamera() {
       const bool showingFlag =
           CutscenePlayback::Elapsed_ms(cutscenePlayback) < kOffsideFlagBeat_ms || !cutscenePrimary;
       if (showingFlag) {
-        PlayerOfficial* assistant = subject.coords[1] >= 0.0f ? officials->GetLinesmanNorth()
-                                                              : officials->GetLinesmanSouth();
+        PlayerOfficial* assistant = OfficialForCutscene();
         if (assistant) subject = assistant->GetPosition();
       } else {
         subject = cutscenePrimary->GetPosition();
       }
+    }
+    // The one number that says whether the assistant landed on his touchline or
+    // (the regression) in the middle of the pitch - the same measurement the
+    // camera-track path logs, for the shot PES leaves to the broadcast camera.
+    if (!cutsceneShotTaken && CutscenePlayback::Elapsed_ms(cutscenePlayback) >= 900 &&
+        GetConfiguration()->GetBool("debug_cutscene_report", false)) {
+      cutsceneShotTaken = true;
+      const Vector3 anchor = CutsceneAnchorPosition();
+      Log(e_Notice, "Match", "CutsceneReport",
+          "choreography-only " + activeCutsceneCategory + ": incident at " +
+              int_to_str((int)anchor.coords[0]) + "," + int_to_str((int)anchor.coords[1]) +
+              ", subject at " + int_to_str((int)subject.coords[0]) + "," +
+              int_to_str((int)subject.coords[1]));
     }
     FollowCamera(cameraOrientation, cameraNodeOrientation, cameraNodePosition, cameraFOV,
                  subject + Vector3(0, 0, 1.0f), 1.3f);
@@ -3773,7 +3816,15 @@ void Match::UpdateIngameCamera() {
                      : (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
                            (int)goalCamTracks.size();
       const CamTrack& track = goalCamTracks[pick];
-      CamTrackFrame frame = track.Sample(goalScoredTimer * 0.03f);
+      // PES's goal cutscenes are a montage, not one shot: goal_A_celebrate_0229
+      // cuts low-static (cam_00) to two closer angles and back, at frames
+      // 0/10/11/20/30/31 of its own timeline. Row-indexed Sample() blends
+      // through those cut points instead of hard-cutting - PES's low
+      // establishing shot dissolves into the close-up instead of cutting to
+      // it - exactly the sequencing this stage is trying to fix. SampleTimeline
+      // plays each cut only from its own rows (falling back to plain Sample
+      // when there is only one, so single-shot celebrations are unaffected).
+      CamTrackFrame frame = track.SampleTimeline(goalScoredTimer * 0.03f);
       // These tracks are not authored in world space, and reading them as if they
       // were is what used to jam a one-degree lens against a scorer's head. PES
       // authors a goal camera in the celebration's own space, with the scorer at the
