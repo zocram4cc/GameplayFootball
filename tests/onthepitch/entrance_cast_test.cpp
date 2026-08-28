@@ -38,3 +38,31 @@ TEST(EntranceCast, TheHeldOpeningFrameShowsAnEmptyPitch) {
   EXPECT_TRUE(EntranceCast::ShouldBench(true, true, true));
   EXPECT_TRUE(EntranceCast::ShouldBench(true, true, false));
 }
+
+// Which ground a camera track was authored for.
+//
+// PES names its entrance cameras after the stadium, and reading that name as "the
+// first st in the path" found the one in "stadiums": every ground asked for tracks
+// called "stadi*", got none, and was filmed with whatever shot sorted first. On
+// Planet Namek that was st000's, whose lens sits where another ground's tunnel is -
+// in among the walking players, two of them filling the frame.
+TEST(StadiumToken, ReadsTheCodeAndNotTheWordStadiums) {
+  EXPECT_EQ(EntranceCast::StadiumToken(
+                "media/objects/stadiums/pes_st017/pes_st017.object"),
+            "st017");
+}
+
+TEST(StadiumToken, TakesTheDigitsHowManyThereAre) {
+  EXPECT_EQ(EntranceCast::StadiumToken("x/pes_st7/a.object"), "st7");
+  EXPECT_EQ(EntranceCast::StadiumToken("x/pes_st1234/a.object"), "st1234");
+}
+
+TEST(StadiumToken, APathWithNoStadiumCodeHasNoToken) {
+  EXPECT_EQ(EntranceCast::StadiumToken("media/objects/stadiums/mine/mine.object"), "");
+  EXPECT_EQ(EntranceCast::StadiumToken(""), "");
+}
+
+TEST(StadiumToken, TheFirstRealCodeWins) {
+  // "stadiums" and "street" both start with st and carry no digits.
+  EXPECT_EQ(EntranceCast::StadiumToken("stadiums/street/pes_st060/x.object"), "st060");
+}
