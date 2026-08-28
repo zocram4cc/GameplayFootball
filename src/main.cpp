@@ -26,6 +26,7 @@
 #include "hid/scriptedgamepad.hpp"
 #include "main.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "managers/usereventmanager.hpp"
 #include "managers/scenemanager.hpp"
 #include "managers/systemmanager.hpp"
 #include "scene/objectfactory.hpp"
@@ -511,6 +512,18 @@ int main(int argc, const char** argv) {
   geometry.reset();
 
   // controllers
+
+  // AddGamepad/RemoveGamepad run on the SDL event thread (opengl_renderer3d's
+  // event pump) while GameTask::Process and Match hold and iterate this same
+  // vector on the game thread - concurrently, with no lock. A push_back that
+  // has to grow capacity relocates the buffer out from under a reader on the
+  // other thread, which glibc reports as "double free or corruption" the next
+  // time anything frees heap memory. Reserving up front for every controller
+  // that can ever exist (keyboard + one scripted gamepad + all SDL joystick
+  // slots) means push_back never reallocates, so a concurrent reader always
+  // sees a valid buffer. erase() (on unplug) never reallocates either, so this
+  // is sufficient without a full mutex around every read call site.
+  controllers.reserve(2 + _JOYSTICK_MAX);
 
   HIDKeyboard* keyboard = new HIDKeyboard();
   controllers.push_back(keyboard);

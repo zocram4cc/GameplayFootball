@@ -113,6 +113,7 @@ struct TouchInfo {
     targetPlayer = 0;
     forcedTargetPlayer = 0;
     desiredPower = 0;
+    isClearance = false;
   }
 
   Vector3 inputDirection;
@@ -125,6 +126,12 @@ struct TouchInfo {
   float desiredPower;
   Player* targetPlayer;        // null == do not use
   Player* forcedTargetPlayer;  // null == do not use
+  // A panic clearance: hoofed into a lane to get rid of it, with no intended
+  // recipient. Football statistics count a clearance separately from a pass,
+  // and so does the engine - see MatchData::AddClearance. Without this, every
+  // desperate hoof landed in the pass column as an attempt that could never be
+  // completed, which held measured passing accuracy around 50%.
+  bool isClearance;
 };
 
 enum e_StrictMovement { e_StrictMovement_False, e_StrictMovement_True, e_StrictMovement_Dynamic };

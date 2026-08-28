@@ -654,6 +654,11 @@ protected:
   Player* cutscenePrimary = nullptr;
   // A substitution is staged at the touchline rather than where the man stood.
   bool cutsceneAtTouchline = false;
+  // Which pool the running cutscene came from. Kept because a category PES never
+  // filmed still has to be framed by something, and what it should be framed on
+  // depends on which incident it is: an offside belongs on the assistant with the
+  // flag up, not on the patch of grass the offence happened over.
+  std::string activeCutsceneCategory;
   // Where the running cutscene's camerawork is authored: PES's foul shots are
   // authored about the incident and have to be placed at it, the rest are in
   // stadium coordinates and are used as they are. Measured when the cutscene
@@ -719,7 +724,15 @@ protected:
 
   std::shared_ptr<AnimCollection> anims;
 
-  const std::vector<IHIDevice*>& controllers;
+  // A snapshot taken at construction - deliberately a copy, not a reference to the
+  // global controller list. Sides are bound by index (SideSelection::controllerID),
+  // so if a pad is hotplugged while the match runs, the live vector shifts and every
+  // index after the change silently means a different physical device: a pad that
+  // joined mid-match could take a team over. Freezing the list here means the
+  // selection only ever changes by going back to the select-sides screen, which
+  // builds the next Match. Devices are erased from the global list on unplug but not
+  // deleted until shutdown, so these pointers stay valid for the match's lifetime.
+  const std::vector<IHIDevice*> controllers;
 
   std::unique_ptr<Ball> ball;
 

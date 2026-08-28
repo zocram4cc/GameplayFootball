@@ -22,6 +22,8 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
   shotsOnTarget[1] = 0;
   passAttempts[0] = 0;
   passAttempts[1] = 0;
+  clearances[0] = 0;
+  clearances[1] = 0;
   passesCompleted[0] = 0;
   passesCompleted[1] = 0;
   cleanCompletions[0] = 0;

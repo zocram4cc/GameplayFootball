@@ -23,6 +23,7 @@
 #include "../../main.hpp"
 #include "../aitactics.hpp"
 #include "../ball.hpp"
+#include "../gameplaytuning.hpp"
 #include "../match.hpp"
 #include "../matchmentality.hpp"
 #include "../player/humanoid/humanoid_utils.hpp"
@@ -1337,14 +1338,13 @@ void AI_GetPass(Player* player, e_FunctionType passType, const Vector3& inputDir
   if (forcedTargetPlayer) {
     bestTargetPlayer = forcedTargetPlayer;
 
-    float passDuration = 0.3f + (forcedTargetPlayer->GetPosition() - playerPos).GetLength() *
-                                    0.05f;  // educated guess
-    passDuration = std::pow(clamp(passDuration, 0.0f, 1.0f), 0.7f) *
-                   0.7f;  // after this time, the player is supposed to have
-                          // been able to stop
+    // Lead the receiver by where the ball's flight will actually put him, not by
+    // a fixed fraction of a second - see GameplayTuning::GetReceiverLeadTime_sec.
+    const float leadTime_sec = GameplayTuning::GetReceiverLeadTime_sec(
+        (forcedTargetPlayer->GetPosition() - playerPos).Get2D().GetLength());
 
     autoTarget = forcedTargetPlayer->GetPosition() +
-                 forcedTargetPlayer->GetMovement() * passDuration;  // correct for pass duration
+                 forcedTargetPlayer->GetMovement() * leadTime_sec;
 
   } else {
     float bestRating = 10000;

@@ -61,6 +61,17 @@ public:
     pendingPassTeamID = teamID;
     pendingPassIsGoalkeeper = false;  // set by the GK-lost detector in humanoid.cpp
   }
+  // A clearance is a ball hoofed away with no intended recipient. It is not a
+  // pass and is deliberately kept out of passAttempts: counting one as a failed
+  // pass is what held measured accuracy near 50%, since roughly half of all
+  // touches logged as passes were panic clearances that can never complete.
+  // No pending pass is opened, so whoever picks the ball up next is not credited
+  // with completing anything.
+  void AddClearance(int teamID) {
+    clearances[teamID]++;
+    ResetPendingPass();
+  }
+  int GetClearances(int teamID) const { return clearances[teamID]; }
   void ResetPendingPass() {
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
@@ -367,6 +378,7 @@ protected:
   int shotsOnTarget[2];
 
   int passAttempts[2];
+  int clearances[2];
   int passesCompleted[2];
   int pendingPassTeamID;
 
