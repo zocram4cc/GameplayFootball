@@ -57,6 +57,8 @@ public:
   virtual void OnUnload();
   inline virtual void OnMove(const Vector3& position);
   inline virtual void OnPoke();
+  inline virtual void OnPause();
+  inline virtual void OnSeek(float seconds);
 
   void UpdateParams();
   virtual void SetRadius(float radius);

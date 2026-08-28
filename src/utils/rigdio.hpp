@@ -246,7 +246,7 @@ class MatchSession {
 
   // The engine learned a file's duration (seconds); resume positions wrap.
   void SetDuration(const std::string& file, double seconds);
-  double CachedPosition(const std::string& file) const;
+  double CachedPosition(bool home, const std::string& file) const;
 
  private:
   struct Side;

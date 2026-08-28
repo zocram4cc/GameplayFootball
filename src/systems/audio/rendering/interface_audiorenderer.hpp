@@ -16,7 +16,10 @@ namespace blunted {
 enum e_AudioRenderer_SourceParameter {
   e_AudioRenderer_SourceParameter_Loop,
   e_AudioRenderer_SourceParameter_Gain,
-  e_AudioRenderer_SourceParameter_Pitch
+  e_AudioRenderer_SourceParameter_Pitch,
+  // Playback position in seconds (AL_SEC_OFFSET); rigdio horns seek to
+  // their start instruction and resume where the last goal left them.
+  e_AudioRenderer_SourceParameter_Offset
 };
 
 class AudioRenderer : public Thread {
@@ -30,6 +33,9 @@ public:
   virtual int CreateAudioSoundBuffer(const WavData* wavData) = 0;
   virtual void DeleteAudioSoundBuffer(int audioSoundBufferID) = 0;
   virtual void PlayAudioSoundBuffer(int audioSoundBufferID) = 0;
+  // Pausing keeps the source's position, unlike a stop; rigdio horns are
+  // paused at kickoff and resume on the next goal.
+  virtual void PauseAudioSoundBuffer(int audioSoundBufferID) = 0;
 
   virtual void SetListenerParameters(const Vector3& position, const Vector3& velocity,
                                      const Quaternion& orientation) = 0;

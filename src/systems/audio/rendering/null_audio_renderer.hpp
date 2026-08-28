@@ -21,6 +21,7 @@ public:
   virtual int CreateAudioSoundBuffer(const WavData* wavData) override;
   virtual void DeleteAudioSoundBuffer(int audioSoundBufferID) override;
   virtual void PlayAudioSoundBuffer(int audioSoundBufferID) override;
+  virtual void PauseAudioSoundBuffer(int audioSoundBufferID) override;
 
   virtual void SetListenerParameters(const Vector3& position, const Vector3& velocity,
                                      const Quaternion& orientation) override;
