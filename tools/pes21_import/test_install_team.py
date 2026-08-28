@@ -390,3 +390,62 @@ class ModelsBindToTheRowsPlayersActuallyGot(unittest.TestCase):
         self.assertEqual(import_team.shirt_number(2402), 2)
         self.assertEqual(import_team.shirt_number(2411), 11)
         self.assertEqual(import_team.shirt_number(2421), 21)
+
+
+class TheTeamsArtLandsWhereTheEngineLooks(unittest.TestCase):
+    """The database rows point at these files and nothing else creates them.
+    A missing kit is silently substituted with flat white or flat black
+    (team.cpp), and a missing logo kills the match outright."""
+
+    def setUp(self):
+        self.pack = tempfile.mkdtemp()
+        self.game = tempfile.mkdtemp()
+        from PIL import Image
+        os.makedirs(os.path.join(self.pack, "Logo"))
+        os.makedirs(os.path.join(self.pack, "Kit Textures"))
+        # the full-size emblem and its two smaller mips
+        for name, size in (("emblem_0XXX_r.png", 128),
+                           ("emblem_0XXX_r_l.png", 64),
+                           ("emblem_0XXX_r_ll.png", 32)):
+            Image.new("RGBA", (size, size), (size, 0, 0, 255)).save(
+                os.path.join(self.pack, "Logo", name))
+        for name, shade in (("u0XXXp1.png", 10), ("u0XXXp2.png", 20),
+                            ("u0XXXp3.png", 30), ("u0XXXg1.png", 40),
+                            ("u0XXXp4.png", 50)):
+            Image.new("RGBA", (8, 8), (shade, 0, 0, 255)).save(
+                os.path.join(self.pack, "Kit Textures", name))
+
+    def art_dir(self):
+        return os.path.join(self.game, "databases", "default", "images_teams", "x")
+
+    def test_the_logo_and_three_outfield_kits_are_written(self):
+        written = import_team.install_art(self.pack, self.game, "x")
+        self.assertEqual(written, ["x_logo.png", "x_kit_01.png", "x_kit_02.png",
+                                   "x_kit_03.png", "x_gk.png"])
+        for name in written:
+            self.assertTrue(os.path.exists(os.path.join(self.art_dir(), name)), name)
+
+    def test_the_keeper_kit_does_not_take_an_outfield_slot(self):
+        """g1 is the keeper's. Installing it as _kit_03 - which a hand install
+        did once - puts an outfield player in the keeper's shirt."""
+        from PIL import Image
+        import_team.install_art(self.pack, self.game, "x")
+        keeper = Image.open(os.path.join(self.art_dir(), "x_gk.png")).getpixel((0, 0))
+        third = Image.open(os.path.join(self.art_dir(), "x_kit_03.png")).getpixel((0, 0))
+        self.assertEqual(keeper[0], 40)
+        self.assertEqual(third[0], 30)
+
+    def test_the_full_size_emblem_wins_over_its_mips(self):
+        from PIL import Image
+        import_team.install_art(self.pack, self.game, "x")
+        logo = Image.open(os.path.join(self.art_dir(), "x_logo.png"))
+        self.assertEqual(logo.size, (128, 128))
+
+    def test_a_dry_run_writes_nothing_but_still_reports(self):
+        written = import_team.install_art(self.pack, self.game, "x", dry_run=True)
+        self.assertEqual(len(written), 5)
+        self.assertFalse(os.path.exists(self.art_dir()))
+
+    def test_a_pack_without_art_is_not_an_error(self):
+        empty = tempfile.mkdtemp()
+        self.assertEqual(import_team.install_art(empty, self.game, "x"), [])
