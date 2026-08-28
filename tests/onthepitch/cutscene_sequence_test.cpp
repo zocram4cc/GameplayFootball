@@ -123,6 +123,20 @@ TEST(ClosingPools, TheWalkToTheStandAndThePhotoAreTheirOwnStages) {
   EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_photo_1_cmn.camtrack"), "end/photo");
 }
 
+TEST(ClosingPools, TheActorsAreFiledWhereTheirCameraIs) {
+  // PES exports the choreography beside the camera under the same stem, and the
+  // two are only ever asked for together. Filing them by different rules gave
+  // end/greet a camera with nobody cast under it, so the closing shots played
+  // over an empty pitch.
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_greet_audi_01.chor"),
+            CutsceneSequence::ClosingPoolForFile("end_greet_audi_01.camtrack"));
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_joy_high_2.chor"), "end/joy");
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_lose_sad_3.chor"), "end/sad");
+  // and a crowd shot's ground survives the other extension too
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_audience_st017_ha_away.chor"),
+            "end/audience_st017");
+}
+
 TEST(ClosingPools, AnUnrecognisedNameClaimsNoFamily) {
   // it stays in the category pool rather than being filed under a guess
   EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_retire_1.camtrack"), "end/retire");

@@ -1782,8 +1782,9 @@ void Match::SuppressHudForReplay(bool suppressed) {
   hudSuppressedForReplay = suppressed;
   // Nothing of the in-match chrome belongs over a replay; the replay draws its
   // own overlay. Re-applied through the same door the presentation uses, so a
-  // replay ending during the walkout does not put the HUD back early.
-  ShowMatchHud(!suppressed && !entranceActive);
+  // replay ending during the walkout does not put the HUD back early - nor one
+  // ending after the whistle, over the closing ceremony.
+  ShowMatchHud(!suppressed && !entranceActive && !gameOver);
   Log(e_Notice, "Match", "SuppressHudForReplay", suppressed ? "replay: match HUD hidden"
                                                            : "replay over: match HUD back");
 }
@@ -2220,6 +2221,16 @@ void Match::LoadCutsceneChoreo(const std::string& category, const std::string& d
     const std::string parent = entry.path().parent_path().filename().string();
     if (parent != category)
       cutsceneChoreoPools[category + "/" + parent].push_back(choreo);
+    // The closing choreography is flat, with the family in the file name rather
+    // than a directory - the same shape the cameras have, so it needs the same
+    // mapping. Without it the winners, the losers and the walk over to the stand
+    // had cameras with nobody cast under them, and every closing shot played over
+    // an empty pitch: 11 sets of actors for the joy, 9 for the greet, 2 for the
+    // dejection, all on disk and unreachable.
+    const std::string closing =
+        CutsceneSequence::ClosingPoolForFile(entry.path().filename().string());
+    if (!closing.empty() && closing != category)
+      cutsceneChoreoPools[closing].push_back(choreo);
   }
 }
 
@@ -2236,6 +2247,13 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   }
   activeCutsceneChoreo =
       &pool->second[(actualTime_ms / 10) % pool->second.size()];
+  // Which pool the actors came from, beside the camera's own line. Worth saying
+  // because the fallback above is silent: a pool with no choreography of its own
+  // borrows the whole category's, so the wrong people can be staged under a
+  // camera and nothing in the log would show it.
+  Log(e_Notice, "Match", "StartCutsceneChoreo",
+      "cast for " + category + " from pool " + pool->first + " (" +
+          int_to_str((int)pool->second.size()) + " staging(s))");
   // PES stages a foul about the incident: its actors' baked root tracks sit
   // within a few metres of the origin. Used as world positions they planted the
   // offender, the man he fouled and the referee on the centre spot, however far
@@ -2564,15 +2582,29 @@ void Match::GameOver() {
   // the walk over to the stand and the team photo. The viewer's own side decides
   // whether it is joy or dejection.
   {
-    const std::string stadiumPath = GetConfiguration()->Get("stadium_object", "");
-    const size_t at = stadiumPath.find("st");
-    const std::string stadiumTag = at != std::string::npos && at + 5 <= stadiumPath.size()
-                                       ? stadiumPath.substr(at, 5)
-                                       : std::string();
+    // The ground's own crowd, asked for by the same token the entrance uses.
+    // Read as "the first st in the path" this found the one in "stadiums" and
+    // asked for end/audience_stadi, which no pack contains - so the shot PES
+    // opens its closing sequence with was skipped at every ground.
+    const std::string stadiumTag =
+        EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+    // Nothing of the in-match chrome belongs over a ceremony: the scoreboard, the
+    // radar and both name strips were drawn across every closing shot. The whistle
+    // takes them down, as kick-off puts them up.
+    ShowMatchHud(false);
     const int viewed = teams[0]->GetHumanGamerCount() > 0 || teams[1]->GetHumanGamerCount() == 0
                            ? 0
                            : 1;
-    const int difference = GetScore(viewed) - GetScore(1 - viewed);
+    // A shootout is how the match was won, so it is what the ceremony plays to.
+    // On the run of play those scores are level by definition, and reading only
+    // them called a 14-15 shootout "drawn": neither side celebrated, neither
+    // mourned, and the queue went straight to the walk over to the stand.
+    int difference = GetScore(viewed) - GetScore(1 - viewed);
+    if (difference == 0 && penaltyShootout) {
+      const int winner = penaltyShootout->GetWinner();
+      if (winner == viewed) difference = 1;
+      else if (winner == 1 - viewed) difference = -1;
+    }
     cutsceneQueue = CutsceneSequence::ClosingStages(
         difference, stadiumTag,
         [this](const std::string& pool) {
