@@ -13,11 +13,11 @@
 namespace blunted {
 namespace {
 
-// The strip is anchored to the scoreboard, which lives at 2, 2 and is 4.6 tall
+// The strip is anchored to the scoreboard, which lives at 2, 2 and is 6.0 tall
 // in the PES theme, 4.0 in the default one (see scoreboard.cpp).
 constexpr float kScoreboardX = 2.0f;
 constexpr float kScoreboardY = 2.0f;
-constexpr float kScoreboardHeightPes = 4.6f;
+constexpr float kScoreboardHeightPes = 6.0f;
 constexpr float kScoreboardHeightDefault = 4.0f;
 
 constexpr float kAccentWidth = 0.55f;  // the team-colour tab down the left edge

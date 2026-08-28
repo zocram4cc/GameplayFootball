@@ -319,6 +319,17 @@ target_include_directories(gameplayfootball_prematchchoices_tests PRIVATE
 target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
 
+# The scripted-input timeline that drives headless menu smoke runs
+add_executable(gameplayfootball_menuscript_tests
+  menu/menu_script_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/menuscript.cpp
+)
+target_include_directories(gameplayfootball_menuscript_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_menuscript_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_menuscript_tests DISCOVERY_MODE PRE_TEST)
+
 # What the in-play player indicator says
 add_executable(gameplayfootball_setpiecelaws_tests
   onthepitch/set_piece_laws_test.cpp

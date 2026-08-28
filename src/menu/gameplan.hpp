@@ -85,11 +85,6 @@ public:
 
 protected:
   int teamID;
-  unsigned long pageCreatedTime_ms = 0;
-  bool uiShotTaken = false;
-  bool lineupOpened = false;
-  bool lineupShotRequested = false;
-
   Gui2PlanMap* map;
   Gui2Grid* grid;
   Gui2Grid* gridNav;

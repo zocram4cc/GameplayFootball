@@ -696,6 +696,7 @@ set(MENU_SOURCES
    src/menu/prematchchoices.cpp
    src/menu/pagefactory.cpp
    src/menu/menutask.cpp
+   src/menu/menuscript.cpp
    src/menu/cameramenu.cpp
    src/menu/menuscene.cpp
    src/menu/controllerselect.cpp

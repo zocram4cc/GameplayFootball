@@ -8,6 +8,7 @@
 
 #include "../gamedefines.hpp"
 #include "ingame/gamepage.hpp"
+#include "menuscript.hpp"
 #include "scene/scene3d/scene3d.hpp"
 #include "utils/gui2/guitask.hpp"
 #include "utils/gui2/widgets/image.hpp"
@@ -104,6 +105,20 @@ protected:
 
   Gui2Image* menuBackground;
   Lockable<QueuedFixture> queuedFixture;  // todo: we can probably unlock this stuff
+
+  // Scripted keyboard input for headless verification runs (menuscript.hpp):
+  // plays "menu_smoke_script" by writing straight into UserEventManager, the
+  // same place a real keyboard lands, so the injected taps take the normal
+  // guitask -> windowing event -> focused widget path.
+  void TickMenuScript();
+  bool menuScriptLoaded = false;
+  std::vector<MenuScript::Step> menuScriptSteps;
+  size_t menuScriptNextStep = 0;
+  unsigned long menuScriptStartTime_ms = 0;
+  // The key this driver is currently holding down, or 0 for none - released
+  // on the following tick so a tap is exactly one frame, the way a person
+  // pressing and releasing a real key would register to guitask.
+  SDL_Keycode menuScriptHeldKey = 0;
 };
 
 #endif

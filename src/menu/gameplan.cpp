@@ -26,7 +26,6 @@ using namespace blunted;
 GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   teamID = pageData.properties->GetInt("teamID", 0);
-  pageCreatedTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
   const int teamDatabaseID = pageData.properties->GetInt("teamDatabaseID", -1);
 
   // Wide enough for the pitch and the list side by side, as the broadcast lays them
@@ -126,37 +125,6 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
 void GamePlanPage::Process() {
   Gui2Page::Process();
-
-  // UI validation: once the page has had time to draw, grab a frame of it.
-  if (!uiShotTaken && GetConfiguration()->GetBool("menu_smoke_open_gameplan", false) &&
-      GetConfiguration()->Exists("screenshot_path") &&
-      EnvironmentManager::GetInstance().GetTime_ms() >= pageCreatedTime_ms + 1200) {
-    uiShotTaken = true;
-    blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") +
-                               "_gameplan.bmp");
-    printf("[menu-smoke] Game plan screenshot requested\n");
-  }
-
-  // Then the lineup, because that is where a player's portrait is drawn and the top
-  // page never shows one: a shot of this page says nothing about whether the
-  // imported portraits load.
-  if (uiShotTaken && !lineupShotRequested &&
-      GetConfiguration()->GetBool("menu_smoke_open_gameplan", false) &&
-      GetConfiguration()->Exists("screenshot_path")) {
-    // Opened on one beat and shot on the next, off the clock rather than off the menu
-    // pointer: the page keeps running its own Process while the submenu covers it, so
-    // a pointer test fires again in the same frame and photographs the page below.
-    const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
-    if (!lineupOpened && now >= pageCreatedTime_ms + 2400) {
-      lineupOpened = true;
-      GoLineupMenu();
-    } else if (lineupOpened && now >= pageCreatedTime_ms + 3600) {
-      lineupShotRequested = true;
-      blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") +
-                                 "_lineup.bmp");
-      printf("[menu-smoke] Lineup screenshot requested\n");
-    }
-  }
 }
 
 GamePlanPage::~GamePlanPage() {}
