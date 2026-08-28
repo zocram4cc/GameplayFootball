@@ -94,6 +94,7 @@ public:
   void GoCareerMode();
   void GoSettings();
   void GoCredits();
+  void GoRemoteControl();
   void GoOutro();
   bool GoImportDB();
   // XX void Import_AgeValueStatsAdd(int age, int value);

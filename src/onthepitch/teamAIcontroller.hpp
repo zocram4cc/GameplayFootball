@@ -86,6 +86,9 @@ public:
   float GetLiveTacticReal(const char* name, float defaultValue) const {
     return liveTeamTactics.GetReal(name, defaultValue);
   }
+  // The whole live tactic set, for state read-back (remote control panel,
+  // debug overlays). Values only mutate on this thread's UpdateTactics.
+  const Properties& GetLiveTactics() const { return liveTeamTactics; }
 
   TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
   MatchMentality::e_Mentality GetMentality() const { return mentality; }

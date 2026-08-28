@@ -1,0 +1,106 @@
+// This is your Prisma schema file.
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  roles        Role[]
+  team         Team?     @relation(fields: [teamId], references: [id])
+  teamId       String?
+}
+
+model Role {
+  id    String @id @default(cuid())
+  name  UserRole @unique
+  users User[]
+  registrationTokens RegistrationToken[]
+}
+
+model Team {
+  id    String @id @default(cuid())
+  name  String @unique
+  users User[]
+  matchesAsTeamA Match[] @relation("TeamA")
+  matchesAsTeamB Match[] @relation("TeamB")
+  registrationTokens RegistrationToken[]
+}
+
+model CupDay {
+  id      String  @id @default(cuid())
+  date    DateTime
+  name    String
+  gameVersion String
+  matches Match[]
+}
+
+model Match {
+  id            String   @id @default(cuid())
+  cupDay        CupDay   @relation(fields: [cupDayId], references: [id])
+  cupDayId      String
+  teamA         Team     @relation("TeamA", fields: [teamAId], references: [id])
+  teamAId       String
+  teamB         Team     @relation("TeamB", fields: [teamBId], references: [id])
+  teamBId       String
+  scheduledTime DateTime
+  status        MatchStatus @default(PENDING)
+  finalScoreA   Int?
+  finalScoreB   Int?
+  type          MatchType @default(Group)
+  teamATacticsJson Json?
+  teamBTacticsJson Json?
+  teamATacticsSavedBy String?
+  teamATacticsSavedAt DateTime?
+  teamBTacticsSavedBy String?
+  teamBTacticsSavedAt DateTime?
+}
+
+enum MatchType {
+  Group
+  RO16
+  Quarterfinal
+  Semifinal
+  Final
+  ThirdPlace
+  Boss
+  Playoff
+  Consolation
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  COMMENTATOR
+  STREAMER
+}
+
+enum MatchStatus {
+  PENDING
+  ACTIVE
+  FINISHED
+}
+
+model RegistrationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  username  String
+  roles     Role[]
+  team      Team?    @relation(fields: [teamId], references: [id])
+  teamId    String?
+  expires   DateTime
+  used      Boolean  @default(false)
+}
+
+model Setting {
+  key   String @unique
+  value String
+}

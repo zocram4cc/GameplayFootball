@@ -1,0 +1,197 @@
+/* Black, minimal, opaque. No gradients, no translucency, no rounded chrome. */
+
+:root {
+    --bg: #000000;
+    --panel: #0e0e0e;
+    --line: #2a2a2a;
+    --text: #e6e6e6;
+    --muted: #8a8a8a;
+    --accent: #ffffff;
+    --danger: #ff5252;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 ui-monospace, "JetBrains Mono", "Fira Mono", Consolas, monospace;
+}
+
+nav {
+    display: flex;
+    gap: 1.25rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+}
+
+nav a {
+    color: var(--muted);
+    text-decoration: none;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+}
+
+nav a:hover {
+    color: var(--accent);
+}
+
+main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 4rem;
+}
+
+h1, h2, h3 {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.75rem;
+}
+
+h1 { font-size: 1.4rem; text-transform: uppercase; }
+h2 { font-size: 1rem; text-transform: uppercase; color: var(--muted); }
+h3 { font-size: 0.85rem; text-transform: uppercase; color: var(--muted); }
+
+p { margin: 0.4rem 0; }
+
+a { color: var(--text); }
+
+.panel, section, #status-dashboard, #chat-container, #controls {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 1rem 1.25rem;
+    margin: 0 0 1rem;
+}
+
+label {
+    display: block;
+    margin: 0.5rem 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+input, select, button, textarea {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    padding: 0.4rem 0.6rem;
+    margin-top: 0.2rem;
+}
+
+input:focus, select:focus, button:focus, textarea:focus {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+}
+
+button {
+    cursor: pointer;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+}
+
+button:hover {
+    background: var(--line);
+}
+
+button.danger {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--line);
+}
+
+th {
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.error { color: var(--danger); }
+.muted { color: var(--muted); }
+
+.hold-banner {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    padding: 0.6rem 0.8rem;
+}
+
+.rig-teams {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.schedule-form {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.schedule-form select, .schedule-form input {
+    width: 100%;
+}
+
+.schedule-form button {
+    grid-column: 1 / -1;
+    margin-top: 0.5rem;
+}
+
+.instructions label {
+    display: block;
+    margin: 0.15rem 0;
+}
+
+.instructions input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.slider-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 3.5em;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0.2rem 0;
+}
+
+.slider-row input[type="range"] {
+    accent-color: var(--accent);
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.slider-row output {
+    color: var(--muted);
+    text-align: right;
+}
+
+.subs select {
+    width: 100%;
+}
+
+#chat-messages {
+    background: var(--bg) !important;
+    border: 1px solid var(--line) !important;
+}
+
+iframe {
+    border: 1px solid var(--line);
+    max-width: 100%;
+}

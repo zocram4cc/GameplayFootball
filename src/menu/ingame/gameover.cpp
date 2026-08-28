@@ -15,6 +15,7 @@
 #include "../career/career_database.hpp"
 #include "../pagefactory.hpp"
 #include "main.hpp"
+#include "../../remotecontrolmode.hpp"
 #include "utils/gui2/events.hpp"
 #include "utils/localization.hpp"
 
@@ -299,6 +300,15 @@ void GameOverPage::Process() {
         MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 1), matchData->GetGoalCount(0),
         matchData->GetGoalCount(1), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
+    if (RemoteControlMode::IsActive()) {
+      // The rig lives on: back to the waiting page for the next schedule. The
+      // launch keys the schedule wrote are cleared so the main menu does not
+      // smoke-drive itself into a rematch on the way.
+      GetConfiguration()->SetBool("menu_smoke_test_full_match", false);
+      printf("[remote-control] match over, returning to the waiting page\n");
+      GoMainMenu();
+      return;
+    }
     printf("[menu-smoke] Full-match verification succeeded, quitting test run\n");
     EnvironmentManager::GetInstance().SignalQuit();
   }

@@ -1,0 +1,56 @@
+<% cupDays.forEach(day => { %>
+    <div>
+        <h3><%= day.name %> - <%= day.date.toDateString() %> <button hx-delete="/admin/cupdays/<%= day.id %>" hx-target="#schedule-content" hx-confirm="Are you sure you want to delete this entire day and all its matches?">Delete</button></h3>
+        <form hx-post="/admin/matches" hx-target="#schedule-content">
+            <input type="hidden" name="cupDayId" value="<%= day.id %>">
+            <select name="teamAId">
+                <% teams.forEach(team => { %><option value="<%= team.id %>"><%= team.name %></option><% }) %>
+            </select>
+            vs
+            <select name="teamBId">
+                <% teams.forEach(team => { %><option value="<%= team.id %>"><%= team.name %></option><% }) %>
+            </select>
+            <input type="datetime-local" name="scheduledTime" required>
+            <select name="type" required>
+                <% matchTypes.forEach(type => { %>
+                    <option value="<%= type %>"><%= type %></option>
+                <% }) %>
+            </select>
+            <button type="submit">Add Match</button>
+        </form>
+        <ul>
+            <% day.matches.forEach(match => { %>
+                <li id="match-<%= match.id %>">
+                    <div id="match-display-<%= match.id %>">
+                        <%= match.teamA.name %> vs <%= match.teamB.name %> - <%= new Date(match.scheduledTime).toLocaleString() %> - <%= match.type %> - <%= match.status %>
+                        <% if (match.status === 'PENDING') { %>
+                            <button hx-post="/admin/api/matches/<%= match.id %>/start" hx-target="#schedule-content">Start</button>
+                            <button onclick="document.getElementById('match-display-<%= match.id %>').style.display='none'; document.getElementById('match-edit-<%= match.id %>').style.display='block';">Edit</button>
+                            <button hx-delete="/admin/matches/<%= match.id %>" hx-target="#schedule-content" hx-confirm="Are you sure you want to delete this match?">Delete</button>
+                        <% } else if (match.status === 'ACTIVE') { %>
+                            <button hx-post="/admin/api/matches/<%= match.id %>/force-finish" hx-target="#schedule-content">Force Finish</button>
+                        <% } %>
+                    </div>
+                    <div id="match-edit-<%= match.id %>" style="display:none;">
+                        <form hx-post="/admin/matches/<%= match.id %>/edit" hx-target="#schedule-content">
+                            <select name="teamAId">
+                                <% teams.forEach(team => { %>
+                                    <option value="<%= team.id %>" <%= match.teamAId === team.id ? 'selected' : '' %>><%= team.name %></option>
+                                <% }) %>
+                            </select>
+                            vs
+                            <select name="teamBId">
+                                <% teams.forEach(team => { %>
+                                    <option value="<%= team.id %>" <%= match.teamBId === team.id ? 'selected' : '' %>><%= team.name %></option>
+                                <% }) %>
+                            </select>
+                            <input type="datetime-local" name="scheduledTime" value="<%= new Date(match.scheduledTime).toISOString().substring(0, 16) %>">
+                            <button type="submit">Save</button>
+                            <button type="button" onclick="document.getElementById('match-display-<%= match.id %>').style.display='block'; document.getElementById('match-edit-<%= match.id %>').style.display='none';">Cancel</button>
+                        </form>
+                    </div>
+                </li>
+            <% }) %>
+        </ul>
+    </div>
+<% }) %>

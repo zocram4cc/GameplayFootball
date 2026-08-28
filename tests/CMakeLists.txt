@@ -675,12 +675,14 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/foul_sequence_test.cpp
   onthepitch/cutscene_viewer_test.cpp
   onthepitch/cutscene_playback_test.cpp
+  onthepitch/remote_control_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneplayback.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneviewer.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/foulsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/remotecontrol.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp

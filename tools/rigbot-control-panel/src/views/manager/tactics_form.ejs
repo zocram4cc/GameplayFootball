@@ -1,0 +1,186 @@
+<%# ejs-lint-disable-disable-case %>
+
+<h1>Set Tactics for <%= teamName %></h1>
+<p><strong>Match:</strong> <%= match.teamA.name %> vs <%= match.teamB.name %> (<%= match.cupDay.gameVersion %>)</p>
+
+<form method="POST" action="/manager/match/<%= match.id %>/tactics" class="tactics-form">
+
+    <div class="form-row">
+        <label for="preset-count">Number of Presets:</label>
+        <select id="preset-count" name="presetCount">
+            <option value="1" <%= presetCount === 1 ? 'selected' : '' %>>1</option>
+            <option value="2" <%= presetCount === 2 ? 'selected' : '' %>>2</option>
+            <option value="3" <%= presetCount === 3 ? 'selected' : '' %>>3</option>
+        </select>
+    </div>
+
+    <% for(let i = 0; i < 3; i++) { %>
+        <fieldset id="preset-<%= i %>">
+            <legend>Preset <%= i + 1 %></legend>
+            
+            <% const preset = savedTactics.presets[i] || {}; %>
+            <% const att = preset.attacking || {}; %>
+            <% const def = preset.defensive || {}; %>
+
+            <div class="tactic-group">
+                <h3>Attacking Instructions</h3>
+                <div class="form-row">
+                    <label>Attacking Style:</label>
+                    <select name="presets[<%= i %>][attacking][style]">
+                        <% possibleTactics.attacking_styles.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (att.style === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Build Up:</label>
+                    <select name="presets[<%= i %>][attacking][build_up]">
+                        <% possibleTactics.build_ups.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (att.build_up === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Attacking Zone:</label>
+                    <select name="presets[<%= i %>][attacking][attacking_zone]">
+                        <% possibleTactics.attacking_zones.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (att.attacking_zone === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Positioning:</label>
+                    <select name="presets[<%= i %>][attacking][positioning]">
+                        <% possibleTactics.positioning.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (att.positioning === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Support Range:</label>
+                    <input type="range" name="presets[<%= i %>][support_range]" min="1" max="<%= possibleTactics.support_range %>" value="<%= preset.support_range || 5 %>" oninput="this.nextElementSibling.value = this.value">
+                    <output><%= preset.support_range || 5 %></output>
+                </div>
+            </div>
+
+            <div class="tactic-group">
+                <h3>Defensive Instructions</h3>
+                <div class="form-row">
+                    <label>Defensive Style:</label>
+                    <select name="presets[<%= i %>][defensive][style]">
+                        <% possibleTactics.defensive_styles.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (def.style === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Containment Area:</label>
+                    <select name="presets[<%= i %>][defensive][containment_area]">
+                        <% possibleTactics.containment_areas.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (def.containment_area === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Pressing:</label>
+                    <select name="presets[<%= i %>][defensive][pressing]">
+                        <% possibleTactics.pressing_styles.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (def.pressing === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Defensive Line:</label>
+                    <input type="range" name="presets[<%= i %>][defensive_line]" min="1" max="<%= possibleTactics.defensive_line %>" value="<%= preset.defensive_line || 5 %>" oninput="this.nextElementSibling.value = this.value">
+                    <output><%= preset.defensive_line || 5 %></output>
+                </div>
+                <div class="form-row">
+                    <label>Compactness:</label>
+                    <input type="range" name="presets[<%= i %>][compactness]" min="1" max="<%= possibleTactics.compactness %>" value="<%= preset.compactness || 5 %>" oninput="this.nextElementSibling.value = this.value">
+                    <output><%= preset.compactness || 5 %></output>
+                </div>
+            </div>
+
+            <div class="tactic-group">
+                <h3>Advanced Instructions</h3>
+                <div class="form-row">
+                    <label>Attacking 1:</label>
+                    <select name="presets[<%= i %>][advanced_attacking][0]">
+                        <% possibleTactics.advanced_attacking.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (preset.advanced_attacking && preset.advanced_attacking[0] === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Attacking 2:</label>
+                    <select name="presets[<%= i %>][advanced_attacking][1]">
+                        <% possibleTactics.advanced_attacking.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (preset.advanced_attacking && preset.advanced_attacking[1] === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Defensive 1:</label>
+                    <select name="presets[<%= i %>][advanced_defensive][0]">
+                        <% possibleTactics.advanced_defensive.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (preset.advanced_defensive && preset.advanced_defensive[0] === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <label>Defensive 2:</label>
+                    <select name="presets[<%= i %>][advanced_defensive][1]">
+                        <% possibleTactics.advanced_defensive.forEach(opt => { %>
+                            <option value="<%= opt %>" <%= (preset.advanced_defensive && preset.advanced_defensive[1] === opt) ? 'selected' : '' %>><%= opt %></option>
+                        <% }); %>
+                    </select>
+                </div>
+            </div>
+
+        </fieldset>
+    <% } %>
+
+    <fieldset>
+        <legend>Starting Preset</legend>
+        <div class="form-row">
+            <label for="startPreset">Select starting preset for kickoff:</label>
+            <select name="startPreset" id="startPreset">
+                <option value="1" <%= (savedTactics.startPreset == 1) ? 'selected' : '' %>>Preset 1</option>
+                <option value="2" <%= (savedTactics.startPreset == 2) ? 'selected' : '' %>>Preset 2</option>
+                <option value="3" <%= (savedTactics.startPreset == 3) ? 'selected' : '' %>>Preset 3</option>
+            </select>
+        </div>
+    </fieldset>
+
+    <button type="submit" class="button primary">Save Tactics</button>
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const presetCountSelect = document.getElementById('preset-count');
+        const presets = [
+            document.getElementById('preset-0'),
+            document.getElementById('preset-1'),
+            document.getElementById('preset-2')
+        ];
+
+        function updatePresetVisibility() {
+            const count = parseInt(presetCountSelect.value, 10);
+            presets.forEach((preset, index) => {
+                const inputs = preset.querySelectorAll('input, select');
+                if (index < count) {
+                    preset.style.display = '';
+                    inputs.forEach(input => input.disabled = false);
+                } else {
+                    preset.style.display = 'none';
+                    inputs.forEach(input => input.disabled = true);
+                }
+            });
+        }
+
+        presetCountSelect.addEventListener('change', updatePresetVisibility);
+
+        // Run on page load
+        updatePresetVisibility();
+    });
+</script>
