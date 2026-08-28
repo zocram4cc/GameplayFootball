@@ -17,7 +17,9 @@
 #include "main.hpp"
 #include "mainmenu.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "managers/usereventmanager.hpp"
 #include "pagefactory.hpp"
+#include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "visualoptions.hpp"
 
 using namespace blunted;
@@ -132,7 +134,72 @@ MenuTask::~MenuTask() {
     printf("done\n");
 }
 
+namespace {
+
+SDL_Keycode KeycodeForScriptKey(MenuScript::Key key) {
+  switch (key) {
+    case MenuScript::Key::Up: return SDLK_UP;
+    case MenuScript::Key::Down: return SDLK_DOWN;
+    case MenuScript::Key::Left: return SDLK_LEFT;
+    case MenuScript::Key::Right: return SDLK_RIGHT;
+    case MenuScript::Key::Enter: return SDLK_RETURN;
+    case MenuScript::Key::Escape: return SDLK_ESCAPE;
+    case MenuScript::Key::X: return SDLK_x;
+  }
+  return SDLK_UNKNOWN;
+}
+
+}  // namespace
+
+void MenuTask::TickMenuScript() {
+  if (!GetConfiguration()->Exists("menu_smoke_script")) return;
+
+  if (!menuScriptLoaded) {
+    menuScriptLoaded = true;
+    menuScriptStartTime_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    menuScriptSteps = MenuScript::Parse(GetConfiguration()->Get("menu_smoke_script", ""));
+    printf("[menu-script] loaded %zu step(s)\n", menuScriptSteps.size());
+  }
+
+  // A tap is exactly one frame: whatever this driver pressed last tick is
+  // released now, before anything else is considered, or guitask reads it as
+  // held down rather than as a fresh press.
+  if (menuScriptHeldKey != 0) {
+    UserEventManager::GetInstance().SetKeyboardState(menuScriptHeldKey, false);
+    menuScriptHeldKey = 0;
+    return;
+  }
+
+  if (menuScriptNextStep >= menuScriptSteps.size()) return;
+
+  const MenuScript::Step& step = menuScriptSteps.at(menuScriptNextStep);
+  const unsigned long elapsed_ms =
+      EnvironmentManager::GetInstance().GetTime_ms() - menuScriptStartTime_ms;
+  if (elapsed_ms < step.at_ms) return;
+  menuScriptNextStep++;
+
+  switch (step.action) {
+    case MenuScript::Action::Tap:
+      menuScriptHeldKey = KeycodeForScriptKey(step.key);
+      UserEventManager::GetInstance().SetKeyboardState(menuScriptHeldKey, true);
+      printf("[menu-script] tap at %lums\n", elapsed_ms);
+      break;
+    case MenuScript::Action::Shot:
+      if (GetConfiguration()->Exists("screenshot_path")) {
+        blunted::RequestScreenshot(GetConfiguration()->Get("screenshot_path", "shot") + "_" +
+                                   step.name + ".bmp");
+        printf("[menu-script] screenshot requested: %s\n", step.name.c_str());
+      }
+      break;
+    case MenuScript::Action::Quit:
+      printf("[menu-script] quit\n");
+      QuitGame();
+      break;
+  }
+}
+
 void MenuTask::ProcessPhase() {
+  TickMenuScript();
   Gui2Task::ProcessPhase();
 
   if (menuAction == e_MenuAction_Menu) {
