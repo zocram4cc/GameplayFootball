@@ -1,0 +1,36 @@
+<h1>Edit User: <%= userToEdit.username %></h1>
+
+<form method="POST" action="/admin/users/<%= userToEdit.id %>/edit">
+    
+    <h2>Roles</h2>
+    <div>
+        <% const userRoleNames = userToEdit.roles.map(r => r.name); %>
+        <% allRoles.forEach(role => { %>
+            <label>
+                <input 
+                    type="checkbox" 
+                    name="roles" 
+                    value="<%= role.name %>" 
+                    <%= userRoleNames.includes(role.name) ? 'checked' : '' %>
+                >
+                <%= role.name %>
+            </label>
+        <% }) %>
+    </div>
+
+    <h2>Team Assignment</h2>
+    <select name="teamId">
+        <option value="">No Team</option>
+        <% allTeams.forEach(team => { %>
+            <option 
+                value="<%= team.id %>" 
+                <%= (userToEdit.teamId === team.id) ? 'selected' : '' %>
+            >
+                <%= team.name %>
+            </option>
+        <% }) %>
+    </select>
+
+    <button type="submit" class="button primary">Save Changes</button>
+    <a href="/admin/users" class="button">Cancel</a>
+</form>

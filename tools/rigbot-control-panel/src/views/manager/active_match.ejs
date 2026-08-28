@@ -1,0 +1,101 @@
+<h1>Manager View</h1>
+<%- include('hotseat_warning.ejs') %>
+
+<div id="status-dashboard">
+    <h2>Status</h2>
+    <p>Clock: <span id="game-clock">--:--</span></p>
+    <p>Score: <span id="score">-</span></p>
+    <p>My Team Tactical Changes: <span id="tactical-changes">-</span></p>
+    <p>My Team Mentality: <span id="current-mentality">-</span></p>
+</div>
+
+<div id="chat-container">
+    <h2>Chat with Streamer</h2>
+    <div id="chat-messages" style="height: 200px; border: 1px solid #ccc; overflow-y: scroll; margin-bottom: 10px; padding: 5px;"></div>
+    <input id="chat-input" type="text" placeholder="Type a message...">
+    <button id="chat-send">Send</button>
+</div>
+
+
+<div id="controls">
+    <h2>Controls</h2>
+    <button id="cmd-mentality-up">Mentality Up</button>
+    <button id="cmd-mentality-down">Mentality Down</button>
+    <button id="cmd-preset-up">Preset Up</button>
+    <button id="cmd-preset-down">Preset Down</button>
+    <button id="cmd-adv-1">Adv. Tactic 1</button>
+    <button id="cmd-adv-2">Adv. Tactic 2</button>
+    <button id="cmd-adv-3">Adv. Tactic 3</button>
+    <button id="cmd-adv-4">Adv. Tactic 4</button>
+</div>
+
+<% if (streamUrl && streamUrl.value) { %>
+    <iframe width="1280" height="720" src="<%= streamUrl.value %>" frameborder="0" allowfullscreen></iframe>
+<% } else { %>
+    <p>Stream URL not set by admin.</p>
+<% } %>
+
+<script>
+    const socket = io();
+    const controls = document.getElementById('controls');
+
+    socket.on('match:end', () => {
+        console.log('Match ended. Disabling controls.');
+        controls.style.display = 'none';
+        alert('The match has ended. Controls are now disabled. You will be redirected to the dashboard.');
+        // Redirect to the manager dashboard after a short delay
+        setTimeout(() => {
+            window.location.href = '/manager';
+        }, 3000);
+    });
+
+    document.getElementById('cmd-mentality-up').addEventListener('click', () => socket.emit('manager:command', { action: 'MENTALITY_CHANGE_UP' }));
+    document.getElementById('cmd-mentality-down').addEventListener('click', () => socket.emit('manager:command', { action: 'MENTALITY_CHANGE_DOWN' }));
+    document.getElementById('cmd-preset-up').addEventListener('click', () => socket.emit('manager:command', { action: 'PRESET_CHANGE_UP' }));
+    document.getElementById('cmd-preset-down').addEventListener('click', () => socket.emit('manager:command', { action: 'PRESET_CHANGE_DOWN' }));
+    document.getElementById('cmd-adv-1').addEventListener('click', () => socket.emit('manager:command', { action: 'ADVANCED_TACTICS_1' }));
+    document.getElementById('cmd-adv-2').addEventListener('click', () => socket.emit('manager:command', { action: 'ADVANCED_TACTICS_2' }));
+    document.getElementById('cmd-adv-3').addEventListener('click', () => socket.emit('manager:command', { action: 'ADVANCED_TACTICS_3' }));
+    document.getElementById('cmd-adv-4').addEventListener('click', () => socket.emit('manager:command', { action: 'ADVANCED_TACTICS_4' }));
+
+    socket.on('streamer:state', (data) => {
+        document.getElementById('game-clock').innerText = data.clock;
+        document.getElementById('score').innerText = `${data.home_score} - ${data.away_score}`;
+        // These will need more logic to determine which team is which
+        // document.getElementById('tactical-changes').innerText = data.myTeam.tacticalChangesLeft;
+        // document.getElementById('current-mentality').innerText = data.myTeam.mentality;
+    });
+
+    socket.on('streamer:goal_scored', (data) => {
+        alert(`GOAL! Scorer: ${data.scorer} for ${data.team}. New score: ${data.home_score} - ${data.away_score}`);
+    });
+
+
+
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+
+    function addChatMessage(from, message) {
+        const p = document.createElement('p');
+        p.innerHTML = `<strong>${from}:</strong> ${message}`;
+        chatMessages.appendChild(p);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    chatSend.addEventListener('click', () => {
+        const message = chatInput.value;
+        if (message) {
+            socket.emit('chat:message', { message });
+            chatInput.value = '';
+        }
+    });
+
+    socket.on('chat:message', (data) => {
+        addChatMessage(data.from, data.message);
+    });
+
+    socket.on('command:error', (data) => {
+        alert(data.message);
+    });
+</script>

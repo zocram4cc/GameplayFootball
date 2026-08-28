@@ -1,0 +1,22 @@
+<h1>Settings</h1>
+
+<form hx-post="/admin/settings">
+    <div>
+        <label for="stream_url">Stream URL</label>
+        <input id="stream_url" name="stream_url" type="text" value="<%= streamUrl ? streamUrl.value : '' %>">
+    </div>
+    <div>
+        <label for="streamer_token">Streamer Token</label>
+        <input id="streamer_token" name="streamer_token" type="text" value="<%= streamerToken ? streamerToken.value : '' %>" size="50">
+        <p>Only admins can generate the streamer token. Click the generate button and then save to create a new token for the streamer application.</p>
+        <button type="button" id="generate_token" class="button primary">Generate</button>
+    </div>
+    <button type="submit">Save</button>
+</form>
+
+<script>
+    document.getElementById('generate_token').addEventListener('click', () => {
+        const token = Array.from(crypto.getRandomValues(new Uint8Array(20)), byte => byte.toString(16).padStart(2, '0')).join('');
+        document.getElementById('streamer_token').value = token;
+    });
+</script>
