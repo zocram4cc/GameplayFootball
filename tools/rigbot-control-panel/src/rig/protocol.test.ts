@@ -9,6 +9,9 @@ import {
   mentalityCommand,
   instructionCommand,
   subCommand,
+  authCommand,
+  scheduleCommand,
+  resumeCommand,
   parseState,
   engineConfig,
 } from './protocol';
@@ -89,52 +92,57 @@ test('parseState refuses garbage rather than throwing', () => {
   assert.equal(parseState(''), null);
 });
 
-// ── Engine launch config ─────────────────────────────────────────────────────
+// ── Auth, schedule and resume lines ─────────────────────────────────────────
 
-test('engineConfig writes the menu-smoke launch keys', () => {
-  const text = engineConfig({
+test('authCommand and resumeCommand', () => {
+  assert.equal(authCommand('s3cret-key_1'), 'auth s3cret-key_1');
+  assert.throws(() => authCommand('two tokens'));
+  assert.throws(() => authCommand(''));
+  assert.equal(resumeCommand(), 'resume');
+});
+
+test('scheduleCommand carries the match setup, stadium last', () => {
+  assert.equal(
+    scheduleCommand({
+      team1Id: 11,
+      team2Id: 9,
+      durationMinutes: 5,
+      team1KitNum: 1,
+      team2KitNum: 2,
+      stadiumObject: 'media/objects/stadiums/043 - benuldys/stadium.object',
+    }),
+    'schedule 11 9 5 1 2 media/objects/stadiums/043 - benuldys/stadium.object',
+  );
+});
+
+test('scheduleCommand refuses line breaks and bad numbers', () => {
+  const setup = {
     team1Id: 11,
     team2Id: 9,
-    stadiumObject: 'media/objects/stadiums/pes_st002/pes_st002.object',
     durationMinutes: 5,
     team1KitNum: 1,
-    team2KitNum: 2,
-    controlPort: 44700,
-  });
-  assert.match(text, /"showcase_team1" "11"/);
-  assert.match(text, /"showcase_team2" "9"/);
-  assert.match(text, /"stadium_object" "media\/objects\/stadiums\/pes_st002\/pes_st002\.object"/);
-  assert.match(text, /"match_duration_minutes" "5"/);
-  assert.match(text, /"team1_kit_num" "1"/);
-  assert.match(text, /"team2_kit_num" "2"/);
+    team2KitNum: 1,
+    stadiumObject: 'media/x.object',
+  };
+  assert.throws(() => scheduleCommand({ ...setup, stadiumObject: 'a\nb' }));
+  assert.throws(() => scheduleCommand({ ...setup, stadiumObject: '' }));
+  assert.throws(() => scheduleCommand({ ...setup, team1Id: NaN }));
+  assert.throws(() => scheduleCommand({ ...setup, durationMinutes: 0 }));
+});
+
+// ── Engine launch config ─────────────────────────────────────────────────────
+
+test('engineConfig boots straight into remote-control mode', () => {
+  const text = engineConfig({ controlPort: 44700, streamerKey: 's3cret' });
+  assert.match(text, /"remote_control_mode" "true"/);
+  assert.match(text, /"remote_control_key" "s3cret"/);
   assert.match(text, /"remote_control_port" "44700"/);
-  // The self-driving menu path that actually starts the match.
-  assert.match(text, /"menu_smoke_test_full_match" "true"/);
-  // Both benches must answer to the panel, not to the CPU manager.
-  assert.match(text, /"coach_mode" "true"/);
+  // No match keys: the engine waits limp until a schedule command arrives.
+  assert.doesNotMatch(text, /showcase_team/);
+  assert.doesNotMatch(text, /menu_smoke_test_full_match/);
 });
 
 test('engineConfig refuses values that would break out of the config format', () => {
-  assert.throws(() =>
-    engineConfig({
-      team1Id: 11,
-      team2Id: 9,
-      stadiumObject: 'media/x.object"\n"debug" "true',
-      durationMinutes: 5,
-      team1KitNum: 1,
-      team2KitNum: 1,
-      controlPort: 44700,
-    }),
-  );
-  assert.throws(() =>
-    engineConfig({
-      team1Id: NaN,
-      team2Id: 9,
-      stadiumObject: 'media/x.object',
-      durationMinutes: 5,
-      team1KitNum: 1,
-      team2KitNum: 1,
-      controlPort: 44700,
-    }),
-  );
+  assert.throws(() => engineConfig({ controlPort: 44700, streamerKey: 'a"b' }));
+  assert.throws(() => engineConfig({ controlPort: NaN, streamerKey: 's' }));
 });

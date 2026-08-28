@@ -1,0 +1,182 @@
+<h1>Rig</h1>
+
+<% if (dbError) { %><p class="error"><%= dbError %></p><% } %>
+
+<section id="rig-status" class="panel">
+    <h2>Engine</h2>
+    <p>
+        Process: <strong id="rig-running"><%= running ? 'running' : 'stopped' %></strong> ·
+        Link: <strong id="rig-connected"><%= connected ? 'connected' : 'not connected' %></strong> ·
+        Clock: <strong id="rig-clock">--:--</strong> ·
+        Score: <strong id="rig-score">-</strong> ·
+        <span id="rig-subwindow"></span>
+    </p>
+    <p id="rig-hold" class="hold-banner" hidden>
+        Break in play — tactical changes are open. The match waits for the streamer.
+        <button id="rig-resume">Resume match</button>
+    </p>
+</section>
+
+<section class="panel">
+    <h2>Schedule a match</h2>
+    <form method="POST" action="/rig/schedule" class="schedule-form">
+        <label>Home
+            <select name="team1Id" required>
+                <% teams.forEach(team => { %><option value="<%= team.id %>"><%= team.name %> (<%= team.shortname %>)</option><% }) %>
+            </select>
+        </label>
+        <label>Away
+            <select name="team2Id" required>
+                <% teams.forEach(team => { %><option value="<%= team.id %>"><%= team.name %> (<%= team.shortname %>)</option><% }) %>
+            </select>
+        </label>
+        <label>Stadium
+            <select name="stadiumObject" required>
+                <% stadiums.forEach(stadium => { %><option value="<%= stadium %>"><%= stadium.split('/')[3] %></option><% }) %>
+            </select>
+        </label>
+        <label>Minutes <input type="number" name="durationMinutes" value="5" min="1" max="90"></label>
+        <label>Home kit <input type="number" name="team1KitNum" value="1" min="1" max="4"></label>
+        <label>Away kit <input type="number" name="team2KitNum" value="1" min="1" max="4"></label>
+        <button type="submit">Start match</button>
+    </form>
+    <form method="POST" action="/rig/stop"><button type="submit" class="danger">Stop engine</button></form>
+</section>
+
+<div class="rig-teams">
+    <% for (let side = 0; side < 2; side++) { %>
+    <section class="panel rig-team" data-side="<%= side %>">
+        <h2 id="team-name-<%= side %>"><%= side === 0 ? 'Home' : 'Away' %></h2>
+
+        <label>Philosophy
+            <select class="ctl-philosophy" data-side="<%= side %>">
+                <% ['balanced', 'gegenpressing', 'tikitaka', 'parkthebus'].forEach(p => { %><option value="<%= p %>"><%= p %></option><% }) %>
+            </select>
+        </label>
+
+        <label>Mentality
+            <select class="ctl-mentality" data-side="<%= side %>">
+                <% ['all_out_defence', 'defensive', 'balanced', 'attacking', 'all_out_attack'].forEach(m => { %><option value="<%= m %>"><%= m %></option><% }) %>
+            </select>
+        </label>
+
+        <h3>Advanced instructions</h3>
+        <div class="instructions">
+            <% ['frontline_pressure', 'deep_defensive_line', 'aggressive_defence', 'hug_the_touchline', 'centre_shading', 'tiki_taka', 'long_ball_counter'].forEach(name => { %>
+            <label><input type="checkbox" class="ctl-instruction" data-side="<%= side %>" data-name="<%= name %>"> <%= name %></label>
+            <% }) %>
+        </div>
+
+        <h3>Tactic sliders</h3>
+        <div class="sliders" id="sliders-<%= side %>"><p class="muted">Waiting for engine state…</p></div>
+
+        <h3>Substitution</h3>
+        <div class="subs">
+            <label>Out (on pitch) <select class="sub-out" data-side="<%= side %>"></select></label>
+            <label>In (bench) <select class="sub-in" data-side="<%= side %>"></select></label>
+            <button class="ctl-sub" data-side="<%= side %>">Substitute</button>
+            <span class="sub-note" id="sub-note-<%= side %>"></span>
+        </div>
+    </section>
+    <% } %>
+</div>
+
+<script>
+    const socket = io();
+
+    async function sendCommand(body) {
+        const response = await fetch('/rig/command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ error: response.statusText }));
+            alert('Command failed: ' + (error.error || response.statusText));
+        }
+    }
+
+    document.querySelectorAll('.ctl-philosophy').forEach(el => el.addEventListener('change', () =>
+        sendCommand({ kind: 'philosophy', side: Number(el.dataset.side), name: el.value })));
+    document.querySelectorAll('.ctl-mentality').forEach(el => el.addEventListener('change', () =>
+        sendCommand({ kind: 'mentality', side: Number(el.dataset.side), name: el.value })));
+    document.querySelectorAll('.ctl-instruction').forEach(el => el.addEventListener('change', () =>
+        sendCommand({ kind: 'instruction', side: Number(el.dataset.side), name: el.dataset.name, on: el.checked })));
+    document.getElementById('rig-resume').addEventListener('click', () => sendCommand({ kind: 'resume', side: 0 }));
+    document.querySelectorAll('.ctl-sub').forEach(el => el.addEventListener('click', () => {
+        const side = Number(el.dataset.side);
+        const out = document.querySelector(`.sub-out[data-side="${side}"]`).value;
+        const inn = document.querySelector(`.sub-in[data-side="${side}"]`).value;
+        if (!out || !inn) return alert('Pick a player to come off and one to come on.');
+        sendCommand({ kind: 'sub', side, outId: Number(out), inId: Number(inn) });
+    }));
+
+    function renderSliders(side, tactics) {
+        const container = document.getElementById(`sliders-${side}`);
+        const names = Object.keys(tactics).sort();
+        for (const name of names) {
+            let slider = container.querySelector(`input[data-name="${name}"]`);
+            if (!slider) {
+                if (container.querySelector('.muted')) container.innerHTML = '';
+                const row = document.createElement('label');
+                row.className = 'slider-row';
+                row.innerHTML = `<span>${name}</span><input type="range" min="0" max="1" step="0.05" data-name="${name}"><output>?</output>`;
+                slider = row.querySelector('input');
+                slider.addEventListener('change', () =>
+                    sendCommand({ kind: 'tactic', side, name, value: Number(slider.value) }));
+                slider.addEventListener('input', () => { row.querySelector('output').value = slider.value; });
+                container.appendChild(row);
+            }
+            // Live value from the engine, unless the operator is mid-drag.
+            if (document.activeElement !== slider) {
+                slider.value = tactics[name];
+                slider.closest('.slider-row').querySelector('output').value = Number(tactics[name]).toFixed(2);
+            }
+        }
+    }
+
+    function renderSquad(side, players) {
+        const outSelect = document.querySelector(`.sub-out[data-side="${side}"]`);
+        const inSelect = document.querySelector(`.sub-in[data-side="${side}"]`);
+        const keep = (select) => select.value;
+        const outKeep = keep(outSelect), inKeep = keep(inSelect);
+        outSelect.innerHTML = '';
+        inSelect.innerHTML = '';
+        for (const player of players) {
+            const option = document.createElement('option');
+            option.value = player.id;
+            option.textContent = `${player.name} (${player.role})`;
+            (player.on_pitch ? outSelect : inSelect).appendChild(option);
+        }
+        if (outKeep) outSelect.value = outKeep;
+        if (inKeep) inSelect.value = inKeep;
+    }
+
+    socket.on('rig:state', (state) => {
+        document.getElementById('rig-connected').textContent = 'connected';
+        document.getElementById('rig-score').textContent = `${state.score[0]} - ${state.score[1]}`;
+        const totalSeconds = Math.floor(state.time_ms / 1000);
+        document.getElementById('rig-clock').textContent =
+            `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+        document.getElementById('rig-subwindow').textContent =
+            state.sub_window ? 'substitution window OPEN' : (state.in_play ? 'ball in play' : 'play stopped');
+        document.getElementById('rig-hold').hidden = !state.hold;
+
+        for (let side = 0; side < 2; side++) {
+            const team = state.teams[side];
+            document.getElementById(`team-name-${side}`).textContent = team.name || (side === 0 ? 'Home' : 'Away');
+
+            const philosophy = document.querySelector(`.ctl-philosophy[data-side="${side}"]`);
+            if (document.activeElement !== philosophy) philosophy.value = team.philosophy;
+            const mentality = document.querySelector(`.ctl-mentality[data-side="${side}"]`);
+            if (document.activeElement !== mentality) mentality.value = team.mentality;
+
+            document.querySelectorAll(`.ctl-instruction[data-side="${side}"]`).forEach(box => {
+                box.checked = team.instructions.includes(box.dataset.name);
+            });
+
+            renderSliders(side, team.tactics);
+            renderSquad(side, team.players);
+        }
+    });
+</script>

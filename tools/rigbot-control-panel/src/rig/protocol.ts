@@ -37,7 +37,11 @@ export interface MatchSetup {
   durationMinutes: number;
   team1KitNum: number;
   team2KitNum: number;
+}
+
+export interface EngineBootConfig {
   controlPort: number;
+  streamerKey: string;
 }
 
 // Tokens travel on a space-separated line; anything else is an injection.
@@ -78,6 +82,29 @@ export function subCommand(teamSide: Side, playerOutId: number, playerInId: numb
   return `sub ${side(teamSide)} ${integer(playerOutId, 'playerOutId')} ${integer(playerInId, 'playerInId')}`;
 }
 
+
+export function authCommand(key: string): string {
+  return `auth ${token(key)}`;
+}
+
+// The whole match setup on one line; the stadium is last because 4cc stadium
+// paths contain spaces (the engine reads it as the rest of the line).
+export function scheduleCommand(setup: MatchSetup): string {
+  if (!Number.isFinite(setup.durationMinutes) || setup.durationMinutes <= 0)
+    throw new Error(`durationMinutes must be positive, got ${setup.durationMinutes}`);
+  if (!setup.stadiumObject || /[\n\r]/.test(setup.stadiumObject))
+    throw new Error('stadiumObject must be a single-line path');
+  return (
+    `schedule ${integer(setup.team1Id, 'team1Id')} ${integer(setup.team2Id, 'team2Id')} ` +
+    `${setup.durationMinutes} ${integer(setup.team1KitNum, 'team1KitNum')} ` +
+    `${integer(setup.team2KitNum, 'team2KitNum')} ${setup.stadiumObject}`
+  );
+}
+
+export function resumeCommand(): string {
+  return 'resume';
+}
+
 export function parseState(line: string): EngineState | null {
   let parsed: unknown;
   try {
@@ -109,29 +136,14 @@ export function parseState(line: string): EngineState | null {
   return state;
 }
 
-// The launch config a scheduled match runs with: the same self-driving
-// menu-smoke keys every verification harness uses, plus the control port.
-// Values are validated because they end up in a quoted key/value file.
-export function engineConfig(setup: MatchSetup): string {
+// The boot config: straight into remote-control mode, then wait limp. Match
+// choices arrive later as a schedule command; none live in the config.
+export function engineConfig(config: EngineBootConfig): string {
   const entries: [string, string][] = [
-    ['showcase_team1', integer(setup.team1Id, 'team1Id')],
-    ['showcase_team2', integer(setup.team2Id, 'team2Id')],
-    ['stadium_object', setup.stadiumObject],
-    ['match_duration_minutes', String(setup.durationMinutes)],
-    ['team1_kit_num', integer(setup.team1KitNum, 'team1KitNum')],
-    ['team2_kit_num', integer(setup.team2KitNum, 'team2KitNum')],
-    ['remote_control_port', integer(setup.controlPort, 'controlPort')],
-    // The self-driving menu path that starts the match unattended.
-    ['menu_smoke_test_full_match', 'true'],
-    ['quick_start', 'false'],
-    // Both benches answer to the panel, not to the CPU manager: with coach
-    // mode on, AIManagerRunsTeam is false for both sides, so a philosophy or
-    // mentality set from the panel stands instead of being adapted away.
-    ['coach_mode', 'true'],
-    ['substitutions_enabled', 'true'],
+    ['remote_control_mode', 'true'],
+    ['remote_control_key', config.streamerKey],
+    ['remote_control_port', integer(config.controlPort, 'controlPort')],
   ];
-  if (!Number.isFinite(setup.durationMinutes) || setup.durationMinutes <= 0)
-    throw new Error(`durationMinutes must be positive, got ${setup.durationMinutes}`);
   return (
     entries
       .map(([key, value]) => {

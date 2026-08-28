@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && node --test \"dist/rig/*.test.js\"",
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "nodemon --watch src --exec \"/home/z/.nvm/versions/node/v22.20.0/bin/npm run build && node dist/server.js\""
