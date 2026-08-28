@@ -252,9 +252,16 @@ void Gui2Grid::ProcessWindowingEvent(WindowingEvent* event) {
   if (container.size() == 0)
     return;
 
-  // check if someone else changed the focus and update likewise
+  // Check if someone else changed the focus and update likewise. A cell can
+  // be a composite (another grid, e.g. the game plan's nav column) whose own
+  // buttons hold the actual focus, so this asks "is the focus somewhere
+  // under this cell" (IsInFocusPath, cascaded by SetFocus up every ancestor)
+  // rather than "is this cell exactly it" (IsFocussed) - the exact check left
+  // a grid's selection stuck at its construction-time default forever once
+  // the initial focus was set on a leaf two or more levels down, so directional
+  // input could never find its way back to a sibling cell.
   for (int i = 0; i < (signed int)container.size(); i++) {
-    if (container.at(i).view->IsFocussed()) {
+    if (container.at(i).view->IsInFocusPath()) {
       if (container.at(i).row != selectedRow)
         selectedRow = container.at(i).row;
       if (container.at(i).col != selectedCol)
