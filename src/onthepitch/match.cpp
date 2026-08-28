@@ -5808,19 +5808,46 @@ void Match::PreparePennantCloth() {
   std::map<std::tuple<int, int, int>, int> welded;
   std::vector<Vector3> rest;
   std::vector<int> faces;
+  std::vector<Vector3> bearers;
   for (boost::intrusive_ptr<Object>& object : objects) {
     if (object->GetObjectType() != e_ObjectType_Geometry) continue;
     boost::intrusive_ptr<Geometry> geometry = boost::static_pointer_cast<Geometry>(object);
     std::vector<MaterializedTriangleMesh>& triangleMesh =
         geometry->GetGeometryData()->GetResource()->GetTriangleMeshesRef();
     for (unsigned int m = 0; m < triangleMesh.size(); m++) {
-      if (!triangleMesh.at(m).material.diffuseTexture) continue;
-      // The flag faces and not the men carrying them - the same test the
-      // importer uses to decide what the competition's emblem goes on
-      // (stadium_props.is_pennant_face).
-      const std::string ident = triangleMesh.at(m).material.diffuseTexture->GetIdentString();
-      if (ident.find("circlef") == std::string::npos) continue;
       const int floats = triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();
+      if (floats < 9) continue;
+      // Which of these meshes is the flag, decided on the geometry rather than
+      // on the texture's name.
+      //
+      // The names cannot answer it here. The importer takes PES's faces to be
+      // acl_circlef_prop000 and its bearers prop001, and on this ring prop001
+      // carries both the men AND the big flag while prop000 carries four bits
+      // of 11 to 32 vertices - so matching the mark simulated the men as cloth,
+      // and excluding prop001 left 106 points of trim. (That the emblem is
+      // composited onto prop000 is the same mistake, and is why the flag still
+      // wears PES's own artwork.)
+      //
+      // A flag is wide and thin and a man is tall, which no naming convention
+      // can confuse: this ring's flag spans 0.26 m vertically and its bearers
+      // 1.43 and 1.88.
+      float lowZ = triangleMesh.at(m).vertices[2], highZ = lowZ;
+      for (int i = 0; i + 2 < floats; i += 3) {
+        lowZ = std::min(lowZ, triangleMesh.at(m).vertices[i + 2]);
+        highZ = std::max(highZ, triangleMesh.at(m).vertices[i + 2]);
+      }
+      const int vertices = floats / 3;
+      const bool isFace =
+          (highZ - lowZ) <= kPennantFlagThickness_m && vertices >= kPennantFlagVertices;
+      if (!isFace) {
+        // Everything else, kept only to find out how high they are holding it.
+        for (int i = 0; i + 2 < floats; i += 3) {
+          bearers.push_back(Vector3(triangleMesh.at(m).vertices[i + 0],
+                                    triangleMesh.at(m).vertices[i + 1],
+                                    triangleMesh.at(m).vertices[i + 2]));
+        }
+        continue;
+      }
       for (int i = 0; i + 8 < floats; i += 9) {
         for (int c = 0; c < 3; c++) {
           const int at = i + c * 3;
@@ -5863,6 +5890,40 @@ void Match::PreparePennantCloth() {
     if (std::sqrt(dx * dx + dy * dy) >= outermost * kPennantRimFraction) {
       held[i] = true;
       hands++;
+    }
+  }
+
+  // Raise the rim into the hands before anything is pinned there.
+  //
+  // PES ships this flag in its cloth rest pose - flat, its rim at 0.10 m on the
+  // set measured here - so pinning it where it lies would peg it round the
+  // bearers' ankles and hang the middle through the pitch. Where their hands
+  // are is measured, not assumed: sampled where the flag's own rim passes
+  // through them, the bearers' vertices fall into three bands, 655 of feet at
+  // 0.0, 777 of hands at 1.1 and 536 of heads at 1.7.
+  //
+  // Idempotent, so a set whose flag is already held keeps it: the lift is the
+  // gap up to the hands and never a drop.
+  std::vector<float> rimHeights;
+  for (unsigned int i = 0; i < rest.size(); i++)
+    if (held[i]) rimHeights.push_back(rest[i].coords[2]);
+  std::vector<float> handHeights;
+  for (const Vector3& p : bearers) {
+    const float dx = p.coords[0] - centre.coords[0], dy = p.coords[1] - centre.coords[1];
+    const float radius = std::sqrt(dx * dx + dy * dy);
+    if (std::fabs(radius - outermost) > kPennantHandReach_m) continue;
+    if (p.coords[2] < kPennantHandLow_m || p.coords[2] > kPennantHandHigh_m) continue;
+    handHeights.push_back(p.coords[2]);
+  }
+  if (!rimHeights.empty() && !handHeights.empty()) {
+    std::sort(rimHeights.begin(), rimHeights.end());
+    std::sort(handHeights.begin(), handHeights.end());
+    const float lift =
+        handHeights[handHeights.size() / 2] - rimHeights[rimHeights.size() / 2];
+    if (lift > 0.0f) {
+      for (Vector3& p : rest) p.coords[2] += lift;
+      Log(e_Notice, "Match", "PreparePennantCloth",
+          "flag raised " + int_to_str((int)(lift * 1000)) + " mm into the bearers' hands");
     }
   }
   // Nothing held is a flag that falls through the pitch on the first step.
