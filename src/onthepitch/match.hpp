@@ -937,6 +937,18 @@ protected:
   // A flag this wide with no bending stiffness will hang like a hammock if it
   // is left to itself, so it settles under a gentler gravity than the netting.
   static constexpr float kPennantGravity = 3.0f;
+  // A flag being carried is held between a man's knees and his shoulders, and
+  // his hands are within reach of the rim he has hold of. Wide enough for a
+  // shorter or taller set of bearers, narrow enough that their feet and heads -
+  // the other two bands at that radius - cannot be mistaken for hands.
+  static constexpr float kPennantHandLow_m = 0.70f;
+  static constexpr float kPennantHandHigh_m = 1.50f;
+  static constexpr float kPennantHandReach_m = 0.60f;
+  // What separates the flag from the men holding it. This ring's flag spans
+  // 0.26 m vertically over 2,426 vertices; its bearers span 1.43 and 1.88, and
+  // the four scraps of trim beside it are 11 to 32 vertices apiece.
+  static constexpr float kPennantFlagThickness_m = 0.60f;
+  static constexpr int kPennantFlagVertices = 200;
   static constexpr int kPennantSettleSteps = 40;
 
   // The corner flag's pole is 2 cm across and stands on a disc 20 cm across. Holding
