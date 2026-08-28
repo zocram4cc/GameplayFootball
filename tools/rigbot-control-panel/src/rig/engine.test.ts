@@ -22,12 +22,15 @@ const snapshot = JSON.stringify({
 interface MockEngine {
   port: number;
   lines: string[];
+  emptyState: boolean;
+  inject: (raw: string) => void;
   close: () => Promise<void>;
 }
 
 async function startMockEngine(): Promise<MockEngine> {
   const lines: string[] = [];
   const sockets = new Set<net.Socket>();
+  const mock: Partial<MockEngine> = { emptyState: false };
   const server = net.createServer((socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
@@ -42,22 +45,26 @@ async function startMockEngine(): Promise<MockEngine> {
         lines.push(line);
         if (line.startsWith('auth '))
           socket.write(line === 'auth s3cret' ? 'ok auth\n' : 'err auth\n');
-        if (line === 'state') socket.write(snapshot + '\n');
+        if (line === 'state') socket.write(mock.emptyState ? '{}\n' : snapshot + '\n');
       }
     });
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  return {
+  Object.assign(mock, {
     port: (server.address() as net.AddressInfo).port,
     lines,
+    inject: (raw: string) => {
+      for (const socket of sockets) socket.write(raw);
+    },
     close: () => {
       const { promise, resolve } = Promise.withResolvers<void>();
       for (const socket of sockets) socket.destroy();
       server.close(() => resolve());
       return promise;
     },
-  };
+  });
+  return mock as MockEngine;
 }
 
 test('EngineLink delivers commands as protocol lines', async () => {
@@ -150,6 +157,40 @@ test('EngineLink.connect rejects when the key is refused', async () => {
   const link = new EngineLink(engine.port, { authKey: 'wrong' });
   try {
     await assert.rejects(link.connect(), /auth/);
+  } finally {
+    link.close();
+    await engine.close();
+  }
+});
+
+test('EngineLink survives a stray refusal line without wedging state requests', async () => {
+  const engine = await startMockEngine();
+  const link = new EngineLink(engine.port, { authKey: 's3cret' });
+  try {
+    await link.connect();
+    // The engine refuses something after the handshake (e.g. an unknown
+    // instruction). The refusal line must not consume a state waiter.
+    engine.inject('err refused\n');
+    engine.inject('err auth\n');
+    const state = await link.requestState();
+    assert.deepEqual(state.score, [1, 0]);
+  } finally {
+    link.close();
+    await engine.close();
+  }
+});
+
+test('EngineLink rejects a state request answered before the first publish', async () => {
+  const engine = await startMockEngine();
+  engine.emptyState = true; // engine answers "{}" until a match publishes
+  const link = new EngineLink(engine.port);
+  try {
+    await link.connect();
+    await assert.rejects(link.requestState(), /no state/);
+    // The link is still usable once real state exists.
+    engine.emptyState = false;
+    const state = await link.requestState();
+    assert.deepEqual(state.score, [1, 0]);
   } finally {
     link.close();
     await engine.close();

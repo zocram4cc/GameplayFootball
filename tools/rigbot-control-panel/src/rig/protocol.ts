@@ -143,6 +143,9 @@ export function engineConfig(config: EngineBootConfig): string {
     ['remote_control_mode', 'true'],
     ['remote_control_key', config.streamerKey],
     ['remote_control_port', integer(config.controlPort, 'controlPort')],
+    // Non-release boot: skips the press-any-key intro page, like every
+    // headless harness config does.
+    ['debug', 'true'],
   ];
   return (
     entries
