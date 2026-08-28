@@ -18,7 +18,18 @@ import sys
 import camera_cut
 
 
-def export(fdc_path, out_path):
+def export(fdc_path, out_path, pitch_half_w=None, pitch_half_h=None):
+    """Converts one .fdc's camerawork to a .camtrack.
+
+    ``pitch_half_w`` / ``pitch_half_h`` stretch PES's 105 x 68 m pitch onto GF's
+    110 x 72 one (pass 55 and 36 from src/gametypes.hpp). Leave them out for any
+    shot authored in a *local* frame rather than in pitch coordinates: a goal
+    camera is set around the scorer at the origin, and stretching that by the
+    pitch's proportions would just move the camera off him. Pass them for shots
+    genuinely placed on the pitch - entrances and line-ups - where without the
+    scale every position lands about 5% short of the landmark it was framed on,
+    which walks the camera into the players it is supposed to be filming.
+    """
     fdc = camera_cut.load(fdc_path)
     lines = []
     total = 0
@@ -26,7 +37,7 @@ def export(fdc_path, out_path):
         if canm is None:
             continue
         for f in range(canm.frame_count):
-            g = camera_cut.to_gf(canm, f)
+            g = camera_cut.to_gf(canm, f, pitch_half_w, pitch_half_h)
             p, q = g["position"], g["rotation"]
             near = max(0.1, cut.near if cut.near > 0 else g["near"])
             far = cut.far if cut.far > 0 else g["far"]

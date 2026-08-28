@@ -16,8 +16,15 @@
 namespace FoulSequence {
 
 // The cutscenes referee.cpp starts: a word with the offender, or a booking.
-constexpr unsigned long kWarningCutscene_ms = 3500;
-constexpr unsigned long kCardCutscene_ms = 5000;
+//
+// Measured against the reference broadcast (docs/PRESENTATION_SPEC.md §3.2): the
+// referee close-up alone is held for five to six seconds there, inside a foul
+// bracket that runs about twenty-four seconds end to end. Three and a half
+// seconds cut the beat off before it read as a beat at all - the camera arrived
+// on the referee and left again. A booking is the bigger moment of the two and
+// gets longer still.
+constexpr unsigned long kWarningCutscene_ms = 6000;
+constexpr unsigned long kCardCutscene_ms = 7500;
 
 // How far before the whistle the replay opens, so it shows the challenge and
 // not the aftermath.

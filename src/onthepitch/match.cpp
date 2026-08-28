@@ -2179,9 +2179,19 @@ void Match::StartCutsceneChoreo(const std::string& category) {
 
     Player* cast = nullptr;
     if (slot.role == e_ChoreoRole_Official) {
-      // the referee plays himself; he is not one of the 22
-      if (officials && officials->GetReferee()) {
-        cutsceneOfficialCast.push_back({officials->GetReferee(), &slot, clip->second.get()});
+      // e_ChoreoRole_Official is "referee or assistant", and which one it is
+      // depends on the incident. An offside is the assistant's call - he is the
+      // man with the flag up - so casting the referee in that slot put the wrong
+      // official through the flag animation and left the assistant standing on
+      // the touchline doing nothing. Everything else is the referee's own.
+      PlayerOfficial* official = officials ? officials->GetReferee() : nullptr;
+      if (officials && activeCutsceneCategory.compare(0, 7, "offside") == 0) {
+        const Vector3 where = CutsceneAnchorPosition();
+        official = where.coords[1] >= 0.0f ? officials->GetLinesmanNorth()
+                                           : officials->GetLinesmanSouth();
+      }
+      if (official) {
+        cutsceneOfficialCast.push_back({official, &slot, clip->second.get()});
         continue;
       }
     } else if (slot.role == e_ChoreoRole_Primary && take(cutscenePrimary)) {
@@ -2227,6 +2237,7 @@ void Match::UpdateCutsceneChoreo() {
     cutsceneOfficialCast.clear();
     cutscenePrimary = nullptr;
     cutsceneOpponent = nullptr;
+    activeCutsceneCategory.clear();
     return;
   }
   // The cutscene's own clock, which holds while the match is paused. Read off the
@@ -2361,6 +2372,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   }
   // A change is made at the touchline; a foul and an offside where they happened.
   cutsceneAtTouchline = category.compare(0, 6, "change") == 0;
+  activeCutsceneCategory = category;
   StartCutsceneChoreo(category);
   // Some incidents are staged but not filmed: PES ships no camera pack at all
   // for an offside, because the assistant's flag and the disallowed-goal
@@ -2630,7 +2642,10 @@ void Match::ExecutePendingSubstitutions() {
       // ball - which at a substitution is wherever it went out of play. Measured
       // once at (-61, -14), six metres beyond the goal line.
       SetCutsceneParticipants(sub.playerOut, sub.playerIn);
-      StartCutscene("change", 5.0f);
+      // Long enough for the beat to read: the fourth official raises the board,
+      // the man coming off clears the pitch and the man coming on takes it. At
+      // five seconds the shot was already cutting away mid-handover.
+      StartCutscene("change", 8.0f);
     }
   }
 }
@@ -3003,9 +3018,30 @@ void Match::UpdateIngameCamera() {
   if (!cutsceneHasCamera && activeCutsceneChoreo &&
       CutscenePlayback::IsPlaying(cutscenePlayback) &&
       (!IsInPlay() || GetReferee()->GetBuffer().active)) {
-    const Vector3 anchor = CutsceneAnchorPosition();
+    Vector3 subject = CutsceneAnchorPosition();
+    // An offside is the assistant's decision, and PES films it that way: the flag
+    // going up is the shot, and then the man it was raised against has something
+    // to say about it. GF held on the grass the offence happened over, so the one
+    // thing that explained the stoppage was off frame for the whole four seconds.
+    //
+    // Two beats. The assistant on the touchline nearest the offence takes the
+    // first, because that is the decision being given; the player caught takes
+    // the rest, because that is the reaction to it. With nobody named as the
+    // offender the shot stays with the flag rather than cutting to a stranger.
+    constexpr unsigned long kOffsideFlagBeat_ms = 2500;
+    if (activeCutsceneCategory.compare(0, 7, "offside") == 0 && officials) {
+      const bool showingFlag =
+          CutscenePlayback::Elapsed_ms(cutscenePlayback) < kOffsideFlagBeat_ms || !cutscenePrimary;
+      if (showingFlag) {
+        PlayerOfficial* assistant = subject.coords[1] >= 0.0f ? officials->GetLinesmanNorth()
+                                                              : officials->GetLinesmanSouth();
+        if (assistant) subject = assistant->GetPosition();
+      } else {
+        subject = cutscenePrimary->GetPosition();
+      }
+    }
     FollowCamera(cameraOrientation, cameraNodeOrientation, cameraNodePosition, cameraFOV,
-                 anchor + Vector3(0, 0, 1.0f), 1.3f);
+                 subject + Vector3(0, 0, 1.0f), 1.3f);
     cameraNearCap = 1;
     cameraFarCap = 220;
     return;

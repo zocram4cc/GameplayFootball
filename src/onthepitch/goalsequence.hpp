@@ -21,7 +21,13 @@ namespace GoalSequence {
 // measured over the 387 imported celebration animations at 10 ms a frame, they run
 // 0.4 s to 10.0 s, median 2.7 s and p90 6.8 s. So the length comes from the clip and
 // this is only the floor for a very short one.
-constexpr unsigned long kMinCelebration_ms = 4000;
+//
+// The floor is set from the reference broadcast (docs/PRESENTATION_SPEC.md §3.1),
+// where the celebration shot runs about five seconds and is followed by a two to
+// three second spotlight on the scorer. Four seconds put the restart in motion
+// while the celebration was still the thing on screen; with a median clip of 2.7 s
+// the floor is what most goals actually get, so it has to cover the beat.
+constexpr unsigned long kMinCelebration_ms = 6000;
 
 // Kept as the plain default for callers with no clip to hand.
 constexpr unsigned long kCelebration_ms = 9000;

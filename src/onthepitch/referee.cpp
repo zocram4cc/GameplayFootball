@@ -533,7 +533,14 @@ void Referee::BallTouched() {
           // and must never borrow its celebration: under "goal/offside" the
           // empty pool fell back to the parent and an offside was staged and
           // filmed as a goal. Its own category has no parent to fall back to.
-          match->StartCutscene("offside", 4.0f);
+          //
+          // Name the man who was caught. Without it the Primary mark in the
+          // choreography was filled by whoever happened to stand nearest it, so
+          // the player protesting the flag was rarely the player it was raised
+          // against, and the camera had no one to cut to for the protest.
+          match->SetCutsceneParticipants(playerIter->first, nullptr);
+          // Two beats - the flag, then the complaint - so it needs the room.
+          match->StartCutscene("offside", 7.0f);
           if (Verbose())
             printf("referee: offside\n");
           break;

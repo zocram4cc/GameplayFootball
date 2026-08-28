@@ -52,6 +52,8 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   slowMotion = false;
   stayInReplay = true;
   closeWhenAutorunCompletes = false;
+  cinematic = false;
+  cinematicPrompt = nullptr;
 
   // Under the scoreboard rather than across it: the PES bug runs to roughly
   // 40% of the width at the very top of frame (see scoreboard.cpp).
@@ -100,6 +102,17 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   footer->AddView(timeLabel);
   timeLabel->Show();
   UpdateTimeLabel();
+  // The cinematic offer, in the reference's own words and its own corner: a
+  // clean picture with one small line low and left, nothing else over it.
+  Gui2Frame* prompt =
+      new Gui2Frame(windowManager, "frame_replay_prompt", 8, 91.0f, 34, 5.0f, true);
+  this->AddView(prompt);
+  Gui2Caption* promptText = new Gui2Caption(windowManager, "caption_replay_prompt", 1.5f, 1.2f,
+                                            31, 2.4f, "Menu: skip   |   Pass: replay control");
+  prompt->AddView(promptText);
+  promptText->Show();
+  prompt->Hide();
+  cinematicPrompt = prompt;
 
   sig_OnClose.connect([this](...) { OnClose(); });
 
@@ -126,7 +139,9 @@ void ReplayPage::ShowReplayChrome(bool shown) {
 void ReplayPage::EnterReplay() {
   if (enteredReplay) return;
   enteredReplay = true;
-  ShowReplayChrome(true);
+  // A cinematic replay shows the picture and the offer, nothing else.
+  ShowReplayChrome(!cinematic);
+  if (cinematic && cinematicPrompt) cinematicPrompt->Show();
   match->SetAutoUpdateIngameCamera(false);
 
   match->replayState.Lock();
@@ -135,6 +150,16 @@ void ReplayPage::EnterReplay() {
   match->replayState->modifierValue = 0.0f;
   match->replayState->dirty = true;
   match->replayState.Unlock();
+}
+
+void ReplayPage::TakeReplayControl() {
+  if (!cinematic) return;
+  cinematic = false;
+  if (cinematicPrompt) cinematicPrompt->Hide();
+  ShowReplayChrome(true);
+  // It was going to close itself when playback ran out; now that it belongs to
+  // the user it stays until he backs out of it.
+  closeWhenAutorunCompletes = false;
 }
 
 void ReplayPage::LeaveReplay() {
@@ -165,6 +190,9 @@ void ReplayPage::OnClose() {
 void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay, int camera) {
   autoRun = true;
   closeWhenAutorunCompletes = true;
+  // The match asked for this one, so it is part of the cutscene: play it clean
+  // and offer control rather than imposing the tape deck on it.
+  cinematic = true;
   cam = clamp(camera, 0, replayCamCount - 1);
   modifierValue = 0.0;
   signed long tmp = maxTime_ms - replayHistoryOffset_ms;
@@ -341,6 +369,14 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
                               bool slowMoInput) {
   // slow-motion: held sprint button halves playback speed
   slowMotion = slowMoInput;
+
+  // While the replay is still cinematic the only thing the pass button does is
+  // accept the offer. Returning here matters: the same press would otherwise
+  // fall through and cycle the camera on the very frame control is handed over.
+  if (cinematic) {
+    if (button1) TakeReplayControl();
+    return;
+  }
 
   // autorun
   if (button2 && autoRun == false) {
