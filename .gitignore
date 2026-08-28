@@ -116,3 +116,7 @@ data/pens/
 # frames, so tools only - see docs/ASSETS.md.
 data/media/textures/wipe/
 .measure/
+
+# rigdio test inputs: community audio exports are never committed
+.exports/
+data/music/
