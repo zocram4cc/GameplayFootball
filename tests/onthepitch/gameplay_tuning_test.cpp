@@ -52,18 +52,23 @@ TEST(GameplayTuningKeeperTest, TheKeeperKnobScalesTheWholeRange) {
 }
 
 // A keeper who only tries for one shot in four does not look like a keeper: he
-// stands and watches, which is what "very disinclined to dive" was. Whether he
-// *reaches* the ball is for the save animation to decide - it only picks one
-// that can get there - so the attempt itself should be close to universal.
+// stands and watches, which is what "very disinclined to dive" was. Going for
+// nearly every shot is the opposite mistake and was measured as such - eight
+// full matches produced 3.1 expected goals each and 1.6 actual, with about a
+// tenth of shots on target scored where the real game manages a third. So he
+// goes for most, not for all, and whether he *reaches* the ball is still the
+// save animation's decision - it only picks one that can get there.
 
-TEST(GameplayTuningKeeperTest, EvenAPoorKeeperTriesForMostShots) {
+TEST(GameplayTuningKeeperTest, EvenAPoorKeeperTriesForMoreThanHalf) {
   const Properties config;
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.2f), 0.7f);
+  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.2f), 0.5f);
 }
 
-TEST(GameplayTuningKeeperTest, AGoodKeeperTriesForNearlyEverything) {
+TEST(GameplayTuningKeeperTest, TheBestKeeperStillLeavesShotsToBeScored) {
   const Properties config;
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.9f), 0.8f);
+  const float best = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
+  EXPECT_GT(best, 0.6f) << "he should still go for most of them";
+  EXPECT_LT(best, 0.8f) << "at nearly every shot, three xG finishes 0-0";
 }
 
 // The reaction stat still separates keepers, just not by whether they bother.
