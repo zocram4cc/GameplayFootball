@@ -351,6 +351,19 @@ target_include_directories(gameplayfootball_planmapcard_tests PRIVATE ${PROJECT_
 target_link_libraries(gameplayfootball_planmapcard_tests GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_planmapcard_tests DISCOVERY_MODE PRE_TEST)
 
+add_executable(gameplayfootball_planmapinteraction_tests
+  menu/plan_map_interaction_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/widgets/planmapinteraction.cpp
+)
+target_include_directories(gameplayfootball_planmapinteraction_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_planmapinteraction_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_planmapinteraction_tests DISCOVERY_MODE PRE_TEST)
+
 add_executable(gameplayfootball_hudindicators_tests
   menu/hud_indicators_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/ingame/hudindicators.cpp
@@ -610,6 +623,7 @@ add_executable(gameplayfootball_pass_failure_tests
   onthepitch/pass_failure_test.cpp
   ${PROJECT_SOURCE_DIR}/src/data/matchdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/teamdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
@@ -681,6 +695,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/crowd_mood_test.cpp
   data/match_analytics_test.cpp
   data/formations_test.cpp
+  data/formation_fallback_test.cpp
   data/team_tactics_test.cpp
   onthepitch/coach_mode_test.cpp
   onthepitch/substitutions_test.cpp

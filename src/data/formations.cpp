@@ -311,4 +311,17 @@ e_Formation FromShape(const Shape& shape) {
   return best;
 }
 
+bool HasElevenSlots(const std::string& formationXml) {
+  for (int i = 1; i <= outfieldPlayers + 1; i++) {
+    if (formationXml.find("<p" + std::to_string(i) + ">") == std::string::npos) return false;
+  }
+  return true;
+}
+
+std::string ResolveFormationXml(const std::string& ownXml, const std::string& factoryXml) {
+  if (HasElevenSlots(ownXml)) return ownXml;
+  if (HasElevenSlots(factoryXml)) return factoryXml;
+  return BuildFormationXml(e_Formation_442);
+}
+
 }  // namespace Formations
