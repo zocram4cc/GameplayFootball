@@ -785,7 +785,7 @@ def write_ase(fmdls, out_dir, name, tex_dirs, max_tris=None,
             out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % len(sky_geoms))
             for new_index, (_, mat_index, _, _, _) in enumerate(sky_geoms):
                 _write_material(out, new_index, materials[mat_index][0], materials[mat_index][1],
-                                name, fallback_bitmap)
+                                name, fallback_bitmap, sky=True)
             out.write("}\n")
             for new_index, (geom_name, _, faces, _, _) in enumerate(sky_geoms):
                 # inside-out, because the camera is inside it, and unlit, or its own
@@ -826,16 +826,27 @@ def _write_ase_header(out, name):
     out.write("\t*SCENE_AMBIENT_STATIC 0.000\t0.000\t0.000\n}\n")
 
 
-def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap):
+def _write_material(out, index, mat_name, bitmap, stadium_name, fallback_bitmap, sky=False):
+    # A sky is self-illuminated and every other surface is lit.
+    #
+    # The engine's own media/objects/stadiums/sky/sky.ase is AMBIENT 1, DIFFUSE 1,
+    # SELFILLUM 1, and an imported dome written like a wall - 0.588 and no self
+    # illumination - is lit like one. All three of Planet Namek's sky faults are
+    # that single line: with the normals it ships it goes dark, with the normals
+    # stripped it facets into blocks as each triangle catches the light
+    # differently, and flipping the normal only trades one for the other.
+    # Self-illuminated, the dome shows its own texture and the normal stops
+    # mattering.
+    level = "1.000" if sky else "0.588"
     out.write("\t*MATERIAL %d {\n" % index)
     out.write('\t\t*MATERIAL_NAME "%s"\n' % mat_name)
     out.write('\t\t*MATERIAL_CLASS "Standard"\n')
-    out.write("\t\t*MATERIAL_AMBIENT 0.588\t0.588\t0.588\n")
-    out.write("\t\t*MATERIAL_DIFFUSE 0.588\t0.588\t0.588\n")
+    out.write("\t\t*MATERIAL_AMBIENT %s\t%s\t%s\n" % (level, level, level))
+    out.write("\t\t*MATERIAL_DIFFUSE %s\t%s\t%s\n" % (level, level, level))
     out.write("\t\t*MATERIAL_SPECULAR 0.000\t0.000\t0.000\n")
     out.write("\t\t*MATERIAL_SHINE 0.010\n")
     out.write("\t\t*MATERIAL_SHINESTRENGTH 0.0\n")
-    out.write("\t\t*MATERIAL_SELFILLUM 0.0\n")
+    out.write("\t\t*MATERIAL_SELFILLUM %s\n" % ("1.0" if sky else "0.0"))
     out.write('\t\t*MATERIAL_SHADING Blinn\n')
     # every material needs a diffuse map: the engine's ASE loader falls back to a
     # stock "orange.jpg" that does not ship, and a missing image file is fatal

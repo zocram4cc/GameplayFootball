@@ -28,6 +28,7 @@ is measured, not guessed at, and it holds for a ground of any size.
 Run: python3 -m unittest test_stadium_sky -v
 """
 
+import io
 import unittest
 
 import stadium_to_gf
@@ -149,3 +150,39 @@ class SkyNormalTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SkyMaterialIsSelfIlluminated(unittest.TestCase):
+    """A sky is not a wall. The engine's own media/objects/stadiums/sky/sky.ase
+    is AMBIENT 1, DIFFUSE 1, SELFILLUM 1; an imported dome written like every
+    other surface - 0.588 and no self illumination - is lit like one.
+
+    All three of Planet Namek's sky faults were that single line. With the
+    normals it ships the dome goes dark, with them stripped it facets into
+    blocks as each triangle catches the light differently, and flipping the
+    normal only trades one for the other. Self-illuminated, it shows its own
+    texture and the normal stops mattering."""
+
+    def material(self, sky):
+        out = io.StringIO()
+        stadium_to_gf._write_material(out, 0, "m", "t.png", "st017", None, sky=sky)
+        return out.getvalue()
+
+    def test_a_sky_is_fully_self_illuminated(self):
+        text = self.material(sky=True)
+        self.assertIn("*MATERIAL_SELFILLUM 1.0", text)
+        self.assertIn("*MATERIAL_AMBIENT 1.000", text)
+        self.assertIn("*MATERIAL_DIFFUSE 1.000", text)
+
+    def test_everything_else_is_still_lit(self):
+        text = self.material(sky=False)
+        self.assertIn("*MATERIAL_SELFILLUM 0.0", text)
+        self.assertIn("*MATERIAL_AMBIENT 0.588", text)
+
+    def test_it_matches_what_the_engines_own_sky_ships(self):
+        """The house convention, read off media/objects/stadiums/sky/sky.ase."""
+        text = self.material(sky=True)
+        for line in ("*MATERIAL_AMBIENT 1.000\t1.000\t1.000",
+                     "*MATERIAL_DIFFUSE 1.000\t1.000\t1.000",
+                     "*MATERIAL_SELFILLUM 1.0"):
+            self.assertIn(line, text)
