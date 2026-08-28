@@ -351,6 +351,55 @@ def install_art(pack_dir, game_dir, tag, dry_run=False):
     return written
 
 
+def install_portraits(pack_dir, game_dir, tag, by_shirt, dry_run=False):
+    """Converts the pack's portraits and binds them to their players.
+
+    -> [(database id, path written)]. The menu reads
+    media/players/playerportraits.cfg, one "<databaseID> <png path>" per line,
+    and shows a plain card for anyone missing.
+
+    Packs name portraits two ways - 2HUG ships `player_78301.dds` with the full
+    PES id, HDG ships `player_XXX21.dds` with the team left as a placeholder -
+    but both end in the shirt number, which is the same rule the model exports
+    follow, so both resolve through the squad the ted just installed.
+    """
+    from PIL import Image
+
+    source_dir = os.path.join(pack_dir, "Portraits")
+    if not os.path.isdir(source_dir):
+        return []
+
+    out_dir = os.path.join(game_dir, "imports", tag, "portraits")
+    rel_dir = "imports/%s/portraits" % tag
+    written = []
+    for name in sorted(os.listdir(source_dir)):
+        match = re.match(r"^player_.*?(\d{2})\.(dds|png)$", name, re.I)
+        if not match:
+            continue
+        db_id = by_shirt.get(int(match.group(1)))
+        if db_id is None:
+            continue
+        rel = "%s/player_%d.png" % (rel_dir, db_id)
+        if not dry_run:
+            os.makedirs(out_dir, exist_ok=True)
+            Image.open(os.path.join(source_dir, name)).convert("RGBA").save(
+                os.path.join(game_dir, rel))
+        written.append((db_id, rel))
+    return written
+
+
+def append_config(path, lines):
+    """Appends "<id> <path>" lines, skipping ids the file already binds."""
+    existing = open(path).read() if os.path.exists(path) else ""
+    fresh = [line for line in lines if line.split()[0] + " " not in existing]
+    if not fresh:
+        return 0
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a") as out:
+        if existing and not existing.endswith("\n"):
+            out.write("\n")
+        out.write("\n".join(fresh) + "\n")
+    return len(fresh)
 
 
 def find_fmdl_lib(hint=""):
@@ -459,9 +508,16 @@ def main():
         print("%s -> team row %d, %d player(s), %d slider(s)%s"
               % (export["team"], team_row, len(export["squad"]), len(tactics),
                  "  (dry run, rolled back)" if args.dry_run else ""))
-        art = install_art(args.pack_dir, args.game_dir,
-                          install_team.art_tag(export["team"]), args.dry_run)
+        tag = install_team.art_tag(export["team"])
+        art = install_art(args.pack_dir, args.game_dir, tag, args.dry_run)
         print("   art: %s" % (", ".join(art) if art else "none found in the pack"))
+        portraits = install_portraits(args.pack_dir, args.game_dir, tag,
+                                      by_shirt, args.dry_run)
+        if portraits and not args.dry_run:
+            append_config(
+                os.path.join(args.game_dir, "media", "players", "playerportraits.cfg"),
+                ["%d %s" % pair for pair in portraits])
+        print("   portraits: %d" % len(portraits))
     elif not args.prefix:
         print("give the team's .ted, or --prefix if you only want the models")
         return 1
@@ -496,15 +552,9 @@ def main():
             lines.append("%d %s" % (db_id, rel))
 
     if lines and not args.dry_run:
-        cfg = os.path.join(args.game_dir, "media", "players", "playermodels.cfg")
-        existing = open(cfg).read() if os.path.exists(cfg) else ""
-        with open(cfg, "a") as out:
-            if existing and not existing.endswith("\n"):
-                out.write("\n")
-            for line in lines:
-                if line.split()[0] + " " not in existing:
-                    out.write(line + "\n")
-        print("wrote %d playermodels.cfg entries" % len(lines))
+        added = append_config(
+            os.path.join(args.game_dir, "media", "players", "playermodels.cfg"), lines)
+        print("wrote %d playermodels.cfg entries" % added)
     return 0
 
 

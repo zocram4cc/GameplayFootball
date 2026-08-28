@@ -449,3 +449,73 @@ class TheTeamsArtLandsWhereTheEngineLooks(unittest.TestCase):
     def test_a_pack_without_art_is_not_an_error(self):
         empty = tempfile.mkdtemp()
         self.assertEqual(import_team.install_art(empty, self.game, "x"), [])
+
+
+class PortraitsBindToTheirPlayers(unittest.TestCase):
+    """Packs name portraits two ways and both end in the shirt number: 2HUG
+    ships player_78301.dds with the full PES id, HDG ships player_XXX21.dds
+    with the team left as a literal placeholder."""
+
+    def setUp(self):
+        self.pack = tempfile.mkdtemp()
+        self.game = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.pack, "Portraits"))
+        self.by_shirt = {1: 501, 2: 502, 21: 521}
+
+    def add(self, name):
+        from PIL import Image
+        Image.new("RGBA", (8, 8), (1, 2, 3, 255)).save(
+            os.path.join(self.pack, "Portraits", name))
+
+    def test_a_full_pes_id_resolves_through_its_last_two_digits(self):
+        self.add("player_78302.png")
+        self.assertEqual(import_team.install_portraits(
+            self.pack, self.game, "t", self.by_shirt),
+            [(502, "imports/t/portraits/player_502.png")])
+
+    def test_a_placeholder_team_id_resolves_the_same_way(self):
+        self.add("player_XXX21.png")
+        self.assertEqual(import_team.install_portraits(
+            self.pack, self.game, "t", self.by_shirt),
+            [(521, "imports/t/portraits/player_521.png")])
+
+    def test_the_file_is_actually_written(self):
+        self.add("player_XXX01.png")
+        [(_, rel)] = import_team.install_portraits(
+            self.pack, self.game, "t", self.by_shirt)
+        self.assertTrue(os.path.exists(os.path.join(self.game, rel)))
+
+    def test_a_portrait_for_nobody_in_the_squad_is_skipped(self):
+        """A pack can carry more portraits than the ted has players."""
+        self.add("player_XXX99.png")
+        self.assertEqual(import_team.install_portraits(
+            self.pack, self.game, "t", self.by_shirt), [])
+
+    def test_a_pack_without_portraits_is_not_an_error(self):
+        self.assertEqual(import_team.install_portraits(
+            tempfile.mkdtemp(), self.game, "t", self.by_shirt), [])
+
+
+class TheConfigsAreAppendedNotDoubled(unittest.TestCase):
+    """Every one of these gets re-run the moment a pack is updated."""
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp()
+        os.close(handle)
+
+    def tearDown(self):
+        os.unlink(self.path)
+
+    def test_new_ids_are_added(self):
+        self.assertEqual(import_team.append_config(self.path, ["7 a", "8 b"]), 2)
+        self.assertEqual(open(self.path).read(), "7 a\n8 b\n")
+
+    def test_an_id_already_bound_is_not_written_twice(self):
+        import_team.append_config(self.path, ["7 a"])
+        self.assertEqual(import_team.append_config(self.path, ["7 c", "9 d"]), 1)
+        self.assertEqual(open(self.path).read(), "7 a\n9 d\n")
+
+    def test_a_file_without_a_trailing_newline_does_not_join_lines(self):
+        open(self.path, "w").write("1 x")
+        import_team.append_config(self.path, ["2 y"])
+        self.assertEqual(open(self.path).read().splitlines(), ["1 x", "2 y"])
