@@ -3,10 +3,12 @@
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 
-import { EngineState, parseState } from './protocol';
+import { EngineState, parseState, authCommand } from './protocol';
 
 export interface EngineLinkOptions {
   pollMs?: number;
+  // Streamer key; sent as 'auth <key>' before anything else when set.
+  authKey?: string;
 }
 
 // Events: 'state' (EngineState) on every poll, 'down' when the engine goes away.
@@ -14,6 +16,8 @@ export class EngineLink extends EventEmitter {
   private readonly port: number;
   private readonly pollMs: number;
   private socket: net.Socket | null = null;
+  private readonly authKey: string | undefined;
+  private authWaiter: { ready: () => void; failed: (err: Error) => void } | null = null;
   private pending = '';
   // Replies arrive in request order on one socket; resolvers queue in kind.
   private waiters: { resolve: (state: EngineState) => void; reject: (err: Error) => void }[] = [];
@@ -24,6 +28,7 @@ export class EngineLink extends EventEmitter {
     super();
     this.port = port;
     this.pollMs = options.pollMs ?? 250;
+    this.authKey = options.authKey;
   }
 
   connect(): Promise<void> {
@@ -35,8 +40,18 @@ export class EngineLink extends EventEmitter {
       socket.on('data', (chunk) => this.onData(chunk));
       socket.on('close', () => this.onDown());
       socket.on('error', () => {}); // 'close' follows; one path handles it
-      this.pollTimer = setInterval(() => this.poll(), this.pollMs);
-      resolve();
+      const ready = () => {
+        this.pollTimer = setInterval(() => this.poll(), this.pollMs);
+        resolve();
+      };
+      if (this.authKey === undefined) {
+        ready();
+        return;
+      }
+      // Authenticate before anything else; the engine refuses all other
+      // lines on a keyed channel until this one is answered "ok auth".
+      this.authWaiter = { ready, failed: reject };
+      socket.write(authCommand(this.authKey) + '\n');
     });
     socket.once('error', (err) => reject(err));
     return promise;
@@ -71,6 +86,13 @@ export class EngineLink extends EventEmitter {
       const line = this.pending.slice(0, index);
       this.pending = this.pending.slice(index + 1);
       if (!line) continue;
+      if (this.authWaiter && (line === 'ok auth' || line === 'err auth')) {
+        const waiter = this.authWaiter;
+        this.authWaiter = null;
+        if (line === 'ok auth') waiter.ready();
+        else waiter.failed(new Error('engine refused the auth key'));
+        continue;
+      }
       const state = parseState(line);
       const waiter = this.waiters.shift();
       if (!state) continue; // "{}" before the first publish, or garbage

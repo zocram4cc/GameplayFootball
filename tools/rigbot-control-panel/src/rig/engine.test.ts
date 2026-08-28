@@ -40,6 +40,8 @@ async function startMockEngine(): Promise<MockEngine> {
         pending = pending.slice(index + 1);
         if (!line) continue;
         lines.push(line);
+        if (line.startsWith('auth '))
+          socket.write(line === 'auth s3cret' ? 'ok auth\n' : 'err auth\n');
         if (line === 'state') socket.write(snapshot + '\n');
       }
     });
@@ -126,4 +128,30 @@ test('EngineLink.requestState rejects cleanly when not connected', async () => {
   const link = new EngineLink(1); // nothing listens on port 1
   await assert.rejects(link.requestState());
   link.close();
+});
+
+test('EngineLink authenticates before anything else', async () => {
+  const engine = await startMockEngine();
+  const link = new EngineLink(engine.port, { authKey: 's3cret' });
+  try {
+    await link.connect();
+    link.send('resume');
+    await link.requestState();
+    assert.equal(engine.lines[0], 'auth s3cret');
+    assert.equal(engine.lines[1], 'resume');
+  } finally {
+    link.close();
+    await engine.close();
+  }
+});
+
+test('EngineLink.connect rejects when the key is refused', async () => {
+  const engine = await startMockEngine();
+  const link = new EngineLink(engine.port, { authKey: 'wrong' });
+  try {
+    await assert.rejects(link.connect(), /auth/);
+  } finally {
+    link.close();
+    await engine.close();
+  }
 });
