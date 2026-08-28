@@ -14,6 +14,8 @@
 #include "managers/resourcemanagerpool.hpp"
 #include "managers/usereventmanager.hpp"
 #include "match.hpp"
+#include "player/player.hpp"
+#include "team.hpp"
 #include "scene/objectfactory.hpp"
 
 using namespace blunted;
@@ -365,6 +367,10 @@ void RigdioDirector::Update() {
                                    : std::string();
       const int minute = (int)(match_->GetMatchTime_ms() / 60000);
       const bool ownGoal = scorer->GetTeamID() != teamID;
+      Log(e_Notice, "RigdioDirector", "Update",
+          std::string("rigdio: ") + (ownGoal ? "own goal" : "goal") + " by " + name +
+              " for the " + (teamID == 0 ? "home" : "away") + " team, minute " +
+              int_to_str(minute));
       if (ownGoal) {
         // rigdio never plays goal music for an own goal; the owngoal event
         // clip of the player's own team fires instead.
@@ -383,6 +389,38 @@ void RigdioDirector::Update() {
       session_->OnHornPaused(t == 0, nowSec);
       FadeOut(horn_[t]);
     }
+  }
+
+  // --- cards and substitutions become rigdio events (event.py) ---
+  if (!match_->IsInEntrance()) {
+    const int minute = (int)(match_->GetMatchTime_ms() / 60000);
+    for (int t = 0; t < 2; t++) {
+      std::vector<Player*> active;
+      match_->GetTeam(t)->GetActivePlayers(active);
+      for (Player* p : active) {
+        const std::string name = p->GetPlayerData()
+                                     ? p->GetPlayerData()->GetLastName()
+                                     : std::string();
+        // A player first seen after the roster settled came off the bench.
+        if (!knownPlayers_.count(p)) {
+          knownPlayers_[p] = true;
+          if (rosterSeeded_) {
+            auto act = session_->OnEvent(t == 0, "sub", name, minute);
+            if (act) Start(event_, t == 0, *act);
+          }
+        }
+        // GiveYellowCard adds 1, GiveRedCard adds 3 (player.hpp).
+        const int cards = p->GetCards();
+        int& seen = seenCards_[p];
+        if (rosterSeeded_ && cards > seen) {
+          auto act = session_->OnEvent(t == 0, cards - seen >= 3 ? "red" : "yellow",
+                                       name, minute);
+          if (act) Start(event_, t == 0, *act);
+        }
+        seen = cards;
+      }
+    }
+    rosterSeeded_ = true;
   }
 
   // --- coach-mode manual chants: Z home, X away; same key stops early ---

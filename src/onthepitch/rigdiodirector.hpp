@@ -20,6 +20,8 @@
 #include "utils/rigdio.hpp"
 
 class Match;
+class Player;
+
 
 class RigdioDirector {
  public:
@@ -79,6 +81,11 @@ class RigdioDirector {
   int seenGoals_ = 0;
   bool victoryPlayed_ = false;
   unsigned long lastWall_ms = 0;
+  // Cards and substitutions become rigdio events (event.py): polled off the
+  // match state each Update, so no referee or team code needs a hook.
+  std::map<Player*, int> seenCards_;
+  std::map<Player*, bool> knownPlayers_;
+  bool rosterSeeded_ = false;
 };
 
 #endif
