@@ -40,8 +40,15 @@ inline float GetTrapPredictionAssist(float supportDistance) {
 // The stock 0.4 m window is the single largest source of pass failure: balls
 // landing just outside it are simply untouchable. Config-tunable, general for
 // every philosophy and skill tier.
+//
+// Raised from 0.8 m once the failure breakdown was complete enough to see what
+// was left: with interceptions, bad traps and out-of-play all counted, the
+// largest remaining bucket was passes nobody touched at all - the ball arrived
+// and no touch event fired. That is this window, not the receiver's decision.
+// A metre is about a player's reach, so it stays inside what a person could
+// plausibly stretch to rather than becoming a magnet.
 inline float GetTrapTouchableDistance(const blunted::Properties& config) {
-  return blunted::clamp(config.GetReal("gameplay_trap_touchable_distance", 0.8f), 0.2f, 1.0f);
+  return blunted::clamp(config.GetReal("gameplay_trap_touchable_distance", 0.95f), 0.2f, 1.0f);
 }
 
 // The touch check that follows this radius is otherwise binary: miss the
@@ -74,6 +81,63 @@ inline float GetPassErrorLoft(float difficultyFactor, bool groundPass) {
 // marked target's odds drop by up to 35% whatever the lane looks like.
 inline float GetReceiverPressureDanger(float nearestOpponentDistance) {
   return 0.35f * (1.0f - Clamp01((nearestOpponentDistance - 1.0f) / 6.0f));
+}
+
+// How likely a pass is to come off on execution alone, before anyone contests it.
+//
+// _GetPassingOdds used to price exactly one way a pass dies: an opponent close
+// enough to the lane to intercept it. Down an empty channel a forty-metre ball
+// therefore scored the same as a five-metre one, so pass selection - which for
+// attacking roles weights tactical advantage up to eleven times the odds - kept
+// choosing the long ball to the most advanced man. Measured mean pass length sat
+// at 20-25 m with a quarter of all passes beyond 25 m, and the balls that reached
+// nobody were the single largest sink in the breakdown.
+//
+// Distance costs accuracy for reasons that have nothing to do with marking: more
+// flight time for the target to be somewhere else by arrival, more spread in
+// power and direction, and a harder ball to kill on the other end. The curve is
+// flat under about six metres, where none of that bites, and falls off with the
+// square of distance after that. It never reaches zero: a long ball is worse, not
+// impossible.
+// Long range is penalised hard because the aim itself degrades there: AI_GetPass
+// leads a moving receiver by at most 0.7 s of his movement, so a forty-metre ball
+// with roughly two seconds of flight is aimed several metres behind a man who is
+// still running. Those are the passes that reach nobody at all - neither the
+// target nor an opponent - and they were the largest remaining hole once body
+// collisions were counted.
+// Real completion rates fall off faster than the first cut of this curve did:
+// roughly 92% under ten metres, 85% at twenty, 70% at thirty, 55% at forty. The
+// original 0.75 coefficient over a six-metre dead zone was still handing a
+// twenty-five metre ball 0.86, which only looked reasonable while the rating
+// *added* this term and drowned it. Now that the rating multiplies by it the
+// term decides, so it is worth having it match the real shape.
+inline float GetPassExecutionOdds(float distance_m) {
+  const float t = Clamp01((distance_m - 4.0f) / 46.0f);
+  return 1.0f - 0.85f * t * t;
+}
+
+// Rough flight time for a pass of this length, in seconds.
+inline float GetPassFlightTime_sec(float distance_m) {
+  return 0.3f + distance_m * 0.05f;
+}
+
+// How far ahead of a moving receiver to aim, expressed as seconds of his current
+// movement.
+//
+// The aim used to saturate at 0.7 s of movement however long the ball was in the
+// air, on the reasoning that the receiver has stopped by then. Past about
+// fourteen metres that assumption silently became a systematic error: a
+// forty-metre pass is airborne for over two seconds, so a man still running at
+// six metres a second was led by four metres and met the ball five or more
+// behind him. Nobody touched those at all - not the target, not an opponent -
+// which is what the ghost counters were catching.
+//
+// Leading by the full flight time at full speed is the opposite mistake, and was
+// tried and reverted: a receiver who does check his run then watches it sail
+// past. So the lead tracks real flight time but assumes he sheds most of his
+// pace as the ball travels, which is what a player expecting it actually does.
+inline float GetReceiverLeadTime_sec(float distance_m) {
+  return GetPassFlightTime_sec(distance_m) * 0.6f;
 }
 
 // Lane pick for a panic clearance. The controller probes the default away

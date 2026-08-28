@@ -77,7 +77,10 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
           command.desiredFunctionType = e_FunctionType_Movement;
           command.useDesiredMovement = true;
           command.useDesiredLookAt = true;
+          // A movement direction is flat by contract (Humanoid::SelectAnim asserts
+          // it): built from a raw 3D delta it inherits any height difference.
           command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
+                                         .Get2D()
                                          .GetNormalized(CastPlayer()->GetDirectionVec());
           command.desiredVelocityFloat =
               RangeVelocity((desiredPosition - CastPlayer()->GetPosition()).GetLength() * 1.0f);
@@ -100,6 +103,7 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
             command.useDesiredMovement = true;
             command.useDesiredLookAt = true;
             command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
+                                           .Get2D()
                                            .GetNormalized(CastPlayer()->GetDirectionVec());
             command.desiredVelocityFloat = idleVelocity;
             command.desiredLookAt = match->GetReferee()->GetCurrentFoulPlayer()->GetPosition();
@@ -120,6 +124,7 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
                                   AI_GetForceFieldMovement(forceField, CastPlayer()->GetPosition());
 
         command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
+                                       .Get2D()
                                        .GetNormalized(CastPlayer()->GetDirectionVec());
         command.desiredVelocityFloat =
             clamp((desiredPosition - CastPlayer()->GetPosition()).GetLength() *
@@ -148,6 +153,7 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
       }
 
       command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
+                                     .Get2D()
                                      .GetNormalized(CastPlayer()->GetDirectionVec());
       command.desiredVelocityFloat =
           RangeVelocity((desiredPosition - CastPlayer()->GetPosition()).GetLength() *

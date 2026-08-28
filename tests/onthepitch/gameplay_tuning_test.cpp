@@ -268,3 +268,52 @@ TEST(GameplayTuningTrapTest, ALateTouchOnARocketKeepsAtMost60Percent) {
   // A soft pass is untouched by the kill term.
   EXPECT_FLOAT_EQ(0.8f * (1.0f - GameplayTuning::GetTrapKillStrength(5.0f)), 0.8f);
 }
+
+// A pass can fail without anyone touching it: struck too hard, struck off
+// line, or simply impossible to kill on arrival. The odds model priced only
+// interception, so an empty forty-metre channel scored the same as an empty
+// five-metre one and the AI kept choosing the long ball.
+
+TEST(GameplayTuningPassExecutionTest, ShortPassesAreNotPenalised) {
+  EXPECT_FLOAT_EQ(GameplayTuning::GetPassExecutionOdds(0.0f), 1.0f);
+  EXPECT_GT(GameplayTuning::GetPassExecutionOdds(6.0f), 0.99f);
+}
+
+TEST(GameplayTuningPassExecutionTest, OddsFallWithDistance) {
+  EXPECT_GT(GameplayTuning::GetPassExecutionOdds(10.0f),
+            GameplayTuning::GetPassExecutionOdds(25.0f));
+  EXPECT_GT(GameplayTuning::GetPassExecutionOdds(25.0f),
+            GameplayTuning::GetPassExecutionOdds(45.0f));
+}
+
+// A long ball is worse than a short one, never impossible: the term must not
+// zero out an option the rest of the rating might still justify.
+TEST(GameplayTuningPassExecutionTest, ALongBallStaysPossible) {
+  // The curve saturates at 1 - 0.85 = 0.15: worth a sixth of a free ball, never
+  // literally impossible, so a rating can still justify one.
+  // Saturates at 1 - 0.85 = 0.15 (a hair under, in float): worth a sixth of a
+  // free ball, never literally impossible, so a rating can still justify one.
+  EXPECT_NEAR(GameplayTuning::GetPassExecutionOdds(60.0f), 0.15f, 0.01f);
+}
+
+// The aim used to saturate at 0.7 s of receiver movement whatever the distance,
+// so long passes were struck several metres behind a man who was still running
+// and reached nobody at all. Lead has to track flight time.
+
+TEST(GameplayTuningLeadTest, LeadGrowsWithDistance) {
+  EXPECT_GT(GameplayTuning::GetReceiverLeadTime_sec(40.0f),
+            GameplayTuning::GetReceiverLeadTime_sec(10.0f));
+}
+
+TEST(GameplayTuningLeadTest, ALongBallIsLedPastTheOldCeiling) {
+  // The old ceiling was 0.7 s; a forty-metre ball must beat it comfortably.
+  EXPECT_GT(GameplayTuning::GetReceiverLeadTime_sec(40.0f), 0.7f);
+}
+
+// Leading by the whole flight at full pace overshoots a receiver who checks his
+// run - the mistake that got the first attempt reverted.
+TEST(GameplayTuningLeadTest, LeadIsShorterThanTheFlightItself) {
+  const float d = 30.0f;
+  EXPECT_LT(GameplayTuning::GetReceiverLeadTime_sec(d),
+            GameplayTuning::GetPassFlightTime_sec(d));
+}

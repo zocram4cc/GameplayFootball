@@ -504,9 +504,18 @@ void Humanoid::Process() {
     team->SetLastTouchPlayer(CastPlayer(), GetTouchTypeForBodyPart(currentAnim->anim->GetVariable(
                                                "touch_bodypart")));  //, e_TouchType_Accidental);
     CastPlayer()->UpdatePossessionStats(false);
-    // [pass-fail] sink: a body collision that kills a pass in flight is never
-    // a trap anim, so it would vanish from the breakdown without this count.
+    // Diagnostics first: AddGhostTouch reads the pending pass that RecordBallTouch
+    // then closes. Kind 3 now measures how many balls arrive off a body rather
+    // than off a trap, which is worth watching even though they are no longer lost.
     match->GetMatchData()->AddGhostTouch(team->GetID(), 3);
+    // A pass that runs into a body has still arrived. Off a teammate that is a
+    // completed pass; off an opponent it is an interception, and RecordBallTouch
+    // tells the two apart by team. Omitting it was the largest hole in the
+    // breakdown: a ball reaching a teammate's shins counted as neither completed
+    // nor failed, it simply vanished, which cost roughly a third of all passes.
+    // Whether the team then keeps it is still settled by the clean-completion
+    // window, so a lucky ricochet does not read as a clean completion.
+    match->GetMatchData()->RecordBallTouch(team->GetID());
   }
   // ---------------------- / EXPERIMENTAL ------------------------------------------------
 
@@ -518,7 +527,7 @@ void Humanoid::Process() {
     float desiredBallHeight = desiredBallPosition.coords[2];
 
     static const float trapTouchableDistance =
-        GetConfiguration()->GetReal("gameplay_trap_touchable_distance", 0.8f);
+        GetConfiguration()->GetReal("gameplay_trap_touchable_distance", 0.95f);
     float touchableDistance = trapTouchableDistance;
 
     float fullBallDistance =
@@ -719,7 +728,12 @@ void Humanoid::Process() {
         team->SetLastTouchPlayer(
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
-        match->GetMatchData()->AddPassAttempt(team->GetID());
+        // A panic clearance is hoofed into a lane with no intended recipient, so it
+        // is recorded as a clearance rather than a pass nobody could complete.
+        if (currentAnim->originatingCommand.touchInfo.isClearance)
+          match->GetMatchData()->AddClearance(team->GetID());
+        else
+          match->GetMatchData()->AddPassAttempt(team->GetID());
 #ifndef NDEBUG
         // [pass-dist] instrumentation: how far the AI actually chose to play
         // this ball, measured to where the receiver is predicted to be.
@@ -2551,15 +2565,24 @@ float Humanoid::GetBodyBallDistanceAdvantage(
   float velocityChange = outgoingVelocity - incomingVelocity;
   float velocityChange_mps = velocityChange / (anim->GetFrameCount() * 0.01f);
 
+  // The 0.7 m cap was tuned when only the GF stock trap pool existed -- the
+  // clip's measured touch position and the actual ball position have to
+  // match within 0.7 m for the bonus to stay positive. The imported PES pool
+  // is far denser in the receiving half of the clip, but its touch points
+  // scatter over a wider arc (a 1.5 m ball at the receiver's hip is still
+  // catchable if the receiver is moving with it). The config knob widens
+  // that cap without touching the 0.4 falloff so the bonus still degrades
+  // smoothly past the cutoff; the default is the original 0.7.
+  const float trapCheatRadius = GetConfiguration()->GetReal("gameplay_trap_cheat_radius", 0.7f);
   float bodyAnimBallBonus =
       1.0f -
       curve(NormalizedClamp(((bodyPos + FFO.GetNormalized(0) * 0.1f) - animBallPos2D).GetLength(),
-                            0.0f, 0.7f),
-            0.7f);  // less FFO feels better
+                            0.0f, trapCheatRadius),
+            0.7f);
   float bodyActualBallBonus =
       1.0f -
       curve(NormalizedClamp(((bodyPos + FFO.GetNormalized(0) * 0.1f) - actualBallPos2D).GetLength(),
-                            0.0f, 0.7f),
+                            0.0f, trapCheatRadius),
             0.4f);
   float velocityBonus = 1.0f - NormalizedClamp(averageInOutVelocity, idleVelocity, sprintVelocity);
   float velocityChangeBonus = 1.0f - NormalizedClamp(velocityChange_mps / 20.0f, -1.0f, 1.0f);

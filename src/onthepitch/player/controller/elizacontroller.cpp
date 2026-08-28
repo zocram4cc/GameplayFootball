@@ -1076,8 +1076,15 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   float tacticalDiffWeight =
       1.0f + std::pow(AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role), 2.0f) * 10.0f;
   float passWeight = 1.0f;
+  // The bar a pass must clear to be worth attempting at all. It scales down with
+  // mindset so attackers try things defenders would not - but unfloored it
+  // reached zero for the most advanced roles, which let a forward play a ball
+  // with essentially no chance of arriving purely because the target stood
+  // further upfield. Tactical advantage outweighs the odds by up to eleven to one
+  // in the rating below, so without a floor here nothing else stops him.
   float passMinimum = 0.2f * (1.0f - AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role)) -
                       longPossessionFactor * 0.1f;
+  passMinimum = std::max(passMinimum, 0.12f);
 
   float totalWeight2 = tacticalDiffWeight + passWeight;
 
@@ -1168,12 +1175,22 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
           mateRating.passType = e_FunctionType_HighPass;
         }
 
-        float totalRating = mateRating.tacticalDiffRating * tacticalDiffWeight +
-                            mateRating.passRating * passWeight + mateRating.supportRating -
-                            oneTouchIsHard;
+        // What the pass is worth is what it gains multiplied by the chance it
+        // arrives, not the two added together. Added, tacticalDiffWeight - which
+        // reaches eleven for a forward against passWeight's one - swamped the odds
+        // entirely, so the ball went to the most advanced man however hopeless the
+        // ball to him was. Multiplying makes a pass that cannot arrive worth
+        // nothing no matter how good the position it would reach.
+        float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
+                       mateRating.supportRating;
         // The ball into the runner's path is the pass that makes a chance.
         if (isActiveRunner)
-          totalRating += 0.3f;
+          upside += 0.3f;
+
+        // The plain odds term survives alongside it so a safe ball with no
+        // tactical gain is still worth playing.
+        float totalRating =
+            upside * mateRating.passRating + mateRating.passRating * passWeight - oneTouchIsHard;
 
         totalRating /= totalWeight2;
 
@@ -1364,6 +1381,9 @@ void ElizaController::_AddPanicPass(std::vector<PlayerCommand>& commandQueue,
   PlayerCommand command;
   command.useDesiredMovement = false;
   command.useDesiredLookAt = false;
+  // No intended recipient: this is a clearance, not a pass. MatchData keeps the
+  // two apart so passing accuracy measures passing.
+  command.touchInfo.isClearance = true;
 
   command.touchInfo.inputDirection = panicDir;
   command.touchInfo.desiredDirection = panicDir;
@@ -1390,13 +1410,17 @@ float ElizaController::_GetPassingOdds(Player* targetPlayer, e_FunctionType pass
                                        const std::vector<PlayerImage>& opponentPlayerImages,
                                        float ballVelocityMultiplier) {
   float initialTargetDistance = (targetPlayer->GetPosition() - player->GetPosition()).GetLength();
+  // A high ball needs room to come down; over a short distance it is never the
+  // right pass.
   if (passType == e_FunctionType_HighPass && initialTargetDistance < 10.0f)
     return 0.0f;
-  float estimatedTime_sec = 0.7f + initialTargetDistance * 0.03f;
 
-  Vector3 target =
-      targetPlayer->GetPosition() +
-      targetPlayer->GetMovement() * clamp(estimatedTime_sec, 0.0f, 0.5f);  // time needed to brake
+  // Evaluate the pass where it will actually be aimed: AI_GetPass leads the
+  // receiver by the same amount, and rating a different point than the one the
+  // ball is struck at is how a pass can score well and still arrive nowhere.
+  Vector3 target = targetPlayer->GetPosition() +
+                   targetPlayer->GetMovement() *
+                       GameplayTuning::GetReceiverLeadTime_sec(initialTargetDistance);
   if (passType == e_FunctionType_LongPass)
     target += Vector3(-team->GetSide() * initialTargetDistance * 0.2f, 0, 0);
 
@@ -1459,6 +1483,10 @@ float ElizaController::_GetPassingOdds(const Vector3& target, e_FunctionType pas
       danger, 0.0f, secondScale);  // 1 super dangerous dude is basically the same as 100% danger
   float odds = (1.0f - danger) *
                (1.0f - GameplayTuning::GetReceiverPressureDanger(nearestOpponentDistance));
+  // Danger only covers being intercepted. A pass also has to be struck and
+  // received, and both get harder the further it travels, so price the distance
+  // itself rather than treating an empty forty-metre channel as a certainty.
+  odds *= GameplayTuning::GetPassExecutionOdds((target - origin).Get2D().GetLength());
 
   return odds;
 }
@@ -1474,7 +1502,11 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
   GoalCelebration::RunTarget(runX, runY, xSide, ySide, pitchHalfW, pitchHalfH, &runX, &runY);
   Vector3 celebrationPosition = Vector3(runX, runY, 0);
 
-  Vector3 desiredDirection = (celebrationPosition - player->GetPosition()).GetNormalized();
+  // Flat by contract: Humanoid::SelectAnim asserts a movement direction has no
+  // height. A scorer lifted off the turf by his own anim would otherwise hand it
+  // a tilted direction.
+  Vector3 desiredDirection =
+      (celebrationPosition - player->GetPosition()).Get2D().GetNormalized();
   float desiredVelocityFloat =
       ClampVelocity((celebrationPosition - player->GetPosition()).GetLength() / 4.0f);
   Vector3 desiredLookAt = player->GetPosition() + player->GetDirectionVec() * 1000;
@@ -1500,6 +1532,7 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
           desiredDirection =
               ((team->GetLastTouchPlayer()->GetPosition() * 0.5 + celebrationPosition * 0.5) -
                player->GetPosition())
+                  .Get2D()
                   .GetNormalized();
           desiredVelocityFloat = ClampVelocity(
               (team->GetLastTouchPlayer()->GetPosition() - player->GetPosition()).GetLength() /
