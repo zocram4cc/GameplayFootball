@@ -1,0 +1,17 @@
+<h1>Schedule Management</h1>
+
+<h2>Create Match Day</h2>
+<form hx-post="/admin/cupdays" hx-target="#schedule-content">
+    <input name="name" placeholder="Match Day Name" required>
+    <input name="date" type="date" required>
+    <select name="gameVersion" required>
+        <% gameVersions.forEach(version => { %>
+            <option value="<%= version %>"><%= version %></option>
+        <% }) %>
+    </select>
+    <button type="submit">Create Match Day</button>
+</form>
+
+<div id="schedule-content" hx-get="/admin/schedule/content" hx-trigger="load">
+    <p>Loading schedule...</p>
+</div>

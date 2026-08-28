@@ -1,0 +1,6 @@
+<h1>Commentator View</h1>
+<% if (streamUrl && streamUrl.value) { %>
+    <iframe width="1280" height="720" src="<%= streamUrl.value %>" frameborder="0" allowfullscreen></iframe>
+<% } else { %>
+    <p>Stream URL not set by admin.</p>
+<% } %>

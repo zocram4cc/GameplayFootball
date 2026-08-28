@@ -8,6 +8,7 @@
 #include "../gameplan.hpp"
 #include "../pagefactory.hpp"
 #include "main.hpp"
+#include "../../remotecontrolmode.hpp"
 #include "utils/localization.hpp"
 
 using namespace blunted;
@@ -91,8 +92,33 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
 
 MatchPhasePage::~MatchPhasePage() {}
 
+namespace {
+
+// In remote-control mode the half-time break and the break before extra time
+// hold for the panel's tactical changes; the streamer releases them from the
+// web UI (resume) or right here through the normal continue button.
+bool RemoteHoldsPhase(e_MatchPhase nextPhase) {
+  return RemoteControlMode::IsActive() &&
+         (nextPhase == e_MatchPhase_2ndHalf || nextPhase == e_MatchPhase_1stExtraTime);
+}
+
+}  // namespace
+
 void MatchPhasePage::Process() {
   Gui2Page::Process();
+
+  if (RemoteHoldsPhase(nextPhase)) {
+    if (!RemoteControlMode::IsHolding()) {
+      RemoteControlMode::SetHolding(true);
+      printf("[remote-control] holding before %s until the streamer resumes\n",
+             PhaseName(nextPhase));
+    }
+    if (RemoteControlMode::ConsumeResumeRequest()) {
+      printf("[remote-control] hold released from the panel\n");
+      ContinueGame();
+    }
+    return;
+  }
 
   if (!autoAdvanceTriggered && MenuSmokeFullMatchEnabled() &&
       EnvironmentManager::GetInstance().GetTime_ms() >=
@@ -110,6 +136,12 @@ void MatchPhasePage::GoGamePlan() {
 }
 
 void MatchPhasePage::ContinueGame() {
+  // However the hold ends - panel resume or the streamer clicking through the
+  // game's own menu - it is over.
+  if (RemoteControlMode::IsHolding()) {
+    RemoteControlMode::SetHolding(false);
+    RemoteControlMode::ConsumeResumeRequest();
+  }
   GetMenuTask()->ReleaseAllButtons();
   GetGameTask()->GetMatch()->Pause(false);
   GoBack();  // back to gamepage

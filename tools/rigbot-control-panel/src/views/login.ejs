@@ -1,0 +1,12 @@
+<h2>Login</h2>
+<form hx-post="/login" hx-target="body" hx-swap="outerHTML">
+    <div>
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" required>
+    </div>
+    <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required>
+    </div>
+    <button type="submit">Login</button>
+</form>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rigbot Control Panel</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <link rel="stylesheet" href="/public/style.css">
+</head>
+<body>
+    <nav>
+        <a href="/">Home</a>
+        <% if (user && user.roles) { %>
+            <% if (user.roles.includes('ADMIN')) { %>
+                <a href="/admin">Admin</a>
+                <a href="/rig">Rig</a>
+            <% } %>
+            <% if (user.roles.includes('STREAMER') || user.roles.includes('ADMIN')) { %>
+                <a href="/streamer">Streamer</a>
+            <% } %>
+            <% if (user.roles.includes('MANAGER')) { %>
+                <a href="/manager">Manager</a>
+            <% } %>
+            <% if (user.roles.includes('COMMENTATOR')) { %>
+                <a href="/commentator">Commentator</a>
+            <% } %>
+            <a href="/logout">Logout</a>
+        <% } else { %>
+            <a href="/login">Login</a>
+        <% } %>
+    </nav>
+    <main>
+        <%- body %>
+    </main>
+</body>
+</html>
