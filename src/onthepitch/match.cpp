@@ -718,6 +718,8 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       pennantNode->SetLocalMode(e_LocalMode_Absolute);
       GetScene3D()->AddNode(pennantNode);
       Log(e_Notice, "Match", "Match", "competition pennants: " + pennant);
+      // After the node exists, as with the corner flags.
+      PreparePennantCloth();
     }
   }
 
@@ -4531,6 +4533,7 @@ void Match::Put() {
 
     UpdateGoalNetting(GetBall()->BallTouchesNet());
     UpdateCornerFlags();
+    UpdatePennantCloth();
 
     // replay
     CaptureReplayFrame(fetchedbuf_actualTime_ms + fetchedbuf_timeDelta);
@@ -5785,6 +5788,132 @@ void Match::UpdateCornerFlags() {
     flagsHaveChanged = true;
   }
   if (flagsHaveChanged) WriteCornerFlags();
+}
+
+// The pennant ring, as cloth in two dozen pairs of hands.
+//
+// PES drives this flag as cloth and ships it in its rest pose - flat, its rim a
+// metre under the ring of hands supposed to be holding it - so imported static
+// it lay on the centre circle as a dark disc inside a ring of men holding
+// nothing. stadium_props raises the rim into the hands it measures on the
+// bearers; this gives the rest of it weight.
+//
+// Held all the way round its border, like the netting and unlike a corner flag:
+// the men have hold of the rim, so only what is inside it may sag.
+void Match::PreparePennantCloth() {
+  if (!pennantNode) return;
+  std::list<boost::intrusive_ptr<Object>> objects;
+  pennantNode->GetObjects(objects, true);
+
+  std::map<std::tuple<int, int, int>, int> welded;
+  std::vector<Vector3> rest;
+  std::vector<int> faces;
+  for (boost::intrusive_ptr<Object>& object : objects) {
+    if (object->GetObjectType() != e_ObjectType_Geometry) continue;
+    boost::intrusive_ptr<Geometry> geometry = boost::static_pointer_cast<Geometry>(object);
+    std::vector<MaterializedTriangleMesh>& triangleMesh =
+        geometry->GetGeometryData()->GetResource()->GetTriangleMeshesRef();
+    for (unsigned int m = 0; m < triangleMesh.size(); m++) {
+      if (!triangleMesh.at(m).material.diffuseTexture) continue;
+      // The flag faces and not the men carrying them - the same test the
+      // importer uses to decide what the competition's emblem goes on
+      // (stadium_props.is_pennant_face).
+      const std::string ident = triangleMesh.at(m).material.diffuseTexture->GetIdentString();
+      if (ident.find("circlef") == std::string::npos) continue;
+      const int floats = triangleMesh.at(m).verticesDataSize / GetTriangleMeshElementCount();
+      for (int i = 0; i + 8 < floats; i += 9) {
+        for (int c = 0; c < 3; c++) {
+          const int at = i + c * 3;
+          const Vector3 position(triangleMesh.at(m).vertices[at + 0],
+                                 triangleMesh.at(m).vertices[at + 1],
+                                 triangleMesh.at(m).vertices[at + 2]);
+          const std::tuple<int, int, int> key(std::lround(position.coords[0] * 1000.0f),
+                                              std::lround(position.coords[1] * 1000.0f),
+                                              std::lround(position.coords[2] * 1000.0f));
+          std::map<std::tuple<int, int, int>, int>::iterator found = welded.find(key);
+          if (found == welded.end()) {
+            found = welded.insert(std::make_pair(key, (int)rest.size())).first;
+            rest.push_back(position);
+          }
+          pennantMeshes.push_back(&(triangleMesh.at(m).vertices[at]));
+          pennantWeld.push_back(found->second);
+          faces.push_back(found->second);
+        }
+      }
+    }
+  }
+  if (rest.empty()) return;
+
+  // The rim, measured from the flag's own centre rather than from the centre
+  // spot: the ring is placed on the centre circle but nothing guarantees it is
+  // exactly concentric with it.
+  Vector3 centre(0, 0, 0);
+  for (const Vector3& p : rest) centre += p;
+  centre /= (float)rest.size();
+  float outermost = 0.0f;
+  for (const Vector3& p : rest) {
+    const float dx = p.coords[0] - centre.coords[0], dy = p.coords[1] - centre.coords[1];
+    outermost = std::max(outermost, std::sqrt(dx * dx + dy * dy));
+  }
+  std::vector<bool> held(rest.size(), false);
+  int hands = 0;
+  for (unsigned int i = 0; i < rest.size(); i++) {
+    const float dx = rest[i].coords[0] - centre.coords[0];
+    const float dy = rest[i].coords[1] - centre.coords[1];
+    if (std::sqrt(dx * dx + dy * dy) >= outermost * kPennantRimFraction) {
+      held[i] = true;
+      hands++;
+    }
+  }
+  // Nothing held is a flag that falls through the pitch on the first step.
+  if (!hands) return;
+
+  pennantCloth.Build(rest, held, LinksFromTriangles(faces));
+  for (int i = 0; i < kPennantSettleSteps; i++) {
+    pennantCloth.Step(kNettingStep_s, Vector3(0, 0, -kPennantGravity), kFlagDamping,
+                      kNettingIterations);
+  }
+  WritePennantCloth();
+  pennantHasChanged = true;
+  Log(e_Notice, "Match", "PreparePennantCloth",
+      "pennant flag as cloth: " + int_to_str((int)rest.size()) + " point(s), " +
+          int_to_str(hands) + " held at the rim, sag " +
+          int_to_str((int)(pennantCloth.Displacement() * 1000)) + " mm");
+}
+
+void Match::UpdatePennantCloth() {
+  // Only while it is on the pitch: the ring goes back inside at kickoff, and a
+  // hidden flag is not worth a relaxation pass a frame for the rest of a match.
+  if (pennantCloth.Empty() || !entranceActive) return;
+  const unsigned long now = EnvironmentManager::GetInstance().GetTime_ms();
+  const float elapsed = (now - flagTime_ms) * 0.001f;
+  if (elapsed <= 0.0f) return;
+  pennantCloth.Step(elapsed, FlagWind(now) * (kPennantGravity / kNettingGravity), kFlagDamping,
+                    kNettingIterations);
+  WritePennantCloth();
+  pennantHasChanged = true;
+}
+
+void Match::WritePennantCloth() {
+  const std::vector<Vector3>& points = pennantCloth.Positions();
+  if (points.empty()) return;
+  for (unsigned int i = 0; i < pennantMeshes.size(); i++) {
+    const Vector3& p = points[pennantWeld[i]];
+    pennantMeshes[i][0] = p.coords[0];
+    pennantMeshes[i][1] = p.coords[1];
+    pennantMeshes[i][2] = p.coords[2];
+  }
+}
+
+void Match::UploadPennantCloth() {
+  if (!pennantHasChanged || !pennantNode) return;
+  pennantHasChanged = false;
+  std::list<boost::intrusive_ptr<Object>> objects;
+  pennantNode->GetObjects(objects, true);
+  for (boost::intrusive_ptr<Object>& object : objects) {
+    if (object->GetObjectType() != e_ObjectType_Geometry) continue;
+    boost::static_pointer_cast<Geometry>(object)->OnUpdateGeometryData(false);
+  }
 }
 
 void Match::WriteCornerFlags() {

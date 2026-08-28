@@ -28,6 +28,7 @@ stadium the way it loads staff/staff.object.
 """
 
 import argparse
+import collections
 import glob
 import math
 import os
@@ -401,6 +402,60 @@ def place_prop_mesh(vertices, placement):
             for v in vertices]
 
 
+# A flag being carried is held somewhere between a man's knees and his
+# shoulders. PES's ring of hands sits at 1.1 m; the window is wide enough to
+# take a shorter or taller bearer set and narrow enough that feet and heads -
+# the other two bands at that radius - cannot be mistaken for hands.
+HAND_BAND = (0.70, 1.50)
+HAND_BIN = 0.10
+
+
+def hand_height(bearer_vertices, rim_radius, tolerance=0.20):
+    """-> the height the bearers are holding something at, or None.
+
+    Measured rather than assumed. Sampling the bearers where the flag's own rim
+    passes through them, their vertices fall into three clear bands - feet,
+    hands, heads - and the densest bin inside HAND_BAND is the ring of hands.
+    On PES's pennant set that is 1.10 m, against 655 vertices of feet at 0.0 and
+    536 of heads at 1.7.
+    """
+    ring = [v[2] for v in bearer_vertices
+            if abs(math.hypot(v[0], v[1]) - rim_radius) <= tolerance]
+    band = [z for z in ring if HAND_BAND[0] <= z <= HAND_BAND[1]]
+    if not band:
+        return None
+    counts = collections.Counter(int(round(z / HAND_BIN)) for z in band)
+    return counts.most_common(1)[0][0] * HAND_BIN
+
+
+def pennant_face_lift(face_meshes, bearer_meshes):
+    """-> how far to raise a pennant's flag into the bearers' hands.
+
+    PES drives this flag as cloth and ships it in its rest pose: flat, its rim
+    at 0.10 m, a metre below the ring of hands supposed to be holding it. PES
+    lifts it at run time as part of the ceremony. We do not simulate it, so
+    imported straight it renders as a dark disc lying on the centre circle
+    inside a ring of men holding nothing - which is exactly how it shipped.
+
+    Raising it to the measured hands is the static form of what PES animates.
+    Only the faces move; the bearers keep their own feet on the grass.
+    """
+    faces = [v for mesh in face_meshes for v in mesh]
+    bearers = [v for mesh in bearer_meshes for v in mesh]
+    if not faces or not bearers:
+        return 0.0
+    rim_radius = max(math.hypot(v[0], v[1]) for v in faces)
+    rim = sorted(v[2] for v in faces
+                 if math.hypot(v[0], v[1]) >= rim_radius * 0.97)
+    if not rim:
+        return 0.0
+    hands = hand_height(bearers, rim_radius)
+    if hands is None:
+        return 0.0
+    # Never pull it down: a set that already holds its flag up keeps it.
+    return max(0.0, hands - rim[len(rim) // 2])
+
+
 def write_prop(out, name, material_index, mesh, mark, yaw, placement=None):
     """Writes one piece of furniture into an ASE, standing exactly on its mark.
 
@@ -533,6 +588,22 @@ def main():
             placement = prop_placement(
                 [[stadium_staff._fox_to_gf(v.position) for v in mesh.vertices]
                  for mesh in meshes])
+            # The pennant's flag alone is raised into the hands holding it. PES
+            # ships it flat because it drives it as cloth; static, it lies on
+            # the grass inside a ring of men holding nothing.
+            face_placement = placement
+            if role == "pennant":
+                is_face = [is_pennant_face(getattr(t, "filename", None))
+                           for t in skins]
+                gf = [[stadium_staff._fox_to_gf(v.position) for v in mesh.vertices]
+                      for mesh in meshes]
+                lift = pennant_face_lift(
+                    [g for g, face in zip(gf, is_face) if face],
+                    [g for g, face in zip(gf, is_face) if not face])
+                if lift > 0.0:
+                    face_placement = dict(placement, lift=placement["lift"] + lift)
+                    print("  pennant: flag raised %.2f m into the bearers' hands"
+                          % lift)
             for mesh, texture in zip(meshes, skins):
                 ident = getattr(texture, "filename", None) if texture else None
                 own = placeholder_bitmap(ident, stem)
@@ -544,13 +615,14 @@ def main():
                     continue
                 bitmap = stadium_to_gf._texture_png(texture, ftex_index, args.out, converted)
                 # The competition's emblem goes on the pennant faces, and only on
-                # them: the bearers holding them keep their own kit.
-                if emblem_image and bitmap and is_pennant_face(
-                        getattr(texture, "filename", None)):
+                # them: the bearers holding them keep their own kit. The same
+                # test picks out what gets raised into their hands.
+                face = is_pennant_face(getattr(texture, "filename", None))
+                if emblem_image and bitmap and face:
                     bitmap = _composed_face(bitmap, emblem_image, emblem_stem,
                                             args.out, composed)
                 figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem, None,
-                                placement))
+                                face_placement if face else placement))
         print("  %-10s %d mark(s) from %d model(s): %s"
               % (role, len(marks), len(by_role[role]),
                  ", ".join(m[0] for m in by_role[role])))

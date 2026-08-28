@@ -411,6 +411,11 @@ public:
   void UpdateCornerFlags();
   void WriteCornerFlags();
   void UploadCornerFlags();
+  // The pennant ring's flag, held all the way round its rim by the bearers.
+  void PreparePennantCloth();
+  void UpdatePennantCloth();
+  void WritePennantCloth();
+  void UploadPennantCloth();
   Vector3 FlagWind(unsigned long time_ms) const;
 
   unsigned long GetPreviousProcessTime_ms() {
@@ -917,6 +922,22 @@ protected:
   Cloth flagCloth[4];
   unsigned long flagTime_ms = 0;
   bool flagsHaveChanged = false;
+
+  // The pennant ring: one flag rather than four, held all the way round its
+  // border like the netting rather than along one edge like a corner flag,
+  // because two dozen men have hold of its rim and only the middle can sag.
+  std::vector<float*> pennantMeshes;
+  std::vector<int> pennantWeld;
+  Cloth pennantCloth;
+  bool pennantHasChanged = false;
+  // How much of the flag's own radius counts as the rim the bearers are
+  // holding. PES's ring is 8.27 m across and the hands grip its outermost
+  // few centimetres; 3% is a hand's width at that scale.
+  static constexpr float kPennantRimFraction = 0.97f;
+  // A flag this wide with no bending stiffness will hang like a hammock if it
+  // is left to itself, so it settles under a gentler gravity than the netting.
+  static constexpr float kPennantGravity = 3.0f;
+  static constexpr int kPennantSettleSteps = 40;
 
   // The corner flag's pole is 2 cm across and stands on a disc 20 cm across. Holding
   // everything within 12 cm of the axis keeps both rigid and still leaves the panels -
