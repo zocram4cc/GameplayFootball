@@ -3935,15 +3935,25 @@ void Match::Process() {
       ShowMatchHud(true);
       // The walkout set goes back inside: banners, flag bearers, the arch, the
       // pennant display on the centre circle.
+      //
+      // Hidden rather than deleted. Destroying these nodes here tore live
+      // geometry out from under a rendering graphics thread and crashed on a
+      // null GraphicsGeometry_GeometryInterpreter, intermittently - once in five
+      // headless matches, always on this exact frame. The teardown at the end of
+      // Match already deletes both nodes, and by then the graphics system has
+      // stopped, which is the only point deleting them is safe. Disabling looks
+      // identical and costs a hidden node for the rest of the match.
+      auto hide = [](boost::intrusive_ptr<Node>& node) {
+        if (!node) return;
+        std::list<boost::intrusive_ptr<Object>> objects;
+        node->GetObjects(objects, true);
+        for (auto& object : objects) object->Disable();
+      };
       if (entrancePropsNode) {
-        GetScene3D()->DeleteNode(entrancePropsNode);
-        entrancePropsNode.reset();
+        hide(entrancePropsNode);
         Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
       }
-      if (pennantNode) {
-        GetScene3D()->DeleteNode(pennantNode);
-        pennantNode.reset();
-      }
+      hide(pennantNode);
       Log(e_Notice, "Match", "Process",
           "pre-match presentation over after " + int_to_str((int)GetEntranceElapsedSeconds()) +
               "s real / " + int_to_str((int)(actualTime_ms / 1000)) + "s match clock");

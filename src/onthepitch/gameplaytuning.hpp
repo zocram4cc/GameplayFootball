@@ -189,13 +189,24 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // so this roll was introduced to beat him sometimes - but at 0.32 sharpness it
 // meant an average keeper tried for fewer than one shot in four and stood
 // watching the rest, which is not a keeper being beaten, it is a keeper not
-// playing. He goes for nearly everything now; whether he *reaches* it is for the
-// save itself to decide, since the animation search only accepts a save that can
-// actually get to the ball. Reaction still separates keepers, by a shade rather
-// than by whether they bother.
+// playing. Reaction still separates keepers, by a shade rather than by whether
+// they bother.
+//
+// 0.88 went too far the other way. Measured over eight full headless matches:
+// about 24.6 shots and 3.1 expected goals a match, against 1.6 actual - so the
+// chances were being created and then not taken, with roughly a tenth of the
+// shots on target going in where the real game manages about a third. Matches
+// finished 0-0 and 1-0 off three xG.
+//
+// The chance creation was never the problem, so the fix belongs here rather
+// than in shooting range or appetite: bring finishing back towards the xG the
+// same matches already produce, which lands in the three-to-five goal range a
+// match should have. Whether he reaches a shot is still the save animation's
+// decision - the search only accepts a save that can actually get to the ball -
+// this only decides how often he goes.
 inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
   const float sharpness =
-      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.88f), 0.2f, 1.0f);
+      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.66f), 0.2f, 1.0f);
   const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
   return blunted::clamp(sharpness * (0.80f + reaction * 0.20f), 0.05f, 0.99f);
 }
