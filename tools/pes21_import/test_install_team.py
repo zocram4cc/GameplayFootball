@@ -519,3 +519,87 @@ class TheConfigsAreAppendedNotDoubled(unittest.TestCase):
         open(self.path, "w").write("1 x")
         import_team.append_config(self.path, ["2 y"])
         self.assertEqual(open(self.path).read().splitlines(), ["1 x", "2 y"])
+
+
+class TheTeamPlaysInItsOwnColours(unittest.TestCase):
+    """color1/color2 drive the scoreboard, the crowd banners and the stats
+    overlay, and TeamData falls back to black on white without them - so /hdg/
+    played in yellow and appeared in the HUD in black."""
+
+    def note(self, name, body):
+        pack = tempfile.mkdtemp()
+        open(os.path.join(pack, name), "w").write(body)
+        return pack
+
+    def test_the_colours_are_read_from_the_note(self):
+        pack = self.note("Note.txt", "Team Colours:\n- 1st: 255 232 0\n- 2nd: 54 52 50\n")
+        self.assertEqual(import_team.read_pack_colours(pack),
+                         ("255, 232, 0", "54, 52, 50"))
+
+    def test_no_two_packs_name_the_note_the_same(self):
+        """Note.txt, "2hug note.txt", "DBG note.txt" - all three ship."""
+        for name in ("Note.txt", "2hug note.txt", "DBG note.txt"):
+            pack = self.note(name, "- 1st: 1 2 3\n- 2nd: 4 5 6\n")
+            self.assertEqual(import_team.read_pack_colours(pack)[0], "1, 2, 3", name)
+
+    def test_zero_padded_channels_are_plain_numbers(self):
+        """DBG writes '041 081 156'; GetVectorFromString wants 41, 81, 156."""
+        pack = self.note("DBG note.txt", "- 1st: 255 156 000\n- 2nd: 041 081 156\n")
+        self.assertEqual(import_team.read_pack_colours(pack),
+                         ("255, 156, 0", "41, 81, 156"))
+
+    def test_a_third_colour_is_ignored_rather_than_misread(self):
+        """DBG states a 3rd; the database has two columns."""
+        pack = self.note("Note.txt", "- 1st: 1 1 1\n- 2nd: 2 2 2\n- 3rd: 3 3 3\n")
+        self.assertEqual(import_team.read_pack_colours(pack), ("1, 1, 1", "2, 2, 2"))
+
+    def test_kit_colours_further_down_are_not_mistaken_for_team_colours(self):
+        pack = self.note("Note.txt",
+                         "Team Colours:\n- 1st: 9 9 9\n- 2nd: 8 8 8\n\n"
+                         "Kit Colours:\n- 1st player: 211 74 79 - 162 62 77\n")
+        self.assertEqual(import_team.read_pack_colours(pack), ("9, 9, 9", "8, 8, 8"))
+
+    def test_a_pack_without_a_note_is_not_an_error(self):
+        self.assertEqual(import_team.read_pack_colours(tempfile.mkdtemp()), (None, None))
+
+    def test_install_writes_them(self):
+        handle, path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        try:
+            conn = sqlite3.connect(path)
+            conn.executescript(SCHEMA)
+            conn.commit()
+            conn.close()
+            team = dict(TEAM, colour1="255, 232, 0", colour2="54, 52, 50")
+            install_team.install(path, team, TACTICS)
+            conn = sqlite3.connect(path)
+            try:
+                got = conn.execute("select color1, color2 from teams where name = ?",
+                                   (TEAM["team"],)).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(got, ("255, 232, 0", "54, 52, 50"))
+        finally:
+            os.unlink(path)
+
+    def test_a_reinstall_without_colours_keeps_the_ones_already_there(self):
+        """A pack that states none must not blank a team that had them."""
+        handle, path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        try:
+            conn = sqlite3.connect(path)
+            conn.executescript(SCHEMA)
+            conn.commit()
+            conn.close()
+            install_team.install(path, dict(TEAM, colour1="1, 1, 1", colour2="2, 2, 2"),
+                                 TACTICS)
+            install_team.install(path, TEAM, TACTICS)
+            conn = sqlite3.connect(path)
+            try:
+                got = conn.execute("select color1 from teams where name = ?",
+                                   (TEAM["team"],)).fetchone()
+            finally:
+                conn.close()
+            self.assertEqual(got[0], "1, 1, 1")
+        finally:
+            os.unlink(path)

@@ -224,6 +224,24 @@ Vector3 GetVectorFromString(const std::string& vecString) {
     printf("vectorfromstring warning, no value\n");
     return Vector3(0.0f);
   }
+  // A colour written as "#RRGGBB". Four teams in the shipped database store
+  // their identity that way, and atof("#325ca8") is 0, so /lcg/ and /ink/ took
+  // the pitch with a black scoreboard, black crowd banners and a black stats
+  // overlay rather than their own colours. Read what is there.
+  if (vecString[0] == '#' && (vecString.size() == 7 || vecString.size() == 4)) {
+    const bool shorthand = vecString.size() == 4;
+    const int width = shorthand ? 1 : 2;
+    Vector3 colour;
+    for (int channel = 0; channel < 3; channel++) {
+      const std::string digits = vecString.substr(1 + channel * width, width);
+      if (digits.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
+        return Vector3(0.0f);
+      int value = (int)std::strtol(digits.c_str(), nullptr, 16);
+      // "#abc" is "#aabbcc", the same convention CSS uses.
+      colour.coords[channel] = static_cast<real>(shorthand ? value * 17 : value);
+    }
+    return colour;
+  }
   std::vector<std::string> tokenizedString;
   std::string delimiter = ",";
   tokenize(vecString, tokenizedString, delimiter);
