@@ -693,6 +693,10 @@ protected:
   CutsceneViewer::Anchoring activeStagingAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
   // The incident an incident-local cutscene is placed at.
   Vector3 CutsceneAnchorPosition() const;
+  // Which official the running cutscene's Official slot belongs to. The role is
+  // "referee or assistant" (entrancechoreo.hpp) and which one it is depends on
+  // the incident, not on the slot.
+  PlayerOfficial* OfficialForCutscene() const;
   bool cutsceneShotTaken = false;
   Player* cutsceneOpponent = nullptr;
   void BuildEntranceCast();
