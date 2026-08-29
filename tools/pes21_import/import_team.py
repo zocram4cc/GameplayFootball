@@ -23,9 +23,21 @@ hand is what silently unbound both squads before.
 
 The exports all share one layout - the one the 2HUG and HDG packs use:
 
-    <pack>/Boots/<kNNNN - Player Name>/boots.fmdl      full-body model
-    <pack>/Gloves/<gNNNN - Player Name>/glove_*.fmdl   (keepers, optional)
-    <pack>/Faces/<fNNNN - Player Name>/face.fmdl       (optional)
+    <pack>/Boots/<kNNNN - Player Name>/boots.fmdl        body, often to the elbow
+    <pack>/Gloves/<gNNNN - Player Name>/glove_[lr].fmdl  forearms, hands, fingers
+    <pack>/Faces/<XXXnn - Player Name>/face_high.fmdl    head
+    <pack>/Faces/<XXXnn - Player Name>/fcl_hair.fmdl     hair
+
+All three are one character and all three are imported. A body export is not
+always a whole body: DBG's stops at the elbow and keeps 20,770 vertices of
+forearm, hand and finger joints per side under Gloves, and HDG keeps its heads
+under Faces - 27 models that had never been read, which is why its "Helldiver
+Headless" pack looked headless and was getting the engine's faceless body
+composited under it instead of its own skull.
+
+Two naming traps. Gloves shares Boots' numbering; **Faces is keyed by shirt
+number** - k2402 and XXX02 are the same player. And the face models are
+face_high.fmdl and fcl_hair.fmdl, not face.fmdl.
 
 The models land in data/media/players/custom/<prefix>_<export id>/, the prefix
 taken from the team's own abbreviation. Nothing is overwritten without --force.
