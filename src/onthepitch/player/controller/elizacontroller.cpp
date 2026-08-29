@@ -1455,11 +1455,17 @@ float ElizaController::_GetPassingOdds(const Vector3& target, e_FunctionType pas
         float oppToIntersect_sec =
             (oppDistance + 1.0f) / sprintVelocity;  // add some distance to correct for acceleration
 
+        // How long the ball is in the air before it reaches the point this
+        // opponent would meet it at. `intersect` is already u of the way down
+        // the lane, so its distance from the origin carries u once; the old
+        // line multiplied by u a second time and priced a mid-lane interception
+        // at u-squared of its real flight. That is exactly where an interceptor
+        // stands, so every marked lane read as faster - and safer - than it was.
         Vector3 originToBallPos = (intersect - origin);
         float penaltyTime = (passType == e_FunctionType_HighPass && u > 0.5f)
                                 ? 2.5f
                                 : 0.0f;  // trapping high balls takes time
-        float ballToIntersect_sec = 0.7f + originToBallPos.GetLength() * u * 0.03f + penaltyTime;
+        float ballToIntersect_sec = 0.7f + originToBallPos.GetLength() * 0.03f + penaltyTime;
         ballToIntersect_sec *= 1.0f / ballVelocityMultiplier;
 
         danger += clamp(ballToIntersect_sec - oppToIntersect_sec + (secondScale * 0.5f), 0.0f,
