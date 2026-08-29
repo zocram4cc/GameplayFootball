@@ -154,3 +154,29 @@ fix that was correct in principle and insufficient in fact.
 
 State plainly when something could not be verified visually, rather than
 softening it into a claim that it works.
+
+## Never dismiss a reported goal
+
+A defect the owner reports is real. It stays open until the thing he described
+looks right on screen. Nothing else closes it.
+
+In particular, none of the following closes a report:
+
+- "The import is faithful to PES." Fidelity is a means, never the goal. If PES's
+  own data reproduces exactly and the result still looks wrong, then the fault
+  is somewhere the comparison did not reach - the surrounding motion, the
+  framing, the timing, what the engine does with the data - and the search
+  continues there.
+- "The data is authored that way." Then the question becomes why it reads wrong
+  here and not in PES, which is a question, not an answer.
+- "Not a defect." Not available. The owner is looking at it.
+- A pile of eliminated theories. Eliminations are worth recording, and they are
+  worth nothing to someone watching a broken arm. Record them, then keep going.
+
+Measurement that ends in "so there is nothing to fix" has gone wrong somewhere:
+the visible defect is the ground truth, and any measurement that contradicts it
+is measuring the wrong thing. Say so, and re-aim.
+
+Report progress in what the owner can see. "Ten explanations dead" is not
+progress he can use; "the arm no longer tears, here is the frame" is. When there
+is no frame yet, say exactly that, and say what is being tried next.
