@@ -1,0 +1,14 @@
+{
+  "version": "VGL26 Day3 measured @1080p",
+  "source_still": "game_plan_dual.png 00:11:40",
+  "overall": {"split": "50/50", "divider": {"x": 959, "w": 2, "color": "#FFFFFF"}, "card": {"w": 938, "h": 920, "r": 12, "shadow": "8px #000 22%", "bg_pitch_desat": "#1A1A1C"}},
+  "half": {
+    "help_bar": {"y": 18, "h": 28, "bg": "#1F1F23", "title": {"text": ">Game Plan", "size_pt": 16, "family": "Eurostile Bold", "color": "#FFFFFF", "x": 32}, "help_text": {"size_pt": 10, "color": "#B8B8BA", "x": 420}},
+    "pitch_map": {"x": 32, "y": 58, "w": 874, "h": 382, "bg": "#2A5C2A", "line": "#E8E8E8", "line_w": 2, "center_circle_d": 86, "penalty": {"w": 140, "h": 54}},
+    "player_square": {"size": 64, "border": "#FFFFFF 1px", "avatar": 56, "row_y": {"GK": 98, "DF": 184, "MF": 270, "FW": 356}, "label": {"size_pt": 11, "color": "#FFFFFF", "family": "Condensed"}},
+    "roster": {"x": 620, "y": 456, "w": 286, "h": 420, "row_h": 32, "avatar": 24, "name_pt": 12, "badge": 14, "badge_colors": {"green": "#4CAF50", "blue": "#2196F3", "purple": "#9C27B0"}},
+    "tabs": {"y": 896, "h": 32, "icon": 32, "bg": "#E0E0E0", "selected_bg": "#00ACC1", "label_pt": 12, "selected_pt": 12},
+    "footer": {"y": 980, "h": 28, "bg": "#1F1F23", "text_pt": 12, "color": "#9E9E9E", "a_pill": "#4CAF50 16px"}
+  },
+  "pause_modal": {"w": 1152, "h": 648, "center": {"x": 384, "y": 216}, "r": 16, "shadow": "12px #000 28%", "opacity": 0.92, "bg": "#FFFFFF", "header": {"h": 48, "bg": "#212121", "title_pt": 16, "title_color": "#FFFFFF"}, "tabs": {"y": 264, "h": 40, "icon": 32, "bg": "#E0E0E0", "selected": "#00ACC1"}, "content": {"y": 320, "h": 284, "pitch": {"w": 520, "h": 320}}, "footer": {"y": 820, "h": 32, "hint_pt": 11, "color": "#757575"}}
+}

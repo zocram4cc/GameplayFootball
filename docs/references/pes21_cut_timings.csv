@@ -1,0 +1,30 @@
+template,cut,dt_s,video_t,lens_mm,height_m,transition,target
+M1_G1_huddle, C0_live,4.6,1159.4,28,2.0,hard,gameplay track
+M1_G1_huddle, C1_whistle,0.12,1164.4,28,2.0,hard,goal freeze
+M1_G1_huddle, C2_low_adboard,2.2,1164.8,35,0.8,hard,behind adboard
+M1_G1_huddle, C3_bumper_purple,0.4,1167.0,NA,NA,stutter 5x0.03s, VGL bumper (discard)
+M1_G1_huddle, C4_wide_behind_goal,2.2,1167.4,24,1.0,wipe0.13,behind goal grass
+M1_G1_huddle, C5_corner_low,2.2,1169.6,22,0.5,hard,corner flag
+M1_G1_huddle, C6_sidetrack,2.2,1171.8,28,1.2,hard,sidetrack
+M1_G1_huddle, C7_replay_3x,6.2,1174.0,32,1.5,hard x2,behind net orbit
+M1_G1_huddle, C8_huddle,4.4,1180.2,50,12.0,hard,huddle tableau
+M1_G1_huddle, C9_restart,5.4,1184.6,28,1.8,hard,restart wide
+M1_G1_huddle, C10_ko,5.6,1190.0,35,8.0,hard,midline KO
+M3_hero, C0_tactical,14.5,8431.5,18,28.0,hard,birdseye
+M3_hero, C1_behind_goal,6.0,8446.0,24,0.9,hard,behind net
+M3_hero, C2_hero_redcarpet,4.3,8452.0,85,1.6,hard,hero T-pose confetti
+M3_hero, C3_bumper,0.4,8456.3,NA,NA,stutter 3x0.05s,VGL bumper
+M3_hero, C4_sidetrack,4.4,8456.7,50,1.5,hard,sideline replay
+Foul_no_card, C0_orbital,4.0,6410.0,35,1.7,hard,tracking
+Foul_no_card, C1_close,0.12,6414.0,50,1.5,hard,6m close
+Foul_no_card, C2_orbit120,2.32,6414.12,40,1.6,hard,120deg behind defender
+Foul_no_card, C3_wipe,0.4,6416.44,NA,NA,white 8f,wipe
+Foul_no_card, C4_wall,3.16,6416.84,28,8.0,hard,FK wall
+Foul_yellow, C2a_pocket,0.8,NA,50,1.2,hard,pocket reach
+Foul_yellow, C2b_hold_Y,1.48,NA,40,1.2,hard,card hold Y
+Foul_red, C2b_hold_R,2.03,NA,40,1.2,hard,card hold R
+Offside, C1_flag,0.8,NA,50,1.6,hard,linesman flag 40x60
+Offside, C2_fk,1.2,NA,28,1.0,hard,indirect FK
+Entrance, C0_crane,22.0,960.0,24,35.0,dolly 0.36m/s,aerial
+Post, C0_ft_card,14.0,2380.0,NA,NA,crossfade 2s,FT gradient
+Post, C1_menu,12.0,2394.0,NA,NA,hard,Return/Next/Save
