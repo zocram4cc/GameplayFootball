@@ -868,13 +868,29 @@ void HumanoidBase::Process() {
   // next frame
 
   animApplyBuffer.frameNum = currentAnim->frameNum;
-
   if (currentAnim->positions.size() > (unsigned int)currentAnim->frameNum) {
     animApplyBuffer.position =
         startPos + currentAnim->actionSmuggleOffset + currentAnim->actionSmuggleSustainOffset +
         currentAnim->movementSmuggleOffset + currentAnim->positions.at(currentAnim->frameNum);
     animApplyBuffer.orientation = startAngle + currentAnim->rotationSmuggleOffset;
     animApplyBuffer.noPos = true;
+    // Every cached root position has its Z zeroed (Match::Match: "no flying
+    // players" is a 2D contract dozens of asserts elsewhere rely on). A
+    // celebration is not gameplay - nobody is steering him - and PES authors
+    // real vertical travel into these, a dive, a roll, a leap. Without it the
+    // body rotates to lie flat while the pivot stays pinned at standing
+    // height: a horizontal figure hovering in mid-air, which is the
+    // "levitating" background players and scorers alike were seen doing.
+    // Read the clip's own Z directly, bypassing the zeroed cache, for the
+    // rendered node only - spatialState and startPos, and everything that
+    // asserts on them, stay exactly as 2D as before.
+    if (currentAnim->functionType == e_FunctionType_Special) {
+      Quaternion rawOrientation;
+      Vector3 rawPosition;
+      if (currentAnim->anim->GetKeyFrame("player", currentAnim->frameNum, rawOrientation,
+                                         rawPosition, false, true))
+        animApplyBuffer.position.coords[2] = rawPosition.coords[2];
+    }
   } else {
     if (player->GetDebug())
       printf("ERROR: %u, %u (%s)\n", (unsigned int)currentAnim->positions.size(),
