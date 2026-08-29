@@ -3823,10 +3823,17 @@ void Match::UpdateIngameCamera() {
           goalCelebrationYaw = std::atan2(facing.coords[0], -facing.coords[1]);
           for (size_t i = 0; i < goalCamNames.size(); i++)
             if (goalCamNames[i] == wanted) goalCelebrationCamera = (int)i;
-          // Ask the clips how long they are, so the intro is held for its own length
-          // and the performance runs to the end of the loop rather than to a timer.
+          // Ask the clip how long it is, so the intro is held for its own length
+          // rather than a timer. There is no loop to ask about: `chosen.var` is
+          // just this clip's position in celebrations.txt's alphabetically sorted
+          // manifest (goal_cutscenes.py assign_variables), so var+10 lands on
+          // whichever other filmed celebration happens to sort ten names later -
+          // a real clip, but never this scorer's. Treating that coincidence as a
+          // loop briefly overlaid a stranger's performance on him once the intro
+          // hold elapsed (two clips' geometry on one skeleton) and inflated the
+          // timer with a length that was never really his.
           const int introFrames = CelebrationClipFrames(chosen.var);
-          const int loopFrames = CelebrationClipFrames(GoalCelebration::LoopVariable(chosen.var));
+          const int loopFrames = 0;
           goalCelebrationIntroHold_ms = GoalCelebration::IntroHold_ms(introFrames);
           goalCelebrationLength_ms =
               GoalSequence::CelebrationLength_ms(
