@@ -55,6 +55,33 @@ for _name in ("happy_normal", "happy_extreme", "sad_normal"):
     CLASSES[_name + "_loop"] = (_subdir, {"specialvar1": _vars["specialvar1"],
                                           "specialvar2": _vars["specialvar2"] + LOOP_VAR_OFFSET})
 
+# The classes whose placement nothing else supplies. A celebration is played on
+# the scorer wherever he happens to be, so its own root track is the only thing
+# that can carry the run, the dive or the slide - unlike an entrance or a
+# stoppage cutscene, where a .chor holds a world track per actor and the clip is
+# deliberately converted in place.
+CELEBRATION_CLASSES = tuple(
+    n for n in CLASSES if n.startswith(("happy_", "sad_")))
+
+
+def root_is_stripped(lines):
+    """Whether a converted clip's player track never moves horizontally.
+
+    `gani_to_anim --strip-root` zeroes RIG_ROOT translation for clips whose
+    world placement is driven from outside, and writes exactly 0.000000. Of the
+    293 celebrations PES ships, 292 travel more than 0.25 m and the longest
+    covers 2.94 m, so a celebration that is bit-exactly motionless has been
+    stripped rather than authored that way.
+    """
+    for line in lines:
+        if not line.startswith("player,"):
+            continue
+        parts = line.split(",")[1:]
+        # frame, x, y, z per key; a stripped clip has every x and y at zero
+        return not any(float(v) != 0.0
+                       for i, v in enumerate(parts) if i % 4 in (1, 2))
+    return False
+
 
 def is_loop(path):
     """Whether a clip is the held part of a celebration rather than its opening."""
@@ -255,6 +282,13 @@ def install(src, anim_class, game_data_dir="data"):
         if line.startswith("<"):
             break
         lines.append(line.rstrip("\n"))
+
+    if anim_class in CELEBRATION_CLASSES and root_is_stripped(lines):
+        return None, ("root-stripped: the player track never moves, so the "
+                      "scorer performs on the spot. Convert without "
+                      "--strip-root (entrance_pl.py strips every clip it "
+                      "converts, because a .chor supplies placement there; a "
+                      "celebration has no .chor and must carry its own travel)")
     for key, value in variables.items():
         lines.append("<%s>" % key)
         lines.append("\t%s" % value)
