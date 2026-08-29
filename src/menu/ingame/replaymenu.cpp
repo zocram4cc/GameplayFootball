@@ -370,12 +370,20 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
   // slow-motion: held sprint button halves playback speed
   slowMotion = slowMoInput;
 
-  // While the replay is still cinematic the only thing the pass button does is
-  // accept the offer. Returning here matters: the same press would otherwise
-  // fall through and cycle the camera on the very frame control is handed over.
+  // While the replay is still cinematic the pass button does one thing only:
+  // accept the offer of control. The rest of the tape deck stays inert.
+  //
+  // What must NOT happen here is an early return. Process() drives playback by
+  // calling this with autoRun set and no buttons pressed, so returning before
+  // the advance below left a cinematic replay frozen on its first frame - it
+  // never reached the end, never closed itself, and took the whole match with
+  // it until the harness timed out.
   if (cinematic) {
-    if (button1) TakeReplayControl();
-    return;
+    if (button1) {
+      TakeReplayControl();
+      return;  // the same press must not also cycle the camera
+    }
+    button2 = false;
   }
 
   // autorun
