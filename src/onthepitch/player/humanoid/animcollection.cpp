@@ -633,15 +633,16 @@ void AnimCollection::CrudeSelection(DataSet& dataSet, const CrudeSelectionQuery&
                 query.incomingVelocity == e_Velocity_Dribble)
               selectAnim = false;
           }
-          if (animIncomingVelocity == e_Velocity_Idle && query.incomingVelocity == e_Velocity_Walk)
-            selectAnim = false;
+          // The five checks below used to be hard denials: an idle anim could
+          // not serve a walk/sprint receiver, and a walk/sprint anim could not
+          // serve an idle receiver. With the imported PES pool the bucket a
+          // clip lands in is descriptive of the body's own motion, not the
+          // receiver's pace - a sprinting forward receiving a pass in place
+          // has ~0 root motion and lands in idle/, so denying it starved
+          // background players of any matching anim and froze them mid-cutscene.
+          // Only the most egregious two-bucket jump (idle<->sprint) is still denied.
           if (animIncomingVelocity == e_Velocity_Idle &&
               query.incomingVelocity == e_Velocity_Sprint)
-            selectAnim = false;
-          if (animIncomingVelocity == e_Velocity_Dribble &&
-              query.incomingVelocity == e_Velocity_Idle)
-            selectAnim = false;
-          if (animIncomingVelocity == e_Velocity_Walk && query.incomingVelocity == e_Velocity_Idle)
             selectAnim = false;
           if (animIncomingVelocity == e_Velocity_Sprint &&
               query.incomingVelocity == e_Velocity_Idle)

@@ -21,10 +21,12 @@
 #include "autoexposure.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #ifdef __APPLE__
@@ -116,12 +118,80 @@ namespace {
 std::mutex screenshotMutex;
 std::string requestedScreenshotFilename;
 
-// Frame recording (see StartFrameRecording): the stream is opened on the first
-// frame, because the path is set before there is a context to read pixels from.
+// Frame recording (see StartFrameRecording). Every harness that reads this pipe
+// declares a fixed rate to its encoder - frame_recording_path is a raw RGBA
+// stream with no timestamps of its own - and nothing upstream paced the game to
+// match it. A headless backend does not reliably vsync, and this engine's own
+// render rate varies with scene weight: measured between roughly 10 and 30 fps
+// on the same machine on different matches. Writing a frame straight out of
+// SwapBuffers, at whatever rate that happened to run, produced a video whose
+// declared 60 fps was not its true cadence: a DBG v SMB capture at st017 played
+// back several times too fast, goal replays included, and a fix that only
+// slowed down frames arriving faster than 60 fps did nothing, because the true
+// fault was the opposite direction - frames arriving slower than declared.
+//
+// So emission is decoupled from rendering entirely. A dedicated pacer thread
+// wakes on its own fixed clock and writes out whichever frame most recently
+// finished rendering, duplicating it if nothing new has finished since the last
+// tick and skipping ahead if several finished since. That guarantees the pipe
+// emits exactly kFrameRecordingFPS frames a real second - the one thing the
+// harness's declared framerate needs to be true - regardless of how fast or
+// slow the renderer itself runs.
+constexpr int kFrameRecordingFPS = 60;
+
 std::mutex frameRecordingMutex;
 std::string frameRecordingPath;
 FILE* frameRecordingStream = nullptr;
 bool frameRecordingGaveUp = false;
+std::vector<unsigned char> frameRecordingLatest;
+int frameRecordingWidth = 0;
+int frameRecordingHeight = 0;
+bool frameRecordingHaveLatest = false;
+std::thread frameRecordingPacer;
+std::atomic<bool> frameRecordingPacerRun{false};
+
+void FrameRecordingPacerTick() {
+  std::lock_guard<std::mutex> lock(frameRecordingMutex);
+  if (frameRecordingPath.empty() || frameRecordingGaveUp || !frameRecordingHaveLatest) return;
+
+  if (!frameRecordingStream) {
+    // Opening a fifo blocks until the encoder opens its end. That block now
+    // happens on this dedicated thread rather than the render thread, so a
+    // slow-to-attach encoder no longer stalls the game itself.
+    frameRecordingStream = fopen(frameRecordingPath.c_str(), "wb");
+    if (!frameRecordingStream) {
+      Log(e_Warning, "OpenGLRenderer3D", "FrameRecordingPacer",
+          "could not open " + frameRecordingPath + " for frame recording");
+      frameRecordingGaveUp = true;
+      return;
+    }
+    Log(e_Notice, "OpenGLRenderer3D", "FrameRecordingPacer",
+        "recording frames to " + frameRecordingPath + " (" + int_to_str(frameRecordingWidth) +
+            "x" + int_to_str(frameRecordingHeight) + " rgba, paced at " +
+            int_to_str(kFrameRecordingFPS) + " fps)");
+  }
+
+  if (fwrite(frameRecordingLatest.data(), 1, frameRecordingLatest.size(),
+             frameRecordingStream) != frameRecordingLatest.size()) {
+    Log(e_Warning, "OpenGLRenderer3D", "FrameRecordingPacer",
+        "frame recording stream closed; stopping");
+    fclose(frameRecordingStream);
+    frameRecordingStream = nullptr;
+    frameRecordingGaveUp = true;
+  }
+}
+
+void FrameRecordingPacerLoop() {
+  using Clock = std::chrono::steady_clock;
+  const auto interval = std::chrono::duration_cast<Clock::duration>(
+      std::chrono::duration<double>(1.0 / kFrameRecordingFPS));
+  Clock::time_point nextTick = Clock::now();
+  while (frameRecordingPacerRun.load(std::memory_order_relaxed)) {
+    nextTick += interval;
+    std::this_thread::sleep_until(nextTick);
+    FrameRecordingPacerTick();
+  }
+}
 
 }  // namespace
 
@@ -131,17 +201,28 @@ void RequestScreenshot(const std::string& filename) {
 }
 
 void StartFrameRecording(const std::string& path) {
-  std::lock_guard<std::mutex> lock(frameRecordingMutex);
-  frameRecordingPath = path;
-  frameRecordingGaveUp = false;
+  {
+    std::lock_guard<std::mutex> lock(frameRecordingMutex);
+    frameRecordingPath = path;
+    frameRecordingGaveUp = false;
+    frameRecordingHaveLatest = false;
 #ifndef WIN32
-  // The consumer is usually an encoder on the far end of a fifo. If it exits
-  // first, writing to the dead pipe must not take the game down with it.
-  if (!path.empty()) signal(SIGPIPE, SIG_IGN);
+    // The consumer is usually an encoder on the far end of a fifo. If it exits
+    // first, writing to the dead pipe must not take the game down with it.
+    if (!path.empty()) signal(SIGPIPE, SIG_IGN);
 #endif
+  }
+  // No pacer thread at all for the overwhelmingly common case (no path):
+  // every ordinary match calls this once at startup with an empty path.
+  if (!path.empty()) {
+    frameRecordingPacerRun.store(true);
+    frameRecordingPacer = std::thread(FrameRecordingPacerLoop);
+  }
 }
 
 void StopFrameRecording() {
+  frameRecordingPacerRun.store(false);
+  if (frameRecordingPacer.joinable()) frameRecordingPacer.join();
   std::lock_guard<std::mutex> lock(frameRecordingMutex);
   if (frameRecordingStream) {
     fclose(frameRecordingStream);
@@ -211,40 +292,23 @@ void OpenGLRenderer3D::WriteRecordedFrame() {
   const int height = context_height;
   if (width <= 0 || height <= 0) return;
 
-  if (!frameRecordingStream) {
-    // Opening a fifo blocks until the encoder opens its end, which is what we
-    // want: the first frame then lines up with the first frame it encodes.
-    frameRecordingStream = fopen(frameRecordingPath.c_str(), "wb");
-    if (!frameRecordingStream) {
-      Log(e_Warning, "OpenGLRenderer3D", "WriteRecordedFrame",
-          "could not open " + frameRecordingPath + " for frame recording");
-      frameRecordingGaveUp = true;
-      return;
-    }
-    Log(e_Notice, "OpenGLRenderer3D", "WriteRecordedFrame",
-        "recording frames to " + frameRecordingPath + " (" + int_to_str(width) + "x" +
-            int_to_str(height) + " rgba)");
-  }
-
   const size_t rowBytes = (size_t)width * 4;
-  static std::vector<unsigned char> frame;
-  frame.resize(rowBytes * height);
+  static std::vector<unsigned char> readback;
+  readback.resize(rowBytes * height);
   glPixelStorei(GL_PACK_ALIGNMENT, 1);
   glReadBuffer(GL_BACK);
-  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, frame.data());
+  glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, readback.data());
 
-  // OpenGL hands back the bottom row first; write top row first so the consumer
-  // needs no flip of its own.
-  for (int y = height - 1; y >= 0; y--) {
-    if (fwrite(frame.data() + rowBytes * y, 1, rowBytes, frameRecordingStream) != rowBytes) {
-      Log(e_Warning, "OpenGLRenderer3D", "WriteRecordedFrame",
-          "frame recording stream closed; stopping");
-      fclose(frameRecordingStream);
-      frameRecordingStream = nullptr;
-      frameRecordingGaveUp = true;
-      return;
-    }
+  // OpenGL hands back the bottom row first; flip it here, once, rather than on
+  // every tick the pacer thread might write this same frame out on.
+  frameRecordingLatest.resize(rowBytes * height);
+  for (int y = 0; y < height; y++) {
+    memcpy(frameRecordingLatest.data() + rowBytes * y,
+           readback.data() + rowBytes * (height - 1 - y), rowBytes);
   }
+  frameRecordingWidth = width;
+  frameRecordingHeight = height;
+  frameRecordingHaveLatest = true;
 }
 
 void OpenGLRenderer3D::WriteScreenshot(const std::string& filename) {
