@@ -26,17 +26,24 @@ class WhichExportsMayBeBoundAsABody(unittest.TestCase):
     def test_a_whole_body_is_bound(self):
         self.assertTrue(import_team.may_bind_as_body("whole"))
 
-    def test_a_slot_override_is_not(self):
-        # a prop drawn over PES's own body, not a replacement for it
-        self.assertFalse(import_team.may_bind_as_body("needs base"))
+    def test_a_needs_base_export_is_bound_anyway(self):
+        # "needs base" is not a completeness signal: body_coverage counts bare
+        # finger joints, and its 32-vertex head threshold rejects the engine's
+        # own fullbody.ase at 29-31. Refusing on it left real characters with
+        # real geometry unused - hdg_2421 imported and then went unbound.
+        self.assertTrue(import_team.may_bind_as_body("needs base"))
 
     def test_an_export_carrying_scenery_is_not(self):
-        # lcg_2718's backdrop reaches 362 m and frames the player down to a dot
+        # lcg_2718's backdrop reaches 362 m and frames the player down to a dot.
+        # This is the one verdict that means what it says: while a backdrop is in
+        # the file nothing about the model can be judged.
         self.assertFalse(import_team.may_bind_as_body("carries scenery"))
 
-    def test_an_unknown_verdict_is_refused_rather_than_guessed(self):
-        self.assertFalse(import_team.may_bind_as_body(""))
-        self.assertFalse(import_team.may_bind_as_body("something new"))
+    def test_an_unknown_verdict_is_bound_rather_than_dropped(self):
+        # the failure that matters here is a player with no model, not a player
+        # with an odd one
+        self.assertTrue(import_team.may_bind_as_body(""))
+        self.assertTrue(import_team.may_bind_as_body("something new"))
 
     def test_a_composited_export_is_bound_whatever_its_own_coverage(self):
         """--base puts the stock body underneath, so the result does clothe the rig."""

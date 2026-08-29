@@ -695,8 +695,13 @@ class APackWithNoBodyGetsOneUnderIt(unittest.TestCase):
     def test_a_whole_export_stands_on_its_own(self):
         self.assertTrue(import_team.may_bind_as_body("whole", composited=False))
 
-    def test_an_export_that_leaves_the_rig_bare_may_not_replace_a_body(self):
-        self.assertFalse(import_team.may_bind_as_body("needs base", composited=False))
+    def test_only_scenery_may_not_replace_a_body(self):
+        # "needs base" used to be refused as well, and that cost real models:
+        # body_coverage counts bare finger joints and its head threshold rejects
+        # the engine's own fullbody.ase, so it answers "needs base" for almost
+        # everything. A backdrop is the one case where the model genuinely cannot
+        # be judged.
+        self.assertTrue(import_team.may_bind_as_body("needs base", composited=False))
         self.assertFalse(import_team.may_bind_as_body("carries scenery", composited=False))
 
     def test_the_same_export_may_once_a_body_is_under_it(self):

@@ -94,6 +94,36 @@ def find_gloves(pack_dir, export_id):
     return []
 
 
+# What a Faces directory calls its models. PES splits a head across the face
+# itself and the hair, and a 4cc export may ship either or both.
+FACE_MODELS = ("face_high.fmdl", "face.fmdl", "fcl_hair.fmdl")
+
+
+def find_face(pack_dir, export_id):
+    """-> [fmdl] of this player's head, face before hair.
+
+    The Faces slot is keyed by *shirt number* where Boots is keyed by export id:
+    HDG ships `k2402 - Helldiver Headless` and `XXX02 - Lobby doko`, which are
+    the same player. That naming, plus a filename the docstring did not expect -
+    `face_high.fmdl` and `fcl_hair.fmdl` rather than `face.fmdl` - is why 27 head
+    and hair models in the HDG pack had never been imported, and why the
+    "Headless" boots pack looked headless: its head was in the other slot all
+    along.
+    """
+    root = os.path.join(pack_dir, "Faces")
+    if not os.path.isdir(root):
+        return []
+    shirt = shirt_number(export_id)
+    for entry in sorted(os.listdir(root)):
+        digits = "".join(c for c in entry.split("-")[0] if c.isdigit())
+        if not digits or int(digits) != shirt:
+            continue
+        return [path for path in
+                (os.path.join(root, entry, name) for name in FACE_MODELS)
+                if os.path.isfile(path)]
+    return []
+
+
 # The verdicts body_coverage.py returns for an export that is not a whole body.
 # PES draws a boots or glove export *over* its own body wearing the team's kit - the
 # packs' kit textures are DXT1 and carry no alpha, so nothing is hiding that body -
@@ -107,10 +137,18 @@ def may_bind_as_body(verdict, composited=False):
 
     `composited` is for --base, which puts the stock skinned body underneath: the
     result clothes the rig whatever the export alone measured.
+
+    Everything else binds unless the export is scenery. It used to require
+    `verdict == "whole"`, and that verdict is not a completeness signal - it
+    counts bare finger joints and its head threshold rejects the engine's own
+    fullbody.ase - so a real character with real geometry was being refused and
+    left unused. "carries scenery" is the one verdict that means what it says:
+    while a backdrop is in the file the model's bounds are the backdrop's and
+    nothing about it can be judged, so those stay out.
     """
     if composited:
         return True
-    return verdict == "whole"
+    return verdict != "carries scenery"
 
 
 def describe_import(dest, prefix, export_id):
@@ -715,10 +753,14 @@ def main():
             # team's kit is swapped into at run time (Team::FetchKit).
             if not args.base:
                 install_kit_texture(args.pack_dir, dest)
+            # Every other slot of the same character: the hands, and the head.
+            # A pack splits one player across Boots, Gloves and Faces, and only
+            # the first was ever read.
+            rest_of_him = (find_gloves(args.pack_dir, export_id)
+                           + find_face(args.pack_dir, export_id))
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge,
-                                   args.base or None,
-                                   extra_fmdls=find_gloves(args.pack_dir, export_id))
+                                   args.base or None, extra_fmdls=rest_of_him)
         # What the import actually produced decides whether it may stand in for a
         # body. An export that leaves the rig's joints bare is a prop PES draws over
         # its own body, and binding it in place of that body leaves only the prop.
@@ -743,10 +785,14 @@ def main():
         # kit. A pack that ships no head at all - "k2402 - Helldiver Headless"
         # has nothing above y=1.59 - is the case this is for, and it is the only
         # case worth guessing at.
-        if (not args.dry_run and not composited and headless(fmdl, args.fmdl_lib)
-                and os.path.isfile(stock_body)):
+        # Asked of every slot together: HDG's "Helldiver Headless" boots really
+        # do stop at the neck, but its head is in Faces/XXX02, so once that is
+        # merged in the character has one and needs nothing borrowed.
+        if (not args.dry_run and not composited and os.path.isfile(stock_body)
+                and all(headless(f, args.fmdl_lib) for f in [fmdl] + rest_of_him)):
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", True, args.max_edge, stock_body)
+                                   rel + "/body.png", True, args.max_edge, stock_body,
+                                   extra_fmdls=rest_of_him)
             verdict = describe_import(dest, args.prefix, export_id)
             composited = True
             print("       %s ships no body of its own; composited over %s"
