@@ -34,6 +34,11 @@ import os
 import re
 import sys
 
+# A mesh whose farthest vertex is this far out is scenery, not character:
+# lcg_2718's backdrop reaches 362 m around a body 1.8 m tall. See the
+# drop_stray handling in convert().
+STRAY_DROP_RADIUS = 60.0
+
 import ase_util
 import retarget
 import seams
@@ -633,7 +638,7 @@ def base_material_plan(base_material_count, group_textures, fallback_texture):
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0,
-            drop_base_parts=None, extra_fmdls=None):
+            drop_base_parts=None, extra_fmdls=None, drop_stray=False):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -670,6 +675,24 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
 
     if only_meshes is not None:
         meshes = [m for i, m in enumerate(meshes) if i in only_meshes]
+
+
+    if drop_stray:
+        # A backdrop defines the model's bounds, and every view of the character
+        # frames itself on the pair of them - lcg_2718's backdrop reaches 362 m
+        # and frames the player down to a dot. A mesh whose farthest vertex is
+        # tens of metres from a body whose standing height is 1.8 m is not part
+        # of the character; PES draws such an export over its own body, and the
+        # composite under it is what that body is.
+        def stray(mesh):
+            return max(
+                math.sqrt(v.position.x ** 2 + v.position.y ** 2 + v.position.z ** 2)
+                for v in mesh.vertices) > STRAY_DROP_RADIUS
+        kept = [m for m in meshes if not stray(m)]
+        if len(kept) != len(meshes):
+            print("dropped %d stray mesh(es) past %.0f m"
+                  % (len(meshes) - len(kept), STRAY_DROP_RADIUS))
+        meshes = kept
 
     # One group per source texture.
     #
@@ -970,6 +993,12 @@ if __name__ == "__main__":
                              "far-apart vertices, and on a 1.8 m body they "
                              "render as metre-long shards. A real body "
                              "triangle is centimetres; the median is under 2 cm.")
+    parser.add_argument("--drop-stray", action="store_true",
+                        help="drop meshes whose farthest vertex is more than "
+                             "60 m out. lcg_2718's backdrop reaches 362 m and "
+                             "frames the character down to a dot; such an "
+                             "export is drawn over PES's own body, and the "
+                             "backdrop has no place in that picture.")
     parser.add_argument("--extra", default="",
                         help="comma-separated further .fmdl of the same "
                              "character, merged in as more meshes. DBG's pack "
@@ -985,6 +1014,7 @@ if __name__ == "__main__":
                            max_edge=args.max_edge,
                            drop_base_parts=set(
                                x.strip() for x in args.drop_base_parts.split(",") if x.strip()),
-                           extra_fmdls=[x.strip() for x in args.extra.split(",") if x.strip()])
+                           extra_fmdls=[x.strip() for x in args.extra.split(",") if x.strip()],
+                           drop_stray=args.drop_stray)
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))
