@@ -1588,13 +1588,17 @@ void ElizaController::_AddCelebration(std::vector<PlayerCommand>& commandQueue) 
     // falls back on its intro anyway, so asking costs nothing.
     const int opening = isScorer ? filmed : madeGoal;
     const int loop = GoalCelebration::LoopVariable(opening);
-    // Only ask for the loop when a loop was installed. Most performances have none -
-    // of the imported set only moods 1 and 2 do, and sad_normal does not - and an
-    // unmatched special command is dropped rather than falling back, which took the
-    // losing side out of their reaction after 1.9 s and would have done the same to
-    // the scorer.
+    // Only ask for the loop when a loop was installed, and only for a teammate's
+    // generic mood reaction - of the imported set only moods 1 and 2 (happy_normal,
+    // happy_extreme) carry one. The scorer's own `filmed` var is a position in
+    // celebrations.txt's alphabetically sorted manifest (goal_cutscenes.py), not a
+    // mood, so var+10 is not "unmatched and dropped" the way a losing side's missing
+    // loop is - it is almost always some OTHER filmed celebration's own number,
+    // matched by coincidence. Asking for it played a stranger's performance over the
+    // scorer the instant his intro hold elapsed: two clips' geometry, briefly on one
+    // skeleton, which is the broken arms and inverted wrists this fixes.
     const bool loopExists =
-        match->GetAnimCollection() &&
+        !isScorer && match->GetAnimCollection() &&
         match->GetAnimCollection()->HasSpecial(celebrationType, loop);
     command.specialVar2 = loopExists && GoalCelebration::Phase(
                                             match->GetGoalScoredTimer(),

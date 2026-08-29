@@ -151,14 +151,27 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
         offside = AI_GetOffsideLine(match, match->GetMentalImage(0), 0);
         desiredPosition = Vector3(offside, pitchHalfH + 0.8f, 0);
       }
+      // The offside line is moot while the whistle is down - the ball is not
+      // advancing, so there is nothing to track - and a cutscene holding on him
+      // wants a reaction, not a man still jogging the touchline through his own
+      // shot. Only the referee's case above branched on this; the assistant
+      // chased the line unconditionally.
+      const bool holdForStoppage = !match->IsInPlay();
 
-      command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
-                                     .Get2D()
-                                     .GetNormalized(CastPlayer()->GetDirectionVec());
+      command.desiredDirection =
+          holdForStoppage
+              ? CastPlayer()->GetDirectionVec()
+              : (desiredPosition - CastPlayer()->GetPosition())
+                    .Get2D()
+                    .GetNormalized(CastPlayer()->GetDirectionVec());
       command.desiredVelocityFloat =
-          RangeVelocity((desiredPosition - CastPlayer()->GetPosition()).GetLength() *
-                        distanceToVelocityMultiplier);
-      command.desiredLookAt = Vector3(desiredPosition.coords[0], 0, 0);
+          holdForStoppage
+              ? 0.0f
+              : RangeVelocity((desiredPosition - CastPlayer()->GetPosition()).GetLength() *
+                              distanceToVelocityMultiplier);
+      command.desiredLookAt =
+          holdForStoppage ? CastPlayer()->GetPosition() + CastPlayer()->GetDirectionVec() * 100
+                          : Vector3(desiredPosition.coords[0], 0, 0);
 
       commandQueue.push_back(command);
     } break;
