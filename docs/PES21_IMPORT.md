@@ -207,6 +207,17 @@ named `pes_*.anim` and git-ignored.
 queries: celebrations (`--class happy_normal|happy_extreme|sad_normal` →
 `<type>special` + a specialvar pair) and entrances.
 
+**Convert a celebration without `--strip-root`.** PES plays it on whoever
+scored, wherever he is, so the clip's own root track is the only thing that can
+carry the run, the dive or the slide - unlike an entrance or a stoppage
+cutscene, where a `.chor` holds a world track per actor and the clip is
+deliberately converted in place. `entrance_pl.py` strips every fixdemo clip it
+converts for that reason, so its output must not be fed to a celebration class.
+292 of the 293 celebrations PES ships travel, up to 2.94 m; installed stripped,
+they are performed standing still, and a dive with its travel removed reads as a
+body lying in mid-air. `install_anims.py` now refuses a clip whose player track
+is bit-exactly motionless in x and y.
+
 *Match* classes have to survive the animation selector, which reads velocity
 and body angles off the root curve and refuses any non-movement clip without
 a ball keyframe. `tools/pes21_import/anim_metrics.py` measures all of that
