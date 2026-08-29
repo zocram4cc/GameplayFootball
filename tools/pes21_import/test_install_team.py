@@ -21,6 +21,7 @@ Run: python3 -m unittest test_install_team -v
 """
 
 import os
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -708,3 +709,40 @@ class APackWithNoBodyGetsOneUnderIt(unittest.TestCase):
         one is the repository's."""
         self.assertTrue(import_team.STOCK_BODY_REL.startswith("media/objects/players/"))
         self.assertNotIn("pes", import_team.STOCK_BODY_REL.lower())
+
+
+class APackKeepsHandsInAnotherSlot(unittest.TestCase):
+    """DBG's exports stop at the elbow: each player's forearms, hands and all
+    nineteen finger joints per side live under Gloves/gNNNN, 20,770 vertices a
+    side. Imported without them the character has no hands and no forearms."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        for slot, files in (("Boots/k2007 - Giga Dose Doc", ("boots.fmdl",)),
+                            ("Gloves/g2007 - Giga Dose Doc",
+                             ("glove_l.fmdl", "glove_r.fmdl")),
+                            ("Gloves/g2015 - Gorilla Grips",
+                             ("glove_l.fmdl", "glove_r.fmdl"))):
+            d = os.path.join(self.root, slot)
+            os.makedirs(d)
+            for name in files:
+                open(os.path.join(d, name), "w").write("")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_the_gloves_of_the_matching_export_are_found(self):
+        found = import_team.find_gloves(self.root, "2007")
+        self.assertEqual([os.path.basename(p) for p in found],
+                         ["glove_l.fmdl", "glove_r.fmdl"])
+        self.assertIn("g2007", found[0])
+
+    def test_another_players_gloves_are_not_borrowed(self):
+        self.assertEqual(import_team.find_gloves(self.root, "2099"), [])
+
+    def test_a_pack_without_a_gloves_directory_is_fine(self):
+        bare = tempfile.mkdtemp()
+        try:
+            self.assertEqual(import_team.find_gloves(bare, "2007"), [])
+        finally:
+            shutil.rmtree(bare, ignore_errors=True)

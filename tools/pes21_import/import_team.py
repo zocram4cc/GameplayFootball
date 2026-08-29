@@ -70,6 +70,30 @@ def find_players(pack_dir, kind="Boots", model_name="boots.fmdl"):
     return found
 
 
+def find_gloves(pack_dir, export_id):
+    """-> [fmdl] of this player's hand/forearm slot, l before r.
+
+    A 4cc body export does not always reach the wrist. DBG's pack keeps every
+    player's forearms, hands and all nineteen finger joints per side under
+    Gloves/gNNNN - 20,770 vertices a side - while Boots/kNNNN stops at the
+    elbow. Imported on its own that is a character with no hands and no
+    forearms, which is how DBG has looked. The slot letter differs (g against
+    k) and the number is shared, which is what ties the two together.
+    """
+    root = os.path.join(pack_dir, "Gloves")
+    if not os.path.isdir(root):
+        return []
+    for entry in sorted(os.listdir(root)):
+        match = EXPORT_DIR_RE.match(entry)
+        if not match or match.group(2) != export_id:
+            continue
+        return [path for path in
+                (os.path.join(root, entry, side)
+                 for side in ("glove_l.fmdl", "glove_r.fmdl"))
+                if os.path.isfile(path)]
+    return []
+
+
 # The verdicts body_coverage.py returns for an export that is not a whole body.
 # PES draws a boots or glove export *over* its own body wearing the team's kit - the
 # packs' kit textures are DXT1 and carry no alpha, so nothing is hiding that body -
@@ -273,7 +297,7 @@ def install_kit_texture(pack_dir, dest):
 
 
 def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15,
-                  base_ase=None):
+                  base_ase=None, extra_fmdls=None):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
         return "exists"
@@ -284,6 +308,9 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
                fmdl, dest, "--fmdl-lib", fmdl_lib,
                "--texture", texture_rel, "--max-tris", str(max_tris),
                "--max-edge", str(max_edge)]
+    # The rest of this character, where the pack keeps it in another slot.
+    if extra_fmdls:
+        command += ["--extra", ",".join(extra_fmdls)]
     if base_ase:
         # A face-slot model is a head and hair, nothing else. Imported on its
         # own it is a head floating where the body should be; it has to be
@@ -647,7 +674,8 @@ def main():
                 install_kit_texture(args.pack_dir, dest)
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge,
-                                   args.base or None)
+                                   args.base or None,
+                                   extra_fmdls=find_gloves(args.pack_dir, export_id))
         # What the import actually produced decides whether it may stand in for a
         # body. An export that leaves the rig's joints bare is a prop PES draws over
         # its own body, and binding it in place of that body leaves only the prop.

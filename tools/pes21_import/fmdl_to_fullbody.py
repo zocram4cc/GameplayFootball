@@ -633,7 +633,7 @@ def base_material_plan(base_material_count, group_textures, fallback_texture):
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0,
-            drop_base_parts=None):
+            drop_base_parts=None, extra_fmdls=None):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
     fmdl = FmdlFile.FmdlFile()
@@ -644,6 +644,30 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
 
     meshes = select_meshes(fmdl.meshes, max_tris,
                            source_dir=os.path.dirname(os.path.abspath(fmdl_path)))
+
+    # Other slots of the same character, merged in as further meshes.
+    #
+    # A 4cc body export is not always the whole body. DBG's pack keeps each
+    # player's forearms, hands and all nineteen finger joints per side in
+    # Gloves/glove_l.fmdl and glove_r.fmdl - 20,770 vertices each - and the
+    # Boots export stops at the elbow. Imported alone it is a man with no hands
+    # and no forearms, which is exactly how DBG has looked. The gloves are not
+    # a separate model to the engine: they are more of this character, so they
+    # join its mesh list and go through the same grouping, the same joint
+    # binding and the same shard cut as the body's own meshes.
+    for extra in (extra_fmdls or []):
+        other = FmdlFile.FmdlFile()
+        other.readFile(extra)
+        # Bone tables are keyed by name and the two agree on theirs, so a
+        # merge is a union; the gloves carry the finger bones the body lacks.
+        bone_to_joint.update(build_bone_map(other))
+        picked = select_meshes(other.meshes, None,
+                              source_dir=os.path.dirname(os.path.abspath(extra)))
+        print("merged %s: %d mesh(es), %d vertices"
+              % (os.path.basename(extra), len(picked),
+                 sum(len(m.vertices) for m in picked)))
+        meshes = meshes + picked
+
     if only_meshes is not None:
         meshes = [m for i, m in enumerate(meshes) if i in only_meshes]
 
@@ -946,6 +970,12 @@ if __name__ == "__main__":
                              "far-apart vertices, and on a 1.8 m body they "
                              "render as metre-long shards. A real body "
                              "triangle is centimetres; the median is under 2 cm.")
+    parser.add_argument("--extra", default="",
+                        help="comma-separated further .fmdl of the same "
+                             "character, merged in as more meshes. DBG's pack "
+                             "keeps each player's forearms, hands and fingers "
+                             "in Gloves/glove_l.fmdl and glove_r.fmdl while the "
+                             "Boots export stops at the elbow.")
     args = parser.parse_args()
     verts, faces = convert(args.fmdl, args.out_dir, args.fmdl_lib, args.texture,
                            args.base, args.max_tris,
@@ -954,6 +984,7 @@ if __name__ == "__main__":
                            force_joint=args.force_joint,
                            max_edge=args.max_edge,
                            drop_base_parts=set(
-                               x.strip() for x in args.drop_base_parts.split(",") if x.strip()))
+                               x.strip() for x in args.drop_base_parts.split(",") if x.strip()),
+                           extra_fmdls=[x.strip() for x in args.extra.split(",") if x.strip()])
     print("wrote fullbody (%d imported vertices, %d faces%s)" %
           (verts, faces, ", composited over base" if args.base else ""))
