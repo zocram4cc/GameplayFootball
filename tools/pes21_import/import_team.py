@@ -277,47 +277,55 @@ FACE_WORDS = ("face", "head", "visage")
 HAIR_WORDS = ("hair", "scalp")
 
 
-# The GF head joint's bind height, and how much geometry above it counts as a
-# head. Measured over the packs: "k2402 - Helldiver Headless" reaches y 1.59 and
-# puts *nothing* above the joint, while every export with a head of its own puts
-# thousands there - k2411 2,451 and dbg_2004 67,476. Eight is far below any real
-# head and far above the nothing a headless pack leaves.
+# What "a whole body" means, in bands of the GF bind: a head above the joint, a
+# torso through the middle, and feet near the ground. Measured over the packs:
+# HDG's "Helldiver Headless" has *nothing* above the joint, LCG's k2701 is a face
+# and a shark prop with no legs, and every complete character - k2411, dbg_2004 -
+# clears every band by thousands of vertices. Eight and sixty are far below what
+# any real band holds and far above what an absent one leaves.
 HEAD_JOINT_Y = 1.64
 HEAD_PRESENT_VERTICES = 8
+TORSO_PRESENT_VERTICES = 60
+FEET_PRESENT_VERTICES = 60
 
 
-def headless(fmdl_path, fmdl_lib, head_top=HEAD_JOINT_Y,
-             present=HEAD_PRESENT_VERTICES):
-    """Whether an export carries nothing where a head goes.
+def whole_body(fmdl_paths, fmdl_lib):
+    """Whether these slots together dress the whole rig.
 
-    The one case worth compositing the engine's own body under: "k2402 -
-    Helldiver Headless" ships six meshes and an empty neck ring, so on its own it
-    is a suit of armour with no head and no hands.
+    Head, torso and feet, measured on the geometry the character will actually
+    wear - Boots, Gloves and Faces merged, because a pack legitimately splits one
+    player across them.
 
-    Asked of the geometry rather than of `body_coverage.verdict`, which answers
-    "needs base" for almost everything - it counts bare finger joints, and its
-    32-vertex head threshold was calibrated on PES-resolution heads, so the
-    engine's own fullbody.ase fails the same check at 29-31. Compositing on that
-    verdict buried most of 2HUG under the stock body, and the stock body has no
-    face: a squad of characters became a squad of faceless mannequins in kit.
+    This is the composite gate, and it has to be a whole-body test rather than a
+    head test. LCG's k2701 "Clapped" is a face and a shark prop: it has a head,
+    so a head-only gate skipped the composite and the player rendered as a
+    floating shark. PES draws such an export over its own body, and that is what
+    the stock body under it is for.
 
-    False on any read error: guessing wrong here costs a character its face.
+    True on any read error: a needless composite costs nothing, a missing one
+    costs the character.
     """
+    bands = {"head": 0, "torso": 0, "feet": 0}
     try:
         sys.path.insert(0, fmdl_lib)
         import FmdlFile
-        fmdl = FmdlFile.FmdlFile()
-        fmdl.readFile(fmdl_path)
-        above = 0
-        for mesh in fmdl.meshes:
-            for v in mesh.vertices:
-                if v.position.y > head_top:
-                    above += 1
-                    if above >= present:
-                        return False
-        return True
+        for path in fmdl_paths:
+            fmdl = FmdlFile.FmdlFile()
+            fmdl.readFile(path)
+            for mesh in fmdl.meshes:
+                for v in mesh.vertices:
+                    y = v.position.y
+                    if y > HEAD_JOINT_Y:
+                        bands["head"] += 1
+                    elif y < 0.35:
+                        bands["feet"] += 1
+                    elif 0.95 < y < 1.55:
+                        bands["torso"] += 1
     except Exception:
-        return False
+        return True
+    return (bands["head"] >= HEAD_PRESENT_VERTICES
+            and bands["torso"] >= TORSO_PRESENT_VERTICES
+            and bands["feet"] >= FEET_PRESENT_VERTICES)
 
 
 def mesh_names(fmdl_path, fmdl_lib):
@@ -390,7 +398,7 @@ def install_kit_texture(pack_dir, dest):
 
 
 def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15,
-                  base_ase=None, extra_fmdls=None):
+                  base_ase=None, extra_fmdls=None, drop_stray=False):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
         return "exists"
@@ -401,14 +409,14 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
                fmdl, dest, "--fmdl-lib", fmdl_lib,
                "--texture", texture_rel, "--max-tris", str(max_tris),
                "--max-edge", str(max_edge)]
-    # The rest of this character, where the pack keeps it in another slot.
-    if extra_fmdls:
-        command += ["--extra", ",".join(extra_fmdls)]
     if base_ase:
         # A face-slot model is a head and hair, nothing else. Imported on its
         # own it is a head floating where the body should be; it has to be
         # composited over a skinned body.
         command += ["--base", base_ase]
+    if drop_stray:
+        command += ["--drop-stray"]
+    if base_ase:
         # And only the stock parts this import actually stands in for are dropped:
         # a hair-only or accessory export brings no head, and dropping the stock
         # face for one of those leaves the player without one.
@@ -770,9 +778,24 @@ def main():
             # the first was ever read.
             rest_of_him = (find_gloves(args.pack_dir, export_id)
                            + find_face(args.pack_dir, export_id))
+            # A scenery export needs its backdrop gone and a body under it, or
+            # every view frames the pair down to a dot. The verdict is only
+            # known after a first import, so this is a second pass over the same
+            # output: force=True, strays dropped, stock body composited.
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", args.force, args.max_edge,
                                    args.base or None, extra_fmdls=rest_of_him)
+            verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
+            if verdict == "carries scenery" and os.path.isfile(
+                    os.path.join(args.game_dir, STOCK_BODY_REL)):
+                status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
+                                       rel + "/body.png", True, args.max_edge,
+                                       os.path.join(args.game_dir, STOCK_BODY_REL),
+                                       extra_fmdls=rest_of_him, drop_stray=True)
+                verdict = describe_import(dest, args.prefix, export_id)
+                composited = True
+                print("       %s carries scenery; strays dropped, body composited"
+                      % export_id)
         # What the import actually produced decides whether it may stand in for a
         # body. An export that leaves the rig's joints bare is a prop PES draws over
         # its own body, and binding it in place of that body leaves only the prop.
@@ -786,22 +809,14 @@ def main():
         # ask which is which. Thirty of the ninety-three installed bodies are in
         # the same position (docs/PES21_IMPORT.md).
         stock_body = os.path.join(args.game_dir, STOCK_BODY_REL)
-        # Only when the head is genuinely absent.
-        #
-        # `verdict` says "needs base" for almost every export, because
-        # bare_joints counts finger joints and HEAD_MIN_VERTICES of 32 was
-        # calibrated on PES-resolution heads - the engine's own fullbody.ase
-        # fails the same check at 29-31. Compositing on that verdict put the
-        # stock body under most of 2HUG, and the stock body has no face, so a
-        # squad of characters became a squad of faceless mannequins wearing the
-        # kit. A pack that ships no head at all - "k2402 - Helldiver Headless"
-        # has nothing above y=1.59 - is the case this is for, and it is the only
-        # case worth guessing at.
-        # Asked of every slot together: HDG's "Helldiver Headless" boots really
-        # do stop at the neck, but its head is in Faces/XXX02, so once that is
-        # merged in the character has one and needs nothing borrowed.
+        # Asked of every slot together, and as a whole-body test: HDG's
+        # "Helldiver Headless" boots stop at the neck but its head is in
+        # Faces/XXX02, so a head-only gate skips the composite it needs - while
+        # LCG's k2701 has a head and no legs, so a head-only gate wrongly skips
+        # the composite it also needs. What decides it is whether the character
+        # dresses the whole rig once every slot is on.
         if (not args.dry_run and not composited and os.path.isfile(stock_body)
-                and all(headless(f, args.fmdl_lib) for f in [fmdl] + rest_of_him)):
+                and not whole_body([fmdl] + rest_of_him, args.fmdl_lib)):
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", True, args.max_edge, stock_body,
                                    extra_fmdls=rest_of_him)

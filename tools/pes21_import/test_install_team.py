@@ -788,6 +788,7 @@ class OnlyATrulyHeadlessPackGetsTheStockBody(unittest.TestCase):
         # strays must not read as a head
         self.assertTrue(self._headless([1.2] * 500 + [1.65, 1.66]))
 
-    def test_an_unreadable_file_is_not_treated_as_headless(self):
-        # guessing wrong here costs a character its face
-        self.assertFalse(import_team.headless("/nonexistent.fmdl", "/nonexistent"))
+    def test_an_unreadable_file_counts_as_whole(self):
+        # guessing wrong here costs a character its face, so an unreadable
+        # export counts as whole and gets no composite
+        self.assertTrue(import_team.whole_body(["/nonexistent.fmdl"], "/nonexistent"))
