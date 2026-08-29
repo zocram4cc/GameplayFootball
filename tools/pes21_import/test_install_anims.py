@@ -104,3 +104,35 @@ class TheTrapClass(unittest.TestCase):
             install_anims.am.lie_state = real_lie
         self.assertIsNone(subdir)
         self.assertIn("ground", reason)
+
+
+class ACelebrationMustCarryItsOwnTravel(unittest.TestCase):
+    """PES plays a celebration on the scorer wherever he is, so the clip's own
+    root track is the only thing that can carry the run, the dive or the slide.
+    entrance_pl.py strips the root from every fixdemo clip it converts, which is
+    right for an entrance - a .chor holds the world track there - and wrong for
+    a celebration, which has no .chor. Installed that way, 292 of the 293
+    celebrations PES ships performed on the spot."""
+
+    def test_a_stripped_player_track_is_recognised(self):
+        stripped = ["player,0,0.000000,0.000000,0.000035,"
+                    "2,0.000000,0.000000,-0.000859"]
+        self.assertTrue(install_anims.root_is_stripped(stripped))
+
+    def test_a_travelling_player_track_is_not(self):
+        moving = ["player,0,0.000000,0.000000,0.000035,"
+                  "2,-0.001200,-0.014300,-0.000859"]
+        self.assertFalse(install_anims.root_is_stripped(moving))
+
+    def test_vertical_motion_alone_is_still_stripped(self):
+        # z survives --strip-root; only x and y are zeroed, so height on its own
+        # must not be mistaken for travel
+        vertical = ["player,0,0.000000,0.000000,0.104000,"
+                    "2,0.000000,0.000000,-0.047000"]
+        self.assertTrue(install_anims.root_is_stripped(vertical))
+
+    def test_the_celebration_classes_are_the_ones_without_choreography(self):
+        for name in install_anims.CELEBRATION_CLASSES:
+            self.assertTrue(name.startswith(("happy_", "sad_")), name)
+        self.assertNotIn("entrance_lineup", install_anims.CELEBRATION_CLASSES)
+        self.assertIn("happy_extreme", install_anims.CELEBRATION_CLASSES)
