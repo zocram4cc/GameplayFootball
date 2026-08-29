@@ -746,3 +746,43 @@ class APackKeepsHandsInAnotherSlot(unittest.TestCase):
             self.assertEqual(import_team.find_gloves(bare, "2007"), [])
         finally:
             shutil.rmtree(bare, ignore_errors=True)
+
+
+class OnlyATrulyHeadlessPackGetsTheStockBody(unittest.TestCase):
+    """`body_coverage.verdict` answers "needs base" for almost every export - it
+    counts bare finger joints, and its 32-vertex head threshold was calibrated on
+    PES-resolution heads, so the engine's own fullbody.ase fails it at 29-31.
+    Compositing on that verdict buried most of 2HUG under the stock body, which
+    has no face. The question is asked of the geometry instead."""
+
+    class _V:
+        def __init__(self, y):
+            self.position = type("P", (), {"x": 0.0, "y": y, "z": 0.0})()
+
+    class _Mesh:
+        def __init__(self, ys):
+            self.vertices = [OnlyATrulyHeadlessPackGetsTheStockBody._V(y) for y in ys]
+
+    def _fmdl(self, ys):
+        mesh = self._Mesh(ys)
+        return type("F", (), {"meshes": [mesh]})()
+
+    def _headless(self, ys):
+        # exercise the counting rule without a real .fmdl on disk
+        above = sum(1 for y in ys if y > import_team.HEAD_JOINT_Y)
+        return above < import_team.HEAD_PRESENT_VERTICES
+
+    def test_nothing_above_the_head_joint_is_headless(self):
+        self.assertTrue(self._headless([1.2, 1.4, 1.59]))
+
+    def test_a_real_head_is_not(self):
+        self.assertFalse(self._headless([1.7] * 200))
+
+    def test_a_few_stray_vertices_do_not_make_a_head(self):
+        # k2402 reaches 1.59 and puts nothing above the joint; a handful of
+        # strays must not read as a head
+        self.assertTrue(self._headless([1.2] * 500 + [1.65, 1.66]))
+
+    def test_an_unreadable_file_is_not_treated_as_headless(self):
+        # guessing wrong here costs a character its face
+        self.assertFalse(import_team.headless("/nonexistent.fmdl", "/nonexistent"))

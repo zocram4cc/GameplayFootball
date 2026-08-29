@@ -227,6 +227,49 @@ FACE_WORDS = ("face", "head", "visage")
 HAIR_WORDS = ("hair", "scalp")
 
 
+# The GF head joint's bind height, and how much geometry above it counts as a
+# head. Measured over the packs: "k2402 - Helldiver Headless" reaches y 1.59 and
+# puts *nothing* above the joint, while every export with a head of its own puts
+# thousands there - k2411 2,451 and dbg_2004 67,476. Eight is far below any real
+# head and far above the nothing a headless pack leaves.
+HEAD_JOINT_Y = 1.64
+HEAD_PRESENT_VERTICES = 8
+
+
+def headless(fmdl_path, fmdl_lib, head_top=HEAD_JOINT_Y,
+             present=HEAD_PRESENT_VERTICES):
+    """Whether an export carries nothing where a head goes.
+
+    The one case worth compositing the engine's own body under: "k2402 -
+    Helldiver Headless" ships six meshes and an empty neck ring, so on its own it
+    is a suit of armour with no head and no hands.
+
+    Asked of the geometry rather than of `body_coverage.verdict`, which answers
+    "needs base" for almost everything - it counts bare finger joints, and its
+    32-vertex head threshold was calibrated on PES-resolution heads, so the
+    engine's own fullbody.ase fails the same check at 29-31. Compositing on that
+    verdict buried most of 2HUG under the stock body, and the stock body has no
+    face: a squad of characters became a squad of faceless mannequins in kit.
+
+    False on any read error: guessing wrong here costs a character its face.
+    """
+    try:
+        sys.path.insert(0, fmdl_lib)
+        import FmdlFile
+        fmdl = FmdlFile.FmdlFile()
+        fmdl.readFile(fmdl_path)
+        above = 0
+        for mesh in fmdl.meshes:
+            for v in mesh.vertices:
+                if v.position.y > head_top:
+                    above += 1
+                    if above >= present:
+                        return False
+        return True
+    except Exception:
+        return False
+
+
 def mesh_names(fmdl_path, fmdl_lib):
     """The mesh names an fmdl carries, by their base texture - which is how the 4cc
     exports say what a mesh is. Returns [] when the file cannot be read, so a
@@ -689,7 +732,18 @@ def main():
         # ask which is which. Thirty of the ninety-three installed bodies are in
         # the same position (docs/PES21_IMPORT.md).
         stock_body = os.path.join(args.game_dir, STOCK_BODY_REL)
-        if (not args.dry_run and not composited and verdict != "whole"
+        # Only when the head is genuinely absent.
+        #
+        # `verdict` says "needs base" for almost every export, because
+        # bare_joints counts finger joints and HEAD_MIN_VERTICES of 32 was
+        # calibrated on PES-resolution heads - the engine's own fullbody.ase
+        # fails the same check at 29-31. Compositing on that verdict put the
+        # stock body under most of 2HUG, and the stock body has no face, so a
+        # squad of characters became a squad of faceless mannequins wearing the
+        # kit. A pack that ships no head at all - "k2402 - Helldiver Headless"
+        # has nothing above y=1.59 - is the case this is for, and it is the only
+        # case worth guessing at.
+        if (not args.dry_run and not composited and headless(fmdl, args.fmdl_lib)
                 and os.path.isfile(stock_body)):
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/body.png", True, args.max_edge, stock_body)
