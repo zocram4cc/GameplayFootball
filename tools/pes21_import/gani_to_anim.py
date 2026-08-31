@@ -1,21 +1,21 @@
 """Converts decoded PES .gani body animations into GameplayFootball .anim files.
 
-Since the native-rig migration the engine's skeleton IS the PES animated rig
-(retarget.GF_NODES, 1:1), so conversion is a change of basis, not a retarget:
+The engine's skeleton IS the Fox anim skeleton (retarget.GF_NODES, bind =
+body_anim_skel.ask, 1:1), so conversion is a change of basis, not a retarget:
 
   1. sample every PES bone's LOCAL quaternion (nlerp) and the root/motion
      position tracks (lerp) at the equivalent PES time (PES frame = 1/59.94 s,
      GF frame = 10 ms)
   2. map each local quaternion from Fox coords (Y up, +Z forward) into GF
      coords (Z up, faces -Y): both rigs' binds are world-aligned, so the same
-     conjugation (x, y, z) -> (x, -z, y) applies to every local
-  3. body = RIG_ROOT o motion (GF's body node is the PES mover; the player
-     root line carries the world translation); every other node's line is its
-     PES bone's local, verbatim
+     conjugation (x, y, z) -> (x, -z, y) applies to every local, VERBATIM
+  3. body = RIG_ROOT o motion (GF's body node is the PES mover sk_root_hip;
+     the player line carries the world translation); every other node's line
+     is its PES bone's local, verbatim
 
 Nothing is solved and nothing is lost: clavicles (sk_shoulder_*), the
-belly/chest spine chain and the wrists all keep their own tracks, which the
-old aim-and-hinge retarget onto the 16-node skeleton used to collapse.
+belly/chest spine chain and the wrists all keep their own tracks, and every
+GF frame gets a key (key_step 1), so no posing data is condensed away.
 
 Usage:
   python3 gani_to_anim.py in.gani out.anim [--type movement]
@@ -210,7 +210,7 @@ def fk_pose(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
 GF_NODES = list(retarget.GF_JOINT_ORDER)
 
 
-def convert(blob, anim_type="movement", key_step=2, strip_root=False,
+def convert(blob, anim_type="movement", key_step=1, strip_root=False,
             pos_scale=None):
     """gani bytes -> .anim text, 1:1 onto the native rig.
 
@@ -281,8 +281,8 @@ def main():
     parser.add_argument("dest", help=".anim file, or a directory with --batch")
     parser.add_argument("--batch", action="store_true")
     parser.add_argument("--type", default="movement")
-    parser.add_argument("--key-step", type=int, default=2,
-                        help="GF frames between keys (2 = every 20ms)")
+    parser.add_argument("--key-step", type=int, default=1,
+                        help="GF frames between keys (1 = every 10ms)")
     parser.add_argument("--gameplay-scale", action="store_true",
                         help="use the calibrated match-animation position "
                              "scale (retarget.PES_POS_TO_M_GAMEPLAY)")

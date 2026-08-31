@@ -399,7 +399,8 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
   # when an imported model is missing geometry.
   set(VIEWER_SOURCES ${CORE_SOURCES})
   list(REMOVE_ITEM VIEWER_SOURCES src/main.cpp)
-  add_executable(gfviewer ${VIEWER_SOURCES} src/viewer/main.cpp)
+  add_executable(gfviewer ${VIEWER_SOURCES} src/viewer/main.cpp
+                 src/viewer/skinnedviewer.cpp)
   target_link_libraries(gfviewer PRIVATE ${LIBRARIES})
   target_include_directories(gfviewer PRIVATE
     ${PROJECT_SOURCE_DIR}/src

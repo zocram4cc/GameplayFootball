@@ -70,20 +70,32 @@ class EdgesComeFromTheMeshNotFromProximity(unittest.TestCase):
 
 
 class SkinningIsTheEnginesArithmetic(unittest.TestCase):
+    IDENT = (0.0, 0.0, 0.0, 1.0)
+
     def test_an_unrotated_rig_leaves_the_mesh_where_it_was(self):
-        bind = {"a": (0.0, 0.0, 1.0)}
+        base = {"a": (self.IDENT, (0.0, 0.0, 1.0))}
         world = {"a": ((0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 1.0))}
-        posed = skin_probe.skin([(0.0, 0.1, 1.0)], [[(0, 1.0)]], bind, world, {0: "a"})
+        posed = skin_probe.skin([(0.0, 0.1, 1.0)], [[(0, 1.0)]], base, world, {0: "a"})
         for got, want in zip(posed[0], (0.0, 0.1, 1.0)):
             self.assertAlmostEqual(got, want)
 
     def test_a_joint_turns_the_vertices_it_owns_about_itself(self):
-        bind = {"a": (0.0, 0.0, 0.0)}
+        base = {"a": (self.IDENT, (0.0, 0.0, 0.0))}
         half = math.sqrt(0.5)
         world = {"a": ((0.0, 0.0, half, half), (0.0, 0.0, 0.0))}  # 90 deg about Z
-        posed = skin_probe.skin([(1.0, 0.0, 0.0)], [[(0, 1.0)]], bind, world, {0: "a"})
+        posed = skin_probe.skin([(1.0, 0.0, 0.0)], [[(0, 1.0)]], base, world, {0: "a"})
         self.assertAlmostEqual(posed[0][0], 0.0, places=5)
         self.assertAlmostEqual(posed[0][1], 1.0, places=5)
+
+    def test_a_bent_authoring_pose_is_unbent_first(self):
+        # vertex authored under a 90-deg-about-Z base pose skins by the
+        # CHANGE since that pose: at world identity it swings back
+        half = math.sqrt(0.5)
+        base = {"a": ((0.0, 0.0, half, half), (0.0, 0.0, 0.0))}
+        world = {"a": ((0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.0))}
+        posed = skin_probe.skin([(0.0, 1.0, 0.0)], [[(0, 1.0)]], base, world, {0: "a"})
+        self.assertAlmostEqual(posed[0][0], 1.0, places=5)
+        self.assertAlmostEqual(posed[0][1], 0.0, places=5)
 
 
 if __name__ == "__main__":

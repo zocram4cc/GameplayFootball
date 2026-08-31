@@ -2,7 +2,7 @@
 
 	<node>
 		<name>body</name>
-		<position>0, 0.0184, 0.9921</position>
+		<position>0, -0, 1.09612</position>
 		<rotation>0, 0, 0, 0</rotation>
 		<geometry>
 			<filename>models/pelvis.ase</filename>
@@ -11,12 +11,12 @@
 
 		<node>
 			<name>hip</name>
-			<position>0, 0, 0</position>
+			<position>0, 0.01835, -0.104039</position>
 			<rotation>0, 0, 0, 0</rotation>
 
 			<node>
 				<name>left_thigh</name>
-				<position>0.09, -0.0713, -0.0321</position>
+				<position>0.09, -0.071259, -0.032108</position>
 				<rotation>0, 0, 0, 0</rotation>
 				<geometry>
 					<filename>models/upperleg.ase</filename>
@@ -25,7 +25,7 @@
 
 				<node>
 					<name>left_knee</name>
-					<position>0.0513, -0.0349, -0.4167</position>
+					<position>-8.4e-05, -0.035125, -0.41979</position>
 					<rotation>0, 0, 0, 0</rotation>
 					<geometry>
 						<filename>models/lowerleg.ase</filename>
@@ -34,7 +34,7 @@
 
 					<node>
 						<name>left_ankle</name>
-						<position>0.0527, 0.047, -0.4361</position>
+						<position>-8.7e-05, 0.046663, -0.439314</position>
 						<rotation>0, 0, 0, 0</rotation>
 						<geometry>
 							<filename>models/foot.ase</filename>
@@ -46,7 +46,7 @@
 
 			<node>
 				<name>right_thigh</name>
-				<position>-0.09, -0.0713, -0.0321</position>
+				<position>-0.09, -0.071259, -0.032108</position>
 				<rotation>0, 0, 0, 0</rotation>
 				<geometry>
 					<filename>models/upperleg.ase</filename>
@@ -55,7 +55,7 @@
 
 				<node>
 					<name>right_knee</name>
-					<position>-0.0513, -0.0349, -0.4167</position>
+					<position>8.4e-05, -0.035125, -0.41979</position>
 					<rotation>0, 0, 0, 0</rotation>
 					<geometry>
 						<filename>models/lowerleg.ase</filename>
@@ -64,7 +64,7 @@
 
 					<node>
 						<name>right_ankle</name>
-						<position>-0.0527, 0.047, -0.4361</position>
+						<position>8.7e-05, 0.046663, -0.439314</position>
 						<rotation>0, 0, 0, 0</rotation>
 						<geometry>
 							<filename>models/foot.ase</filename>
@@ -77,7 +77,7 @@
 
 		<node>
 			<name>middle</name>
-			<position>0, -0.0184, 0.104</position>
+			<position>0, 0, 0</position>
 			<rotation>0, 0, 0, 0</rotation>
 			<geometry>
 				<filename>models/trunk.ase</filename>
@@ -86,17 +86,17 @@
 
 			<node>
 				<name>chest</name>
-				<position>0, -0.0138, 0.1667</position>
+				<position>0, -0.013794, 0.166652</position>
 				<rotation>0, 0, 0, 0</rotation>
 
 				<node>
 					<name>neck</name>
-					<position>0, -0.0197, 0.2693</position>
+					<position>0, -0.019674, 0.269281</position>
 					<rotation>0, 0, 0, 0</rotation>
 
 					<node>
 						<name>head</name>
-						<position>0, -0.0208, 0.108</position>
+						<position>0, -0.020865, 0.108003</position>
 						<rotation>0, 0, 0, 0</rotation>
 						<geometry>
 							<filename>models/head.ase</filename>
@@ -108,12 +108,12 @@
 
 				<node>
 					<name>left_clavicle</name>
-					<position>0.1051, -0.0197, 0.2043</position>
+					<position>0.10508, -0.019675, 0.20428</position>
 					<rotation>0, 0, 0, 0</rotation>
 
 					<node>
 						<name>left_shoulder</name>
-						<position>0.0899, 0, 0</position>
+						<position>0.08992, 1e-06, 0</position>
 						<rotation>0, 0, 0, 0</rotation>
 						<geometry>
 							<filename>models/upperarm.ase</filename>
@@ -122,7 +122,7 @@
 
 						<node>
 							<name>left_elbow</name>
-							<position>0.2041, 0.0197, -0.2051</position>
+							<position>0.288665, 0.027795, -3e-06</position>
 							<rotation>0, 0, 0, 0</rotation>
 							<geometry>
 								<filename>models/lowerarm.ase</filename>
@@ -131,22 +131,22 @@
 
 							<node>
 								<name>left_hand</name>
-								<position>0.2044, -0.0557, -0.1981</position>
+								<position>0.286023, -0.047864, -2e-06</position>
 								<rotation>0, 0, 0, 0</rotation>
 
 								<node>
 									<name>left_thumb_mata</name>
-									<position>0.0112, -0.0186, -0.0094</position>
+									<position>0.015511, -0.016805, -0.006063</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>left_thumb_mcp</name>
-										<position>0.0122, -0.0395, -0.0367</position>
+										<position>0.037206, -0.02694, -0.030755</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>left_thumb_pip</name>
-											<position>0.0151, -0.0196, -0.0176</position>
+											<position>0.0242, -0.016093, -0.008792</position>
 											<rotation>0, 0, 0, 0</rotation>
 										</node>
 									</node>
@@ -154,22 +154,22 @@
 
 								<node>
 									<name>left_index_mata</name>
-									<position>0.0438, -0.01, -0.0292</position>
+									<position>0.051737, -0.011619, 0.007705</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>left_index_mcp</name>
-										<position>0.0183, -0.0202, -0.0242</position>
+										<position>0.031224, -0.015352, -0.010859</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>left_index_pip</name>
-											<position>0.0241, -0.011, -0.0347</position>
+											<position>0.042331, -0.005213, -0.009319</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>left_index_dip</name>
-												<position>0.0135, -0.0062, -0.0194</position>
+												<position>0.023687, -0.002967, -0.005214</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -178,22 +178,22 @@
 
 								<node>
 									<name>left_middle_mata</name>
-									<position>0.0441, -0.0032, -0.0287</position>
+									<position>0.051207, -0.005734, 0.01112</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>left_middle_mcp</name>
-										<position>0.0213, -0.0014, -0.0291</position>
+										<position>0.035817, 0.002382, -0.003729</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>left_middle_pip</name>
-											<position>0.0274, -0.0018, -0.0373</position>
+											<position>0.045977, 0.003022, -0.004716</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>left_middle_dip</name>
-												<position>0.0153, -0.001, -0.0209</position>
+												<position>0.025726, 0.001716, -0.002675</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -202,22 +202,22 @@
 
 								<node>
 									<name>left_pinky_mata</name>
-									<position>0.0083, 0.0132, -0.0059</position>
+									<position>0.009248, 0.011535, 0.007705</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>left_pinky_mcp</name>
-										<position>0.0418, 0.0229, -0.0475</position>
+										<position>0.061898, 0.024644, 0.009443</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>left_pinky_pip</name>
-											<position>0.0186, 0.0122, -0.0273</position>
+											<position>0.031921, 0.01481, 0.001357</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>left_pinky_dip</name>
-												<position>0.0104, 0.0069, -0.0154</position>
+												<position>0.017942, 0.008396, 0.000711</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -226,22 +226,22 @@
 
 								<node>
 									<name>left_ring_mata</name>
-									<position>0.0439, 0.004, -0.0291</position>
+									<position>0.05097, 0.000948, 0.013828</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>left_ring_mcp</name>
-										<position>0.0146, 0.0131, -0.028</position>
+										<position>0.029647, 0.016968, -0.001377</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>left_ring_pip</name>
-											<position>0.0248, 0.0068, -0.0347</position>
+											<position>0.041839, 0.010647, -0.001223</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>left_ring_dip</name>
-												<position>0.0138, 0.0038, -0.0194</position>
+												<position>0.023347, 0.005969, -0.000729</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -254,12 +254,12 @@
 
 				<node>
 					<name>right_clavicle</name>
-					<position>-0.1051, -0.0197, 0.2043</position>
+					<position>-0.105082, -0.019675, 0.204282</position>
 					<rotation>0, 0, 0, 0</rotation>
 
 					<node>
 						<name>right_shoulder</name>
-						<position>-0.0899, 0, 0</position>
+						<position>-0.08992, 0, 1e-06</position>
 						<rotation>0, 0, 0, 0</rotation>
 						<geometry>
 							<filename>models/upperarm.ase</filename>
@@ -268,7 +268,7 @@
 
 						<node>
 							<name>right_elbow</name>
-							<position>-0.2041, 0.0197, -0.2051</position>
+							<position>-0.288665, 0.027795, 2e-06</position>
 							<rotation>0, 0, 0, 0</rotation>
 							<geometry>
 								<filename>models/lowerarm.ase</filename>
@@ -277,22 +277,22 @@
 
 							<node>
 								<name>right_hand</name>
-								<position>-0.2044, -0.0557, -0.1981</position>
+								<position>-0.286023, -0.047864, 3e-06</position>
 								<rotation>0, 0, 0, 0</rotation>
 
 								<node>
 									<name>right_thumb_mata</name>
-									<position>-0.0112, -0.0186, -0.0093</position>
+									<position>-0.015438, -0.016853, -0.00596</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>right_thumb_mcp</name>
-										<position>-0.0122, -0.0395, -0.0367</position>
+										<position>-0.037207, -0.027019, -0.030686</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>right_thumb_pip</name>
-											<position>-0.0151, -0.0196, -0.0177</position>
+											<position>-0.024273, -0.016083, -0.00881</position>
 											<rotation>0, 0, 0, 0</rotation>
 										</node>
 									</node>
@@ -300,22 +300,22 @@
 
 								<node>
 									<name>right_index_mata</name>
-									<position>-0.0438, -0.01, -0.0292</position>
+									<position>-0.051737, -0.0116, 0.007736</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>right_index_mcp</name>
-										<position>-0.0183, -0.0202, -0.0243</position>
+										<position>-0.031297, -0.015347, -0.010879</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>right_index_pip</name>
-											<position>-0.0242, -0.011, -0.0346</position>
+											<position>-0.042326, -0.005297, -0.009177</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>right_index_dip</name>
-												<position>-0.0134, -0.0062, -0.0194</position>
+												<position>-0.023619, -0.002952, -0.005273</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -324,22 +324,22 @@
 
 								<node>
 									<name>right_middle_mata</name>
-									<position>-0.0441, -0.0032, -0.0287</position>
+									<position>-0.051207, -0.005706, 0.011136</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>right_middle_mcp</name>
-										<position>-0.0213, -0.0014, -0.029</position>
+										<position>-0.035745, 0.00234, -0.003674</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>right_middle_pip</name>
-											<position>-0.0274, -0.0018, -0.0374</position>
+											<position>-0.04605, 0.003042, -0.004783</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>right_middle_dip</name>
-												<position>-0.0153, -0.001, -0.0209</position>
+												<position>-0.025726, 0.001709, -0.002678</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -348,22 +348,22 @@
 
 								<node>
 									<name>right_pinky_mata</name>
-									<position>-0.0083, 0.0132, -0.0058</position>
+									<position>-0.009175, 0.011521, 0.007736</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>right_pinky_mcp</name>
-										<position>-0.0418, 0.0229, -0.0475</position>
+										<position>-0.061898, 0.024668, 0.009381</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>right_pinky_pip</name>
-											<position>-0.0186, 0.0122, -0.0274</position>
+											<position>-0.031993, 0.014846, 0.001259</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>right_pinky_dip</name>
-												<position>-0.0104, 0.0069, -0.0153</position>
+												<position>-0.01787, 0.008365, 0.00075</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>
@@ -372,22 +372,22 @@
 
 								<node>
 									<name>right_ring_mata</name>
-									<position>-0.0439, 0.004, -0.0291</position>
+									<position>-0.050969, 0.000983, 0.013827</position>
 									<rotation>0, 0, 0, 0</rotation>
 
 									<node>
 										<name>right_ring_mcp</name>
-										<position>-0.0147, 0.0131, -0.028</position>
+										<position>-0.029715, 0.016937, -0.001352</position>
 										<rotation>0, 0, 0, 0</rotation>
 
 										<node>
 											<name>right_ring_pip</name>
-											<position>-0.0247, 0.0068, -0.0347</position>
+											<position>-0.041771, 0.010672, -0.001317</position>
 											<rotation>0, 0, 0, 0</rotation>
 
 											<node>
 												<name>right_ring_dip</name>
-												<position>-0.0139, 0.0038, -0.0194</position>
+												<position>-0.023415, 0.00594, -0.000676</position>
 												<rotation>0, 0, 0, 0</rotation>
 											</node>
 										</node>

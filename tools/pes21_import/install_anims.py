@@ -220,6 +220,7 @@ def prepare_match_anim(path, anim_class):
                                            shot_height=am.BALL_RADIUS))
             variables["incomingballdirection_maxdeviation"] = "0.5"
             variables["type"] = "interfere"
+            subdir = os.path.join("interfere", velocity, "pes")
     elif anim_class == "trick":
         if lie is not None:
             return None, None, "goes to ground: not a touch"

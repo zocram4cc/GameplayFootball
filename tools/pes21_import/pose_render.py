@@ -44,7 +44,8 @@ def posed_vertices(ase_path, weights_path, anim_path, frame):
         local[node] = skin_probe.pose_at(track, frame)
     world = skin_probe.joint_transforms(bind, parents, local, names and
                                         retarget.GF_JOINT_ORDER)
-    skinned = skin_probe.skin(positions, influences, bind, world, names)
+    skinned = skin_probe.skin(positions, influences, skin_probe.base_pose(),
+                              world, names)
 
     # The .ase lists faces over its own per-mesh vertex numbering; the weights
     # file lists vertices in one run. Matched by position, which is also how
