@@ -145,7 +145,7 @@ def main():
     parser.add_argument("--radius", type=float, default=BARE_RADIUS)
     args = parser.parse_args()
 
-    bind = retarget.gf_world_bind()
+    bind = retarget.gf_world_render_bind()
     counts = {}
     for path in args.ase:
         vertices, meshes = read_vertices(path)

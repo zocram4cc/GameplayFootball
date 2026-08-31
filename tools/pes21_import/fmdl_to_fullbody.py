@@ -645,7 +645,9 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     fmdl.readFile(fmdl_path)
 
     bone_to_joint = build_bone_map(fmdl)
-    joint_positions = retarget.gf_world_bind()
+    # fmdl vertices are authored in the RENDER bind; nearest-joint fallbacks
+    # must measure against that pose, not the rig's anim-pose bind.
+    joint_positions = retarget.gf_world_render_bind()
 
     meshes = select_meshes(fmdl.meshes, max_tris,
                            source_dir=os.path.dirname(os.path.abspath(fmdl_path)))

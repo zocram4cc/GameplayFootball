@@ -679,7 +679,7 @@ def gather_piece(fmdl, meshes, kit_kind, panels, inset=0.0, garment=None,
     hidden: [(y_lo, y_hi)] bands another garment covers - faces wholly
     inside one are dropped."""
     bone_to_joint = build_bone_map(fmdl)
-    joint_positions = retarget.gf_world_bind()
+    joint_positions = retarget.gf_world_render_bind()
     z_span = None
     if kit_kind == "sock":
         z_span = sock_frames(meshes)

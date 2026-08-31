@@ -109,14 +109,27 @@ def to_gf_pose(fox_pose):
 
     PES authors one hand and mirrors it, which is what the right hand's bind
     is too (hand_r.skl is hand_l.skl with x negated).
+
+    The hand rig is authored in the RENDER bind (hand_[lr].skl); on the anim
+    skeleton the whole hand subtree is turned by retarget.ALIGN_GF[hand], so
+    every finger local conjugates by it: q' = W . q . W^-1 - the same
+    rotation, re-expressed in the rotated frame. Without this a curl authored
+    about the render hand's axes bends the anim-pose fingers sideways.
     """
+    def _conj(w, q):
+        return _q_mul(_q_mul(w, q), (-w[0], -w[1], -w[2], w[3]))
+
+    align = {"_l": retarget.ALIGN_GF["left_hand"],
+             "_r": retarget.ALIGN_GF["right_hand"]}
     out = {}
     for node, bone, _ in retarget.GF_NODES:
         if not bone.startswith("skh_"):
             continue
         left_bone = bone[:-2] + "_l"
         q = map_quat(fox_pose.get(left_bone, (0.0, 0.0, 0.0, 1.0)))
-        out[node] = q if bone.endswith("_l") else mirror_quat(q)
+        if not bone.endswith("_l"):
+            q = mirror_quat(q)
+        out[node] = _conj(align[bone[-2:]], q)
     return out
 
 

@@ -126,19 +126,38 @@ def joint_transforms(bind, parents, local, order):
     return world
 
 
-def skin(positions, influences, bind, world, names):
-    """Linear blend skinning, as humanoidbase does it."""
+def qconj(q):
+    return (-q[0], -q[1], -q[2], q[3])
+
+
+def base_pose():
+    """{joint: (world rotation, world position)} of the AUTHORING pose.
+
+    Meshes and weight sidecars are authored in the render bind
+    (retarget.PES_RENDER_BIND); the rig's bind is the anim pose. This is the
+    offline mirror of base.anim.util + the engine's authoring->bind bake in
+    HumanoidBase::PrepareFullbodyModel: skin by the CHANGE since this pose.
+    """
+    world = retarget.gf_world_render_bind()
+    return {name: (qconj(retarget.ALIGN_GF[name]), world[name])
+            for name in retarget.GF_JOINT_ORDER}
+
+
+def skin(positions, influences, base, world, names):
+    """Linear blend skinning, as humanoidbase does it: per influence
+    R_pose * R_base^-1 * (v - p_base) + p_pose."""
     out = []
     for position, binds in zip(positions, influences):
         x = y = z = 0.0
         total = 0.0
         for joint, weight in binds:
             name = names.get(joint)
-            if name is None or name not in world or name not in bind:
+            if name is None or name not in world or name not in base:
                 continue
             rotation, origin = world[name]
-            local = tuple(position[i] - bind[name][i] for i in range(3))
-            moved = qrot(rotation, local)
+            base_rotation, base_origin = base[name]
+            local = tuple(position[i] - base_origin[i] for i in range(3))
+            moved = qrot(qmul(rotation, qconj(base_rotation)), local)
             x += weight * (origin[0] + moved[0])
             y += weight * (origin[1] + moved[1])
             z += weight * (origin[2] + moved[2])
@@ -230,7 +249,7 @@ def main():
         if frames:
             local[name] = pose_at(frames, args.frame)
     world = joint_transforms(bind, parents, local, order)
-    posed = skin(positions, influences, bind, world, names)
+    posed = skin(positions, influences, base_pose(), world, names)
 
     # The mesh's own edges, read out of the .ase beside the weights.
     #

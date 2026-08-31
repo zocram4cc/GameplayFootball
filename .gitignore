@@ -131,3 +131,9 @@ data/databases/default/images_teams/*/
 !data/databases/default/images_teams/eredivisie/
 !data/databases/default/images_teams/premierleague/
 !data/databases/default/images_teams/primeradivision/
+
+# dev/local artefacts
+log.txt
+exports.txt
+editstructure.txt
+.omp/

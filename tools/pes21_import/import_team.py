@@ -169,7 +169,7 @@ def describe_import(dest, prefix, export_id):
     if not os.path.isfile(ase):
         return "missing"
     vertices, _ = body_coverage.read_vertices(ase)
-    return body_coverage.verdict(vertices, retarget.gf_world_bind())[0]
+    return body_coverage.verdict(vertices, retarget.gf_world_render_bind())[0]
 
 
 # A 4cc export names its portraits by team slot rather than by player, because the
