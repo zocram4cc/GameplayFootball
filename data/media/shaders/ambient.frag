@@ -146,7 +146,15 @@ void main(void) {
   vec3 viewPosition = vec3(viewMatrix * vec4(worldPosition, 1.0f));
   vec3 viewNormal = vec3(viewMatrix * vec4(normal, 0.0f));
 
-  vec3 randomVec = -texture2D(map_noise, texCoord * noiseScale).xyz * 2.0f - 1.0f;
+  // The rotation this kernel is turned by, unpacked to [-1, 1] and kept in the
+  // tangent plane as the method above does. Written as -tex * 2 - 1 it landed in
+  // [-3, -1], so every rotation pointed into the same octant, and where one ran
+  // near-parallel to the surface normal the Gram-Schmidt below cancelled to
+  // nothing and normalize() returned garbage. Fixing it does not visibly change a
+  // match - it was not the cause of the speckled pitch, which was chased here
+  // first and ruled out - but the basis these samples are rotated by is now the
+  // one the method calls for.
+  vec3 randomVec = vec3(texture2D(map_noise, texCoord * noiseScale).xy * 2.0f - 1.0f, 0.0f);
   vec3 tangent = normalize(randomVec - viewNormal * dot(randomVec, viewNormal));
   vec3 bitangent = cross(viewNormal, tangent);
   mat3 tbn = mat3(tangent, bitangent, viewNormal);

@@ -151,6 +151,27 @@ std::string ResolveConfigFilename(const std::string& requestedFilename) {
   return requestedFilename;
 }
 
+// Every asset path the engine uses is relative to the directory that holds
+// databases/, media/ and locale/ - so launching from anywhere else died on
+// "Could not open database" with nothing said about the real cause. Anchor on
+// the tree that actually has the database, checking the current directory
+// first so an installation that already works is left exactly as it was.
+bool AnchorWorkingDirectory(const std::string& argv0) {
+  namespace fs = std::filesystem;
+  const fs::path marker("databases/default/database.sqlite");
+
+  std::error_code ec;
+  const fs::path exeDir = fs::absolute(fs::path(argv0), ec).parent_path();
+
+  for (const fs::path& root :
+       {fs::current_path(ec), exeDir, fs::current_path(ec) / "data", exeDir / "data"}) {
+    if (root.empty() || !fs::exists(root / marker, ec)) continue;
+    fs::current_path(root, ec);
+    return !ec;
+  }
+  return false;
+}
+
 }  // namespace
 
 std::shared_ptr<Scene2D> GetScene2D() {
@@ -368,7 +389,14 @@ int main(int argc, const char** argv) {
   config = new Properties();
   if (argc > 1)
     configFile = argv[1];
+  // Resolved against the directory the user launched from, and kept absolute,
+  // so it still points at the same file after the working directory moves.
   configFile = ResolveConfigFilename(configFile);
+  if (std::filesystem::exists(configFile)) {
+    std::error_code ec;
+    configFile = std::filesystem::absolute(configFile, ec).generic_string();
+  }
+  AnchorWorkingDirectory(argc > 0 ? argv[0] : "");
   config->LoadFile(configFile.c_str());
 
   // Initialize localization using saved language preference (default: "en")
@@ -388,7 +416,9 @@ int main(int argc, const char** argv) {
   db = new Database();
   bool dbSuccess = db->Load("databases/default/database.sqlite");
   if (!dbSuccess)
-    Log(e_FatalError, "main", "()", "Could not open database");
+    Log(e_FatalError, "main", "()",
+        "Could not open database: no databases/default/database.sqlite under " +
+            std::filesystem::current_path().generic_string());
 
   // initialize systems
 

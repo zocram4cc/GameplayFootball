@@ -63,17 +63,72 @@ Open:
 | 54 | Match the VGL26 Day 7 reference | pending |
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
-| 80 | Corner flag cloth samples the wrong half of its texture | **blocked** — the gate is correct in isolation, but applying it needs `stadium_staff._write_figure` to emit per-corner TVERTs the way `adboard_uvs.py` does |
-| 54 | Match the VGL26 Day 7 reference | pending |
-| 59 | PES's own pitch model and 3D turf | in progress |
-| 76 | Floppy surfaces on one mechanism | in progress — banner and pennant need choreography |
+| 87 | Frame cost of the imported squads | **open** — measured: **32 fps** at 1280x720 with 22 imported bodies (1,924 distinct frames in a 60 s window paced at 60). A native PES body is 20,458 vertices against the legacy 453, and a squad is 22 of them. Not yet attributed to a phase |
+| 89 | The pitch speckles red under PES's colour table | **open** — reproduced and narrowed by elimination; see below |
 
-Closed since: **81** (all 23 /hdg/ players bound to the body the .ted assigns —
-15 Helldiver, 7 Helldiver Headless, 1 Alexus), **83** (kit alpha *is* honoured:
-`simple.frag` discards below 0.12 — but no pack ships a transparent kit, so
-compositing is not the answer), **84** (not needed — the binding gate covers it),
-**85** (substitutes get their model), **86** (a prop is no longer bound as a body),
-and the shadeless shader.
+Closed since: **80** (settled on the texture rather than a screenshot — the
+per-corner TVERT work landed and the defect cannot occur as described; see
+below), **81** (all 23 /hdg/ players bound to the body the .ted assigns —
+15 Helldiver, 7 Helldiver Headless, 1 Alexus), **82** (the model viewer draws),
+**83** (kit alpha *is* honoured: `simple.frag` discards below 0.12 — but no pack
+ships a transparent kit, so compositing is not the answer), **84** (not needed —
+the binding gate covers it), **85** (substitutes get their model), **86** (a prop
+is no longer bound as a body), **88** (the showcase and capture pipeline are
+reproducible; see below), and the shadeless shader.
+
+### #88, the capture pipeline
+
+Recording a match used to be a scratch script rewritten from memory every time,
+and three separate runs were lost to it. It is now `tools/showcase.sh`, which
+takes the fixture on the command line and owns everything that went wrong before:
+
+| what failed | what it does now |
+|---|---|
+| a copied config still naming somebody else's fifo, so the engine wrote a *regular file* — 32 GB in forty minutes | strips every key it owns out of the base config and writes its own, then refuses to start unless the target is a fifo |
+| a plain mp4 killed before its moov atom was written, losing a complete 1.3 GB match | fragmented mp4, so an interrupted run still leaves a playable file |
+| killing the encoder to stop it, truncating the last fragment | closes the fifo and waits for the encoder to finish on its own |
+| "it recorded" claimed for a run that crashed early | fails loudly unless the log reached `destroying scenemanager` |
+| a 700 MB file for a 200 MB destination | fits the measured duration into a size limit in one pass |
+
+Two engine defects sat underneath it. Frames are written by a pacer thread that
+was told the frame size once, when the pipe opened, and then wrote whatever size
+the latest frame happened to be; a framebuffer resize mid-run would therefore
+shift every byte behind it and the decoder would paint the difference as torn
+macroblocks. The size is now latched when the stream opens and mismatched frames
+are skipped with one warning. Separately, every asset path is relative to the
+directory holding `databases/`, so launching from anywhere else died on a bare
+"Could not open database" — the whole of one session was lost to it. The engine
+now anchors its working directory on the tree that actually has the database and
+says where it looked when it cannot.
+
+### #89, the speckled pitch
+
+**Open.** Under PES's colour table the pitch at st017 carries dense red-mauve
+speckle, roughly one screen pixel across, over its teal. Measured in a turf patch:
+a base of `(18, 112, 124)` against speckle at `(124, 122, 160)` — the second
+population is not red-dominant but *desaturated and lifted*, which is what a
+per-pixel swing in the saturation term looks like.
+
+One control reproduces it every time: `graphics_lut_strength 0` and the picture is
+clean. So the table is amplifying noise that is already in the frame and invisible
+without it. What that noise is has not been found. Ruled out by elimination, one
+recorded match each:
+
+| suspect | result |
+|---|---|
+| SSAO's noisy occlusion driving saturation | constant saturation: speckle unchanged |
+| SSAO multiplying luminance | faded out at match distance: speckle unchanged |
+| the SSAO rotation basis (a real bug, fixed) | speckle unchanged |
+| the pitch normal map's per-texel `fastrandom` | `noisefac 0`: speckle unchanged |
+| the diffuse and specular Perlin jitter | `randomSpread 0`: speckle unchanged |
+| the stadium's own turf tile | `turf.png` is R=0 on every pixel; no red to sample |
+| pitch texture resolution | the debug flag halves it to 1024x512, but 2048x1024 speckles too |
+
+It is the pitch alone — the ground outside the touchline is smooth in the same
+frame — so it is the generated pitch material rather than a full-screen pass. The
+next thing to test is the sampling itself: the strip is read in display space, and
+the sRGB curve's linear segment has slope 12.92 near black, which is exactly where
+this pitch's red channel sits.
 
 ### The model viewer
 
