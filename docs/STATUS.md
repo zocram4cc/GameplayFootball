@@ -63,8 +63,7 @@ Open:
 | 54 | Match the VGL26 Day 7 reference | pending |
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
-| 87 | Frame cost of the imported squads | **open** — measured: **32 fps** at 1280x720 with 22 imported bodies (1,924 distinct frames in a 60 s window paced at 60). A native PES body is 20,458 vertices against the legacy 453, and a squad is 22 of them. Not yet attributed to a phase |
-| 89 | The pitch speckles red under PES's colour table | **open** — reproduced and narrowed by elimination; see below |
+| 87 | Frame cost of the imported squads | **in progress** — the headline cost was not the squads: every headless run was on llvmpipe. On the card the engine saturates the 60 fps recorder, against 32 fps in software. Load is down from 35 s to 30 s. Per-body cost is still unattributed; see below |
 
 Closed since: **80** (settled on the texture rather than a screenshot — the
 per-corner TVERT work landed and the defect cannot occur as described; see
@@ -74,7 +73,8 @@ below), **81** (all 23 /hdg/ players bound to the body the .ted assigns —
 ships a transparent kit, so compositing is not the answer), **84** (not needed —
 the binding gate covers it), **85** (substitutes get their model), **86** (a prop
 is no longer bound as a body), **88** (the showcase and capture pipeline are
-reproducible; see below), and the shadeless shader.
+reproducible; see below), **89** (the speckled pitch was the software
+rasteriser, not the engine; see below), and the shadeless shader.
 
 ### #88, the capture pipeline
 
@@ -101,34 +101,73 @@ directory holding `databases/`, so launching from anywhere else died on a bare
 now anchors its working directory on the tree that actually has the database and
 says where it looked when it cannot.
 
-### #89, the speckled pitch
+### #89, the speckled pitch — the renderer, not the engine
 
-**Open.** Under PES's colour table the pitch at st017 carries dense red-mauve
-speckle, roughly one screen pixel across, over its teal. Measured in a turf patch:
-a base of `(18, 112, 124)` against speckle at `(124, 122, 160)` — the second
-population is not red-dominant but *desaturated and lifted*, which is what a
-per-pixel swing in the saturation term looks like.
+**Closed.** Under PES's colour table the pitch at st017 carried dense red-mauve
+speckle about a pixel across. It was not an engine defect: every headless run was
+going through **llvmpipe**, Mesa's software rasteriser, because `xvfb-run` gives a
+display with no GPU behind it. The same match on the card is clean with grading
+left on.
 
-One control reproduces it every time: `graphics_lut_strength 0` and the picture is
-clean. So the table is amplifying noise that is already in the frame and invisible
-without it. What that noise is has not been found. Ruled out by elimination, one
-recorded match each:
+Measured over the same turf patch, same build, same config:
+
+| | distinct colours | red-dominant pixels |
+|---|---|---|
+| llvmpipe, grading on | 39,781 | 1.89% |
+| the GPU, grading on | 2,002 | 0.00% |
+
+The table was amplifying precision noise that only the software path produced,
+which is why `graphics_lut_strength 0` cleaned it up and nothing in the engine
+did. Ruled out first, one recorded match each — all of these were innocent:
 
 | suspect | result |
 |---|---|
-| SSAO's noisy occlusion driving saturation | constant saturation: speckle unchanged |
-| SSAO multiplying luminance | faded out at match distance: speckle unchanged |
-| the SSAO rotation basis (a real bug, fixed) | speckle unchanged |
-| the pitch normal map's per-texel `fastrandom` | `noisefac 0`: speckle unchanged |
-| the diffuse and specular Perlin jitter | `randomSpread 0`: speckle unchanged |
-| the stadium's own turf tile | `turf.png` is R=0 on every pixel; no red to sample |
-| pitch texture resolution | the debug flag halves it to 1024x512, but 2048x1024 speckles too |
+| SSAO's occlusion driving saturation | constant saturation: unchanged |
+| SSAO multiplying luminance | faded out at match distance: unchanged |
+| the SSAO rotation basis (a real bug, fixed anyway) | unchanged |
+| the pitch normal map's per-texel `fastrandom` | `noisefac 0`: unchanged |
+| the diffuse and specular Perlin jitter | `randomSpread 0`: unchanged |
+| the stadium's own turf tile | `turf.png` is R=0 on every pixel |
+| pitch texture resolution | 2048x1024 speckles exactly like 1024x512 |
 
-It is the pitch alone — the ground outside the touchline is smooth in the same
-frame — so it is the generated pitch material rather than a full-screen pass. The
-next thing to test is the sampling itself: the strip is read in display space, and
-the sRGB curve's linear segment has slope 12.92 near black, which is exactly where
-this pitch's red channel sits.
+The lesson is cheaper than the hunt: **check what is actually rasterising before
+reading shaders.** `glxinfo -B` under the harness would have said `llvmpipe` in
+one second. `tools/showcase.sh` now renders through SDL's offscreen driver on
+`/dev/dri/renderD128` and only falls back to Xvfb when there is no render node.
+
+### #87, what a match actually costs
+
+Two numbers, both measured rather than guessed, by counting distinct frames in a
+60 s window of a recording paced at 60 fps.
+
+**Frame rate.** 32 fps, and the cause was the harness: llvmpipe, as #89 explains.
+On the card the engine produces 3,599 distinct frames out of 3,600 — it saturates
+the recorder, so 60 fps is a floor and the pacer is now the measuring limit, not
+the renderer. Whatever the 22 imported bodies cost, it is not what was capping a
+headless match. Attributing per-phase cost still needs a profiler: `perf` is not
+installed, and a gdb sampler has to match on the full command line, because
+`gameplayfootball` is 16 characters and `pgrep -x` compares against a 15-character
+`comm` — the same trap as the `pkill` one in HARNESSES.md, wearing a different hat.
+
+**Load.** 35 s from launch to gameplay, attributed by timestamping the log:
+
+| phase | before | after |
+|---|---|---|
+| animations | 12.5 s | 8.3 s |
+| player construction | 9.9 s | 9.8 s |
+| crowd and stadium objects | 6.2 s | 5.3 s |
+| to gameplay | 35.1 s | 30.3 s |
+
+Animations were the biggest single item and half of that work was redundant: the
+collection is **453 MB** of `.anim` text and every clip was parsed twice, once for
+itself and once for its mirror, when the mirror is the parsed clip reflected. It
+now parses once and mirrors a copy, the way the autogenerated clips already did.
+
+What is left is still dominated by that 453 MB. The next step is the one the
+geometry loader already took: `asecache` keeps `.ase` sources authoritative and
+caches the parsed result beside them, and animations have no equivalent. That
+would respect the same rule — the editable text stays the source of truth — and
+is worth more than shaving the parser.
 
 ### The model viewer
 
