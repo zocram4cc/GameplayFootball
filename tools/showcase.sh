@@ -80,8 +80,20 @@ encoder=$!
 budget=$(( minutes * 60 * 2 + 600 ))
 
 echo "recording ${minutes}-minute halves, team $team1 v team $team2 -> $out"
-( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY SDL_VIDEODRIVER=x11 \
-    xvfb-run -a "$bin" "$cfg" ) > "$log" 2>&1
+# SDL's offscreen driver renders through EGL straight onto the card - no X
+# server and no window, but the real GPU. Under xvfb-run this ran on llvmpipe
+# instead, in software: 32 fps, measured as distinct frames in a 60 s window.
+# On the card the same match saturates this recorder - 3,599 of 3,600 frames in
+# that window are distinct - so the engine is at or above 60 fps and the pacer,
+# not the renderer, is now the limit. Set SHOWCASE_SOFTWARE=1 to force the old
+# path on a machine with no usable render node.
+if [ "${SHOWCASE_SOFTWARE:-0}" = "1" ] || [ ! -e /dev/dri/renderD128 ]; then
+  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY SDL_VIDEODRIVER=x11 \
+      xvfb-run -a "$bin" "$cfg" ) > "$log" 2>&1
+else
+  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY -u DISPLAY \
+      SDL_VIDEODRIVER=offscreen "$bin" "$cfg" ) > "$log" 2>&1
+fi
 status=$?
 
 # The engine has stopped writing, so the encoder sees end of file and finishes

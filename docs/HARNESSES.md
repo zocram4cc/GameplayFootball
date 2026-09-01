@@ -1,9 +1,29 @@
 # The verification harnesses
 
-Every claim in this fork that says "verified" was produced by one of these. They live in
-the job's scratch directory rather than the repo because they hard-code absolute paths,
-but the shapes are worth writing down: the same three mistakes were made more than once
-before they were.
+Every claim in this fork that says "verified" was produced by one of these. The
+recording harness is now `tools/showcase.sh` and lives in the repository; what
+follows is the reasoning it encodes, and the traps that cost real runs before it
+did.
+
+## Check what is rasterising before you believe a frame
+
+`xvfb-run` gives an X display with no GPU behind it, so the engine renders through
+**llvmpipe**, in software. That cost two thirds of the frame rate (32 fps against a
+recorder it now saturates at 60) and it also *changed the picture*: the pitch came
+out covered in red-mauve speckle that survived a long hunt through the shaders and
+was never in the engine at all. One second of checking would have said so:
+
+    xvfb-run -a glxinfo -B | grep "OpenGL renderer"    # llvmpipe (LLVM 22.1.8)
+
+Render on the card instead. SDL's offscreen driver goes through EGL to
+`/dev/dri/renderD128` with no X server and no window, which is what
+`tools/showcase.sh` uses:
+
+    env -u WAYLAND_DISPLAY -u DISPLAY SDL_VIDEODRIVER=offscreen ./gameplayfootball <config>
+
+Confirm it took, rather than assuming - the process should hold the render node open:
+
+    ls -l /proc/$(pgrep -f "gameplayfootball .*config")/fd | grep dri
 
 ## Why frames go through a fifo
 
@@ -41,16 +61,19 @@ pattern, so it kills the tool that issued it. Kill by PID:
 Equally, `pgrep -c` counting "leftovers" often counts the querying shell. Check the
 actual command lines before believing a process survived.
 
-## The harnesses
+## The harness
 
-| script | what it does |
-|---|---|
-| `showdown.sh` | full match, 10-minute halves, straight to mp4. The showcase. |
-| `hdgshow.sh` | the same for a specific fixture, and it owns its recording path |
-| `adcheck.sh` | short run for looking at one thing - boards, flags, a texture |
-| `verify.sh` | short match with `debug_cutscene_report` on, for cutscene placement |
-| `celebtest.sh` | a match with celebrations assigned per player, to check the tie |
-| `foulcheck.sh` | Xvfb rather than gamescope; waits for two foul replays in the log |
+`tools/showcase.sh` records a full match and lives in the repository, because the
+scratch versions of it were rewritten from memory every session and three runs were
+lost to their mistakes.
+
+    tools/showcase.sh --team1 16 --team2 13 --minutes 10 --out /tmp/match.mp4
+
+`--stadium`, `--base`, `--bin` and `--limit-mb` cover the rest; `--limit-mb 0`
+keeps the raw encode. It owns the recording path, writes fragmented mp4 so an
+interrupted run still plays, drains the encoder rather than killing it, refuses to
+report a run that never reached `destroying scenemanager`, and fits the result into
+a size limit in one pass.
 
 ## Reading a run without watching it
 
