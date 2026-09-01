@@ -147,6 +147,12 @@ std::vector<unsigned char> frameRecordingLatest;
 int frameRecordingWidth = 0;
 int frameRecordingHeight = 0;
 bool frameRecordingHaveLatest = false;
+// Latched when the stream opens. The encoder on the far end was told one frame
+// size and reads fixed-size chunks forever after, so a frame of any other size
+// would shift every byte behind it and the decoder would paint the difference
+// as torn, red macroblocks rather than fail outright.
+size_t frameRecordingBytes = 0;
+bool frameRecordingWarnedSize = false;
 std::thread frameRecordingPacer;
 std::atomic<bool> frameRecordingPacerRun{false};
 
@@ -169,6 +175,18 @@ void FrameRecordingPacerTick() {
         "recording frames to " + frameRecordingPath + " (" + int_to_str(frameRecordingWidth) +
             "x" + int_to_str(frameRecordingHeight) + " rgba, paced at " +
             int_to_str(kFrameRecordingFPS) + " fps)");
+    frameRecordingBytes = frameRecordingLatest.size();
+  }
+
+  if (frameRecordingLatest.size() != frameRecordingBytes) {
+    if (!frameRecordingWarnedSize) {
+      frameRecordingWarnedSize = true;
+      Log(e_Warning, "OpenGLRenderer3D", "FrameRecordingPacer",
+          "frame is " + int_to_str(frameRecordingWidth) + "x" +
+              int_to_str(frameRecordingHeight) + " but the stream was opened for " +
+              int_to_str((int)(frameRecordingBytes / 4)) + " pixels; skipping mismatched frames");
+    }
+    return;
   }
 
   if (fwrite(frameRecordingLatest.data(), 1, frameRecordingLatest.size(),
@@ -206,6 +224,8 @@ void StartFrameRecording(const std::string& path) {
     frameRecordingPath = path;
     frameRecordingGaveUp = false;
     frameRecordingHaveLatest = false;
+    frameRecordingBytes = 0;
+    frameRecordingWarnedSize = false;
 #ifndef WIN32
     // The consumer is usually an encoder on the far end of a fifo. If it exits
     // first, writing to the dead pipe must not take the game down with it.
