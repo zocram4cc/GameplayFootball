@@ -1778,15 +1778,14 @@ bool Match::GetEntranceCastBounds(Vector3& centre, Vector3& extent) const {
   return true;
 }
 
-void Match::SuppressHudForReplay(bool suppressed) {
-  hudSuppressedForReplay = suppressed;
-  // Nothing of the in-match chrome belongs over a replay; the replay draws its
-  // own overlay. Re-applied through the same door the presentation uses, so a
+void Match::SuppressHud(bool suppressed) {
+  hudSuppressed = suppressed;
+  // Nothing of the in-match chrome belongs over a replay or a card; they draw
+  // their own. Re-applied through the same door the presentation uses, so a
   // replay ending during the walkout does not put the HUD back early - nor one
   // ending after the whistle, over the closing ceremony.
   ShowMatchHud(!suppressed && !entranceActive && !gameOver);
-  Log(e_Notice, "Match", "SuppressHudForReplay", suppressed ? "replay: match HUD hidden"
-                                                           : "replay over: match HUD back");
+  Log(e_Notice, "Match", "SuppressHud", suppressed ? "match HUD hidden" : "match HUD back");
 }
 
 void Match::StartHandoffWipe() {
@@ -1823,7 +1822,7 @@ bool Match::RunHandoffWipe() {
 void Match::ShowMatchHud(bool visible) {
   // The persistent in-match chrome, hidden for the pre-match presentation and
   // for a replay, and brought back after.
-  if (visible && hudSuppressedForReplay) return;
+  if (visible && hudSuppressed) return;
   if (scoreboard) {
     if (visible)
       scoreboard->Show();

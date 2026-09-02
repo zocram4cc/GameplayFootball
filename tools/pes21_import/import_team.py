@@ -506,12 +506,21 @@ def read_pack_colours(pack_dir):
         return (None, None)
     found = {}
     for line in open(os.path.join(pack_dir, sorted(notes)[0]), "r", errors="replace"):
+        # Two ways a pack writes a colour: DBG's zero-padded decimal channels
+        # ("041 081 156") and SMBG's CSS hex ("#b30000"). The database and
+        # GetVectorFromString both want plain decimal numbers. Only the team
+        # colours are read; the "Kit Colours" block below them pairs two per
+        # line and is not what the HUD is asking for.
         match = re.match(r"^\s*-\s*(1st|2nd)\s*:\s*(\d+)\s+(\d+)\s+(\d+)\s*$", line, re.I)
         if match:
-            # DBG zero-pads its channels ("041 081 156"); the database and
-            # GetVectorFromString both want plain numbers.
             found[match.group(1).lower()] = ", ".join(
                 str(int(channel)) for channel in match.group(2, 3, 4))
+            continue
+        match = re.match(r"^\s*-\s*(1st|2nd)\s*:\s*#([0-9a-f]{6})\s*$", line, re.I)
+        if match:
+            rgb = match.group(2)
+            found[match.group(1).lower()] = ", ".join(
+                str(int(rgb[i:i + 2], 16)) for i in (0, 2, 4))
     return (found.get("1st"), found.get("2nd"))
 
 

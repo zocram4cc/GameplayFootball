@@ -26,7 +26,7 @@ namespace {
 void SuppressMatchHud(bool suppressed) {
   auto gameTask = GetGameTask();
   Match* match = gameTask ? gameTask->GetMatch() : nullptr;
-  if (match) match->SuppressHudForReplay(suppressed);
+  if (match) match->SuppressHud(suppressed);
 }
 
 }  // namespace

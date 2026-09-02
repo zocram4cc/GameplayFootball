@@ -49,8 +49,9 @@ std::string TwoDecimals(float value) {
 
 }  // namespace
 
-Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match)
-    : Gui2View(windowManager, "statsoverlay", 0, 0, 1, 1), match(match) {
+Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match,
+                                   const std::string& name)
+    : Gui2View(windowManager, name, 0, 0, 1, 1), match(match) {
   const float cardWidth = kCardHeight * kCardPixelAspect / windowManager->GetAspectRatio();
   SetPosition((100.0f - cardWidth) * 0.5f, (100.0f - kCardHeight) * 0.5f);
   SetSize(cardWidth, kCardHeight);
@@ -58,12 +59,12 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   const float headerHeight = kCardHeight * kHeaderFraction;
   const float sideMargin = cardWidth * 0.05f;
 
-  panelBg = new Gui2Image(windowManager, "statsoverlay_panel", 0, 0, cardWidth, kCardHeight);
+  panelBg = new Gui2Image(windowManager, GetName() + "_panel", 0, 0, cardWidth, kCardHeight);
   this->AddView(panelBg);
   panelBg->LoadImage("media/ui/pes/formation_panel.png");
   panelBg->Show();
 
-  headerBg = new Gui2Image(windowManager, "statsoverlay_header", 0, 0, cardWidth, headerHeight);
+  headerBg = new Gui2Image(windowManager, GetName() + "_header", 0, 0, cardWidth, headerHeight);
   this->AddView(headerBg);
   headerBg->LoadImage("media/ui/pes/formation_header.png");
   headerBg->Show();
@@ -75,13 +76,13 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   const float tagHeight = headerHeight * 0.38f;
   for (int i = 0; i < 2; i++) {
     const float crestX = i == 0 ? sideMargin : cardWidth - sideMargin - crestWidth;
-    crest[i] = new Gui2Image(windowManager, "statsoverlay_crest" + int_to_str(i), crestX,
+    crest[i] = new Gui2Image(windowManager, GetName() + "_crest" + int_to_str(i), crestX,
                              (headerHeight - crestHeight) * 0.5f, crestWidth, crestHeight);
     this->AddView(crest[i]);
     crest[i]->LoadImage(match->GetTeam(i)->GetTeamData()->GetLogoUrl());
     crest[i]->Show();
 
-    teamTag[i] = new Gui2Caption(windowManager, "statsoverlay_tag" + int_to_str(i), 0,
+    teamTag[i] = new Gui2Caption(windowManager, GetName() + "_tag" + int_to_str(i), 0,
                                  (headerHeight - tagHeight) * 0.5f, cardWidth * 0.2f, tagHeight,
                                  match->GetTeam(i)->GetTeamData()->GetShortName());
     teamTag[i]->SetColor(kValueColor);
@@ -94,7 +95,7 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
     teamTag[i]->Show();
   }
 
-  title = new Gui2Caption(windowManager, "statsoverlay_title", 0, (headerHeight - tagHeight) * 0.5f,
+  title = new Gui2Caption(windowManager, GetName() + "_title", 0, (headerHeight - tagHeight) * 0.5f,
                           cardWidth * 0.5f, tagHeight,
                           Localization::GetInstance().Translate("stats_title"));
   title->SetColor(kTitleColor);
@@ -126,7 +127,7 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
 
   // Ball heatmap: an actual picture of the pitch rather than four rows of
   // block characters, which is what this used to draw.
-  heatmapLabel = new Gui2Caption(windowManager, "statsoverlay_heatmaplabel", 0, y, cardWidth * 0.6f,
+  heatmapLabel = new Gui2Caption(windowManager, GetName() + "_heatmaplabel", 0, y, cardWidth * 0.6f,
                                  rowTextHeight, text.Translate("stats_ball_heatmap"));
   heatmapLabel->SetColor(kLabelColor);
   heatmapLabel->SetOutlineColor(kOutlineColor);
@@ -137,7 +138,7 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
 
   const float heatmapHeight = std::max(1.0f, kCardHeight - y - kCardHeight * 0.055f);
   const float heatmapWidth = windowManager->GetWidthPercentForHeight(heatmapHeight, 105.0f / 68.0f);
-  heatmap = new Gui2Image(windowManager, "statsoverlay_heatmap", (cardWidth - heatmapWidth) * 0.5f,
+  heatmap = new Gui2Image(windowManager, GetName() + "_heatmap", (cardWidth - heatmapWidth) * 0.5f,
                           y, heatmapWidth, heatmapHeight);
   this->AddView(heatmap);
   heatmap->Show();
@@ -153,7 +154,7 @@ Gui2StatsOverlay::StatRow Gui2StatsOverlay::AddRow(const std::string& label, flo
   float cardWidth, cardHeight;
   GetSize(cardWidth, cardHeight);
 
-  row.label = new Gui2Caption(windowManager, "statsoverlay_label_" + label, labelLeft, y,
+  row.label = new Gui2Caption(windowManager, GetName() + "_label_" + label, labelLeft, y,
                               labelWidth, rowTextHeight, label);
   row.label->SetColor(kLabelColor);
   row.label->SetOutlineColor(kOutlineColor);
@@ -161,14 +162,14 @@ Gui2StatsOverlay::StatRow Gui2StatsOverlay::AddRow(const std::string& label, flo
   row.label->SetPosition(labelLeft + (labelWidth - row.label->GetTextWidthPercent()) * 0.5f, y);
   row.label->Show();
 
-  row.home = new Gui2Caption(windowManager, "statsoverlay_home_" + label, valueMargin, y,
+  row.home = new Gui2Caption(windowManager, GetName() + "_home_" + label, valueMargin, y,
                              labelLeft - valueMargin * 2.0f, rowTextHeight, "0");
   row.home->SetColor(kValueColor);
   row.home->SetOutlineColor(kOutlineColor);
   this->AddView(row.home);
   row.home->Show();
 
-  row.away = new Gui2Caption(windowManager, "statsoverlay_away_" + label,
+  row.away = new Gui2Caption(windowManager, GetName() + "_away_" + label,
                              labelLeft + labelWidth + valueMargin, y,
                              labelLeft - valueMargin * 2.0f, rowTextHeight, "0");
   row.away->SetColor(kValueColor);
@@ -177,7 +178,7 @@ Gui2StatsOverlay::StatRow Gui2StatsOverlay::AddRow(const std::string& label, flo
   row.away->Show();
 
   if (withBar) {
-    row.bar = new Gui2Image(windowManager, "statsoverlay_bar_" + label, valueMargin,
+    row.bar = new Gui2Image(windowManager, GetName() + "_bar_" + label, valueMargin,
                             y + rowTextHeight * 1.15f, cardWidth - valueMargin * 2.0f, kBarHeight);
     this->AddView(row.bar);
     row.bar->Show();
@@ -210,8 +211,23 @@ void Gui2StatsOverlay::DrawPossessionBar(float homeFraction) {
   windowManager->GetCoordinates(0, 0, barWidth, barHeight, x, y, w, h);
   if (w <= 0 || h <= 0) return;
 
-  const Vector3 homeColor = match->GetTeam(0)->GetTeamData()->GetColor1();
-  const Vector3 awayColor = match->GetTeam(1)->GetTeamData()->GetColor1();
+  // A team without colours in the database comes through as black, and black
+  // on this navy panel is not a bar but a hole - which is how /smbg/'s half
+  // of the possession read for a whole showcase. A segment that would not
+  // show against the panel takes the team's second colour, or failing that a
+  // neutral light; the pitch-side kit is still the first choice.
+  auto visible = [](const Vector3& first, const Vector3& second) {
+    auto luminance = [](const Vector3& c) {
+      return 0.2126f * c.coords[0] + 0.7152f * c.coords[1] + 0.0722f * c.coords[2];
+    };
+    if (luminance(first) >= 60.0f) return first;
+    if (luminance(second) >= 60.0f) return second;
+    return Vector3(200, 208, 224);
+  };
+  const TeamData* home = match->GetTeam(0)->GetTeamData();
+  const TeamData* away = match->GetTeam(1)->GetTeamData();
+  const Vector3 homeColor = visible(home->GetColor1(), home->GetColor2());
+  const Vector3 awayColor = visible(away->GetColor1(), away->GetColor2());
   const int split = (int)std::round(w * clamp(homeFraction, 0.0f, 1.0f));
 
   bar->GetImage2D()->DrawRectangle(0, 0, w, h, kBarBackColor, 255);
@@ -250,6 +266,14 @@ void Gui2StatsOverlay::DrawHeatmap() {
   image->DrawLine(Line(Vector3(w * 0.5f, 0, 0), Vector3(w * 0.5f, h, 0)), Vector3(200, 220, 255),
                   90);
   image->OnChange();
+}
+
+void Gui2StatsOverlay::SetTitle(const std::string& text) {
+  title->SetCaption(text);
+  // Re-centred on the card, which is this view's own width.
+  float x, y;
+  title->GetPosition(x, y);
+  title->SetPosition((width_percent - title->GetTextWidthPercent()) * 0.5f, y);
 }
 
 void Gui2StatsOverlay::UpdateStats() {

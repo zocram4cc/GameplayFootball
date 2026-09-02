@@ -560,6 +560,14 @@ class TheTeamPlaysInItsOwnColours(unittest.TestCase):
                          "Kit Colours:\n- 1st player: 211 74 79 - 162 62 77\n")
         self.assertEqual(import_team.read_pack_colours(pack), ("9, 9, 9", "8, 8, 8"))
 
+    def test_hex_colours_are_read_too(self):
+        """SMBG writes '#b30000'; it went in as NULL and the team played in
+        black - a possession bar half of which was invisible on the panel."""
+        pack = self.note("smbg note.txt",
+                         "Team Colours:\n- 1st: #b30000 \n- 2nd: #0065B5\n\n"
+                         "Kit Colours:\n- 1st player: #b30000 - #0065B5\n")
+        self.assertEqual(import_team.read_pack_colours(pack), ("179, 0, 0", "0, 101, 181"))
+
     def test_a_pack_without_a_note_is_not_an_error(self):
         self.assertEqual(import_team.read_pack_colours(tempfile.mkdtemp()), (None, None))
 
