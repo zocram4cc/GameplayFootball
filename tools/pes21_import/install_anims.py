@@ -175,11 +175,6 @@ def prepare_match_anim(path, anim_class):
         if anim.last_frame > contact["frame"] + FOLLOW_THROUGH_FRAMES:
             am.clip_to(anim, contact["frame"] + FOLLOW_THROUGH_FRAMES)
 
-    # Root velocity alone under-buckets clips where the receiver is moving
-    # but the body stays roughly in place (the PES defensive trap scenario).
-    # receiver_velocity_bucket falls back to foot-plant cadence when root
-    # motion is zero, which is the actual situation the cheat check was
-    # failing on.
     velocity = am.VELOCITY_NAME[am.receiver_velocity_bucket(anim)]
     lie = am.lie_state(anim)
     variables = {}
