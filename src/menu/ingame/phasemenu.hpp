@@ -10,7 +10,8 @@
 #include "../../onthepitch/match.hpp"
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
-#include "utils/gui2/widgets/grid.hpp"
+#include "statsoverlay.hpp"
+#include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/widgets/root.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
@@ -30,7 +31,7 @@ public:
   virtual void ProcessWindowingEvent(WindowingEvent* event);
 
 protected:
-  Gui2Grid* grid;
+  Gui2StatsOverlay* card = nullptr;
   e_MatchPhase nextPhase;
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;

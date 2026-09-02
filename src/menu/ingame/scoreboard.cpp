@@ -27,11 +27,11 @@ Gui2ScoreBoard::Gui2ScoreBoard(Gui2WindowManager* windowManager, Match* match)
   pesTheme = GetConfiguration()->Get("scoreboard_theme", "default") == std::string("pes");
   if (pesTheme) {
     // The PES bug is a left-aligned strip rather than a full-width bar
-    // (spec section 4: "Scoreboard (top-left, persistent)"). Height matches
-    // the VGL26 reference measurement (docs/references/PES21_VGL26_Day3_
-    // Visual_Reference.md: navy panel 65px tall at 1080p = 6% of frame);
-    // this was 4.6, a smaller broadcast bug than the reference shows.
-    height_percent = 6.0f;
+    // (spec section 4: "Scoreboard (top-left, persistent)"). The VGL26
+    // reference measures the navy panel at 65px of 1080 - 6% - but at that
+    // height on this frame it read a touch big (owner's call, 02-09-26), so it
+    // sits just under it. It was 4.6 before the reference was measured.
+    height_percent = 5.2f;
     ConstructPesTheme();
   } else {
     ConstructDefaultTheme();

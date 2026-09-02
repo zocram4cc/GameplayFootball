@@ -21,11 +21,19 @@ class Match;
 
 class Gui2StatsOverlay : public Gui2View {
 public:
-  Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match);
+  // Every widget's surface is fetched from the resource pool by name, so a
+  // second card in the same window - the half-time page's - has to carry a
+  // name of its own or it takes over the surfaces of the one TAB shows.
+  Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match,
+                   const std::string& name = "statsoverlay");
   virtual ~Gui2StatsOverlay() = default;
 
   void UpdateStats();
   virtual void Redraw() {}
+  // The header reads "Match Stats" when the card is pulled up during play; the
+  // half-time and full-time screens are the same card under their own title
+  // (spec section 3.4: "identical template for both").
+  void SetTitle(const std::string& text);
 
   // Gui2Task resets the whole tree's z-priority every frame; the card's own
   // stacking has to be re-applied on top of that - see

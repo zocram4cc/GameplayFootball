@@ -111,10 +111,11 @@ void Player::Activate(boost::intrusive_ptr<Node> humanoidSourceNode,
   if (GetDebugMode() != e_DebugMode_Off)
     buf_debugCaptionShowCondition = true;
 
+  // Opaque, and a shade larger than it was: at 2.0 and 70% it disappeared into
+  // the pitch behind it.
   nameCaption =
       new Gui2Caption(GetMenuTask()->GetWindowManager(), "game_player_name_" + int_to_str(id), 0, 0,
-                      1, 2.0, playerData->GetLastName());
-  nameCaption->SetTransparency(0.3f);
+                      1, 2.4, playerData->GetLastName());
   GetMenuTask()->GetWindowManager()->GetRoot()->AddView(nameCaption);
   debugCaption = new Gui2Caption(GetMenuTask()->GetWindowManager(),
                                  "game_player_debug_" + int_to_str(id), 0, 0, 1, 1.6, "debug");
@@ -484,6 +485,12 @@ void Player::PreparePutBuffers(unsigned long snapshotTime_ms) {
     if (team->GetHumanGamerCount() == 0)
       buf_nameCaptionShowCondition = team->GetDesignatedTeamPossessionPlayer() == this;
   }
+  // Never over a shot the match camera is not taking. The label kept floating
+  // through the walkout, the stoppage cutscenes and the closing ceremony -
+  // over a referee's close-up, over the half-time walk-off - because nothing
+  // here ever asked. Decided on this thread with the rest of the buffer, so
+  // Put2D keeps reading only what was fetched for it.
+  if (match->IsStaged()) buf_nameCaptionShowCondition = false;
   e_PlayerColor playerColor = team->GetPlayerColor(id);
   switch (playerColor) {
     case e_PlayerColor_Green:
@@ -502,7 +509,9 @@ void Player::PreparePutBuffers(unsigned long snapshotTime_ms) {
       buf_playerColor = Vector3(200, 80, 200);
       break;
     case e_PlayerColor_Default:
-      buf_playerColor = Vector3(200, 200, 200);
+      // PES floats the name in white (docs/PRESENTATION_SPEC.md §4). Grey at
+      // 70% over a teal or green pitch was the least readable thing on screen.
+      buf_playerColor = Vector3(255, 255, 255);
       break;
   };
 
@@ -587,7 +596,10 @@ void Player::Put2D() {
     float w, h;
     nameCaption->GetSize(w, h);
     nameCaption->SetColor(fetchedbuf_playerColor);
-    nameCaption->SetOutlineColor(fetchedbuf_playerColor * 0.4f);
+    // A near-black edge whatever the fill, so white reads on a bright pitch and
+    // a team colour reads on a dark one; the old 40% of the fill was mid-grey
+    // around grey.
+    nameCaption->SetOutlineColor(Vector3(20, 20, 20));
     nameCaption->SetPosition(captionPos3D.coords[0] - w * 0.5f, captionPos3D.coords[1] - h);
 
     nameCaption->SetCaption(fetchedbuf_nameCaption);
