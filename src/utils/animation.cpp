@@ -1218,14 +1218,19 @@ void Animation::Load(const std::string& filename) {
   std::vector<std::string> file;
   file_to_vector(filename, file);
 
+  // Each line's tokens were built and then *copied* into the file vector, so
+  // every token in a 453 MB collection was allocated and memcpy'd twice. Moving
+  // hands the strings over instead, and reserving stops the outer vector
+  // reallocating its way up through several hundred lines per clip.
   std::vector<std::vector<std::string>> tokenizedFile;
+  tokenizedFile.reserve(file.size());
   int lastLine = 0;
   for (unsigned int i = 0; i < file.size(); i++) {
     std::vector<std::string> tokenizedLine;
     tokenize(file.at(i), tokenizedLine, ",");
     if (tokenizedLine.at(0) == "extension" || tokenizedLine.at(0).substr(0, 1) == "<")
       break;
-    tokenizedFile.push_back(tokenizedLine);
+    tokenizedFile.push_back(std::move(tokenizedLine));
     lastLine = i + 1;
   }
 
@@ -1239,7 +1244,7 @@ void Animation::Load(const std::string& filename) {
     tokenize(file.at(i), tokenizedLine, ",");
     std::map<std::string, std::shared_ptr<AnimationExtension>>::iterator extensionIter;
     if (tokenizedLine.at(0) == "extension") {
-      tokenizedLines.push_back(tokenizedLine);
+      tokenizedLines.push_back(std::move(tokenizedLine));
     } else {
       break;
     }

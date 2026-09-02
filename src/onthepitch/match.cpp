@@ -2202,19 +2202,20 @@ void Match::LoadCutsceneChoreo(const std::string& category, const std::string& d
     std::ifstream file(entry.path());
     EntranceChoreo choreo;
     if (!file.good() || !choreo.Load(file)) continue;
-    // the clips sit in an anims/ directory next to the choreography
+    // The clips sit in an anims/ directory next to the choreography. Only their
+    // presence is checked here: parsing them all took seven seconds of every
+    // launch for clips a match mostly never plays. CutsceneClip() parses one the
+    // first time a cutscene casts it.
     const std::string base = entry.path().parent_path().string();
     bool complete = true;
     for (const auto& slot : choreo.GetSlots()) {
-      if (cutsceneClips.count(slot.animFile)) continue;
+      if (cutsceneClipPaths.count(slot.animFile)) continue;
       const std::string clipPath = base + "/" + slot.animFile;
       if (!std::filesystem::exists(clipPath)) {
         complete = false;
         continue;
       }
-      auto clip = std::make_shared<Animation>();
-      clip->Load(clipPath);
-      if (clip->GetFrameCount() >= 2) cutsceneClips[slot.animFile] = clip;
+      cutsceneClipPaths[slot.animFile] = clipPath;
     }
     if (!complete) continue;
     cutsceneChoreoPools[category].push_back(choreo);
@@ -2232,6 +2233,24 @@ void Match::LoadCutsceneChoreo(const std::string& category, const std::string& d
     if (!closing.empty() && closing != category)
       cutsceneChoreoPools[closing].push_back(choreo);
   }
+}
+
+Animation* Match::CutsceneClip(const std::string& animFile) {
+  auto loaded = cutsceneClips.find(animFile);
+  if (loaded != cutsceneClips.end()) return loaded->second.get();
+  auto path = cutsceneClipPaths.find(animFile);
+  if (path == cutsceneClipPaths.end()) return nullptr;
+  // Parsed here, at the cut, the same way AcquirePrematchStaging does it. A
+  // choreography's clips run to a few megabytes of text, tens of milliseconds
+  // at the moment the camera is cutting anyway. Remembered whether or not it
+  // was usable, so a broken clip is not re-read at every stoppage.
+  auto clip = std::make_shared<Animation>();
+  clip->Load(path->second);
+  if (clip->GetFrameCount() < 2) clip.reset();
+  cutsceneClips[animFile] = clip;
+  Log(e_Notice, "Match", "CutsceneClip",
+      animFile + (clip ? ": " + int_to_str(clip->GetFrameCount()) + " frames" : ": unusable"));
+  return clip.get();
 }
 
 void Match::StartCutsceneChoreo(const std::string& category) {
@@ -2283,13 +2302,13 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   };
 
   for (const auto& slot : activeCutsceneChoreo->GetSlots()) {
-    auto clip = cutsceneClips.find(slot.animFile);
-    if (clip == cutsceneClips.end()) continue;
+    Animation* clip = CutsceneClip(slot.animFile);
+    if (!clip) continue;
 
     Player* cast = nullptr;
     if (slot.role == e_ChoreoRole_Official) {
       if (PlayerOfficial* official = OfficialForCutscene()) {
-        cutsceneOfficialCast.push_back({official, &slot, clip->second.get()});
+        cutsceneOfficialCast.push_back({official, &slot, clip});
         continue;
       }
     } else if (slot.role == e_ChoreoRole_Primary && take(cutscenePrimary)) {
@@ -2316,7 +2335,7 @@ void Match::StartCutsceneChoreo(const std::string& category) {
       cast = *nearest;
       available.erase(nearest);
     }
-    cutsceneCast.push_back({cast, &slot, clip->second.get()});
+    cutsceneCast.push_back({cast, &slot, clip});
   }
 }
 
