@@ -96,4 +96,10 @@ void EntranceChoreo::Sample(const ChoreoSlot& slot, float elapsedFrame,
   yaw = a.yaw + (b.yaw - a.yaw) * bias;
 }
 
+int EntranceChoreo::GetLastFrame() const {
+  int last = 0;
+  for (const ChoreoSlot& slot : slots) last = std::max(last, slot.phaseFrames + slot.cycleFrames);
+  return last;
+}
+
 }  // namespace blunted

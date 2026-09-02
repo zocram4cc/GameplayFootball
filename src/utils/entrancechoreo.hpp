@@ -68,8 +68,19 @@ public:
   void Sample(const ChoreoSlot& slot, float elapsedFrame, Vector3& position,
               radian& yaw, int& animFrame) const;
 
+  // The pack's own name - the .chor's stem - so a goal celebration chosen by
+  // name (celebrations.txt) can find the choreography PES shot it with.
+  void SetName(const std::string& value) { name = value; }
+  const std::string& GetName() const { return name; }
+
+  // The last frame any slot is still performing: the slowest slot's entrance plus
+  // one cycle of its clip, on the 10 ms grid. What a cutscene built on this
+  // choreography runs for.
+  int GetLastFrame() const;
+
 private:
   std::vector<ChoreoSlot> slots;
+  std::string name;
 };
 
 }  // namespace blunted
