@@ -10,9 +10,16 @@
 // out why an imported model is missing geometry.
 //
 //   gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R] [--wireframe]
+//   gfviewer --cutscene <pack.chor> [--camtrack <track>] [--body <model>] --shots N --out DIR
 //
 // With --shots it writes N stills round a turntable and exits, which is what a
 // headless machine needs; without, it opens a window and orbits with the mouse.
+//
+// --cutscene plays a PES choreography the way the match does - every slot cast on a
+// skinned body, posed by its own clip at its own phase, and the camera driven by the
+// .camtrack that filmed it - and spreads the N stills across its whole length. That is
+// how a celebration whose actors lie down, or whose second half never comes, is
+// looked at without waiting for a goal.
 //
 // The stills go to --out as raw RGBA at the context size, through the same recording
 // path the game records a showcase through, so ffmpeg turns them into PNGs:
@@ -35,6 +42,9 @@
 
 #include "utils/cloth.hpp"
 #include <vector>
+#include "utils/camtrack.hpp"
+#include "utils/entrancechoreo.hpp"
+#include "viewer/skinnedviewer.hpp"
 
 #include "base/log.hpp"
 #include "base/math/vector3.hpp"
@@ -129,6 +139,14 @@ struct Options {
   // Which meshes are the cloth, by a substring of their texture's name - the
   // same test the match uses to tell netting from woodwork.
   std::string clothTexture = "goalnetting";
+  // Play a PES choreography instead of showing a model: the .chor, the camera
+  // that filmed it (a sibling named after it when not given) and the body every
+  // actor is cast on.
+  std::string cutscene;
+  std::string camtrack;
+  std::string body = "media/objects/players/models/fullbody.ase";
+  // PES's camera as authored, without the match's re-aim at the primary actor.
+  bool authoredCamera = false;
 };
 
 Options Parse(int argc, const char** argv) {
@@ -143,6 +161,10 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--wireframe") options.wireframe = true;
     else if (arg == "--cloth") options.cloth = true;
     else if (arg == "--cloth-texture" && hasNext) options.clothTexture = argv[++i];
+    else if (arg == "--cutscene" && hasNext) options.cutscene = argv[++i];
+    else if (arg == "--camtrack" && hasNext) options.camtrack = argv[++i];
+    else if (arg == "--body" && hasNext) options.body = argv[++i];
+    else if (arg == "--authored-camera") options.authoredCamera = true;
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -509,10 +531,276 @@ class ClothShotTask : public IUserTask {
   std::string out;
 };
 
+// One PES choreography, played the way the match plays it and nothing else around it.
+//
+// Every slot is cast on a skinned body and posed by its own clip through
+// EntranceChoreo::Sample - the same call the match makes for its cutscene cast, so a
+// phase offset, a loop or a mark that is wrong here is wrong in the match too. The
+// camera is the .camtrack that filmed the performance, applied the way
+// Match::UpdateIngameCamera applies it: position on the node, rotation on the camera.
+// Without one the camera frames the cast from the side, which is what a choreography
+// PES never shot (the offsides) gets in a match as well.
+//
+// The N shots are spread evenly over the whole thing - the longer of the camera and
+// the slowest actor to finish his first cycle - so the last still is the end of the
+// performance, and "the second half never comes" is a question the sheet answers.
+struct CutsceneActor {
+  const ChoreoSlot* slot = nullptr;
+  std::unique_ptr<ViewerSkinnedModel> body;
+  std::unique_ptr<Animation> clip;
+};
+
+class CutsceneTask : public IUserTask {
+ public:
+  CutsceneTask(const EntranceChoreo* choreo, std::vector<CutsceneActor>* cast,
+               const CamTrack* track, boost::intrusive_ptr<Node> cameraNode,
+               boost::intrusive_ptr<Camera> camera, const ViewerCamera::Shot& fallback,
+               float duration_ms, int frames, bool authoredCamera, const std::string& out)
+      : choreo(choreo), cast(cast), track(track), cameraNode(cameraNode), camera(camera),
+        fallback(fallback), duration_ms(duration_ms), frames(frames),
+        authoredCamera(authoredCamera), out(out) {}
+
+  void GetPhase() override {}
+  void ProcessPhase() override {}
+
+  void PutPhase() override {
+    // The same warm-up the turntable needs, for the same reasons (TurntableTask).
+    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    const bool framesReady = warmup >= TurntableTask::kWarmupFrames;
+    const bool clockReady = EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
+                            TurntableTask::kWarmupMilliseconds;
+    if (!framesReady || !clockReady) {
+      warmup++;
+      Pose(0.0f);
+      if (framesReady && clockReady) StartFrameRecording(out);
+      return;
+    }
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
+      return;
+    }
+    const int steps = std::max(1, frames);
+    // The last shot lands on the last moment, not one step short of it.
+    const float t_ms = steps > 1 ? duration_ms * std::min(drawn, steps - 1) / (steps - 1) : 0.0f;
+    Pose(t_ms);
+    drawn++;
+    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
+      EnvironmentManager::GetInstance().SignalQuit();
+  }
+
+  std::string GetName() const override { return "cutscene"; }
+
+ private:
+  void Pose(float t_ms) {
+    Vector3 primary;
+    bool havePrimary = false;
+    for (CutsceneActor& actor : *cast) {
+      Vector3 position;
+      radian yaw = 0.0f;
+      int animFrame = 0;
+      // Choreography keys sit on the 10 ms frame grid the match ticks on.
+      choreo->Sample(*actor.slot, t_ms / 10.0f, position, yaw, animFrame);
+      actor.body->PoseChoreo(actor.clip.get(), animFrame, position, yaw);
+      if (!havePrimary || actor.slot->role == e_ChoreoRole_Primary) {
+        primary = position;
+        havePrimary = true;
+      }
+    }
+    if (track && track->GetFrameCount() > 0) {
+      // 30 fps on the camera side, as canm_to_camtrack.py wrote it - and by the
+      // montage timeline, not by row: a goal track is several cuts concatenated,
+      // each numbered from its own start, and Sample() blends across the cut points
+      // (Match::UpdateIngameCamera says the same, at length).
+      CamTrackFrame frame = track->SampleTimeline(t_ms * 0.03f);
+      // What the match does with a goal camera, so the viewer predicts the match:
+      // the authored aim is a couple of degrees off the choreography's own mark on
+      // a lens of a few degrees, and the match re-aims at the primary actor's head
+      // with the same guard (Match::UpdateIngameCamera, RetargetCamTrackFrame).
+      // --authored-camera shows PES's aim untouched, which is how that offset was
+      // measured in the first place.
+      if (!authoredCamera && havePrimary)
+        frame = RetargetCamTrackFrame(
+            frame, {primary.coords[0], primary.coords[1], primary.coords[2] + 1.0f}, 1.5f, 0.15f);
+      cameraNode->SetPosition(Vector3(frame.position[0], frame.position[1], frame.position[2]));
+      cameraNode->SetRotation(QUATERNION_IDENTITY);
+      Quaternion rotation;
+      rotation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
+      camera->SetRotation(rotation);
+      camera->SetFOV(frame.fov);
+      camera->SetCapping(std::max(0.1f, frame.nearPlane), frame.farPlane);
+      return;
+    }
+    const std::array<float, 3> eye = ViewerCamera::Position(fallback);
+    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
+    Quaternion yaw;
+    yaw.SetAngleAxis(fallback.yaw, Vector3(0, 0, 1));
+    cameraNode->SetRotation(yaw);
+    Quaternion pitch;
+    pitch.SetAngleAxis(0.5f * pi - fallback.pitch, Vector3(1, 0, 0));
+    camera->SetRotation(pitch);
+    camera->SetFOV(fallback.fov);
+  }
+
+  const EntranceChoreo* choreo;
+  std::vector<CutsceneActor>* cast;
+  const CamTrack* track;
+  boost::intrusive_ptr<Node> cameraNode;
+  boost::intrusive_ptr<Camera> camera;
+  ViewerCamera::Shot fallback;
+  float duration_ms;
+  int frames = 0;
+  int drawn = 0;
+  int warmup = 0;
+  unsigned long warmupStart_ms = 0;
+  bool recording = false;
+  bool authoredCamera = false;
+  std::string out;
+};
+
+// Loads a choreography, its camera and its cast, and plays it to `out`. Returns the
+// process exit code; everything it made is torn down before it returns.
+int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
+  std::ifstream chorFile(options.cutscene);
+  EntranceChoreo choreo;
+  if (!chorFile.good() || !choreo.Load(chorFile)) {
+    std::cout << "could not read choreography " << options.cutscene << "\n";
+    return 2;
+  }
+  const std::filesystem::path chorPath(options.cutscene);
+  const std::filesystem::path dir = chorPath.parent_path();
+
+  // The camera: named, or the first sibling that shares the choreography's stem -
+  // goal_2018_run_30_banzai.chor is filmed by goal_2018_run_30_banzai_Z_fromL.camtrack.
+  std::string camtrackPath = options.camtrack;
+  if (camtrackPath.empty()) {
+    std::vector<std::string> candidates;
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+      if (entry.path().extension() != ".camtrack") continue;
+      if (entry.path().stem().string().rfind(chorPath.stem().string(), 0) == 0)
+        candidates.push_back(entry.path().string());
+    }
+    std::sort(candidates.begin(), candidates.end());
+    if (!candidates.empty()) camtrackPath = candidates.front();
+  }
+  CamTrack track;
+  bool haveTrack = false;
+  if (!camtrackPath.empty()) {
+    std::ifstream trackFile(camtrackPath);
+    haveTrack = trackFile.good() && track.Load(trackFile) && track.GetFrameCount() > 0;
+    if (!haveTrack) std::cout << "could not read camera " << camtrackPath << "\n";
+  }
+
+  // The cast. Each slot is its own body so no two actors share a vertex buffer.
+  std::vector<CutsceneActor> cast;
+  float castEnd_ms = 0.0f;
+  for (const ChoreoSlot& slot : choreo.GetSlots()) {
+    CutsceneActor actor;
+    actor.slot = &slot;
+    actor.clip.reset(new Animation());
+    const std::string clipPath = (dir / slot.animFile).string();
+    if (!std::filesystem::exists(clipPath)) {
+      std::cout << "slot " << slot.slot << ": no clip at " << clipPath << "\n";
+      continue;
+    }
+    actor.clip->Load(clipPath);
+    actor.body.reset(new ViewerSkinnedModel());
+    if (!actor.body->Load(options.body, scene3D, "actor" + int_to_str(slot.slot))) {
+      std::cout << "slot " << slot.slot << ": could not cast a body from " << options.body << "\n";
+      return 2;
+    }
+    // One cycle at the match's 10 ms grid, after the slot's own entrance.
+    castEnd_ms = std::max(castEnd_ms, (slot.phaseFrames + slot.cycleFrames) * 10.0f);
+    std::cout << "slot " << slot.slot << "  " << slot.animFile << "  " << actor.clip->GetFrameCount()
+              << " frames, phase " << slot.phaseFrames << ", cycle " << slot.cycleFrames
+              << (slot.loop ? ", loops" : "") << "\n";
+    cast.push_back(std::move(actor));
+  }
+  if (cast.empty()) {
+    std::cout << "nobody to cast: " << options.cutscene << " names no clip that exists\n";
+    return 2;
+  }
+  const float cameraEnd_ms = haveTrack ? track.GetTimelineFrameCount() / 30.0f * 1000.0f : 0.0f;
+  const float duration_ms = std::max(castEnd_ms, cameraEnd_ms);
+  std::cout << options.cutscene << ": " << cast.size() << " actor(s), camera "
+            << (haveTrack ? camtrackPath : std::string("none - framing the cast")) << ", "
+            << cameraEnd_ms / 1000.0f << " s of camera, " << castEnd_ms / 1000.0f
+            << " s of choreography\n";
+
+  // Where the cast stands at the start, for the fallback framing and the lamp.
+  Vector3 low(1e9f, 1e9f, 0.0f), high(-1e9f, -1e9f, 2.0f);
+  for (const CutsceneActor& actor : cast) {
+    for (const ChoreoKey& key : actor.slot->keys) {
+      low.coords[0] = std::min(low.coords[0], key.x);
+      low.coords[1] = std::min(low.coords[1], key.y);
+      high.coords[0] = std::max(high.coords[0], key.x);
+      high.coords[1] = std::max(high.coords[1], key.y);
+    }
+  }
+  const ViewerCamera::Shot fallback = ViewerCamera::Frame(
+      {low.coords[0] - 1.0f, low.coords[1] - 1.0f, 0.0f},
+      {high.coords[0] + 1.0f, high.coords[1] + 1.0f, 2.0f}, options.fov);
+
+  boost::intrusive_ptr<Camera> camera = boost::static_pointer_cast<Camera>(
+      ObjectFactory::GetInstance().CreateObject("camera", e_ObjectType_Camera));
+  scene3D->CreateSystemObjects(camera);
+  camera->Init();
+  camera->SetFOV(fallback.fov);
+  camera->SetCapping(0.2f, 400.0f);
+  boost::intrusive_ptr<Node> cameraNode(new Node("cameraNode"));
+  cameraNode->AddObject(camera);
+  scene3D->AddNode(cameraNode);
+
+  // A high lamp over the stage, the way the sun sits over a pitch.
+  boost::intrusive_ptr<Light> light = boost::static_pointer_cast<Light>(
+      ObjectFactory::GetInstance().CreateObject("light", e_ObjectType_Light));
+  scene3D->CreateSystemObjects(light);
+  light->SetColor(Vector3(1.0f, 1.0f, 1.0f));
+  light->SetRadius(120.0f);
+  light->SetType(e_LightType_Point);
+  light->SetShadow(false);
+  boost::intrusive_ptr<Node> lightNode(new Node("lightNode"));
+  lightNode->AddObject(light);
+  lightNode->SetPosition(Vector3((low.coords[0] + high.coords[0]) * 0.5f - 8.0f,
+                                (low.coords[1] + high.coords[1]) * 0.5f - 8.0f, 18.0f));
+  scene3D->AddNode(lightNode);
+
+  if (options.shots > 0) {
+    std::shared_ptr<IUserTask> driver(new CutsceneTask(&choreo, &cast, haveTrack ? &track : nullptr,
+                                                       cameraNode, camera, fallback, duration_ms,
+                                                       options.shots, options.authoredCamera,
+                                                       options.out));
+    // Paced, unlike the turntable: the recorder samples the presented frame at 60 Hz
+    // and a skinned cast draws fast enough that an unpaced run put three frames of
+    // sixteen in the file. Forty milliseconds a frame keeps every shot.
+    std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 40, true));
+    sequence->AddUserTaskEntry(driver, e_TaskPhase_Put);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Process);
+    sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Put);
+    GetScheduler()->RegisterTaskSequence(sequence);
+    Run();
+    StopFrameRecording();
+    std::cout << "drew frames to " << options.out << "; the first " << TurntableTask::kRecorderLeadIn
+              << " are pipeline lead-in, the last " << options.shots << " span 0 to "
+              << duration_ms / 1000.0f << " s\n";
+    sequence.reset();
+  }
+
+  lightNode->Exit();
+  lightNode.reset();
+  cameraNode->Exit();
+  cameraNode.reset();
+  cast.clear();
+  return 0;
+}
+
 int main(int argc, const char** argv) {
   const Options options = Parse(argc, argv);
-  if (options.model.empty()) {
-    std::cout << "gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R]\n";
+  if (options.model.empty() && options.cutscene.empty()) {
+    std::cout << "gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R]\n"
+              << "gfviewer --cutscene <pack.chor> [--camtrack T] [--body M] --shots N --out DIR\n";
     return 1;
   }
 
@@ -536,6 +824,17 @@ int main(int argc, const char** argv) {
   std::shared_ptr<Scene3D> scene3D(new Scene3D("scene3D"));
   viewerScene3D = scene3D;
   SceneManager::GetInstance().RegisterScene(scene3D);
+
+  if (!options.cutscene.empty()) {
+    const int code = PlayCutscene(options, scene3D);
+    viewerScene3D.reset();
+    scene3D.reset();
+    viewerScene2D.reset();
+    delete viewerConfig;
+    viewerConfig = nullptr;
+    Exit();
+    return code;
+  }
 
   ObjectLoader loader;
   std::string scratchWrapper;
