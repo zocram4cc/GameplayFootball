@@ -670,19 +670,31 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
   const std::filesystem::path chorPath(options.cutscene);
   const std::filesystem::path dir = chorPath.parent_path();
 
-  // The camera: named, or the first sibling that shares the choreography's stem -
-  // goal_2018_run_30_banzai.chor is filmed by goal_2018_run_30_banzai_Z_fromL.camtrack.
+  // The camera: named, or the sibling whose name shares the most with the
+  // choreography's. PES pairs them by a common stem with different tails -
+  // goal_2018_run_30_banzai.chor / goal_2018_run_30_banzai_Z_fromL.camtrack,
+  // tu_full_01_glad_pl_away.chor / tu_full_01_glad_cam.camtrack - so a plain
+  // prefix test found the first and missed the second. Ties go to the first name
+  // in order, which is the "_L"/"_fromL" angle where there are two.
   std::string camtrackPath = options.camtrack;
   if (camtrackPath.empty()) {
+    const std::string stem = chorPath.stem().string();
     std::vector<std::string> candidates;
     std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-      if (entry.path().extension() != ".camtrack") continue;
-      if (entry.path().stem().string().rfind(chorPath.stem().string(), 0) == 0)
-        candidates.push_back(entry.path().string());
-    }
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+      if (entry.path().extension() == ".camtrack") candidates.push_back(entry.path().string());
     std::sort(candidates.begin(), candidates.end());
-    if (!candidates.empty()) camtrackPath = candidates.front();
+    size_t best = 0;
+    for (const std::string& candidate : candidates) {
+      const std::string other = std::filesystem::path(candidate).stem().string();
+      size_t shared = 0;
+      while (shared < stem.size() && shared < other.size() && stem[shared] == other[shared]) shared++;
+      // Enough of a name to mean the same pack, not just the same category.
+      if (shared > best && shared >= 8) {
+        best = shared;
+        camtrackPath = candidate;
+      }
+    }
   }
   CamTrack track;
   bool haveTrack = false;
