@@ -459,10 +459,16 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       LoadCutsceneChoreo(category, dir);
       if (!cutscenePools[category].empty()) loadedPools++;
     }
+    // The goal celebrations are choreographies too - PES stages the scorer's run
+    // and his teammates arriving alongside the camera that films it (406 of 534
+    // packs cast two to eleven actors) - and a goal plays its chosen one by name
+    // (StartGoalCast). Their clips are parsed at the cut like everyone else's.
+    LoadCutsceneChoreo("goal", "media/cutscenes/goal");
     if (loadedPools > 0)
       Log(e_Notice, "Match", "Match",
           "Loaded stoppage cutscene pools for " + int_to_str(loadedPools) +
-              " categories");
+              " categories, " + int_to_str((int)cutsceneChoreoPools["goal"].size()) +
+              " goal choreographies");
     // What each pool actually holds, measured rather than assumed
     // ("debug_cutscene_report"). See onthepitch/cutsceneviewer.hpp - camerawork
     // and actor choreography have been confused for one another more than once.
@@ -2201,6 +2207,7 @@ void Match::LoadCutsceneChoreo(const std::string& category, const std::string& d
     std::ifstream file(entry.path());
     EntranceChoreo choreo;
     if (!file.good() || !choreo.Load(file)) continue;
+    choreo.SetName(entry.path().stem().string());
     // The clips sit in an anims/ directory next to the choreography. Only their
     // presence is checked here: parsing them all took seven seconds of every
     // launch for clips a match mostly never plays. CutsceneClip() parses one the
@@ -2338,9 +2345,133 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   }
 }
 
+const EntranceChoreo* Match::FindGoalChoreo(const std::string& celebration) const {
+  auto pool = cutsceneChoreoPools.find("goal");
+  if (pool == cutsceneChoreoPools.end()) return nullptr;
+  // celebrations.txt names the performance ("celebrate_0057",
+  // "goal_2018_run_30_pointF"); the pack on disk is that name with PES's "goal_"
+  // in front where it was missing, sometimes with a tail ("goal_celebrate_0057_base").
+  // Exact first, then the plain prefixed form, then the first tailed one in order.
+  const std::string prefixed =
+      celebration.compare(0, 5, "goal_") == 0 ? celebration : "goal_" + celebration;
+  const EntranceChoreo* tailed = nullptr;
+  for (const EntranceChoreo& choreo : pool->second) {
+    const std::string& name = choreo.GetName();
+    if (name == celebration || name == prefixed) return &choreo;
+    if (!tailed && name.size() > prefixed.size() && name.compare(0, prefixed.size(), prefixed) == 0 &&
+        name[prefixed.size()] == '_')
+      tailed = &choreo;
+  }
+  return tailed;
+}
+
+bool Match::StartGoalCast(const std::string& celebration) {
+  // A stoppage cutscene already staging people keeps them.
+  if (activeCutsceneChoreo || !lastGoalScorer || lastGoalTeamID < 0) return false;
+  const EntranceChoreo* choreo = FindGoalChoreo(celebration);
+  if (!choreo) return false;
+
+  cutsceneCast.clear();
+  cutsceneOfficialCast.clear();
+  activeCutsceneChoreo = choreo;
+  activeCutsceneCategory = "goal";
+  cutscenePrimary = lastGoalScorer;
+  cutsceneOpponent = nullptr;
+
+  // The scorer takes the primary mark. The rest are his own teammates, nearest
+  // to where each mark will be once the staging is put down - PES casts the men
+  // who ran to join him, and nobody from the side that conceded.
+  std::vector<Player*> available;
+  teams[lastGoalTeamID]->GetActivePlayers(available);
+  available.erase(std::remove(available.begin(), available.end(), lastGoalScorer), available.end());
+  const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
+  auto staged = [&](const Vector3& local) {
+    return Vector3(goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
+                   goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
+  };
+  for (const auto& slot : choreo->GetSlots()) {
+    if (slot.role == e_ChoreoRole_Official || slot.role == e_ChoreoRole_Opponent) continue;
+    Animation* clip = CutsceneClip(slot.animFile);
+    if (!clip) continue;
+    Player* cast = nullptr;
+    if (slot.role == e_ChoreoRole_Primary) {
+      cast = lastGoalScorer;
+    } else {
+      if (available.empty()) continue;
+      Vector3 mark;
+      radian yaw = 0;
+      int animFrame = 0;
+      choreo->Sample(slot, 0.0f, mark, yaw, animFrame);
+      const Vector3 world = staged(mark);
+      auto nearest = available.begin();
+      float bestDistance = (*nearest)->GetPosition().GetDistance(world);
+      for (auto iter = available.begin(); iter != available.end(); iter++) {
+        const float distance = (*iter)->GetPosition().GetDistance(world);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          nearest = iter;
+        }
+      }
+      cast = *nearest;
+      available.erase(nearest);
+    }
+    cutsceneCast.push_back({cast, &slot, clip});
+  }
+  if (cutsceneCast.empty()) {
+    EndGoalCast();
+    return false;
+  }
+  Log(e_Notice, "Match", "StartGoalCast",
+      choreo->GetName() + ": " + int_to_str((int)cutsceneCast.size()) + " of " +
+          int_to_str((int)choreo->GetSlots().size()) + " marks cast, runs " +
+          int_to_str(choreo->GetLastFrame() * 10) + " ms");
+  return true;
+}
+
+void Match::EndGoalCast() {
+  if (!GoalCastActive()) return;
+  // Stop feeding poses and the humanoids hand themselves back from where the
+  // choreography left them (HumanoidBase::ProcessChoreo).
+  activeCutsceneChoreo = nullptr;
+  activeCutsceneCategory.clear();
+  cutsceneCast.clear();
+  cutsceneOfficialCast.clear();
+  cutscenePrimary = nullptr;
+  cutsceneOpponent = nullptr;
+}
+
 void Match::UpdateCutsceneChoreo() {
   if (!activeCutsceneChoreo)
     return;
+  if (GoalCastActive()) {
+    // A goal's cast runs on the celebration's clock, not a stoppage cutscene's,
+    // so it shares its zero with the camera montage (SampleTimeline off the same
+    // timer) and ends when the celebration does.
+    if (!IsGoalScored() || goalScoredTimer >= goalCelebrationLength_ms) {
+      EndGoalCast();
+      return;
+    }
+    const float elapsedFrame = goalScoredTimer * 0.1f;  // 10 ms frames
+    // Staged where the goal camera is staged: PES authored the performance and
+    // its camera in one space with the scorer's run target at the origin, and
+    // StageCamTrackFrame turns the camera by goalCelebrationYaw and moves it to
+    // goalCelebrationSubject. The cast gets the same turn and the same move, or
+    // the camera films where they are not. A player at yaw a faces (sin a,
+    // -cos a), so turning the frame by the yaw is adding it.
+    const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
+    for (auto& cast : cutsceneCast) {
+      Vector3 local;
+      radian yaw = 0;
+      int animFrame = 0;
+      activeCutsceneChoreo->Sample(*cast.slot, elapsedFrame, local, yaw, animFrame);
+      const Vector3 world(
+          goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
+          goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
+      cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
+                                                 yaw + goalCelebrationYaw);
+    }
+    return;
+  }
   // The choreography lives as long as its own clock, not as long as a camera track.
   // Tearing it down whenever there was no camera threw away every incident PES stages
   // but does not film - all seven offside packs carry zero camera frames - one frame
@@ -3856,11 +3987,21 @@ void Match::UpdateIngameCamera() {
           goalCelebrationLength_ms =
               GoalSequence::CelebrationLength_ms(
                   GoalCelebration::CelebrationTotal_ms(introFrames, loopFrames));
+          // The performance as PES staged it, if it shipped a choreography: the
+          // scorer's run and his teammates' arrival, for as long as the slowest
+          // of them is still performing. That is the second half a celebration
+          // played on the spot never had. Without one, the clip on the spot as
+          // before.
+          if (StartGoalCast(chosen.name)) {
+            goalCelebrationLength_ms = GoalSequence::CelebrationLength_ms(
+                (unsigned long)activeCutsceneChoreo->GetLastFrame() * 10);
+            goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
+          }
           Log(e_Notice, "Match", "UpdateIngameCamera",
               "celebration length: intro " + int_to_str((int)goalCelebrationIntroHold_ms) +
                   " ms, whole performance " + int_to_str((int)goalCelebrationLength_ms) +
                   " ms (intro " + int_to_str(introFrames) + " frames, loop " +
-                  int_to_str(loopFrames) + ")");
+                  int_to_str(loopFrames) + (GoalCastActive() ? ", cast" : "") + ")");
           Log(e_Notice, "Match", "UpdateIngameCamera",
               "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), " +
                   (assigned.empty() ? "drawn for" : "assigned to") + " player " + scorer +
@@ -3914,10 +4055,15 @@ void Match::UpdateIngameCamera() {
       // 0.77 m of him on purpose, and a 0.75 m half-height forces that to 5 degrees
       // and a full body. At 0.15 m PES's lens survives on 99.6% of the library's
       // 472,077 frames, and the guard only fires where even a face would not fit.
+      // With the performance cast, the scorer is running PES's own root track
+      // through the shot rather than standing at the subject, and the pan that
+      // used to film the stand behind him is now following him. The guard then
+      // has to follow him too, or it fights the pan by pulling the aim back to a
+      // mark he left.
+      const Vector3 aimAt = GoalCastActive() && cutscenePrimary ? cutscenePrimary->GetPosition()
+                                                                 : subject;
       frame = RetargetCamTrackFrame(
-          frame,
-          {subject.coords[0], subject.coords[1], subject.coords[2] + 1.0f},
-          1.5f, 0.15f);
+          frame, {aimAt.coords[0], aimAt.coords[1], aimAt.coords[2] + 1.0f}, 1.5f, 0.15f);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
       cameraNodeOrientation = QUATERNION_IDENTITY;

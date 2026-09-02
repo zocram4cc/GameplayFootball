@@ -210,10 +210,12 @@ public:
   // actually sits through.
   bool IsInEntrance() const { return entranceActive; }
   // Whether a camera other than the match camera has the picture: the walkout,
-  // a stoppage cutscene, a replay, the closing ceremony. In-world chrome - the
-  // name over a player's head - has no business in any of those shots.
+  // a stoppage cutscene, a goal celebration, a replay, the closing ceremony.
+  // In-world chrome - the name over a player's head - has no business in any of
+  // those shots.
   bool IsStaged() const {
-    return entranceActive || activeCutscene != nullptr || hudSuppressed || gameOver;
+    return entranceActive || activeCutscene != nullptr || goalScored || hudSuppressed ||
+           gameOver;
   }
   // How far into the presentation we are, in real seconds.
   float GetEntranceElapsedSeconds() const;
@@ -704,6 +706,19 @@ protected:
   void LoadCutsceneChoreo(const std::string& category, const std::string& dir);
   void StartCutsceneChoreo(const std::string& category);
   void UpdateCutsceneChoreo();
+  // A goal celebration as PES stages it: the chosen performance's own
+  // choreography, the scorer on its primary mark and his teammates on the rest,
+  // played at goalCelebrationSubject turned by goalCelebrationYaw - the same
+  // staging the goal camera gets (StageCamTrackFrame) - and timed off
+  // goalScoredTimer so the cast and the camera montage share their zero.
+  // False when no choreography was shot for that celebration, and the scorer
+  // performs it on the spot as before.
+  bool StartGoalCast(const std::string& celebration);
+  const EntranceChoreo* FindGoalChoreo(const std::string& celebration) const;
+  bool GoalCastActive() const {
+    return activeCutsceneChoreo != nullptr && activeCutsceneCategory == "goal";
+  }
+  void EndGoalCast();
 
 public:
   // The people an incident involved, so its cutscene can be cast with them:
