@@ -2291,20 +2291,46 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   if (CutsceneViewer::AnchorsAtIncident(category))
     activeStagingAnchoring = CutsceneViewer::Anchoring::IncidentLocal;
 
-  // Cast by role first - the incident's own people take their marks - then
-  // fill the remaining marks with whoever stands nearest them.
-  std::vector<Player*> available;
-  for (int teamID = 0; teamID < 2; teamID++) {
-    std::vector<Player*> squad;
-    teams[teamID]->GetActivePlayers(squad);
-    for (Player* player : squad) available.push_back(player);
-  }
-  auto take = [&available](Player* player) {
+  // Cast by role first - the incident's own people take their marks - then fill
+  // the remaining marks from the side each mark belongs to, nearest man first.
+  //
+  // PES puts the team in the slot number: 0-10 are the home XI, 11-21 the away
+  // XI, 22 and up the officials (tools/pes21_import/entrance_pl.py). The
+  // exporter reads the base clip's slot as the primary and everyone on his side
+  // as an extra, everyone on the other as an opponent. So a warning's two
+  // protesters (foul_cmn_card_w02: slots 2 and 3 beside a primary on 1) are the
+  // booked man's own teammates, and a mark on the far side is somebody from the
+  // team he fouled. Filled by distance alone, an opponent who happened to be
+  // standing closest protested the booking arm in arm with the man who earned it.
+  // The primary's team is the side his slot is on; failing a primary, whichever
+  // side the opponent is not.
+  std::vector<Player*> squads[2];
+  for (int teamID = 0; teamID < 2; teamID++) teams[teamID]->GetActivePlayers(squads[teamID]);
+  int primaryTeam = -1;
+  int primarySlot = -1;
+  for (const auto& slot : activeCutsceneChoreo->GetSlots())
+    if (slot.role == e_ChoreoRole_Primary) primarySlot = slot.slot;
+  if (cutscenePrimary)
+    primaryTeam = cutscenePrimary->GetTeamID();
+  else if (cutsceneOpponent)
+    primaryTeam = 1 - cutsceneOpponent->GetTeamID();
+  auto sideOf = [&](const ChoreoSlot& slot) {
+    // Same XI as the primary's slot, or the other one; with no primary to
+    // anchor on, the slot numbers speak for themselves.
+    const bool primarySide = primarySlot >= 0 ? (slot.slot >= 11) == (primarySlot >= 11)
+                                              : slot.slot < 11;
+    if (primaryTeam < 0) return primarySide ? 0 : 1;
+    return primarySide ? primaryTeam : 1 - primaryTeam;
+  };
+  auto take = [&squads](Player* player) {
     if (!player) return false;
-    auto at = std::find(available.begin(), available.end(), player);
-    if (at == available.end()) return false;
-    available.erase(at);
-    return true;
+    for (int teamID = 0; teamID < 2; teamID++) {
+      auto at = std::find(squads[teamID].begin(), squads[teamID].end(), player);
+      if (at == squads[teamID].end()) continue;
+      squads[teamID].erase(at);
+      return true;
+    }
+    return false;
   };
 
   for (const auto& slot : activeCutsceneChoreo->GetSlots()) {
@@ -2324,14 +2350,15 @@ void Match::StartCutsceneChoreo(const std::string& category) {
     }
 
     if (!cast) {
-      if (available.empty()) continue;
+      std::vector<Player*>& side = squads[sideOf(slot)];
+      if (side.empty()) continue;
       Vector3 mark;
       radian yaw = 0;
       int animFrame = 0;
       activeCutsceneChoreo->Sample(slot, 0.0f, mark, yaw, animFrame);
-      auto nearest = available.begin();
+      auto nearest = side.begin();
       float bestDistance = (*nearest)->GetPosition().GetDistance(mark);
-      for (auto iter = available.begin(); iter != available.end(); iter++) {
+      for (auto iter = side.begin(); iter != side.end(); iter++) {
         const float distance = (*iter)->GetPosition().GetDistance(mark);
         if (distance < bestDistance) {
           bestDistance = distance;
@@ -2339,7 +2366,7 @@ void Match::StartCutsceneChoreo(const std::string& category) {
         }
       }
       cast = *nearest;
-      available.erase(nearest);
+      side.erase(nearest);
     }
     cutsceneCast.push_back({cast, &slot, clip});
   }
