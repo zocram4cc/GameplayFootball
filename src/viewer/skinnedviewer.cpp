@@ -21,8 +21,26 @@ namespace blunted {
 ViewerSkinnedModel::~ViewerSkinnedModel() {
   for (auto* p : uniqueIndicesVec) delete[] p;
   for (auto& fa : uniqueFullbodyMesh) delete[] fa.data;
-  if (fullbodyTargetNode && fullbodyNode) {
-    fullbodyTargetNode->DeleteNode(fullbodyNode);
+  // Exit() takes a node out of the scene and away from the graphics system that
+  // observes it; a geometry destroyed while still observed aborts with
+  // "Observer(s) still present at destruction time", which is how the viewer
+  // died after drawing everything it was asked for. Same order as main().
+  if (fullbodyTargetNode) {
+    fullbodyTargetNode->Exit();
+    fullbodyTargetNode.reset();
+    fullbodyNode.reset();
+  }
+  if (humanoidNode) {
+    humanoidNode->Exit();
+    humanoidNode.reset();
+  }
+  if (sourceMesh) {
+    sourceMesh->Exit();
+    sourceMesh.reset();
+  }
+  if (sourceSkel) {
+    sourceSkel->Exit();
+    sourceSkel.reset();
   }
 }
 
@@ -55,7 +73,7 @@ static std::string ResolveForViewer(const std::string& model, std::string& scrat
 }
 
 bool ViewerSkinnedModel::Load(const std::string& modelPath,
-                              std::shared_ptr<Scene3D> scene) {
+                              std::shared_ptr<Scene3D> scene, const std::string& postfix) {
   ObjectLoader loader;
   sourceSkel = loader.LoadObject(scene, "media/objects/players/player.object");
   if (!sourceSkel) {
@@ -77,7 +95,7 @@ bool ViewerSkinnedModel::Load(const std::string& modelPath,
   fullbodyTargetNode->SetLocalMode(e_LocalMode_Absolute);
   scene->AddNode(fullbodyTargetNode);
   fullbodyNode =
-      boost::intrusive_ptr<Node>(new Node(*sourceMesh.get(), "skinned", scene));
+      boost::intrusive_ptr<Node>(new Node(*sourceMesh.get(), postfix, scene));
   fullbodyNode->SetLocalMode(e_LocalMode_Absolute);
   fullbodyTargetNode->AddNode(fullbodyNode);
   if (!scratch.empty()) std::filesystem::remove(scratch);

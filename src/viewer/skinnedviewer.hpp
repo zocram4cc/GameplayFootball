@@ -30,7 +30,11 @@ class ViewerSkinnedModel {
   ViewerSkinnedModel() = default;
   ~ViewerSkinnedModel();
 
-  bool Load(const std::string& modelPath, std::shared_ptr<Scene3D> scene);
+  // `postfix` names this body's copy of the mesh in the resource pool. The match
+  // uses the player's id; two bodies cloned under the same name share one copy,
+  // which is one skin for two actors and a crash in the second Prepare.
+  bool Load(const std::string& modelPath, std::shared_ptr<Scene3D> scene,
+            const std::string& postfix = "skinned");
   void Pose(Animation* anim, int frame, Vector3 basePos = Vector3(0),
             radian baseYaw = 0, bool noPos = false);
   void PoseChoreo(Animation* anim, int frame, Vector3 pos, radian yaw);
