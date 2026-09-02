@@ -361,6 +361,13 @@ void ViewerSkinnedModel::PoseChoreo(Animation* anim, int frame, Vector3 pos, rad
       nodeMap[na->nodeName] = dummy;
     }
   }
+  // Wrapped exactly as Humanoid::SetChoreoPose wraps it. A choreography's path
+  // and the clip it plays are different lengths - the path counts on without
+  // wrapping - and a frame off the end of the clip reads whatever is past it: a
+  // survey of thirty celebrations through this viewer showed coaches lying flat
+  // on the grass, and every one of them was this.
+  const int frameCount = anim ? anim->GetFrameCount() : 0;
+  frame = frameCount > 0 ? ((frame % frameCount) + frameCount) % frameCount : 0;
   std::map<std::string, BiasedOffset> offsets;
   anim->Apply(nodeMap, frame, 0, false, 0.0f, pos, yaw, offsets, nullptr, 0, true, true);
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
