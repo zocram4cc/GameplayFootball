@@ -64,6 +64,8 @@ Open:
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
 | 87 | Frame cost of the imported squads | **in progress** — headless runs were on llvmpipe; on the card the engine saturates the 60 fps recorder. Launch to gameplay **28.9 s → 18.6 s**: cutscene clips parsed at the cut, the animation collection parsed on every core. Remaining: players ~5 s, stadium 3.5 s; see below |
+| 90 | Goal celebrations play their whole choreography | **open, diagnosed** — PES's is a cast performance (406 of 534 `.chor`s have 2–11 actors, the scorer's root walks 10 m over 16 s); the match plays his clip on the spot for 9 s with nobody else. Plan in `tasks/02-09-26.md` |
+| 91 | Foul, injury and offside camera beats | **open** — PES21 ships one static card-hold shot for 78 foul packs and no offside camera; the beats to match are the broadcast ones in spec §3.2 (referee push-in, 5–6 s). Montage stoppage tracks are sampled by row, not timeline |
 
 Closed since: **80** (settled on the texture rather than a screenshot — the
 per-corner TVERT work landed and the defect cannot occur as described; see
