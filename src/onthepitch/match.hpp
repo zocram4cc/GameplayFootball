@@ -669,7 +669,14 @@ protected:
   // referee, the scorer and whoever else PES staged on their marks while the
   // imported camerawork films them. Keyed by pool name, like the cameras.
   std::map<std::string, std::vector<EntranceChoreo>> cutsceneChoreoPools;
+  // A clip is parsed the first time a cutscene casts it, not when the pools are
+  // built: the stoppage choreographies reference some 600 MB of .anim text and
+  // a match plays a dozen of them. cutsceneClipPaths holds where each one is;
+  // cutsceneClips holds the ones that have been asked for. CutsceneClip() is
+  // the only way in.
+  std::map<std::string, std::string> cutsceneClipPaths;
   std::map<std::string, std::shared_ptr<Animation>> cutsceneClips;
+  Animation* CutsceneClip(const std::string& animFile);
   const EntranceChoreo* activeCutsceneChoreo = nullptr;
   std::vector<EntranceCastMember> cutsceneCast;
   // the referee is not one of the 22, so his marks are held separately
