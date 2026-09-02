@@ -129,12 +129,18 @@ void Animation::SetKeyFrame(const std::string& nodeName, int frame,
 
   NodeAnimation* nodeAnimation = nullptr;
 
-  // find node
-  int animSize = nodeAnimations.size();
-  for (int i = 0; i < animSize; i++) {
-    if (nodeAnimations.at(i)->nodeName == nodeName) {
-      nodeAnimation = nodeAnimations.at(i);
-      break;
+  // find node. A clip's file sets every key of one node before moving to the
+  // next, so the node asked for is almost always the one asked for last time;
+  // checking it first turns a string compare against every node into one.
+  if (!nodeAnimations.empty() && nodeAnimations.back()->nodeName == nodeName) {
+    nodeAnimation = nodeAnimations.back();
+  } else {
+    int animSize = nodeAnimations.size();
+    for (int i = 0; i < animSize; i++) {
+      if (nodeAnimations.at(i)->nodeName == nodeName) {
+        nodeAnimation = nodeAnimations.at(i);
+        break;
+      }
     }
   }
 
@@ -145,9 +151,11 @@ void Animation::SetKeyFrame(const std::string& nodeName, int frame,
     nodeAnimations.push_back(nodeAnimation);
   }
 
-  // find frame
-  const std::map<int, KeyFrame>::iterator animIter = nodeAnimation->animation.find(frame);
-  if (animIter != nodeAnimation->animation.end()) {
+  // find frame, with one tree descent instead of two: lower_bound lands on the
+  // key if it exists and on the insertion point if it does not.
+  std::map<int, KeyFrame>& animation = nodeAnimation->animation;
+  auto animIter = animation.lower_bound(frame);
+  if (animIter != animation.end() && animIter->first == frame) {
     // change
     animIter->second.orientation = orientation;
     animIter->second.position = position;
@@ -156,7 +164,7 @@ void Animation::SetKeyFrame(const std::string& nodeName, int frame,
     KeyFrame keyFrame;
     keyFrame.orientation = orientation;
     keyFrame.position = position;
-    nodeAnimation->animation.insert(std::pair<int, KeyFrame>(frame, keyFrame));
+    animation.emplace_hint(animIter, frame, keyFrame);
   }
 
   DirtyCache();

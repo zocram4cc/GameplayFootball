@@ -63,7 +63,7 @@ Open:
 | 54 | Match the VGL26 Day 7 reference | pending |
 | 59 | PES's own pitch model and 3D turf | in progress |
 | 76 | Floppy surfaces on one mechanism | in progress — corner flag done; banner and pennant are authored flat and need choreography to attach them to their bearers' hands |
-| 87 | Frame cost of the imported squads | **in progress** — headless runs were on llvmpipe; on the card the engine saturates the 60 fps recorder. Launch to gameplay 28.9 s → 22.7 s by parsing cutscene clips at the cut instead of at launch. Remaining: the 8 s animation parser; see below |
+| 87 | Frame cost of the imported squads | **in progress** — headless runs were on llvmpipe; on the card the engine saturates the 60 fps recorder. Launch to gameplay **28.9 s → 18.6 s**: cutscene clips parsed at the cut, the animation collection parsed on every core. Remaining: players ~5 s, stadium 3.5 s; see below |
 
 Closed since: **80** (settled on the texture rather than a screenshot — the
 per-corner TVERT work landed and the defect cannot occur as described; see
@@ -150,16 +150,28 @@ chase for every one of 20,458 vertices. Not taken: nothing is frame-bound.
 **Load.** A first attribution of this was wrong and is withdrawn: `ts` on a
 block-buffered log timestamps the *flushes*, so every phase landed on the wrong
 line. Line-buffered (`stdbuf -oL`), launch to gameplay divided as follows, and the
-two fixes below took it from **28.9 s to 22.7 s**:
+fixes below took it from **28.9 s to 18.6 s**:
 
 | phase | before | after | what changed |
 |---|---|---|---|
 | menu self-drive | 1.5 s | 1.5 s | |
-| animation collection | ~8 s | ~8 s | 12.5 s before parsing each clip once instead of twice for its mirror |
+| animation collection | ~8 s | **2.8 s** | 12.5 s originally; parsed once per clip instead of twice, then parsed on every core |
 | players, weights, goal cameras | ~5 s | ~5 s | |
 | stoppage cutscene pools | **7.0 s** | **0.6 s** | clips parsed at the cut, not at launch |
 | stadium | 3.5 s | 3.5 s | |
 | pre-match | ~3 s | ~3 s | |
+
+The animation parse went to every core because that is where the cost was, not
+in any one line of it. `perf` had the parser spread across `tokenize`,
+`find_first_of`, `memchr` (once per token - 125 million short calls over a
+gigabyte, which is why a 10 GB/s routine showed at 500 MB/s), `SetKeyFrame`
+and a red-black tree per key. Each was shaved - the token vector is moved not
+copied, `SetKeyFrame` checks the last node first and descends the tree once -
+and none of it moved the clock by more than 0.3 s. `strtod`, the usual suspect,
+was 0.14%. Every clip parses independently of every other, so the parse now
+runs on `hardware_concurrency()` threads with results kept in file order, and
+only `_PrepareAnim`, which walks the shared player node, stays serial. Verified
+by the 1,376-test suite and a recorded match: officials signal, players stride.
 
 The stoppage pools referenced ~600 MB of `.anim` text — 107 foul choreographies
 alone are 284 MB — and parsed all of it at launch for a match that plays perhaps a
@@ -170,14 +182,16 @@ parsed five clips at the cut (552–802 frames each), and the frame shows them
 mid-stride against Namek.
 
 **On caches.** Asked whether an animation cache is necessary: no, and the
-profiler is why. The `.ase` cache that already exists reads and FNV-1a hashes
+profiler is why - and the parallel parse above is the alternative, at a
+fraction of the code and none of the on-disk state. The `.ase` cache that already exists reads and FNV-1a hashes
 **1.41 GB of source on every launch** to validate itself — 0.94 s, measured, and
 it is the single largest named symbol in the load profile. A cache that costs
 that much to trust is not free, and an animation one would cost the same again
 plus a format and its invalidation. The animation parser is slow for reasons that
 need no cache: 453 MB at 55 MB/s through `tokenize` into `vector<string>`,
-string-keyed maps, and a red-black tree per keyframe. The remaining 8 s is that,
-and the work is in the parser, not beside it.
+string-keyed maps, and a red-black tree per keyframe. What is left of it is
+2.8 s across sixteen cores; a zero-allocation tokenizer would take that further,
+and still needs no cache.
 
 ### The model viewer
 

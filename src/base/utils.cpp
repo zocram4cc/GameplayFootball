@@ -178,7 +178,8 @@ void file_to_vector(const std::string& filename, std::vector<std::string>& desti
   while (std::getline(file, line_str)) {
     // remove possible windows CR
     line_str.erase(std::remove(line_str.begin(), line_str.end(), '\r'), line_str.end());
-    destination.push_back(line_str);
+    // handed over rather than copied; getline reuses whatever capacity is left
+    destination.push_back(std::move(line_str));
   }
 
   file.close();
