@@ -2523,7 +2523,14 @@ void Match::UpdateCutsceneChoreo() {
   // but does not film - all seven offside packs carry zero camera frames - one frame
   // after casting it: the assistant was given his flag and dropped again before he
   // could raise it, which is why an offside was never seen.
-  if (!CutscenePlayback::IsPlaying(cutscenePlayback)) {
+  // A stoppage's choreography belongs to the stoppage. Once the whistle has
+  // gone it has to let its cast go, whatever its own clock still says: a posed
+  // player is fed every tick and HumanoidBase::Process returns early while he
+  // is, so he stands frozen in live play - and if he is the one standing over
+  // the ball he is also the nearest man to it, which is the taker everyone else
+  // is waiting for. That is the offside restart where the flagged side's
+  // opponent held the ball and the keeper kicked into him.
+  if (!CutscenePlayback::IsPlaying(cutscenePlayback) || IsInPlay()) {
     activeCutsceneChoreo = nullptr;
     cutsceneAnchorLatched = false;
     cutsceneCast.clear();
@@ -2687,7 +2694,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   // choreography with no camerawork is a cutscene too - it just does not take
   // the camera. With nothing at all to show, there is no cutscene.
   if (!haveCamera && !activeCutsceneChoreo) return;
-  cutsceneEnd_ms = cutsceneStart_ms + (unsigned long)(seconds * 1000.0f);
+  cutsceneEnd_ms = actualTime_ms + (unsigned long)(seconds * 1000.0f);
   // Where this incident happened, decided once and held: everything staged or aimed
   // for the rest of the cutscene is measured from here.
   cutsceneAnchorLatched = false;

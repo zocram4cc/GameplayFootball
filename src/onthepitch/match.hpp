@@ -797,6 +797,12 @@ protected:
   // the match does and can be skipped (CutscenePlayback).
   CutscenePlayback::State cutscenePlayback;
   unsigned long cutsceneStart_ms = 0;
+  // When a running cutscene ends, on the *match* clock, because the only reader
+  // (the goal replay trigger) compares it against actualTime_ms. It used to
+  // inherit cutsceneStart_ms, which is the wall clock since the process
+  // started: once any cutscene had run, the stamp sat ahead of the match clock
+  // by every menu, load and pause, so the trigger waited on a moment that never
+  // arrived and the goal replay was lost. 0 when nothing is playing.
   unsigned long cutsceneEnd_ms = 0;
 
  public:

@@ -80,6 +80,29 @@ constexpr unsigned long kMaxWait_ms = 6000;
 
 bool MayRestart(int intruders, unsigned long waited_ms);
 
+// An offside is staged like a foul: the flag, the complaint, and only then the
+// restart. It kept upstream's two seconds to prepare and four to take while
+// starting a seven-second choreography over the top, so ResetSituation
+// teleported everyone into their restart positions two seconds in and the
+// whistle went at four - with three seconds of choreography still posing the
+// cast in live play. A cast opponent standing on the ball is then the nearest
+// man to it, so he is the taker the keeper is waiting for, and he cannot move
+// (Match::UpdateCutsceneChoreo feeds him until the clip ends).
+//
+// One number, read by both the referee's schedule and the StartCutscene call,
+// so they cannot drift apart again.
+constexpr unsigned long kOffsideCutscene_ms = 7000;
+constexpr unsigned long kOffsidePrepareAfterCutscene_ms = 1500;
+constexpr unsigned long kOffsideTakeAfterPrepare_ms = 2000;
+
+inline unsigned long OffsidePrepareAt_ms(unsigned long offsideTime_ms) {
+  return offsideTime_ms + kOffsideCutscene_ms + kOffsidePrepareAfterCutscene_ms;
+}
+
+inline unsigned long OffsideTakeAt_ms(unsigned long offsideTime_ms) {
+  return OffsidePrepareAt_ms(offsideTime_ms) + kOffsideTakeAfterPrepare_ms;
+}
+
 }  // namespace SetPieceLaws
 
 #endif

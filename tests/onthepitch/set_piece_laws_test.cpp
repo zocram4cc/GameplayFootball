@@ -260,3 +260,29 @@ TEST(SetPieceLaws, EveryStartingPointInTheGateLeavesIt) {
     }
   }
 }
+
+// The offside restart has to sit behind the choreography that stages it, not
+// under it. It did not: two seconds to prepare and four to take against a
+// seven-second cutscene, so ResetSituation moved everyone while the cast was
+// still being posed, and a posed opponent standing over the ball was both the
+// nearest man to it and unable to move - the keeper then took the kick into
+// him (reported from showdown2.mp4 at 33:03).
+TEST(SetPieceLaws, TheOffsideRestartWaitsForItsChoreography) {
+  const unsigned long offside = 61000;
+
+  EXPECT_GE(SetPieceLaws::OffsidePrepareAt_ms(offside),
+            offside + SetPieceLaws::kOffsideCutscene_ms)
+      << "the players are moved before the cutscene has finished";
+  EXPECT_GT(SetPieceLaws::OffsideTakeAt_ms(offside),
+            SetPieceLaws::OffsidePrepareAt_ms(offside))
+      << "the kick is taken before anyone has been placed";
+}
+
+TEST(SetPieceLaws, TheOffsideScheduleHoldsFromKickOffToTheEnd) {
+  for (unsigned long offside = 0; offside <= 90ul * 60ul * 1000ul; offside += 60000ul) {
+    EXPECT_GE(SetPieceLaws::OffsidePrepareAt_ms(offside),
+              offside + SetPieceLaws::kOffsideCutscene_ms);
+    EXPECT_GT(SetPieceLaws::OffsideTakeAt_ms(offside),
+              SetPieceLaws::OffsidePrepareAt_ms(offside));
+  }
+}
