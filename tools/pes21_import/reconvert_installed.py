@@ -66,10 +66,11 @@ def reconvert_one(job):
     """(gani path, dest path, anim type, strip, scale) -> error string or None."""
     gani_path, dest, anim_type, strip = job[:4]
     scale = job[4] if len(job) > 4 else None
+    mover = job[5] if len(job) > 5 else None
     try:
         text, _ = gani_to_anim.convert(open(gani_path, "rb").read(),
                                        anim_type=anim_type, strip_root=strip,
-                                       pos_scale=scale)
+                                       pos_scale=scale, mover_scale=mover)
     except Exception as exc:
         return "%s: %s" % (os.path.basename(dest), exc)
     open(dest, "w").write(text)
@@ -112,7 +113,10 @@ def pass_cutscenes(data_dir, fixdemo, workers):
             match = TYPE_RE.search(text)
             anim_type = match.group(1) if match else "cutscene"
             strip = install_anims.root_is_stripped(text.split("\n"))
-            jobs.append((source, path, anim_type, strip))
+            # A cutscene clip's vertical is the mover's, at the calibrated
+            # scale; its path stays in the fixdemo unit (see sample_root).
+            jobs.append((source, path, anim_type, strip, None,
+                         retarget.PES_POS_TO_M_GAMEPLAY))
     failures = run_jobs(jobs, workers)
     print("cutscenes: %d reconverted, %d missing sources, %d failures, "
           "%d .orig leftovers removed"
