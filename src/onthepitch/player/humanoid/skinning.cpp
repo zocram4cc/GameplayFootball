@@ -40,33 +40,9 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
   return transform;
 }
 
-void ZeroTransform(JointTransform& transform) {
-  for (int i = 0; i < 9; i++) transform.rotation[i] = 0.0f;
-  for (int i = 0; i < 3; i++) transform.translation[i] = 0.0f;
-}
 
-void AddWeighted(JointTransform& accumulator, const JointTransform& transform, float weight) {
-  for (int i = 0; i < 9; i++) accumulator.rotation[i] += transform.rotation[i] * weight;
-  for (int i = 0; i < 3; i++) accumulator.translation[i] += transform.translation[i] * weight;
-}
 
-void TransformPoint(const JointTransform& transform, const float in[3], float out[3]) {
-  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
-           transform.rotation[2] * in[2] + transform.translation[0];
-  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
-           transform.rotation[5] * in[2] + transform.translation[1];
-  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
-           transform.rotation[8] * in[2] + transform.translation[2];
-}
 
-void TransformDirection(const JointTransform& transform, const float in[3], float out[3]) {
-  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
-           transform.rotation[2] * in[2];
-  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
-           transform.rotation[5] * in[2];
-  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
-           transform.rotation[8] * in[2];
-}
 
 int BatchSize(int bodyCount, int workerCount) {
   if (workerCount < 1) return bodyCount > 0 ? bodyCount : 1;  // empty pool: one inline batch

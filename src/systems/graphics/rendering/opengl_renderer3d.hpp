@@ -75,7 +75,7 @@ public:
                                             const std::vector<unsigned int>& indices,
                                             e_VertexBufferUsage usage);
   virtual void UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
-                                  unsigned int verticesDataSize);
+                                  unsigned int verticesDataSize, int dynamicFloats);
   virtual void DeleteVertexBuffer(VertexBufferID vertexBufferID);
   virtual void RenderVertexBuffer(const std::deque<VertexBufferQueueEntry>& vertexBufferQueue,
                                   e_RenderMode renderMode = e_RenderMode_Full);

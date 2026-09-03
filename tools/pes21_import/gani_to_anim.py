@@ -269,6 +269,14 @@ def convert(blob, anim_type="movement", key_step=1, strip_root=False,
     lines.append("<type>")
     lines.append("\t" + anim_type)
     lines.append("</type>")
+    # Which scale the vertical was read at, so a migration can tell a clip that
+    # already has it from one that predates it. migrate_cutscene_mover.py skips
+    # any clip carrying this tag; without it, reconverting and then migrating
+    # multiplied the vertical by 6.25 a second time.
+    if mover_scale is not None and mover_scale != (pos_scale or retarget.PES_POS_TO_M):
+        lines.append("<mover_scale>")
+        lines.append("\tgameplay")
+        lines.append("</mover_scale>")
     return "\n".join(lines) + "\n", g
 
 

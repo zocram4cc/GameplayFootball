@@ -197,7 +197,10 @@ def pass_installed(data_dir, imports_dir, ganis_dir, fixdemo, workers):
         source = pool_index.get(stem)
         if source is None and stem in fixdemo:
             source = os.path.join(scratch, stem + ".anim")
-            error = reconvert_one((fixdemo[stem], source, "cutscene", False))
+            # Same clips as pass_cutscenes, so the same scales: the fixdemo
+            # path at its own unit, the mover's vertical at the calibrated one.
+            error = reconvert_one((fixdemo[stem], source, "cutscene", False, None,
+                                   retarget.PES_POS_TO_M_GAMEPLAY))
             if error:
                 failures.append(error)
                 continue

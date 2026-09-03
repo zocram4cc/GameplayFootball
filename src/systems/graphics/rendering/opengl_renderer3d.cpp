@@ -1396,7 +1396,7 @@ VertexBufferID OpenGLRenderer3D::CreateVertexBuffer(float* vertices, unsigned in
 }
 
 void OpenGLRenderer3D::UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
-                                          unsigned int verticesDataSize) {
+                                          unsigned int verticesDataSize, int dynamicFloats) {
   int writeVertexBufferID = vertexBufferID.bufferID;
   int writeVertexArrayID = vertexBufferID.vertexArrayID;
 
@@ -1446,13 +1446,27 @@ void OpenGLRenderer3D::UpdateVertexBuffer(VertexBufferID vertexBufferID, float* 
   // seems to actually work! is this an AMD driver bug? can't find anything about it on the
   // interwebz..
 
-  mapping.glBufferData(GL_ARRAY_BUFFER, verticesDataSize * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+  // Only the prefix that changed, when the caller named one. Orphaning would
+  // throw away the tail with it - the texture vertices and the tangent frame,
+  // which a skinned body never rewrites - so the partial path keeps the storage
+  // and maps just the front of it. Both ping-pong slots were given the whole
+  // buffer by CreateVertexBuffer, so the tail is valid in either.
+  //
+  // Measured before this: 28 bodies a frame, ~1.5 MB a body, orphaned and
+  // memcpy'd whole on the GL thread - about 44 MB a frame of which three fifths
+  // had not changed.
+  const bool partial = dynamicFloats > 0 && dynamicFloats < verticesDataSize;
+  const size_t uploadBytes = (partial ? (size_t)dynamicFloats : (size_t)verticesDataSize) *
+                             sizeof(float);
+  if (!partial)
+    mapping.glBufferData(GL_ARRAY_BUFFER, verticesDataSize * sizeof(float), nullptr,
+                         GL_DYNAMIC_DRAW);
   // glInvalidateBufferData(vertexBufferID.bufferID);
   float* ptr = (float*)mapping.glMapBufferRange(
-      GL_ARRAY_BUFFER, 0, verticesDataSize * sizeof(float),
+      GL_ARRAY_BUFFER, 0, uploadBytes,
       GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);  // GL_MAP_INVALIDATE_BUFFER_BIT |
                                                       // GL_MAP_INVALIDATE_RANGE_BIT |
-  memcpy(ptr, vertices, verticesDataSize * sizeof(float));
+  memcpy(ptr, vertices, uploadBytes);
   mapping.glUnmapBuffer(GL_ARRAY_BUFFER);
 
   //      glBufferData(GL_ARRAY_BUFFER, verticesDataSize * sizeof(float), vertices,

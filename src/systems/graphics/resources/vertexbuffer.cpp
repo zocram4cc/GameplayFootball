@@ -57,7 +57,7 @@ void VertexBuffer::TriangleMeshWasUpdatedExternally(unsigned int verticesDataSiz
 }
 
 VertexBufferID VertexBuffer::CreateOrUpdateVertexBuffer(Renderer3D* renderer3D,
-                                                        bool dynamicBuffer) {
+                                                        bool dynamicBuffer, int dynamicFloats) {
   this->renderer3D = renderer3D;
 
   // changed size? delete vbo first!
@@ -91,7 +91,8 @@ VertexBufferID VertexBuffer::CreateOrUpdateVertexBuffer(Renderer3D* renderer3D,
   } else {
     assert(vertices != 0);
     boost::intrusive_ptr<Renderer3DMessage_UpdateVertexBuffer> updateVertexBuffer(
-        new Renderer3DMessage_UpdateVertexBuffer(vertexBufferID, vertices, verticesDataSize));
+        new Renderer3DMessage_UpdateVertexBuffer(vertexBufferID, vertices, verticesDataSize,
+                                                 dynamicFloats));
     renderer3D->messageQueue.PushMessage(updateVertexBuffer);
     updateVertexBuffer
         ->Wait();  // todo: make the vertices* stuff lockable so we don't have to wait here

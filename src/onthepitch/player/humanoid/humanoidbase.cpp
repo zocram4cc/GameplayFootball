@@ -114,8 +114,14 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   float playerHeight = player->GetPlayerData()->GetHeight();
   zMultiplier = (1.0f / defaultPlayerHeight) * playerHeight;
 
+  // On by default now that it has been measured: bodies more than 14 m from the
+  // ball and the man on it are skinned every other frame, staggered so half of
+  // them take each frame. Worth 5.8 ms of a 24 ms frame on this machine (24 ->
+  // 18 ms) and it is the cheapest headroom there is for a weaker one, because
+  // what it removes scales with how many bodies are away from the action.
+  // Nothing near the action is touched.
   halveDistantBodyRate =
-      GetConfiguration()->GetBool("animation_halve_distant_bodies", false);
+      GetConfiguration()->GetBool("animation_halve_distant_bodies", true);
 
   boost::intrusive_ptr<Node> bla(new Node(*humanoidSourceNode.get(), "", GetScene3D()));
   humanoidNode = bla;
@@ -400,7 +406,6 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
       Vector3 vertexPos(uniqueMesh.data[v], uniqueMesh.data[v + 1], uniqueMesh.data[v + 2]);
 
       WeightedVertex weightedVertex;
-      weightedVertex.vertexID = v / 3;
 
       const std::vector<SkinInfluence>* influences = skinWeights.Find(vertexPos);
       if (!influences) {
@@ -424,10 +429,10 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
       // Every vertex rides something: nothing else can be skinned at all.
       assert(!influences->empty());
       for (const SkinInfluence& influence : *influences) {
-        WeightedBone bone;
-        bone.jointID = influence.jointID;
-        bone.weight = influence.weight;
-        weightedVertex.bones.push_back(bone);
+        if (weightedVertex.boneCount >= kMaxSkinInfluences) break;
+        weightedVertex.jointID[weightedVertex.boneCount] = influence.jointID;
+        weightedVertex.weight[weightedVertex.boneCount] = influence.weight;
+        weightedVertex.boneCount++;
       }
 
       weightedVerticesVec.at(subgeom).push_back(weightedVertex);
@@ -464,6 +469,21 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
     */
 
   }  // subgeom
+
+  // What skinning actually rewrites each frame, so the graphics interpreter can
+  // stop copying the rest into the vertex buffer (geometrydata.hpp): positions
+  // and normals always, the tangent frame only where a normal map is bound -
+  // UpdateFullbodyModel skips it otherwise for the same reason - and texture
+  // vertices never. Element order is position, normal, texture vertex, tangent,
+  // bitangent.
+  unsigned int dynamicElements = (1u << 0) | (1u << 1);
+  for (unsigned int subgeom = 0; subgeom < fullbodySubgeomCount; subgeom++) {
+    if (materializedTriangleMeshes.at(subgeom).material.normalTexture) {
+      dynamicElements |= (1u << 3) | (1u << 4);
+      break;
+    }
+  }
+  fullbodyGeometryData->GetResource()->SetDynamicElements(dynamicElements);
 
   fullbodyGeometryData->resourceMutex.unlock();
   boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->OnUpdateGeometryData();
@@ -612,18 +632,19 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
     const int directionCount = materializedTriangleMeshes[subgeom].material.normalTexture ? 3 : 1;
 
     for (int v = 0; v < uniqueVertexCount; v++) {
-      const std::vector<WeightedBone>& bones = weightedVertices[v].bones;
-      const bool blendedInfluences = bones.size() > 1;
+      const WeightedVertex& weights = weightedVertices[v];
+      const bool blendedInfluences = weights.boneCount > 1;
 
       if (blendedInfluences) {
         Skinning::ZeroTransform(blended);
-        for (unsigned int b = 0; b < bones.size(); b++)
-          Skinning::AddWeighted(blended, jointTransforms[bones[b].jointID], bones[b].weight);
+        for (int b = 0; b < weights.boneCount; b++)
+          Skinning::AddWeighted(blended, jointTransforms[weights.jointID[b]], weights.weight[b]);
       } else {
-        blended = jointTransforms[bones[0].jointID];
+        blended = jointTransforms[weights.jointID[0]];
       }
 
-      const int at = weightedVertices[v].vertexID * 3;
+      // The table is built in vertex order, so the index is the vertex.
+      const int at = v * 3;
 
       Skinning::TransformPoint(blended, &uniqueMesh.data[at], result.coords);
       if (updateSrc) memcpy(&uniqueMesh.data[at], result.coords, 3 * sizeof(float));

@@ -39,9 +39,17 @@ struct WeightedBone {
   float weight;
 };
 
+// Flat on purpose. A std::vector per vertex meant the skinning loop loaded
+// begin/end to get the count and then chased a separate heap block for the
+// first bone - for every one of roughly a million vertices a frame, across 22
+// bodies of 20k to 100k vertices each - and cost an allocation per vertex at
+// load. kMaxSkinInfluences is fixed at 4 (skinweights.hpp) and the engine drops
+// anything past that anyway, so nothing is lost by saying so here. vertexID is
+// gone with it: it was always the loop index.
 struct WeightedVertex {
-  int vertexID;
-  std::vector<WeightedBone> bones;
+  int boneCount = 0;
+  int jointID[kMaxSkinInfluences] = {0, 0, 0, 0};
+  float weight[kMaxSkinInfluences] = {0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 struct FloatArray {

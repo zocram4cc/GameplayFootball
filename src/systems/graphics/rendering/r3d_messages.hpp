@@ -215,10 +215,11 @@ protected:
 class Renderer3DMessage_UpdateVertexBuffer : public Command {
 public:
   Renderer3DMessage_UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
-                                       unsigned int verticesDataSize)
+                                       unsigned int verticesDataSize, int dynamicFloats = 0)
       : Command("r3dmsg_UpdateVertexBuffer"),
         vertexBufferID(vertexBufferID),
-        verticesDataSize(verticesDataSize) {
+        verticesDataSize(verticesDataSize),
+        dynamicFloats(dynamicFloats) {
     // copying causes terrible last-level cache misses. so use pointer and make sure at client side
     // that we won't touch them in the meantime
     // this->vertices = new float[verticesDataSize];
@@ -229,7 +230,7 @@ public:
 protected:
   virtual bool Execute(void* caller = nullptr) {
     static_cast<Renderer3D*>(caller)->UpdateVertexBuffer(vertexBufferID, vertices,
-                                                         verticesDataSize);
+                                                         verticesDataSize, dynamicFloats);
 
     return true;
   }
@@ -238,6 +239,7 @@ protected:
 
   float* vertices;
   int verticesDataSize;
+  int dynamicFloats;
 };
 
 class Renderer3DMessage_DeleteVertexBuffer : public Command {

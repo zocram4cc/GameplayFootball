@@ -298,8 +298,10 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
   resource->resourceMutex.lock();
 
   bool dynamicBuffer = resource->GetResource()->IsDynamic();
-  std::vector<MaterializedTriangleMesh> triangleMeshes =
-      resource->GetResource()->GetTriangleMeshes();
+  // By reference: the by-value copy deep-copied every submesh's index vector on
+  // every update - 28 bodies a frame, about 14 MB and 84 allocations of it.
+  std::vector<MaterializedTriangleMesh>& triangleMeshes =
+      resource->GetResource()->GetTriangleMeshesRef();
   Renderer3D* renderer3D = caller->GetGraphicsScene()->GetGraphicsSystem()->GetRenderer3D();
 
   caller->vertexBuffer->resourceMutex.lock();
@@ -341,7 +343,15 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
     startIndex += currentSize;
     currentSize = 0;
 
+    // Only the arrays this geometry says it rewrites, and only into a buffer
+    // that is being reused: a skinned body rewrites positions and normals (its
+    // tangent frame too when a normal map is bound) and never its texture
+    // vertices, and copying all five moved 2.7 GB/s of which three fifths had
+    // not changed. A freshly allocated buffer holds nothing, so it takes all.
+    const unsigned int elementMask =
+        newFloatData ? GeometryData::kAllElements : resource->GetResource()->GetDynamicElements();
     for (int e = 0; e < GetTriangleMeshElementCount(); e++) {
+      if (!(elementMask & (1u << e))) continue;
       // printf("%s: e: %i, verticesDataSize: %i, startIndex: %i,
       // triangleMeshes[i].verticesDataSize: %i\n", geometry->GetName().c_str(), e,
       // verticesDataSize, startIndex, triangleMeshes[i].verticesDataSize);
@@ -414,7 +424,22 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
     caller->vertexBuffer->GetResource()->TriangleMeshWasUpdatedExternally(verticesDataSize,
                                                                           indices);
   }
-  caller->vertexBuffer->GetResource()->CreateOrUpdateVertexBuffer(renderer3D, dynamicBuffer);
+  // How much of the buffer changed, for the partial upload. The layout is
+  // element-major - every position, then every normal, and so on - so a mask
+  // that is a prefix of the elements is a prefix of the buffer; a mask with a
+  // hole in it uploads whole, as does a buffer that was just allocated.
+  int dynamicFloats = 0;
+  if (!newFloatData) {
+    const int elementCount = GetTriangleMeshElementCount();
+    const unsigned int used = (elementCount >= 32) ? 0xFFFFFFFFu : ((1u << elementCount) - 1u);
+    const unsigned int mask = resource->GetResource()->GetDynamicElements() & used;
+    int prefix = 0;
+    while (prefix < elementCount && (mask & (1u << prefix))) prefix++;
+    if (prefix < elementCount && mask == (1u << prefix) - 1u)
+      dynamicFloats = prefix * (verticesDataSize / elementCount);
+  }
+  caller->vertexBuffer->GetResource()->CreateOrUpdateVertexBuffer(renderer3D, dynamicBuffer,
+                                                                  dynamicFloats);
   caller->vertexBuffer->resourceMutex.unlock();
 }
 

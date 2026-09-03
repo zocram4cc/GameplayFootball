@@ -200,26 +200,29 @@ void Animation::GetInterpolatedValues(const std::map<int, KeyFrame>& animation, 
   orientation = QUATERNION_IDENTITY;
 
   if (frame > 0 && frame < GetFrameCount()) {
-    std::map<int, KeyFrame>::const_iterator animIter = animation.begin();
-
-    while (animIter != animation.end()) {
-      // still before current frame and yet encountered keys? clear them, we don't need earlier keys
-      if (animIter->first < frame && weighedKeys.size() > 0)
-        weighedKeys.clear();
-
-      // add key, hopefully this is the last one before our current frame, or the first after
-      WeighedKey key;
-      key.keyFrame = animIter->second;
-      key.frame = animIter->first;
-      weighedKeys.push_back(key);
-
-      // if this keyframe came after our current frame, we've got everything we need, so bail out
-      if (animIter->first >= frame) {
-        animIter = animation.end();
-      } else {
-        animIter++;
-      }
+    // The two keys bracketing this frame, by lookup rather than by walking the
+    // map from the beginning. The walk pushed every key it passed into a fresh
+    // vector and then threw them away again, so the cost grew with the frame
+    // number: 1,599 of the 1,892 installed clips are keyed on every frame
+    // (mean 121 of them), and this runs twice per node per Apply - 21 nodes on
+    // 25 bodies every put, and once per frame of every clip at load, which is
+    // quadratic in the clip's length.
+    std::map<int, KeyFrame>::const_iterator after = animation.lower_bound(frame);
+    if (after == animation.end()) {
+      // nothing at or past this frame: the last key is all there is
+      if (animation.empty()) return;
+      after = std::prev(animation.end());
     }
+    WeighedKey key;
+    if (after->first > frame && after != animation.begin()) {
+      std::map<int, KeyFrame>::const_iterator before = std::prev(after);
+      key.keyFrame = before->second;
+      key.frame = before->first;
+      weighedKeys.push_back(key);
+    }
+    key.keyFrame = after->second;
+    key.frame = after->first;
+    weighedKeys.push_back(key);
 
     // we've now got either 1 keyframe (before/after/at our current frame) or 2, on both sides of
     // (or 1 at) our keyframe. calculate its/their influence
