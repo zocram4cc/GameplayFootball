@@ -156,22 +156,29 @@ def unwrapped_root(sample, frame_count, t):
     return (x, z, yaw)
 
 
-# A clip that travels plays once and the actor stands where it leaves him; a
-# clip that stays in place loops for the shot. entering04_walk15 carries its
-# actor 13.5 m - out of the tunnel and onto the pitch, where PES's walk-on
-# cameras (30 s at st002) find him; looped for the shot he would be 70 m away
-# in the far half, which PES cannot be showing. An idle has nothing to arrive
-# at, so it cycles. (The record's flags word is not this: walks carry both
-# values of its low bit.)
+# A clip that ends facing the way it started is a cycle and loops for the
+# shot; one that ends turned plays once and the actor holds where - and how -
+# it leaves him. Measured on the body (sk_root_hip, root stripped): the walks
+# and stair climbs come back within 0-9 degrees, the "idle_walk_turn_right"
+# clips end 33-70 degrees round. Wrapping those as cycles snapped the actor
+# back through the turn every 12 s (the owner's "Mario weirdly turns 90
+# degrees"); playing the walks once froze every actor mid-stride 6 s into a
+# 30 s beat ("actors suddenly stop"). Neither travel distance nor the record's
+# flags word says which is which - walks carry both values of the flag's low
+# bit - the pose does.
 BAKE_SECONDS = 30.0
-TRAVELS_M = 0.5
+CYCLE_TURN_DEG = 20.0
 
 
-def clip_travels(sample, frame_count):
-    """Whether one cycle of the clip moves its root further than an idle sways."""
-    x0, z0, _ = sample(0.0)
-    x1, z1, _ = sample(max(0.0, frame_count - 1.0))
-    return math.hypot(x1 - x0, z1 - z0) >= TRAVELS_M
+def clip_is_cycle(g):
+    """Whether the body ends the clip facing within CYCLE_TURN_DEG of how it began."""
+    bones, root_q, root_p, mot_q, mot_p = gani_to_anim.build_samplers(g)
+    last = max(0.0, g.frame_count - 1.0)
+    q0, _ = gani_to_anim.sample_root(bones, root_q, root_p, mot_q, mot_p, 0.0, strip_root=True)
+    q1, _ = gani_to_anim.sample_root(bones, root_q, root_p, mot_q, mot_p, last, strip_root=True)
+    turn = gani_to_anim.root_yaw(q1) - gani_to_anim.root_yaw(q0)
+    turn = (turn + math.pi) % (2.0 * math.pi) - math.pi
+    return abs(turn) < math.radians(CYCLE_TURN_DEG)
 
 
 def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
@@ -200,7 +207,7 @@ def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
 
     cycle = max(2, int(round(g.frame_count * PES_FRAME_MS / GF_FRAME_MS)))
     cycles = max(1, int(math.ceil(seconds * 1000.0 / (cycle * GF_FRAME_MS))))
-    if clip_travels(sample, g.frame_count):
+    if not clip_is_cycle(g):
         cycles = 1
     cycle = cycle * cycles
     keys = []
@@ -248,7 +255,7 @@ def export_pack(fdc_path, anims_dir, out_dir, clip_cache):
         phase_frames = int(round(actor.phase_ticks * PES_FRAME_MS / GF_FRAME_MS))
         phase_frames %= cycle
         keys, cycle = bake_track(actor, g)
-        loops = not clip_travels(gani_to_anim.root_sampler(g), g.frame_count)
+        loops = clip_is_cycle(g)
         lines.append("slot %d anims/%s.anim role %s phase %d loop %d"
                      % (actor.slot, stem, actor_role(actor.slot, stem), phase_frames,
                         1 if loops else 0))

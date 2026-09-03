@@ -25,6 +25,7 @@ namespace CameraStandoff {
 float PushBack(const std::vector<blunted::Vector3>& cast, const blunted::Vector3& eye,
                const blunted::Vector3& forward, float clearance);
 
+
 }  // namespace CameraStandoff
 
 #endif

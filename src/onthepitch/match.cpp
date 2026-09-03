@@ -1995,6 +1995,8 @@ static const float kPrematchShotFrameRate = 30.0f;
 
 // How close a body may come to the lens before the shot is dollied back.
 static const float kPrematchLensClearance = 2.2f;
+// How fast the standoff dolly comes back once the body it cleared has passed.
+static const float kStandoffReturnMetresPerSecond = 0.6f;
 
 Vector3 Match::ComputeStagingOffset() const {
   // PES authors a walk-on in its own stadium's coordinates, with the cast
@@ -3759,6 +3761,20 @@ void Match::UpdateIngameCamera() {
             posed.Sample(*member.slot, castFrame, position, yaw, animFrame);
             castPositions.push_back(position + stagingOffset);
           }
+          // Everyone the pack does not stage walks his own way to his mark, and
+          // is just as solid: with only the staged cast counted, the one
+          // unstaged slot of ent_009 walked straight through the tunnel camera
+          // and blacked the frame for a second and a half (03-09).
+          for (int teamID = 0; teamID < 2; teamID++) {
+            std::vector<Player*> squad;
+            teams[teamID]->GetActivePlayers(squad);
+            for (Player* player : squad) {
+              bool staged = false;
+              for (const auto& member : entranceCast)
+                if (member.player == player) { staged = true; break; }
+              if (!staged) castPositions.push_back(player->GetPosition());
+            }
+          }
           Quaternion aim = QUATERNION_IDENTITY;
           aim.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
           const Vector3 forward = aim * Vector3(0, 0, -1);
@@ -3777,8 +3793,15 @@ void Match::UpdateIngameCamera() {
             standoffCut = cutNow;
             standoffPush = 0.0f;
           }
-          standoffPush = std::max(standoffPush, push);
+          // Backs off at once, comes forward slowly. Held at its maximum for the
+          // whole cut, the tunnel-mouth shot - which the entire queue walks
+          // through - ended up 2.2 m inside the arch behind it and black for
+          // ten seconds; released instantly it snapped. A dolly that returns
+          // at walking pace does neither.
+          const float returnPerFrame = kStandoffReturnMetresPerSecond * 0.01f;
+          standoffPush = std::max(push, standoffPush - returnPerFrame);
           if (standoffPush > 0.0f) cameraNodePosition -= forward * standoffPush;
+
         }
         cameraNodeOrientation = QUATERNION_IDENTITY;
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],

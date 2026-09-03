@@ -122,3 +122,48 @@ class ATurningClipKeepsTurningWhenItLoops(unittest.TestCase):
         got = entrance_pl.unwrapped_root(sample, 100, 300.0)
         self.assertAlmostEqual(got[0], forward_walk(100, 2.4)(0.0)[0] + 3 * 2.4, places=1)
         self.assertAlmostEqual(got[2], 0.0, places=6)
+
+
+class AClipLoopsOnlyIfItEndsFacingWhereItBegan(unittest.TestCase):
+    """The owner saw actors freeze mid-stride six seconds into a thirty-second
+    walk-on, and Mario snap through a right angle every twelve: walks were being
+    played once and turn clips looped. The body's heading at the wrap decides."""
+
+    def fake_gani(self, turn_deg):
+        import math
+        import gani_to_anim
+
+        class Sampler:
+            def __init__(self, q):
+                self._q = q
+            def quat(self, t):
+                return self._q(t)
+            def vec(self, t):
+                return (0.0, 0.0, 0.0)
+
+        class G:
+            frame_count = 100
+        def mot(t):
+            return gani_to_anim.q_axis_angle((0.0, 1.0, 0.0), math.radians(turn_deg) * t / 99.0)
+        identity = Sampler(lambda t: (0.0, 0.0, 0.0, 1.0))
+        return G(), identity, Sampler(mot)
+
+    def test_a_walk_cycle_loops(self):
+        import entrance_pl, gani_to_anim
+        g, identity, mot = self.fake_gani(5.0)
+        real = gani_to_anim.build_samplers
+        gani_to_anim.build_samplers = lambda _g: ({}, identity, identity, mot, identity)
+        try:
+            self.assertTrue(entrance_pl.clip_is_cycle(g))
+        finally:
+            gani_to_anim.build_samplers = real
+
+    def test_a_turn_plays_once(self):
+        import entrance_pl, gani_to_anim
+        g, identity, mot = self.fake_gani(70.0)
+        real = gani_to_anim.build_samplers
+        gani_to_anim.build_samplers = lambda _g: ({}, identity, identity, mot, identity)
+        try:
+            self.assertFalse(entrance_pl.clip_is_cycle(g))
+        finally:
+            gani_to_anim.build_samplers = real
