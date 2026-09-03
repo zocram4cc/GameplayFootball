@@ -9,20 +9,20 @@ What is here instead is everything needed to build them yourself, from your own
 installation: `tools/pes21_import/`. The formats are documented in
 [PES21_IMPORT.md](PES21_IMPORT.md), which is the reference for why each step
 does what it does; this file is the running order.
+[GETTING_STARTED.md](GETTING_STARTED.md) is the same ground for someone who has
+just cloned the repository: fewer reasons, more order of operations.
 
-**Step 2 is currently required.** The engine's default player body is
-`fullbody_pes.ase` (its hands stay in PES's splayed bind - the engine poses the 38
-finger joints at runtime from `handposes.txt`, see the hand-poses step below), and it stops with a fatal error if that file is missing
-rather than falling back to the legacy `fullbody.ase` beside it:
+**Every step here is optional.** A fresh clone plays: `player_body` falls back
+to the engine's own low-poly `fullbody` when the imported body is absent, and
+says so once -
 
-    [FATAL ERROR] in [tree_load::]: could not open
-        media/objects/players/models/fullbody_pes.ase
+    [Warning] in [Match::Match]: player_body 'fullbody_pes' is incomplete
+              (see docs/ASSETS.md), using 'fullbody'
 
-So a fresh clone does not run until you have built the body. That is a bug, not
-a design — the fallback the `player_body` config key implies is not actually
-wired up — and it is worth fixing so the repository is playable out of the box.
-Everything else below is genuinely optional: each step adds one layer of PES
-fidelity and is independent of the others.
+- which was not true when this file was written, and is what
+`PlayerBody::Resolve` and `tests/onthepitch/player_body_test.cpp` now exist
+for. Each step below adds one layer of PES fidelity and is independent of the
+others.
 
 ## What is in the repository, and how to check
 

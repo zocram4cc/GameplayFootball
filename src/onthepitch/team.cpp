@@ -5,12 +5,15 @@
 
 #include "team.hpp"
 
+#include <filesystem>
+
 #include "../gamedefines.hpp"
 #include "../main.hpp"
 #include "../utils.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "match.hpp"
+#include "playerbody.hpp"
 #include "playercontrolsettings.hpp"
 #include "utils/playermodelmap.hpp"
 
@@ -81,14 +84,30 @@ void Team::ActivateWithModel(Player* player, int formationIndex,
                      match->GetAnimCollection());
     return;
   }
+  // A binding is only as good as the files behind it. playermodels.cfg is
+  // tracked and the models it names are not - nothing PES- or 4cc-derived is -
+  // so a fresh clone that picks one of those teams asked the loader for a
+  // model that was never imported and died on it:
+  //   [FATAL] utils::file_to_vector: file not found or empty:
+  //           media/players/custom/lcg_2701/fullbody.object
+  // The shared body is the same answer as for an unassigned player.
+  const std::string objectPath = PlayerBody::CustomObjectPath(modelDir);
+  const std::string asePath = PlayerBody::CustomModelPath(modelDir);
+  if (!std::filesystem::exists(objectPath) || !std::filesystem::exists(asePath)) {
+    Log(e_Warning, "Team", "ActivateWithModel",
+        "player " + int_to_str(player->GetPlayerData()->GetDatabaseID()) +
+            " is assigned " + modelDir +
+            ", which is not imported (see docs/GETTING_STARTED.md); using the "
+            "shared body");
+    player->Activate(playerNode, fullbodyNode, skinWeights, kit,
+                     match->GetAnimCollection());
+    return;
+  }
   ObjectLoader loader;
-  boost::intrusive_ptr<Node> customBody =
-      loader.LoadObject(GetScene3D(), modelDir + "/fullbody.object");
+  boost::intrusive_ptr<Node> customBody = loader.LoadObject(GetScene3D(), objectPath);
   customBodyNodes.push_back(customBody);  // must not die before Exit()
-  // the model's ase carries the directory name (unique resource key)
-  const std::string& baseName = modelDir.substr(modelDir.find_last_of('/') + 1);
   SkinWeights customWeights;
-  LoadSkinWeights(customWeights, modelDir + "/fullbody_" + baseName + ".ase");
+  LoadSkinWeights(customWeights, asePath);
   player->Activate(playerNode, customBody, customWeights, kit,
                    match->GetAnimCollection());
 }

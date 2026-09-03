@@ -22,6 +22,13 @@ extern const char* const kDefaultBody;
 std::string ObjectPath(const std::string& bodyName);
 std::string ModelPath(const std::string& bodyName);
 
+// A per-player model from playermodels.cfg, given its directory: the wrapper
+// the loader is handed, and the geometry the wrapper names. The .ase carries
+// the directory's own name because it is the resource key, so the two are not
+// derivable from each other by the caller.
+std::string CustomObjectPath(const std::string& modelDir);
+std::string CustomModelPath(const std::string& modelDir);
+
 // The configured body when both its files are present, the legacy body otherwise.
 std::string Resolve(const std::string& configured, bool objectExists, bool modelExists);
 
