@@ -4,9 +4,10 @@ The ent_* fixdemo families stage their players with tag-0x04 actor records
 (see camera_cut.ActorCut): one record per actor slot (0-10 home XI, 11-21
 away XI, 22-24 officials) holding a spawn transform, a clip reference into
 ``common/demo/anime/FoxAnim/FixDemo/Animations/*.gani`` and a phase offset.
-The clips are near-in-place (their RIG_ROOT motion spans at most ~3 m); the
-walk-out reads as authored because of where actors are placed and how the
-camera cuts between the packs.
+The walk clips carry real root motion - entering04_walk15 covers 13.5 m in
+its 6 s cycle, at the same 1/20480 the gameplay set reads at - and PES loops
+them for the length of the cut, so the path here is the clip's root unwrapped
+over enough cycles to cover a walk-on.
 
 This tool converts one family's _pl packs into two open text artefacts the
 engine plays back directly:
@@ -110,13 +111,19 @@ def convert_clip(gani_path, dest):
 
 
 def unwrapped_root(sample, frame_count, t):
-    """The clip's root at time t, with each completed cycle's travel kept.
+    """The clip's root at time t, with each completed cycle's motion carried over.
 
-    A PES entrance walk moves its root forward - about 2.4 m per cycle in
-    ent_009 - and sampling it at `t % frame_count` throws that away: the actor
-    walks the length of one cycle, snaps back to where he started, and marches on
-    the spot for the rest of the presentation. Accumulating the per-cycle advance
-    makes cycle two start where cycle one finished, which is what walking is.
+    A PES entrance walk moves its root forward - 13.5 m per 6 s cycle for
+    ent_009's entering04_walk15 - and sampling it at `t % frame_count` throws that
+    away: the actor walks the length of one cycle, snaps back to where he started,
+    and marches on the spot for the rest of the presentation. Cycle two has to
+    start where - and facing the way - cycle one finished, which is what walking
+    is.
+
+    The carry-over is the cycle's whole rigid motion, yaw included. Carrying the
+    translation alone, in the clip's starting frame, sent ent_009's
+    "idle_walk_turn_right" actor 38 m in a straight line out through the back of
+    the tunnel: a clip that turns as it walks has to keep turning when it loops.
 
     A clip whose root genuinely returns to its origin has a zero advance and so
     does not drift.
@@ -126,47 +133,88 @@ def unwrapped_root(sample, frame_count, t):
     cycles = int(t // frame_count)
     within = t - cycles * frame_count
     x, z, yaw = sample(within)
-    if cycles:
-        # The advance over one cycle. The sampler is defined below frame_count, so
-        # it is measured to the last frame and extended by one more step rather
-        # than scaled up: scaling amplifies the one-frame shortfall, and on a clip
-        # that only sways it turned that shortfall into a steady drift.
-        last = frame_count - 1.0
-        start_x, start_z, _ = sample(0.0)
-        end_x, end_z, _ = sample(last)
-        prev_x, prev_z, _ = sample(max(0.0, last - 1.0))
-        advance_x = (end_x - start_x) + (end_x - prev_x)
-        advance_z = (end_z - start_z) + (end_z - prev_z)
-        x += cycles * advance_x
-        z += cycles * advance_z
+    if not cycles:
+        return (x, z, yaw)
+    # The motion over one cycle. The sampler is defined below frame_count, so it
+    # is measured to the last frame and extended by one more step rather than
+    # scaled up: scaling amplifies the one-frame shortfall, and on a clip that
+    # only sways it turned that shortfall into a steady drift.
+    last = frame_count - 1.0
+    start_x, start_z, start_yaw = sample(0.0)
+    end_x, end_z, end_yaw = sample(last)
+    prev_x, prev_z, prev_yaw = sample(max(0.0, last - 1.0))
+    end_x, end_z = end_x + (end_x - prev_x), end_z + (end_z - prev_z)
+    end_yaw = end_yaw + (end_yaw - prev_yaw)
+    turn = end_yaw - start_yaw
+    # D: the start pose -> the end pose, as rotate-then-translate about +Y.
+    c, s = math.cos(turn), math.sin(turn)
+    dx = end_x - (c * start_x + s * start_z)
+    dz = end_z - (-s * start_x + c * start_z)
+    for _ in range(cycles):
+        x, z = c * x + s * z + dx, -s * x + c * z + dz
+        yaw += turn
     return (x, z, yaw)
 
 
-def bake_track(actor, g, key_step=2, cycles=4):
+# A clip that travels plays once and the actor stands where it leaves him; a
+# clip that stays in place loops for the shot. entering04_walk15 carries its
+# actor 13.5 m - out of the tunnel and onto the pitch, where PES's walk-on
+# cameras (30 s at st002) find him; looped for the shot he would be 70 m away
+# in the far half, which PES cannot be showing. An idle has nothing to arrive
+# at, so it cycles. (The record's flags word is not this: walks carry both
+# values of its low bit.)
+BAKE_SECONDS = 30.0
+TRAVELS_M = 0.5
+
+
+def clip_travels(sample, frame_count):
+    """Whether one cycle of the clip moves its root further than an idle sways."""
+    x0, z0, _ = sample(0.0)
+    x1, z1, _ = sample(max(0.0, frame_count - 1.0))
+    return math.hypot(x1 - x0, z1 - z0) >= TRAVELS_M
+
+
+def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
     """[(gf_frame, x, y, yaw)] world root track, GF space.
 
-    `cycles` clip cycles are baked, not one. The engine loops whatever track it is
-    given, so a single cycle sends the actor back to his starting point every few
-    seconds however well the root is unwrapped: a walk of 2.4 m, then a jump back,
-    then the same 2.4 m again. Four cycles of a typical entrance walk is around ten
-    metres, which carries a squad out of the tunnel and onto the pitch.
+    Whole clip cycles are baked until they cover `seconds`, root unwrapped so
+    cycle two starts where cycle one finished (unwrapped_root). This used to bake
+    four cycles on the reasoning that an entrance walk covers 2.4 m per cycle -
+    which was the path read at a sixth of its scale (gani_to_anim.root_sampler);
+    at the true 13.5 m per 6 s cycle four cycles was arbitrary.
+
+    The spawn is where the actor stands at his phase, not where the clip's
+    origin goes. ent_009 lines its home XI up a metre apart in the tunnel, and
+    the one flagged 870 ticks into a walking clip appeared 15 m behind the line -
+    the distance his root had already walked by that phase. So the root is taken
+    relative to its own pose at the phase (position and heading), and that
+    relative motion is what the spawn transform places.
     """
     sample = gani_to_anim.root_sampler(g)
     theta = math.radians(actor.yaw_deg)
-    cos_t, sin_t = math.cos(theta), math.sin(theta)
     spawn_x, _, spawn_z = actor.position
 
+    base_x, base_z, base_yaw = unwrapped_root(sample, g.frame_count, actor.phase_ticks)
+    cos_b, sin_b = math.cos(base_yaw), math.sin(base_yaw)
+    cos_t, sin_t = math.cos(theta), math.sin(theta)
+
     cycle = max(2, int(round(g.frame_count * PES_FRAME_MS / GF_FRAME_MS)))
-    cycle = cycle * max(1, cycles)
+    cycles = max(1, int(math.ceil(seconds * 1000.0 / (cycle * GF_FRAME_MS))))
+    if clip_travels(sample, g.frame_count):
+        cycles = 1
+    cycle = cycle * cycles
     keys = []
     prev_yaw = None
     for f in range(0, cycle + 1, key_step):
         t = actor.phase_ticks + f * GF_FRAME_MS / PES_FRAME_MS
         rx, rz, ryaw = unwrapped_root(sample, g.frame_count, t)
-        # spawn transform: rotate the clip's root by the spawn yaw, then offset
-        wx = spawn_x + cos_t * rx + sin_t * rz
-        wz = spawn_z - sin_t * rx + cos_t * rz
-        yaw = theta + ryaw
+        # relative to the pose at the phase: translate back, undo its heading
+        dx, dz = rx - base_x, rz - base_z
+        lx, lz = cos_b * dx - sin_b * dz, sin_b * dx + cos_b * dz
+        # spawn transform: rotate by the spawn yaw, then offset
+        wx = spawn_x + cos_t * lx + sin_t * lz
+        wz = spawn_z - sin_t * lx + cos_t * lz
+        yaw = theta + (ryaw - base_yaw)
         if prev_yaw is not None:  # unwrap for safe lerping
             while yaw - prev_yaw > math.pi:
                 yaw -= 2.0 * math.pi
@@ -200,8 +248,10 @@ def export_pack(fdc_path, anims_dir, out_dir, clip_cache):
         phase_frames = int(round(actor.phase_ticks * PES_FRAME_MS / GF_FRAME_MS))
         phase_frames %= cycle
         keys, cycle = bake_track(actor, g)
-        lines.append("slot %d anims/%s.anim role %s phase %d loop 1"
-                     % (actor.slot, stem, actor_role(actor.slot, stem), phase_frames))
+        loops = not clip_travels(gani_to_anim.root_sampler(g), g.frame_count)
+        lines.append("slot %d anims/%s.anim role %s phase %d loop %d"
+                     % (actor.slot, stem, actor_role(actor.slot, stem), phase_frames,
+                        1 if loops else 0))
         for k in keys:
             lines.append("k %d %.4f %.4f %.5f" % k)
         exported += 1

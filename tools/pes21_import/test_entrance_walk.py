@@ -92,3 +92,33 @@ class UnwrappedRootTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ATurningClipKeepsTurningWhenItLoops(unittest.TestCase):
+    """ent_009's "idle_walk_turn_right" actor walked 38 m in a straight line out
+    through the back of the tunnel, because only the cycle's translation was
+    carried over, in the clip's starting frame. The carry-over is the whole
+    rigid motion."""
+
+    def walk_and_turn(self, frame_count, distance, turn):
+        import math
+
+        def sample(t):
+            # straight along +x while the yaw sweeps through `turn`
+            f = t / frame_count
+            return (distance * f, 0.0, turn * f)
+        return sample
+
+    def test_four_right_angles_close_a_square(self):
+        import math
+        sample = self.walk_and_turn(100, 1.0, math.pi / 2.0)
+        x, z, yaw = entrance_pl.unwrapped_root(sample, 100, 400.0)
+        self.assertAlmostEqual(x, 0.0, places=5)
+        self.assertAlmostEqual(z, 0.0, places=5)
+        self.assertAlmostEqual(yaw, 2.0 * math.pi, places=5)
+
+    def test_a_straight_walk_is_unchanged_by_the_generalisation(self):
+        sample = forward_walk(100, 2.4)
+        got = entrance_pl.unwrapped_root(sample, 100, 300.0)
+        self.assertAlmostEqual(got[0], forward_walk(100, 2.4)(0.0)[0] + 3 * 2.4, places=1)
+        self.assertAlmostEqual(got[2], 0.0, places=6)

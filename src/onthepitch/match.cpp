@@ -1804,10 +1804,10 @@ void Match::StartHandoffWipe() {
 }
 
 bool Match::RunHandoffWipe() {
-  // No wipe imported is not a reason to hold the kickoff up. Without one the
-  // cut is due immediately and the snap simply happens, as it did before.
+  // No wipe imported is not a reason to hold a restart up: the cut is due
+  // immediately and the pitch is simply set, as it was before there was one.
   if (!handoffWipeTiming.valid) return true;
-  if (!handoffWipeRunning) return handoffSnapped;
+  if (!handoffWipeRunning) return false;
   const unsigned long elapsed =
       EnvironmentManager::GetInstance().GetTime_ms() - handoffWipeStarted_ms;
   const int frame = ReplayWipe::FrameAt(handoffWipeTiming, elapsed);
@@ -2104,7 +2104,13 @@ void Match::UpdateEntranceChoreo() {
     // much shorter loop. Indexing a 750-frame walk cycle at frame 1500 read
     // off the end of the animation and dropped the cast flat onto the pitch.
     const int clipFrames = cast.clip ? cast.clip->GetFrameCount() : 0;
-    if (clipFrames > 0) animFrame %= clipFrames;
+    if (clipFrames > 0) {
+      // A slot PES did not flag looping plays its clip once and holds the last
+      // frame - the actor who has walked out stands where he arrived, rather
+      // than marking time on the spot for the rest of the beat. The looping
+      // slots (idles, the turn-and-wait) keep cycling.
+      animFrame = cast.slot->loop ? animFrame % clipFrames : std::min(animFrame, clipFrames - 1);
+    }
     cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, position, yaw);
 
     // Remembered for the camera: this is where the cast actually is.
@@ -3708,9 +3714,23 @@ void Match::UpdateIngameCamera() {
           Quaternion aim = QUATERNION_IDENTITY;
           aim.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
           const Vector3 forward = aim * Vector3(0, 0, -1);
-          const float push = CameraStandoff::PushBack(castPositions, cameraNodePosition, forward,
-                                                      kPrematchLensClearance);
-          if (push > 0.0f) cameraNodePosition -= forward * push;
+          float push = CameraStandoff::PushBack(castPositions, cameraNodePosition, forward,
+                                                kPrematchLensClearance);
+          // Held for the length of the cut. Recomputed fresh every frame, the
+          // push fell to nothing the instant the body it was clearing passed
+          // behind the lens, and the camera jumped forward by up to the whole
+          // clearance - twenty-two players streaming past a tunnel camera made
+          // it lurch on every one (owner, 03-09: "the camera snaps forward").
+          // A dolly that only ever backs off within a shot cannot do that; the
+          // next cut starts clean, as PES's would.
+          const int cutNow = namedShot->CutIndexAt(shotFrame);
+          if (namedShot != standoffShot || cutNow != standoffCut) {
+            standoffShot = namedShot;
+            standoffCut = cutNow;
+            standoffPush = 0.0f;
+          }
+          standoffPush = std::max(standoffPush, push);
+          if (standoffPush > 0.0f) cameraNodePosition -= forward * standoffPush;
         }
         cameraNodeOrientation = QUATERNION_IDENTITY;
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
@@ -4337,11 +4357,10 @@ void Match::Process() {
       ShowMatchHud(false);
     }
     if (GetEntranceElapsedSeconds() >= entranceSeconds) {
-      // Start the wipe and wait for it to cover. Everything below happens on
-      // the covered frame, so the pitch is already set when it uncovers.
-      if (!handoffWipeRunning && !handoffSnapped) StartHandoffWipe();
-      if (RunHandoffWipe()) {
-        handoffSnapped = true;
+      // No wipe here. The opening is a broadcast handing over to live football
+      // and PES cuts it straight; the matte belongs to what interrupts a match
+      // later, not to its start (owner, 03-09).
+      {
         entranceActive = false;
         ShowMatchHud(true);
         // Both teams onto their kickoff marks now, under cover, rather than
@@ -4387,10 +4406,11 @@ void Match::Process() {
     }
   }
 
-  // The wipe plays out over live football once the snap is done - the whole
-  // animation, the way the replay page plays its own out. Stopping at the cut
-  // would throw away five sixths of it and leave the crest vanishing mid-swing.
-  if (handoffSnapped && handoffWipeRunning) RunHandoffWipe();
+  // A matte on screen is driven every frame, whoever asked for it: the caller
+  // that wanted the cover stops asking the moment it has it - the referee
+  // prepares its restart and moves on - and the animation has to play out to
+  // the end, the way the replay page plays its own out.
+  if (handoffWipeRunning) RunHandoffWipe();
 
   ProcessTacticalHotkeys();
 

@@ -79,6 +79,9 @@ public:
   // Where the last cut's clip runs out, in timeline frames.
   int GetTimelineFrameCount() const;
 
+  // Which cut is on screen at this timeline frame (0 for a single-shot track).
+  int CutIndexAt(float timelineFrame) const;
+
 private:
   // Row ranges of the concatenated cuts, and where each begins in the timeline.
   struct Cut {
