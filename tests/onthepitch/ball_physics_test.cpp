@@ -130,4 +130,36 @@ TEST(BallPhysicsTest, WetPitchLetsBallSkid) {
   EXPECT_GT(wetState.momentum.coords[0], dryState.momentum.coords[0]);
 }
 
+// A penalty leaves the boot at about 25 m/s. Struck through the goal mouth it
+// crosses the net's 2.55 m depth in a tenth of a second, so the rear panel has
+// to hold it inside for every one of those steps - the shootout used to switch
+// the netting off the moment it flagged the goal, and the ball flew out the back
+// of the stadium.
+TEST(BallPhysicsTest, RearNettingHoldsAFullPowerPenalty) {
+  GoalNettingConfig config;
+  BallPhysicsState state{blunted::Vector3(config.pitchHalfW + 0.5f, 0.0f, 1.0f),
+                         blunted::Vector3(25.0f, 0.0f, 0.0f)};
+
+  const float back = config.pitchHalfW + config.goalDepth + config.ballRadius;
+  for (int step = 0; step < 50; step++) {
+    state.position += state.momentum * 0.01f;
+    ApplyGoalNettingCollision(state, true, config, 0.01f);
+    ASSERT_LE(state.position.coords[0], back);
+  }
+  // Caught, not merely clamped: the mesh has taken the pace out of it - 25 m/s
+  // down to a couple, with the ball still inside the goal.
+  EXPECT_LT(state.momentum.coords[0], 5.0f);
+  EXPECT_GT(state.position.coords[0], config.pitchHalfW);
+}
+
+TEST(BallPhysicsTest, NettingLeavesABallThatNeverCrossedTheLine) {
+  GoalNettingConfig config;
+  BallPhysicsState state{blunted::Vector3(config.pitchHalfW - 5.0f, 5.0f, 1.0f),
+                         blunted::Vector3(25.0f, 0.0f, 0.0f)};
+
+  const GoalNettingResult result = ApplyGoalNettingCollision(state, false, config, 0.01f);
+  EXPECT_FALSE(result.touchedNet);
+  EXPECT_NEAR(state.momentum.coords[0], 25.0f, kEpsilon);
+}
+
 }  // namespace

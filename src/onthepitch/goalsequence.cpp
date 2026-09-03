@@ -1,3 +1,5 @@
+#include <initializer_list>
+
 #include "goalsequence.hpp"
 
 namespace GoalSequence {
@@ -16,12 +18,15 @@ unsigned long ReplayFiresAt_ms(unsigned long goalTime_ms, unsigned long cutscene
   return cutsceneEnd_ms > celebrationEnd ? cutsceneEnd_ms : celebrationEnd;
 }
 
-unsigned long RestartPrepareAt_ms(unsigned long goalTime_ms) {
-  return ReplayFiresAt_ms(goalTime_ms) + kRestartPrepareAfterReplay_ms;
+unsigned long RestartPrepareAt_ms(unsigned long goalTime_ms,
+                                  unsigned long celebrationLength_ms) {
+  return ReplayFiresAt_ms(goalTime_ms, 0, celebrationLength_ms) +
+         kRestartPrepareAfterReplay_ms;
 }
 
-unsigned long RestartKickOffAt_ms(unsigned long goalTime_ms) {
-  return RestartPrepareAt_ms(goalTime_ms) + kKickOffAfterPrepare_ms;
+unsigned long RestartKickOffAt_ms(unsigned long goalTime_ms,
+                                  unsigned long celebrationLength_ms) {
+  return RestartPrepareAt_ms(goalTime_ms, celebrationLength_ms) + kKickOffAfterPrepare_ms;
 }
 
 unsigned long ReplayStartOffset_ms(unsigned long celebrationElapsed_ms) {
@@ -33,11 +38,17 @@ bool ScheduleIsConsistent() {
   const unsigned long goal = 0;
   if (ReplayFiresAt_ms(goal) < goal + kCelebration_ms)
     return false;
-  // The restart clears the goal state, so it must not land before the replay.
-  if (RestartPrepareAt_ms(goal) <= ReplayFiresAt_ms(goal))
-    return false;
-  if (RestartKickOffAt_ms(goal) <= RestartPrepareAt_ms(goal))
-    return false;
+  // The restart clears the goal state, so it must not land before the replay -
+  // for the celebration that is actually on screen, not just the default one. A
+  // cast performance scheduled against the default cleared the state at 10.5 s
+  // while the trigger was still waiting on 20 s, and the replay never fired.
+  for (unsigned long length :
+       {kMinCelebration_ms, kCelebration_ms, kLongestCelebration_ms}) {
+    if (RestartPrepareAt_ms(goal, length) <= ReplayFiresAt_ms(goal, 0, length))
+      return false;
+    if (RestartKickOffAt_ms(goal, length) <= RestartPrepareAt_ms(goal, length))
+      return false;
+  }
   // The replay has to still be able to reach back past the goal.
   // Every celebration the schedule can run has to leave the goal inside the replay.
   const unsigned long longest = ReplayStartOffset_ms(kLongestCelebration_ms);

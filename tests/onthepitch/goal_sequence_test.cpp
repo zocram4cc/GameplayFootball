@@ -154,3 +154,20 @@ TEST(CelebrationLength, EveryClipLengthLeavesTheGoalInTheReplay) {
         << "a clip of " << anim << " ms leaves the goal outside the replay";
   }
 }
+
+// A cast performance is as long as PES authored it, which can outrun the plain
+// default. The restart clears the goal state the replay trigger waits on, so
+// whatever the celebration's length, preparing the kickoff must still land
+// behind the replay - the 20 s cast that was scheduled against the 9 s default
+// had the state cleared at 10.5 s and never showed a replay at all.
+TEST(GoalSequence, TheRestartStaysBehindTheReplayForAnyCelebration) {
+  for (unsigned long length = 0; length <= GoalSequence::kLongestCelebration_ms;
+       length += 250) {
+    const unsigned long celebration = GoalSequence::CelebrationLength_ms(length);
+    EXPECT_GT(GoalSequence::RestartPrepareAt_ms(0, celebration),
+              GoalSequence::ReplayFiresAt_ms(0, 0, celebration))
+        << "a " << celebration << " ms celebration has the restart on top of the replay";
+    EXPECT_GT(GoalSequence::RestartKickOffAt_ms(0, celebration),
+              GoalSequence::RestartPrepareAt_ms(0, celebration));
+  }
+}

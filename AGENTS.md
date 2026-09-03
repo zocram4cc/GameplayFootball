@@ -165,6 +165,26 @@ committed, so every user builds their own data from their own copy of PES21 and
 their own packs. That command *is* the product. Anything it does not do is
 something the user cannot have.
 
+### Every PES-derived asset must be reproducible by a script
+
+Nothing that comes out of PES may exist only because someone once made it. Each
+one has to be regenerable, from a user's own PES21 install and packs, by a
+script in `tools/pes21_import` that runs unattended - no Blender session, no
+hex editor, no hand-fixed vertex, no "I exported this once and dropped it in".
+
+This is not tidiness, it is whether the game can be distributed at all. Since
+no PES-derived byte is ever committed, an asset that cannot be rebuilt by a
+script is an asset every user is simply missing, and the feature that depends
+on it silently does not exist for them. A one-off fix applied by hand to a
+model, a skeleton, a texture or a clip is therefore not a fix: it is a defect
+that only this working copy does not have.
+
+Practically, before calling any import work done: name the script and the
+command that regenerates it, and check that running it from the untouched
+source reproduces what is on disk. `reconvert_installed.py` exists for exactly
+that reason for animations - it is the reproducible way back to every installed
+clip - and anything new needs its equivalent.
+
 ### The test, applied before writing anything
 
 Am I changing the engine, or am I shaving the PES data so the engine does not

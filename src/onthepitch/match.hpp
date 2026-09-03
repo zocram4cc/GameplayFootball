@@ -239,11 +239,13 @@ public:
   Officials* GetOfficials() { return officials.get(); }
   const RefereeBuffer& GetRefereeBuffer() { return referee->GetBuffer(); };
 
-  void SetGoalScored(bool onOff) {
-    if (onOff == false)
-      ballIsInGoal = false;
-    goalScored = onOff;
-  }
+  // Whether the ball is in the net is where the ball is, not whether anyone is
+  // still calling it a goal: the netting in Ball::Process is gated on it. Clearing
+  // it here shut the net off the instant a scorer was flagged - which is what the
+  // penalty shootout does the moment it sees the ball go in, so a 25 m/s penalty
+  // sailed straight through the back of the goal and off into the stands. Only a
+  // reset clears it, by which time the ball is dead.
+  void SetGoalScored(bool onOff) { goalScored = onOff; }
   bool IsGoalScored() const { return goalScored; }
   // Sets a team's goal count and keeps the scoreboard in step.
   void SetScore(int teamID, int goals);
@@ -546,6 +548,9 @@ protected:
   // performance left finished loops running in place.
   unsigned long goalCelebrationIntroHold_ms = GoalCelebration::kIntroHold_ms;
   unsigned long goalCelebrationLength_ms = GoalSequence::kCelebration_ms;
+  // The staged performance's own length: the last actor's clip ending, set by
+  // StartGoalCast. Not the choreography's cycle, which runs on past the bodies.
+  unsigned long goalCastLength_ms = 0;
   int replayCamera = 1;  // behind the goal, which is what a goal replay wants
   // A foul replay waits for its cutscene; 0 when none is pending.
   unsigned long foulReplayDue_ms = 0;

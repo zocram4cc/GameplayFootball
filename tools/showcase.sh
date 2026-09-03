@@ -124,3 +124,9 @@ else
 fi
 
 echo "$(stat -c %s "$out" | awk '{printf "%.1f MB", $1/1048576}') / ${seconds}s -> $out"
+
+# The engine's log is the only record of what the match actually did - which
+# celebration was cast, when the replay fired - and the work directory goes on
+# exit. Keep it beside the video it explains.
+cp "$log" "${out%.*}.log"
+echo "${out%.*}.log"

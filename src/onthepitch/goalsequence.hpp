@@ -68,9 +68,14 @@ unsigned long CelebrationLength_ms(unsigned long animLength_ms);
 unsigned long ReplayFiresAt_ms(unsigned long goalTime_ms, unsigned long cutsceneEnd_ms = 0,
                                unsigned long celebrationLength_ms = kCelebration_ms);
 
-// When the referee should prepare the kickoff, and when it should start.
-unsigned long RestartPrepareAt_ms(unsigned long goalTime_ms);
-unsigned long RestartKickOffAt_ms(unsigned long goalTime_ms);
+// When the referee should prepare the kickoff, and when it should start - both
+// behind the replay for the celebration that is actually on screen. The referee
+// schedules these the tick after the goal, before the clip has been chosen, so
+// Match pushes them back once it knows (match.cpp, UpdateIngameCamera).
+unsigned long RestartPrepareAt_ms(unsigned long goalTime_ms,
+                                  unsigned long celebrationLength_ms = kCelebration_ms);
+unsigned long RestartKickOffAt_ms(unsigned long goalTime_ms,
+                                  unsigned long celebrationLength_ms = kCelebration_ms);
 
 // How far back the replay should start, given how long the celebration
 // actually ran (the elapsed goal timer at the moment it fires).
