@@ -308,6 +308,11 @@ nix-shell          # or: nix develop
 - Assets live in [`data/`](data/) — SQLite databases, media, and locale files.
   They are copied next to the binary automatically at build time via CMake
   `POST_BUILD`; `scripts/setup_assets.sh` handles manual/symlink installs.
+- **PES 2021 / 4cc content** — nothing PES- or community-derived is shipped
+  here. With a PES 2021 `Data/` directory and some 4cc/VGL exports,
+  [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) is the order of operations
+  from clone to imported teams, and [docs/ASSETS.md](docs/ASSETS.md) is why
+  each conversion does what it does.
 
 ---
 

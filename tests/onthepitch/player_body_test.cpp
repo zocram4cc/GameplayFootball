@@ -61,3 +61,19 @@ TEST(PlayerBody, AFallbackBodyGetsHairBecauseTheDecisionFollowsWhatLoaded) {
   const std::string loaded = PlayerBody::Resolve("fullbody_pes", true, false);
   EXPECT_TRUE(PlayerBody::UsesLegacyHairstyles(loaded));
 }
+
+// A per-player model from playermodels.cfg is a directory, and the geometry
+// inside it carries that directory's name because the name is the resource key.
+// playermodels.cfg is tracked and the models it names are not, so a fresh clone
+// that picks a 4cc team used to hand the loader a path that does not exist and
+// die inside it; both files are checked now, which needs both names.
+TEST(PlayerBody, ACustomModelNamesItsGeometryAfterItsDirectory) {
+  EXPECT_EQ(PlayerBody::CustomObjectPath("media/players/custom/lcg_2701"),
+            "media/players/custom/lcg_2701/fullbody.object");
+  EXPECT_EQ(PlayerBody::CustomModelPath("media/players/custom/lcg_2701"),
+            "media/players/custom/lcg_2701/fullbody_lcg_2701.ase");
+}
+
+TEST(PlayerBody, ACustomModelPathSurvivesADirectoryWithNoSlash) {
+  EXPECT_EQ(PlayerBody::CustomModelPath("lcg_2701"), "lcg_2701/fullbody_lcg_2701.ase");
+}
