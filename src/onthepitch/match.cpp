@@ -1825,6 +1825,22 @@ bool Match::RunHandoffWipe() {
   return ReplayWipe::CutIsDue(handoffWipeTiming, elapsed);
 }
 
+bool Match::CoverForRestart() {
+  // Nothing imported, nothing to wait for.
+  if (!handoffWipeTiming.valid) return true;
+  if (!restartWipeArmed) {
+    restartWipeArmed = true;
+    StartHandoffWipe();
+  }
+  if (RunHandoffWipe()) {
+    // Covered. The caller sets the pitch on this frame; the matte carries on
+    // uncovering by itself, which is where the players are revealed in place.
+    restartWipeArmed = false;
+    return true;
+  }
+  return false;
+}
+
 void Match::ShowMatchHud(bool visible) {
   // The persistent in-match chrome, hidden for the pre-match presentation and
   // for a replay, and brought back after.

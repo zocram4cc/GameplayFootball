@@ -581,6 +581,23 @@ protected:
   void StartHandoffWipe();
   // -> true once the screen is covered, which is when the pitch may be set.
   bool RunHandoffWipe();
+
+ public:
+  // -> true once the screen is covered and the caller may rearrange the pitch.
+  //
+  // The entrance already did this for the kickoff: start the matte, and do the
+  // reset on the frame it has everything covered. A stoppage needs it for the
+  // same reason - the referee's restart calls ResetSituation, which teleports
+  // twenty-two players onto their marks, and doing that in plain view is what
+  // the owner sees as everyone jumping sideways after a foul or an offside.
+  //
+  // Repeatable: each request arms a fresh pass. With no wipe imported the
+  // timing is invalid, this returns true on the first call, and the restart
+  // happens exactly as it did before.
+  bool CoverForRestart();
+
+ protected:
+  bool restartWipeArmed = false;
   // The match-music player: anthems, goal horns, victory anthems and chants
   // from the teams' rigdio exports (rigdiodirector.hpp, docs/RIGDIO.md).
   std::unique_ptr<RigdioDirector> rigdio;

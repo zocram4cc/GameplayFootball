@@ -20,8 +20,9 @@ screen.
 ```
 
 `./build.sh --help` lists `--release`, `--debug`, `--clean`, `--no-deps`,
-`--jobs N`. On NixOS use `nix develop` then `./build.sh --no-deps`. macOS and
-Windows are in the [README](../README.md).
+`--jobs N`. On NixOS use `nix develop` then `./build.sh --no-deps`. macOS is in
+the [README](../README.md); Windows is [its own section](#doing-all-of-this-on-windows)
+below, because several of the steps differ there.
 
 **A fresh clone plays.** Verified by running a match on a tree built from
 tracked files only (`git archive HEAD data`): the engine reports
@@ -254,3 +255,83 @@ installed clips and the cutscenes are all derived data, and
 Two one-way migrations exist for installs that predate a fix, both stamped so
 they cannot run twice: `migrate_anims_tpose.py` for the stock clips' rig and
 `migrate_cutscene_mover.py` for the cutscene clips' vertical.
+
+---
+
+## Doing all of this on Windows
+
+Everything above applies; five things differ, and one does not work at all.
+**None of this section has been run on a Windows machine** - it is read off the
+scripts and the code, and the CMake and Python behaviour is stated where it is
+explicit in them. Corrections welcome from anyone who tries it.
+
+### Build and run
+
+Prerequisites, once: Visual Studio 2022 with *Desktop development with C++*,
+Git, and CMake on `PATH`.
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass   # first run only
+
+.\build.ps1          # bootstraps vcpkg, installs vcpkg.json's deps, builds Release
+.\run.ps1            # launches it
+```
+
+`build.ps1` takes `-DebugBuild`, `-Clean`, `-NoDeps`, `-Jobs N`, `-VcpkgRoot`,
+`-Triplet`; `.\build.ps1 -Help` lists them. PowerShell reserves `-Debug`, which
+is why the debug flag is `-DebugBuild`. `scripts\setup_windows_deps.ps1` is the
+dependency step on its own, and `scripts\package_windows.ps1` assembles a
+distributable folder (exe + DLLs + assets).
+
+### The media tree is copied, not linked
+
+`cmake/link_media.cmake` symlinks `data/media` next to the binary on Linux and
+**copies it on Windows** (`FALLBACK_COPY` is `WIN32`), because a symlink there
+needs Developer Mode or elevation and a build that fails on a permission is
+worse than a build that is fat. The copy is per build configuration, so after a
+full PES import every configuration holds its own copy of everything the import
+produced - which on this machine's Linux tree is 6.2 GB apiece. Import into one
+configuration, or expect the disk use.
+
+### The importers run; two helpers do not
+
+`tools/pes21_import` is plain Python 3 - `os`, `struct`, `argparse`, `glob`,
+`tempfile`, `subprocess` - with no POSIX-only module, so it runs under Windows
+Python. What it needs from you:
+
+* **Pillow** (`pip install pillow`) and **ffmpeg on `PATH`**: the chants
+  (`build_pes21_pack.py`), the replay wipe (`import_wipe.py`) and the audio
+  pack (`package_assets.py`) all shell out to `ffmpeg`.
+* `set PES_FMDL_LIB=<dir holding FmdlFile.py>`, or pass `--fmdl-lib` to each
+  converter. Only `import_team.py` searches for it.
+* **Pass `--ganis` explicitly** to `reconvert_installed.py`: its default is
+  `/tmp/ganis`, which does not exist on Windows.
+* Keep the extraction root short - `C:\pes\` rather than a deep folder under
+  your profile. The archive paths inside a PES cpk are long
+  (`Asset/model/bg/st002/#Win/...`), and Windows' 260-character limit still
+  bites unless long paths are enabled.
+* `extract_stadium_packs.sh` and `convert_stadiums.sh` are bash wrappers around
+  `fpk.py` and `stadium_to_gf.py`. Run them under Git Bash or WSL, or call the
+  Python they wrap directly - the wrappers add no conversion logic of their own.
+* `sqlite3` on the command line may not be installed. Any team query in this
+  guide works from Python instead:
+  `python -c "import sqlite3;print(sqlite3.connect(r'data\databases\default\database.sqlite').execute('select id,name from teams').fetchall())"`
+
+### Recording a match does not work there
+
+`tools/showcase.sh` needs `mkfifo`, `timeout` and (as a fallback) `xvfb-run`.
+None exists on Windows, and the fifo is the whole point of the harness - it is
+what stops the engine writing raw frames into a file until the disk is full.
+
+Two ways round it:
+
+* **WSL2**, building and running the Linux side there. The harness works
+  unchanged; you need a GPU-capable WSL for the hardware path, or
+  `SHOWCASE_SOFTWARE=1` for the software one.
+* **On Windows, by hand**: set `"frame_recording_path" "<a file>"` in
+  `data/football.config`, play, then encode what it wrote:
+  `ffmpeg -f rawvideo -pixel_format rgba -video_size 1280x720 -framerate 60 -i frames.raw out.mp4`.
+  The stream is raw RGBA at a paced 60 fps with no timestamps of its own, and
+  nothing consumes it as it is written, so the file grows fast - one accidental
+  run on Linux left 32 GB. Keep the capture short and delete the raw file
+  afterwards.
