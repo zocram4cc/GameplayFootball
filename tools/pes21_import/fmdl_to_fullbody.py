@@ -71,6 +71,40 @@ def nearest_joints(position, joint_positions, count=3, falloff=0.35):
     return [(j, w / total) for j, w in weights]
 
 
+# How far a vertex may sit from the joint its own bone mapping puts it on before
+# the mapping is treated as a slot artifact rather than authoring. A hand's
+# width: healthy skin binds a vertex to a joint it is practically touching.
+STRAY_BINDING = 0.15
+
+
+def rebind_stray(position, mapped, joint_positions):
+    """-> True when a vertex's mapped joints are all far and a closer one exists.
+
+    4cc packs a whole character into the *boots* slot, so the export's bone
+    mapping is whatever that slot allows. Measured on the SMBG pack: the only
+    leg bones k2587's mesh names at all are `sk_foot_l/r`, so its shins and
+    knees are weighted to the feet - 785 vertices a side on the ankle and none
+    on the knee. The knee then cannot bend and the leg swings rigidly from hip
+    to foot, which on screen is a player sliding rather than striding.
+
+    Nothing in that source says "knee", so there is no mapping to honour: the
+    geometry's own position is the only truth about which joint owns it, and
+    that is what nearest_joints reads. A healthy model is untouched, because
+    its vertices sit on the joints they are mapped to.
+    """
+    if position is None or not mapped:
+        return False
+    names = {jid: name for name, jid in JOINT_ID.items()}
+    best_mapped = min(
+        (math.dist(position, joint_positions[names[jid]])
+         for jid in mapped if names.get(jid) in joint_positions),
+        default=None)
+    if best_mapped is None or best_mapped <= STRAY_BINDING:
+        return False
+    nearest = min(math.dist(position, pos) for pos in joint_positions.values())
+    return nearest < best_mapped
+
+
 def vertex_joints(vertex, bone_to_joint, joint_positions=None):
     """-> [(jointID, weight)], the strongest MAX_INFLUENCES, normalized."""
     position = fox_to_gf(vertex.position) if joint_positions else None
@@ -95,6 +129,9 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
     elif unmapped > 0.0:
         joint = JOINT_ID["middle"]
         weights[joint] = weights.get(joint, 0.0) + unmapped
+
+    if rebind_stray(position, weights.keys(), joint_positions):
+        return nearest_joints(position, joint_positions)
 
     top = sorted(weights.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
     total = sum(w for _, w in top)

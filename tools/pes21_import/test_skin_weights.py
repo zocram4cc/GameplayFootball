@@ -86,5 +86,29 @@ class EncodeColorTest(unittest.TestCase):
             self.assertEqual(int((channels[0] * 255.0) // 10), joint)
 
 
+class RebindStray(unittest.TestCase):
+    """4cc packs a whole character into the boots slot, so the export's bone
+    mapping is whatever that slot allows: k2587's only leg bones are the feet,
+    which left 785 vertices a side on the ankle and none on the knee - a leg
+    that cannot bend. A mapping that puts a vertex nowhere near itself is a slot
+    artifact, and position is the only truth left.
+    """
+
+    JOINTS = {"left_knee": (0.1, 0.0, 0.5), "left_ankle": (0.1, 0.0, 0.1)}
+
+    def test_a_vertex_on_its_own_joint_keeps_its_mapping(self):
+        knee = f.JOINT_ID["left_knee"]
+        self.assertFalse(f.rebind_stray((0.1, 0.0, 0.52), [knee], self.JOINTS))
+
+    def test_a_shin_mapped_to_the_foot_is_rebound(self):
+        ankle = f.JOINT_ID["left_ankle"]
+        self.assertTrue(f.rebind_stray((0.1, 0.0, 0.48), [ankle], self.JOINTS))
+
+    def test_geometry_far_from_every_joint_is_left_alone(self):
+        # a cape tip: far from its mapped joint, but no joint is closer either
+        ankle = f.JOINT_ID["left_ankle"]
+        self.assertFalse(f.rebind_stray((0.1, 0.0, 0.1), [ankle], self.JOINTS))
+
+
 if __name__ == "__main__":
     unittest.main()
