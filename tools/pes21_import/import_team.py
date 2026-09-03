@@ -400,6 +400,14 @@ HEAD_JOINT_Y = 1.64
 HEAD_PRESENT_VERTICES = 8
 TORSO_PRESENT_VERTICES = 60
 FEET_PRESENT_VERTICES = 60
+# A character need not have feet to be whole: a ghost has none, and giving it
+# PES's legs is worse than giving it nothing. What it does have is one
+# continuous body from at least hip height up to its head, which a face or a
+# prop set never has - measured in 10 cm slices, each of which must hold more
+# than a strap's worth of geometry.
+HIP_JOINT_Y = 0.95
+BODY_SLICE_M = 0.10
+BODY_SLICE_VERTICES = 20
 
 
 def whole_body(fmdl_paths, fmdl_lib):
@@ -415,10 +423,18 @@ def whole_body(fmdl_paths, fmdl_lib):
     floating shark. PES draws such an export over its own body, and that is what
     the stock body under it is for.
 
+    The feet are not required when the export is a body in its own right, which
+    is the second test below. SMBG's k2582 is a Boo: it stops at 0.83 m because a
+    ghost has no legs, and the band test read that as a partial export and gave
+    it PES's - which is the "legs where there shouldn't be" the owner reported.
+    Across the five packs on disk exactly two exports take this path: that Boo,
+    and a whole K Rool shipped in the Faces slot.
+
     True on any read error: a needless composite costs nothing, a missing one
     costs the character.
     """
     bands = {"head": 0, "torso": 0, "feet": 0}
+    heights = []
     try:
         sys.path.insert(0, fmdl_lib)
         import FmdlFile
@@ -428,6 +444,7 @@ def whole_body(fmdl_paths, fmdl_lib):
             for mesh in fmdl.meshes:
                 for v in mesh.vertices:
                     y = v.position.y
+                    heights.append(y)
                     if y > HEAD_JOINT_Y:
                         bands["head"] += 1
                     elif y < 0.35:
@@ -436,9 +453,30 @@ def whole_body(fmdl_paths, fmdl_lib):
                         bands["torso"] += 1
     except Exception:
         return True
-    return (bands["head"] >= HEAD_PRESENT_VERTICES
+    if (bands["head"] >= HEAD_PRESENT_VERTICES
             and bands["torso"] >= TORSO_PRESENT_VERTICES
-            and bands["feet"] >= FEET_PRESENT_VERTICES)
+            and bands["feet"] >= FEET_PRESENT_VERTICES):
+        return True
+    return is_continuous_body(heights)
+
+
+def is_continuous_body(heights):
+    """Whether these vertex heights are one body from the hip up to the head.
+
+    Reaching the head is what rules out a pair of boots, starting at or below the
+    hip is what rules out a face, and no empty slice in between is what rules out
+    a prop set - LCG's k2583 has geometry from the floor to 2.18 m and nine holes
+    through it, because it is a blaster and a tail rather than a character.
+    """
+    if not heights:
+        return False
+    low, high = min(heights), max(heights)
+    if low > HIP_JOINT_Y or high < HEAD_JOINT_Y:
+        return False
+    slices = [0] * (int((high - low) / BODY_SLICE_M) + 1)
+    for y in heights:
+        slices[min(len(slices) - 1, int((y - low) / BODY_SLICE_M))] += 1
+    return all(count >= BODY_SLICE_VERTICES for count in slices)
 
 
 def mesh_names(fmdl_path, fmdl_lib):

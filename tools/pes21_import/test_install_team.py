@@ -813,3 +813,29 @@ class OnlyATrulyHeadlessPackGetsTheStockBody(unittest.TestCase):
         # guessing wrong here costs a character its face, so an unreadable
         # export counts as whole and gets no composite
         self.assertTrue(import_team.whole_body(["/nonexistent.fmdl"], "/nonexistent"))
+
+
+class ALeglessCharacterIsStillWholeplayer(unittest.TestCase):
+    """The owner's report: "the ghost on smb, there's now legs where there
+    shouldn't be". SMBG's k2582 is a Boo, so it stops at 0.83 m, and the band
+    test read a missing feet band as a partial export and composited PES's body
+    - legs included - underneath it."""
+
+    def test_a_body_from_the_hip_to_the_head_needs_nothing_under_it(self):
+        ghost = [0.83 + 0.001 * i for i in range(1200)]
+        self.assertTrue(import_team.is_continuous_body(ghost))
+
+    def test_a_face_that_starts_at_the_chest_is_not_a_body(self):
+        head = [1.22 + 0.001 * i for i in range(900)]
+        self.assertFalse(import_team.is_continuous_body(head))
+
+    def test_a_prop_set_with_holes_through_it_is_not_a_body(self):
+        # LCG's k2583: floor to 2.18 m, nine empty slices - a blaster and a tail.
+        props = [0.0 + 0.001 * i for i in range(300)] + [2.0 + 0.001 * i for i in range(300)]
+        self.assertFalse(import_team.is_continuous_body(props))
+
+    def test_a_strand_thin_slice_does_not_carry_a_body(self):
+        # One hair strand crossing an otherwise empty slice must not count.
+        body = [0.90 + 0.001 * i for i in range(800)]
+        strand = [1.75, 1.76, 1.77]
+        self.assertFalse(import_team.is_continuous_body(body + strand + [1.95] * 30))
