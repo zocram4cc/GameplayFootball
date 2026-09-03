@@ -202,6 +202,119 @@ def portrait_name(filename):
     return re.sub(r"[^a-z0-9]+", "", trimmed)
 
 
+def teams_bound_to_prefix(conn, game_dir, prefix):
+    """-> [team id] whose players playermodels.cfg already binds to this prefix."""
+    path = os.path.join(game_dir, "media", "players", "playermodels.cfg")
+    if not os.path.isfile(path):
+        return []
+    ids = []
+    for line in open(path).read().splitlines():
+        fields = line.split()
+        if len(fields) > 1 and ("/%s_" % prefix) in fields[1]:
+            try:
+                ids.append(int(fields[0]))
+            except ValueError:
+                continue
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute("select distinct team_id from players where id in (%s)" % placeholders,
+                        ids).fetchall()
+    return [row[0] for row in rows if row[0] is not None]
+
+
+def read_roster(game_dir, database, prefix):
+    """-> {database id: player name} for the team whose art tag is `prefix`.
+
+    Read from the database rather than the .ted so a models-only re-import can
+    bind by name too. An unknown prefix or a missing database is an empty
+    roster, and the caller falls back to what it did before.
+    """
+    path = database or os.path.join(game_dir, "databases", "default", "database.sqlite")
+    if not os.path.isfile(path):
+        return {}
+    import sqlite3
+    try:
+        conn = sqlite3.connect(path)
+        teams = conn.execute("select id, kit_url from teams where kit_url is not null").fetchall()
+        # A team's art tag and its model prefix are not always the same word:
+        # SMBG's art is images_teams/smbg/ while its models are smg_25xx, because
+        # the tag comes from the team name and the prefix from whoever ran the
+        # import. Either being a prefix of the other identifies the team, and
+        # only an unambiguous single match is used.
+        wanted = []
+        for team_id, kit_url in teams:
+            tag = kit_url.strip("/").split("/")[1] if "/" in kit_url else kit_url
+            if tag and (tag.startswith(prefix) or prefix.startswith(tag)):
+                wanted.append(team_id)
+        if len(wanted) != 1:
+            # The tag and the prefix are not always relatable at all - SMBG's art
+            # is images_teams/smbg/ and its models are smg_25xx - so ask the
+            # bindings that already exist which team this prefix belongs to. They
+            # may be bound to the wrong players (that is what this is fixing) but
+            # they are bound to the right team.
+            wanted = teams_bound_to_prefix(conn, game_dir, prefix)
+        if len(wanted) != 1:
+            conn.close()
+            return {}
+        rows = conn.execute(
+            "select id, lastname from players where team_id = ?", (wanted[0],)).fetchall()
+        conn.close()
+    except sqlite3.Error:
+        return {}
+    return {int(row[0]): row[1] or "" for row in rows}
+
+
+def bind_by_name(exports, roster):
+    """-> {export id: database id}, matching each export to the player it names.
+
+    A pack folder carries the player's name - "k2580 - Shiddy" - and so does the
+    roster, in the team's own style: "Shiddy" against "SHIDDY", "Wario Land 4"
+    against "MY GREATEST ACHIEVEMENT WARIO LAND 4", "Pianta Chuckster" against
+    "I'M A CHUCKSTER". When the export numbering says nothing about the squad,
+    that name is the only honest link.
+
+    SMBG numbers its exports k2576..k2593 against shirts 1..23, so
+    shirt_number() finds nobody and the import fell back to the pack's directory
+    order - which is not the roster's. Measured on the installed squad: twelve of
+    fourteen players wore another player's model, two places out, and SHIDDY had
+    FUCK LUIGI's.
+
+    Best match first, over the whole set at once, rather than in directory
+    order: "Luigi" shares a word with "FUCK LUIGI" and would take his row before
+    the export that names him in full is even reached. Words only, on letters and
+    digits, so a substring cannot claim a row; a tie claims nothing.
+    """
+    def tokens(text):
+        return [t for t in re.split(r"[^a-z0-9]+", text.lower()) if t]
+
+    scored = []
+    for export_id, export_name in exports:
+        wanted = tokens(export_name)
+        if not wanted:
+            continue
+        for database_id, player in roster.items():
+            have = set(tokens(player))
+            hits = sum(1 for t in wanted if t in have)
+            if hits:
+                # a name matched in full is worth more than one matched in part
+                scored.append((hits, hits / float(len(wanted)), export_id, database_id))
+    scored.sort(reverse=True)
+
+    bound, taken = {}, set()
+    for hits, share, export_id, database_id in scored:
+        if export_id in bound or database_id in taken:
+            continue
+        # an export whose best is a tie between two players names neither
+        rivals = [row for row in scored
+                  if row[2] == export_id and row[3] not in taken and row[:2] == (hits, share)]
+        if len(rivals) > 1:
+            continue
+        bound[export_id] = database_id
+        taken.add(database_id)
+    return bound
+
+
 def bind_portraits(model_bindings, portrait_files, prefix, names=None):
     """Maps database ID -> portrait path, for players this pack has a model for.
 
@@ -627,18 +740,36 @@ def relink_portraits(game_dir, database):
     return lines
 
 
-def append_config(path, lines):
-    """Appends "<id> <path>" lines, skipping ids the file already binds."""
-    existing = open(path).read() if os.path.exists(path) else ""
-    fresh = [line for line in lines if line.split()[0] + " " not in existing]
-    if not fresh:
-        return 0
+def write_config(path, lines):
+    """Writes "<id> <path>" lines, replacing whatever those ids were bound to.
+
+    Appending and skipping ids the file already mentioned is what let a wrong
+    binding survive a re-import: SMBG's squad was bound by position on its first
+    import, and every later run saw the ids "already there" and left twelve
+    players wearing another player's model. A binding is a fact about one id, so
+    a fresh one replaces it and every other line is kept as it stands.
+
+    -> (written, replaced).
+    """
+    kept, replaced = [], 0
+    ids = {line.split()[0] for line in lines}
+    models = {line.split()[1] for line in lines if len(line.split()) > 1}
+    if os.path.exists(path):
+        for existing in open(path).read().splitlines():
+            fields = existing.split()
+            # Both directions: one player has one model, and one model belongs to
+            # one player. Replacing only by id left the model bound twice when it
+            # moved to another player, which is how a squad ends up with two men
+            # in the same body.
+            if fields and (fields[0] in ids or (len(fields) > 1 and fields[1] in models)):
+                if existing.strip() not in [l.strip() for l in lines]:
+                    replaced += 1
+                continue
+            kept.append(existing)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "a") as out:
-        if existing and not existing.endswith("\n"):
-            out.write("\n")
-        out.write("\n".join(fresh) + "\n")
-    return len(fresh)
+    with open(path, "w") as out:
+        out.write("\n".join(kept + lines).rstrip("\n") + "\n")
+    return len(lines), replaced
 
 
 def find_fmdl_lib(hint=""):
@@ -767,10 +898,19 @@ def main():
         return 1
 
     explicit = [int(x) for x in args.db_ids.split(",") if x.strip()]
+    # Who each export belongs to, by the name it carries, before anything falls
+    # back to counting. The roster is the database's own, so a re-import with no
+    # .ted can still bind correctly - which is what the pack's own folder names
+    # are for (model_owner).
+    roster = read_roster(args.game_dir, args.database, args.prefix) if not by_shirt else {}
+    by_name = bind_by_name([(export_id, name) for export_id, name, _ in players], roster)
+    if roster:
+        print("   named: %d of %d export(s) matched a squad name" % (len(by_name), len(players)))
     lines = []
     for index, (export_id, name, fmdl) in enumerate(players):
         dest = install_dir(args.game_dir, args.prefix, export_id)
         db_id = (by_shirt.get(shirt_number(export_id))
+                 or by_name.get(export_id)
                  or (explicit[index] if index < len(explicit) else None)
                  or (args.first_db_id + index if args.first_db_id else None))
         rel = os.path.relpath(dest, args.game_dir).replace(os.sep, "/")
@@ -841,9 +981,9 @@ def main():
             lines.append("%d %s" % (db_id, rel))
 
     if lines and not args.dry_run:
-        added = append_config(
+        written, replaced = write_config(
             os.path.join(args.game_dir, "media", "players", "playermodels.cfg"), lines)
-        print("wrote %d playermodels.cfg entries" % added)
+        print("wrote %d playermodels.cfg entries (%d replaced)" % (written, replaced))
     return 0
 
 

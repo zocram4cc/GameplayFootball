@@ -497,8 +497,11 @@ class PortraitsBindToTheirPlayers(unittest.TestCase):
             tempfile.mkdtemp(), self.game, "t", self.by_shirt), [])
 
 
-class TheConfigsAreAppendedNotDoubled(unittest.TestCase):
-    """Every one of these gets re-run the moment a pack is updated."""
+class TheConfigsAreRewrittenNotDoubled(unittest.TestCase):
+    """Every one of these gets re-run the moment a pack is updated - which is
+    what the old behaviour got wrong: a re-import saw the ids "already there"
+    and kept the wrong bindings, so SMBG's squad stayed two places out with
+    twelve players wearing another player's model."""
 
     def setUp(self):
         handle, self.path = tempfile.mkstemp()
@@ -508,17 +511,27 @@ class TheConfigsAreAppendedNotDoubled(unittest.TestCase):
         os.unlink(self.path)
 
     def test_new_ids_are_added(self):
-        self.assertEqual(import_team.append_config(self.path, ["7 a", "8 b"]), 2)
+        self.assertEqual(import_team.write_config(self.path, ["7 a", "8 b"]), (2, 0))
         self.assertEqual(open(self.path).read(), "7 a\n8 b\n")
 
-    def test_an_id_already_bound_is_not_written_twice(self):
-        import_team.append_config(self.path, ["7 a"])
-        self.assertEqual(import_team.append_config(self.path, ["7 c", "9 d"]), 1)
-        self.assertEqual(open(self.path).read(), "7 a\n9 d\n")
+    def test_a_fresh_binding_replaces_the_old_one(self):
+        import_team.write_config(self.path, ["7 a"])
+        self.assertEqual(import_team.write_config(self.path, ["7 c", "9 d"]), (2, 1))
+        self.assertEqual(open(self.path).read(), "7 c\n9 d\n")
+
+    def test_a_model_that_moves_to_another_player_is_not_bound_twice(self):
+        import_team.write_config(self.path, ["7 a", "8 b"])
+        import_team.write_config(self.path, ["9 a"])
+        self.assertEqual(open(self.path).read(), "8 b\n9 a\n")
+
+    def test_lines_for_other_players_are_left_alone(self):
+        import_team.write_config(self.path, ["1 x", "2 y"])
+        import_team.write_config(self.path, ["2 z"])
+        self.assertEqual(open(self.path).read(), "1 x\n2 z\n")
 
     def test_a_file_without_a_trailing_newline_does_not_join_lines(self):
         open(self.path, "w").write("1 x")
-        import_team.append_config(self.path, ["2 y"])
+        import_team.write_config(self.path, ["2 y"])
         self.assertEqual(open(self.path).read().splitlines(), ["1 x", "2 y"])
 
 

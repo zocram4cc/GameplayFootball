@@ -514,8 +514,10 @@ void Referee::BallTouched() {
           match->StopPlay();
           buffer.desiredSetPiece = e_SetPiece_FreeKick;
           buffer.stopTime = match->GetActualTime_ms();
-          buffer.prepareTime = match->GetActualTime_ms() + 2000;
-          buffer.startTime = buffer.prepareTime + 2000;
+          // Behind the choreography rather than under it (setpiecelaws.hpp):
+          // the flag and the complaint play out, and only then is anyone moved.
+          buffer.prepareTime = SetPieceLaws::OffsidePrepareAt_ms(buffer.stopTime);
+          buffer.startTime = SetPieceLaws::OffsideTakeAt_ms(buffer.stopTime);
           // Law 11: the free kick is taken where the offence occurred - the
           // spot where the flagged player just played the ball - not where he
           // stood when the pass was struck (that stored position only judged
@@ -543,7 +545,7 @@ void Referee::BallTouched() {
           // against, and the camera had no one to cut to for the protest.
           match->SetCutsceneParticipants(playerIter->first, nullptr);
           // Two beats - the flag, then the complaint - so it needs the room.
-          match->StartCutscene("offside", 7.0f);
+          match->StartCutscene("offside", SetPieceLaws::kOffsideCutscene_ms / 1000.0f);
           if (Verbose())
             printf("referee: offside\n");
           break;
