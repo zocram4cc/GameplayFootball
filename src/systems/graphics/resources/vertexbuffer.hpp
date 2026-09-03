@@ -24,7 +24,8 @@ public:
                        const std::vector<unsigned int>& indices);
   void TriangleMeshWasUpdatedExternally(unsigned int verticesDataSize,
                                         const std::vector<unsigned int>& indices);
-  VertexBufferID CreateOrUpdateVertexBuffer(Renderer3D* renderer3D, bool dynamicBuffer);
+  VertexBufferID CreateOrUpdateVertexBuffer(Renderer3D* renderer3D, bool dynamicBuffer,
+                                            int dynamicFloats = 0);
 
   float* GetTriangleMesh();
 

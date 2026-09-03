@@ -198,8 +198,14 @@ public:
   virtual VertexBufferID CreateVertexBuffer(float* vertices, unsigned int verticesDataSize,
                                             const std::vector<unsigned int>& indices,
                                             e_VertexBufferUsage usage) = 0;
+  // `dynamicFloats`, when it is more than zero and less than the whole buffer, is
+  // a prefix: only that many floats have changed since the last upload and the
+  // rest of the buffer is left as it is. A skinned body rewrites positions and
+  // normals, which the element-major layout puts at the front, so this is two
+  // fifths of it - and the tail is valid in both ping-pong slots because
+  // CreateVertexBuffer wrote the whole thing into each of them.
   virtual void UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
-                                  unsigned int verticesDataSize) = 0;
+                                  unsigned int verticesDataSize, int dynamicFloats) = 0;
   virtual void DeleteVertexBuffer(VertexBufferID vertexBufferID) = 0;
   virtual void RenderVertexBuffer(const std::deque<VertexBufferQueueEntry>& vertexBufferQueue,
                                   e_RenderMode renderMode = e_RenderMode_Full) = 0;

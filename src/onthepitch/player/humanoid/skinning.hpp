@@ -36,11 +36,37 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
 
 // Blending: zero an accumulator, then add each influence's transform scaled by
 // its weight. Weights are used as given - the caller has already normalised them.
-void ZeroTransform(JointTransform& transform);
-void AddWeighted(JointTransform& accumulator, const JointTransform& transform, float weight);
+// Defined here rather than in skinning.cpp on purpose. The build is -O3 without
+// link-time optimisation, so a definition in another translation unit is a real
+// call: objdump of UpdateFullbodyModel showed five to eight of them per vertex,
+// with the blended transform spilled to the stack because its address escaped.
+// A body carries 20k-100k vertices and there are 22 of them a frame.
+inline void ZeroTransform(JointTransform& transform) {
+  for (int i = 0; i < 9; i++) transform.rotation[i] = 0.0f;
+  for (int i = 0; i < 3; i++) transform.translation[i] = 0.0f;
+}
 
-void TransformPoint(const JointTransform& transform, const float in[3], float out[3]);
-void TransformDirection(const JointTransform& transform, const float in[3], float out[3]);
+inline void AddWeighted(JointTransform& accumulator, const JointTransform& transform, float weight) {
+  for (int i = 0; i < 9; i++) accumulator.rotation[i] += transform.rotation[i] * weight;
+  for (int i = 0; i < 3; i++) accumulator.translation[i] += transform.translation[i] * weight;
+}
+
+inline void TransformPoint(const JointTransform& transform, const float in[3], float out[3]) {
+  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
+           transform.rotation[2] * in[2] + transform.translation[0];
+  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
+           transform.rotation[5] * in[2] + transform.translation[1];
+  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
+           transform.rotation[8] * in[2] + transform.translation[2];
+}
+inline void TransformDirection(const JointTransform& transform, const float in[3], float out[3]) {
+  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
+           transform.rotation[2] * in[2];
+  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
+           transform.rotation[5] * in[2];
+  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
+           transform.rotation[8] * in[2];
+}
 
 // How many bodies to hand one worker thread, so a squad spreads across the whole
 // pool instead of a fixed few tasks. Zero workers means an empty pool, where the

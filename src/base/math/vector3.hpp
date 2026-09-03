@@ -319,6 +319,35 @@ inline Vector3 Vector3::Get2D() const {
   return result;
 }
 
+
+// Inline for the same reason as FastNormalize below, which calls it: this is one
+// multiply-add chain per normal of every skinned vertex.
+inline real Vector3::GetDotProduct(const Vector3& fac) const {
+  return (coords[0] * fac.coords[0] + coords[1] * fac.coords[1] + coords[2] * fac.coords[2]);
+}
+
+// Defined here rather than in vector3.cpp: skinning calls it twice per vertex and
+// the build has no link-time optimisation, so out of line it is a real call for
+// every normal of every one of ~1M skinned vertices a frame.
+
+inline void Vector3::FastNormalize() {
+  // http://www.devmaster.net/forums/showthread.php?t=4460
+
+  float x = GetDotProduct(*this);
+  float xhalf = 0.5f * x;
+  static_assert(sizeof(float) == sizeof(std::uint32_t));
+  std::uint32_t i;
+  std::memcpy(&i, &x, sizeof(x));  // get bits for floating value
+  i = 0x5f3759df - (i >> 1);       // give initial guess y0
+  std::memcpy(&x, &i, sizeof(x));  // convert bits back to float
+  x *= 1.5f - xhalf * x * x;       // newton step, repeating this step
+                                   // increases accuracy
+
+  coords[0] *= x;
+  coords[1] *= x;
+  coords[2] *= x;
+}
+
 }  // namespace blunted
 
 #endif

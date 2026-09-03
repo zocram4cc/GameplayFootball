@@ -260,6 +260,13 @@ bool Renderer3DMessage_RenderView::Execute(void* caller) {
       GetConfiguration()->GetReal("sky_horizon_b", 0.93f));
   renderer->SetUniformFloat("postprocess", "sceneBrightness",
                             GetConfiguration()->GetReal("graphics_brightness", 1.0f));
+  // The engine's only anti-aliasing pass. postprocess.frag gates the edge blur on
+  // this being > 0 and GL zero-initialises a uniform nobody sets, so when f9aa4e3
+  // took this line out as collateral the pass went silently off and
+  // graphics_edge_blur_tolerance became a no-op - 0.02 is where PICTURE.md settled
+  // it.
+  renderer->SetUniformFloat("postprocess", "edgeBlurDepthTolerance",
+                            GetConfiguration()->GetReal("graphics_edge_blur_tolerance", 0.02f));
   // PES's grade, chosen the way PES chooses it: by time of day and weather
   // (scenegrade.hpp). On, now that the strip carries tables that can be a display
   // transfer at all.

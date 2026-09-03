@@ -143,9 +143,6 @@ Vector3 Vector3::GetCrossProduct(const Vector3& fac) const {
                  coords[0] * fac.coords[1] - coords[1] * fac.coords[0]);
 }
 
-real Vector3::GetDotProduct(const Vector3& fac) const {
-  return (coords[0] * fac.coords[0] + coords[1] * fac.coords[1] + coords[2] * fac.coords[2]);
-}
 
 void Vector3::ConstructMatrix(Matrix3& mat) const {
   mat.elements[0] = coords[0];
@@ -153,23 +150,6 @@ void Vector3::ConstructMatrix(Matrix3& mat) const {
   mat.elements[8] = coords[2];
 }
 
-void Vector3::FastNormalize() {
-  // http://www.devmaster.net/forums/showthread.php?t=4460
-
-  float x = GetDotProduct(*this);
-  float xhalf = 0.5f * x;
-  static_assert(sizeof(float) == sizeof(std::uint32_t));
-  std::uint32_t i;
-  std::memcpy(&i, &x, sizeof(x));  // get bits for floating value
-  i = 0x5f3759df - (i >> 1);       // give initial guess y0
-  std::memcpy(&x, &i, sizeof(x));  // convert bits back to float
-  x *= 1.5f - xhalf * x * x;       // newton step, repeating this step
-                                   // increases accuracy
-
-  coords[0] *= x;
-  coords[1] *= x;
-  coords[2] *= x;
-}
 
 void Vector3::Normalize(const Vector3& ifNull) {
   if (fabs(this->coords[0]) < 0.000001f && fabs(this->coords[1]) < 0.000001f &&
