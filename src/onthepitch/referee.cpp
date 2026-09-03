@@ -279,6 +279,16 @@ void Referee::Process() {
       }
 
       if (!buffer.prepared && buffer.prepareTime <= match->GetActualTime_ms()) {
+        // A kick-off or a free kick rearranges the whole pitch: PrepareSetPiece
+        // calls ResetSituation, which puts twenty-two players on their marks in
+        // one frame. Behind the wipe, the way the entrance already does it for
+        // the kickoff - the cutscene has played out by now (FoulSequence,
+        // SetPieceLaws::OffsidePrepareAt_ms), so this is the last thing left in
+        // plain view. A throw-in, a corner or a goal kick moves nobody much and
+        // is left alone.
+        const bool bigRearrangement = buffer.desiredSetPiece == e_SetPiece_KickOff ||
+                                      buffer.desiredSetPiece == e_SetPiece_FreeKick;
+        if (bigRearrangement && !match->CoverForRestart()) return;
         buffer.prepared = true;
         if (buffer.endPhase == true) {
           if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {
