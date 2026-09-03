@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import gani_to_anim
 import install_anims
+import retarget
 import strcode
 
 TYPE_RE = re.compile(r"<type>\s*(\w+)\s*</type>", re.S)
@@ -62,11 +63,13 @@ def pool_gani(ganis_dir, subdir, stem):
 
 
 def reconvert_one(job):
-    """(gani path, dest path, anim type, strip) -> error string or None."""
-    gani_path, dest, anim_type, strip = job
+    """(gani path, dest path, anim type, strip, scale) -> error string or None."""
+    gani_path, dest, anim_type, strip = job[:4]
+    scale = job[4] if len(job) > 4 else None
     try:
         text, _ = gani_to_anim.convert(open(gani_path, "rb").read(),
-                                       anim_type=anim_type, strip_root=strip)
+                                       anim_type=anim_type, strip_root=strip,
+                                       pos_scale=scale)
     except Exception as exc:
         return "%s: %s" % (os.path.basename(dest), exc)
     open(dest, "w").write(text)
@@ -134,7 +137,14 @@ def pass_pool(imports_dir, ganis_dir, workers):
             if source is None:
                 missing.append(name)
                 continue
-            jobs.append((source, os.path.join(full, name), "movement", False))
+            # Match animation, so the calibrated scale rather than the
+            # entrance/cutscene one. At 1/128000 every root track comes out
+            # 6.25x too short: a traprun travels 0.13 m instead of 1.27 m, so
+            # the clip reads as stationary and lands in `idle/`, and a diving
+            # keeper keeps his pelvis at standing height and swims through the
+            # air. See retarget.PES_POS_TO_M_GAMEPLAY and calibrate_pos_scale.
+            jobs.append((source, os.path.join(full, name), "movement", False,
+                         retarget.PES_POS_TO_M_GAMEPLAY))
     failures = run_jobs(jobs, workers)
     print("pool: %d reconverted, %d missing sources, %d failures"
           % (len(jobs) - len(failures), len(missing), len(failures)))
