@@ -2448,10 +2448,24 @@ bool Match::StartGoalCast(const std::string& celebration) {
     EndGoalCast();
     return false;
   }
+  // How long the performance itself runs: the last actor's clip ending, not the
+  // choreography's cycle. A .chor's cycleFrames is the pack's whole beat - PES
+  // holds the camera on the scene long after the bodies are done - and reading
+  // it as the celebration's length inflated a 3 s performance to 16 s, which
+  // both repeated the clips to fill the window and pushed the replay trigger
+  // past the kickoff that clears the goal state. Measured over the 252 goal
+  // choreographies: performances run 0.2 s to 9.0 s, median 3.2 s, against
+  // cycles of up to 16 s.
+  goalCastLength_ms = 0;
+  for (const auto& cast : cutsceneCast)
+    goalCastLength_ms = std::max(
+        goalCastLength_ms,
+        (unsigned long)(cast.slot->phaseFrames + cast.clip->GetFrameCount()) * 10);
   Log(e_Notice, "Match", "StartGoalCast",
       choreo->GetName() + ": " + int_to_str((int)cutsceneCast.size()) + " of " +
-          int_to_str((int)choreo->GetSlots().size()) + " marks cast, runs " +
-          int_to_str(choreo->GetLastFrame() * 10) + " ms");
+          int_to_str((int)choreo->GetSlots().size()) + " marks cast, performance runs " +
+          int_to_str((int)goalCastLength_ms) + " ms of a " +
+          int_to_str(choreo->GetLastFrame() * 10) + " ms beat");
   return true;
 }
 
@@ -2494,6 +2508,11 @@ void Match::UpdateCutsceneChoreo() {
       const Vector3 world(
           goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
           goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
+      // An actor who is done holds his last pose. SetChoreoPose wraps the frame,
+      // which is right for a walk-on marking time at the tunnel mouth and wrong
+      // for a performance: it played the celebration again from the top, over
+      // and over, for as long as the window lasted.
+      animFrame = std::min(animFrame, cast.clip->GetEffectiveFrameCount());
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
     }
@@ -4020,10 +4039,20 @@ void Match::UpdateIngameCamera() {
           // played on the spot never had. Without one, the clip on the spot as
           // before.
           if (StartGoalCast(chosen.name)) {
-            goalCelebrationLength_ms = GoalSequence::CelebrationLength_ms(
-                (unsigned long)activeCutsceneChoreo->GetLastFrame() * 10);
+            goalCelebrationLength_ms =
+                GoalSequence::CelebrationLength_ms(goalCastLength_ms);
             goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
           }
+          // The referee scheduled the restart a second ago, off the default
+          // celebration length, because the clip had not been chosen yet.
+          // Preparing it calls ResetSituation, which clears the goal state the
+          // replay trigger below waits on - so a celebration that runs longer
+          // than the default has to push the restart back, or the replay never
+          // fires at all and the celebration is the last thing seen.
+          const unsigned long prepareAt = GoalSequence::RestartPrepareAt_ms(
+              actualTime_ms - goalScoredTimer, goalCelebrationLength_ms);
+          if (referee->GetBuffer().active && referee->GetBuffer().prepareTime < prepareAt)
+            referee->AlterSetPiecePrepareTime(prepareAt);
           Log(e_Notice, "Match", "UpdateIngameCamera",
               "celebration length: intro " + int_to_str((int)goalCelebrationIntroHold_ms) +
                   " ms, whole performance " + int_to_str((int)goalCelebrationLength_ms) +
