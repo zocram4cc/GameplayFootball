@@ -577,7 +577,6 @@ protected:
   unsigned long handoffWipeStarted_ms = 0;
   int handoffWipeFrameOnScreen = -1;
   bool handoffWipeRunning = false;
-  bool handoffSnapped = false;
   void StartHandoffWipe();
   // -> true once the screen is covered, which is when the pitch may be set.
   bool RunHandoffWipe();
@@ -607,6 +606,11 @@ protected:
   // play in order, each one filling its own slice of the entrance
   CamTrack introCamTrack;
   std::vector<CamTrack> introShots;
+  // The dolly-back that keeps an authored shot out of the cast, held for the
+  // length of the cut it was needed in (see the standoff in UpdateIngameCamera).
+  const CamTrack* standoffShot = nullptr;
+  int standoffCut = -1;
+  float standoffPush = 0.0f;
   // The beat list this entrance is staged against, picked per competition -
   // see prematchtimeline.hpp for the lookup and the file format.
   PrematchTimeline::Timeline prematchTimeline;

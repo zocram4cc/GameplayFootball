@@ -286,9 +286,19 @@ def root_sampler(g):
     Returns a function of PES frame time -> (x_m, z_m, yaw_rad): the root
     translation in metres and its yaw about +Y. This is the part convert()
     removes under strip_root, so an external mover can re-apply it.
+
+    Read at the gameplay scale. It was read at PES_POS_TO_M (1/128000) on the
+    strength of one celebration path, and every entrance actor then glided at a
+    sixth of the speed his legs were walking - "pulled by a force" (owner,
+    03-09). Measured on the raw ganis: dml_ent_entering04_walk15 moves its
+    RIG_ROOT 2.25 m/s at 1/20480 while its stance foot covers ground at 2.46 m/s
+    and its 22 steps of 0.72 m over 6.0 s make 2.63 m/s; at 1/128000 it is
+    0.36 m/s. The stair climb (1.82 vs 1.9-2.0) and the somersault
+    (3.23 vs a flight-phase-lowered 2.16) agree. Legs do not have a unit
+    problem, so they decide.
     """
     _, root_q, root_p, _, _ = build_samplers(g)
-    scale = retarget.PES_POS_TO_M
+    scale = retarget.PES_POS_TO_M_GAMEPLAY
 
     def sample(t):
         yaw = root_yaw(q_norm(root_q.quat(t))) if root_q else 0.0

@@ -286,8 +286,15 @@ void Referee::Process() {
         // SetPieceLaws::OffsidePrepareAt_ms), so this is the last thing left in
         // plain view. A throw-in, a corner or a goal kick moves nobody much and
         // is left alone.
-        const bool bigRearrangement = buffer.desiredSetPiece == e_SetPiece_KickOff ||
-                                      buffer.desiredSetPiece == e_SetPiece_FreeKick;
+        // Not the opening kick-off: the broadcast cuts straight into live
+        // football there, and the matte is for what interrupts a match once it
+        // is under way (owner, 03-09). Everything from the second half on -
+        // a kick-off after a goal, a free kick after a foul or an offside -
+        // moves the whole pitch at once and goes behind it.
+        const bool bigRearrangement =
+            (buffer.desiredSetPiece == e_SetPiece_KickOff ||
+             buffer.desiredSetPiece == e_SetPiece_FreeKick) &&
+            match->GetMatchPhase() != e_MatchPhase_PreMatch;
         if (bigRearrangement && !match->CoverForRestart()) return;
         buffer.prepared = true;
         if (buffer.endPhase == true) {

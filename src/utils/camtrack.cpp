@@ -187,6 +187,15 @@ int CamTrack::GetTimelineFrameCount() const {
   return last.timelineStart + last.rowCount;
 }
 
+int CamTrack::CutIndexAt(float timelineFrame) const {
+  int index = 0;
+  for (size_t i = 0; i < cuts.size(); i++) {
+    if ((float)cuts[i].timelineStart > timelineFrame) break;
+    index = (int)i;
+  }
+  return index;
+}
+
 CamTrackFrame CamTrack::SampleTimeline(float timelineFrame) const {
   if (frames.empty()) return CamTrackFrame();
   if (cuts.size() <= 1) return Sample(timelineFrame);
