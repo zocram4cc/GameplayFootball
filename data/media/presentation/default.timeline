@@ -9,6 +9,10 @@
 #   camera=walkout    low broadcast angle panning along the line of players,
 #                     framed off the choreography itself
 #   camera=lineup     static and head-on, holding the whole line in frame
+#   shot=family       the walk-on PES authored for this match's own entrance
+#                     family ("entrance_id"), when it has a camera-and-players
+#                     pair for this ground; otherwise ent_009's, which every
+#                     ground has.
 #   camera=entrance   the imported PES entrance camerawork for this
 #                     competition's family and this stadium, moved onto our pitch
 #                     with the choreography it films - both are authored in the
@@ -39,7 +43,7 @@ beat stadium_card       12.0  camera=orbit
 # in over 28 seconds; asking for less leaves the column still arriving, and
 # giving the same pack a second beat restarts it - the whole column teleports
 # back to the tunnel and walks in again.
-beat walk_on            28.0  camera=entrance shot=ent_009
+beat walk_on            28.0  camera=entrance shot=family
 beat anthems            20.0  camera=entrance shot=anth
 
 beat wide_home           9.0  camera=aerial   overlay=formation_home

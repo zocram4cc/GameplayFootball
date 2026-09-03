@@ -103,7 +103,7 @@ Timeline Default() {
       // actor in over 28 seconds, and cutting the beat short left the column
       // still arriving. There is no separate line_up beat, because that used the
       // walk-on pack again - and a second beat on the same pack restarted it.
-      MakeBeat("walk_on", 28.0f, Camera::Entrance, Overlay::None, "ent_009"),
+      MakeBeat("walk_on", 28.0f, Camera::Entrance, Overlay::None, "family"),
       MakeBeat("anthems", 20.0f, Camera::Entrance, Overlay::None, "anth"),
       MakeBeat("wide_home", 9.0f, Camera::Aerial, Overlay::FormationHome),
       MakeBeat("wide", 4.0f, Camera::Aerial, Overlay::None),
