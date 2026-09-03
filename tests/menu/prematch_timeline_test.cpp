@@ -356,9 +356,10 @@ TEST(PrematchTimelineDefaultTest, EachStagedBeatAsksForItsOwnPesShot) {
     if (beat.name == "anthems") anthemShot = beat.shot;
     if (beat.name == "team_picture") pictureShot = beat.shot;
   }
-  // ent_009's packs start the squads outside the touchline; the tunnel packs
-  // need geometry no venue here provides, so they are deliberately unused.
-  EXPECT_EQ(walkOnShot, "ent_009");
+  // The walk-on is the match's own family's ("shot=family", resolved by Match
+  // to ent_<entrance_id> when that family has a camera-and-players pair for
+  // the ground, else ent_009's, which every ground has).
+  EXPECT_EQ(walkOnShot, "family");
   EXPECT_EQ(anthemShot, "anth");
   EXPECT_EQ(pictureShot, "circle_home");
 }

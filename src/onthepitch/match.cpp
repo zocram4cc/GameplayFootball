@@ -504,6 +504,42 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       LoadPrematchStagingIndex(token);
     }
     prematchTimeline = LoadPrematchTimeline();
+    // "shot=family" in a timeline means the competition's own entrance - the
+    // walk-on PES authored for this family at this ground - and falls back to
+    // ent_009 (the one every ground has a staging for) when the family has no
+    // camera-and-players pair here. Pinned to ent_009 outright, every one of
+    // the nineteen families rendered the same presentation and "entrance_id"
+    // changed nothing (03-09 sweep).
+    {
+      std::string family = "ent_009";
+      if (!entranceID.empty() && entranceID != "none") {
+        const std::string own = "ent_" + entranceID;
+        for (const auto& camera : prematchShots) {
+          if (camera.first.find(own) == std::string::npos) continue;
+          const std::string paired = PrematchShotPair::StagingForCamera(camera.first);
+          if (!paired.empty() && prematchStagings.count(paired)) {
+            family = own;
+            break;
+          }
+        }
+      }
+      for (auto& beat : prematchTimeline.beats) {
+        if (beat.shot == "family") beat.shot = family;
+        // A beat that plays an authored shot lasts as long as PES authored it.
+        // The hand-written lengths (28/20/14 s) cut every shot short: the
+        // anthem line camera is one continuous 1050-frame pass at 30 fps -
+        // 35.0 s down the whole line - and the beat gave it 20 (verified in
+        // ent_015_st000_anth_lc_cam.fdc, 03-09). The cut tables' lengths
+        // (walk-on 30.0 s, team picture 16.7-20.3 s) come from the same place.
+        // "intro_cutscene_seconds" still rescales the whole thing afterwards
+        // for anyone who wants it shorter.
+        if (beat.camera == PrematchTimeline::Camera::Entrance && !beat.shot.empty()) {
+          const CamTrack* track = FindPrematchShot(beat.shot);
+          if (track && track->GetTimelineFrameCount() > 0)
+            beat.seconds = track->GetTimelineFrameCount() / 30.0f;
+        }
+      }
+    }
     const float configured = GetConfiguration()->GetReal("intro_cutscene_seconds", 0.0f);
     if (configured > 0.0f)
       prematchTimeline = PrematchTimeline::Rescale(prematchTimeline, configured);
@@ -2018,13 +2054,25 @@ void Match::UpdateEntranceChoreo() {
     // walk-on inside a player's chest.
     stagedCameraKey.clear();
     if (!shot.empty()) {
-      for (const auto& camera : prematchShots) {
-        if (camera.first.find(shot) == std::string::npos) continue;
-        const std::string paired = PrematchShotPair::StagingForCamera(camera.first);
-        if (paired.empty() || prematchStagings.find(paired) == prematchStagings.end()) continue;
-        wanted = paired;
-        stagedCameraKey = camera.first;
-        break;
+      // This ground's own variant first. The map is alphabetical, so taking the
+      // first pair that matched the family put ent_009_st000's camera on
+      // Planet Namek and at st002 alike - a lens placed for another stadium's
+      // tunnel, which here sat inside the stand and filmed its unlit back for
+      // four seconds of every walk-on (the black plane in the 03-09 captures).
+      const std::string stadiumToken =
+          EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+      for (int pass = 0; pass < 2 && stagedCameraKey.empty(); pass++) {
+        for (const auto& camera : prematchShots) {
+          if (camera.first.find(shot) == std::string::npos) continue;
+          if (pass == 0 && (stadiumToken.empty() ||
+                            camera.first.find(stadiumToken) == std::string::npos))
+            continue;
+          const std::string paired = PrematchShotPair::StagingForCamera(camera.first);
+          if (paired.empty() || prematchStagings.find(paired) == prematchStagings.end()) continue;
+          wanted = paired;
+          stagedCameraKey = camera.first;
+          break;
+        }
       }
     }
     if (wanted.empty()) {
