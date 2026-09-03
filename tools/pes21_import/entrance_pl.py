@@ -42,6 +42,7 @@ import re
 import camera_cut
 import gani
 import gani_to_anim
+import retarget
 
 FAMILY_RE = re.compile(r"^(ent_\d{3})_")
 
@@ -97,7 +98,11 @@ def actor_role(slot, stem):
 def convert_clip(gani_path, dest):
     """Root-stripped clip conversion; returns the clip's GF frame count."""
     blob = open(gani_path, "rb").read()
-    text, g = gani_to_anim.convert(blob, anim_type="cutscene", strip_root=True)
+    # The path is placed by the .chor, so only the vertical of this clip is
+    # its own - and the vertical is on the mover, which reads at the
+    # calibrated scale even in the fixdemo set (gani_to_anim.sample_root).
+    text, g = gani_to_anim.convert(blob, anim_type="cutscene", strip_root=True,
+                                   mover_scale=retarget.PES_POS_TO_M_GAMEPLAY)
     with open(dest, "w") as out:
         out.write(text)
     duration_ms = g.frame_count * PES_FRAME_MS

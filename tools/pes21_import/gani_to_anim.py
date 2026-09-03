@@ -147,21 +147,34 @@ def root_yaw(q):
 
 
 def sample_root(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
-                scale=None):
+                scale=None, mover_scale=None):
     """(body world quat, motion world position) at PES frame t, Fox coords.
 
     With strip_root the RIG_ROOT translation and yaw are removed (the pose
     stays in place, facing +Z, keeping any root tilt) - for clips whose world
     placement is driven externally, like the fixdemo entrance choreography.
 
-    `scale` is metres per raw position unit; it defaults to the legacy
-    retarget.PES_POS_TO_M so existing callers (the entrance/cutscene export)
-    are untouched. Match animation passes retarget.PES_POS_TO_M_GAMEPLAY -
-    see calibrate_pos_scale.py for how that number was measured.
+    Two scales, because the two position channels are not in the same unit and
+    each was measured on its own evidence. `scale` is for RIG_ROOT, the world
+    path: the gameplay set reads right at 1/20480 (`run_3_3_000_holdmiss`
+    covers 5.3 m in 1.47 s, where 1/128000 gives 0.84 m - a run at 0.6 m/s)
+    and the fixdemo set at 1/128000 (goal_2018_run_30's choreography path is
+    6.0 m over 2.5 s; at 1/20480 it would be 37 m).
+
+    `mover_scale` is for sk_root_hip, which carries the vertical and nothing
+    else (RIG_ROOT's own y is flat in every clip measured). It defaults to
+    `scale`, and 1/20480 is the number calibrate_pos_scale.py measured against
+    ankle and pelvis heights. A fixdemo clip read at the path's scale instead
+    flattens every jump: goal_celebrate_0057 is a somersault whose pelvis
+    should swing 0.79 m to 1.75 m, and at 1/128000 it stays between 1.05 and
+    1.20 - the body turns upside down at standing height and the actor appears
+    to lie down in mid-air.
     """
     bind = retarget.PES_BIND
     if scale is None:
         scale = retarget.PES_POS_TO_M
+    if mover_scale is None:
+        mover_scale = scale
 
     rq = q_norm(root_q.quat(t)) if root_q else (0, 0, 0, 1)
     rp = tuple(c * scale for c in root_p.vec(t)) if root_p else (0.0, 0.0, 0.0)
@@ -170,7 +183,7 @@ def sample_root(bones, root_q, root_p, mot_q, mot_p, t, strip_root=False,
         rp = (0.0, 0.0, 0.0)
 
     mq = q_norm(mot_q.quat(t)) if mot_q else (0, 0, 0, 1)
-    mp = tuple(c * scale for c in mot_p.vec(t)) if mot_p else (0.0, 0.0, 0.0)
+    mp = tuple(c * mover_scale for c in mot_p.vec(t)) if mot_p else (0.0, 0.0, 0.0)
 
     body_q = q_mul(rq, mq)
     body_p = v_add(rp, q_rot(rq, v_add(bind["motion"][0], mp)))
@@ -211,11 +224,13 @@ GF_NODES = list(retarget.GF_JOINT_ORDER)
 
 
 def convert(blob, anim_type="movement", key_step=1, strip_root=False,
-            pos_scale=None):
+            pos_scale=None, mover_scale=None):
     """gani bytes -> .anim text, 1:1 onto the native rig.
 
-    `pos_scale` is metres per raw position unit (see sample_root); match
-    animation wants retarget.PES_POS_TO_M_GAMEPLAY.
+    `pos_scale` is metres per raw unit of the world path and `mover_scale` of
+    the vertical (see sample_root). Match animation wants
+    retarget.PES_POS_TO_M_GAMEPLAY for both; the fixdemo cutscene set wants the
+    legacy scale for the path and the gameplay one for the vertical.
     """
     g = gani.parse(blob)
     bones, root_q, root_p, mot_q, mot_p = build_samplers(g)
@@ -231,7 +246,7 @@ def convert(blob, anim_type="movement", key_step=1, strip_root=False,
     for f in range(0, gf_frames + 1, key_step):
         t = min(f * GF_FRAME_MS / PES_FRAME_MS, float(g.frame_count))
         body_q, body_p = sample_root(bones, root_q, root_p, mot_q, mot_p, t,
-                                     strip_root, pos_scale)
+                                     strip_root, pos_scale, mover_scale)
         p = map_vec(body_p)
         root = tuple(a - b for a, b in zip(p, body_offset))
         if origin is None:
