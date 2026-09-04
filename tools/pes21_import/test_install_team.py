@@ -452,49 +452,49 @@ class TheTeamsArtLandsWhereTheEngineLooks(unittest.TestCase):
         self.assertEqual(import_team.install_art(empty, self.game, "x"), [])
 
 
-class PortraitsBindToTheirPlayers(unittest.TestCase):
-    """Packs name portraits two ways and both end in the shirt number: 2HUG
-    ships player_78301.dds with the full PES id, HDG ships player_XXX21.dds
-    with the team left as a literal placeholder."""
+class PortraitsAreWrittenByShirt(unittest.TestCase):
+    """The written name keeps the token carrying the shirt - player_78302,
+    player_XXX21, "XXX07 - Shiddy" - and relink_portraits binds by it. An earlier
+    version named the files by database id, which moves on every re-import."""
 
     def setUp(self):
         self.pack = tempfile.mkdtemp()
         self.game = tempfile.mkdtemp()
         os.makedirs(os.path.join(self.pack, "Portraits"))
-        self.by_shirt = {1: 501, 2: 502, 21: 521}
 
-    def add(self, name):
+    def add(self, *parts):
         from PIL import Image
-        Image.new("RGBA", (8, 8), (1, 2, 3, 255)).save(
-            os.path.join(self.pack, "Portraits", name))
+        path = os.path.join(self.pack, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        Image.new("RGBA", (8, 8), (1, 2, 3, 255)).save(path)
 
-    def test_a_full_pes_id_resolves_through_its_last_two_digits(self):
-        self.add("player_78302.png")
-        self.assertEqual(import_team.install_portraits(
-            self.pack, self.game, "t", self.by_shirt),
-            [(502, "imports/t/portraits/player_502.png")])
+    def test_a_full_pes_id_keeps_its_name(self):
+        self.add("Portraits", "player_78302.png")
+        self.assertEqual(import_team.install_portraits(self.pack, self.game, "t"),
+                         ["imports/t/portraits/player_78302.png"])
 
-    def test_a_placeholder_team_id_resolves_the_same_way(self):
-        self.add("player_XXX21.png")
-        self.assertEqual(import_team.install_portraits(
-            self.pack, self.game, "t", self.by_shirt),
-            [(521, "imports/t/portraits/player_521.png")])
-
-    def test_the_file_is_actually_written(self):
-        self.add("player_XXX01.png")
-        [(_, rel)] = import_team.install_portraits(
-            self.pack, self.game, "t", self.by_shirt)
+    def test_a_face_folder_portrait_takes_the_folder_name(self):
+        self.add("Faces", "XXX07 - Shiddy", "portrait.png")
+        [rel] = import_team.install_portraits(self.pack, self.game, "t")
+        self.assertEqual(rel, "imports/t/portraits/XXX07 - Shiddy.png")
         self.assertTrue(os.path.exists(os.path.join(self.game, rel)))
 
-    def test_a_portrait_for_nobody_in_the_squad_is_skipped(self):
-        """A pack can carry more portraits than the ted has players."""
-        self.add("player_XXX99.png")
-        self.assertEqual(import_team.install_portraits(
-            self.pack, self.game, "t", self.by_shirt), [])
+    def test_a_stale_file_from_an_earlier_import_is_removed(self):
+        stale = os.path.join(self.game, "imports", "t", "portraits", "player_814.png")
+        os.makedirs(os.path.dirname(stale))
+        open(stale, "wb").close()
+        self.add("Portraits", "player_XXX21.png")
+        import_team.install_portraits(self.pack, self.game, "t")
+        self.assertFalse(os.path.exists(stale))
+
+    def test_a_dry_run_writes_nothing(self):
+        self.add("Portraits", "player_XXX01.png")
+        self.assertEqual(import_team.install_portraits(self.pack, self.game, "t", dry_run=True),
+                         ["imports/t/portraits/player_XXX01.png"])
+        self.assertFalse(os.path.exists(os.path.join(self.game, "imports")))
 
     def test_a_pack_without_portraits_is_not_an_error(self):
-        self.assertEqual(import_team.install_portraits(
-            tempfile.mkdtemp(), self.game, "t", self.by_shirt), [])
+        self.assertEqual(import_team.install_portraits(tempfile.mkdtemp(), self.game, "t"), [])
 
 
 class TheConfigsAreRewrittenNotDoubled(unittest.TestCase):
@@ -669,6 +669,8 @@ class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
         self.assertEqual(import_team.portrait_shirt("player_78301.png"), 1)
         self.assertEqual(import_team.portrait_shirt("XXX07 - Bullet Sponge.png"), 7)
         self.assertEqual(import_team.portrait_shirt("player_604.png"), 4)
+        self.assertEqual(import_team.portrait_shirt("XXX06- Miyamoto.png"), 6)
+        self.assertEqual(import_team.portrait_shirt("XXX18 - EAGLE-1.png"), 18)
 
     def test_a_name_with_no_shirt_in_it_is_skipped(self):
         self.assertIsNone(import_team.portrait_shirt("logo.png"))

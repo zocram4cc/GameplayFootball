@@ -49,6 +49,7 @@ give and the database is left untouched (see docs/PES21_IMPORT.md).
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -172,34 +173,11 @@ def describe_import(dest, prefix, export_id):
     return body_coverage.verdict(vertices, retarget.gf_world_render_bind())[0]
 
 
-# A 4cc export names its portraits by team slot rather than by player, because the
-# slot a team gets is not known when the pack is built: "XXX07 - Rodya.png". The
-# models carry the same slot in their directory name, and their bindings already
-# resolve a slot to a database ID - so that is what the portraits ride on.
-PORTRAIT_SLOT_RE = re.compile(r"(\d{2})(?:\D|$)")
-
-
-def portrait_slot(filename):
-    """The slot a portrait file names, or None when it names none."""
-    base = os.path.basename(filename)
-    match = PORTRAIT_SLOT_RE.search(base)
-    if not match:
-        return None
-    return int(match.group(1))
-
-
 def model_number(model_dir):
     """The export number a model directory carries: .../lcg_2707 -> 2707."""
     base = os.path.basename(model_dir.rstrip("/"))
     digits = re.search(r"_(\d+)$", base)
     return int(digits.group(1)) if digits else None
-
-
-def portrait_name(filename):
-    """The nickname a portrait file carries: "XXX09 - Dante.png" -> "dante"."""
-    base = os.path.splitext(os.path.basename(filename))[0]
-    trimmed = re.sub(r"^\S+\s*-\s*", "", base).strip().lower()
-    return re.sub(r"[^a-z0-9]+", "", trimmed)
 
 
 def teams_bound_to_prefix(conn, game_dir, prefix):
@@ -223,6 +201,41 @@ def teams_bound_to_prefix(conn, game_dir, prefix):
     return [row[0] for row in rows if row[0] is not None]
 
 
+def team_for_prefix(game_dir, database, prefix):
+    """-> (team id, team name) for the team whose art tag is `prefix`, or None.
+
+    A team's art tag and its model prefix are not always the same word: SMBG's art
+    is images_teams/smbg/ while its models are smg_25xx, because the tag comes from
+    the team name and the prefix from whoever ran the import. Either being a prefix
+    of the other identifies the team; failing that, the bindings that already exist
+    say which team this prefix belongs to. Only an unambiguous single match counts.
+    """
+    path = database or os.path.join(game_dir, "databases", "default", "database.sqlite")
+    if not os.path.isfile(path):
+        return None
+    import sqlite3
+    try:
+        conn = sqlite3.connect(path)
+        try:
+            teams = conn.execute(
+                "select id, name, kit_url from teams where kit_url is not null").fetchall()
+            wanted = []
+            for team_id, _name, kit_url in teams:
+                tag = kit_url.strip("/").split("/")[1] if "/" in kit_url else kit_url
+                if tag and (tag.startswith(prefix) or prefix.startswith(tag)):
+                    wanted.append(team_id)
+            if len(wanted) != 1:
+                wanted = teams_bound_to_prefix(conn, game_dir, prefix)
+            if len(wanted) != 1:
+                return None
+            names = {team_id: name for team_id, name, _ in teams}
+            return wanted[0], names.get(wanted[0], "")
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+
+
 def read_roster(game_dir, database, prefix):
     """-> {database id: player name} for the team whose art tag is `prefix`.
 
@@ -230,35 +243,15 @@ def read_roster(game_dir, database, prefix):
     bind by name too. An unknown prefix or a missing database is an empty
     roster, and the caller falls back to what it did before.
     """
-    path = database or os.path.join(game_dir, "databases", "default", "database.sqlite")
-    if not os.path.isfile(path):
+    team = team_for_prefix(game_dir, database, prefix)
+    if team is None:
         return {}
     import sqlite3
+    path = database or os.path.join(game_dir, "databases", "default", "database.sqlite")
     try:
         conn = sqlite3.connect(path)
-        teams = conn.execute("select id, kit_url from teams where kit_url is not null").fetchall()
-        # A team's art tag and its model prefix are not always the same word:
-        # SMBG's art is images_teams/smbg/ while its models are smg_25xx, because
-        # the tag comes from the team name and the prefix from whoever ran the
-        # import. Either being a prefix of the other identifies the team, and
-        # only an unambiguous single match is used.
-        wanted = []
-        for team_id, kit_url in teams:
-            tag = kit_url.strip("/").split("/")[1] if "/" in kit_url else kit_url
-            if tag and (tag.startswith(prefix) or prefix.startswith(tag)):
-                wanted.append(team_id)
-        if len(wanted) != 1:
-            # The tag and the prefix are not always relatable at all - SMBG's art
-            # is images_teams/smbg/ and its models are smg_25xx - so ask the
-            # bindings that already exist which team this prefix belongs to. They
-            # may be bound to the wrong players (that is what this is fixing) but
-            # they are bound to the right team.
-            wanted = teams_bound_to_prefix(conn, game_dir, prefix)
-        if len(wanted) != 1:
-            conn.close()
-            return {}
         rows = conn.execute(
-            "select id, lastname from players where team_id = ?", (wanted[0],)).fetchall()
+            "select id, lastname from players where team_id = ?", (team[0],)).fetchall()
         conn.close()
     except sqlite3.Error:
         return {}
@@ -312,70 +305,6 @@ def bind_by_name(exports, roster):
             continue
         bound[export_id] = database_id
         taken.add(database_id)
-    return bound
-
-
-def bind_portraits(model_bindings, portrait_files, prefix, names=None):
-    """Maps database ID -> portrait path, for players this pack has a model for.
-
-    model_bindings is {database ID: model directory} as playermodels.cfg holds it, and
-    names is {database ID: player name} out of the roster - which is the authority on
-    who a player is. A 4cc export names its portraits for the player ("XXX09 -
-    Dante.png"), so the roster name is what binds them; the slot in the filename is a
-    fallback for a pack that numbers its portraits and nothing more.
-    """
-    # Each pack numbers its own players from a base of its choosing - lcg from 2701,
-    # 2hug from 1851, ink from 2426 - while the portraits always count from 01. So the
-    # slot is the offset from the pack's lowest number, not the digits themselves.
-    numbered = {}
-    for database_id, model_dir in model_bindings.items():
-        if ("/%s_" % prefix) not in model_dir:
-            continue
-        number = model_number(model_dir)
-        if number is not None:
-            numbered[number] = database_id
-    base = min(numbered) if numbered else 0
-    by_slot = {number - base + 1: database_id for number, database_id in numbered.items()}
-    # Both sides usually carry the player's nickname, and that beats the numbering:
-    # LCG's portraits run one ahead of its boots from slot 8 on, so binding by slot
-    # gives ten players somebody else's face. Fall back to the slot only for a name
-    # that appears on neither side or on both.
-    # A portrait needs no model: any rostered player can have a face on the game plan,
-    # so the name pass runs over the whole roster it was given.
-    by_name = {}
-    for database_id, player in (names or {}).items():
-        nickname = portrait_name("x - %s" % player)
-        if not nickname:
-            continue
-        # A name two players share is no evidence at all.
-        by_name[nickname] = None if nickname in by_name else database_id
-
-    # Names first, across the whole set, and only then slots for what is left. One
-    # pass would let an unnamed portrait take a player by slot before the portrait
-    # that names him is reached - which is exactly LCG's Papa Don and Dante.
-    bound = {}
-    taken = set()
-    unmatched = []
-    for name in portrait_files:
-        nickname = portrait_name(name)
-        database_id = by_name.get(nickname) if nickname else None
-        if database_id is None or database_id in taken:
-            unmatched.append(name)
-            continue
-        taken.add(database_id)
-        bound[database_id] = "imports/%s/portraits/%s" % (prefix, name)
-    # A pack whose portraits name their players has already shown its numbering to be
-    # unreliable wherever a name failed to match - LCG's run one ahead from slot 8 -
-    # so no guessing from there. Slots are for a pack that offers nothing else.
-    if bound:
-        return bound
-    for name in unmatched:
-        slot = portrait_slot(name)
-        database_id = by_slot.get(slot) if slot is not None else None
-        if database_id is None or database_id in taken:
-            continue
-        taken.add(database_id)
-        bound[database_id] = "imports/%s/portraits/%s" % (prefix, name)
     return bound
 
 
@@ -675,40 +604,66 @@ def read_pack_colours(pack_dir):
     return (found.get("1st"), found.get("2nd"))
 
 
-def install_portraits(pack_dir, game_dir, tag, by_shirt, dry_run=False):
-    """Converts the pack's portraits and binds them to their players.
+def portrait_sources(pack_dir):
+    """-> [(png name to write, source file)] for every portrait a pack ships.
 
-    -> [(database id, path written)]. The menu reads
-    media/players/playerportraits.cfg, one "<databaseID> <png path>" per line,
-    and shows a plain card for anyone missing.
+    Two places, and a pack may use either or both: a `Portraits/` folder of
+    `player_78301.dds` / `player_XXX21.dds`, and a `portrait.dds` inside each
+    `Faces/<XXXnn - Name>/` folder - which is where LCG, SMBG, HDG and DBG keep
+    theirs, and which the import never read, so those squads played with no faces
+    on the game plan. The written name keeps the token that carries the shirt
+    (portrait_shirt), and for a face folder that is the folder's own name.
+    """
+    out = []
+    seen = set()
 
-    Packs name portraits two ways - 2HUG ships `player_78301.dds` with the full
-    PES id, HDG ships `player_XXX21.dds` with the team left as a placeholder -
-    but both end in the shirt number, which is the same rule the model exports
-    follow, so both resolve through the squad the ted just installed.
+    def take(name, source):
+        shirt = portrait_shirt(name)
+        if shirt is None or shirt in seen:
+            return
+        seen.add(shirt)
+        out.append((name, source))
+
+    portraits = os.path.join(pack_dir, "Portraits")
+    if os.path.isdir(portraits):
+        for name in sorted(os.listdir(portraits)):
+            if re.match(r"^player_.*?\d{2}\.(dds|png)$", name, re.I):
+                take(os.path.splitext(name)[0] + ".png", os.path.join(portraits, name))
+    faces = os.path.join(pack_dir, "Faces")
+    if os.path.isdir(faces):
+        for folder in sorted(os.listdir(faces)):
+            for name in ("portrait.dds", "portrait.png"):
+                source = os.path.join(faces, folder, name)
+                if os.path.isfile(source):
+                    take(folder + ".png", source)
+                    break
+    return out
+
+
+def install_portraits(pack_dir, game_dir, tag, dry_run=False):
+    """Converts the pack's portraits to imports/<tag>/portraits/. -> [paths written].
+
+    The directory is rebuilt from the pack: an earlier version named the files by
+    database id, and those ids move on every re-import, so a leftover
+    `player_814.png` was later read as shirt 14 and bound a second face to a player
+    who already had one. relink_portraits binds what is written here by shirt.
     """
     from PIL import Image
 
-    source_dir = os.path.join(pack_dir, "Portraits")
-    if not os.path.isdir(source_dir):
+    sources = portrait_sources(pack_dir)
+    if not sources:
         return []
-
     out_dir = os.path.join(game_dir, "imports", tag, "portraits")
-    rel_dir = "imports/%s/portraits" % tag
     written = []
-    for name in sorted(os.listdir(source_dir)):
-        match = re.match(r"^player_.*?(\d{2})\.(dds|png)$", name, re.I)
-        if not match:
-            continue
-        db_id = by_shirt.get(int(match.group(1)))
-        if db_id is None:
-            continue
-        rel = "%s/player_%d.png" % (rel_dir, db_id)
+    if not dry_run:
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        os.makedirs(out_dir)
+    for name, source in sources:
+        rel = "imports/%s/portraits/%s" % (tag, name)
         if not dry_run:
-            os.makedirs(out_dir, exist_ok=True)
-            Image.open(os.path.join(source_dir, name)).convert("RGBA").save(
-                os.path.join(game_dir, rel))
-        written.append((db_id, rel))
+            Image.open(source).convert("RGBA").save(os.path.join(game_dir, rel))
+        written.append(rel)
     return written
 
 
@@ -718,10 +673,10 @@ def portrait_shirt(filename):
     Packs write the name three ways and all three put the shirt last in the
     leading token: "player_78301.png" carries the full PES id, "XXX01 - Bullet
     Sponge.png" leaves the team a placeholder and adds the player's name, and
-    an already-installed "player_604.png" carries the database id it was bound
-    to. The last two digits of that token are the shirt in every case.
+    "XXX06- Miyamoto" (SMBG) forgets the space before the dash. The last two
+    digits of that token are the shirt in every case.
     """
-    token = os.path.splitext(os.path.basename(filename))[0].split(" - ")[0].strip()
+    token = os.path.splitext(os.path.basename(filename))[0].split("-")[0].strip()
     match = re.search(r"(\d{2})$", token)
     return int(match.group(1)) if match else None
 
@@ -902,13 +857,14 @@ def main():
     # The database first, so each model can be bound to the row its player
     # actually landed on rather than to a number guessed ahead of time.
     by_shirt = {}
+    database = args.database or os.path.join(
+        args.game_dir, "databases", "default", "database.sqlite")
+    tag = None
     if args.ted:
         export, _ = ted.read_export(args.ted)
         if not args.prefix:
             args.prefix = re.sub(r"[^a-z0-9]", "", export["team"].lower()) or \
                 export["abbreviation"].lower()
-        database = args.database or os.path.join(
-            args.game_dir, "databases", "default", "database.sqlite")
         export["colour1"], export["colour2"] = read_pack_colours(args.pack_dir)
         tactics = install_team.parse_tactics(args.tactics) or {
             "team_pressure": 0.5, "counter_attack": 0.5, "support_distance": 0.5}
@@ -920,8 +876,16 @@ def main():
         tag = install_team.art_tag(export["team"])
         art = install_art(args.pack_dir, args.game_dir, tag, args.dry_run)
         print("   art: %s" % (", ".join(art) if art else "none found in the pack"))
-        portraits = install_portraits(args.pack_dir, args.game_dir, tag,
-                                      by_shirt, args.dry_run)
+    elif not args.prefix:
+        print("give the team's .ted, or --prefix if you only want the models")
+        return 1
+    else:
+        # A models-only re-import still owes the squad its faces: the team is
+        # already in the database, so its art tag is known.
+        team = team_for_prefix(args.game_dir, args.database, args.prefix)
+        tag = install_team.art_tag(team[1]) if team else None
+    if tag:
+        portraits = install_portraits(args.pack_dir, args.game_dir, tag, args.dry_run)
         if not args.dry_run:
             # Rebuilt across every team, not appended for this one: the ids of
             # every squad already installed move whenever any of them is
@@ -931,9 +895,6 @@ def main():
                   % (len(portraits), len(bound)))
         else:
             print("   portraits: %d" % len(portraits))
-    elif not args.prefix:
-        print("give the team's .ted, or --prefix if you only want the models")
-        return 1
 
     explicit = [int(x) for x in args.db_ids.split(",") if x.strip()]
     # Who each export belongs to, by the name it carries, before anything falls
