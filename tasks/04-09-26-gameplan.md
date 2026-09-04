@@ -309,6 +309,19 @@ all 23 models are the SAME mesh (68,322 vertices, identical bounds), the same
 per-player art in the installed data to find. A card now shows the team's own
 model instead of a blank.
 
+## The secondary button's answer
+
+Pressing it toggled the role and rebuilt every card, inside the event that
+asked for the toggle - so the card holding the cursor was deleted and the
+visible answer was the focus falling out of the map. It re-prints the one card
+now (`Gui2PlanMap::RefreshRole`): the position strip, and the MEDAL, which is
+the only part that can change - the count beside the position is of his OTHER
+positions, and toggling the one he is standing in cannot alter it.
+
+Both paths verified on frames: the gamepad's secondary toggles in place, and
+the keyboard's `x` opens his roles with the position he is standing in
+highlighted (`tmp/plan2/m1_full.png` - FUCK LUIGI, CF lit among the ten).
+
 ## STILL TO BE DONE (mine, end of 04-09)
 
 1. **Three lcg characters still render deformed** (`tmp/trunk_ba.png`:
