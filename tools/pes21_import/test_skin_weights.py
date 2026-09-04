@@ -109,6 +109,21 @@ class RebindStray(unittest.TestCase):
         ankle = f.JOINT_ID["left_ankle"]
         self.assertFalse(f.rebind_stray((0.1, 0.0, 0.1), [ankle], self.JOINTS))
 
+    def test_a_big_belly_keeps_its_hip_when_a_fingertip_is_merely_as_close(self):
+        # Wario: hip vertex 0.58 m from the hip, 0.57 m from a pinky tip
+        joints = {"hip": (0.0, 0.0, 1.0), "left_pinky_dip": (0.68, 0.0, 1.0),
+                  "left_hand": (0.6, 0.0, 1.05)}
+        hip = f.JOINT_ID["hip"]
+        self.assertFalse(f.rebind_stray((0.36, 0.44, 0.85), [hip], joints))
+
+    def test_a_stray_never_lands_on_a_finger(self):
+        # a knee vertex mapped to the foot, with a fingertip hanging right beside it
+        joints = dict(self.JOINTS, left_pinky_dip=(0.1, 0.0, 0.49))
+        ankle = f.JOINT_ID["left_ankle"]
+        self.assertTrue(f.rebind_stray((0.1, 0.0, 0.48), [ankle], joints))
+        self.assertNotIn("left_pinky_dip", f.body_joint_positions(joints))
+        self.assertIn("left_knee", f.body_joint_positions(joints))
+
 
 if __name__ == "__main__":
     unittest.main()

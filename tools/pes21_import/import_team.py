@@ -83,7 +83,34 @@ def find_players(pack_dir, kind="Boots", model_name="boots.fmdl"):
     return found
 
 
-def find_gloves(pack_dir, export_id):
+def find_face_players(pack_dir, taken_shirts):
+    """-> [(export_id, player_name, fmdl_path)] for the players a pack ships as a
+    head and nothing else.
+
+    SMBG keeps five of its characters entirely in Faces/ - K Rool (a whole
+    character in the face slot, with his gloves under Gloves/g3117), Miyamoto,
+    Yoshit, BUP Toad and Fawful - and HDG keeps 22 heads there for players whose
+    body is PES's own. Only the folders whose shirt no boots export claims: a
+    head that belongs to a body was merged into it by find_face. The export id
+    is the folder's own token (XXX08), so the model lands in <prefix>_XXX08.
+    """
+    root = os.path.join(pack_dir, "Faces")
+    if not os.path.isdir(root):
+        return []
+    found = []
+    for entry in sorted(os.listdir(root)):
+        head, _, rest = entry.partition("-")
+        digits = "".join(c for c in head if c.isdigit())
+        if not digits or int(digits) in taken_shirts:
+            continue
+        models = [os.path.join(root, entry, model) for model in FACE_MODELS
+                  if os.path.isfile(os.path.join(root, entry, model))]
+        if models:
+            found.append((head.strip(), rest.strip(), models[0]))
+    return found
+
+
+def find_gloves(pack_dir, export_id, name=None):
     """-> [fmdl] of this player's hand/forearm slot, l before r.
 
     A 4cc body export does not always reach the wrist. DBG's pack keeps every
@@ -91,14 +118,19 @@ def find_gloves(pack_dir, export_id):
     Gloves/gNNNN - 20,770 vertices a side - while Boots/kNNNN stops at the
     elbow. Imported on its own that is a character with no hands and no
     forearms, which is how DBG has looked. The slot letter differs (g against
-    k) and the number is shared, which is what ties the two together.
+    k) and the number is shared, which is what ties the two together - or the
+    name, for a character whose body is in the face slot (SMBG's K Rool wears
+    g3117 with a face in XXX08).
     """
     root = os.path.join(pack_dir, "Gloves")
     if not os.path.isdir(root):
         return []
+    wanted = set(_words(name))
     for entry in sorted(os.listdir(root)):
         match = EXPORT_DIR_RE.match(entry)
-        if not match or match.group(2) != export_id:
+        if not match:
+            continue
+        if match.group(2) != export_id and not (wanted and set(_words(match.group(3))) == wanted):
             continue
         return [path for path in
                 (os.path.join(root, entry, side)
@@ -108,33 +140,96 @@ def find_gloves(pack_dir, export_id):
 
 
 # What a Faces directory calls its models. PES splits a head across the face
-# itself and the hair, and a 4cc export may ship either or both.
-FACE_MODELS = ("face_high.fmdl", "face.fmdl", "fcl_hair.fmdl")
+# itself and the hair, and a 4cc export may ship either or both, under either
+# spelling of the hair.
+FACE_MODELS = ("face_high.fmdl", "face.fmdl", "fcl_hair.fmdl", "hair_high.fmdl")
 
 
-def find_face(pack_dir, export_id):
-    """-> [fmdl] of this player's head, face before hair.
+def _words(text):
+    return [t for t in re.split(r"[^a-z0-9]+", (text or "").lower()) if t]
 
-    The Faces slot is keyed by *shirt number* where Boots is keyed by export id:
-    HDG ships `k2402 - Helldiver Headless` and `XXX02 - Lobby doko`, which are
-    the same player. That naming, plus a filename the docstring did not expect -
-    `face_high.fmdl` and `fcl_hair.fmdl` rather than `face.fmdl` - is why 27 head
-    and hair models in the HDG pack had never been imported, and why the
-    "Headless" boots pack looked headless: its head was in the other slot all
-    along.
+
+def face_folder(pack_dir, export_id, name=None):
+    """-> (Faces/<XXXnn - Name> directory, shirt) for a boots export, or (None, None).
+
+    The Faces slot is keyed by *shirt number* where Boots is keyed by export id,
+    and the two are tied by the player's name first and the digits second. The
+    name has to win: LCG's boots run one behind its shirts from 8 on (k2708 is
+    Dante, XXX08 is Papa Don and XXX09 is Dante), and by digits alone every LCG
+    model from Dante down was on the player before him; SMBG numbers its boots
+    k2576..k2593, which is nobody's shirt at all. HDG's `k2402 - Helldiver
+    Headless` and `XXX02 - Lobby doko` share no word, and there the digits are
+    all there is.
     """
     root = os.path.join(pack_dir, "Faces")
     if not os.path.isdir(root):
-        return []
-    shirt = shirt_number(export_id)
+        return None, None
+    folders = []
     for entry in sorted(os.listdir(root)):
-        digits = "".join(c for c in entry.split("-")[0] if c.isdigit())
-        if not digits or int(digits) != shirt:
+        head, _, rest = entry.partition("-")
+        digits = "".join(c for c in head if c.isdigit())
+        if digits:
+            folders.append((entry, int(digits), set(_words(rest))))
+    wanted = set(_words(name))
+    if wanted:
+        named = [f for f in folders if f[2] == wanted]
+        if len(named) == 1:
+            return os.path.join(root, named[0][0]), named[0][1]
+    shirt = shirt_number(export_id)
+    for entry, digits, _ in folders:
+        if digits == shirt:
+            return os.path.join(root, entry), shirt
+    return None, None
+
+
+def export_shirt(pack_dir, export_id, name=None):
+    """-> the shirt a boots export belongs to: the Faces folder that names him,
+    else the last two digits of the export id."""
+    _folder, shirt = face_folder(pack_dir, export_id, name)
+    return shirt if shirt is not None else shirt_number(export_id)
+
+
+def export_shirts(pack_dir, players):
+    """-> {export id: shirt} for a pack's boots exports, each shirt claimed once.
+
+    The exports a Faces folder names take their shirts first; the rest fall back
+    to their digits, and only onto a shirt nobody named. LCG's k2713 "KYS" carries
+    the digits of Gregor's shirt (XXX13, k2712 by name): letting the digits win
+    would put two bodies on one player and leave Gregor's own man in PES's kit.
+    An export whose digits are already spoken for is left unbound rather than
+    guessed.
+    """
+    shirts = {}
+    named = set()
+    for export_id, name, _ in players:
+        _folder, shirt = face_folder(pack_dir, export_id, name)
+        if shirt is not None and set(_words(name)):
+            folder_name = os.path.basename(_folder).partition("-")[2]
+            if set(_words(folder_name)) == set(_words(name)):
+                shirts[export_id] = shirt
+                named.add(shirt)
+    for export_id, name, _ in players:
+        if export_id in shirts:
             continue
-        return [path for path in
-                (os.path.join(root, entry, name) for name in FACE_MODELS)
-                if os.path.isfile(path)]
-    return []
+        shirt = shirt_number(export_id)
+        if shirt not in named:
+            shirts[export_id] = shirt
+    return shirts
+
+
+def find_face(pack_dir, export_id, name=None):
+    """-> [fmdl] of this player's head, face before hair.
+
+    A filename the first version did not expect - `face_high.fmdl` and
+    `fcl_hair.fmdl` rather than `face.fmdl` - is why 27 head and hair models in
+    the HDG pack had never been imported, and why the "Headless" boots pack looked
+    headless: its head was in the other slot all along.
+    """
+    folder, _shirt = face_folder(pack_dir, export_id, name)
+    if not folder:
+        return []
+    return [path for path in (os.path.join(folder, model) for model in FACE_MODELS)
+            if os.path.isfile(path)]
 
 
 # The verdicts body_coverage.py returns for an export that is not a whole body.
@@ -171,13 +266,6 @@ def describe_import(dest, prefix, export_id):
         return "missing"
     vertices, _ = body_coverage.read_vertices(ase)
     return body_coverage.verdict(vertices, retarget.gf_world_render_bind())[0]
-
-
-def model_number(model_dir):
-    """The export number a model directory carries: .../lcg_2707 -> 2707."""
-    base = os.path.basename(model_dir.rstrip("/"))
-    digits = re.search(r"_(\d+)$", base)
-    return int(digits.group(1)) if digits else None
 
 
 def teams_bound_to_prefix(conn, game_dir, prefix):
@@ -832,7 +920,8 @@ def shirt_number(export_id):
     1..23. That is the only link between a model on disk and a player in the
     database, so it is what binds them.
     """
-    return int(export_id) % 100
+    digits = re.search(r"(\d+)$", str(export_id))
+    return int(digits.group(1)) % 100 if digits else -1
 
 
 def main():
@@ -889,8 +978,15 @@ def main():
         return 1
 
     players = find_players(args.pack_dir)
+    # And the players the pack ships only as a head - their body is PES's own, so
+    # the head goes on the stock body; a whole character in the face slot (SMBG's
+    # K Rool) stands on its own by whole_body.
+    shirts = export_shirts(args.pack_dir, players)
+    for export_id, name, fmdl in find_face_players(args.pack_dir, set(shirts.values())):
+        players.append((export_id, name, fmdl))
+        shirts[export_id] = shirt_number(export_id)
     if not players:
-        print("no <kNNNN - Name>/boots.fmdl exports under", args.pack_dir)
+        print("no <kNNNN - Name>/boots.fmdl or Faces exports under", args.pack_dir)
         return 1
 
     # The database first, so each model can be bound to the row its player
@@ -950,7 +1046,7 @@ def main():
     lines = []
     for index, (export_id, name, fmdl) in enumerate(players):
         dest = install_dir(args.game_dir, args.prefix, export_id)
-        db_id = (by_shirt.get(shirt_number(export_id))
+        db_id = (by_shirt.get(shirts.get(export_id))
                  or by_name.get(export_id)
                  or (explicit[index] if index < len(explicit) else None)
                  or (args.first_db_id + index if args.first_db_id else None))
@@ -966,8 +1062,10 @@ def main():
             # Every other slot of the same character: the hands, and the head.
             # A pack splits one player across Boots, Gloves and Faces, and only
             # the first was ever read.
-            rest_of_him = (find_gloves(args.pack_dir, export_id)
-                           + find_face(args.pack_dir, export_id))
+            rest_of_him = [path for path in
+                           find_gloves(args.pack_dir, export_id, name)
+                           + find_face(args.pack_dir, export_id, name)
+                           if path != fmdl]
             # A scenery export needs its backdrop gone and a body under it, or
             # every view frames the pair down to a dot. The verdict is only
             # known after a first import, so this is a second pass over the same
