@@ -435,6 +435,40 @@ BODY_SLICE_VERTICES = 20
 # off the axis, which is exactly a body PES draws its own player beside.
 SIDEKICK_RADIUS_M = 1.0
 
+# A body has mass on the rig's own axis at chest height. Measured over HDG's 22
+# exports (vertices between 0.95 m and 1.55 m within 0.25 m of the axis):
+#
+#   John Helldiver 14996   Lobby doko 16384   I FUCKING HATE SWEDEN 16841
+#   Mechwarrior     5756   SEAF-chan   3155   Ragdolled              4487
+#   ...
+#   Mothdiver        118   Brapdiver    116   Bullet Sponge            19
+#   Malicious Code     0   Cuck Throne    0   Not gonna sugarcoat it    0
+#
+# Everything under a couple of hundred is a prop set standing where a player
+# should be - a corpse on the ground, a gas column, a stim scatter, a throne -
+# and those are the ones the owner sees as a player-shaped hole on the pitch.
+# is_continuous_body passes them because a pill or a launcher does span hip to
+# head with no gap; this is the test it was missing.
+TORSO_AXIS_RADIUS_M = 0.25
+TORSO_AXIAL_VERTICES = 200
+
+
+def axial_torso_count(meshes):
+    """-> vertices at chest height within TORSO_AXIS_RADIUS_M of the rig axis.
+
+    Split out from whole_body so it can be measured on its own: it is the test
+    that tells a player from a prop standing in his place.
+    """
+    count = 0
+    for mesh in meshes:
+        if not mesh.vertices or _off_the_rig(mesh):
+            continue
+        for v in mesh.vertices:
+            if (0.95 < v.position.y < 1.55
+                    and v.position.x ** 2 + v.position.z ** 2 < TORSO_AXIS_RADIUS_M ** 2):
+                count += 1
+    return count
+
 
 def whole_body(fmdl_paths, fmdl_lib):
     """Whether these slots together dress the whole rig.
@@ -461,6 +495,7 @@ def whole_body(fmdl_paths, fmdl_lib):
     """
     bands = {"head": 0, "torso": 0, "feet": 0}
     heights = []
+    axial_torso = 0
     try:
         sys.path.insert(0, fmdl_lib)
         import FmdlFile
@@ -479,8 +514,15 @@ def whole_body(fmdl_paths, fmdl_lib):
                         bands["feet"] += 1
                     elif 0.95 < y < 1.55:
                         bands["torso"] += 1
+                        if (v.position.x ** 2 + v.position.z ** 2
+                                < TORSO_AXIS_RADIUS_M ** 2):
+                            axial_torso += 1
     except Exception:
         return True
+    # No chest on the axis, no body: whatever else these vertices are, a player
+    # is not standing here and PES's own body has to go underneath.
+    if axial_torso < TORSO_AXIAL_VERTICES:
+        return False
     if (bands["head"] >= HEAD_PRESENT_VERTICES
             and bands["torso"] >= TORSO_PRESENT_VERTICES
             and bands["feet"] >= FEET_PRESENT_VERTICES):

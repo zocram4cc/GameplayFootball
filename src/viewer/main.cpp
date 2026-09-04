@@ -158,6 +158,11 @@ struct Options {
   // and none without it (skin_probe.py), so this is how to see which pose a
   // model is really authored in.
   bool noBake = false;
+  // A head-and-shoulders still, framed on the top of the model and shot from
+  // the front: what a lineup card wants. A pack normally ships portrait art,
+  // and where it does that art wins - this is for a squad whose pack does not
+  // (or is no longer on disk), so the card has a face instead of a blank.
+  bool portrait = false;
 };
 
 Options Parse(int argc, const char** argv) {
@@ -178,6 +183,7 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--authored-camera") options.authoredCamera = true;
     else if (arg == "--anim" && hasNext) options.anim = argv[++i];
     else if (arg == "--no-bake") options.noBake = true;
+    else if (arg == "--portrait") options.portrait = true;
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -1068,6 +1074,43 @@ int main(int argc, const char** argv) {
                     : std::array<float, 3>{bounds.maxxyz.coords[0], bounds.maxxyz.coords[1],
                                            bounds.maxxyz.coords[2]};
   ViewerCamera::Shot shot = ViewerCamera::Frame(framedLow, framedHigh, options.fov);
+  if (options.portrait) {
+    // The top quarter of the model, from the front. A quarter rather than a
+    // measured head: these characters run from a chibi Wario to a three-metre
+    // mech, and no head joint is going to describe both - what a card needs is
+    // "the top of him, big enough to recognise".
+    const float height = framedHigh[2] - framedLow[2];
+    const float band = height * 0.26f;
+    // A box round the head, not the model's full width: in a T-pose the arms
+    // are the widest thing about him and Frame() sizes on the largest span, so
+    // taking only the top of the bounds still framed the whole wingspan.
+    //
+    // Centred on where the geometry actually is rather than on the middle of
+    // the box: a model that carries a prop beside its head (the /vn/ squad is a
+    // painted plane with a star floating next to it) has its box centre out in
+    // the air between the two, and the portrait framed the gap.
+    float cx = (framedLow[0] + framedHigh[0]) * 0.5f;
+    float cy = (framedLow[1] + framedHigh[1]) * 0.5f;
+    double sumX = 0.0, sumY = 0.0;
+    long counted = 0;
+    for (const ModelInventory::Mesh& mesh : meshes) {
+      for (const std::array<float, 3>& vertex : mesh.vertices) {
+        if (vertex[2] < framedHigh[2] - band) continue;
+        sumX += vertex[0];
+        sumY += vertex[1];
+        counted++;
+      }
+    }
+    if (counted > 0) {
+      cx = (float)(sumX / counted);
+      cy = (float)(sumY / counted);
+    }
+    const std::array<float, 3> headLow = {cx - band * 0.55f, cy - band * 0.55f,
+                                          framedHigh[2] - band};
+    const std::array<float, 3> headHigh = {cx + band * 0.55f, cy + band * 0.55f, framedHigh[2]};
+    shot = ViewerCamera::Frame(headLow, headHigh, options.fov);
+    shot.pitch = 0.0f;
+  }
 
   boost::intrusive_ptr<Camera> camera = boost::static_pointer_cast<Camera>(
       ObjectFactory::GetInstance().CreateObject("camera", e_ObjectType_Camera));

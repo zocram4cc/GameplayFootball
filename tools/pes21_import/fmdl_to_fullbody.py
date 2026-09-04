@@ -39,6 +39,13 @@ import sys
 # drop_stray handling in convert().
 STRAY_DROP_RADIUS = 60.0
 
+# A mesh taller than this is not something a player wears. HDG's "EAT" ships an
+# 11 m column of effect geometry, which the engine dutifully scaled the whole
+# character down to fit, and the player became a pile on the grass. The tallest
+# legitimate export on disk is Mothdiver's wings at 3.84 m, so this cuts well
+# clear of the art and still catches an effect mesh.
+MAX_MESH_SPAN_M = 4.5
+
 import ase_util
 import retarget
 import seams
@@ -881,6 +888,19 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     heights = [fox_to_gf(v.position)[2] for m in meshes for v in m.vertices]
     model_height = (max(heights) - min(heights)) if heights else MEASURED_BODY_HEIGHT
     model_scale = MEASURED_BODY_HEIGHT / model_height if model_height > 0.1 else 1.0
+
+    # An effect mesh no player can wear (MAX_MESH_SPAN_M): dropped whatever the
+    # slot said, because everything downstream - the height the engine scales to,
+    # the bone envelopes, the stretched-triangle cut - is measured off the
+    # model's own bounds, and one 11 m column moves all of them.
+    def spans_too_far(mesh):
+        ys = [v.position.y for v in mesh.vertices]
+        return bool(ys) and (max(ys) - min(ys)) > MAX_MESH_SPAN_M
+
+    tall = [m for m in meshes if spans_too_far(m)]
+    if tall:
+        meshes = [m for m in meshes if not spans_too_far(m)]
+        print("dropped %d mesh(es) spanning more than %.1f m" % (len(tall), MAX_MESH_SPAN_M))
 
     # One group per source texture.
     #
