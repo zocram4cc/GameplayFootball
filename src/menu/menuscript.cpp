@@ -34,6 +34,26 @@ bool IsUnsignedInteger(const std::string& s) {
 
 }  // namespace
 
+Key MonkeyKey(unsigned long seed, unsigned long n) {
+  // splitmix64 on (seed, n): no state, uniform enough for input fuzzing, and
+  // identical on every machine - a reproduction is a seed and an index.
+  unsigned long long x = 0x9e3779b97f4a7c15ULL * (n + 1) + seed;
+  x ^= x >> 30;
+  x *= 0xbf58476d1ce4e5b9ULL;
+  x ^= x >> 27;
+  x *= 0x94d049bb133111ebULL;
+  x ^= x >> 31;
+  // Weighted: mostly movement and confirm, because that is what a drag is
+  // made of, with escape and 'x' often enough to open and abandon submenus
+  // in the middle of one.
+  static const Key table[] = {
+      Key::Up,    Key::Up,    Key::Down,  Key::Down, Key::Left,  Key::Left,
+      Key::Right, Key::Right, Key::Enter, Key::Enter, Key::Enter, Key::X,
+      Key::Escape,
+  };
+  return table[x % (sizeof(table) / sizeof(table[0]))];
+}
+
 std::vector<Step> Parse(const std::string& spec) {
   std::vector<Step> steps;
 
@@ -57,6 +77,22 @@ std::vector<Step> Parse(const std::string& spec) {
 
     if (actionPart == "quit") {
       step.action = Action::Quit;
+      steps.push_back(step);
+      continue;
+    }
+
+    if (actionPart.rfind("monkey=", 0) == 0) {
+      // monkey=<seed>:<taps>
+      const std::string rest = actionPart.substr(7);
+      const size_t inner = rest.find(':');
+      if (inner == std::string::npos) continue;
+      const std::string seedPart = Trim(rest.substr(0, inner));
+      const std::string tapsPart = Trim(rest.substr(inner + 1));
+      if (!IsUnsignedInteger(seedPart) || !IsUnsignedInteger(tapsPart)) continue;
+      step.action = Action::Monkey;
+      step.seed = std::strtoul(seedPart.c_str(), nullptr, 10);
+      step.taps = std::strtoul(tapsPart.c_str(), nullptr, 10);
+      if (step.taps == 0) continue;
       steps.push_back(step);
       continue;
     }

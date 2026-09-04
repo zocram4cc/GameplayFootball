@@ -40,6 +40,13 @@ std::vector<Stage> ClosingStages(int goalDifference, const std::string& stadiumT
 // stays in the category pool and nothing more.
 std::string ClosingPoolForFile(const std::string& filename);
 
+// The ground a pack was authored for, read from its name ("change_stand_st041_home"
+// -> "st041"), or "" for one authored for every ground. PES places a stand camera
+// where that stadium has a stand: at any other ground the same coordinates are a
+// seat in the sky or the inside of a roof, so a pack that names another ground is
+// not installed there at all.
+std::string GroundOfFile(const std::string& filename);
+
 // How long the whole sequence runs, for a caller that has to reserve the time.
 float TotalSeconds(const std::vector<Stage>& stages);
 

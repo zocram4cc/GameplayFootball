@@ -286,3 +286,14 @@ TEST(SetPieceLaws, TheOffsideScheduleHoldsFromKickOffToTheEnd) {
               SetPieceLaws::OffsidePrepareAt_ms(offside));
   }
 }
+
+// The half-time whistle had the same shape of bug: three seconds to prepare
+// against a six-second walk-off, so the kick-off reset landed in plain view
+// under the interval camera.
+TEST(SetPieceLaws, TheSecondHalfWaitsForTheWalkOff) {
+  const unsigned long whistle = 45ul * 60ul * 1000ul + 37000ul;
+  EXPECT_GE(SetPieceLaws::HalfTimePrepareAt_ms(whistle),
+            whistle + SetPieceLaws::kHalfTimeCutscene_ms)
+      << "the players are reset before the walk-off has finished";
+  EXPECT_GT(SetPieceLaws::HalfTimeTakeAt_ms(whistle), SetPieceLaws::HalfTimePrepareAt_ms(whistle));
+}

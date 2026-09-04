@@ -154,14 +154,18 @@ TEST(CutsceneViewer, AnEmptyTrackIsStillUnclassifiable) {
 // at PES's touchline is a fine shot; on ours it films the sky over the stand.
 //
 // A category either has a subject on the pitch or it does not, and that is known
-// from the category rather than from coordinates. A foul, a substitution and an
-// offside all have one. The post-match and entrance presentations do not - they are
-// authored to show the stadium, and anchoring them at the ball would wreck them.
+// from the category rather than from coordinates. A foul and an offside have one.
+// The post-match and entrance presentations do not - they are authored to show
+// the stadium, and anchoring them at the ball would wreck them. Nor does a
+// substitution, as it turns out: PES stages every one at the halfway line on the
+// bench side in stadium coordinates (the man coming on at (0, -36.5), the cameras
+// behind that touchline or on the pitch looking at it), so it is played where it
+// was written and only the official is picked from the anchor.
 
 TEST(CutsceneViewer, AnIncidentCategoryIsStagedAtTheIncident) {
   EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("foul"));
-  EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("change"));
   EXPECT_TRUE(CutsceneViewer::AnchorsAtIncident("offside"));
+  EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("change"));
 }
 
 TEST(CutsceneViewer, ASubpoolIsTheSameCategory) {
@@ -185,26 +189,13 @@ TEST(CutsceneViewer, SomethingUnknownIsLeftWhereItIs) {
   EXPECT_FALSE(CutsceneViewer::AnchorsAtIncident("something_new"));
 }
 
-// Where a substitution happens: at the touchline beside the man coming off, not
-// where he was standing and not where the ball rolled out. The ball is the wrong
-// answer badly - it put the anchor at -61,-14, six metres beyond the goal line.
-TEST(CutsceneViewer, ASubstitutionIsStagedAtTheNearestTouchline) {
-  // a player in his own half, nearer the -y touchline
-  const auto mark = CutsceneViewer::TouchlineMark(20.0f, -12.0f, 36.0f);
-  EXPECT_FLOAT_EQ(mark.first, 20.0f);
-  EXPECT_FLOAT_EQ(mark.second, -36.0f);
-}
-
-TEST(CutsceneViewer, AndTheOtherTouchlineWhenHeIsNearerThat) {
-  const auto mark = CutsceneViewer::TouchlineMark(-8.0f, 21.0f, 36.0f);
-  EXPECT_FLOAT_EQ(mark.first, -8.0f);
-  EXPECT_FLOAT_EQ(mark.second, 36.0f);
-}
-
-TEST(CutsceneViewer, ATouchlineMarkStaysBetweenTheGoalLines) {
-  // a man out by the corner does not drag the change behind the goal
-  EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(70.0f, 2.0f, 36.0f).first, 45.0f);
-  EXPECT_FLOAT_EQ(CutsceneViewer::TouchlineMark(-70.0f, 2.0f, 36.0f).first, -45.0f);
+// Where a substitution happens: the halfway line on the bench side, which is where
+// PES authored the staging - not beside the man coming off, and not where the ball
+// rolled out (that put the anchor at -61,-14, six metres beyond the goal line).
+TEST(CutsceneViewer, ASubstitutionIsMadeAtTheHalfwayLineOnTheBenchSide) {
+  const auto mark = CutsceneViewer::SubstitutionMark(34.0f);
+  EXPECT_FLOAT_EQ(mark.first, 0.0f);
+  EXPECT_FLOAT_EQ(mark.second, -34.0f);
 }
 
 // Who holds the camera during a booking.

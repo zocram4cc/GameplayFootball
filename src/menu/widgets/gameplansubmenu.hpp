@@ -44,7 +44,9 @@ public:
 
 protected:
   Gui2Grid* grid;
-  Gui2Grid* mainGrid;  // root menu's grid
+  Gui2Grid* mainGrid;
+  // One close per submenu, however many escapes arrive in the same frame.
+  bool closing = false;  // root menu's grid
   Gui2View* parentFocus;
 
   std::vector<Gui2Button*> allButtons;  // cache for GetToggledbutton()

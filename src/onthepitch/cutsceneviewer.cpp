@@ -31,22 +31,16 @@ Anchoring ClassifyAnchoring(const TrackExtent& extent) {
 
 bool AnchorsAtIncident(const std::string& category) {
   const std::string head = category.substr(0, category.find('/'));
-  return head == "foul" || head == "change" || head == "offside" || head == "goal";
+  // Not "change": PES stages every substitution in stadium coordinates at the
+  // halfway line on the bench side - measured over all 30 change stagings, the
+  // man coming on starts at (0, -36.5) and the cameras sit behind that touchline
+  // ((0.5, -38.2) at 0.7 m) or out on the pitch looking at it ((-2.2, -9) at
+  // 5.5 m). Moved to "the incident" they were added to the touchline mark, which
+  // put a camera authored 4 m behind the line 38 m behind it, inside the stand.
+  return head == "foul" || head == "offside" || head == "goal";
 }
 
-// How far inside the goal lines a substitution may be staged. The touchline is
-// walked on to between the corner and the halfway line; PES's own change staging
-// sits around the middle of it.
-namespace {
-constexpr float kTouchlineMarkMaxX = 45.0f;
-}
-
-std::pair<float, float> TouchlineMark(float x, float y, float pitchHalfY) {
-  const float clampedX = x > kTouchlineMarkMaxX
-                             ? kTouchlineMarkMaxX
-                             : (x < -kTouchlineMarkMaxX ? -kTouchlineMarkMaxX : x);
-  return {clampedX, y >= 0.0f ? pitchHalfY : -pitchHalfY};
-}
+std::pair<float, float> SubstitutionMark(float pitchHalfY) { return {0.0f, -pitchHalfY}; }
 
 AssistantMark OffsideAssistantMark(float incidentX, float incidentY, float linesman0Y,
                                    float linesman1Y, float pitchHalfX, float pitchHalfY) {

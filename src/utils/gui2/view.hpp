@@ -67,6 +67,8 @@ public:
       parent->SetInFocusPath(onOff);
   }
   bool IsInFocusPath() { return isInFocusPath; }
+  // Whether Exit has already run; see Gui2View::Exit.
+  bool HasExited() const { return exited; }
 
   virtual bool IsVisible() {
     if (isVisible) {
@@ -111,6 +113,7 @@ protected:
   bool isVisible;
   bool isSelectable;
   bool isInFocusPath;
+  bool exited = false;
   bool isOverlay;
 
   int zPriority;

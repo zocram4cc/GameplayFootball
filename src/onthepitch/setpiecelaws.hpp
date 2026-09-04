@@ -103,6 +103,24 @@ inline unsigned long OffsideTakeAt_ms(unsigned long offsideTime_ms) {
   return OffsidePrepareAt_ms(offsideTime_ms) + kOffsideTakeAfterPrepare_ms;
 }
 
+// The half-time whistle is staged the same way: the walk-off plays, then the
+// pitch is reset behind the wipe for the second-half kick-off. The referee gave
+// it upstream's three seconds to prepare and five to take while
+// Match::SetMatchPhase started a six-second "timeup" cutscene over the top, so
+// the reset teleported everyone to their kick-off marks - in plain view, under a
+// camera still filming the walk-off - halfway through the shot.
+constexpr unsigned long kHalfTimeCutscene_ms = 10000;
+constexpr unsigned long kHalfTimePrepareAfterCutscene_ms = 500;
+constexpr unsigned long kHalfTimeTakeAfterPrepare_ms = 2000;
+
+inline unsigned long HalfTimePrepareAt_ms(unsigned long whistleTime_ms) {
+  return whistleTime_ms + kHalfTimeCutscene_ms + kHalfTimePrepareAfterCutscene_ms;
+}
+
+inline unsigned long HalfTimeTakeAt_ms(unsigned long whistleTime_ms) {
+  return HalfTimePrepareAt_ms(whistleTime_ms) + kHalfTimeTakeAfterPrepare_ms;
+}
+
 }  // namespace SetPieceLaws
 
 #endif

@@ -27,14 +27,24 @@ namespace MenuScript {
 // cancel, and the 'x' the game plan pitch opens its role submenu on.
 enum class Key { Up, Down, Left, Right, Enter, Escape, X };
 
-enum class Action { Tap, Shot, Quit };
+enum class Action { Tap, Shot, Quit, Monkey };
 
 struct Step {
   unsigned long at_ms = 0;
   Action action = Action::Tap;
   Key key = Key::Up;   // Tap only
   std::string name;    // Shot only: the screenshot's suffix
+  // Monkey only: a deterministic stream of random keys, which is how a screen
+  // gets tested against input nobody would think to script. "monkey=7:5000"
+  // presses 5000 keys from seed 7, one per driver tick, then stops - and the
+  // seed makes any crash it finds replayable.
+  unsigned long seed = 0;
+  unsigned long taps = 0;
 };
+
+// The n'th key of a monkey run. Pure so the sequence can be reasoned about and
+// tested without the engine; the same (seed, n) always gives the same key.
+Key MonkeyKey(unsigned long seed, unsigned long n);
 
 // Parses the timeline. Steps come back sorted by time, ties in the order
 // written. A step whose time is not a number, or whose action is not one of

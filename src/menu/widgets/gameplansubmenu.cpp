@@ -64,15 +64,31 @@ Gui2Button* GamePlanSubMenu::GetToggledButton(Gui2Button* except) {
 }
 
 void GamePlanSubMenu::ProcessWindowingEvent(WindowingEvent* event) {
-  if (event->IsEscape()) {
-    mainGrid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);  // removing self!
-    parentFocus->SetFocus();
-
-    this->Exit();  // should send sig_OnClose
-    delete this;
-    return;
-
-  } else {
+  if (!event->IsEscape()) {
     event->Ignore();
+    return;
   }
+  // Escape twice before the first close has been processed used to run all of
+  // this twice: the second RemoveView took whatever occupied the cell by then
+  // (another submenu, or the button column) and detached that instead, and the
+  // second `delete this` freed a view the grid was still holding.
+  if (closing) return;
+  closing = true;
+
+  // Detach this exact view rather than "whatever is in the nav cell": by the
+  // time an escape arrives the cell may hold a different submenu.
+  if (GetParent() == mainGrid) mainGrid->RemoveView(this);
+  mainGrid->UpdateLayout(0.0);
+
+  // sig_OnClose is what puts the button column back and restores focus
+  // (GamePlanPage::Reactivate), so it has to run before the page is asked to
+  // focus anything.
+  this->Exit();
+  if (parentFocus) parentFocus->SetFocus();
+
+  // Deferred: this call is inside our own event dispatch, and the dispatcher
+  // reads members of this view after the handler returns (view.cpp:199, the
+  // parent walk for an unaccepted event). The window manager deletes it at
+  // the top of the next frame instead.
+  windowManager->MarkForDeletion(this);
 }

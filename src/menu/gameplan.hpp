@@ -113,6 +113,13 @@ protected:
 
   std::vector<TacticsSlider> tacticsSliders;
 
+  // Set the moment the page starts closing. A submenu's close signal fires
+  // during the page's own teardown (its Exit calls sig_OnClose), and the
+  // handlers below rebuild the button column and save tactics - putting a view
+  // back into a grid that is being deleted, and reading data the page no
+  // longer owns. Teardown is one-way.
+  bool tearingDown = false;
+
   std::unique_ptr<Database> namedb;
 };
 

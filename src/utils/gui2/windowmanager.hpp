@@ -52,6 +52,13 @@ public:
 
   void MarkForDeletion(Gui2View* view);
 
+  // Drops the focus if it is `view` or anything below it. Called as a subtree
+  // is torn down: a stale focus is read again by the next SetFocus (it calls
+  // SetInFocusPath on the outgoing view, which walks its parents), and that
+  // read is a use-after-free the moment any ancestor has been deleted. Found
+  // by the game-plan monkey run: seed 1, tap 772.
+  void ForgetFocusIn(Gui2View* view);
+
   void SetTimeStep_ms(unsigned long timeStep_ms) { this->timeStep_ms = timeStep_ms; };
   unsigned long GetTimeStep_ms() { return timeStep_ms; };
 

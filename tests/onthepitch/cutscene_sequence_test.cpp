@@ -144,6 +144,24 @@ TEST(ClosingPools, AnUnrecognisedNameClaimsNoFamily) {
   EXPECT_EQ(CutsceneSequence::ClosingPoolForFile(""), "");
 }
 
+TEST(ClosingPools, TheIntervalIsToldApartFromFullTimeAndThePickUp) {
+  // PES's timeup directory is flat: a 48-second "glad" full-time camera and the
+  // post-match pick-ups must not be able to turn up at half time.
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("tu_full_02_glad_cam.camtrack"), "timeup/full");
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("tu_pickup_good_a_cam.camtrack"),
+            "timeup/pickup");
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("tu_half_gf_wide_push.camtrack"), "timeup/half");
+}
+
+TEST(ClosingPools, AWalkOffStagedForOneGroundIsFiledUnderIt) {
+  // Its primary stands at that ground's tunnel mouth in stadium coordinates, so
+  // at any other ground the staging would teleport him to a spot on the pitch.
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("tu_half_cmn_01_pl_st000.chor"),
+            "timeup/half_st000");
+  EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("tu_half_cmn_02_cam1_st000.camtrack"),
+            "timeup/half_st000");
+}
+
 TEST(ClosingPools, TheNamesMatchWhatTheSequenceAsksFor) {
   // the two halves have to agree, or the sequence names pools nothing fills
   EXPECT_EQ(CutsceneSequence::ClosingPoolForFile("end_joy_high_1.camtrack"),

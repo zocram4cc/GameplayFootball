@@ -87,7 +87,11 @@ int GraphicsTask::GetTimeSinceLastSwap_ms() const {
   return EnvironmentManager::GetInstance().GetTime_ms() - lastSwapTime_ms.GetData();
 }
 
+#include "utils/phaseprobe_tmp.hpp"  // TEMPORARY PROBE
+static PhaseProbe probeGet("gfxGet"), probeProcess("gfxProcess"), probeSwap("gfxPut.swapWait");
 void GraphicsTask::GetPhase() {
+  probeGet.Begin();
+  struct EndGet { ~EndGet() { probeGet.End(); } } endGet;
   std::unique_lock<std::mutex> getPhaseLock(graphicsSystem->getPhaseMutex);
 
   TaskManager* taskManager = TaskManager::GetInstancePtr();
@@ -136,6 +140,8 @@ void GraphicsTask::GetPhase() {
 }
 
 void GraphicsTask::ProcessPhase() {
+  probeProcess.Begin();
+  struct EndProcess { ~EndProcess() { probeProcess.End(); } } endProcess;
   TaskManager* taskManager = TaskManager::GetInstancePtr();
   Renderer3D* renderer3D = graphicsSystem->GetRenderer3D();
 
@@ -182,7 +188,9 @@ void GraphicsTask::PutPhase() {
   //         kinda seems more fluent, though this may be psychological
 
   if (swapBuffers != boost::intrusive_ptr<Renderer3DMessage_SwapBuffers>()) {
+    probeSwap.Begin();
     swapBuffers->Wait();
+    probeSwap.End();
     unsigned long readyTime_ms = swapBuffers->GetReadyTime_ms();
     frameTimes_ms.Lock();
     // printf("readyTime_ms = %i, lastSwapTime_ms = %i\n", readyTime_ms, lastSwapTime_ms.GetData());

@@ -60,7 +60,13 @@ public:
   GraphicsGeometry* GetGraphicsGeometry() { return caller; }
 
 protected:
+  void PublishUploadTarget(const boost::intrusive_ptr<Resource<GeometryData>>& resource,
+                           float* vertices, int verticesDataSize);
+
   GraphicsGeometry* caller;
+  // The geometry data holding a pointer into caller->vertexBuffer's array, so
+  // OnUnload can take it back before the array goes.
+  boost::intrusive_ptr<Resource<GeometryData>> uploadTargetOwner;
 
   bool usesIndices;
 };

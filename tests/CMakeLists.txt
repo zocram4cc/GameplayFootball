@@ -41,6 +41,7 @@ add_executable(gameplayfootball_skinning_tests
   onthepitch/skinning_transform_test.cpp
   onthepitch/skinning_batch_test.cpp
   onthepitch/skinning_rate_test.cpp
+  onthepitch/skinning_lod_test.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinning.cpp
 )
 

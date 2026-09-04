@@ -44,6 +44,7 @@
 #include "scene/objects/camera.hpp"
 #include "scene/objects/light.hpp"
 #include "scene/objects/sound.hpp"
+#include "camerastandoff.hpp"
 #include "cutsceneplayback.hpp"
 #include "cutscenesequence.hpp"
 #include "cutsceneviewer.hpp"
@@ -606,11 +607,19 @@ protected:
   // play in order, each one filling its own slice of the entrance
   CamTrack introCamTrack;
   std::vector<CamTrack> introShots;
-  // The dolly-back that keeps an authored shot out of the cast, held for the
-  // length of the cut it was needed in (see the standoff in UpdateIngameCamera).
-  const CamTrack* standoffShot = nullptr;
+  // The dolly-back that keeps an authored shot out of the bodies it films
+  // (camerastandoff.hpp), for every camera that plays imported camerawork: the
+  // walk-on, a stoppage's shot, the goal camera. `shot`/`cut` name the shot on
+  // screen so a new one may start wherever it has to; within one the dolly moves
+  // at its own speeds.
+  std::vector<CameraStandoff::Body> StandoffBodies();
+  void ApplyStandoff(const void* shot, int cut, const Vector3& forward, float clearance,
+                     Vector3& eye);
+  const void* standoffShot = nullptr;
   int standoffCut = -1;
   float standoffPush = 0.0f;
+  float standoffSpeed = 0.0f;  // the retreat's current speed, run up gradually
+  float standoffLastSeconds = 0.0f;
   // The beat list this entrance is staged against, picked per competition -
   // see prematchtimeline.hpp for the lookup and the file format.
   PrematchTimeline::Timeline prematchTimeline;

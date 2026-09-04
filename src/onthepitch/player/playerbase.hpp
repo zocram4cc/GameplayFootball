@@ -89,6 +89,10 @@ public:
   void UpdateFullbodyNodes() { humanoid->UpdateFullbodyNodes(); }
   bool NeedsModelUpdate() { return humanoid->NeedsModelUpdate(); }
   void UpdateFullbodyModel() { humanoid->UpdateFullbodyModel(); }
+  // the copy UpdateFullbodyModel just skinned, which is the one to upload
+  boost::intrusive_ptr<Geometry> GetActiveBodyGeometry() {
+    return humanoid->GetActiveBodyGeometry();
+  }
 
   virtual float GetStat(const char* name) const;
   float GetVelocityMultiplier() const;

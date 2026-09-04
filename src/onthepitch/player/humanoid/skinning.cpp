@@ -1,5 +1,9 @@
 #include "onthepitch/player/humanoid/skinning.hpp"
 
+#include <cmath>
+#include <cstdint>
+#include <unordered_map>
+
 namespace Skinning {
 
 JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
@@ -40,9 +44,68 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
   return transform;
 }
 
+ClusteredMesh ClusterDecimate(const float* vertices, int vertexCount, int elementCount,
+                              const std::vector<unsigned int>& indices, float cell) {
+  ClusteredMesh out;
+  if (vertexCount <= 0 || cell <= 0.0f) return out;
+  const int elementStride = vertexCount * 3;
+  const float inverseCell = 1.0f / cell;
 
+  // cell -> the vertex standing for it
+  std::unordered_map<uint64_t, int> representativeOfCell;
+  representativeOfCell.reserve(vertexCount);
+  std::vector<int> representative(vertexCount);
+  for (int v = 0; v < vertexCount; v++) {
+    const float* p = &vertices[v * 3];
+    // 21 bits a coordinate, offset so a negative one packs: 2 million cells a side
+    const uint64_t cx = (uint64_t)((int64_t)std::floor(p[0] * inverseCell) + (1 << 20)) & 0x1FFFFF;
+    const uint64_t cy = (uint64_t)((int64_t)std::floor(p[1] * inverseCell) + (1 << 20)) & 0x1FFFFF;
+    const uint64_t cz = (uint64_t)((int64_t)std::floor(p[2] * inverseCell) + (1 << 20)) & 0x1FFFFF;
+    const uint64_t key = (cx << 42) | (cy << 21) | cz;
+    auto found = representativeOfCell.emplace(key, v);
+    representative[v] = found.first->second;
+  }
 
+  // Triangles whose corners spread over three cells, on compacted vertex ids.
+  std::vector<int> compact(vertexCount, -1);
+  out.indices.reserve(indices.size() / 4);
+  for (size_t t = 0; t + 2 < indices.size(); t += 3) {
+    int r[3];
+    for (int c = 0; c < 3; c++) {
+      const unsigned int source = indices[t + c];
+      r[c] = source < (unsigned int)vertexCount ? representative[source] : -1;
+    }
+    if (r[0] < 0 || r[1] < 0 || r[2] < 0) continue;
+    if (r[0] == r[1] || r[1] == r[2] || r[0] == r[2]) continue;
+    for (int c = 0; c < 3; c++) {
+      if (compact[r[c]] < 0) {
+        compact[r[c]] = (int)out.sourceVertex.size();
+        out.sourceVertex.push_back(r[c]);
+      }
+      out.indices.push_back((unsigned int)compact[r[c]]);
+    }
+  }
 
+  const int outCount = out.vertexCount();
+  out.vertices.resize((size_t)outCount * 3 * elementCount);
+  for (int e = 0; e < elementCount; e++) {
+    const float* sourceElement = &vertices[(size_t)e * elementStride];
+    float* outElement = &out.vertices[(size_t)e * outCount * 3];
+    for (int v = 0; v < outCount; v++) {
+      const float* p = &sourceElement[out.sourceVertex[v] * 3];
+      outElement[v * 3 + 0] = p[0];
+      outElement[v * 3 + 1] = p[1];
+      outElement[v * 3 + 2] = p[2];
+    }
+  }
+  return out;
+}
+
+bool UseBodyLod(float distanceToCamera, float lodDistance, bool currentlyLod) {
+  if (lodDistance <= 0.0f) return false;
+  // Leave the coarse copy two metres nearer than it was taken up.
+  return distanceToCamera > (currentlyLod ? lodDistance - 2.0f : lodDistance);
+}
 
 int BatchSize(int bodyCount, int workerCount) {
   if (workerCount < 1) return bodyCount > 0 ? bodyCount : 1;  // empty pool: one inline batch

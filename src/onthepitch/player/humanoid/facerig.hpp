@@ -47,9 +47,13 @@ public:
   // false (rig disabled) when the files are absent.
   bool Load(const std::string& modelDir);
 
-  // Binds weighted face vertices to the geometry's mesh vertices by
-  // position (epsilon match), so offsets can be written in place.
-  void Bind(boost::intrusive_ptr<Geometry> geometry);
+  // Binds weighted face vertices to the geometry's mesh vertices by position
+  // (epsilon match). `sources` are the arrays skinning reads, one per submesh in
+  // the geometry's submesh order and laid out like them: the offsets are written
+  // there, in bind space, so every skin carries the expression and the face moves
+  // with the head. They used to be added to the skinned output, which the next
+  // skin overwrote - an expression lasted one frame.
+  void Bind(boost::intrusive_ptr<Geometry> geometry, std::vector<float*> sources);
 
   // Applies the expression's offsets when it differs from the current one.
   void SetExpression(e_FaceExpression expression);
@@ -64,6 +68,7 @@ private:
            std::map<std::string, std::array<float, 3>>> poses;
   // per weighted vertex: (subgeom, float offset into vertex array) matches
   std::vector<std::vector<std::pair<int, int>>> meshBindings;
+  std::vector<float*> sources;
   boost::intrusive_ptr<Geometry> boundGeometry;
   e_FaceExpression current = e_FaceExpression::Neutral;
   bool active = false;

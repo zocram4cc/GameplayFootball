@@ -1,5 +1,7 @@
 #include "cutscenesequence.hpp"
 
+#include <cctype>
+
 namespace CutsceneSequence {
 namespace {
 
@@ -51,7 +53,10 @@ std::string ClosingPoolForFile(const std::string& filename) {
     return "";
   }
   // The rest carry their family in the second word. joy_high and shareJoy are both
-  // the winners celebrating; lose_sad is the other side of it.
+  // the winners celebrating; lose_sad is the other side of it. PES's "timeup"
+  // directory is flat the same way and mixes three moments - the half-time
+  // walk-off, the full-time reaction and the post-match pick-up - so the interval
+  // gets its own pool too, or a 48-second "glad" camera turns up at half time.
   struct Family {
     const char* prefix;
     const char* pool;
@@ -60,11 +65,31 @@ std::string ClosingPoolForFile(const std::string& filename) {
       {"end_joy_high", "end/joy"},   {"end_shareJoy", "end/joy"},
       {"end_lose_sad", "end/sad"},   {"end_greet_audi", "end/greet"},
       {"end_photo", "end/photo"},    {"end_retire", "end/retire"},
+      {"tu_half", "timeup/half"},    {"tu_full", "timeup/full"},
+      {"tu_pickup", "timeup/pickup"},
   };
   for (const Family& family : kFamilies) {
     const std::string prefix(family.prefix);
-    if (filename.compare(0, prefix.size(), prefix) == 0)
-      return family.pool;
+    if (filename.compare(0, prefix.size(), prefix) != 0) continue;
+    // The walk-off is staged in stadium coordinates - the primary stands at that
+    // ground's tunnel mouth, the rest at fixed points on its pitch - so a pack
+    // exported for st000 has nothing to say at st002 and is filed under its own
+    // ground, like the crowd shots. One without a ground is for every ground.
+    if (family.pool == std::string("timeup/half")) {
+      const std::string ground = GroundOfFile(filename);
+      if (!ground.empty()) return "timeup/half_" + ground;
+    }
+    return family.pool;
+  }
+  return "";
+}
+
+std::string GroundOfFile(const std::string& filename) {
+  for (size_t at = filename.find("_st"); at != std::string::npos; at = filename.find("_st", at + 1)) {
+    if (at + 6 > filename.size()) break;
+    if (isdigit((unsigned char)filename[at + 3]) && isdigit((unsigned char)filename[at + 4]) &&
+        isdigit((unsigned char)filename[at + 5]))
+      return filename.substr(at + 1, 5);
   }
   return "";
 }
