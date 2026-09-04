@@ -2106,6 +2106,10 @@ void Match::ApplyStandoff(const void* shot, int cut, const Vector3& forward, flo
   }
   standoffLastSeconds = now;
   if (standoffPush > 0.0f) eye -= forward * standoffPush;
+  if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
+    printf("CAMLOG t=%.2f cut=%d push=%.2f want=%.2f pos=%.3f,%.3f,%.3f cat=%s\n",
+           GetEntranceElapsedSeconds(), cut, standoffPush, push, eye.coords[0], eye.coords[1],
+           eye.coords[2], activeCutsceneCategory.c_str());
 }
 
 Vector3 Match::ComputeStagingOffset() const {
@@ -3026,6 +3030,35 @@ void Match::GameOver() {
         CutsceneSequence::Stage{family.empty() ? "result" : "result/" + family, 8.0f});
   }
   StartNextQueuedCutscene();
+}
+
+void Match::ProcessCutsceneBench() {
+  // The bench cutsceneviewer.hpp documents: while "debug_cutscene_seconds" of
+  // match time remain, every stoppage plays "debug_cutscene_category" for
+  // "debug_cutscene_pack_secs" instead of whatever the referee would have shown.
+  // A pool that needs a subject - a foul, an injury - takes the man who last
+  // touched the ball, so the staging has somebody to be about. Nothing here
+  // runs unless the category is set.
+  static const std::string category = GetConfiguration()->Get("debug_cutscene_category", "");
+  if (category.empty() || activeCutscene || activeCutsceneChoreo || !referee) return;
+  const float seconds = GetConfiguration()->GetReal("debug_cutscene_seconds", 0.0f);
+  if (actualTime_ms >= (unsigned long)(seconds * 1000.0f)) return;
+  const RefereeBuffer& buffer = referee->GetBuffer();
+  if (IsInPlay() || !buffer.active || buffer.prepared || matchPhase == e_MatchPhase_PreMatch ||
+      buffer.desiredSetPiece == e_SetPiece_KickOff)
+    return;
+  // Once per stoppage. The restart is pushed back for the shot, so the same
+  // stoppage is still unprepared when the shot ends; re-firing on it played the
+  // injury scene fifteen times over at 9:57 with the clock frozen (m3 capture).
+  if (buffer.stopTime == cutsceneBenchStop_ms) return;
+  cutsceneBenchStop_ms = buffer.stopTime;
+  const float packSeconds = GetConfiguration()->GetReal("debug_cutscene_pack_secs", 6.0f);
+  SetCutsceneParticipants(GetLastTouchPlayer(), nullptr);
+  StartCutscene(category, packSeconds);
+  if (!activeCutscene && !activeCutsceneChoreo) return;
+  // The restart waits for the shot, as it does for the referee's own.
+  referee->AlterSetPiecePrepareTime(GetActualTime_ms() + (unsigned long)(packSeconds * 1000.0f) +
+                                    1500);
 }
 
 void Match::StartNextQueuedCutscene() {
@@ -4767,6 +4800,7 @@ void Match::Process() {
 
   ProcessAutoSubstitutions();
   ProcessFoulReplay();
+  ProcessCutsceneBench();
   UpdateBallHeatmap();
   UpdateCrowdAudio();
   if (rigdio) rigdio->Update();

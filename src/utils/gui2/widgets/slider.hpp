@@ -10,6 +10,7 @@
 #include "SDL2/SDL_ttf.h"
 #include "caption.hpp"
 #include "scene/objects/image2d.hpp"
+#include "sliderstep.hpp"
 
 namespace blunted {
 
@@ -49,7 +50,11 @@ public:
     titleCaption->SetCaption(newCaption);
   }
 
-  void SetQuantization(int steps) { quantizationSteps = std::max(steps, 2); }
+  // How many positions this slider has. Below SliderStep::kMaxDrawnSteps the
+  // widget also draws a tick per position and prints which one is set, so the
+  // value is readable instead of a bar at an arbitrary place.
+  void SetQuantization(int steps);
+  int GetQuantization() const { return quantizationSteps; }
 
   int AddHelperValue(const Vector3& color, const std::string& description,
                      float initialValue = 0.0f);
@@ -71,6 +76,9 @@ protected:
   std::string caption;
 
   Gui2Caption* titleCaption;
+  // "4/11", right-aligned; empty for a slider with too many positions to count.
+  Gui2Caption* stepCaption = nullptr;
+  void UpdateStepCaption();
 
   std::vector<Gui2Slider_HelperValue> helperValues;
 

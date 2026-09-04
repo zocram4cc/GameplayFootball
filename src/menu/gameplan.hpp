@@ -49,6 +49,27 @@ public:
 
   Vector3 GetButtonColor(int id);
 
+  // LINEUP hands the pitch itself to the player: the button column steps
+  // aside, the cards become the thing being navigated, and dragging one is how
+  // the formation is changed (owner, 04-09). Escape brings the column back.
+  void GoLineupMode();
+  // Both teams at once: the side being edited on the pitch, the other beside
+  // it as a read-only sheet. In one-pad coach mode the two can be swapped -
+  // PES gives you only your own, but a coach running both benches needs both
+  // (owner, 04-09).
+  void BuildOpponentSheet();
+  bool CanSwitchTeams() const;
+  void SwitchTeam();
+  // -> whether the change was made. Before kick-off the two simply swap; in a
+  // match the referee has to allow it, and the reason is spammed on screen.
+  bool SubstituteFromMap(int starterSlot, int benchIndex);
+  void ToggleRoleFromMap(int squadIndex);
+  // The hint line, lower left, in the shape the broadcast uses: what the
+  // buttons do right now.
+  void SetHints(const std::string& text);
+  void ShowLineupHints();
+  void ShowBrowsingHints();
+
   void GoLineupMenu();
   void LineupMenuOnClick(Gui2Button* button);
   void ShowLineupPortrait(int databaseID);
@@ -100,6 +121,13 @@ protected:
   std::unique_ptr<TeamData> standaloneTeamData;
 
   GamePlanSubMenu* lineupMenu;
+  Gui2PlanMap* opponentMap = nullptr;
+  Gui2Caption* opponentLabel = nullptr;
+  Gui2Button* buttonSwitchTeam = nullptr;
+  std::unique_ptr<TeamData> opponentTeamData;
+  Gui2Caption* hintLine1 = nullptr;
+  Gui2Caption* hintLine2 = nullptr;
+  bool lineupMode = false;
   Gui2Image* lineupPortrait = nullptr;
   GamePlanSubMenu* tacticsMenu;
   GamePlanSubMenu* philosophyMenu;

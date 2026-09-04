@@ -101,6 +101,11 @@ void Gui2Task::ProcessEvents() {
         } else if (pressedKey == SDLK_ESCAPE) {
           wEvent->SetEscape();
           needsWindowingEvent = true;
+        } else if (pressedKey == SDLK_c) {
+          // The keyboard's stand-in for the pad's shoot button; 'c' is what
+          // the in-match controls already use for it (scriptedgamepad.cpp).
+          wEvent->SetSecondary();
+          needsWindowingEvent = true;
         }
       }
     }
@@ -188,6 +193,10 @@ void Gui2Task::ProcessEvents() {
             wEvent->SetEscape();
             needsWindowingEvent = true;
           }
+          if (j == GetActiveJoystickID() && i == joyButtonSecondary) {
+            wEvent->SetSecondary();
+            needsWindowingEvent = true;
+          }
         }
         prevButtonState[j][i] = pressed;
       }
@@ -205,9 +214,10 @@ void Gui2Task::ProcessEvents() {
   delete wEvent;
 }
 
-void Gui2Task::SetEventJoyButtons(int activate, int escape) {
+void Gui2Task::SetEventJoyButtons(int activate, int escape, int secondary) {
   this->joyButtonActivate = activate;
   this->joyButtonEscape = escape;
+  this->joyButtonSecondary = secondary;
 }
 
 }  // namespace blunted

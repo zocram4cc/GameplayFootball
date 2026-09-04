@@ -358,6 +358,9 @@ public:
   void RequestFoulReplay(unsigned long foulTime_ms, int foulType);
   // Fires the pending foul replay once its cutscene has run its course.
   void ProcessFoulReplay();
+  // The cutscene bench (cutsceneviewer.hpp): plays a named pool once per stoppage.
+  void ProcessCutsceneBench();
+  unsigned long cutsceneBenchStop_ms = 0;
   // Asks for a replay, pausing only if a listener will actually play it.
   void RequestExtendedReplay();
   // The frame count of the celebration clip under this specialvar2, or 0 if absent.

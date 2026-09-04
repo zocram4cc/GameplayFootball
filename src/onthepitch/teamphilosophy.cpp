@@ -124,7 +124,12 @@ float AdaptOffsideTrapX(e_Philosophy philosophy, float trapX, int teamSide) {
 // The key philosophy is stored under, which has the philosophy menu instead.
 // The tactics keys with an editor of their own, which are therefore not sliders:
 // the philosophy menu, and the instructions the game plan and the touchline set.
-static const char* kNonSliderKeys[] = {"philosophy", "mentality", "instructions"};
+// A tactic that is not a number on a scale has no business being drawn as one.
+// "formation" is a shape - "4-4-2" - and appeared as an unlabelled bar at zero
+// that overwrote the shape the moment it was touched (owner, 04-09: "no generic
+// sliders like FORMATION that have no meaning as a slider"); it is chosen from
+// the formation picker or by dragging players on the pitch.
+static const char* kNonSliderKeys[] = {"philosophy", "mentality", "instructions", "formation"};
 
 bool IsSliderTactic(const std::string& tacticName) {
   if (tacticName.empty())
