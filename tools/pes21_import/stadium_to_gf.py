@@ -465,6 +465,33 @@ def scale_positions(positions, scale):
     return [(x * scale[0], y * scale[1], z * scale[2]) for (x, y, z) in positions]
 
 
+def _faces_against_their_normals(faces, index_triples, positions):
+    """-> [bool] per face: wound the opposite way to the mesh's majority, judged
+    against the face's own authored normals. A face without normals follows the
+    majority."""
+    signs = []
+    for face, (ia, ib, ic) in zip(faces, index_triples):
+        a, b, c = positions[ia], positions[ib], positions[ic]
+        cross = ase_util._cross(ase_util._sub(b, a), ase_util._sub(c, a))
+        normal = [0.0, 0.0, 0.0]
+        for vertex in face.vertices:
+            n = getattr(vertex, "normal", None)
+            if n is None:
+                continue
+            # fmdl (x, y, z) -> engine (x, -z, y), as the positions were
+            normal[0] += n.x
+            normal[1] += -n.z
+            normal[2] += n.y
+        dot = cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2]
+        signs.append(1 if dot > 0.0 else (-1 if dot < 0.0 else 0))
+    positive = sum(1 for sign in signs if sign > 0)
+    negative = sum(1 for sign in signs if sign < 0)
+    if not positive or not negative:
+        return [False] * len(faces)
+    majority = 1 if positive >= negative else -1
+    return [sign != 0 and sign != majority for sign in signs]
+
+
 def face_winding(a, b, c, reverse):
     """A face's indices, reversed for an outline shell so the engine - which culls
     back faces - culls the same side PES does."""
@@ -902,6 +929,15 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     if not outline and not sky and faces_downward(gf_positions, index_triples):
         reverse = True
 
+    # Within the mesh, the faces wound against their own authored normals are
+    # turned to agree with the rest. PES lights by the normal and (for much of a
+    # ground) draws both sides, so a face wound the other way is merely a face
+    # there; this engine culls by winding, so it is a hole. st002's villa has
+    # 5,801 of them across 99 meshes - 0.2% of its faces - and they are the
+    # windows the camera sees the interior through. The mesh's own majority
+    # keeps deciding which way round the mesh goes, so nothing above changes.
+    flips = _faces_against_their_normals(faces, index_triples, gf_positions)
+
     if outline and gf_positions:
         gf_positions = _widen_outline(gf_positions,
                                       [face_winding(*[vertex_index[id(v)] for v in face.vertices],
@@ -915,7 +951,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     out.write("\t\t}\n")
     out.write("\t\t*MESH_FACE_LIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse != flips[i])
         out.write("\t\t\t*MESH_FACE %d: A: %d B: %d C: %d "
                   "AB: 1 BC: 1 CA: 1 *MESH_SMOOTHING 1 *MESH_MTLID 0\n"
                   % (i, a, b, c))
@@ -935,7 +971,7 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
     out.write("\t\t*MESH_TFACELIST {\n")
     for i, face in enumerate(faces):
-        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
+        a, b, c = face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse != flips[i])
         out.write("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
     out.write("\t\t}\n")
     gf_verts = gf_positions
@@ -943,8 +979,8 @@ def _write_geomobject(out, name, mat_index, faces, outline=False, sky=False, uv_
     # the winding that was actually written: an outline shell whose faces were
     # reversed but whose normals were not has its visible side lit as though it
     # faced away, which is how the shells came out flat grey.
-    tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse)
-                 for face in faces]
+    tri_faces = [face_winding(*[vertex_index[id(v)] for v in face.vertices], reverse != flips[i])
+                 for i, face in enumerate(faces)]
     if sky:
         # One normal everywhere, pointing away from the sun: the dome keeps its
         # own colour instead of being lit like a wall.
