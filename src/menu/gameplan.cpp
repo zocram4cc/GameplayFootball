@@ -153,6 +153,13 @@ GamePlanPage::~GamePlanPage() {}
 void GamePlanPage::OnClose() {
   // Before anything else: every handler below has to know the page is going.
   tearingDown = true;
+  // These are children; they die with the tree, and nothing may write to them
+  // after this point.
+  hintLine1 = nullptr;
+  hintLine2 = nullptr;
+  opponentMap = nullptr;
+  opponentLabel = nullptr;
+  buttonSwitchTeam = nullptr;
   namedb.reset();
   // The button column is detached whenever a submenu is open, so if the page
   // is closed at that moment nothing in the view tree owns it. Exit clears any
@@ -263,7 +270,11 @@ void GamePlanPage::SwitchTeam() {
 void GamePlanPage::SetHints(const std::string& text) {
   // "A - grab | B - back" on one line, wrapped onto the second at the last
   // separator that fits, so a long set of hints does not run off the page.
-  if (!hintLine1 || !hintLine2) return;
+  //
+  // Nothing is written once the page is going: the map's focus signal fires
+  // during teardown (losing focus is part of being deleted), and by then these
+  // captions are children that have already been destroyed.
+  if (tearingDown || !hintLine1 || !hintLine2) return;
   const size_t half = text.size() / 2;
   size_t split = std::string::npos;
   size_t at = text.find(" | ");
@@ -304,6 +315,7 @@ void GamePlanPage::GoLineupMode() {
 }
 
 bool GamePlanPage::SubstituteFromMap(int starterSlot, int benchIndex) {
+  if (tearingDown) return false;
   PlayerData* starter = teamData->GetPlayerData(starterSlot);
   PlayerData* bench = teamData->GetPlayerData(benchIndex);
   if (!starter || !bench) return false;
@@ -335,6 +347,7 @@ bool GamePlanPage::SubstituteFromMap(int starterSlot, int benchIndex) {
 }
 
 void GamePlanPage::ToggleRoleFromMap(int squadIndex) {
+  if (tearingDown) return;
   PlayerData* playerData = teamData->GetPlayerData(squadIndex);
   if (!playerData) return;
   // The position he is standing in: for a starter that is his formation slot's
@@ -631,6 +644,7 @@ void GamePlanPage::FormationMenuOnClick(int formationIndex) {
 }
 
 void GamePlanPage::GoPlayerMenu(int slotIndex) {
+  if (tearingDown) return;
   Deactivate();
   playerMenuSlotIndex = slotIndex;
 
@@ -638,7 +652,12 @@ void GamePlanPage::GoPlayerMenu(int slotIndex) {
   playerMenu->sig_OnClose.connect([this](...) { Reactivate(map); });
 
   PlayerData* playerData = teamData->GetPlayerData(slotIndex);
-  const FormationEntry currentEntry = teamData->GetFormationEntry(slotIndex);
+  // A bench card has no formation entry; the position his card shows is the
+  // first one he is registered for.
+  const bool onPitch = Gui2PlanMap::IsStarter(slotIndex);
+  FormationEntry currentEntry = teamData->GetFormationEntry(slotIndex);
+  if (!onPitch && playerData && !playerData->GetRoles().empty())
+    currentEntry.role = playerData->GetRoles().front();
 
   int row = 0;
   playerMenu
@@ -681,10 +700,16 @@ void GamePlanPage::GoPlayerMenu(int slotIndex) {
 }
 
 void GamePlanPage::PlayerMenuRoleOnClick(e_PlayerRole role) {
-  FormationEntry entry = teamData->GetFormationEntry(playerMenuSlotIndex);
-  entry.role = role;
-  entry.position = entry.databasePosition * 0.6f + GetDefaultRolePosition(role) * 0.4f;
-  teamData->SetFormationEntry(playerMenuSlotIndex, entry);
+  if (Gui2PlanMap::IsStarter(playerMenuSlotIndex)) {
+    FormationEntry entry = teamData->GetFormationEntry(playerMenuSlotIndex);
+    entry.role = role;
+    entry.position = entry.databasePosition * 0.6f + GetDefaultRolePosition(role) * 0.4f;
+    teamData->SetFormationEntry(playerMenuSlotIndex, entry);
+  } else if (PlayerData* playerData = teamData->GetPlayerData(playerMenuSlotIndex)) {
+    // A bench player has no place on the pitch to change, so picking a role
+    // registers it: the same thing the secondary button does on his card.
+    playerData->ToggleRole(role);
+  }
   map->Refresh();
 
   // buttons[0] is the inactive name caption and the last is the formation
