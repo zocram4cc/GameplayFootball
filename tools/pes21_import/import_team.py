@@ -337,6 +337,15 @@ FEET_PRESENT_VERTICES = 60
 HIP_JOINT_Y = 0.95
 BODY_SLICE_M = 0.10
 BODY_SLICE_VERTICES = 20
+# And it has to be the body on the rig. HDG's k2421 is a headless helldiver at
+# the origin with Alexus standing two metres behind him, gun and speech bubble to
+# 2.2 m; counted whole, Alexus's head passed for the helldiver's and the player
+# went out with no head. A mesh whose centre is this far off the rig's axis is a
+# sidekick or a prop, not the body. Measured over the 89 exports on disk: every
+# glove sits at 0.6-0.7 m, Wart's widest piece at 0.83, and Alexus's own pieces
+# start at 1.11 - Gregor (lcg k2712) and Alexus are the only characters entirely
+# off the axis, which is exactly a body PES draws its own player beside.
+SIDEKICK_RADIUS_M = 1.0
 
 
 def whole_body(fmdl_paths, fmdl_lib):
@@ -371,6 +380,8 @@ def whole_body(fmdl_paths, fmdl_lib):
             fmdl = FmdlFile.FmdlFile()
             fmdl.readFile(path)
             for mesh in fmdl.meshes:
+                if not mesh.vertices or _off_the_rig(mesh):
+                    continue
                 for v in mesh.vertices:
                     y = v.position.y
                     heights.append(y)
@@ -387,6 +398,15 @@ def whole_body(fmdl_paths, fmdl_lib):
             and bands["feet"] >= FEET_PRESENT_VERTICES):
         return True
     return is_continuous_body(heights)
+
+
+def _off_the_rig(mesh):
+    """Whether a mesh's centre stands too far from the rig's axis to be the body."""
+    xs = [v.position.x for v in mesh.vertices]
+    zs = [v.position.z for v in mesh.vertices]
+    cx = 0.5 * (min(xs) + max(xs))
+    cz = 0.5 * (min(zs) + max(zs))
+    return cx * cx + cz * cz > SIDEKICK_RADIUS_M ** 2
 
 
 def is_continuous_body(heights):
@@ -494,13 +514,23 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
         # own it is a head floating where the body should be; it has to be
         # composited over a skinned body.
         command += ["--base", base_ase]
+    if extra_fmdls:
+        # The same character's other slots - hands under Gloves, head under Faces
+        # - merged in as more meshes. This list was gathered and never handed
+        # over, which is why HDG's "Helldiver Headless" stayed headless with its
+        # skull sitting in Faces/XXX02, and DBG's forearms stayed in Gloves.
+        command += ["--extra", ",".join(extra_fmdls)]
     if drop_stray:
         command += ["--drop-stray"]
     if base_ase:
         # And only the stock parts this import actually stands in for are dropped:
         # a hair-only or accessory export brings no head, and dropping the stock
-        # face for one of those leaves the player without one.
-        drop = base_parts_to_drop(mesh_names(fmdl, fmdl_lib))
+        # face for one of those leaves the player without one. The head may be in
+        # any of the slots, so every one of them is asked.
+        names = []
+        for path in [fmdl] + list(extra_fmdls or []):
+            names += mesh_names(path, fmdl_lib)
+        drop = base_parts_to_drop(names)
         if drop:
             command += ["--drop-base-parts", ",".join(sorted(drop))]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -681,6 +711,19 @@ def portrait_shirt(filename):
     return int(match.group(1)) if match else None
 
 
+def squad_by_shirt(database, team_id):
+    """-> {shirt: database id} for one team, shirts counted in formation order -
+    the same order install_team writes a .ted's squad in."""
+    import sqlite3
+
+    conn = sqlite3.connect(database)
+    try:
+        return {order + 1: row[0] for order, row in enumerate(conn.execute(
+            "select id from players where team_id = ? order by formationorder", (team_id,)))}
+    finally:
+        conn.close()
+
+
 def relink_portraits(game_dir, database):
     """Rewrites playerportraits.cfg from the portraits on disk. -> lines written.
 
@@ -699,14 +742,10 @@ def relink_portraits(game_dir, database):
     conn = sqlite3.connect(database)
     try:
         teams = conn.execute("select id, name from teams").fetchall()
-        squads = {}
-        for team_id, name in teams:
-            squads[install_team.art_tag(name)] = {
-                order + 1: row[0] for order, row in enumerate(conn.execute(
-                    "select id from players where team_id = ? order by formationorder",
-                    (team_id,)))}
     finally:
         conn.close()
+    squads = {install_team.art_tag(name): squad_by_shirt(database, team_id)
+              for team_id, name in teams}
 
     lines = []
     root = os.path.join(game_dir, "imports")
@@ -880,10 +919,13 @@ def main():
         print("give the team's .ted, or --prefix if you only want the models")
         return 1
     else:
-        # A models-only re-import still owes the squad its faces: the team is
-        # already in the database, so its art tag is known.
+        # A models-only re-import still owes the squad its faces, and its exports
+        # still bind by shirt first: the team is already in the database, so both
+        # its art tag and its shirt order are known.
         team = team_for_prefix(args.game_dir, args.database, args.prefix)
         tag = install_team.art_tag(team[1]) if team else None
+        if team:
+            by_shirt = squad_by_shirt(database, team[0])
     if tag:
         portraits = install_portraits(args.pack_dir, args.game_dir, tag, args.dry_run)
         if not args.dry_run:

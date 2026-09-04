@@ -104,6 +104,52 @@ class WhereAPackKeepsItsPortraits(unittest.TestCase):
         self.assertEqual(sorted(shirts), [4, 16])
 
 
+class TheOtherSlotsReachTheConverter(unittest.TestCase):
+    """find_gloves and find_face gather a player's hands and head, and import_player
+    took the list and never put it on the command line - which is why HDG's
+    'Helldiver Headless' stayed headless with its skull in Faces/XXX02."""
+
+    def test_extra_fmdls_are_passed_as_extra(self):
+        import subprocess
+        seen = []
+
+        class Done:
+            returncode = 0
+            stderr = ""
+
+        real = subprocess.run
+        subprocess.run = lambda command, **kw: seen.append(command) or Done()
+        try:
+            dest = tempfile.mkdtemp()
+            status = import_team.import_player("boots.fmdl", dest, "lib", 1000, "t.png",
+                                               extra_fmdls=["glove_l.fmdl", "face_high.fmdl"])
+        finally:
+            subprocess.run = real
+        self.assertEqual(status, "imported")
+        [command] = seen
+        self.assertIn("--extra", command)
+        self.assertEqual(command[command.index("--extra") + 1], "glove_l.fmdl,face_high.fmdl")
+
+
+class ASidekickIsNotTheBody(unittest.TestCase):
+    """HDG's k2421 is a headless helldiver on the rig with Alexus two metres
+    behind him; counted together, Alexus's head passed for the helldiver's."""
+
+    class _Mesh:
+        def __init__(self, centre, half=0.3):
+            class V:
+                def __init__(self, x, z):
+                    self.position = type("P", (), {"x": x, "y": 1.0, "z": z})()
+            (cx, cz) = centre
+            self.vertices = [V(cx - half, cz - half), V(cx + half, cz + half)]
+
+    def test_a_mesh_on_the_axis_is_the_body(self):
+        self.assertFalse(import_team._off_the_rig(self._Mesh((0.3, -0.7))))
+
+    def test_a_mesh_two_metres_back_is_not(self):
+        self.assertTrue(import_team._off_the_rig(self._Mesh((0.7, -1.5))))
+
+
 class BasePartsToDrop(unittest.TestCase):
     """Which of the stock body's parts a composited import replaces.
 
