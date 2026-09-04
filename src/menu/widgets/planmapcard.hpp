@@ -54,6 +54,16 @@ e_Aptitude AptitudeFor(e_PlayerRole slot, const std::vector<e_PlayerRole>& playe
 
 Colour AptitudeColour(e_Aptitude aptitude);
 
+// How many positions besides this slot the player is registered for.
+int OtherRegisteredRoles(e_PlayerRole slot, const std::vector<e_PlayerRole>& playerRoles);
+
+// The position as the card prints it. A player can be registered for several
+// positions (the map's secondary button toggles them), and PES shows that in the
+// player's own info panel - on the pitch card there is room for a count, so a
+// centre back who also plays right back reads "CB+1" and the toggle is visible
+// where it is used rather than only in a submenu.
+std::string SlotRoleText(const std::string& roleName, int otherRegisteredRoles);
+
 // The rating as the card prints it. PES shows an integer, and a squad whose stats have
 // never been rated must not print "0" over every card.
 std::string RatingText(float stat);

@@ -76,6 +76,19 @@ Colour AptitudeColour(e_Aptitude aptitude) {
   return Colour{230, 230, 230};
 }
 
+std::string SlotRoleText(const std::string& roleName, int otherRegisteredRoles) {
+  if (otherRegisteredRoles <= 0) return roleName;
+  return roleName + "+" + std::to_string(otherRegisteredRoles);
+}
+
+int OtherRegisteredRoles(e_PlayerRole slot, const std::vector<e_PlayerRole>& playerRoles) {
+  int others = 0;
+  for (e_PlayerRole role : playerRoles) {
+    if (role != slot) others++;
+  }
+  return others;
+}
+
 std::string RatingText(float stat) {
   if (stat <= 0.0f)
     return "";

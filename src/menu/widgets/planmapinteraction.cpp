@@ -13,8 +13,8 @@ namespace {
 // Outfield players have their tactical depth compressed toward mid-pitch so
 // the back line does not sit flush against the goal box the keeper owns
 // alone - the exact factors Gui2PlanMap applied before this module existed.
-constexpr float kOutfieldDepthScale = 0.8f;
-constexpr float kOutfieldDepthOffset = 0.1f;
+constexpr float kOutfieldDepthScale = 0.9f;
+constexpr float kOutfieldDepthOffset = 0.05f;
 constexpr float kWidthSpan = 0.42f;
 
 float CompressedX(float databaseX, e_PlayerRole role) {
