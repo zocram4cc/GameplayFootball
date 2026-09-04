@@ -43,6 +43,17 @@ TEST(SliderStepTest, TooManyStepsToCountDrawsAsAPlainSlider) {
   EXPECT_FALSE(SliderStep::DrawsTicks(SliderStep::kMaxDrawnSteps + 1));
 }
 
+TEST(SliderStepTest, TheCountGoesFurtherThanTheTicks) {
+  // The human-speed sliders have a step per 0.1 m/s - more positions than can
+  // be drawn as ticks, but "8/17" is still worth printing.
+  const int steps = SliderStep::kMaxDrawnSteps + 5;
+  EXPECT_FALSE(SliderStep::DrawsTicks(steps));
+  EXPECT_EQ(SliderStep::Label(0.0f, steps), "1/" + std::to_string(steps));
+  EXPECT_EQ(SliderStep::Label(1.0f, steps), std::to_string(steps) + "/" +
+                                                std::to_string(steps));
+  EXPECT_EQ(SliderStep::Label(0.5f, SliderStep::kMaxCountedSteps + 1), "");
+}
+
 TEST(SliderStepTest, ASingleStepSliderIsNotDrawnWithTicks) {
   EXPECT_FALSE(SliderStep::DrawsTicks(1));
   EXPECT_EQ(SliderStep::IndexFor(0.5f, 1), 1);

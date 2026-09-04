@@ -133,3 +133,19 @@ TEST(PrematchIndexOfValue, SomethingNotInstalledStartsAtTheBeginningRatherThanNo
   EXPECT_EQ(PrematchChoices::IndexOfValue(choices, "media/gone.object"), 0);
   EXPECT_EQ(PrematchChoices::IndexOfValue({}, "anything"), 0);
 }
+
+// The pre-match stadium slider offered "ADBOARDS" as somewhere to play: the
+// hoarding ring is furniture every ground borrows, not a venue (owner, 04-09).
+TEST(PrematchChoicesTest, TheFurnitureDirectoriesAreNotStadiums) {
+  const std::vector<std::string> paths = {
+      "media/objects/stadiums/pes_st002/pes_st002.object",
+      "media/objects/stadiums/adboards/adboards.object",
+      "media/objects/stadiums/sky/sky.object",
+      "media/objects/stadiums/goals/goals.object",
+      "media/objects/stadiums/pes_st017/pes_st017.object",
+  };
+  const std::vector<PrematchChoices::Choice> choices = PrematchChoices::Stadiums(paths);
+  ASSERT_EQ(choices.size(), 2u);
+  EXPECT_EQ(choices.at(0).label, "pes_st002");
+  EXPECT_EQ(choices.at(1).label, "pes_st017");
+}

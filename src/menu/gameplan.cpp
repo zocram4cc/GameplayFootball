@@ -25,6 +25,12 @@
 
 using namespace blunted;
 
+namespace {
+// The owner's floor for a scale: twenty steps, each drawn as a tick and named
+// in the slider's own corner ("13/20").
+constexpr int kTacticSliderSteps = 20;
+}  // namespace
+
 GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData& pageData)
     : Gui2Page(windowManager, pageData) {
   teamID = pageData.properties->GetInt("teamID", 0);
@@ -515,6 +521,9 @@ void GamePlanPage::GoTacticsMenu() {
         "tacticsslider_" + slider.tacticName,
         teamData->GetTactics().humanReadableNames.Get(slider.tacticName.c_str(), slider.tacticName),
         i, 0);
+    // Twenty positions with a tick each and the step printed, so a tactic can be
+    // set to the same place twice (owner, 04-09: the sliders were ambiguous).
+    slider.widget->SetQuantization(kTacticSliderSteps);
     slider.widget->AddHelperValue(Vector3(80, 80, 250), "factory default for this team",
                                   factoryProps.GetReal(slider.tacticName.c_str()));
     slider.widget->SetValue(userProps.GetReal(slider.tacticName.c_str()));

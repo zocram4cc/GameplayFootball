@@ -23,6 +23,13 @@
 
 namespace {
 
+// Every slider on this screen has a finite number of positions and prints which
+// one is set (SliderStep): "somewhere near two thirds" told a reader nothing and
+// could not be repeated. Twenty is the owner's floor for a scale - fine enough
+// to tune with, coarse enough that each step is a tick you can see and count.
+constexpr int kScaleSliderSteps = 20;
+
+
 constexpr unsigned long kMenuSmokeSettingsQuitDelay_ms = 500;
 constexpr float kControllerDiagramAspectRatio = 128.0f / 148.0f;
 constexpr float kControllerDiagramHeight = 30.0f;
@@ -235,12 +242,14 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_ShortPass_AutoDirection = new Gui2Slider(windowManager, "slider_shortpass_autodirection",
                                                   0, 0, 30, 6, TR("gameplay_short_pass_direction"));
+  slider_ShortPass_AutoDirection->SetQuantization(kScaleSliderSteps);
   slider_ShortPass_AutoDirection->AddHelperValue(
       Vector3(80, 80, 250), TR("settings_factory_default"), _default_ShortPass_AutoDirection);
   slider_ShortPass_AutoDirection->SetValue(GetConfiguration()->GetReal(
       "gameplay_shortpass_autodirection", _default_ShortPass_AutoDirection));
   slider_ShortPass_AutoPower = new Gui2Slider(windowManager, "slider_shortpass_autopower", 0, 0, 30,
                                               6, TR("gameplay_short_pass_power"));
+  slider_ShortPass_AutoPower->SetQuantization(kScaleSliderSteps);
   slider_ShortPass_AutoPower->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                              _default_ShortPass_AutoPower);
   slider_ShortPass_AutoPower->SetValue(
@@ -249,12 +258,14 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   slider_ThroughPass_AutoDirection =
       new Gui2Slider(windowManager, "slider_throughpass_autodirection", 0, 0, 30, 6,
                      TR("gameplay_through_pass_direction"));
+  slider_ThroughPass_AutoDirection->SetQuantization(kScaleSliderSteps);
   slider_ThroughPass_AutoDirection->AddHelperValue(
       Vector3(80, 80, 250), TR("settings_factory_default"), _default_ThroughPass_AutoDirection);
   slider_ThroughPass_AutoDirection->SetValue(GetConfiguration()->GetReal(
       "gameplay_throughpass_autodirection", _default_ThroughPass_AutoDirection));
   slider_ThroughPass_AutoPower = new Gui2Slider(windowManager, "slider_throughpass_autopower", 0, 0,
                                                 30, 6, TR("gameplay_through_pass_power"));
+  slider_ThroughPass_AutoPower->SetQuantization(kScaleSliderSteps);
   slider_ThroughPass_AutoPower->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                                _default_ThroughPass_AutoPower);
   slider_ThroughPass_AutoPower->SetValue(GetConfiguration()->GetReal(
@@ -262,12 +273,14 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_HighPass_AutoDirection = new Gui2Slider(windowManager, "slider_highpass_autodirection", 0,
                                                  0, 30, 6, TR("gameplay_high_pass_direction"));
+  slider_HighPass_AutoDirection->SetQuantization(kScaleSliderSteps);
   slider_HighPass_AutoDirection->AddHelperValue(
       Vector3(80, 80, 250), TR("settings_factory_default"), _default_HighPass_AutoDirection);
   slider_HighPass_AutoDirection->SetValue(GetConfiguration()->GetReal(
       "gameplay_highpass_autodirection", _default_HighPass_AutoDirection));
   slider_HighPass_AutoPower = new Gui2Slider(windowManager, "slider_highpass_autopower", 0, 0, 30,
                                              6, TR("gameplay_high_pass_power"));
+  slider_HighPass_AutoPower->SetQuantization(kScaleSliderSteps);
   slider_HighPass_AutoPower->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                             _default_HighPass_AutoPower);
   slider_HighPass_AutoPower->SetValue(
@@ -275,6 +288,7 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_Shot_AutoDirection = new Gui2Slider(windowManager, "slider_shot_autodirection", 0, 0, 30,
                                              6, TR("gameplay_shot_direction"));
+  slider_Shot_AutoDirection->SetQuantization(kScaleSliderSteps);
   slider_Shot_AutoDirection->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                             _default_Shot_AutoDirection);
   slider_Shot_AutoDirection->SetValue(
@@ -282,12 +296,14 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_Agility =
       new Gui2Slider(windowManager, "slider_agility", 0, 0, 30, 6, TR("gameplay_human_agility"));
+  slider_Agility->SetQuantization(kScaleSliderSteps);
   slider_Agility->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                  _default_AgilityFactor);
   slider_Agility->SetValue(
       GetConfiguration()->GetReal("gameplay_agilityfactor", _default_AgilityFactor));
   slider_Acceleration = new Gui2Slider(windowManager, "slider_acceleration", 0, 0, 30, 6,
                                        TR("gameplay_human_acceleration"));
+  slider_Acceleration->SetQuantization(kScaleSliderSteps);
   slider_Acceleration->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                       _default_AccelerationFactor);
   slider_Acceleration->SetValue(
@@ -341,6 +357,7 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_Quantization = new Gui2Slider(windowManager, "slider_quantization", 0, 0, 30, 6,
                                        TR("gameplay_input_quantization"));
+  slider_Quantization->SetQuantization(kScaleSliderSteps);
   slider_Quantization->AddHelperValue(Vector3(80, 80, 250), TR("settings_factory_default"),
                                       _default_QuantizedDirectionBias);
   slider_Quantization->SetValue(GetConfiguration()->GetReal("gameplay_quantizeddirectionbias",
@@ -360,12 +377,16 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
   // human ones, so a CPU-vs-CPU match is played under the same rules.
   slider_CoachMode =
       new Gui2Slider(windowManager, "slider_coach_mode", 0, 0, 30, 6, TR("settings_coach_mode"));
+  // A switch, not a scale.
+  slider_CoachMode->SetQuantization(2);
   slider_CoachMode->SetValue(GetConfiguration()->GetBool("coach_mode", false) ? 1.0f : 0.0f);
   UpdateCoachModeCaption();
   slider_CoachMode->sig_OnChange.connect([this](Gui2Slider*) { UpdateCoachModeCaption(); });
 
   slider_Referee =
       new Gui2Slider(windowManager, "slider_referee", 0, 0, 30, 6, TR("settings_referee"));
+  // One step per referee profile.
+  slider_Referee->SetQuantization((int)RefereeProfile::e_Profile_Count);
   slider_Referee->SetValue(RefereeSliderFromProfile(
       RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"))));
   UpdateRefereeCaption();
@@ -373,6 +394,8 @@ GameplayPage::GameplayPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
   slider_Weather =
       new Gui2Slider(windowManager, "slider_weather", 0, 0, 30, 6, TR("settings_weather"));
+  // Clear, cloudy, rain - the three the match knows.
+  slider_Weather->SetQuantization(3);
   slider_Weather->SetValue(GetConfiguration()->GetReal("match_weather", 0.0f));
   UpdateWeatherCaption();
   slider_Weather->sig_OnChange.connect([this](Gui2Slider*) { UpdateWeatherCaption(); });
@@ -2164,6 +2187,7 @@ AudioPage::AudioPage(Gui2WindowManager* windowManager, const Gui2PageData& pageD
 
   sliderVolume = new Gui2Slider(windowManager, "volumeslider", 0, 0, 30, 6,
                                 Localization::GetInstance().Translate("audio_volume"));
+  sliderVolume->SetQuantization(kScaleSliderSteps);
 
   Gui2Button* backButton = new Gui2Button(windowManager, "button_settings_audio_back", 0, 0, 30, 3,
                                           Localization::GetInstance().Translate("action_back"));

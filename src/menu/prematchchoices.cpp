@@ -7,9 +7,19 @@ namespace PrematchChoices {
 
 namespace {
 
-// media/objects/stadiums/sky is the optional dome a stadium can add, not
-// somewhere to play.
-const char* const kNotAStadium = "sky";
+// Not every directory under media/objects/stadiums is a ground: "sky" is the
+// optional dome a stadium can add and "adboards" is the hoarding ring every
+// ground borrows (Match loads it beside the stadium). Both were offered as
+// places to play - the pre-match slider read "STADIUM: ADBOARDS" (owner,
+// 04-09).
+const char* const kNotAStadium[] = {"sky", "adboards", "goals"};
+
+bool IsStadiumDirectory(const std::string& directory) {
+  if (directory.empty()) return false;
+  for (const char* name : kNotAStadium)
+    if (directory == name) return false;
+  return true;
+}
 
 std::string DirectoryName(const std::string& path) {
   const std::string::size_type last = path.find_last_of("/\\");
@@ -37,7 +47,7 @@ std::vector<Choice> Stadiums(const std::vector<std::string>& objectPaths) {
   std::vector<Choice> choices;
   for (const std::string& path : objectPaths) {
     const std::string directory = DirectoryName(path);
-    if (directory.empty() || directory == kNotAStadium) continue;
+    if (!IsStadiumDirectory(directory)) continue;
     choices.push_back({directory, path});
   }
   std::sort(choices.begin(), choices.end(),

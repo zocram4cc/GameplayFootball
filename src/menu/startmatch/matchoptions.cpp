@@ -83,6 +83,10 @@ std::vector<std::string> FilesUnder(const std::string& root, const std::string& 
   return found;
 }
 
+// Every scale on this screen has twenty positions (SliderStep draws a tick per
+// step and prints "13/20"); the choice sliders below keep one step per choice.
+constexpr int kDifficultySliderSteps = 20;
+
 int KitNumFromSlider(float value) {
   const int kitNum = 1 + static_cast<int>(std::round(value * (kKitCount - 1)));
   return std::max(1, std::min(kitNum, kKitCount));
@@ -108,6 +112,10 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
 
   difficultySlider = new Gui2Slider(windowManager, "matchoptions_slider_difficulty", 0, 0, 29, 6,
                                     TR("match_difficulty"));
+  // Twenty positions, each a tick, with the step printed: the owner's floor for
+  // a scale. It used to be the widget's default 51 - a bar somewhere along a
+  // groove, with no way to tell what had been set or to set it again.
+  difficultySlider->SetQuantization(kDifficultySliderSteps);
   matchDurationSlider = new Gui2Slider(windowManager, "matchoptions_slider_matchduration", 0, 0, 29,
                                        6, TR("match_duration"));
   matchDurationSlider->SetQuantization(kMatchDurationSliderSteps);
@@ -202,14 +210,29 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   buttonGamePlan1->sig_OnClick.connect([this](...) { GoGamePlan(0); });
   buttonGamePlan2->sig_OnClick.connect([this](...) { GoGamePlan(1); });
 
+  // Grouped, with a heading per group: this was one undifferentiated stack of
+  // nine sliders in which the match rules, the broadcast and the two teams'
+  // kits all looked alike (owner, 04-09: "the pre-match screen has to be
+  // revamped").
+  auto sectionCaption = [this, windowManager](const std::string& name,
+                                            const std::string& key) {
+    Gui2Caption* caption =
+        new Gui2Caption(windowManager, "matchoptions_section_" + name, 0, 0, 29, 2.6f, TR(key));
+    caption->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright1));
+    return caption;
+  };
+
   int row = 0;
+  grid->AddView(sectionCaption("match", "matchoptions_section_match"), row++, 0);
   grid->AddView(difficultySlider, row++, 0);
   grid->AddView(matchDurationSlider, row++, 0);
   grid->AddView(weatherSlider, row++, 0);
   grid->AddView(timeOfDaySlider, row++, 0);
+  grid->AddView(sectionCaption("presentation", "matchoptions_section_presentation"), row++, 0);
   grid->AddView(stadiumSlider, row++, 0);
   grid->AddView(entranceSlider, row++, 0);
   grid->AddView(resultCutsceneSlider, row++, 0);
+  grid->AddView(sectionCaption("teams", "matchoptions_section_teams"), row++, 0);
   grid->AddView(kitSlider[0], row++, 0);
   grid->AddView(kitSlider[1], row++, 0);
   grid->AddView(buttonGamePlan1, row++, 0);
