@@ -500,6 +500,16 @@ void GameplayPage::Process() {
 }
 
 void GameplayPage::Exit() {
+  // Once. Exit() runs twice on a page the user leaves - GoBack() exits it and
+  // the window manager's deferred delete pass exits it again - and the second
+  // pass read every slider back out of freed memory (found by the in-match
+  // monkey under ASan: heap-use-after-free in Gui2Slider::GetValue, 288-byte
+  // region freed by this very function's Gui2Page::Exit()).
+  if (settingsSaved) {
+    Gui2Page::Exit();
+    return;
+  }
+  settingsSaved = true;
   GetConfiguration()->Set("gameplay_shortpass_autodirection",
                           slider_ShortPass_AutoDirection->GetValue());
   GetConfiguration()->Set("gameplay_shortpass_autopower", slider_ShortPass_AutoPower->GetValue());
@@ -2229,6 +2239,12 @@ void AudioPage::Process() {
 }
 
 void AudioPage::Exit() {
+  // Same shape as GameplayPage::Exit, same reason.
+  if (settingsSaved) {
+    Gui2Page::Exit();
+    return;
+  }
+  settingsSaved = true;
   GetConfiguration()->Set("audio_volume", sliderVolume->GetValue());
   GetConfiguration()->SaveFile(GetConfigFilename());
 

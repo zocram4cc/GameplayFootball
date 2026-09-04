@@ -332,8 +332,14 @@ void Gui2PlanMap::RebuildEntries() {
 
     float ex, ey;
     CardTopLeft(i, &ex, &ey);
+    // Named after this map, not after "player1": gui2 fetches every surface
+    // from the resource pool BY NAME (Gui2WindowManager::CreateImage2D), so two
+    // maps whose cards share a name share one portrait, one strip and one
+    // caption - and the game plan draws two maps at once. Both then showed
+    // whichever team was built last, which is why the owner's own sheet and the
+    // opponent's read as the same squad.
     Gui2PlanMapEntry* card = new Gui2PlanMapEntry(
-        windowManager, "planmap_player1_entry" + int_to_str(i), ex, ey, kCardW,
+        windowManager, GetName() + "_entry" + int_to_str(i), ex, ey, kCardW,
         cardH + kNameH, role, playerData, cardH);
     this->AddView(card);
     card->Show();

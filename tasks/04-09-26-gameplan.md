@@ -225,43 +225,134 @@ both fixes. The giant shards fanning out of the model are gone from the frame
   legacy body is authored in GF's own pose, so PES's authoring pose is the
   wrong ruler for it.
 
+## The two sheets were one squad (04-09, late)
+
+The frame that settled it: both maps drew the SAME team, the primary sheet
+showing the opponent's players (`tmp/plan2/fresh.png`). It was not the team
+resolution - a probe in the page's constructor read `teamID 0, dbID 13,
+'/smbg/'`, the right side - it was the card views' NAMES. Every card was called
+`planmap_player1_entry<i>`, and gui2 fetches a view's surface from the resource
+pool by name (`Gui2WindowManager::CreateImage2D` -> `Fetch(name, ...)`), so the
+two maps' cards shared one portrait, one strip and one caption each and both
+showed whichever map was built last. Cards are named after their own map now
+(`tmp/plan2/fixed_zoom.png`: /smbg/ on the left, /hdg/ on the right).
+
+That also explains two things blamed on other causes: the midfield "pile" in
+the middle of the diagram was two maps' cards drawn at two sets of
+coordinates, and the "before/after" formation captures that showed different
+squads were reading whichever map had loaded its surfaces last. The primary
+sheet is named after its team now, like the opponent's.
+
+## The in-match sheet, and a sixth use-after-free
+
+No headless test had ever opened the game plan DURING a match, so the live path
+- which edits the `TeamData` that `Team` and `TeamAIController` hold pointers
+into - was untested. It opens: escape at 12 s (earlier attempts pressed it
+during the pre-match phase, which is why they seemed to do nothing), twelve
+`up` presses to clamp the focus at the top of the pause menu, enter
+(`tmp/plan2/im_lp2_zoom.png`: GAME PLAN 1: FC Cataluña beside GAME PLAN 2:
+Galacticos CF, each with its own squad).
+
+The monkey then ran 1200 taps inside it. Nothing crashed in the release build;
+under ASan it found a sixth use-after-free, and not in the game plan at all:
+
+    READ of size 4 in Gui2Slider::GetValue()
+      GameplayPage::Exit()            settings.cpp:480
+    freed by
+      Gui2View::Exit() ... GameplayPage::Exit()  settings.cpp:520
+
+`Exit()` runs twice on a page the user leaves - `GoBack()` exits it and the
+window manager's deferred delete pass exits it again - and the second pass read
+every slider back out of freed memory to save it. Both settings pages that save
+on exit now save once (`settingsSaved`).
+
+## HDG: what re-importing fixed, and the two gates it needed
+
+Every one of the 23 installed HDG models rendered and examined, before and
+after (`tmp/hdgsheet/sheet.png`, `tmp/hdgsheet2/sheet2.png`). Five players were
+a prop standing where a player should be - a corpse on the ground, a gas cloud,
+a stim scatter, a throne, a floating eagle - because `is_continuous_body` passes
+anything that spans hip to head without a gap, and a gas column does.
+
+Measured over HDG's 22 exports, vertices between 0.95 m and 1.55 m within
+0.25 m of the rig's axis: John Helldiver 14996, Lobby doko 16384, Mechwarrior
+5756, SEAF-chan 3155 - against Mothdiver 118, Brapdiver 116, Bullet Sponge 19,
+and Malicious Code / The Cuck Throne / "Not gonna sugarcoat it" at 0.
+`whole_body` now requires 200 of them, so those five are composited over PES's
+body and stand up as players.
+
+And "EAT" shipped a 40-vertex effect ray spanning 11 m. The engine scales a
+body by its own height, so that one ray shrank the whole character to a pile on
+the grass; a mesh spanning more than 4.5 m is dropped now (the tallest
+legitimate export on disk is Mothdiver's wings at 3.84 m). EAT measures
+2.40 m and renders as a mech.
+
+After both gates, 19 of 23 HDG models have a chest on the axis and every
+height is between 1.75 m and 4.44 m (was 0.36 m to 10.99 m).
+
+## Portraits
+
+All seven imported teams now have 23/23 portraits and every file resolves
+(161 entries, 0 missing). Six teams' portraits are their pack's own art, read
+by `import_team.bind_portraits` (`c0e8194`).
+
+/vn/ had none: its pack is not on disk any more, and its 23 installed models
+were not even bound to its players. The models are bound now (export order, 23
+for 23) and `render_portraits.py` renders a head-and-shoulders still of each
+player's own model through the engine's loader (`gfviewer --portrait`), which
+is what a card wants when a pack ships no art. Proven on HDG
+(`tmp/pf_row.png`: a Helldiver's helmet, face on).
+
+For /vn/ itself the result is honest but poor, and the reason is in the data:
+all 23 models are the SAME mesh (68,322 vertices, identical bounds), the same
+`body.png`, and each per-player `*_face.png` is the same blue star. There is no
+per-player art in the installed data to find. A card now shows the team's own
+model instead of a blank.
+
 ## STILL TO BE DONE (mine, end of 04-09)
 
-1. **Three lcg characters still render deformed** after both fixes
-   (`tmp/trunk_ba.png`: lcg_2709 banded, lcg_2704's cape spread wide,
-   lcg_2713's sleeves fanned). What is left looks like the remaining
-   assumption: the authoring->bind bake treats every mesh as authored in PES's
-   RENDER bind (arms 45 degrees down), and a 4cc character modelled in some
-   other pose is sheared by it - the arms rotate 45 degrees and take any
-   surface bound near them. The bind-pose stretch count and the frame disagree
-   about the cure (the count prefers no trunk rule; the frame prefers the cape
-   attached to the trunk), and per AGENTS.md the frame governs, which is how it
-   is set. Next: measure each model's own authoring pose - for a mesh with a
-   real bone mapping, compare the mapped bone's bind position against the
-   vertex cloud; for one without, fit the arm direction from the geometry - and
-   bake from THAT pose rather than from PES's. `hdg_2402` proves the chain is
-   right when the pose matches (`tmp/f_sheet.png`, clean cloaked figure).
-   Not blocked; needs the packs, which are extracted under `tmp/inputs/packs`.
-2. **Wario's T-pose check reads arms ~25 degrees above horizontal**
-   (`tmp/wt_pair.png`, `gfviewer .../fullbody_smg_2579.ase --anim
-   media/animations/straight.anim.util --shots 2`). AGENTS.md's rule says a
-   perfect T-pose. It may be the character's own art - he is a chibi model with
-   short limbs and the gloves do sit palm-down - or a stale bind on this one
-   model. Next: run the same check on `media/objects/players/models/fullbody.ase`
-   (the stock body) for a reference frame, then on two more imported bodies; if
-   only the imported ones droop, the `.weights` bake is the suspect and not the
-   rig. Not blocked.
-2. **The in-match game plan was never opened from the pause menu in a headless
-   run** - `escape` at 14 s in `tmp/plan_match2.config` did not open the pause
-   menu (the capture shows live play, `tmp/plan/form_match.png`), so every drag
-   test ran against the pre-match instance. The live path edits `TeamData` that
-   `Team`/`TeamAIController` hold pointers into, which is the third crash
-   candidate from item 2 and is therefore still untested. Next: find what
-   consumes the escape key during a match (`Match::Process` /
-   `IngamePage`), drive the pause menu from the script, then repeat the monkey
-   sweep in-match. Not blocked.
-3. **The bench's sixth card is clipped by the panel's right edge**
-   (`tmp/plan/c3_zoom.png`, rightmost card cut mid-portrait). The row scrolls,
-   so it is reachable, but a half-drawn card reads as a defect. Next: either
-   inset the bench row by half a card or let `BenchWindowSize` shrink by one
-   when the last card would overrun. Not blocked.
+1. **Three lcg characters still render deformed** (`tmp/trunk_ba.png`:
+   lcg_2709 banded, lcg_2704's cape spread wide, lcg_2713's sleeves fanned).
+   What is left is the remaining assumption: the authoring->bind bake treats
+   every mesh as authored in PES's RENDER bind (arms 45 degrees down), and a
+   4cc character modelled in another pose is sheared by it - the arms rotate 45
+   degrees and take any surface bound near them. The bind-pose stretch count
+   and the frame disagree about the cure (the count prefers no trunk rule, the
+   frame prefers the cape on the trunk); per AGENTS.md the frame governs, and
+   that is how it is set. Next: measure each model's OWN authoring pose - for a
+   mesh with a real bone mapping, compare the mapped bone's bind position
+   against the vertex cloud; for one without, fit the arm direction from the
+   geometry - and bake from that pose. `hdg_2402` proves the chain is right
+   when the pose matches (`tmp/f_sheet.png`). Not blocked; the packs are
+   extracted under `tmp/inputs/packs`.
+2. **Two HDG players are drawn a fifth of the right size** - hdg_XXX03
+   (Mothdiver, 3.88 m) and hdg_XXX09 ("Not gonna sugarcoat it", 4.44 m). Both
+   are composited, so a body IS underneath; the engine scales a body by its own
+   height, so a character whose prop reaches 4.4 m is shrunk to fit. Next:
+   either drop meshes sitting entirely above head height, or - better, and what
+   PES does - draw a player at the height his database row gives instead of
+   scaling every model to 1.81 m. Not blocked.
+3. **The in-match sheet has been monkeyed but not DRAGGED under ASan.** The
+   monkey opened it during a match and hammered 1200 random taps with no crash
+   (release) and one crash found and fixed (ASan, `settings.cpp`), but the
+   owner's report was a crash on RELEASING a drag, and a random walk does not
+   reliably complete a grab/move/drop cycle. Next: a scripted grab/move/drop
+   loop inside the in-match sheet under ASan, which is `plan_swap.config`'s
+   script with the pause-menu prologue in front of it. Not blocked.
+4. **/vn/ has no per-player art at all** and its portraits are therefore 23
+   copies of one render. Its 23 models are the same mesh, the same body.png and
+   the same star `*_face.png`; nothing in the installed data distinguishes the
+   players. Next: nothing, until somebody has the /vn/ pack - then
+   `import_team.py <pack>` writes the real portraits and models, and
+   `render_portraits.py` leaves those alone.
+
+### Resolved since the list was first written
+
+* **Wario's T-pose check** - not a defect. AGENTS.md's health check holds for
+  PES-derived bodies: `fullbody_pes.ase` renders a perfect T-pose and the
+  legacy `fullbody.ase` droops 30 degrees under it (`tmp/tp_pes_row.png`),
+  because the legacy body is authored in GF's own pose. Wario is a chibi model
+  whose arms are short and whose gloves sit palm-down; his mesh holds together
+  through eight frames of a sliding celebration (`tmp/wario_sheet.png`).
+* **The bench's sixth card** - not clipped; the crop was.
+  `tmp/plan/bench_row.png` shows all six drawn inside the panel.

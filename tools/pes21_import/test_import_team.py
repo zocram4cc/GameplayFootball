@@ -223,3 +223,48 @@ class BasePartsToDrop(unittest.TestCase):
 
     def test_nothing_at_all_drops_nothing(self):
         self.assertEqual(import_team.base_parts_to_drop([]), set())
+
+
+class _V:
+    def __init__(self, x, y, z):
+        self.position = type("P", (), {"x": x, "y": y, "z": z})()
+
+
+class _Mesh:
+    def __init__(self, vertices):
+        self.vertices = vertices
+
+
+class ABodyNeedsMassOnTheAxis(unittest.TestCase):
+    """A prop set standing where a player should be is not a body.
+
+    Measured over HDG's 22 exports, vertices between 0.95 m and 1.55 m within
+    0.25 m of the rig axis: John Helldiver 14996, Lobby doko 16384, Mechwarrior
+    5756, SEAF-chan 3155 - against Mothdiver 118, Brapdiver 116, Bullet Sponge
+    19, and Malicious Code / The Cuck Throne / "Not gonna sugarcoat it" at 0.
+    The last group is what the owner sees as a corpse or a gas cloud on the
+    pitch with no player in it, and is_continuous_body passed them all because
+    a pill does span hip to head without a gap.
+    """
+
+    def test_a_prop_on_the_ground_is_not_a_body(self):
+        # Malicious Code: a corpse lying at the player's feet, 0 axial vertices
+        # measured, and is_continuous_body passed it.
+        corpse = [_V(x / 100.0, 0.15, 0.0) for x in range(-60, 60)] * 20
+        self.assertEqual(import_team.axial_torso_count([_Mesh(corpse)]), 0)
+
+    def test_a_chest_counts(self):
+        chest = [_V(0.10, 1.20, 0.05) for _ in range(500)]
+        self.assertGreaterEqual(import_team.axial_torso_count([_Mesh(chest)]),
+                                import_team.TORSO_AXIAL_VERTICES)
+
+    def test_a_chest_out_at_arms_length_does_not(self):
+        # The Cuck Throne: 50988 vertices at chest height, none of them within a
+        # forearm of the axis, because the player is meant to be sitting in it.
+        aside = [_V(0.80, 1.20, 0.0) for _ in range(500)]
+        self.assertEqual(import_team.axial_torso_count([_Mesh(aside)]), 0)
+
+    # ponytail: a thin column standing exactly on the axis through the chest
+    # band still counts, which is why this is a threshold on a COUNT rather than
+    # a yes/no - a real chest measures thousands. If a pack ever ships a
+    # player-shaped column, the next test is breadth (the x span of the band).

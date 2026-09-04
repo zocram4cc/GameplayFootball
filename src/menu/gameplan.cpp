@@ -53,9 +53,12 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   this->AddView(frame);
   frame->Show();
 
+  // Named, like the opponent's sheet beside it: two unnamed sheets and a
+  // number tell a coach running both benches nothing about which is which.
   Gui2Caption* header = new Gui2Caption(
       windowManager, "gameplan_header", 1.5f, 1.5f, 32, 3,
-      Localization::GetInstance().Translate("gameplan_header") + " " + int_to_str(teamID + 1));
+      Localization::GetInstance().Translate("gameplan_header") + " " + int_to_str(teamID + 1) +
+          (teamData ? ": " + teamData->GetName() : std::string()));
   grid = new Gui2Grid(windowManager, "gameplan_grid", 1.5f, 6, 0, 0);
   gridNav = new Gui2Grid(windowManager, "gameplan_grid_navigation", 0, 0, 0, 0);
 

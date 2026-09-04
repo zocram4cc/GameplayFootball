@@ -75,6 +75,10 @@ protected:
 
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;
+
+  // Whether Exit() has already read the widgets and saved.
+  bool settingsSaved = false;
+
 };
 
 class ControllerPage : public Gui2Page {
@@ -236,6 +240,10 @@ protected:
 
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;
+
+  // Whether Exit() has already read the widgets and saved.
+  bool settingsSaved = false;
+
 };
 
 class LanguagePage : public Gui2Page {
