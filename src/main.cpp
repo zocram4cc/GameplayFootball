@@ -594,7 +594,8 @@ int main(int argc, const char** argv) {
     HIDGamepad* menuGamepad = dynamic_cast<HIDGamepad*>(controllers.at(1));
     if (menuGamepad) {
       menuTask->SetEventJoyButtons(menuGamepad->GetControllerMapping(e_ControllerButton_A),
-                                   menuGamepad->GetControllerMapping(e_ControllerButton_B));
+                                   menuGamepad->GetControllerMapping(e_ControllerButton_B),
+                                   menuGamepad->GetControllerMapping(e_ControllerButton_X));
     }
   }
 

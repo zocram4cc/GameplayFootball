@@ -360,6 +360,7 @@ set(UTILS_GUI2_HEADERS
 
 set(UTILS_GUI2_WIDGETS_HEADERS
         src/utils/gui2/widgets/slider.hpp
+        src/utils/gui2/widgets/sliderstep.hpp
         src/utils/gui2/widgets/bitmaptext.hpp
         src/utils/gui2/widgets/image.hpp
         src/utils/gui2/widgets/dialog.hpp
@@ -397,6 +398,7 @@ set(UTILS_GUI2_SOURCES
         src/utils/gui2/widgets/capturekey.cpp
         src/utils/gui2/widgets/text.cpp
         src/utils/gui2/widgets/slider.cpp
+        src/utils/gui2/widgets/sliderstep.cpp
         src/utils/gui2/widgets/dialog.cpp
         src/utils/gui2/widgets/pulldown.cpp
         src/utils/gui2/events.cpp

@@ -62,15 +62,22 @@ public:
 
   bool IsActivate() { return activate; }
   bool IsEscape() { return escape; }
+  // The secondary action: the shoot button on a pad, 'c' on the keyboard. For
+  // a widget with a second thing to do with whatever is under the cursor - the
+  // game plan's line-up registers an extra position for a player with it,
+  // while confirm sets the one he is playing (owner, 04-09).
+  bool IsSecondary() { return secondary; }
   Vector3 GetDirection() { return direction; }
 
   void SetActivate() { activate = true; }
   void SetEscape() { escape = true; }
+  void SetSecondary() { secondary = true; }
   void SetDirection(const Vector3& direction) { this->direction = direction; }
 
 protected:
   bool activate;
   bool escape;
+  bool secondary = false;
   Vector3 direction;
 };
 

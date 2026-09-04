@@ -80,6 +80,9 @@ public:
       return false;
   }
   virtual bool IsSelectable() { return isSelectable; }
+  // A widget can be turned into a display: the game plan shows the other
+  // team's sheet with the same map widget it edits its own with.
+  void SetSelectable(bool selectable) { isSelectable = selectable; }
   virtual bool IsOverlay() { return isOverlay; }
 
   virtual void Show();

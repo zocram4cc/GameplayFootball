@@ -321,6 +321,17 @@ target_link_libraries(gameplayfootball_prematchchoices_tests PRIVATE GTest::gtes
 gtest_discover_tests(gameplayfootball_prematchchoices_tests DISCOVERY_MODE PRE_TEST)
 
 # The scripted-input timeline that drives headless menu smoke runs
+# Sliders with a finite, indicated number of steps
+add_executable(gameplayfootball_sliderstep_tests
+  menu/slider_step_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/gui2/widgets/sliderstep.cpp
+)
+target_include_directories(gameplayfootball_sliderstep_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_sliderstep_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_sliderstep_tests DISCOVERY_MODE PRE_TEST)
+
 add_executable(gameplayfootball_menuscript_tests
   menu/menu_script_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/menuscript.cpp

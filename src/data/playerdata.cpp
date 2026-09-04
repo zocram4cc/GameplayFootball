@@ -135,6 +135,18 @@ const std::vector<e_PlayerRole>& PlayerData::GetRoles() const {
   return roles;
 }
 
+bool PlayerData::ToggleRole(e_PlayerRole role) {
+  for (size_t i = 0; i < roles.size(); i++) {
+    if (roles.at(i) != role) continue;
+    // His listed position stays: something has to be first.
+    if (i == 0) return true;
+    roles.erase(roles.begin() + i);
+    return false;
+  }
+  roles.push_back(role);
+  return true;
+}
+
 void PlayerData::AssignPlayingStyles() {
   // Nothing in the database, so give him a style of his own: deterministic from
   // his id, suited to his position and his finishing.

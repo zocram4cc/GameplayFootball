@@ -40,7 +40,9 @@ public:
 
   Gui2WindowManager* GetWindowManager() { return this->windowManager; }
 
-  void SetEventJoyButtons(int activate, int escape);
+  // `secondary` is the shoot button (e_ControllerButton_X by default): the
+  // menus' second action on whatever is under the cursor.
+  void SetEventJoyButtons(int activate, int escape, int secondary = -1);
   void GetEventJoyButtons(int& activate, int& escape) {
     activate = joyButtonActivate;
     escape = joyButtonEscape;
@@ -65,6 +67,7 @@ protected:
 
   int joyButtonActivate = 0;
   int joyButtonEscape = 0;
+  int joyButtonSecondary = -1;
   int activeJoystick = 0;
   bool keyboard = false;
 };

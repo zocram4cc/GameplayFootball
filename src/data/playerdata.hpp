@@ -22,7 +22,16 @@ public:
   std::string GetFirstName() const { return firstName; }
   std::string GetLastName() const { return lastName; }
   int GetDatabaseID() const { return databaseID; }
+  // The positions this player is registered for: the first is the one he is
+  // listed as, the rest are the ones he can also play. The game plan's line-up
+  // shows them on his card and the secondary button adds or removes one, the
+  // way PES's registered positions work.
   const std::vector<e_PlayerRole>& GetRoles() const;
+  // Adds the role if he does not have it, removes it if he does; -> whether he
+  // has it afterwards. His listed position (the first) is never removed - a
+  // player with no position at all is not a thing the rest of the engine
+  // expects (AssignPlayingStyles, the plan card's aptitude colours).
+  bool ToggleRole(e_PlayerRole role);
 
   float GetStat(const char* name);
 

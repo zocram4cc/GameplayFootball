@@ -38,6 +38,13 @@ Gui2Slider::Gui2Slider(Gui2WindowManager* windowManager, const std::string& name
   this->AddView(titleCaption);
   titleCaption->Show();
 
+  // The step counter sits at the right end of the same line as the title.
+  stepCaption = new Gui2Caption(windowManager, name + "step", width_percent * 0.78f, 0.2,
+                                width_percent * 0.2f, 2.4, "");
+  this->AddView(stepCaption);
+  stepCaption->Show();
+  UpdateStepCaption();
+
   Redraw();
 }
 
@@ -88,6 +95,20 @@ void Gui2Slider::Process() {
   Gui2View::Process();
 }
 
+void Gui2Slider::SetQuantization(int steps) {
+  quantizationSteps = std::max(steps, 2);
+  // Re-quantise what is already set, so the bar and the counter cannot
+  // disagree with each other on the first frame.
+  quantizedValue = round(value * (quantizationSteps - 1)) / (quantizationSteps - 1.0f);
+  UpdateStepCaption();
+  Redraw();
+}
+
+void Gui2Slider::UpdateStepCaption() {
+  if (!stepCaption) return;
+  stepCaption->SetCaption(SliderStep::Label(quantizedValue, quantizationSteps));
+}
+
 void Gui2Slider::Redraw() {
   int x, y, w, h;
   windowManager->GetCoordinates(x_percent, y_percent, width_percent, height_percent, x, y, w, h);
@@ -127,6 +148,17 @@ void Gui2Slider::Redraw() {
   // slider groove
   image->DrawRectangle(x_margin * 2, h * 0.7, w - x_margin * 4, h * 0.1, color2, 255);
 
+  // One tick per position, so a finite slider looks finite. Drawn on the
+  // groove, in the groove's own colour at half alpha, and skipped entirely for
+  // a slider with more positions than a reader could count.
+  if (SliderStep::DrawsTicks(quantizationSteps)) {
+    const float span = w - x_margin * 6;
+    for (int step = 0; step < quantizationSteps; step++) {
+      const float at = x_margin * 2 + span * (step / (float)(quantizationSteps - 1));
+      image->DrawRectangle(at, h * 0.62f, std::max(1.0f, x_ratio * 0.25f), h * 0.26f, color2, 120);
+    }
+  }
+
   // the slider
   image->DrawRectangle(x_margin * 2 + quantizedValue * (w - x_margin * 6), h * 0.5, x_ratio,
                        h * 0.5, color2, 160);
@@ -159,6 +191,7 @@ void Gui2Slider::ProcessWindowingEvent(WindowingEvent* event) {
     if (value < 0.0f)
       value = 0.0f;
     quantizedValue = round(value * (quantizationSteps - 1)) / (quantizationSteps - 1.0f);
+    UpdateStepCaption();
     sig_OnChange(this);
     Redraw();
   } else {
@@ -183,6 +216,7 @@ void Gui2Slider::OnLoseFocus() {
 void Gui2Slider::SetValue(float newValue) {
   value = clamp(newValue, 0.0f, 1.0f);
   quantizedValue = round(value * (quantizationSteps - 1)) / (quantizationSteps - 1.0f);
+  UpdateStepCaption();
   Redraw();
 }
 

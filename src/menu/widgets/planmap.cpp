@@ -33,9 +33,26 @@ constexpr float kPitchDiagramAspectRatio = 420.0f / 580.0f;
 // names like "JOHN HELLD." rendered as an illegible smear. 2.2 clears the
 // floor at 1080p and comes close at 720p without the cards' personal-space
 // separation (TeamData's minDistanceFraction) letting two rows touch.
-constexpr float kCardW = 4.6f;
+// Narrower than it was: the diagram gave a quarter of its height to the bench,
+// so at the old width the middle of a 4-4-2 was one pile of cards. The strip
+// and name rows keep their heights - those are set by caption.cpp's legibility
+// floor, not by the card.
+constexpr float kCardW = 3.9f;
 constexpr float kStripH = 2.2f;
 constexpr float kNameH = 2.2f;
+
+// The bench: two rows under the pitch diagram, six across. Beside the pitch is
+// where PES puts it, but this panel keeps its button column there, and cards
+// laid out to the right drew straight over the menu. In pitch-percent like
+// every other point on this map, so the selection, the drag and the drop
+// radius need no special case for it - a bench card is a card.
+// How much of the map's height the pitch diagram keeps; the rest is the bench.
+constexpr float kPitchHeightFraction = 0.76f;
+constexpr float kBenchColumns = 6.0f;
+constexpr float kBenchFirstX = 9.0f;
+constexpr float kBenchColumnStep = 17.0f;
+constexpr float kBenchFirstY = 108.0f;
+constexpr float kBenchRowStep = 18.0f;
 
 // Grabbing a card moves it this many pitch-percent per directional press,
 // and a drop within this radius of another card swaps the two instead of
@@ -153,10 +170,14 @@ Gui2PlanMap::Gui2PlanMap(Gui2WindowManager* windowManager, const std::string& na
       teamData(teamData) {
   isSelectable = true;
 
-  pitchWidth = windowManager->GetWidthPercentForHeight(height_percent, kPitchDiagramAspectRatio);
+  // The diagram gives up the bottom of the box to the bench; it is sized from
+  // its height, so it simply comes out a little smaller and stays in
+  // proportion.
+  pitchHeight = height_percent * kPitchHeightFraction;
+  pitchWidth = windowManager->GetWidthPercentForHeight(pitchHeight, kPitchDiagramAspectRatio);
   pitchX = (width_percent - pitchWidth) * 0.5f;
   Gui2Image* bg =
-      new Gui2Image(windowManager, "image_planmap_bg", pitchX, 0, pitchWidth, height_percent);
+      new Gui2Image(windowManager, "image_planmap_bg", pitchX, 0, pitchWidth, pitchHeight);
   bg->LoadImage("media/ui/pes/plan_pitch.png");
   this->AddView(bg);
   bg->Show();
@@ -172,15 +193,70 @@ void Gui2PlanMap::Process() {}
 void Gui2PlanMap::CardTopLeft(int index, float* x_percent, float* y_percent) const {
   // Square in pixels, not in percent - a portrait is square and the page is 16:9.
   const float cardH = windowManager->GetHeightPercentForWidth(kCardW, 1.0f);
+  const float cardTotalH = cardH + kStripH + kNameH;
+
+  if (!IsStarter(index)) {
+    // The bench: one row across the whole map, under the diagram, holding the
+    // window's worth of cards. Two rows of them do not fit the band the pitch
+    // leaves, and a smaller card falls under caption.cpp's 22px legibility
+    // floor - so the rest of the squad scrolls through this row instead.
+    const int column = (index - playerNum) - benchWindowStart;
+    const int window = BenchWindowSize();
+    const float step = window > 1 ? (width_percent - kCardW) / (float)(window - 1) : 0.0f;
+    *x_percent = column * step;
+    *y_percent = pitchHeight + 0.8f;
+    return;
+  }
+
   const PlanMapInteraction::PitchPoint& p = points.at(index);
   *x_percent = pitchX + (p.xPercent / 100.0f) * pitchWidth - kCardW * 0.5f;
-  *y_percent = (p.yPercent / 100.0f) * height_percent - (cardH + kStripH + kNameH) * 0.5f;
+  *y_percent = (p.yPercent / 100.0f) * pitchHeight - cardTotalH * 0.5f;
+}
+
+int Gui2PlanMap::BenchWindowSize() const {
+  const int bench = teamData->GetPlayerNum() - playerNum;
+  return std::max(1, std::min((int)kBenchColumns, bench));
+}
+
+void Gui2PlanMap::ScrollBenchTo(int squadIndex) {
+  if (IsStarter(squadIndex)) return;
+  const int order = squadIndex - playerNum;
+  const int bench = teamData->GetPlayerNum() - playerNum;
+  const int window = BenchWindowSize();
+  int start = benchWindowStart;
+  if (order < start) start = order;
+  if (order >= start + window) start = order - window + 1;
+  start = std::max(0, std::min(start, std::max(0, bench - window)));
+  if (start == benchWindowStart) return;
+  benchWindowStart = start;
+  for (int i = playerNum; i < (int)entries.size(); i++) RepositionEntry(i);
+  UpdateBenchVisibility();
+}
+
+void Gui2PlanMap::UpdateBenchVisibility() {
+  const int window = BenchWindowSize();
+  for (int i = playerNum; i < (int)entries.size(); i++) {
+    const int order = i - playerNum;
+    const bool inWindow = order >= benchWindowStart && order < benchWindowStart + window;
+    if (inWindow)
+      entries.at(i)->Show();
+    else
+      entries.at(i)->Hide();
+  }
 }
 
 void Gui2PlanMap::RepositionEntry(int index) {
   float ex, ey;
   CardTopLeft(index, &ex, &ey);
   entries.at(index)->SetPosition(ex, ey);
+}
+
+PlanMapInteraction::PitchPoint Gui2PlanMap::BenchPoint(int benchOrder) const {
+  const int columns = (int)kBenchColumns;
+  PlanMapInteraction::PitchPoint point;
+  point.xPercent = kBenchFirstX + (benchOrder % columns) * kBenchColumnStep;
+  point.yPercent = kBenchFirstY + (benchOrder / columns) * kBenchRowStep;
+  return point;
 }
 
 void Gui2PlanMap::RebuildEntries() {
@@ -193,22 +269,38 @@ void Gui2PlanMap::RebuildEntries() {
 
   const float cardH = windowManager->GetHeightPercentForWidth(kCardW, 1.0f);
 
-  for (int i = 0; i < playerNum; i++) {
-    const FormationEntry& entry = teamData->GetFormationEntry(i);
-    points.push_back(PlanMapInteraction::DatabaseToPitch(entry.databasePosition, entry.role));
+  // The whole squad, not only the eleven: the starters at their tactical
+  // positions, the bench beside the pitch. A bench card is a card like any
+  // other - which is what makes substituting a drag rather than a second menu
+  // (there was no way to do it from the line-up at all before: the header
+  // described a bench strip that RebuildEntries never built).
+  const int squad = teamData->GetPlayerNum();
+  for (int i = 0; i < squad; i++) {
     PlayerData* playerData = teamData->GetPlayerData(i);
+    e_PlayerRole role = e_PlayerRole_CM;
+    if (IsStarter(i)) {
+      const FormationEntry& entry = teamData->GetFormationEntry(i);
+      role = entry.role;
+      points.push_back(PlanMapInteraction::DatabaseToPitch(entry.databasePosition, entry.role));
+    } else {
+      // A bench player has no formation entry; he is shown as what he is
+      // registered to play, which is what the card colours itself by.
+      if (playerData && !playerData->GetRoles().empty()) role = playerData->GetRoles().front();
+      points.push_back(BenchPoint(i - playerNum));
+    }
 
     float ex, ey;
     CardTopLeft(i, &ex, &ey);
     Gui2PlanMapEntry* card = new Gui2PlanMapEntry(
         windowManager, "planmap_player1_entry" + int_to_str(i), ex, ey, kCardW,
-        cardH + kStripH + kNameH, entry.role, playerData, cardH);
+        cardH + kStripH + kNameH, role, playerData, cardH);
     this->AddView(card);
     card->Show();
     entries.push_back(card);
   }
 
   if (selectedIndex >= (int)entries.size()) selectedIndex = 0;
+  UpdateBenchVisibility();
 }
 
 void Gui2PlanMap::Refresh() {
@@ -228,10 +320,14 @@ void Gui2PlanMap::UpdateHighlights() {
   }
 }
 
-void Gui2PlanMap::OnGainFocus() { UpdateHighlights(); }
+void Gui2PlanMap::OnGainFocus() {
+  UpdateHighlights();
+  sig_OnFocus(true);
+}
 
 void Gui2PlanMap::OnLoseFocus() {
   if (heldIndex == -1) UpdateHighlights();
+  sig_OnFocus(false);
 }
 
 void Gui2PlanMap::ProcessWindowingEvent(WindowingEvent* event) {
@@ -242,10 +338,19 @@ void Gui2PlanMap::ProcessWindowingEvent(WindowingEvent* event) {
     if (hasDirection) {
       selectedIndex =
           PlanMapInteraction::NextSelectionInDirection(points, selectedIndex, direction);
+      // A bench card outside the row's window scrolls it into view.
+      ScrollBenchTo(selectedIndex);
       UpdateHighlights();
     } else if (event->IsActivate()) {
       heldIndex = selectedIndex;
       dragStartPoint = points.at(heldIndex);
+      UpdateHighlights();
+    } else if (event->IsSecondary()) {
+      // Registers the position under the cursor for this player, or takes it
+      // away again. Not while dragging: the card is between two positions then
+      // and it is not clear which one would be meant.
+      sig_OnToggleRole(selectedIndex);
+      RebuildEntries();
       UpdateHighlights();
     } else {
       event->Ignore();
@@ -271,12 +376,14 @@ void Gui2PlanMap::ProcessWindowingEvent(WindowingEvent* event) {
     const int target = PlanMapInteraction::NearestCardWithinRadius(
         points.at(heldIndex), points, heldIndex, kDropSwapRadiusPercent);
     if (target != -1) {
-      const int idHeld = teamData->GetPlayerData(heldIndex)->GetDatabaseID();
-      const int idTarget = teamData->GetPlayerData(target)->GetDatabaseID();
-      teamData->SwitchPlayers(idHeld, idTarget);
-      selectedIndex = target;
+      ResolveDrop(heldIndex, target);
+    } else if (!IsStarter(heldIndex)) {
+      // A bench card dropped in open space goes back to its place on the
+      // bench: he is not on the pitch, so there is no position to move.
+      points.at(heldIndex) = BenchPoint(heldIndex - playerNum);
+      selectedIndex = heldIndex;
       heldIndex = -1;
-      RebuildEntries();
+      RepositionEntry(selectedIndex);
     } else {
       FormationEntry updated = teamData->GetFormationEntry(heldIndex);
       updated.databasePosition =
@@ -299,6 +406,44 @@ void Gui2PlanMap::ProcessWindowingEvent(WindowingEvent* event) {
     return;
   }
   event->Accept();
+}
+
+void Gui2PlanMap::ResolveDrop(int held, int target) {
+  const bool heldStarts = IsStarter(held);
+  const bool targetStarts = IsStarter(target);
+
+  if (heldStarts != targetStarts) {
+    // One on, one off: that is a substitution, and only the page knows whether
+    // the match allows it right now. It answers false when it does not, and
+    // the card goes back where it was picked up.
+    const int starter = heldStarts ? held : target;
+    const int bench = heldStarts ? target : held;
+    // The slot's answer: whether the change actually happened. No slot
+    // connected means nothing can have happened, so the card goes back.
+    const boost::optional<bool> answer = sig_OnSubstitute(starter, bench);
+    if (!answer || !*answer) {
+      points.at(held) = heldStarts ? dragStartPoint : BenchPoint(held - playerNum);
+      RepositionEntry(held);
+      selectedIndex = held;
+      heldIndex = -1;
+      UpdateHighlights();
+      return;
+    }
+    selectedIndex = starter;
+    heldIndex = -1;
+    RebuildEntries();
+    UpdateHighlights();
+    return;
+  }
+
+  // Two starters trade tactical places; two bench players trade their order.
+  const int idHeld = teamData->GetPlayerData(held)->GetDatabaseID();
+  const int idTarget = teamData->GetPlayerData(target)->GetDatabaseID();
+  teamData->SwitchPlayers(idHeld, idTarget);
+  selectedIndex = target;
+  heldIndex = -1;
+  RebuildEntries();
+  UpdateHighlights();
 }
 
 void Gui2PlanMap::ProcessKeyboardEvent(KeyboardEvent* event) {

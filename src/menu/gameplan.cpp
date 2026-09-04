@@ -12,9 +12,11 @@
 #include "../main.hpp"
 #include "data/formations.hpp"
 #include "mainmenu.hpp"
+#include "pagefactory.hpp"
 #include "onthepitch/match.hpp"
 #include "onthepitch/team.hpp"
 #include "menu/ingame/hudindicators.hpp"
+#include "onthepitch/coachmode.hpp"
 #include "onthepitch/teaminstructions.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 #include "utils/localization.hpp"
@@ -73,15 +75,12 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
       new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 32, 3,
                      Localization::GetInstance().Translate("gameplan_substitutions"));
 
-  buttonLineup->sig_OnClick.connect([this](...) { GoLineupMenu(); });
+  buttonLineup->sig_OnClick.connect([this](...) { GoLineupMode(); });
   buttonTactics->sig_OnClick.connect([this](...) { GoTacticsMenu(); });
   buttonPhilosophy->sig_OnClick.connect([this](...) { GoPhilosophyMenu(); });
   buttonInstructions->sig_OnClick.connect([this](...) { GoInstructionsMenu(); });
   buttonSubstitutions->sig_OnClick.connect([this](...) { GoSubstitutionsMenu(); });
 
-  if (IsReleaseVersion()) {
-    buttonLineup->SetActive(false);
-  }
   buttonFormation->sig_OnClick.connect([this](...) { GoFormationMenu(); });
 
   this->sig_OnClose.connect([this](...) { OnClose(); });
@@ -99,12 +98,34 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
   map->sig_OnOpenPlayerMenu.connect([this](int slotIndex) { GoPlayerMenu(slotIndex); });
+  map->sig_OnSubstitute.connect(
+      [this](int starter, int bench) { return SubstituteFromMap(starter, bench); });
+  map->sig_OnToggleRole.connect([this](int squadIndex) { ToggleRoleFromMap(squadIndex); });
+  map->sig_OnFocus.connect([this](bool onPitch) {
+    if (onPitch)
+      ShowLineupHints();
+    else
+      ShowBrowsingHints();
+  });
+
+  // The hint line, lower left of the page, outside the panel: two lines of
+  // "button - what it does", which is where the broadcast puts them and what
+  // the owner asked for.
+  hintLine1 = new Gui2Caption(windowManager, "gameplan_hint1", 2.0f, 88.0f, 40, 2.4f, "");
+  hintLine2 = new Gui2Caption(windowManager, "gameplan_hint2", 2.0f, 91.0f, 40, 2.4f, "");
+  this->AddView(hintLine1);
+  this->AddView(hintLine2);
+  hintLine1->Show();
+  hintLine2->Show();
   grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
 
   grid->UpdateLayout(0.0);
   grid->Show();
 
+  BuildOpponentSheet();
+
   buttonTactics->SetFocus();
+  ShowBrowsingHints();
 
   this->Show();
 
@@ -152,6 +173,8 @@ void GamePlanPage::Deactivate() {
 }
 
 void GamePlanPage::Reactivate(Gui2View* focusTarget) {
+  lineupMode = false;
+  ShowBrowsingHints();
   // A submenu closing during the page's teardown must not put the column back:
   // the grid it would go into is mid-delete, and gridNav itself may already be
   // gone (OnClose owns it once it is detached).
@@ -172,6 +195,157 @@ Vector3 GamePlanPage::GetButtonColor(int id) {
   if (id > 21)
     color = Vector3(80, 140, 255);
   return color;
+}
+
+bool GamePlanPage::CanSwitchTeams() const {
+  // One pad running both benches: that is the case PES has no screen for.
+  Match* match = GetGameTask()->GetMatch();
+  if (!match) return true;  // before kick-off both sheets are the manager's own
+  return CoachMode::IsManagerDuel(match->GetCoachSetup());
+}
+
+void GamePlanPage::BuildOpponentSheet() {
+  const int otherID = teamID == 0 ? 1 : 0;
+  TeamData* other = nullptr;
+  Match* match = GetGameTask()->GetMatch();
+  if (match) {
+    other = match->GetTeam(otherID)->GetTeamData();
+  } else {
+    // Before kick-off there is no match, so the other side is loaded from the
+    // database the same way this page loads its own.
+    const int otherDatabaseID =
+        GetConfiguration()->GetInt(otherID == 0 ? "showcase_team1" : "showcase_team2", -1);
+    if (otherDatabaseID > 0) {
+      opponentTeamData = std::make_unique<TeamData>(otherDatabaseID);
+      other = opponentTeamData.get();
+    }
+  }
+  if (!other) return;
+
+  opponentLabel = new Gui2Caption(windowManager, "gameplan_opponent_label", 51.0f, 46.0f, 30, 2.4f,
+                                  Localization::GetInstance().Translate("gameplan_header") + " " +
+                                      int_to_str(otherID + 1) + ": " + other->GetName());
+  this->AddView(opponentLabel);
+  opponentLabel->Show();
+
+  // Read-only: it is the other team's sheet, not this page's editing surface.
+  // Swapping which side is edited is what the switch button is for.
+  opponentMap = new Gui2PlanMap(windowManager, "gameplan_planmap_opponent", 51.0f, 49.0f, 24, 40,
+                                other);
+  opponentMap->SetSelectable(false);
+  this->AddView(opponentMap);
+  opponentMap->Show();
+
+  if (!CanSwitchTeams()) return;
+  buttonSwitchTeam =
+      new Gui2Button(windowManager, "gameplan_button_switchteam", 0, 0, 32, 3,
+                     Localization::GetInstance().Translate("gameplan_switch_team"));
+  buttonSwitchTeam->sig_OnClick.connect([this](...) { SwitchTeam(); });
+  gridNav->AddView(buttonSwitchTeam, 6, 0);
+  gridNav->UpdateLayout(0.5);
+  grid->UpdateLayout(0.0);
+}
+
+void GamePlanPage::SwitchTeam() {
+  // The page is built entirely from its team, so the honest way to change
+  // which one it edits is to build it again for the other.
+  Properties properties;
+  properties.Set("teamID", teamID == 0 ? 1 : 0);
+  Match* match = GetGameTask()->GetMatch();
+  if (!match) {
+    const int otherDatabaseID =
+        GetConfiguration()->GetInt(teamID == 0 ? "showcase_team2" : "showcase_team1", -1);
+    properties.Set("teamDatabaseID", otherDatabaseID);
+  }
+  CreatePage((int)e_PageID_GamePlan, properties);
+}
+
+void GamePlanPage::SetHints(const std::string& text) {
+  // "A - grab | B - back" on one line, wrapped onto the second at the last
+  // separator that fits, so a long set of hints does not run off the page.
+  if (!hintLine1 || !hintLine2) return;
+  const size_t half = text.size() / 2;
+  size_t split = std::string::npos;
+  size_t at = text.find(" | ");
+  while (at != std::string::npos) {
+    if (split == std::string::npos ||
+        (size_t)std::abs((long)at - (long)half) < (size_t)std::abs((long)split - (long)half))
+      split = at;
+    at = text.find(" | ", at + 1);
+  }
+  if (text.size() < 46 || split == std::string::npos) {
+    hintLine1->SetCaption(text);
+    hintLine2->SetCaption("");
+    return;
+  }
+  hintLine1->SetCaption(text.substr(0, split));
+  hintLine2->SetCaption(text.substr(split + 3));
+}
+
+void GamePlanPage::ShowBrowsingHints() {
+  SetHints(Localization::GetInstance().Translate("hint_gameplan_browse"));
+}
+
+void GamePlanPage::ShowLineupHints() {
+  SetHints(Localization::GetInstance().Translate("hint_gameplan_lineup"));
+}
+
+void GamePlanPage::GoLineupMode() {
+  // The pitch takes over: the button column steps aside so the cards have the
+  // panel to themselves and the arrows move between players instead of between
+  // buttons. This is the LINEUP the owner asked for - dragging cards is how the
+  // formation is changed, and dragging a bench card onto a starter is how a
+  // substitution is made.
+  lineupMode = true;
+  Deactivate();
+  map->Refresh();
+  map->SetFocus();
+  ShowLineupHints();
+}
+
+bool GamePlanPage::SubstituteFromMap(int starterSlot, int benchIndex) {
+  PlayerData* starter = teamData->GetPlayerData(starterSlot);
+  PlayerData* bench = teamData->GetPlayerData(benchIndex);
+  if (!starter || !bench) return false;
+
+  Match* match = GetGameTask()->GetMatch();
+  if (!match) {
+    // Before kick-off the eleven are simply the first eleven of the squad, so
+    // exchanging the two rows *is* the team selection.
+    teamData->SwitchPlayers(starter->GetDatabaseID(), bench->GetDatabaseID());
+    SetHints(bench->GetLastName() + " -> " + starter->GetLastName());
+    return true;
+  }
+
+  Team* team = match->GetTeam(teamID);
+  const Substitutions::e_Result result = match->RequestSubstitution(
+      teamID, team->GetPlayer(starter->GetDatabaseID()), team->GetPlayer(bench->GetDatabaseID()));
+  std::string message;
+  switch (result) {
+    case Substitutions::e_Result_Accepted: message = "substitution_done"; break;
+    case Substitutions::e_Result_NotAStoppage: message = "substitution_wait_for_stoppage"; break;
+    case Substitutions::e_Result_NoSubstitutionsLeft: message = "substitution_none_left"; break;
+    case Substitutions::e_Result_PlayerSentOff: message = "substitution_sent_off"; break;
+    default: message = "substitution_unavailable"; break;
+  }
+  const std::string line = Localization::GetInstance().Translate(message);
+  match->SpamMessage(line, 3000);
+  SetHints(line);
+  return result == Substitutions::e_Result_Accepted;
+}
+
+void GamePlanPage::ToggleRoleFromMap(int squadIndex) {
+  PlayerData* playerData = teamData->GetPlayerData(squadIndex);
+  if (!playerData) return;
+  // The position he is standing in: for a starter that is his formation slot's
+  // role, for a bench player the one his card shows.
+  const e_PlayerRole role = Gui2PlanMap::IsStarter(squadIndex)
+                                ? teamData->GetFormationEntry(squadIndex).role
+                                : (playerData->GetRoles().empty() ? e_PlayerRole_CM
+                                                                  : playerData->GetRoles().front());
+  const bool has = playerData->ToggleRole(role);
+  SetHints(playerData->GetLastName() + ": " + GetRoleName(role) + " " +
+           Localization::GetInstance().Translate(has ? "role_registered" : "role_unregistered"));
 }
 
 void GamePlanPage::GoLineupMenu() {

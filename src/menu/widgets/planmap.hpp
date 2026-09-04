@@ -8,6 +8,7 @@
 
 #include <vector>
 
+#include "gamedefines.hpp"
 #include "gametypes.hpp"
 #include "planmapinteraction.hpp"
 #include "scene/objects/image2d.hpp"
@@ -75,9 +76,28 @@ public:
   virtual void OnLoseFocus();
 
   // Fires on the 'x' key with a card selected (not while dragging), naming
-  // the formation slot (0..10) the caller should open a role/formation
-  // submenu for.
+  // the squad index the caller should open a role/formation submenu for.
   boost::signals2::signal<void(int)> sig_OnOpenPlayerMenu;
+
+  // A starter and a bench player were dropped onto each other: (starter slot,
+  // bench squad index). Substituting needs the Match - remaining changes, a
+  // stoppage, a sent-off player - which a widget has no business knowing, so
+  // the page answers it and returns whether it happened. Before kick-off the
+  // page just swaps the two in TeamData.
+  boost::signals2::signal<bool(int, int)> sig_OnSubstitute;
+
+  // The secondary button on a selected card: register or unregister the
+  // position he is standing in (PlayerData::ToggleRole). Reported so the page
+  // can say what happened in its hint line.
+  boost::signals2::signal<void(int)> sig_OnToggleRole;
+
+  // Whether the pitch has the cursor. The page's hint line says different
+  // things depending on it - the cards are dragged, the buttons are pressed -
+  // and the pitch can be reached with an arrow key as well as through LINE-UP.
+  boost::signals2::signal<void(bool)> sig_OnFocus;
+
+  // Whether the squad index is one of the eleven on the pitch.
+  static bool IsStarter(int index) { return index >= 0 && index < playerNum; }
 
   // True while a card is being dragged - GamePlanPage's own escape handling
   // must not close the page out from under an in-progress drag.
@@ -89,6 +109,22 @@ protected:
   void UpdateHighlights();
   // Percent-of-window coordinates of the given slot's card, top-left corner.
   void CardTopLeft(int index, float* x_percent, float* y_percent) const;
+  // Where a bench card sits: a strip down the right-hand side, outside the
+  // pitch diagram, in squad order. Substituting by dragging is the only way to
+  // do it on this screen (the owner asked for it), so the bench has to be on
+  // the same map as the eleven rather than in a list of its own.
+  PlanMapInteraction::PitchPoint BenchPoint(int benchOrder) const;
+  // The bench is one row of cards under the pitch - two rows of them do not fit
+  // the band the diagram leaves, and a card any smaller loses the 22px caption
+  // floor. A squad with more substitutes than the row holds scrolls: reaching
+  // the end of the row shifts the window along, and the cards outside it are
+  // hidden rather than drawn on top of each other.
+  int BenchWindowSize() const;
+  void ScrollBenchTo(int squadIndex);
+  void UpdateBenchVisibility();
+  int benchWindowStart = 0;
+  // Applies a drop of `held` onto `target`, whatever the two are.
+  void ResolveDrop(int held, int target);
 
   boost::intrusive_ptr<Image2D> image;
 
@@ -98,7 +134,7 @@ protected:
 
   TeamData* teamData;
 
-  float pitchX = 0.0f, pitchWidth = 0.0f;
+  float pitchX = 0.0f, pitchWidth = 0.0f, pitchHeight = 0.0f;
 
   std::vector<Gui2PlanMapEntry*> entries;
   std::vector<PlanMapInteraction::PitchPoint> points;

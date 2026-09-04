@@ -1372,7 +1372,8 @@ void GamepadMappingPage::OnClose() {
 
   if (controllerID == 1)
     GetMenuTask()->SetEventJoyButtons(controller->GetControllerMapping(e_ControllerButton_A),
-                                      controller->GetControllerMapping(e_ControllerButton_B));
+                                      controller->GetControllerMapping(e_ControllerButton_B),
+                                      controller->GetControllerMapping(e_ControllerButton_X));
 
   controller->SaveConfig();
 }
