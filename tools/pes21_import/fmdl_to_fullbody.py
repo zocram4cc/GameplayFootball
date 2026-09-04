@@ -71,6 +71,67 @@ def nearest_joints(position, joint_positions, count=3, falloff=0.35):
     return [(j, w / total) for j, w in weights]
 
 
+def _point_to_segment(point, a, b):
+    """-> (distance, t) where t is how far along a->b the closest point lies."""
+    ab = tuple(b[k] - a[k] for k in range(3))
+    length2 = sum(c * c for c in ab)
+    if length2 <= 1e-12:
+        return math.dist(point, a), 0.0
+    t = sum((point[k] - a[k]) * ab[k] for k in range(3)) / length2
+    t = max(0.0, min(1.0, t))
+    closest = tuple(a[k] + ab[k] * t for k in range(3))
+    return math.dist(point, closest), t
+
+
+def bone_segments(joint_positions, parents=None):
+    """-> [(child joint name, parent joint name, child pos, parent pos)].
+
+    A bone is the span between a joint and its parent, which is where the
+    geometry actually sits; a joint on its own is a point, and the point
+    nearest a sleeve vertex at the waist is as likely to be a fingertip as the
+    chest above it.
+    """
+    parents = parents if parents is not None else retarget.GF_PARENT
+    out = []
+    for name, position in joint_positions.items():
+        parent = parents.get(name)
+        if parent and parent in joint_positions:
+            out.append((name, parent, position, joint_positions[parent]))
+    return out
+
+
+def nearest_bone(position, joint_positions, parents=None):
+    """-> [(jointID, weight)] from the nearest BONE rather than the nearest joint.
+
+    The reason this exists, measured: point distance mixes limbs. A hand hangs
+    beside a hip, so a torso vertex at the waist came out
+    `right_hand 0.44 / right_elbow 0.31 / right_thigh 0.25` while the vertex a
+    millimetre away came out `middle 0.58 / chest 0.42`, and a blend of two
+    distant joints sits between two transforms - so the bake pulled the pair
+    0.4 m apart (hdg_XXX23, 373x on a 1.2 mm edge). Averaging them makes it
+    worse, because the average is itself a cross-limb blend.
+
+    A bone span does not have that failure: at the waist the arm bone is a
+    forearm's length away while the spine bone is touching. Only the two ends
+    of ONE bone are ever blended - by how far along it the vertex sits - so a
+    surface can slide along a limb but never between two limbs.
+    """
+    segments = bone_segments(joint_positions, parents)
+    if not segments:
+        return nearest_joints(position, joint_positions)
+    best = min(segments, key=lambda seg: _point_to_segment(position, seg[3], seg[2])[0])
+    _distance, t = _point_to_segment(position, best[3], best[2])
+    child, parent = best[0], best[1]
+    # t is measured from the parent end, so a vertex at the parent joint rides
+    # the parent and one at the child rides the child.
+    weights = [(JOINT_ID[child], t), (JOINT_ID[parent], 1.0 - t)]
+    kept = [(j, w) for j, w in weights if w > MIN_INFLUENCE]
+    total = sum(w for _, w in kept)
+    if not kept or total <= 0.0:
+        return [(JOINT_ID[child], 1.0)]
+    return [(j, w / total) for j, w in kept]
+
+
 # How far a vertex may sit from the joint its own bone mapping puts it on before
 # the mapping is treated as a slot artifact rather than authoring. A hand's
 # width: healthy skin binds a vertex to a joint it is practically touching.
@@ -132,7 +193,7 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
 
     if not vertex.boneMapping:
         if position is not None:
-            return nearest_joints(position, joint_positions)
+            return nearest_bone(position, joint_positions)
         return [(JOINT_ID["middle"], 1.0)]
 
     weights = {}
@@ -145,20 +206,20 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
         weights[joint] = weights.get(joint, 0.0) + weight
 
     if unmapped > 0.0 and position is not None:
-        for joint, weight in nearest_joints(position, joint_positions):
+        for joint, weight in nearest_bone(position, joint_positions):
             weights[joint] = weights.get(joint, 0.0) + weight * unmapped
     elif unmapped > 0.0:
         joint = JOINT_ID["middle"]
         weights[joint] = weights.get(joint, 0.0) + unmapped
 
     if rebind_stray(position, weights.keys(), joint_positions):
-        return nearest_joints(position, body_joint_positions(joint_positions))
+        return nearest_bone(position, body_joint_positions(joint_positions))
 
     top = sorted(weights.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
     total = sum(w for _, w in top)
     if total <= 0:
         if position is not None:
-            return nearest_joints(position, joint_positions)
+            return nearest_bone(position, joint_positions)
         return [(JOINT_ID["middle"], 1.0)]
     return [(j, w / total) for j, w in top]
 
@@ -805,16 +866,25 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # they meet one comes through the other as soon as the joint between them turns
     # (seams.py). Reconciled before anything is cut or written, over the whole
     # character at once.
+    # Welded first, and always: a UV seam duplicates a vertex within ONE group,
+    # which reconcile() does not look at (it agrees a vertex with its neighbours
+    # in other parts). Those duplicates were skinning to different joints and
+    # tearing at the bind pose - the shards, measured on lcg_2709 at 315x.
+    before = [[(v[0], v[3]) for v in group[1]] for group in groups]
+    agreed = seams.weld(before)
+    welded, _ = seams.reconciled_count(before, agreed)
+    if welded:
+        print("  seams: %d coincident vertex weight(s) welded" % welded)
     if len(groups) > 1:
-        before = [[(v[0], v[3]) for v in group[1]] for group in groups]
-        agreed = seams.reconcile(before)
-        changed, migrated = seams.reconciled_count(before, agreed)
-        for group, blended in zip(groups, agreed):
-            group[1] = [v[:2] + (encode_color(joints), joints)
-                        for v, (_, joints) in zip(group[1], blended)]
+        reconciled = seams.reconcile(agreed)
+        changed, migrated = seams.reconciled_count(agreed, reconciled)
+        agreed = reconciled
         if changed:
             print("  seams: %d vertex weight(s) reconciled between groups, %d changed bone"
                   % (changed, migrated))
+    for group, blended in zip(groups, agreed):
+        group[1] = [v[:2] + (encode_color(joints), joints)
+                    for v, (_, joints) in zip(group[1], blended)]
 
     if max_edge != 0.0:
         # The cut follows the mesh rather than a fixed metre value. An absolute 0.15 m

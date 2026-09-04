@@ -144,6 +144,91 @@ def _top(total):
     return [(joint, weight / scale) for joint, weight in ranked]
 
 
+# A UV seam duplicates a vertex: same position, two entries, because the two
+# faces need different texture coordinates. They are the same place on the body
+# and must skin identically - and did not, because the weights are guessed per
+# vertex and a tie between two joints is broken by the last bit of a float.
+# Measured on lcg_2709: v16033 and v16034 sit at the same millimetre and were
+# weighted `right_shoulder 0.29` and `right_clavicle 0.29`, so the bake moved
+# one 0.15 m and left the other - a 0.5 mm edge stretched 315x, which on screen
+# is the long white shard fanning out of the model. reconcile() could not see
+# it: it agrees a vertex with its neighbours in OTHER parts, and a seam
+# duplicate is in the same part.
+#
+# Five millimetres, measured rather than assumed. A duplicate is nominally the
+# same coordinate, but the conversion scales and rounds, so the two halves of
+# one seam arrive up to 3 mm apart (2hug_1869: 1.1 mm, lcg_2709: 2.4 and
+# 3.2 mm). At 1 mm the pass welded a third of what tears; 5 mm covers every
+# pair measured and is still a quarter of the radius the reconcile side treats
+# as "the same place" (20 mm). Vertices this close that share no bone at all
+# are left alone - see _shares_a_joint, the same guard reconcile uses.
+WELD_RADIUS = 0.005
+
+# Within this, two vertices are the same coordinate and nothing more needs to be
+# true about them. Past it, up to WELD_RADIUS, they must already share a bone.
+COINCIDENT_RADIUS = 0.001
+
+
+def weld(parts, radius=WELD_RADIUS):
+    """Influence lists with coincident vertices in the same part made identical.
+
+    Same shape in and out, like reconcile(). Every vertex within `radius` of
+    another in its own part gets the sum of their influences, so a UV seam can
+    no longer skin its two halves to two different joints.
+
+    Grouped by proximity and not by a rounded coordinate: a grid cell has
+    boundaries, and the first version of this bucketed on round(x / radius),
+    which left lcg_2709's 0.52 mm pair in two different cells and welded
+    nothing at all. Union over the neighbouring cells, which is what the
+    reconcile side already does.
+    """
+    out = []
+    for part in parts:
+        grid = {}
+        for v, (position, _) in enumerate(part):
+            grid.setdefault(_cells(position, radius), []).append(v)
+        # Union-find over vertices that touch, so a chain of duplicates all
+        # ends up in one group rather than each pair agreeing separately.
+        parent = list(range(len(part)))
+
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        for v, (position, _) in enumerate(part):
+            base = _cells(position, radius)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        for other in grid.get((base[0] + dx, base[1] + dy, base[2] + dz), ()):
+                            if other <= v:
+                                continue
+                            distance = math.dist(position, part[other][0])
+                            if distance > radius:
+                                continue
+                            # Past a coordinate's worth of rounding, two
+                            # surfaces that genuinely cover one place always
+                            # have a bone in common; two that share nothing are
+                            # different limbs passing close (_shares_a_joint).
+                            if distance > COINCIDENT_RADIUS and \
+                                    not _shares_a_joint(part[v][1], part[other][1]):
+                                continue
+                            ra, rb = find(v), find(other)
+                            if ra != rb:
+                                parent[ra] = rb
+        totals = {}
+        for v, (_, joints) in enumerate(part):
+            total = totals.setdefault(find(v), {})
+            for joint, weight in joints:
+                total[joint] = total.get(joint, 0.0) + weight
+        agreed = {root: _top(total) for root, total in totals.items()}
+        out.append([(position, agreed[find(v)] or joints)
+                    for v, (position, joints) in enumerate(part)])
+    return out
+
+
 def disagreement(parts, radius=DEFAULT_RADIUS):
     """-> how many vertices name a different set of joints from a neighbour.
 

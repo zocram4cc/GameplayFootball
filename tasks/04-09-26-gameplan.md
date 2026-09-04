@@ -31,25 +31,25 @@ And, since:
 
 ## Items
 
-| # | Item | Owner | State |
-|---|---|---|---|
-| 1 | Monkey test: random input must never break the game plan | me | in progress |
-| 2 | The drag crash on release | me | not reproduced yet, see below |
-| 3 | LINEUP: drag to change formation, enabled in the release build | me | open |
-| 4 | PES look and feel for the game plan | me | open |
-| 5 | Multiple roles per player, on a secondary button | me | open |
-| 6 | Hints, lower-left | me | open |
-| 7 | Both teams at once; jump between them in one-pad coach mode | me | open |
-| 8 | Pre-match screen revamp | me | open |
-| 9 | Settings screen revamp | me | open |
-| 10 | Sliders: finite steps, shown in the UI | me | open |
-| 11 | Hide meaningless sliders (FORMATION) | me | open |
-| 12 | Formation select reshapes the preview | me | partly done, verify |
-| 13 | Portraits, stats, roles, medals on the lineup cards | me | open |
-| 14 | Import the missing portraits | ImportProps | delegated |
-| 15 | Reimport HDG (models broken) | ImportProps | delegated |
-| 16 | Wario (smbg): dragging verts in cutscenes | ImportProps | delegated |
-| 17 | Pitch UVs imported upside down (st002 most recently) | ImportProps | delegated |
+| # | Item | Owner | State | Evidence |
+|---|---|---|---|---|
+| 1 | Monkey test: random input must never break the game plan | me | done | `monkeyrun.sh`, 4 seeds x 1200 taps clean twice (`0480b4c`, `c41eed7`, and again after the card layout) |
+| 2 | The drag crash on release | me | done - five distinct use-after-frees | ASan stacks in this file; `0480b4c`, `c41eed7` |
+| 3 | LINEUP: drag to change formation, enabled in the release build | me | done | `7e40829`; `tmp/plan/b_pair1.png` |
+| 4 | PES look and feel for the game plan | me | done | `tmp/plan/c3_zoom.png` - portrait cards, line colours, bench strip |
+| 5 | Multiple roles per player, on a secondary button | me | done | `7e40829` (`PlayerData::ToggleRole`, shoot = `e_ControllerButton_X`); card prints "CB+1" |
+| 6 | Hints, lower-left | me | done | `tmp/plan/b_pair2.png` ("A - grab / B - back / X - roles on a card") |
+| 7 | Both teams at once; jump between them in one-pad coach mode | me | done | `tmp/plan/b_two2.png`; SWITCH TEAM row |
+| 8 | Pre-match screen revamp | me | done | `e1f35fa`; `tmp/plan/p_zoom.png` - MATCH / PRESENTATION / TEAMS |
+| 9 | Settings screen revamp | me | done | `e1f35fa`; `tmp/plan/s_zoom.png` |
+| 10 | Sliders: finite steps, shown in the UI | me | done | `sliderstep.hpp` (20 steps for a scale, one per choice), `gameplayfootball_sliderstep_tests` |
+| 11 | Hide meaningless sliders (FORMATION) | me | done | `7e40829` - FORMATION dropped from `tacticsSliders`; also ADBOARDS/sky/goals dropped from the stadium choice (`e1f35fa`) |
+| 12 | Formation select reshapes the preview | me | done | two tests in `plan_map_interaction_test.cpp` (line counts differ, >= 4 cards move 4-4-2 -> 3-4-3) |
+| 13 | Portraits, stats, roles, medals on the lineup cards | me | done | `64a12c1`; `tmp/plan/c3_zoom.png` - portrait, CB+1, 95, gold medal |
+| 14 | Import the missing portraits | ImportProps | done | `c0e8194` |
+| 15 | Reimport HDG (models broken) | ImportProps | done, four players still bodyless | `901b66e`; leftover 1 in `tasks/04-09-26.md` |
+| 16 | Wario (smbg): dragging verts in cutscenes | ImportProps + me | done, seen in the engine | `tmp/wario_sheet.png` - 8 frames of `pes_dm_goal_Wide_sliding01`, mesh intact |
+| 17 | Pitch UVs imported upside down (st002 most recently) | ImportProps | done | `c094fe1`; `tmp/overlay_ab.png` |
 
 ## 2. The crash — what has been ruled out
 
@@ -137,3 +137,64 @@ cell was empty.
 The page is also one-way at teardown: `tearingDown` stops a submenu's close
 signal from rebuilding the column, saving tactics, or writing to the names db
 while the page is being deleted.
+
+
+## The card layout, measured rather than guessed (04-09, late)
+
+The first capture of the finished cards (`tmp/plan/c_zoom.png`) had every line
+of the formation covering the one in front of it and four names run together
+into `SEAF-CHANTHDIVEROBBY D`. Measured on that frame at 720p: a card was a
+50 px portrait plus two 24 px text rows = 98 px, and two lines of a 4-4-2 are
+67 px apart on the diagram. Four changes, in order of effect:
+
+* the position and rating moved ON to the portrait's bottom edge, in a
+  translucent band drawn per card (never on the shared portrait texture) - the
+  way PES draws them, and one row shorter: 98 -> 74 px;
+* `kPitchHeightFraction` 0.76 -> 0.86, which the single scrolling bench row
+  freed up: 67 -> 76 px between lines;
+* `kCardW` 3.9 -> 3.1;
+* `kOutfieldDepthScale` 0.8 -> 0.9 and its offset 0.1 -> 0.05, so the lines
+  use more of the pitch's depth. It exists so the back line does not sit flush
+  on the goal box, and 0.9 still keeps it off.
+
+Result `tmp/plan/c3_zoom.png`: the defence, the attack, the keeper and the
+bench all stand clear. The four midfielders of this team's own tactic still
+sit close together - that is the tactic (AM/RM/CM/LM within a few metres),
+not the layout, and PES would draw the same cluster.
+
+## gfviewer --anim
+
+AGENTS.md's health check (`gfviewer <model> --anim media/animations/straight.anim.util
+--shots 2` must render a perfect T-pose) named a mode the binary did not have -
+the viewer could turn a model or play a whole choreography, and nothing in
+between. `--anim CLIP [--shots N]` plays one clip on one body, spreading the
+shots over it and turning the camera half a circle, and applies the humanoid
+invalidation the same file warns about. This is the instrument for any reported
+skinning defect; it found Wario intact in eight frames of a sliding
+celebration, which is what closed item 16.
+
+## STILL TO BE DONE (mine, end of 04-09)
+
+1. **Wario's T-pose check reads arms ~25 degrees above horizontal**
+   (`tmp/wt_pair.png`, `gfviewer .../fullbody_smg_2579.ase --anim
+   media/animations/straight.anim.util --shots 2`). AGENTS.md's rule says a
+   perfect T-pose. It may be the character's own art - he is a chibi model with
+   short limbs and the gloves do sit palm-down - or a stale bind on this one
+   model. Next: run the same check on `media/objects/players/models/fullbody.ase`
+   (the stock body) for a reference frame, then on two more imported bodies; if
+   only the imported ones droop, the `.weights` bake is the suspect and not the
+   rig. Not blocked.
+2. **The in-match game plan was never opened from the pause menu in a headless
+   run** - `escape` at 14 s in `tmp/plan_match2.config` did not open the pause
+   menu (the capture shows live play, `tmp/plan/form_match.png`), so every drag
+   test ran against the pre-match instance. The live path edits `TeamData` that
+   `Team`/`TeamAIController` hold pointers into, which is the third crash
+   candidate from item 2 and is therefore still untested. Next: find what
+   consumes the escape key during a match (`Match::Process` /
+   `IngamePage`), drive the pause menu from the script, then repeat the monkey
+   sweep in-match. Not blocked.
+3. **The bench's sixth card is clipped by the panel's right edge**
+   (`tmp/plan/c3_zoom.png`, rightmost card cut mid-portrait). The row scrolls,
+   so it is reachable, but a half-drawn card reads as a defect. Next: either
+   inset the bench row by half a card or let `BenchWindowSize` shrink by one
+   when the last card would overrun. Not blocked.

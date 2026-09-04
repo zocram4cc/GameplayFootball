@@ -140,9 +140,11 @@ bool ViewerSkinnedModel::Load(const std::string& modelPath,
   return true;
 }
 
+std::string ViewerSkinnedModel::authoringPose = "media/animations/base.anim.util";
+
 bool ViewerSkinnedModel::Prepare() {
   Animation* baseAnim = new Animation();
-  baseAnim->Load("media/animations/base.anim.util");
+  baseAnim->Load(authoringPose);
   // Ensure base anim joints exist in skeleton (some base anims have fewer joints than the full rig)
   for (size_t i = 0; i < baseAnim->GetNodeAnimations().size(); i++) {
     auto* na = baseAnim->GetNodeAnimations()[i];
@@ -337,8 +339,11 @@ void ViewerSkinnedModel::Pose(Animation* anim, int frame, Vector3 basePos,
     }
   }
   std::map<std::string, BiasedOffset> offsets;
-  anim->Apply(nodeMap, frame, 0, false, 0, basePos, baseYaw, offsets, 0, noPos,
-              false);
+  // Twelve arguments, not eleven: written short, `noPos` bound to timeDiff_ms
+  // and the real noPos defaulted to false, so this path always applied the
+  // clip's root travel however it was called (Animation::Apply, animation.hpp).
+  anim->Apply(nodeMap, frame, 0, false, 0.0f, basePos, baseYaw, offsets, nullptr, 10, noPos,
+              true);
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   if (handRig.IsActive()) {
     handRig.Apply(blunted::e_HandPose::Neutral);

@@ -17,6 +17,7 @@ Run: python3 -m unittest test_skin_weights -v
 import unittest
 
 import fmdl_to_fullbody as f
+import retarget
 
 
 def decode(channels):
@@ -127,3 +128,49 @@ class RebindStray(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NearestBoneNeverMixesLimbs(unittest.TestCase):
+    """The guess for geometry a pack ships with no bone mapping.
+
+    Measured on the installed models: guessing from the nearest joint POINT put
+    a torso vertex at the waist on `right_hand 0.44 / right_elbow 0.31 /
+    right_thigh 0.25` - the hand hangs beside the hip - while the vertex a
+    millimetre away came out `middle 0.58 / chest 0.42`, and the bake pulled the
+    pair 0.4 m apart (hdg_XXX23, 373x). A bone span cannot do that: at the waist
+    the arm bone is a forearm away and the spine is touching.
+    """
+
+    def setUp(self):
+        self.bind = retarget.gf_world_bind()
+        self.names = {i: n for n, i in retarget.JOINT_ID.items()}
+
+    def joints(self, position):
+        return {self.names[j] for j, _ in
+                f.nearest_bone(position, self.bind)}
+
+    def test_a_waist_vertex_beside_the_hand_stays_on_the_body(self):
+        named = self.joints((-0.539, 0.186, 0.923))
+        self.assertFalse(named & {"right_hand", "right_elbow", "left_hand"},
+                         "the arm took a torso vertex: %s" % named)
+
+    def test_a_shin_vertex_stays_on_the_leg(self):
+        named = self.joints((0.47, 0.121, 0.382))
+        self.assertTrue(named <= {"left_knee", "left_ankle", "left_thigh"}, named)
+
+    def test_a_fingertip_still_lands_on_its_finger(self):
+        named = self.joints(tuple(self.bind["left_index_dip"]))
+        self.assertIn("left_index_dip", named)
+
+    def test_only_the_two_ends_of_one_bone_are_ever_blended(self):
+        # Whatever the vertex, the joints it names are a parent and its child -
+        # never two limbs.
+        for position in ((0.0, 0.0, 1.4), (0.3, 0.0, 1.2), (-0.2, 0.1, 0.5),
+                         (0.6, 0.0, 1.0), (0.0, 0.3, 2.0)):
+            named = sorted(self.joints(position))
+            self.assertLessEqual(len(named), 2, named)
+            if len(named) == 2:
+                a, b = named
+                self.assertTrue(retarget.GF_PARENT.get(a) == b or
+                                retarget.GF_PARENT.get(b) == a,
+                                "%s and %s are not one bone" % (a, b))
