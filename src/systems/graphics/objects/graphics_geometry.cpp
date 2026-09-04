@@ -273,6 +273,8 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
     caller->vertexBufferIndices.push_back(vbIndex);
   }
 
+  if (!alreadyThere) PublishUploadTarget(resource, vertices, verticesDataSize);
+
   resource->resourceMutex.unlock();
 
   if (indices.size() > 0)
@@ -282,7 +284,6 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
 
   if (!alreadyThere) {
     caller->vertexBuffer->GetResource()->SetTriangleMesh(vertices, verticesDataSize, indices);
-    PublishUploadTarget(resource, vertices, verticesDataSize);
     caller->vertexBuffer->GetResource()->CreateOrUpdateVertexBuffer(renderer3D, dynamicBuffer);
     caller->vertexBuffer->resourceMutex.unlock();
   }
@@ -292,11 +293,13 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
 // UploadTarget), so a per-frame writer can skin straight into it. Only for a
 // dynamic geometry: a static one never rewrites itself, and its vertex buffer may
 // be shared between geometries of the same ident, which must not fight over it.
+// Called with the resource's mutex held - the writer reads the target under it.
 void GraphicsGeometry_GeometryInterpreter::PublishUploadTarget(
     const boost::intrusive_ptr<Resource<GeometryData>>& resource, float* vertices,
     int verticesDataSize) {
   GeometryData* geometryData = resource->GetResource();
   if (!geometryData->IsDynamic()) return;
+  if (geometryData->GetUploadTarget().data == vertices) return;  // already published
   uploadTargetOwner = resource;
   const std::vector<MaterializedTriangleMesh>& triangleMeshes =
       geometryData->GetTriangleMeshesRef();
@@ -440,6 +443,11 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
     }
   }
 
+  // A geometry that became dynamic after it was loaded (a body is flagged by
+  // its humanoid, not by its .object) gets its target here, on the array that
+  // is being reused.
+  PublishUploadTarget(resource, vertices, verticesDataSize);
+
   resource->resourceMutex.unlock();
 
   if (indices.size() > 0)
@@ -447,7 +455,6 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
 
   if (newFloatData) {
     caller->vertexBuffer->GetResource()->SetTriangleMesh(vertices, verticesDataSize, indices);
-    PublishUploadTarget(resource, vertices, verticesDataSize);
   } else {
     caller->vertexBuffer->GetResource()->TriangleMeshWasUpdatedExternally(verticesDataSize,
                                                                           indices);
