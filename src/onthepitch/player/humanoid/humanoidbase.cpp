@@ -5,7 +5,6 @@
 
 #include <cmath>
 #include "utils/playermodelmap.hpp"
-#include "utils/phaseprobe_tmp.hpp"  // TEMPORARY PROBE
 
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
@@ -144,6 +143,12 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
   boost::intrusive_ptr<Resource<GeometryData>> bodyGeom =
       boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->GetGeometryData();
   bodyGeom->resourceMutex.lock();
+  // Rewritten every frame by the skinning below, so it is dynamic whether or not
+  // its .object says so - the imported bodies' do not. Until this was set here,
+  // that flag only chose the buffer's usage hint; now it also decides whether
+  // the graphics system publishes an upload target, and a body without one
+  // skinned into arrays nobody uploaded and stood on the pitch in its bind pose.
+  bodyGeom->GetResource()->SetDynamic(true);
   std::vector<MaterializedTriangleMesh>& tmesh = bodyGeom->GetResource()->GetTriangleMeshesRef();
   for (unsigned int i = 0; i < tmesh.size(); i++) {
     if (tmesh.at(i).material.diffuseTexture != boost::intrusive_ptr<Resource<Surface>>()) {
@@ -1138,17 +1143,11 @@ void HumanoidBase::Put() {
 
   // printf("anim ptr: %i\n", fetchedbuf_animApplyBuffer.anim);
   // printf("nodemap size: %i\n", nodeMap.size());
-  static PhaseProbe probeApply("hb.Apply"), probeHand("hb.HandRig"),
-      probeSpatial("hb.RecursiveUpdate2"), probeTail("hb.tail"), probePut("hb.Put");
-  probePut.Begin();
-  probeApply.Begin();
   fetchedbuf_animApplyBuffer.anim->Apply(
       nodeMap, fetchedbuf_animApplyBuffer.frameNum, -1, fetchedbuf_animApplyBuffer.smooth,
       fetchedbuf_animApplyBuffer.smoothFactor, fetchedbuf_animApplyBuffer.position,
       fetchedbuf_animApplyBuffer.orientation, fetchedbuf_animApplyBuffer.offsets,
       &movementHistory.Get(), timeDiff_ms, fetchedbuf_animApplyBuffer.noPos, false);
-  probeApply.End();
-  probeHand.Begin();
   // The clip has had its say; the fingers are what it does not carry. PES drives
   // them from a pose library rather than from the body animation, and so does this
   // (handrig.hpp). A clip that DOES author finger channels wins, because Apply()
@@ -1159,12 +1158,8 @@ void HumanoidBase::Put() {
                                      : e_FunctionType_None,
                                  spatialState.floatVelocity));
   }
-  probeHand.End();
 
-  probeSpatial.Begin();
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
-  probeSpatial.End();
-  probeTail.Begin();
 
   // we've just set the humanoid positions for time fetchedbuf_animApplyBuffer.snapshotTime_ms.
   // however, it's eventually going to be displayed in a historic position, for temporal smoothing.
@@ -1196,8 +1191,6 @@ void HumanoidBase::Put() {
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
   UpdateFullbodyNodes();
-  probeTail.End();
-  probePut.End();
 }
 
 void HumanoidBase::CalculateGeomOffsets() {

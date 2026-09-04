@@ -251,12 +251,8 @@ void StopFrameRecording() {
   frameRecordingPath.clear();
 }
 
-#include "utils/phaseprobe_tmp.hpp"  // TEMPORARY PROBE
-static PhaseProbe probeGlSwap("gl.SDL_GL_SwapWindow"), probeGlUpload("gl.UpdateVertexBuffer");
 void OpenGLRenderer3D::SwapBuffers() {
-  probeGlSwap.Begin();
   SDL_GL_SwapWindow(window);
-  probeGlSwap.End();
 
   // Screenshots: written straight after the frame is presented, so what lands
   // on disk is exactly what was drawn. Used for offscreen (xvfb) verification.
@@ -271,31 +267,6 @@ void OpenGLRenderer3D::SwapBuffers() {
   WriteRecordedFrame();
   MeasureFrameBrightness();
 
-  // TEMPORARY PROBE - FPSLOG - strip before committing
-  {
-    static const bool fpslog = getenv("GF_FPSLOG") != nullptr;
-    if (fpslog) {
-      using clock = std::chrono::steady_clock;
-      static clock::time_point last = clock::now();
-      static clock::time_point windowStart = last;
-      static std::vector<double> samples;
-      const clock::time_point now = clock::now();
-      samples.push_back(std::chrono::duration<double, std::milli>(now - last).count());
-      last = now;
-      if (std::chrono::duration<double>(now - windowStart).count() >= 5.0) {
-        std::sort(samples.begin(), samples.end());
-        double sum = 0;
-        for (double s : samples) sum += s;
-        const size_t n = samples.size();
-        printf("FPSLOG frames=%zu fps=%.1f mean=%.1fms p50=%.1f p95=%.1f max=%.1f\n", n,
-               1000.0 * n / sum, sum / n, samples[n / 2], samples[(size_t)(n * 0.95)],
-               samples[n - 1]);
-        fflush(stdout);
-        samples.clear();
-        windowStart = now;
-      }
-    }
-  }
 }
 
 namespace {
@@ -1427,8 +1398,6 @@ VertexBufferID OpenGLRenderer3D::CreateVertexBuffer(float* vertices, unsigned in
 
 void OpenGLRenderer3D::UpdateVertexBuffer(VertexBufferID vertexBufferID, float* vertices,
                                           unsigned int verticesDataSize, int dynamicFloats) {
-  probeGlUpload.Begin();
-  struct EndUpload { ~EndUpload() { probeGlUpload.End(); } } endUpload;
   int writeVertexBufferID = vertexBufferID.bufferID;
   int writeVertexArrayID = vertexBufferID.vertexArrayID;
 

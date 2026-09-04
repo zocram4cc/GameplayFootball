@@ -168,15 +168,9 @@ void GameTask::DrainPendingUploads() {
   }
 }
 
-#include "utils/phaseprobe_tmp.hpp"  // TEMPORARY PROBE
-static PhaseProbe probeDrain("gamePut.drainUploads"), probeMatchPut("gamePut.matchPut"),
-    probeSkin("gamePut.skinWait"), probeTotal("gamePut.total");
 void GameTask::PutPhase() {
-  probeTotal.Begin();
-  probeDrain.Begin();
   // Collect last frame's uploads before touching anything they hold.
   DrainPendingUploads();
-  probeDrain.End();
   std::vector<boost::intrusive_ptr<UpdateFullbodyModel>> updateFullbodyModels;
   std::vector<boost::intrusive_ptr<UploadFullbodyModel>> uploadFullbodyModels;
   std::vector<PlayerBase*> playersToProcess;
@@ -193,9 +187,7 @@ void GameTask::PutPhase() {
     match->FetchPutBuffers();
     matchPutBufferMutex.unlock();
 
-    probeMatchPut.Begin();
     match->Put();
-    probeMatchPut.End();
 
     std::vector<Player*> players;
     match->GetActiveTeamPlayers(0, players);
@@ -240,11 +232,9 @@ void GameTask::PutPhase() {
                                  // wait, while mutex locked == no process)
   }
 
-  probeSkin.Begin();
   for (unsigned int t = 0; t < updateFullbodyModels.size(); t++) {
     updateFullbodyModels.at(t)->Wait();
   }
-  probeSkin.End();
 
   if (match) {
     unsigned int playersPerThread = Skinning::BatchSize(
@@ -284,5 +274,4 @@ void GameTask::PutPhase() {
   if (menuScene)
     menuScene->Put();
   menuSceneLifetimeMutex.unlock();
-  probeTotal.End();
 }
