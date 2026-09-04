@@ -20,27 +20,24 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
   const float xy = x * y, xz = x * z, yz = y * z;
   const float wx = w * x, wy = w * y, wz = w * z;
 
-  JointTransform transform;
-  transform.rotation[0] = 1.0f - 2.0f * (yy + zz);
-  transform.rotation[1] = 2.0f * (xy - wz);
-  transform.rotation[2] = 2.0f * (xz + wy);
-  transform.rotation[3] = 2.0f * (xy + wz);
-  transform.rotation[4] = 1.0f - 2.0f * (xx + zz);
-  transform.rotation[5] = 2.0f * (yz - wx);
-  transform.rotation[6] = 2.0f * (xz - wy);
-  transform.rotation[7] = 2.0f * (yz + wx);
-  transform.rotation[8] = 1.0f - 2.0f * (xx + yy);
+  // Row-major rotation, then laid down as columns.
+  const float rotation[9] = {1.0f - 2.0f * (yy + zz), 2.0f * (xy - wz),        2.0f * (xz + wy),
+                             2.0f * (xy + wz),        1.0f - 2.0f * (xx + zz), 2.0f * (yz - wx),
+                             2.0f * (xz - wy),        2.0f * (yz + wx),        1.0f - 2.0f * (xx + yy)};
 
   // R * (v - bind) + posed, gathered into a single translation.
   const float bind[3] = {(float)origPos.coords[0] * zMultiplier,
                          (float)origPos.coords[1] * zMultiplier,
                          (float)origPos.coords[2] * zMultiplier};
+  JointTransform transform;
   for (int row = 0; row < 3; row++) {
-    transform.translation[row] =
+    for (int col = 0; col < 3; col++) transform.column[col][row] = rotation[row * 3 + col];
+    transform.column[3][row] =
         (float)position.coords[row] * zMultiplier -
-        (transform.rotation[row * 3 + 0] * bind[0] + transform.rotation[row * 3 + 1] * bind[1] +
-         transform.rotation[row * 3 + 2] * bind[2]);
+        (rotation[row * 3 + 0] * bind[0] + rotation[row * 3 + 1] * bind[1] +
+         rotation[row * 3 + 2] * bind[2]);
   }
+  for (int col = 0; col < 4; col++) transform.column[col][3] = 0.0f;
   return transform;
 }
 

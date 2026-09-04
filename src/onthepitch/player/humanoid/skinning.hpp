@@ -17,17 +17,25 @@
 
 #include <vector>
 
+#if defined(__SSE2__) || defined(_M_X64)
+#include <xmmintrin.h>
+#endif
+
 #include "base/math/quaternion.hpp"
 #include "base/math/vector3.hpp"
 
 namespace Skinning {
 
 // The affine transform a single joint applies to bind-pose geometry:
-//   positions   p' = rotation * p + translation
-//   directions  d' = rotation * d
-struct JointTransform {
-  float rotation[9];  // row major
-  float translation[3];
+//   positions   p' = M * p + t
+//   directions  d' = M * d
+// stored as four columns of four floats - the three columns of M, then t, each
+// padded with a zero - so that every kernel below is a handful of 4-wide
+// operations: blending a joint in is four multiply-adds, a point is three
+// multiply-adds and an add. The scalar loops this replaced were 104 mulss and 79
+// addss per vertex in the objdump of SkinInto, with SSE2 sitting unused.
+struct alignas(16) JointTransform {
+  float column[4][4];
 };
 
 // The transform for one influence, matching the engine's per-influence
@@ -43,31 +51,69 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
 // call: objdump of UpdateFullbodyModel showed five to eight of them per vertex,
 // with the blended transform spilled to the stack because its address escaped.
 // A body carries 20k-100k vertices and there are 22 of them a frame.
+//
+// SSE2 is the x86-64 baseline, so this needs no -march and runs on every machine
+// the game does; the scalar branch is the same arithmetic for anything else.
+#if defined(__SSE2__) || defined(_M_X64)
+#define SKINNING_SSE 1
+#endif
+
 inline void ZeroTransform(JointTransform& transform) {
-  for (int i = 0; i < 9; i++) transform.rotation[i] = 0.0f;
-  for (int i = 0; i < 3; i++) transform.translation[i] = 0.0f;
+#ifdef SKINNING_SSE
+  const __m128 zero = _mm_setzero_ps();
+  for (int c = 0; c < 4; c++) _mm_store_ps(transform.column[c], zero);
+#else
+  for (int c = 0; c < 4; c++)
+    for (int r = 0; r < 4; r++) transform.column[c][r] = 0.0f;
+#endif
 }
 
 inline void AddWeighted(JointTransform& accumulator, const JointTransform& transform, float weight) {
-  for (int i = 0; i < 9; i++) accumulator.rotation[i] += transform.rotation[i] * weight;
-  for (int i = 0; i < 3; i++) accumulator.translation[i] += transform.translation[i] * weight;
+#ifdef SKINNING_SSE
+  const __m128 w = _mm_set1_ps(weight);
+  for (int c = 0; c < 4; c++) {
+    _mm_store_ps(accumulator.column[c],
+                 _mm_add_ps(_mm_load_ps(accumulator.column[c]),
+                            _mm_mul_ps(_mm_load_ps(transform.column[c]), w)));
+  }
+#else
+  for (int c = 0; c < 4; c++)
+    for (int r = 0; r < 4; r++) accumulator.column[c][r] += transform.column[c][r] * weight;
+#endif
 }
 
+#ifdef SKINNING_SSE
+// M * (x, y, z) as columns: the caller adds the translation column or not.
+inline __m128 Rotate(const JointTransform& transform, const float in[3]) {
+  __m128 out = _mm_mul_ps(_mm_load_ps(transform.column[0]), _mm_set1_ps(in[0]));
+  out = _mm_add_ps(out, _mm_mul_ps(_mm_load_ps(transform.column[1]), _mm_set1_ps(in[1])));
+  return _mm_add_ps(out, _mm_mul_ps(_mm_load_ps(transform.column[2]), _mm_set1_ps(in[2])));
+}
+// Three of the four lanes: the vertex arrays are packed xyz, so a four-float
+// store would tread on the next vertex - or past the end of the array.
+inline void Store3(__m128 v, float out[3]) {
+  _mm_storel_pi(reinterpret_cast<__m64*>(out), v);
+  _mm_store_ss(out + 2, _mm_movehl_ps(v, v));
+}
+#endif
+
 inline void TransformPoint(const JointTransform& transform, const float in[3], float out[3]) {
-  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
-           transform.rotation[2] * in[2] + transform.translation[0];
-  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
-           transform.rotation[5] * in[2] + transform.translation[1];
-  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
-           transform.rotation[8] * in[2] + transform.translation[2];
+#ifdef SKINNING_SSE
+  Store3(_mm_add_ps(Rotate(transform, in), _mm_load_ps(transform.column[3])), out);
+#else
+  for (int r = 0; r < 3; r++)
+    out[r] = transform.column[0][r] * in[0] + transform.column[1][r] * in[1] +
+             transform.column[2][r] * in[2] + transform.column[3][r];
+#endif
 }
 inline void TransformDirection(const JointTransform& transform, const float in[3], float out[3]) {
-  out[0] = transform.rotation[0] * in[0] + transform.rotation[1] * in[1] +
-           transform.rotation[2] * in[2];
-  out[1] = transform.rotation[3] * in[0] + transform.rotation[4] * in[1] +
-           transform.rotation[5] * in[2];
-  out[2] = transform.rotation[6] * in[0] + transform.rotation[7] * in[1] +
-           transform.rotation[8] * in[2];
+#ifdef SKINNING_SSE
+  Store3(Rotate(transform, in), out);
+#else
+  for (int r = 0; r < 3; r++)
+    out[r] = transform.column[0][r] * in[0] + transform.column[1][r] * in[1] +
+             transform.column[2][r] * in[2];
+#endif
 }
 
 // How many bodies to hand one worker thread, so a squad spreads across the whole
