@@ -100,7 +100,51 @@ def bone_segments(joint_positions, parents=None):
     return out
 
 
-def nearest_bone(position, joint_positions, parents=None):
+# How thick each bone is, measured off PES's OWN body rather than guessed: for
+# every vertex of fullbody_pes whose authored weights name a bone, its distance
+# from that bone's span, at the 90th percentile. A cloak hanging beside a
+# player is 0.4 m from the upper arm - well outside the 0.27 m the arm actually
+# clothes - and binding it there is what lifted it into a pair of wings, because
+# the authoring->bind bake rotates the arms 45 degrees up (lcg_2704, 2712).
+BONE_RADIUS = {
+    "head": 0.135, "neck": 0.098, "chest": 0.307, "middle": 0.269,
+    "hip": 0.202, "left_clavicle": 0.094, "right_clavicle": 0.094,
+    "left_shoulder": 0.272, "right_shoulder": 0.272,
+    "left_elbow": 0.256, "right_elbow": 0.256,
+    "left_hand": 0.051, "right_hand": 0.052,
+    "left_thigh": 0.367, "right_thigh": 0.366,
+    "left_knee": 0.343, "right_knee": 0.343,
+    "left_ankle": 0.116, "right_ankle": 0.104,
+}
+# A finger, for the joints the measurement had too few vertices to speak for.
+DEFAULT_BONE_RADIUS = 0.04
+
+# The standing height of the body those radii were measured on, and the height
+# the engine scales every body to at load (HumanoidBase::PrepareFullbodyModel's
+# zMultiplier). A 4cc export runs to two and a half metres, and comparing its
+# vertices against a 1.81 m rig unscaled - which is what this did - puts every
+# limb of a big character outside its own bone, so the joint it lands on is
+# whichever happens to be nearest. The position is scaled into rig space
+# instead; the envelopes are the measured ones.
+MEASURED_BODY_HEIGHT = 1.81
+
+# How far past a bone's measured thickness a vertex may still ride it. The
+# radii are 90th percentiles, so a tenth of PES's own authored skin sits beyond
+# them - a shin vertex scores 1.17 on its own knee - and cutting at 1.0 sent
+# legs to the hip.
+OUTSIDE_ENVELOPE = 2.0
+
+# What carries a vertex outside every envelope: a cape, a skirt hem, a banner, a
+# prop. The trunk, because retarget.PES_ALIGN is identity there - so the
+# authoring->bind bake carries that geometry rather than swinging it, and the
+# arms (which the bake rotates 45 degrees) never take a surface hanging clear of
+# the body. Judged on frames, not on the bind-pose stretch count: that count
+# prefers no rule at all, and the frames it prefers are lcg_2704 with its cape
+# spread into a pair of wings. AGENTS.md settles which one governs.
+TRUNK_BONES = ("hip", "middle", "chest", "neck")
+
+
+def nearest_bone(position, joint_positions, parents=None, model_scale=1.0):
     """-> [(jointID, weight)] from the nearest BONE rather than the nearest joint.
 
     The reason this exists, measured: point distance mixes limbs. A hand hangs
@@ -119,7 +163,21 @@ def nearest_bone(position, joint_positions, parents=None):
     segments = bone_segments(joint_positions, parents)
     if not segments:
         return nearest_joints(position, joint_positions)
-    best = min(segments, key=lambda seg: _point_to_segment(position, seg[3], seg[2])[0])
+    # In rig space, the way the engine will draw it.
+    if model_scale and model_scale != 1.0:
+        position = tuple(c * model_scale for c in position)
+
+    def score(segment):
+        # Relative to what that bone actually clothes, so a thin arm does not
+        # claim a surface a thick torso is closer to in its own terms.
+        distance = _point_to_segment(position, segment[3], segment[2])[0]
+        return distance / BONE_RADIUS.get(segment[0], DEFAULT_BONE_RADIUS)
+
+    best = min(segments, key=score)
+    if score(best) > OUTSIDE_ENVELOPE:
+        trunk = [seg for seg in segments if seg[0] in TRUNK_BONES]
+        if trunk:
+            best = min(trunk, key=lambda seg: _point_to_segment(position, seg[3], seg[2])[0])
     _distance, t = _point_to_segment(position, best[3], best[2])
     child, parent = best[0], best[1]
     # t is measured from the parent end, so a vertex at the parent joint rides
@@ -187,13 +245,13 @@ def rebind_stray(position, mapped, joint_positions):
     return nearest < best_mapped * STRAY_RATIO
 
 
-def vertex_joints(vertex, bone_to_joint, joint_positions=None):
+def vertex_joints(vertex, bone_to_joint, joint_positions=None, model_scale=1.0):
     """-> [(jointID, weight)], the strongest MAX_INFLUENCES, normalized."""
     position = fox_to_gf(vertex.position) if joint_positions else None
 
     if not vertex.boneMapping:
         if position is not None:
-            return nearest_bone(position, joint_positions)
+            return nearest_bone(position, joint_positions, model_scale=model_scale)
         return [(JOINT_ID["middle"], 1.0)]
 
     weights = {}
@@ -206,20 +264,22 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
         weights[joint] = weights.get(joint, 0.0) + weight
 
     if unmapped > 0.0 and position is not None:
-        for joint, weight in nearest_bone(position, joint_positions):
+        for joint, weight in nearest_bone(position, joint_positions,
+                                          model_scale=model_scale):
             weights[joint] = weights.get(joint, 0.0) + weight * unmapped
     elif unmapped > 0.0:
         joint = JOINT_ID["middle"]
         weights[joint] = weights.get(joint, 0.0) + unmapped
 
     if rebind_stray(position, weights.keys(), joint_positions):
-        return nearest_bone(position, body_joint_positions(joint_positions))
+        return nearest_bone(position, body_joint_positions(joint_positions),
+                            model_scale=model_scale)
 
     top = sorted(weights.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
     total = sum(w for _, w in top)
     if total <= 0:
         if position is not None:
-            return nearest_bone(position, joint_positions)
+            return nearest_bone(position, joint_positions, model_scale=model_scale)
         return [(JOINT_ID["middle"], 1.0)]
     return [(j, w / total) for j, w in top]
 
@@ -815,6 +875,13 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                   % (len(meshes) - len(kept), STRAY_DROP_RADIUS))
         meshes = kept
 
+    # The character's own standing height, for scaling the bone envelopes the
+    # weight guess reads (BONE_RADIUS was measured on a 1.81 m body, and these
+    # exports run to two and a half metres).
+    heights = [fox_to_gf(v.position)[2] for m in meshes for v in m.vertices]
+    model_height = (max(heights) - min(heights)) if heights else MEASURED_BODY_HEIGHT
+    model_scale = MEASURED_BODY_HEIGHT / model_height if model_height > 0.1 else 1.0
+
     # One group per source texture.
     #
     # A 4cc character is not one skinned mesh with one skin: it is a dozen
@@ -851,7 +918,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                     uv = vertex.uv[0] if vertex.uv else None
                     skin = ([(force_joint, 1.0)] if force_joint is not None
                             else vertex_joints(vertex, bone_to_joint,
-                                               joint_positions))
+                                               joint_positions,
+                                               model_scale=model_scale))
                     pos = fox_to_gf(vertex.position)
                     color = encode_color(skin)
                     vertices.append((pos, uv, color, skin))

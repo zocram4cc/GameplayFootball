@@ -173,9 +173,76 @@ invalidation the same file warns about. This is the instrument for any reported
 skinning defect; it found Wario intact in eight frames of a sliding
 celebration, which is what closed item 16.
 
+## The skinning defect the owner reported, measured
+
+`gfviewer --anim` was built to look at this, and the first thing it showed was
+that the owner's "dragging verts" is not one model's problem: **144 of the 152
+installed bodies tear at the BIND pose**, where the skin should reproduce the
+mesh exactly. Worst 1293x, on a 2hug body. `skin_probe.py` measures it offline
+in a second per model, so every claim below is a number.
+
+Two causes found and fixed at the importer (`e5c00a7`, and this commit):
+
+1. **A UV seam's two halves were weighted separately.** Same place, two
+   entries, because the two faces need different texture coordinates - and
+   each was guessed on its own, so where two joints tie the tie fell to the
+   last bits of a float. lcg_2709's v16033/v16034 sit at the same millimetre
+   and carried `right_shoulder 0.29` against `right_clavicle 0.29`; the bake
+   moved one 0.15 m and left the other, stretching a 0.5 mm edge 315x.
+   `seams.weld` makes coincident vertices agree.
+2. **A weight was guessed from the nearest joint POINT.** 4cc packs a whole
+   character into the boots slot, so most of these meshes carry no bone mapping
+   at all. A hand hangs beside a hip, so a torso vertex at the waist came out
+   `right_hand 0.44 / right_elbow 0.31 / right_thigh 0.25`.
+   `fmdl_to_fullbody.nearest_bone` reads the distance to a bone SPAN, relative
+   to how thick that bone measurably is (`BONE_RADIUS`, the 90th percentile
+   distance of PES's own authored skin from each bone), compares in the rig
+   space the engine draws in (a 2.5 m export against a 1.81 m rig put every
+   limb outside its own bone), and blends only one bone's two ends - so a
+   surface can slide along a limb but never between two limbs.
+
+Measured, lcg_2709: **315.9x / 2068 torn edges installed -> 16.2x / 964** with
+both fixes. The giant shards fanning out of the model are gone from the frame
+(`tmp/lcg_fix.png`, `tmp/f_sheet.png`).
+
+### Dead ends - measured, not argued
+
+* **Smoothing a torn vertex over its neighbours** (hdg_XXX23 373x -> **418x**):
+  the average of a hand and a chest is itself a cross-limb blend.
+* **Rebinding torn vertices to their nearest bone after the fact**
+  (2hug_1869 88x -> **2502x**): at the bind pose the bake is the only thing
+  that moves a vertex, so changing one vertex's weights moves it away from
+  neighbours that were not changed. Weights have to be right BEFORE the bake.
+* **"Nothing tears without the bake"** - true and useless: with no bake every
+  joint transform is identity at the bind pose, so the metric reads 1.00x by
+  construction. It measures bake consistency, not correctness.
+* **Welding on a rounded coordinate**: two points 0.5 mm apart can sit either
+  side of a 1 mm cell boundary, so it welded nothing. Unions over neighbouring
+  cells now.
+* **AGENTS.md's T-pose health check on the legacy body**: `fullbody.ase` droops
+  30 degrees under it and `fullbody_pes.ase` is a perfect T-pose
+  (`tmp/tp_pes_row.png`). The check holds for PES-derived bodies only - the
+  legacy body is authored in GF's own pose, so PES's authoring pose is the
+  wrong ruler for it.
+
 ## STILL TO BE DONE (mine, end of 04-09)
 
-1. **Wario's T-pose check reads arms ~25 degrees above horizontal**
+1. **Three lcg characters still render deformed** after both fixes
+   (`tmp/trunk_ba.png`: lcg_2709 banded, lcg_2704's cape spread wide,
+   lcg_2713's sleeves fanned). What is left looks like the remaining
+   assumption: the authoring->bind bake treats every mesh as authored in PES's
+   RENDER bind (arms 45 degrees down), and a 4cc character modelled in some
+   other pose is sheared by it - the arms rotate 45 degrees and take any
+   surface bound near them. The bind-pose stretch count and the frame disagree
+   about the cure (the count prefers no trunk rule; the frame prefers the cape
+   attached to the trunk), and per AGENTS.md the frame governs, which is how it
+   is set. Next: measure each model's own authoring pose - for a mesh with a
+   real bone mapping, compare the mapped bone's bind position against the
+   vertex cloud; for one without, fit the arm direction from the geometry - and
+   bake from THAT pose rather than from PES's. `hdg_2402` proves the chain is
+   right when the pose matches (`tmp/f_sheet.png`, clean cloaked figure).
+   Not blocked; needs the packs, which are extracted under `tmp/inputs/packs`.
+2. **Wario's T-pose check reads arms ~25 degrees above horizontal**
    (`tmp/wt_pair.png`, `gfviewer .../fullbody_smg_2579.ase --anim
    media/animations/straight.anim.util --shots 2`). AGENTS.md's rule says a
    perfect T-pose. It may be the character's own art - he is a chibi model with

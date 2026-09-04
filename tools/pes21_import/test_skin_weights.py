@@ -145,9 +145,9 @@ class NearestBoneNeverMixesLimbs(unittest.TestCase):
         self.bind = retarget.gf_world_bind()
         self.names = {i: n for n, i in retarget.JOINT_ID.items()}
 
-    def joints(self, position):
+    def joints(self, position, model_scale=1.0):
         return {self.names[j] for j, _ in
-                f.nearest_bone(position, self.bind)}
+                f.nearest_bone(position, self.bind, model_scale=model_scale)}
 
     def test_a_waist_vertex_beside_the_hand_stays_on_the_body(self):
         named = self.joints((-0.539, 0.186, 0.923))
@@ -155,8 +155,25 @@ class NearestBoneNeverMixesLimbs(unittest.TestCase):
                          "the arm took a torso vertex: %s" % named)
 
     def test_a_shin_vertex_stays_on_the_leg(self):
-        named = self.joints((0.47, 0.121, 0.382))
+        # Off lcg_2709, a 2.56 m character: its own coordinates, and the scale
+        # the engine will draw it at (MEASURED_BODY_HEIGHT / its height).
+        named = self.joints((0.47, 0.121, 0.382), model_scale=1.81 / 2.56)
         self.assertTrue(named <= {"left_knee", "left_ankle", "left_thigh"}, named)
+
+    def test_a_cape_hanging_clear_of_the_body_is_carried_by_the_trunk(self):
+        # Anywhere else and the bake swings it: the arms rotate 45 degrees
+        # between the authoring pose and the rig, which is what spread
+        # lcg_2704's cape into a pair of wings.
+        named = self.joints((0.95, -0.55, 1.35))
+        self.assertTrue(named & set(f.TRUNK_BONES), named)
+
+    def test_a_thick_torso_beats_a_thin_arm_at_equal_distance(self):
+        # The radii are what make this work: a surface a third of a metre from
+        # both the spine and the upper arm belongs to the spine, which clothes
+        # 0.31 m of skin, not to the arm, which clothes 0.27 m at a quarter of
+        # the mass.
+        named = self.joints((0.30, -0.30, 1.20))
+        self.assertFalse(named & {"left_hand", "right_hand"}, named)
 
     def test_a_fingertip_still_lands_on_its_finger(self):
         named = self.joints(tuple(self.bind["left_index_dip"]))
