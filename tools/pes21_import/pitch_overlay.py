@@ -328,7 +328,14 @@ def main():
             for face in mesh.faces:
                 corners = [(v.position.x * scale_x, -v.position.z * scale_y)
                            for v in face.vertices]
-                uvs = [(v.uv[0].u, v.uv[0].v) if v.uv else (0.0, 0.0) for v in face.vertices]
+                # V flipped, the same way every other converter here reads an
+                # fmdl UV (stadium_to_gf, fmdl_to_fullbody): PES's texture origin
+                # is the top-left, the image's is too, but the mesh's V runs the
+                # other way - sampled straight, every decal came out mirrored
+                # vertically in place. The pitch layout hid it (a pitch is
+                # symmetric); the centre-circle crest did not (owner, 04-09).
+                uvs = [(v.uv[0].u, 1.0 - v.uv[0].v) if v.uv else (0.0, 0.0)
+                       for v in face.vertices]
                 rasterise_triangle(pixels, args.width, args.height, corners, uvs, sampler)
             drawn += 1
             print("  painted mesh %d (%s) over %d triangle(s)" % (index, kind, len(mesh.faces)))
