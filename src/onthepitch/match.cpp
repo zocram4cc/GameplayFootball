@@ -2106,10 +2106,6 @@ void Match::ApplyStandoff(const void* shot, int cut, const Vector3& forward, flo
   }
   standoffLastSeconds = now;
   if (standoffPush > 0.0f) eye -= forward * standoffPush;
-  if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
-    printf("CAMLOG t=%.2f cut=%d push=%.2f want=%.2f pos=%.3f,%.3f,%.3f cat=%s\n",
-           GetEntranceElapsedSeconds(), cut, standoffPush, push, eye.coords[0], eye.coords[1],
-           eye.coords[2], activeCutsceneCategory.c_str());
 }
 
 Vector3 Match::ComputeStagingOffset() const {
