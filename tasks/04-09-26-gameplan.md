@@ -345,21 +345,23 @@ highlighted (`tmp/plan2/m1_full.png` - FUCK LUIGI, CF lit among the ten).
    either drop meshes sitting entirely above head height, or - better, and what
    PES does - draw a player at the height his database row gives instead of
    scaling every model to 1.81 m. Not blocked.
-3. **The in-match sheet has been monkeyed but not DRAGGED under ASan.** The
-   monkey opened it during a match and hammered 1200 random taps with no crash
-   (release) and one crash found and fixed (ASan, `settings.cpp`), but the
-   owner's report was a crash on RELEASING a drag, and a random walk does not
-   reliably complete a grab/move/drop cycle. Next: a scripted grab/move/drop
-   loop inside the in-match sheet under ASan, which is `plan_swap.config`'s
-   script with the pause-menu prologue in front of it. Not blocked.
-4. **/vn/ has no per-player art at all** and its portraits are therefore 23
-   copies of one render. Its 23 models are the same mesh, the same body.png and
-   the same star `*_face.png`; nothing in the installed data distinguishes the
-   players. Next: nothing, until somebody has the /vn/ pack - then
-   `import_team.py <pack>` writes the real portraits and models, and
-   `render_portraits.py` leaves those alone.
-
+3. **/vn/ has no per-player art at all** and its portraits are therefore 23
+   copies of one render. Its 23 models are the same mesh (68,322 vertices,
+   identical bounds), the same body.png, and each per-player `*_face.png` is
+   the same blue star; nothing in the installed data distinguishes the players.
+   Next: nothing, until somebody has the /vn/ pack - then
+   `import_team.py <pack>` writes the real portraits and models and
+   `render_portraits.py` leaves them alone.
 ### Resolved since the list was first written
+
+* **The roles submenu over the opponent's sheet** - a submenu takes the button
+  column's cell, and the opponent's sheet sits under that cell, so the ten role
+  rows drew across the other team's pitch. The sheet is hidden while a submenu
+  is open and comes back with the column (`tmp/plan2/submenu_ba.png`).
+* **The in-match sheet's drag under ASan** - done. Four grab/move/drop cycles
+  and an abandoned drag inside the sheet during a match, ASan clean
+  (`tmp/live_drag2.log`, `tmp/plan2/drag_row.png`), after the monkey's 1200
+  random taps in the same place found and fixed the settings crash above.
 
 * **Wario's T-pose check** - not a defect. AGENTS.md's health check holds for
   PES-derived bodies: `fullbody_pes.ase` renders a perfect T-pose and the

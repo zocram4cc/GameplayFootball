@@ -181,6 +181,11 @@ void GamePlanPage::OnClose() {
 }
 
 void GamePlanPage::Deactivate() {
+  // A submenu takes the button column's cell, which is where the opponent's
+  // sheet sits under it - so the ten role rows drew straight over the other
+  // team's pitch. It comes back when the submenu closes.
+  if (opponentLabel) opponentLabel->Hide();
+  if (opponentMap) opponentMap->Hide();
   if (tearingDown || !gridNav) return;
   // Only ever the button column: a submenu that has taken the cell owns its
   // own removal (GamePlanSubMenu::ProcessWindowingEvent), and detaching it
@@ -191,6 +196,11 @@ void GamePlanPage::Deactivate() {
 void GamePlanPage::Reactivate(Gui2View* focusTarget) {
   lineupMode = false;
   ShowBrowsingHints();
+  if (opponentLabel) opponentLabel->Show();
+  if (opponentMap) {
+    opponentMap->Show();
+    opponentMap->ShowAllChildren();
+  }
   // A submenu closing during the page's teardown must not put the column back:
   // the grid it would go into is mid-delete, and gridNav itself may already be
   // gone (OnClose owns it once it is detached).
