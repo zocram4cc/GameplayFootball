@@ -258,6 +258,10 @@ void GamePlanPage::BuildOpponentSheet() {
                      Localization::GetInstance().Translate("gameplan_switch_team"));
   buttonSwitchTeam->sig_OnClick.connect([this](...) { SwitchTeam(); });
   gridNav->AddView(buttonSwitchTeam, 6, 0);
+  // Shown by hand: the page's grid was already Show()n by the time the
+  // opponent's sheet is built, and Gui2View::Show does not recurse into
+  // children - so this row existed, navigated and was invisible.
+  buttonSwitchTeam->Show();
   gridNav->UpdateLayout(0.5);
   grid->UpdateLayout(0.0);
 }
