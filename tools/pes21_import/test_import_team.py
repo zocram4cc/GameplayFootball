@@ -150,6 +150,49 @@ class ASidekickIsNotTheBody(unittest.TestCase):
         self.assertTrue(import_team._off_the_rig(self._Mesh((0.7, -1.5))))
 
 
+class TheFacesFolderNamesTheShirt(unittest.TestCase):
+    """Boots are keyed by export id and Faces by shirt; the player's name ties them,
+    and it has to win over the digits: LCG's boots run one behind its shirts from
+    8 on, and SMBG's k2576..k2593 are nobody's shirt at all."""
+
+    def setUp(self):
+        self.pack = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.pack))
+        for folder, files in (("XXX08 - Papa Don", ()), ("XXX09 - Dante", ("face_high.fmdl",)),
+                              ("XXX02 - Lobby doko", ("face_high.fmdl",)),
+                              ("XXX04 - Wario Land 4", ()),
+                              ("XXX17 - Yoshit", ("face_high.fmdl", "hair_high.fmdl")),
+                              ("XXX06- Miyamoto", ("face_high.fmdl",))):
+            path = os.path.join(self.pack, "Faces", folder)
+            os.makedirs(path)
+            for name in files + ("portrait.dds",):
+                open(os.path.join(path, name), "wb").close()
+
+    def test_the_name_wins_over_the_digits(self):
+        self.assertEqual(import_team.export_shirt(self.pack, "2708", "Dante"), 9)
+        self.assertEqual(import_team.export_shirt(self.pack, "2579", "Wario Land 4"), 4)
+
+    def test_the_digits_decide_when_no_name_matches(self):
+        self.assertEqual(import_team.export_shirt(self.pack, "2402", "Helldiver Headless"), 2)
+
+    def test_a_shirt_the_pack_has_no_face_for_falls_back_to_the_digits(self):
+        self.assertEqual(import_team.export_shirt(self.pack, "2411", "Helldiver"), 11)
+
+    def test_the_face_comes_from_the_folder_that_names_him(self):
+        [face] = import_team.find_face(self.pack, "2708", "Dante")
+        self.assertTrue(face.endswith("XXX09 - Dante/face_high.fmdl"))
+
+    def test_head_only_players_are_the_face_folders_no_boots_claim(self):
+        players = import_team.find_face_players(self.pack, taken_shirts={2, 9})
+        self.assertEqual([(export_id, name) for export_id, name, _ in players],
+                         [("XXX06", "Miyamoto"), ("XXX17", "Yoshit")])
+        self.assertTrue(players[1][2].endswith("XXX17 - Yoshit/face_high.fmdl"))
+
+    def test_a_face_token_is_a_shirt_too(self):
+        self.assertEqual(import_team.shirt_number("XXX08"), 8)
+        self.assertEqual(import_team.shirt_number("2411"), 11)
+
+
 class BasePartsToDrop(unittest.TestCase):
     """Which of the stock body's parts a composited import replaces.
 

@@ -786,7 +786,8 @@ void HumanoidBase::BuildBodyLod(float cell) {
   bodyLodGeometry = boost::static_pointer_cast<Geometry>(
       ObjectFactory::GetInstance().CreateObject(full->GetName() + "_lod", e_ObjectType_Geometry));
   scene3D->CreateSystemObjects(bodyLodGeometry);
-  bodyLodGeometry->SetLocalMode(e_LocalMode_Absolute);
+  // Relative to fullbodyNode, exactly as "fullbody" is: the skin is written in the
+  // node's frame and the node carries the body's position.
   bodyLodGeometry->SetGeometryData(lodData);
   bodyLodGeometry->Disable();  // the full body shows until the camera is far
   fullbodyNode->AddObject(bodyLodGeometry);

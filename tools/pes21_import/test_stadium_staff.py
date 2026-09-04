@@ -220,59 +220,29 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class ABannerLyingOnThePitch(unittest.TestCase):
-    """PES's centre-circle banner came out a dark disc on the grass.
+class FoxWindingIsReversed(unittest.TestCase):
+    """Fox winds clockwise-front; this engine culls GL-style.
 
-    Its four flag faces are flat, they lie a few centimetres above the pitch, and
-    their winding gives a geometric normal of -0.99 in z: they face straight down.
-    PES does not mind - it draws them from its own material - but this engine
-    derives a mesh's lighting from the winding that was written, so the printed
-    side of the banner was lit as though it faced away from the sky and came out
-    black, competition emblem and all.
-
-    A flat thing lying on a pitch is there to be seen from above, so its winding is
-    reversed on the way in. Only that case: a wall is flat too, and a solid has
-    faces pointing every way.
+    Every face of every PES prop, staff figure and bearer measures wound against its
+    own authored normal, so written as they came the engine culled each prop's near
+    side and drew its far side from behind - the corner flag's back sheet, the
+    tunnel arch's badge mirrored, the flat banner lit from underneath. The fix is
+    the one fmdl_to_fullbody already carries: reverse every face on the way in.
     """
 
-    def _quad(self, up):
-        # a metre of ground, wound so its normal points up or down
-        v = [(0.0, 0.0, 0.02), (1.0, 0.0, 0.02), (1.0, 1.0, 0.02), (0.0, 1.0, 0.02)]
-        f = [(0, 1, 2), (0, 2, 3)] if up else [(2, 1, 0), (3, 2, 0)]
-        return v, f
+    def test_every_face_is_reversed(self):
+        corners = [((0.0, 0.0, 1.0), (0.0, 0.0)), ((1.0, 0.0, 1.0), (1.0, 0.0)),
+                   ((0.0, 1.0, 1.0), (0.0, 1.0)), ((1.0, 1.0, 1.0), (1.0, 1.0))]
+        text = _figure_text(_Mesh(corners, [(0, 1, 2), (1, 3, 2)]))
+        self.assertIn("*MESH_FACE 0:    A: 0 B: 2 C: 1", text)
+        self.assertIn("*MESH_FACE 1:    A: 1 B: 2 C: 3", text)
 
-    def test_a_face_up_banner_is_left_alone(self):
-        v, f = self._quad(up=True)
-        self.assertFalse(stadium_staff.wants_winding_flipped(v, f))
-
-    def test_a_face_down_banner_is_turned_over(self):
-        v, f = self._quad(up=False)
-        self.assertTrue(stadium_staff.wants_winding_flipped(v, f))
-
-    def test_a_wall_is_left_alone(self):
-        # flat, but vertical: which way it faces is the model's business
-        v = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 2.0), (0.0, 0.0, 2.0)]
-        for f in ([(0, 1, 2), (0, 2, 3)], [(2, 1, 0), (3, 2, 0)]):
-            self.assertFalse(stadium_staff.wants_winding_flipped(v, f))
-
-    def test_a_solid_is_left_alone(self):
-        # a closed box: its faces point every way, so there is nothing to turn over
-        v = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
-             (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)]
-        f = [(0, 1, 2), (0, 2, 3), (4, 6, 5), (4, 7, 6), (0, 4, 5), (0, 5, 1),
-             (2, 6, 7), (2, 7, 3), (1, 5, 6), (1, 6, 2), (0, 3, 7), (0, 7, 4)]
-        self.assertFalse(stadium_staff.wants_winding_flipped(v, f))
-
-    def test_the_big_faces_decide_it(self):
-        # A banner with a tiny upward-facing tab does not stop being a banner: the
-        # judgement is by area, not by face count.
-        v = [(0.0, 0.0, 0.02), (4.0, 0.0, 0.02), (4.0, 4.0, 0.02), (0.0, 4.0, 0.02),
-             (0.0, 0.0, 0.05), (0.1, 0.0, 0.05), (0.1, 0.1, 0.05)]
-        f = [(2, 1, 0), (3, 2, 0), (4, 5, 6)]
-        self.assertTrue(stadium_staff.wants_winding_flipped(v, f))
-
-    def test_nothing_is_left_alone(self):
-        self.assertFalse(stadium_staff.wants_winding_flipped([], []))
+    def test_the_uvs_follow_their_corners(self):
+        corners = [((0.0, 0.0, 1.0), (0.1, 0.0)), ((1.0, 0.0, 1.0), (0.2, 0.0)),
+                   ((0.0, 1.0, 1.0), (0.3, 0.0))]
+        text = _figure_text(_Mesh(corners, [(0, 1, 2)]))
+        tverts = re.findall(r'\*MESH_TVERT \d+\t([-\d.]+)\t', text)
+        self.assertEqual([float(u) for u in tverts], [0.1, 0.3, 0.2])
 
 
 class _Vec:

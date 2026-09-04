@@ -75,10 +75,27 @@ def nearest_joints(position, joint_positions, count=3, falloff=0.35):
 # the mapping is treated as a slot artifact rather than authoring. A hand's
 # width: healthy skin binds a vertex to a joint it is practically touching.
 STRAY_BINDING = 0.15
+# And the joint that takes it over has to be clearly closer, not merely closer.
+# Wario (smbg k2579) is a 2.46 m character with a belly 0.44 m out: his hip
+# vertices sit 0.58 m from the hip they are mapped to and 0.57 m from a
+# fingertip of the hand hanging beside them, and by "closer" alone 419 of them
+# went to the fingers - which HandRig curls and the arm swings every frame, so
+# in a cutscene his flanks stretched off after his hands. A shin mapped to the
+# foot is 0.02 m from the knee and 0.38 m from the ankle; that is a stray.
+STRAY_RATIO = 0.5
+# The first joints of GF_JOINT_ORDER are the body; everything after is a finger.
+# A vertex a pack mapped to a body bone never belongs on a finger by proximity.
+BODY_JOINT_COUNT = 20
+
+
+def body_joint_positions(joint_positions):
+    """-> the rig's positions without the fingers."""
+    return {name: pos for name, pos in joint_positions.items()
+            if JOINT_ID.get(name, BODY_JOINT_COUNT) < BODY_JOINT_COUNT}
 
 
 def rebind_stray(position, mapped, joint_positions):
-    """-> True when a vertex's mapped joints are all far and a closer one exists.
+    """-> True when a vertex's mapped joints are all far and a body joint is much closer.
 
     4cc packs a whole character into the *boots* slot, so the export's bone
     mapping is whatever that slot allows. Measured on the SMBG pack: the only
@@ -90,7 +107,8 @@ def rebind_stray(position, mapped, joint_positions):
     Nothing in that source says "knee", so there is no mapping to honour: the
     geometry's own position is the only truth about which joint owns it, and
     that is what nearest_joints reads. A healthy model is untouched, because
-    its vertices sit on the joints they are mapped to.
+    its vertices sit on the joints they are mapped to - or, on a big character,
+    at least no further from them than from anything else (STRAY_RATIO).
     """
     if position is None or not mapped:
         return False
@@ -101,8 +119,11 @@ def rebind_stray(position, mapped, joint_positions):
         default=None)
     if best_mapped is None or best_mapped <= STRAY_BINDING:
         return False
-    nearest = min(math.dist(position, pos) for pos in joint_positions.values())
-    return nearest < best_mapped
+    body = body_joint_positions(joint_positions)
+    if not body:
+        return False
+    nearest = min(math.dist(position, pos) for pos in body.values())
+    return nearest < best_mapped * STRAY_RATIO
 
 
 def vertex_joints(vertex, bone_to_joint, joint_positions=None):
@@ -131,7 +152,7 @@ def vertex_joints(vertex, bone_to_joint, joint_positions=None):
         weights[joint] = weights.get(joint, 0.0) + unmapped
 
     if rebind_stray(position, weights.keys(), joint_positions):
-        return nearest_joints(position, joint_positions)
+        return nearest_joints(position, body_joint_positions(joint_positions))
 
     top = sorted(weights.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
     total = sum(w for _, w in top)

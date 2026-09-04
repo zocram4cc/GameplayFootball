@@ -2037,9 +2037,15 @@ static const float kStandoffReturnMetresPerSecond = 0.6f;
 // is. GeometryData caches the bind-pose box and the node only moves and turns
 // it, so the half-width is a stable per-model figure - 2.4 m across for a 4cc
 // Wario, 0.5 for a PES man - not a per-pose one.
+// The "fullbody" geometry itself, not the node: the node also carries the
+// coarse LOD copy, an absolute-mode object that sits at the origin while it is
+// off, and the union of the two spanned the pitch - a 30 m "body" that pushed
+// every foul camera 14-20 m off its mark (m2 capture).
 static bool StandoffBody(HumanoidBase* humanoid, CameraStandoff::Body& body) {
   if (!humanoid || !humanoid->GetFullbodyNode()) return false;
-  const AABB box = humanoid->GetFullbodyNode()->GetAABB();
+  boost::intrusive_ptr<Object> mesh = humanoid->GetFullbodyNode()->GetObject("fullbody");
+  if (!mesh) return false;
+  const AABB box = mesh->GetAABB();
   const Vector3 span = box.maxxyz - box.minxyz;
   if (span.coords[0] <= 0.0f || span.coords[1] <= 0.0f) return false;
   body.position = Vector3((box.minxyz.coords[0] + box.maxxyz.coords[0]) * 0.5f,
@@ -2446,8 +2452,13 @@ void Match::StartCutsceneChoreo(const std::string& category) {
   cutsceneOfficialCast.clear();
   auto pool = cutsceneChoreoPools.find(category);
   if (pool == cutsceneChoreoPools.end() || pool->second.empty()) {
+    // A referee's decision without a staging of its own borrows the category's:
+    // every foul pack stages the same people about the same spot. Nothing else
+    // does - PES's flat "timeup" directory holds the full-time reactions beside
+    // the half-time walk-off, and borrowing put twenty-one men celebrating a win
+    // under the interval camera at 45:00 (m2 capture).
     const size_t slash = category.find('/');
-    if (slash == std::string::npos) return;
+    if (slash == std::string::npos || category.compare(0, slash, "foul") != 0) return;
     pool = cutsceneChoreoPools.find(category.substr(0, slash));
     if (pool == cutsceneChoreoPools.end() || pool->second.empty()) return;
   }
@@ -3721,11 +3732,6 @@ void Match::UpdateIngameCamera() {
       cameraFOV = frame.fov;
       cameraNearCap = std::max(0.1f, frame.nearPlane);
       cameraFarCap = frame.farPlane;
-      if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
-        printf("CUTLOG cat=%s el=%lu clock=%lu pos=%.3f,%.3f,%.3f fov=%.1f anchor=%s\n",
-               activeCutsceneCategory.c_str(), cutsceneElapsed_ms, actualTime_ms,
-               cameraNodePosition.coords[0], cameraNodePosition.coords[1], cameraNodePosition.coords[2],
-               cameraFOV, CutsceneViewer::AnchoringName(activeCutsceneAnchoring));
       // Where the camera ended up relative to the incident it is filming. The
       // one number that says whether an incident-local shot was placed at the
       // challenge or left sitting by the centre spot ("debug_cutscene_report").
@@ -3885,49 +3891,7 @@ void Match::UpdateIngameCamera() {
           const Vector3 forward = aim * Vector3(0, 0, -1);
           ApplyStandoff(namedShot, namedShot->CutIndexAt(shotFrame), forward, kPrematchLensClearance,
                         cameraNodePosition);
-          if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
-            printf("CAMLOG t=%.2f cut=%d push=%.2f pos=%.3f,%.3f,%.3f auth=%.3f,%.3f,%.3f fwd=%.2f,%.2f,%.2f\n",
-                   GetEntranceElapsedSeconds(), namedShot->CutIndexAt(shotFrame), standoffPush,
-                   cameraNodePosition.coords[0], cameraNodePosition.coords[1], cameraNodePosition.coords[2],
-                   frame.position[0] + stagingOffset.coords[0], frame.position[1] + stagingOffset.coords[1], frame.position[2],
-                   forward.coords[0], forward.coords[1], forward.coords[2]);
-        }
-        cameraNodeOrientation = QUATERNION_IDENTITY;
-        cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
-                              frame.rotation[3]);
-        cameraFOV = frame.fov;
-        cameraNearCap = std::max(0.1f, frame.nearPlane);
-        cameraFarCap = frame.farPlane;
-        RememberPrematchCamera();
-        return;
-      }
 
-      if (want == PrematchTimeline::Camera::Entrance) {
-        // The imported shots are spread across the entrance beats only, so a
-        // lineup graphic holding the picture does not eat into the walkout's
-        // camerawork.
-        // Played at the rate it was authored at, one track after another. These
-        // tracks are montages: the cut table in a .fdc changes shot every 100
-        // frames and the export carries those cuts as jumps in the track, three
-        // and a third seconds apart. Sampling them by how far through the
-        // presentation we are - which is what this did - stretched a hundred
-        // seconds of cutting over the whole sequence, so no cut ever landed and
-        // every shot drifted instead.
-        float elapsed = GetEntranceElapsedSeconds();
-        const CamTrack* shot = introShots.empty() ? &introCamTrack : &introShots.front();
-        for (const CamTrack& candidate : introShots) {
-          const float duration = candidate.GetDurationSeconds();
-          if (elapsed <= duration || &candidate == &introShots.back()) {
-            shot = &candidate;
-            break;
-          }
-          elapsed -= duration;
-        }
-        if (shot->GetFrameCount() > 0) {
-          const float shotFrame = clamp(elapsed * kPrematchShotFrameRate, 0.0f,
-                                        (float)shot->GetTimelineFrameCount());
-          CamTrackFrame frame = shot->SampleTimeline(shotFrame);
-          cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
           cameraNodeOrientation = QUATERNION_IDENTITY;
           cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
                                 frame.rotation[3]);
