@@ -224,3 +224,61 @@ class WeightsNotColours(unittest.TestCase):
         out = seams.reconcile(parts)
         for part in out:
             self.assertIn(finger, dict(part[0][1]))
+
+
+class WeldsCoincidentVertices(unittest.TestCase):
+    """A UV seam duplicates a vertex; both halves must skin the same way.
+
+    Measured on lcg_2709: two vertices at the same millimetre carried
+    `right_shoulder 0.29` and `right_clavicle 0.29`, and the bind-pose bake
+    moved one 0.15 m and left the other - a 0.5 mm edge stretched 315x, drawn
+    as a shard fanning out of the model.
+    """
+
+    def test_duplicates_in_one_part_end_up_identical(self):
+        part = [((0.0, 0.0, 2.2), [(1, 0.4), (2, 0.6)]),
+                ((0.0, 0.0, 2.2), [(1, 0.4), (3, 0.6)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], welded[1][1])
+
+    def test_the_agreed_weights_are_the_sum_of_both(self):
+        part = [((0.0, 0.0, 1.0), [(7, 1.0)]),
+                ((0.0, 0.0, 1.0), [(9, 1.0)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(dict(welded[0][1]), {7: 0.5, 9: 0.5})
+
+    def test_a_vertex_a_millimetre_away_is_left_alone(self):
+        part = [((0.0, 0.0, 1.0), [(7, 1.0)]),
+                ((0.0, 0.0, 1.05), [(9, 1.0)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], [(7, 1.0)])
+        self.assertEqual(welded[1][1], [(9, 1.0)])
+
+    def test_positions_and_order_survive(self):
+        part = [((0.1, 0.2, 0.3), [(1, 1.0)]), ((0.4, 0.5, 0.6), [(2, 1.0)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual([p for p, _ in welded], [p for p, _ in part])
+
+    def test_a_pair_straddling_a_grid_boundary_still_welds(self):
+        # lcg_2709's own numbers: 0.52 mm apart, either side of a 1 mm cell
+        # edge. Bucketing on a rounded coordinate welded neither.
+        part = [((-0.150000, 0.110000, 2.200000), [(5, 0.29)]),
+                ((-0.150520, 0.110000, 2.200000), [(7, 0.29)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], welded[1][1])
+
+    def test_a_chain_of_duplicates_ends_up_in_one_group(self):
+        part = [((0.0, 0.0, 0.0), [(1, 1.0)]),
+                ((0.0006, 0.0, 0.0), [(2, 1.0)]),
+                ((0.0012, 0.0, 0.0), [(3, 1.0)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], welded[2][1])
+
+    def test_two_surfaces_sharing_no_bone_are_left_alone(self):
+        # A fingertip resting against a thigh is 2 mm from it and is not the
+        # same place on the body.
+        part = [((0.0, 0.0, 1.0), [(4, 1.0)]),
+                ((0.0, 0.0, 1.002), [(41, 1.0)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], [(4, 1.0)])
+        self.assertEqual(welded[1][1], [(41, 1.0)])

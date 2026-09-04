@@ -153,6 +153,11 @@ struct Options {
   // is the mode AGENTS.md's health check calls for
   // (--anim media/animations/straight.anim.util must render a perfect T-pose).
   std::string anim;
+  // Treat the model as authored in the rig's own pose rather than PES's render
+  // bind: no authoring->bind bake. Every installed 4cc body tears with the bake
+  // and none without it (skin_probe.py), so this is how to see which pose a
+  // model is really authored in.
+  bool noBake = false;
 };
 
 Options Parse(int argc, const char** argv) {
@@ -172,6 +177,7 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--body" && hasNext) options.body = argv[++i];
     else if (arg == "--authored-camera") options.authoredCamera = true;
     else if (arg == "--anim" && hasNext) options.anim = argv[++i];
+    else if (arg == "--no-bake") options.noBake = true;
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -749,6 +755,8 @@ class CutsceneTask : public IUserTask {
 // One model, one clip: the health check AGENTS.md asks for, and the instrument
 // for any reported skinning defect.
 int PlayAnim(const Options& options, std::shared_ptr<Scene3D> scene3D) {
+  if (options.noBake)
+    ViewerSkinnedModel::authoringPose = "media/animations/straight.anim.util";
   Animation clip;
   clip.Load(options.anim);
   if (clip.GetFrameCount() <= 0) {

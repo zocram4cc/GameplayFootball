@@ -35,6 +35,13 @@ class ViewerSkinnedModel {
   // which is one skin for two actors and a crash in the second Prepare.
   bool Load(const std::string& modelPath, std::shared_ptr<Scene3D> scene,
             const std::string& postfix = "skinned");
+
+  // Which pose the mesh is treated as authored in. The engine bakes every body
+  // from PES's render bind (base.anim.util) onto the T-pose rig; a mesh that is
+  // NOT authored in that pose comes out sheared, and the offline probe measures
+  // exactly that (skin_probe.py: every installed model tears with the bake and
+  // none without it). Pointing this at straight.anim.util is "no bake".
+  static std::string authoringPose;
   void Pose(Animation* anim, int frame, Vector3 basePos = Vector3(0),
             radian baseYaw = 0, bool noPos = false);
   void PoseChoreo(Animation* anim, int frame, Vector3 pos, radian yaw);

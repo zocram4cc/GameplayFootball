@@ -948,8 +948,16 @@ def assemble(args):
         # at once, because a seam is between parts by definition.
         before = [[(v[0], v[4]) for v in vertices]
                   for _, vertices, _, _ in built]
-        agreed = seams.reconcile(before)
-        changed, migrated = seams.reconciled_count(before, agreed)
+        # Welded first: a UV seam duplicates a vertex inside one shell, and
+        # reconcile() only looks across shells, so those duplicates kept two
+        # different guesses and tore at the bind pose (seams.weld).
+        agreed = seams.weld(before)
+        welded, _ = seams.reconciled_count(before, agreed)
+        if welded:
+            print("  seams: %d coincident vertex weight(s) welded" % welded)
+        reconciled = seams.reconcile(agreed)
+        changed, migrated = seams.reconciled_count(agreed, reconciled)
+        agreed = reconciled
         print("  seams: %d vertex weight(s) reconciled between parts, %d changed bone"
               % (changed, migrated))
         skins = []
