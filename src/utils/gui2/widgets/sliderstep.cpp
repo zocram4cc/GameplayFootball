@@ -16,7 +16,7 @@ int IndexFor(float value, int steps) {
 }
 
 std::string Label(float value, int steps) {
-  if (!DrawsTicks(steps)) return "";
+  if (steps < 2 || steps > kMaxCountedSteps) return "";
   return std::to_string(IndexFor(value, steps)) + "/" + std::to_string(steps);
 }
 

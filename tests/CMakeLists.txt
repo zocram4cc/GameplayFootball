@@ -377,6 +377,7 @@ gtest_discover_tests(gameplayfootball_planmapcard_tests DISCOVERY_MODE PRE_TEST)
 add_executable(gameplayfootball_planmapinteraction_tests
   menu/plan_map_interaction_test.cpp
   ${PROJECT_SOURCE_DIR}/src/menu/widgets/planmapinteraction.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
 )
 target_include_directories(gameplayfootball_planmapinteraction_tests PRIVATE
   ${PROJECT_SOURCE_DIR}/src

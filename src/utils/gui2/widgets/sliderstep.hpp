@@ -17,14 +17,17 @@ namespace blunted {
 namespace SliderStep {
 
 // Above this many positions the ticks would be closer together than the bar is
-// wide, and the count stops meaning anything to a reader: the slider then draws
-// as a plain groove, the way it always did.
+// wide, so the groove is drawn plain - but the count itself still means
+// something, and the speed sliders (a step per 0.1 m/s) have more positions
+// than this. So the two limits are separate: ticks up to kMaxDrawnSteps,
+// the "8/17" label up to kMaxCountedSteps.
 constexpr int kMaxDrawnSteps = 21;
+constexpr int kMaxCountedSteps = 40;
 
 // Which step a 0..1 value sits on, 1-based: 0.0 is step 1, 1.0 is step `steps`.
 int IndexFor(float value, int steps);
 
-// "4/11", or "" when the slider has too many positions to count.
+// "4/11", or "" when the slider has more positions than a reader would count.
 std::string Label(float value, int steps);
 
 // Whether ticks should be drawn for this many steps.

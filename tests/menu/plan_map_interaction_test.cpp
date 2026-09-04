@@ -128,3 +128,65 @@ TEST(PlanMapInteractionTest, DirectionalSelectionStaysPutWithNoCandidate) {
   // Nothing sits further down than the keeper.
   EXPECT_EQ(NextSelectionInDirection(cards, 0, Vector3(0, 1, 0)), 0);
 }
+
+// --- the preview follows the formation --------------------------------------
+//
+// "When I select a formation via the menu, the shape of the formation on the
+// preview should change accordingly" (owner, 04-09). GamePlanPage::
+// ApplyFormationShape writes Formations' layout into TeamData and refreshes the
+// map, which reads every card's place through DatabaseToPitch - so the contract
+// is that two different shapes map to two different sets of pitch points, with
+// the right number of cards on each line.
+
+#include "data/formations.hpp"
+
+namespace {
+
+// How many cards land on each third of the schematic, back to front.
+std::array<int, 3> LinesOf(const Formations::Shape& shape) {
+  std::array<int, 3> lines = {0, 0, 0};
+  for (const Formations::Slot& slot : Formations::GetLayoutForShape(shape)) {
+    if (slot.role == e_PlayerRole_GK) continue;
+    const PlanMapInteraction::PitchPoint point =
+        PlanMapInteraction::DatabaseToPitch(slot.position, slot.role);
+    // The schematic is portrait with the goal at the bottom: a defender's y is
+    // large, a forward's small.
+    if (point.yPercent > 62.0f)
+      lines[0]++;
+    else if (point.yPercent > 42.0f)
+      lines[1]++;
+    else
+      lines[2]++;
+  }
+  return lines;
+}
+
+}  // namespace
+
+TEST(PlanMapPreviewTest, ADifferentShapePutsADifferentNumberOfCardsOnEachLine) {
+  const std::array<int, 3> flat442 = LinesOf(Formations::MakeShapeClamped(4, 4, 2));
+  const std::array<int, 3> three52 = LinesOf(Formations::MakeShapeClamped(3, 5, 2));
+  EXPECT_EQ(flat442[0], 4);
+  EXPECT_EQ(three52[0], 3);
+  EXPECT_NE(flat442, three52) << "the preview would look identical for both shapes";
+}
+
+TEST(PlanMapPreviewTest, EveryOutfieldCardMovesWhenTheLineChanges) {
+  // Not just the count: the back line's cards sit at different depths, which is
+  // what makes the change visible rather than a relabelling.
+  const std::vector<Formations::Slot> back4 =
+      Formations::GetLayoutForShape(Formations::MakeShapeClamped(4, 4, 2));
+  const std::vector<Formations::Slot> back3 =
+      Formations::GetLayoutForShape(Formations::MakeShapeClamped(3, 4, 3));
+  ASSERT_EQ(back4.size(), back3.size());
+  int moved = 0;
+  for (size_t i = 0; i < back4.size(); i++) {
+    const PlanMapInteraction::PitchPoint a =
+        PlanMapInteraction::DatabaseToPitch(back4.at(i).position, back4.at(i).role);
+    const PlanMapInteraction::PitchPoint b =
+        PlanMapInteraction::DatabaseToPitch(back3.at(i).position, back3.at(i).role);
+    if (std::fabs(a.xPercent - b.xPercent) > 0.5f || std::fabs(a.yPercent - b.yPercent) > 0.5f)
+      moved++;
+  }
+  EXPECT_GE(moved, 4) << "only " << moved << " card(s) moved between 4-4-2 and 3-4-3";
+}
