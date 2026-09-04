@@ -110,7 +110,7 @@ def injury():
                  24.0, 20.0, near=0.3)
 
 
-def half_time():
+def half_time_wide():
     # The whistle for the interval at a ground PES exported no walk-off for: the
     # players are wherever the whistle caught them, so this is the broadcast's
     # own beat - the main camera position on the -y stand, a slow push in over
@@ -120,16 +120,54 @@ def half_time():
                  [0.0, -4.0, 0.0], 30.0, 24.0, near=1.0)
 
 
+def half_time_low():
+    # The second interval shot: pitch level from the near touchline, trucking
+    # along it and panning across the players as they stand down.
+    return dolly(SECONDS_HALF, [-14.0, -38.0, 1.7], [14.0, -38.0, 1.7], [-4.0, -8.0, 1.0],
+                 [4.0, -8.0, 1.0], 28.0, 28.0, near=0.5)
+
+
+def warning():
+    # PES stages a telling-off (foul/warning/*.chor) with the offender at the
+    # origin facing -y, his teammates coming in from either side and the referee
+    # walking up to him from (0.6, -4.4). PES ships no camera for it and the
+    # fallback was the card shot. A low arc across the near side, eye level,
+    # from the offender's left round to his right, so the referee's word and the
+    # protest both play to camera.
+    return dolly(6.0, [3.5, -5.5, 1.5], [-3.0, -5.8, 1.5], [0.0, -0.8, 1.2], [0.0, -0.8, 1.2],
+                 26.0, 24.0, near=0.3)
+
+
+def card():
+    # A second angle on the booking: PES's one card camera is a static shot
+    # 5.4 m out and 3.5 m up on the -x/-y side. The card staging has the referee
+    # and the booked man both facing -x/+y (yaw 4.08 in foul_cmn_card_y01), so
+    # this one is low on that side and pushes in slowly as the card comes out.
+    return dolly(7.5, [-4.8, 3.6, 1.3], [-3.6, 3.9, 1.4], [0.0, -0.8, 1.3], [0.0, -0.8, 1.3],
+                 24.0, 20.0, near=0.3)
+
+
 SECONDS_HALF = 10.0
 
+# The subpool is the directory (Match files a .camtrack under
+# "<category>/<parent dir>"), so a shot meant for both card pools is written to
+# both.
 TRACKS = {
     "foul/injury/gf_injury_low_dolly.camtrack": injury,
-    "timeup/tu_half_gf_wide_push.camtrack": half_time,
+    "foul/warning/gf_warning_arc.camtrack": warning,
+    "foul/card_yellow/gf_card_low_push.camtrack": card,
+    "foul/card_red/gf_card_low_push.camtrack": card,
+    "timeup/tu_half_gf_wide_push.camtrack": half_time_wide,
+    "timeup/tu_half_gf_low_truck.camtrack": half_time_low,
 }
 # Where each shot's first frame looks, for the self-check.
 AIMS = {
     "foul/injury/gf_injury_low_dolly.camtrack": [0.0, 0.6, 0.9],
+    "foul/warning/gf_warning_arc.camtrack": [0.0, -0.8, 1.2],
+    "foul/card_yellow/gf_card_low_push.camtrack": [0.0, -0.8, 1.3],
+    "foul/card_red/gf_card_low_push.camtrack": [0.0, -0.8, 1.3],
     "timeup/tu_half_gf_wide_push.camtrack": [0.0, 0.0, 0.0],
+    "timeup/tu_half_gf_low_truck.camtrack": [-4.0, -8.0, 1.0],
 }
 
 
