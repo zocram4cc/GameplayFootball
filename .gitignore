@@ -47,6 +47,9 @@ data/media/objects/players/models/faceweights.txt
 data/media/objects/players/handposes.txt
 data/media/objects/players/expressions/
 data/media/objects/players/textures/pes_base_*.png
+# A pack's own body texture, written beside the stock ones by import_team: same
+# rule as every other 4cc-derived asset - the user builds it from his own pack.
+data/media/objects/players/textures/*_body.png
 data/media/objects/players/textures/2hug_*.png
 data/media/ui/pes/
 data/media/animations/**/pes_*.anim

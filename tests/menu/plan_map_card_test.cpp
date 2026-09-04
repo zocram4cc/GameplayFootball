@@ -120,3 +120,25 @@ TEST(PlanMapCardName, ALongNameIsCutRatherThanCoveringItsNeighbours) {
 TEST(PlanMapCardName, NoBudgetPrintsNothing) {
   EXPECT_EQ(PlanMapCard::NameText("DANTE", 0), "");
 }
+
+// --- the card says what the player is registered for ------------------------
+//
+// "portraits and stats (+ roles, medal status) should show up in the lineup
+// itself" (owner, 04-09). The pitch card has room for the slot's position and a
+// count of the others he plays; the medal (his aptitude for the slot) is the
+// colour beside it.
+TEST(PlanMapCardTest, ThePositionCarriesTheCountOfHisOtherRegisteredRoles) {
+  EXPECT_EQ(PlanMapCard::SlotRoleText("CB", 0), "CB");
+  EXPECT_EQ(PlanMapCard::SlotRoleText("CB", 1), "CB+1");
+  EXPECT_EQ(PlanMapCard::SlotRoleText("CB", 3), "CB+3");
+  EXPECT_EQ(PlanMapCard::SlotRoleText("CB", -1), "CB") << "a negative count is not printed";
+}
+
+TEST(PlanMapCardTest, TheCountExcludesTheSlotHeIsStandingIn) {
+  const std::vector<e_PlayerRole> both = {e_PlayerRole_CB, e_PlayerRole_RB};
+  EXPECT_EQ(PlanMapCard::OtherRegisteredRoles(e_PlayerRole_CB, both), 1);
+  EXPECT_EQ(PlanMapCard::OtherRegisteredRoles(e_PlayerRole_RB, both), 1);
+  EXPECT_EQ(PlanMapCard::OtherRegisteredRoles(e_PlayerRole_CF, both), 2)
+      << "out of position, both of his own roles are elsewhere";
+  EXPECT_EQ(PlanMapCard::OtherRegisteredRoles(e_PlayerRole_CB, {}), 0);
+}

@@ -46,6 +46,8 @@ protected:
   Gui2Caption* ratingCaption = nullptr;
   Gui2Caption* playerNameCaption = nullptr;
   Gui2Image* highlightBorder = nullptr;
+  Gui2Image* medalMark = nullptr;
+  Gui2Image* stripBand = nullptr;
 };
 
 // The game plan's pitch schematic. Portraits and captions are read-only

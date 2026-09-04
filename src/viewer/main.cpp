@@ -147,6 +147,12 @@ struct Options {
   std::string body = "media/objects/players/models/fullbody.ase";
   // PES's camera as authored, without the match's re-aim at the primary actor.
   bool authoredCamera = false;
+  // Play one clip on the model instead of turning it: the whole point of a
+  // viewer for a rig defect ("dragging verts on cutscenes" - owner, 04-09) is a
+  // model under animation, which a turntable of the bind pose cannot show. This
+  // is the mode AGENTS.md's health check calls for
+  // (--anim media/animations/straight.anim.util must render a perfect T-pose).
+  std::string anim;
 };
 
 Options Parse(int argc, const char** argv) {
@@ -165,6 +171,7 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--camtrack" && hasNext) options.camtrack = argv[++i];
     else if (arg == "--body" && hasNext) options.body = argv[++i];
     else if (arg == "--authored-camera") options.authoredCamera = true;
+    else if (arg == "--anim" && hasNext) options.anim = argv[++i];
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -436,6 +443,85 @@ class TurntableTask : public IUserTask {
   std::string out;
 };
 
+// Plays one clip on one body: shots spread over the clip, the camera turning a
+// little between them so a defect that only shows from one side still lands in
+// the sheet. A turntable of the bind pose cannot show a skinning fault - the
+// owner's "dragging verts on cutscenes" is a posed-frame defect - and the match
+// is a poor instrument for it (one player among twenty-two, at broadcast
+// distance, for a second).
+class AnimTask : public IUserTask {
+ public:
+  AnimTask(ViewerSkinnedModel* body, Animation* clip, boost::intrusive_ptr<Node> cameraNode,
+           boost::intrusive_ptr<Camera> camera, const ViewerCamera::Shot& shot, int frames,
+           const std::string& out)
+      : body(body), clip(clip), cameraNode(cameraNode), camera(camera), shot(shot),
+        frames(frames), out(out) {}
+
+  void GetPhase() override {}
+  void ProcessPhase() override {}
+
+  void PutPhase() override {
+    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
+    const bool framesReady = warmup >= TurntableTask::kWarmupFrames;
+    const bool clockReady = EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
+                            TurntableTask::kWarmupMilliseconds;
+    if (!framesReady || !clockReady) {
+      warmup++;
+      Pose(0);
+      if (framesReady && clockReady) StartFrameRecording(out);
+      return;
+    }
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
+      return;
+    }
+    const int steps = std::max(1, frames);
+    const int last = std::max(0, clip->GetFrameCount() - 1);
+    Pose(steps > 1 ? last * std::min(drawn, steps - 1) / (steps - 1) : 0);
+    ViewerCamera::Shot turned = shot;
+    // Half a turn over the run, not a full one: the back of a body says less
+    // about a skin than three quarters round the front does.
+    turned.yaw = shot.yaw + pi * (steps > 1 ? (float)std::min(drawn, steps - 1) / (steps - 1) : 0.0f);
+    const std::array<float, 3> eye = ViewerCamera::Position(turned);
+    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
+    Quaternion yaw;
+    yaw.SetAngleAxis(turned.yaw, Vector3(0, 0, 1));
+    cameraNode->SetRotation(yaw);
+    Quaternion pitch;
+    pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
+    camera->SetRotation(pitch);
+    drawn++;
+    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
+      EnvironmentManager::GetInstance().SignalQuit();
+  }
+
+  std::string GetName() const override { return "anim"; }
+
+ private:
+  void Pose(int frame) {
+    // The root's own travel is dropped: a clip that walks 30 m would leave the
+    // frame, and the question here is the skin, not the locomotion.
+    body->Pose(clip, frame, Vector3(0), 0, true);
+    // AGENTS.md, the viewer trap: Animation::Apply invalidates spatial caches
+    // through the "player" node, which is a dummy leaf here, so nothing applies
+    // unless the humanoid is invalidated by hand.
+    body->GetHumanoidNode()->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+  }
+
+  ViewerSkinnedModel* body = nullptr;
+  Animation* clip = nullptr;
+  boost::intrusive_ptr<Node> cameraNode;
+  boost::intrusive_ptr<Camera> camera;
+  ViewerCamera::Shot shot;
+  int frames = 0;
+  int drawn = 0;
+  int warmup = 0;
+  unsigned long warmupStart_ms = 0;
+  bool recording = false;
+  std::string out;
+};
+
 // Holds the camera still and shoots a ball through the cloth.
 //
 // The camera does not turn: a turntable and a moving cloth are impossible to tell
@@ -660,6 +746,76 @@ class CutsceneTask : public IUserTask {
 
 // Loads a choreography, its camera and its cast, and plays it to `out`. Returns the
 // process exit code; everything it made is torn down before it returns.
+// One model, one clip: the health check AGENTS.md asks for, and the instrument
+// for any reported skinning defect.
+int PlayAnim(const Options& options, std::shared_ptr<Scene3D> scene3D) {
+  Animation clip;
+  clip.Load(options.anim);
+  if (clip.GetFrameCount() <= 0) {
+    std::cout << "could not read animation " << options.anim << "\n";
+    return 2;
+  }
+  ViewerSkinnedModel body;
+  if (!body.Load(options.model, scene3D, "anim")) {
+    std::cout << "could not cast a body from " << options.model << "\n";
+    return 2;
+  }
+  body.Pose(&clip, 0, Vector3(0), 0, true);
+  body.GetHumanoidNode()->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+  const AABB bounds = body.GetTargetNode()->GetAABB();
+  std::cout << options.model << " playing " << options.anim << ": " << clip.GetFrameCount()
+            << " frames, body " << (bounds.maxxyz.coords[2] - bounds.minxyz.coords[2])
+            << " m tall at frame 0\n";
+
+  const ViewerCamera::Shot shot = ViewerCamera::Frame(
+      {bounds.minxyz.coords[0] - 0.3f, bounds.minxyz.coords[1] - 0.3f, bounds.minxyz.coords[2]},
+      {bounds.maxxyz.coords[0] + 0.3f, bounds.maxxyz.coords[1] + 0.3f, bounds.maxxyz.coords[2]},
+      options.fov);
+
+  boost::intrusive_ptr<Camera> camera = boost::static_pointer_cast<Camera>(
+      ObjectFactory::GetInstance().CreateObject("camera", e_ObjectType_Camera));
+  scene3D->CreateSystemObjects(camera);
+  camera->Init();
+  camera->SetFOV(shot.fov);
+  camera->SetCapping(0.1f, 200.0f);
+  boost::intrusive_ptr<Node> cameraNode(new Node("cameraNode"));
+  cameraNode->AddObject(camera);
+  scene3D->AddNode(cameraNode);
+
+  boost::intrusive_ptr<Light> light = boost::static_pointer_cast<Light>(
+      ObjectFactory::GetInstance().CreateObject("light", e_ObjectType_Light));
+  scene3D->CreateSystemObjects(light);
+  light->SetColor(Vector3(1.0f, 1.0f, 1.0f));
+  light->SetRadius(60.0f);
+  light->SetType(e_LightType_Point);
+  light->SetShadow(false);
+  boost::intrusive_ptr<Node> lightNode(new Node("lightNode"));
+  lightNode->AddObject(light);
+  lightNode->SetPosition(Vector3(-4.0f, -4.0f, 8.0f));
+  scene3D->AddNode(lightNode);
+
+  std::shared_ptr<IUserTask> driver(new AnimTask(&body, &clip, cameraNode, camera, shot,
+                                                 options.shots > 0 ? options.shots : 8,
+                                                 options.out));
+  // Paced like the cutscene mode, and for the same measured reason: an unpaced
+  // skinned body draws faster than the 60 Hz recorder samples.
+  std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 40, true));
+  sequence->AddUserTaskEntry(driver, e_TaskPhase_Put);
+  sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Get);
+  sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Process);
+  sequence->AddSystemTaskEntry(viewerGraphics, e_TaskPhase_Put);
+  GetScheduler()->RegisterTaskSequence(sequence);
+  Run();
+  StopFrameRecording();
+  std::cout << "drew frames to " << options.out << "; the first "
+            << TurntableTask::kRecorderLeadIn << " are lead-in\n";
+  lightNode->Exit();
+  lightNode.reset();
+  cameraNode->Exit();
+  cameraNode.reset();
+  return 0;
+}
+
 int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
   std::ifstream chorFile(options.cutscene);
   EntranceChoreo choreo;
@@ -811,7 +967,7 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
 int main(int argc, const char** argv) {
   const Options options = Parse(argc, argv);
   if (options.model.empty() && options.cutscene.empty()) {
-    std::cout << "gfviewer <model.ase> [--shots N] [--out DIR] [--fov D] [--pitch R]\n"
+    std::cout << "gfviewer <model.ase> [--anim CLIP] [--shots N] [--out DIR] [--fov D] [--pitch R]\n"
               << "gfviewer --cutscene <pack.chor> [--camtrack T] [--body M] --shots N --out DIR\n";
     return 1;
   }
@@ -837,8 +993,9 @@ int main(int argc, const char** argv) {
   viewerScene3D = scene3D;
   SceneManager::GetInstance().RegisterScene(scene3D);
 
-  if (!options.cutscene.empty()) {
-    const int code = PlayCutscene(options, scene3D);
+  if (!options.cutscene.empty() || !options.anim.empty()) {
+    const int code = options.anim.empty() ? PlayCutscene(options, scene3D)
+                                          : PlayAnim(options, scene3D);
     viewerScene3D.reset();
     scene3D.reset();
     viewerScene2D.reset();

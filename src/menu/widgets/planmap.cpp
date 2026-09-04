@@ -37,7 +37,13 @@ constexpr float kPitchDiagramAspectRatio = 420.0f / 580.0f;
 // so at the old width the middle of a 4-4-2 was one pile of cards. The strip
 // and name rows keep their heights - those are set by caption.cpp's legibility
 // floor, not by the card.
-constexpr float kCardW = 3.9f;
+// Measured on a rendered frame (owner, 04-09: cards overlapped and names ran
+// into each other): a card of portrait + two stacked text rows was 98 px tall
+// at 720p where the gap between two lines of a 4-4-2 is 67 px, so every line
+// overlapped the one in front. PES draws the position and rating ON the
+// portrait's bottom edge, in a translucent band, and only the name below it -
+// which is one row shorter, and what this now does.
+constexpr float kCardW = 3.1f;
 constexpr float kStripH = 2.2f;
 constexpr float kNameH = 2.2f;
 
@@ -47,7 +53,7 @@ constexpr float kNameH = 2.2f;
 // every other point on this map, so the selection, the drag and the drop
 // radius need no special case for it - a bench card is a card.
 // How much of the map's height the pitch diagram keeps; the rest is the bench.
-constexpr float kPitchHeightFraction = 0.76f;
+constexpr float kPitchHeightFraction = 0.86f;
 constexpr float kBenchColumns = 6.0f;
 constexpr float kBenchFirstX = 9.0f;
 constexpr float kBenchColumnStep = 17.0f;
@@ -96,12 +102,28 @@ Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::
     portraitImage->Show();
   }
 
-  const float stripY = portrait.empty() ? 0.0f : portraitHeight;
+  const float stripY = portrait.empty() ? 0.0f : portraitHeight - kStripH;
+
+  // The band the strip's text reads against: the portrait is somebody's
+  // screenshot and white text on it is illegible half the time. Drawn, not an
+  // asset, and its own view so the shared portrait texture is never touched.
+  if (!portrait.empty()) {
+    stripBand = new Gui2Image(windowManager, name + "_band", 0, stripY, width_percent, kStripH);
+    this->AddView(stripBand);
+    boost::intrusive_ptr<Image2D>& band = stripBand->GetImage2D();
+    band->DrawRectangle(0, 0, (int)band->GetSize().coords[0], (int)band->GetSize().coords[1],
+                        Vector3(0, 0, 0), 170);
+    band->OnChange();
+    stripBand->Show();
+  }
 
   // Position on the left, coloured by line, and the rating on the right.
-  roleNameCaption =
-      new Gui2Caption(windowManager, name + "_role", 0, stripY, width_percent * 0.6f, kStripH,
-                      roleName);
+  roleNameCaption = new Gui2Caption(
+      windowManager, name + "_role", 0, stripY, width_percent * 0.6f, kStripH,
+      PlanMapCard::SlotRoleText(
+          roleName, PlanMapCard::OtherRegisteredRoles(
+                        role, playerData ? playerData->GetRoles()
+                                         : std::vector<e_PlayerRole>())));
   roleNameCaption->SetColor(ToVector3(PlanMapCard::LineColour(PlanMapCard::LineOf(role))));
   this->AddView(roleNameCaption);
   roleNameCaption->Show();
@@ -120,8 +142,9 @@ Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::
   // guarantees the box the card actually has at kStripH/kNameH's legible
   // size is never overrun, whatever the name's real width turns out to be
   // (the character budget is a length guess, not a pixel measurement).
-  const unsigned int kNameBudget = 14;
-  playerNameCaption = new Gui2Caption(windowManager, name + "_name", 0, stripY + kStripH,
+  const unsigned int kNameBudget = 10;
+  playerNameCaption = new Gui2Caption(windowManager, name + "_name", 0,
+                                     portrait.empty() ? kStripH : portraitHeight,
                                      width_percent, kNameH,
                                      PlanMapCard::NameText(playerName, kNameBudget));
   playerNameCaption->SetColor(ToVector3(PlanMapCard::AptitudeColour(aptitude)));
@@ -129,6 +152,24 @@ Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::
   playerNameCaption->Show();
   FitAndCentreCaption(playerNameCaption, width_percent * 0.5f, width_percent, kNameH,
                       kNameH * 0.6f);
+
+  // The medal: a small square in the portrait's corner, gold when the slot is one
+  // of his own positions, silver for the same line, grey when he is out of
+  // position. Drawn, not an art asset, like the highlight border below.
+  if (!portrait.empty()) {
+    const float medal = width_percent * 0.22f;
+    medalMark = new Gui2Image(windowManager, name + "_medal", width_percent - medal, 0.0f,
+                              medal, medal);
+    this->AddView(medalMark);
+    const PlanMapCard::Colour aptitudeColour = PlanMapCard::AptitudeColour(aptitude);
+    boost::intrusive_ptr<Image2D>& image = medalMark->GetImage2D();
+    const int w = (int)image->GetSize().coords[0];
+    const int h = (int)image->GetSize().coords[1];
+    image->DrawRectangle(0, 0, w, h, Vector3(0, 0, 0), 190);
+    image->DrawRectangle(1, 1, w - 2, h - 2, ToVector3(aptitudeColour), 255);
+    image->OnChange();
+    medalMark->Show();
+  }
 
   // The selection/drag border: a plain image the same size as the whole
   // card, drawn on with DrawRectangle exactly as Gui2Button borders its own
@@ -193,7 +234,7 @@ void Gui2PlanMap::Process() {}
 void Gui2PlanMap::CardTopLeft(int index, float* x_percent, float* y_percent) const {
   // Square in pixels, not in percent - a portrait is square and the page is 16:9.
   const float cardH = windowManager->GetHeightPercentForWidth(kCardW, 1.0f);
-  const float cardTotalH = cardH + kStripH + kNameH;
+  const float cardTotalH = cardH + kNameH;
 
   if (!IsStarter(index)) {
     // The bench: one row across the whole map, under the diagram, holding the
@@ -293,7 +334,7 @@ void Gui2PlanMap::RebuildEntries() {
     CardTopLeft(i, &ex, &ey);
     Gui2PlanMapEntry* card = new Gui2PlanMapEntry(
         windowManager, "planmap_player1_entry" + int_to_str(i), ex, ey, kCardW,
-        cardH + kStripH + kNameH, role, playerData, cardH);
+        cardH + kNameH, role, playerData, cardH);
     this->AddView(card);
     card->Show();
     entries.push_back(card);
