@@ -23,7 +23,13 @@ GeometryData::~GeometryData() {
   }
 }
 
-GeometryData::GeometryData(const GeometryData& src) {
+// The dynamic flag was not copied, so a body cloned from the .object template
+// ran on whatever the allocator left in the field. It read as true by luck;
+// the upload target (geometrydata.hpp) is only published for a dynamic mesh, so
+// luck is no longer enough. The target itself is deliberately not copied: it
+// points into another geometry's vertex buffer.
+GeometryData::GeometryData(const GeometryData& src)
+    : isDynamic(src.isDynamic), dynamicElementMask(src.dynamicElementMask) {
   for (unsigned int i = 0; i < src.triangleMeshes.size(); i++) {
     // shallow copy
     MaterializedTriangleMesh mesh = src.triangleMeshes.at(i);

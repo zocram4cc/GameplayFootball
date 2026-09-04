@@ -282,9 +282,33 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
 
   if (!alreadyThere) {
     caller->vertexBuffer->GetResource()->SetTriangleMesh(vertices, verticesDataSize, indices);
+    PublishUploadTarget(resource, vertices, verticesDataSize);
     caller->vertexBuffer->GetResource()->CreateOrUpdateVertexBuffer(renderer3D, dynamicBuffer);
     caller->vertexBuffer->resourceMutex.unlock();
   }
+}
+
+// Where each submesh lands in the concatenated array (geometrydata.hpp,
+// UploadTarget), so a per-frame writer can skin straight into it. Only for a
+// dynamic geometry: a static one never rewrites itself, and its vertex buffer may
+// be shared between geometries of the same ident, which must not fight over it.
+void GraphicsGeometry_GeometryInterpreter::PublishUploadTarget(
+    const boost::intrusive_ptr<Resource<GeometryData>>& resource, float* vertices,
+    int verticesDataSize) {
+  GeometryData* geometryData = resource->GetResource();
+  if (!geometryData->IsDynamic()) return;
+  uploadTargetOwner = resource;
+  const std::vector<MaterializedTriangleMesh>& triangleMeshes =
+      geometryData->GetTriangleMeshesRef();
+  std::vector<int> submeshOffset;
+  submeshOffset.reserve(triangleMeshes.size());
+  int offset = 0;
+  for (unsigned int i = 0; i < triangleMeshes.size(); i++) {
+    submeshOffset.push_back(offset);
+    offset += triangleMeshes[i].verticesDataSize / GetTriangleMeshElementCount();
+  }
+  geometryData->SetUploadTarget(vertices, verticesDataSize / GetTriangleMeshElementCount(),
+                                std::move(submeshOffset));
 }
 
 void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr<Geometry> geometry,
@@ -348,13 +372,16 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
     // tangent frame too when a normal map is bound) and never its texture
     // vertices, and copying all five moved 2.7 GB/s of which three fifths had
     // not changed. A freshly allocated buffer holds nothing, so it takes all.
-    const unsigned int elementMask =
-        newFloatData ? GeometryData::kAllElements : resource->GetResource()->GetDynamicElements();
+    // A writer that skins straight into the published target has already put
+    // its dynamic elements here, so for it nothing is copied at all.
+    unsigned int elementMask = GeometryData::kAllElements;
+    if (!newFloatData) {
+      elementMask = resource->GetResource()->WritesUploadTarget()
+                        ? 0u
+                        : resource->GetResource()->GetDynamicElements();
+    }
     for (int e = 0; e < GetTriangleMeshElementCount(); e++) {
       if (!(elementMask & (1u << e))) continue;
-      // printf("%s: e: %i, verticesDataSize: %i, startIndex: %i,
-      // triangleMeshes[i].verticesDataSize: %i\n", geometry->GetName().c_str(), e,
-      // verticesDataSize, startIndex, triangleMeshes[i].verticesDataSize);
       memcpy(
           &vertices[e * (verticesDataSize / GetTriangleMeshElementCount()) + startIndex],
           &triangleMeshes[i]
@@ -420,6 +447,7 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
 
   if (newFloatData) {
     caller->vertexBuffer->GetResource()->SetTriangleMesh(vertices, verticesDataSize, indices);
+    PublishUploadTarget(resource, vertices, verticesDataSize);
   } else {
     caller->vertexBuffer->GetResource()->TriangleMeshWasUpdatedExternally(verticesDataSize,
                                                                           indices);
@@ -445,6 +473,14 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
 
 void GraphicsGeometry_GeometryInterpreter::OnUnload() {
   // printf("resetting link to vertexbuffer.. ");
+  // The published target points into the array released with the vertex buffer;
+  // a writer still alive goes back to its own submesh arrays.
+  if (uploadTargetOwner) {
+    uploadTargetOwner->resourceMutex.lock();
+    uploadTargetOwner->GetResource()->ClearUploadTarget();
+    uploadTargetOwner->resourceMutex.unlock();
+    uploadTargetOwner.reset();
+  }
   caller->vertexBuffer.reset();
   caller->vertexBufferIndices.clear();
   delete caller;

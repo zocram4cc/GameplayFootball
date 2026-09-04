@@ -130,14 +130,32 @@ void GamePlanPage::Process() {
 GamePlanPage::~GamePlanPage() {}
 
 void GamePlanPage::OnClose() {
+  // Before anything else: every handler below has to know the page is going.
+  tearingDown = true;
   namedb.reset();
+  // The button column is detached whenever a submenu is open, so if the page
+  // is closed at that moment nothing in the view tree owns it. Exit clears any
+  // focus inside it on the way out.
+  if (gridNav && gridNav->GetParent() == nullptr) {
+    gridNav->Exit();
+    delete gridNav;
+    gridNav = nullptr;
+  }
 }
 
 void GamePlanPage::Deactivate() {
-  grid->RemoveView(kGamePlanNavRow, kGamePlanNavColumn);
+  if (tearingDown || !gridNav) return;
+  // Only ever the button column: a submenu that has taken the cell owns its
+  // own removal (GamePlanSubMenu::ProcessWindowingEvent), and detaching it
+  // from under itself left the grid holding a view it no longer parented.
+  if (gridNav->GetParent() == grid) grid->RemoveView(gridNav);
 }
 
 void GamePlanPage::Reactivate(Gui2View* focusTarget) {
+  // A submenu closing during the page's teardown must not put the column back:
+  // the grid it would go into is mid-delete, and gridNav itself may already be
+  // gone (OnClose owns it once it is detached).
+  if (tearingDown || !gridNav) return;
   grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
   grid->UpdateLayout(0.0);
   gridNav->Show();
@@ -239,6 +257,9 @@ void GamePlanPage::LineupMenuOnClick(Gui2Button* button) {
 }
 
 void GamePlanPage::SaveLineup() {
+  // The submenu's close signal reaches this during page teardown too, when
+  // lineupMenu's own children are already being deleted.
+  if (tearingDown || !lineupMenu) return;
   if (UpdateNonImportableDB() && namedb) {
     // saves to temp names db, which is used when importing the actual db.
 
@@ -702,6 +723,7 @@ void GamePlanPage::SubstitutionsMenuOnClick(Gui2Button* button) {
 }
 
 void GamePlanPage::SaveTactics() {
+  if (tearingDown) return;
   if (UpdateNonImportableDB() && namedb) {
     // saves to temp names db, which is used when importing the actual db.
 

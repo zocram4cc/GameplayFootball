@@ -127,8 +127,11 @@ void Referee::Process() {
 
         buffer.desiredSetPiece = e_SetPiece_KickOff;
         buffer.stopTime = match->GetActualTime_ms();
-        buffer.prepareTime = match->GetActualTime_ms() + 3000;
-        buffer.startTime = buffer.prepareTime + 2000;
+        // The walk-off plays first; the reset for the next period waits for it
+        // (SetPieceLaws::kHalfTimeCutscene_ms is also what SetMatchPhase gives
+        // the cutscene, so the two cannot drift apart).
+        buffer.prepareTime = SetPieceLaws::HalfTimePrepareAt_ms(match->GetActualTime_ms());
+        buffer.startTime = SetPieceLaws::HalfTimeTakeAt_ms(match->GetActualTime_ms());
         buffer.restartPos = Vector3(0);
         buffer.active = true;
         buffer.prepared = false;
@@ -825,7 +828,12 @@ bool Referee::CheckFoul() {
       match->StartCutscene(foul.foulType == 3 ? "foul/card_red" : "foul/card_yellow",
                            cutsceneSeconds);
     } else {
-      match->StartCutscene("foul/warning", cutsceneSeconds);
+      // A foul that leaves the man down is PES's injury scene rather than a
+      // telling-off: the offender calls for help, the referee waves the physio
+      // on (foul/injury). The trip that fouled him has already hurt him by the
+      // whistle (Match::Injure, 0.04 a trip): one hard trip or two ordinary ones.
+      const bool hurt = foul.foulVictim && foul.foulVictim->GetInjuryLevel() >= 0.08f;
+      match->StartCutscene(hurt ? "foul/injury" : "foul/warning", cutsceneSeconds);
     }
     // Then a close-up replay of the challenge, once that cutscene has run.
     match->RequestFoulReplay(match->GetActualTime_ms(), foul.foulType);

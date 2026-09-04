@@ -1,5 +1,7 @@
 #include "menu/menuscript.hpp"
 
+#include <map>
+
 #include <gtest/gtest.h>
 
 using MenuScript::Action;
@@ -67,4 +69,47 @@ TEST(MenuScriptTest, ToleratesWhitespaceAndTrailingSemicolon) {
   ASSERT_EQ(steps.size(), 2u);
   EXPECT_EQ(steps[0].key, Key::Up);
   EXPECT_EQ(steps[1].key, Key::Down);
+}
+
+// --- the monkey ------------------------------------------------------------
+//
+// Random input is the only way a screen gets tested against sequences nobody
+// would script: grab, half-drag, open a submenu mid-drag, escape out of it,
+// drop on top of somebody. The owner asked for exactly this ("a monkey with a
+// typewriter-type test: this should not break under any circumstances"), so
+// the driver has to be reproducible: a seed and a tap index name one key.
+
+TEST(MenuScriptMonkeyTest, ParsesSeedAndCount) {
+  const auto steps = MenuScript::Parse("500:monkey=7:2500;9000:quit");
+  ASSERT_EQ(steps.size(), 2u);
+  EXPECT_EQ(steps.at(0).action, MenuScript::Action::Monkey);
+  EXPECT_EQ(steps.at(0).seed, 7u);
+  EXPECT_EQ(steps.at(0).taps, 2500u);
+  EXPECT_EQ(steps.at(1).action, MenuScript::Action::Quit);
+}
+
+TEST(MenuScriptMonkeyTest, AMalformedMonkeyCostsOnlyItsOwnStep) {
+  const auto steps = MenuScript::Parse("100:monkey=7;200:monkey=:5;300:monkey=1:0;400:down");
+  ASSERT_EQ(steps.size(), 1u);
+  EXPECT_EQ(steps.at(0).action, MenuScript::Action::Tap);
+}
+
+TEST(MenuScriptMonkeyTest, TheSameSeedGivesTheSameSequence) {
+  for (unsigned long n = 0; n < 64; n++) {
+    EXPECT_EQ(MenuScript::MonkeyKey(11, n), MenuScript::MonkeyKey(11, n));
+  }
+  bool anyDifferent = false;
+  for (unsigned long n = 0; n < 64; n++) {
+    if (MenuScript::MonkeyKey(11, n) != MenuScript::MonkeyKey(12, n)) anyDifferent = true;
+  }
+  EXPECT_TRUE(anyDifferent) << "two seeds produced identical streams";
+}
+
+TEST(MenuScriptMonkeyTest, EveryKeyIsReachedAndNothingElseIs) {
+  std::map<MenuScript::Key, int> seen;
+  for (unsigned long n = 0; n < 20000; n++) seen[MenuScript::MonkeyKey(3, n)]++;
+  // All seven navigation keys, none of them vanishingly rare: a monkey that
+  // never presses escape never abandons a drag.
+  EXPECT_EQ(seen.size(), 7u);
+  for (const auto& entry : seen) EXPECT_GT(entry.second, 500) << "key starved";
 }

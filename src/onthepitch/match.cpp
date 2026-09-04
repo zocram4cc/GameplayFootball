@@ -31,6 +31,7 @@
 #include "onthepitch/stadiumfar.hpp"
 #include "onthepitch/scenelighting.hpp"
 #include "onthepitch/camerastandoff.hpp"
+#include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/staginganchor.hpp"
 #include "onthepitch/stadiumsky.hpp"
 #include "onthepitch/playerbody.hpp"
@@ -415,6 +416,18 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   // stoppage cutscene pools, one directory per PES fixdemo category
   {
     int loadedPools = 0;
+    // A pack that names another ground is not installed at this one: PES's
+    // stand cameras for a substitution sit where that stadium has a stand
+    // (change_stand_st027_home is 86.6 m out at 21 m up), its walk-off puts the
+    // primary at that stadium's tunnel mouth, its result and crowd shots frame
+    // that stadium's stands. Here those coordinates are the inside of a roof or
+    // a seat in the sky.
+    const std::string ground =
+        EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+    auto forAnotherGround = [&ground](const std::filesystem::path& file) {
+      const std::string named = CutsceneSequence::GroundOfFile(file.filename().string());
+      return !named.empty() && named != ground;
+    };
     for (const char* category :
          // "offside" is its own category rather than a goal subpool: an
          // offside must never be able to fall back to a goal celebration.
@@ -427,9 +440,14 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       // offside pool. Each subdirectory becomes its own pool named
       // "<category>/<sub>", while the category pool holds everything, so a
       // caller can ask for the precise moment and still fall back.
+      // Two roots: the PES export (media/cutscenes, not in the repository) and
+      // the camerawork written by hand for the moments PES ships no camera
+      // for (media/presentation/cutscenes, tracked). Same layout, same pools.
+      for (const std::string root : {std::string("media/cutscenes/"),
+                                     std::string("media/presentation/cutscenes/")})
       for (const auto& entry :
-           std::filesystem::recursive_directory_iterator(dir, ec)) {
-        if (entry.path().extension() != ".camtrack") continue;
+           std::filesystem::recursive_directory_iterator(root + category, ec)) {
+        if (entry.path().extension() != ".camtrack" || forAnotherGround(entry.path())) continue;
         std::ifstream file(entry.path());
         CamTrack track;
         if (!file.good() || !track.Load(file)) continue;
@@ -1993,10 +2011,96 @@ void Match::BuildEntranceCast() {
 // observed clip).
 static const float kPrematchShotFrameRate = 30.0f;
 
-// How close a body may come to the lens before the shot is dollied back.
-static const float kPrematchLensClearance = 2.2f;
-// How fast the standoff dolly comes back once the body it cleared has passed.
+// How close a body's surface may come to the lens before the shot is dollied
+// back. Measured from the mesh, not the man: each body adds its own half-width
+// (BodyRadius), which is what a 2.4 m wide Wario needed and a fixed clearance
+// from his centre did not give (03-09, black frames in the 009 walk-on).
+static const float kPrematchLensClearance = 1.8f;
+// A goal camera is composed on a face on purpose, so it keeps only the mesh
+// itself off the glass.
+static const float kCelebrationLensClearance = 0.5f;
+// How the standoff dolly moves. Back fast enough to stay ahead of a body walking
+// down the lens - measured in cut 8 of ent_009 at st002 the camera dollies
+// toward the column at 1.75 m/s and the column walks at 2.4, a 4.2 m/s closing
+// speed, and at 3 m/s the referee's black shirt filled the frame for 1.4 s - but
+// never from a standstill in one frame: a run-up of a third of a second is a
+// reverse tracking shot, an instant push of up to the clearance is the lurch
+// the owner saw ("the camera still jumps very jarringly"). Forward slowly once
+// the body has passed. A cut starts wherever it has to; nobody sees that jump.
+static const float kStandoffRetreatMetresPerSecond = 5.0f;
+static const float kStandoffRetreatAcceleration = 15.0f;  // m/s^2
 static const float kStandoffReturnMetresPerSecond = 0.6f;
+
+// A body as the picture has it: the world bounds of the posed model, which is
+// where a choreographed actor is (SetChoreoPose moves the model, not the
+// player, so his GetPosition still says his kick-off mark) and where a live man
+// is. GeometryData caches the bind-pose box and the node only moves and turns
+// it, so the half-width is a stable per-model figure - 2.4 m across for a 4cc
+// Wario, 0.5 for a PES man - not a per-pose one.
+static bool StandoffBody(HumanoidBase* humanoid, CameraStandoff::Body& body) {
+  if (!humanoid || !humanoid->GetFullbodyNode()) return false;
+  const AABB box = humanoid->GetFullbodyNode()->GetAABB();
+  const Vector3 span = box.maxxyz - box.minxyz;
+  if (span.coords[0] <= 0.0f || span.coords[1] <= 0.0f) return false;
+  body.position = Vector3((box.minxyz.coords[0] + box.maxxyz.coords[0]) * 0.5f,
+                          (box.minxyz.coords[1] + box.maxxyz.coords[1]) * 0.5f,
+                          box.minxyz.coords[2]);
+  body.radius = 0.5f * std::max(span.coords[0], span.coords[1]);
+  return true;
+}
+
+std::vector<CameraStandoff::Body> Match::StandoffBodies() {
+  std::vector<CameraStandoff::Body> bodies;
+  bodies.reserve(25);
+  CameraStandoff::Body body;
+  for (int teamID = 0; teamID < 2; teamID++) {
+    if (!teams[teamID]) continue;
+    std::vector<Player*> squad;
+    teams[teamID]->GetActivePlayers(squad);
+    for (Player* player : squad)
+      if (StandoffBody(player->CastHumanoid(), body)) bodies.push_back(body);
+  }
+  // The officials too: the referee's black kit is exactly what a lens looking
+  // down the walk-on column meets first - 1.4 s of black in cut 8 of the 009
+  // walk-on with every player counted and the referee not (m1 capture).
+  if (officials) {
+    PlayerOfficial* crew[3] = {officials->GetReferee(), officials->GetLinesmanNorth(),
+                               officials->GetLinesmanSouth()};
+    for (PlayerOfficial* official : crew)
+      if (official && StandoffBody(official->CastHumanoid(), body)) bodies.push_back(body);
+  }
+  return bodies;
+}
+
+void Match::ApplyStandoff(const void* shot, int cut, const Vector3& forward, float clearance,
+                          Vector3& eye) {
+  const float push = CameraStandoff::PushBack(StandoffBodies(), eye, forward, clearance);
+  // A cut starts where it has to - the jump is PES's own and invisible. Inside
+  // a shot the dolly moves at its own speeds (see the constants): recomputed
+  // and applied fresh every frame, it lurched back by up to the whole clearance
+  // the instant a body came within it, and forward again the instant that body
+  // passed behind the lens - twenty-two players streaming past a tunnel camera
+  // made it do both on every one (owner, 03-09: "the camera snaps forward").
+  const float now = EnvironmentManager::GetInstance().GetTime_ms() * 0.001f;
+  if (shot != standoffShot || cut != standoffCut) {
+    standoffShot = shot;
+    standoffCut = cut;
+    standoffPush = push;
+    standoffSpeed = 0.0f;
+  } else {
+    const float dt = clamp(now - standoffLastSeconds, 0.0f, 0.1f);
+    if (push > standoffPush) {
+      standoffSpeed = std::min(kStandoffRetreatMetresPerSecond,
+                               standoffSpeed + kStandoffRetreatAcceleration * dt);
+      standoffPush = std::min(push, standoffPush + standoffSpeed * dt);
+    } else {
+      standoffSpeed = 0.0f;
+      standoffPush = std::max(push, standoffPush - kStandoffReturnMetresPerSecond * dt);
+    }
+  }
+  standoffLastSeconds = now;
+  if (standoffPush > 0.0f) eye -= forward * standoffPush;
+}
 
 Vector3 Match::ComputeStagingOffset() const {
   // PES authors a walk-on in its own stadium's coordinates, with the cast
@@ -2273,9 +2377,14 @@ void Match::UpdateModelViewerPlayback() {
 }
 
 void Match::LoadCutsceneChoreo(const std::string& category, const std::string& dir) {
+  // Same rule as the cameras: a staging that names another ground stays there.
+  const std::string ground =
+      EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
   std::error_code ec;
   for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
     if (entry.path().extension() != ".chor") continue;
+    const std::string named = CutsceneSequence::GroundOfFile(entry.path().filename().string());
+    if (!named.empty() && named != ground) continue;
     std::ifstream file(entry.path());
     EntranceChoreo choreo;
     if (!file.good() || !choreo.Load(file)) continue;
@@ -2784,12 +2893,18 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   matchData->RecordPassRestart();
   if (matchPhase == e_MatchPhase_1stHalf)
     matchTime_ms = 0;
-  else if (matchPhase == e_MatchPhase_2ndHalf) {
-    matchTime_ms = 2700000;
-    StartCutscene("timeup", 6.0f);
-  } else if (matchPhase == e_MatchPhase_1stExtraTime) {
-    matchTime_ms = 5400000;
-    StartCutscene("timeup", 6.0f);
+  else if (matchPhase == e_MatchPhase_2ndHalf || matchPhase == e_MatchPhase_1stExtraTime) {
+    matchTime_ms = matchPhase == e_MatchPhase_2ndHalf ? 2700000 : 5400000;
+    // The interval's own shots, never the full-time reactions or the post-match
+    // pick-ups that share PES's flat "timeup" directory. This ground's walk-off
+    // if PES exported one for it, else the one authored for every ground
+    // (media/presentation/cutscenes/timeup). The referee has already scheduled
+    // the reset behind it (SetPieceLaws).
+    const std::string own =
+        "timeup/half_" + EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+    const auto ownPool = cutscenePools.find(own);
+    StartCutscene(ownPool != cutscenePools.end() && !ownPool->second.empty() ? own : "timeup/half",
+                  SetPieceLaws::kHalfTimeCutscene_ms / 1000.0f);
   } else if (matchPhase == e_MatchPhase_2ndExtraTime)
     matchTime_ms = 6300000;
   else if (matchPhase == e_MatchPhase_Penalties) {
@@ -3043,8 +3158,11 @@ void Match::ExecutePendingSubstitutions() {
         GetConfiguration()->GetReal("substitution_cutscene_chance", 0.35f)) {
       // Name the two men, or the cutscene has no subject and falls back to the
       // ball - which at a substitution is wherever it went out of play. Measured
-      // once at (-61, -14), six metres beyond the goal line.
-      SetCutsceneParticipants(sub.playerOut, sub.playerIn);
+      // once at (-61, -14), six metres beyond the goal line. The man coming on
+      // is the primary: PES's first mark is his, starting behind the touchline
+      // and walking on. The man going off has left the active squad by now, so
+      // his mark is filled by the nearest teammate.
+      SetCutsceneParticipants(sub.playerIn, sub.playerOut);
       // Long enough for the beat to read: the fourth official raises the board,
       // the man coming off clears the pitch and the man coming on takes it. At
       // five seconds the shot was already cutting away mid-handover.
@@ -3560,10 +3678,11 @@ Vector3 Match::CutsceneAnchorPosition() const {
     subject = ball->Predict(0).Get2D();
   }
   // A substitution is not made where the man was standing: he walks off at the
-  // touchline, so that is where the scene belongs.
+  // halfway line on the bench side, where PES's staging and cameras are authored
+  // (stadium coordinates, so this anchor only picks the official; the scene is
+  // played where it was written).
   if (cutsceneAtTouchline) {
-    const std::pair<float, float> mark = CutsceneViewer::TouchlineMark(
-        subject.coords[0], subject.coords[1], pitchHalfH);
+    const std::pair<float, float> mark = CutsceneViewer::SubstitutionMark(pitchHalfH);
     return Vector3(mark.first, mark.second, 0.0f);
   }
   return subject;
@@ -3587,12 +3706,26 @@ void Match::UpdateIngameCamera() {
       }
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
+      // Kept out of the bodies like the walk-on is: PES's closing shots had
+      // Bowser's chest over the whole team photo and a knight's arm over the
+      // winners' celebration (m1 capture, 926 s and 940 s). Sampled by row, the
+      // whole track counts as one shot for the dolly's purposes.
+      {
+        const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
+        ApplyStandoff(activeCutscene, 0, Vector3(fwd[0], fwd[1], fwd[2]), kPrematchLensClearance,
+                      cameraNodePosition);
+      }
       cameraNodeOrientation = QUATERNION_IDENTITY;
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);
       cameraFOV = frame.fov;
       cameraNearCap = std::max(0.1f, frame.nearPlane);
       cameraFarCap = frame.farPlane;
+      if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
+        printf("CUTLOG cat=%s el=%lu clock=%lu pos=%.3f,%.3f,%.3f fov=%.1f anchor=%s\n",
+               activeCutsceneCategory.c_str(), cutsceneElapsed_ms, actualTime_ms,
+               cameraNodePosition.coords[0], cameraNodePosition.coords[1], cameraNodePosition.coords[2],
+               cameraFOV, CutsceneViewer::AnchoringName(activeCutsceneAnchoring));
       // Where the camera ended up relative to the incident it is filming. The
       // one number that says whether an incident-local shot was placed at the
       // challenge or left sitting by the centre spot ("debug_cutscene_report").
@@ -3747,61 +3880,17 @@ void Match::UpdateIngameCamera() {
         // somebody. Dolly straight back until the nearest body clears the lens -
         // the framing, the lens and the move stay PES's (camerastandoff.hpp).
         {
-          std::vector<Vector3> castPositions;
-          castPositions.reserve(entranceCast.size());
-          const EntranceChoreo& posed = activeStaging ? activeStaging->choreo : entranceChoreo;
-          const float castFrame =
-              stagingHoldsOpeningFrame
-                  ? 0.0f
-                  : (GetEntranceElapsedSeconds() - stagingStartSeconds) * 100.0f;
-          for (const auto& member : entranceCast) {
-            Vector3 position;
-            radian yaw = 0;
-            int animFrame = 0;
-            posed.Sample(*member.slot, castFrame, position, yaw, animFrame);
-            castPositions.push_back(position + stagingOffset);
-          }
-          // Everyone the pack does not stage walks his own way to his mark, and
-          // is just as solid: with only the staged cast counted, the one
-          // unstaged slot of ent_009 walked straight through the tunnel camera
-          // and blacked the frame for a second and a half (03-09).
-          for (int teamID = 0; teamID < 2; teamID++) {
-            std::vector<Player*> squad;
-            teams[teamID]->GetActivePlayers(squad);
-            for (Player* player : squad) {
-              bool staged = false;
-              for (const auto& member : entranceCast)
-                if (member.player == player) { staged = true; break; }
-              if (!staged) castPositions.push_back(player->GetPosition());
-            }
-          }
           Quaternion aim = QUATERNION_IDENTITY;
           aim.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
           const Vector3 forward = aim * Vector3(0, 0, -1);
-          float push = CameraStandoff::PushBack(castPositions, cameraNodePosition, forward,
-                                                kPrematchLensClearance);
-          // Held for the length of the cut. Recomputed fresh every frame, the
-          // push fell to nothing the instant the body it was clearing passed
-          // behind the lens, and the camera jumped forward by up to the whole
-          // clearance - twenty-two players streaming past a tunnel camera made
-          // it lurch on every one (owner, 03-09: "the camera snaps forward").
-          // A dolly that only ever backs off within a shot cannot do that; the
-          // next cut starts clean, as PES's would.
-          const int cutNow = namedShot->CutIndexAt(shotFrame);
-          if (namedShot != standoffShot || cutNow != standoffCut) {
-            standoffShot = namedShot;
-            standoffCut = cutNow;
-            standoffPush = 0.0f;
-          }
-          // Backs off at once, comes forward slowly. Held at its maximum for the
-          // whole cut, the tunnel-mouth shot - which the entire queue walks
-          // through - ended up 2.2 m inside the arch behind it and black for
-          // ten seconds; released instantly it snapped. A dolly that returns
-          // at walking pace does neither.
-          const float returnPerFrame = kStandoffReturnMetresPerSecond * 0.01f;
-          standoffPush = std::max(push, standoffPush - returnPerFrame);
-          if (standoffPush > 0.0f) cameraNodePosition -= forward * standoffPush;
-
+          ApplyStandoff(namedShot, namedShot->CutIndexAt(shotFrame), forward, kPrematchLensClearance,
+                        cameraNodePosition);
+          if (getenv("GF_CAMLOG"))  // TEMP PROBE - strip before commit
+            printf("CAMLOG t=%.2f cut=%d push=%.2f pos=%.3f,%.3f,%.3f auth=%.3f,%.3f,%.3f fwd=%.2f,%.2f,%.2f\n",
+                   GetEntranceElapsedSeconds(), namedShot->CutIndexAt(shotFrame), standoffPush,
+                   cameraNodePosition.coords[0], cameraNodePosition.coords[1], cameraNodePosition.coords[2],
+                   frame.position[0] + stagingOffset.coords[0], frame.position[1] + stagingOffset.coords[1], frame.position[2],
+                   forward.coords[0], forward.coords[1], forward.coords[2]);
         }
         cameraNodeOrientation = QUATERNION_IDENTITY;
         cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
@@ -4236,6 +4325,14 @@ void Match::UpdateIngameCamera() {
           frame, {aimAt.coords[0], aimAt.coords[1], aimAt.coords[2] + 1.0f}, 1.5f, 0.15f);
       cameraNodePosition = Vector3(frame.position[0], frame.position[1],
                                    frame.position[2]);
+      // The scorer's teammates arrive into the shot from every side; the guard
+      // above only keeps the aim target itself off the lens. Tighter than the
+      // walk-on's clearance: PES composes these on a face on purpose.
+      {
+        const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
+        ApplyStandoff(&track, track.CutIndexAt(goalScoredTimer * 0.03f),
+                      Vector3(fwd[0], fwd[1], fwd[2]), kCelebrationLensClearance, cameraNodePosition);
+      }
       cameraNodeOrientation = QUATERNION_IDENTITY;
       cameraOrientation.Set(frame.rotation[0], frame.rotation[1],
                             frame.rotation[2], frame.rotation[3]);

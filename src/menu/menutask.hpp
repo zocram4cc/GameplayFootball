@@ -119,6 +119,13 @@ protected:
   // on the following tick so a tap is exactly one frame, the way a person
   // pressing and releasing a real key would register to guitask.
   SDL_Keycode menuScriptHeldKey = 0;
+  // A monkey run in progress: the seed, how many taps are left, and how many
+  // have been made (which is the index into the sequence, so a crash is
+  // reproducible from the log's "monkey seed S tap N").
+  bool menuMonkeyActive = false;
+  unsigned long menuMonkeySeed = 0;
+  unsigned long menuMonkeyRemaining = 0;
+  unsigned long menuMonkeyIndex = 0;
 };
 
 #endif

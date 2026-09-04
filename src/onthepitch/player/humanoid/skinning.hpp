@@ -15,6 +15,8 @@
 #ifndef _HPP_ONTHEPITCH_PLAYER_HUMANOID_SKINNING
 #define _HPP_ONTHEPITCH_PLAYER_HUMANOID_SKINNING
 
+#include <vector>
+
 #include "base/math/quaternion.hpp"
 #include "base/math/vector3.hpp"
 
@@ -77,6 +79,32 @@ int BatchSize(int bodyCount, int workerCount);
 // away from the action on alternate frames only, so it animated at half the frame
 // rate; that is off by default now that a body costs a quarter of what it did.
 bool BodyNeedsSkinning(bool distantFromAction, bool halveDistantRate, int phase, int phaseOffset);
+
+// A coarser copy of a skinned mesh for bodies far from the camera. The imported
+// bodies carry 20k-180k vertices and no LOD at all, and past a few tens of metres a
+// body is a few hundred pixels tall, so most of that is skinned for nothing.
+//
+// Vertex clustering: every vertex snaps to the grid cell of `cell` metres it sits
+// in, the first vertex seen in a cell stands for the cell (its position, normal,
+// texture vertex - and, through `sourceVertex`, its skin weights), and a triangle
+// survives only if its three corners land in three different cells. O(n), no
+// topology, and at distance the error is bounded by the cell: at 25 m and 1280 px
+// wide a 2 cm cell is about one pixel.
+//
+// `vertices` is element-major over `vertexCount` vertices, like a
+// MaterializedTriangleMesh; the result has the same layout and element count.
+struct ClusteredMesh {
+  std::vector<float> vertices;
+  std::vector<unsigned int> indices;
+  std::vector<int> sourceVertex;  // result vertex -> the source vertex it stands for
+  int vertexCount() const { return (int)sourceVertex.size(); }
+};
+ClusteredMesh ClusterDecimate(const float* vertices, int vertexCount, int elementCount,
+                              const std::vector<unsigned int>& indices, float cell);
+
+// Whether a body this far from the camera renders its coarse copy. With a band of
+// hysteresis so a body loitering on the threshold does not flicker between the two.
+bool UseBodyLod(float distanceToCamera, float lodDistance, bool currentlyLod);
 
 }  // namespace Skinning
 

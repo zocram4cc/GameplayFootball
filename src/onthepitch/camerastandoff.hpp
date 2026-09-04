@@ -18,13 +18,20 @@
 
 namespace CameraStandoff {
 
-// How far to move the camera back along -forward so nothing in `cast` is nearer
-// than `clearance`. Only what is in front of the lens counts, and only what is
-// roughly in shot: somebody standing beside the camera is not in the way.
-// `cast` positions are on the ground; the camera's own height is accounted for.
-float PushBack(const std::vector<blunted::Vector3>& cast, const blunted::Vector3& eye,
-               const blunted::Vector3& forward, float clearance);
+// Somebody in shot: where he stands (on the ground) and how far his mesh reaches
+// from that point. PES's men are half a metre across; a 4cc Wario is 2.4 m, so
+// his centre can sit outside a fixed clearance while his glove is over the lens.
+struct Body {
+  blunted::Vector3 position;
+  float radius = 0.4f;
+};
 
+// How far to move the camera back along -forward so that nothing in `cast` is
+// nearer than `clearance` beyond its own radius. Only what is in front of the
+// lens counts, and only what is actually in the way: somebody standing beside
+// the camera is not. The camera's own height is accounted for.
+float PushBack(const std::vector<Body>& cast, const blunted::Vector3& eye,
+               const blunted::Vector3& forward, float clearance);
 
 }  // namespace CameraStandoff
 

@@ -238,6 +238,18 @@ void Gui2WindowManager::BlackoutBackground(bool onOff) {
   }
 }
 
+void Gui2WindowManager::ForgetFocusIn(Gui2View* view) {
+  if (!focus || !view) return;
+  for (Gui2View* candidate = focus; candidate; candidate = candidate->GetParent()) {
+    if (candidate != view) continue;
+    // Cleared without the usual SetFocus bookkeeping: the outgoing view is
+    // being destroyed, so telling it it has lost focus is exactly the read
+    // this exists to prevent.
+    focus = nullptr;
+    return;
+  }
+}
+
 void Gui2WindowManager::MarkForDeletion(Gui2View* view) {
   pendingDelete.push_back(view);
 }

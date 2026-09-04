@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include "utils/playermodelmap.hpp"
+#include "utils/phaseprobe_tmp.hpp"  // TEMPORARY PROBE
 
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
@@ -177,8 +178,10 @@ HumanoidBase::HumanoidBase(PlayerBase* player, Match* match,
         GetPlayerModelDir(player->GetPlayerData()->GetDatabaseID());
     if (modelDir.empty()) modelDir = "media/objects/players";
     if (faceRig.Load(modelDir)) {
-      faceRig.Bind(boost::static_pointer_cast<Geometry>(
-          fullbodyNode->GetObject("fullbody")));
+      std::vector<float*> sources;
+      for (const FloatArray& mesh : uniqueFullbodyMesh) sources.push_back(mesh.data);
+      faceRig.Bind(boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody")),
+                   std::move(sources));
     }
   }
 
@@ -264,6 +267,11 @@ HumanoidBase::~HumanoidBase() {
   humanoidNode.reset();
   fullbodyTargetNode->DeleteNode(fullbodyNode);
   fullbodyTargetNode->DeleteObject(hairStyle);
+  bodyLodGeometry.reset();
+
+  for (unsigned int i = 0; i < bodyLodMesh.size(); i++) {
+    delete[] bodyLodMesh.at(i).data;
+  }
 
   buf_TemporalHumanoidNodes.clear();
 
@@ -524,6 +532,13 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
   UpdateFullbodyModel(true);
   boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))
       ->OnUpdateGeometryData(false);
+  // From here on every skin lands straight in the graphics system's concatenated
+  // array (GeometryData::UploadTarget) and the interpreter copies nothing; the
+  // submesh arrays keep the baked bind pose, which is what everything that reads
+  // them wants (the AABB, the face rig's binding).
+  fullbodyGeometryData->resourceMutex.lock();
+  fullbodyGeometryData->GetResource()->SetWritesUploadTarget(true);
+  fullbodyGeometryData->resourceMutex.unlock();
 
   // the bind: the pose the (now baked) mesh is stored in. UpdateFullbodyNodes
   // skins by the change since this pose, R_current * R_bind^-1.
@@ -531,6 +546,12 @@ void HumanoidBase::PrepareFullbodyModel(SkinWeights& skinWeights) {
     joints.at(i).origPos = jointsVec[i]->GetDerivedPosition();
     joints.at(i).origOrientation = jointsVec[i]->GetDerivedRotation().GetNormalized();
   }
+
+  // The coarse copy for when the camera is far, cut from the baked mesh.
+  // "body_lod_distance" 0 turns it off; "body_lod_cell" is the cluster size.
+  bodyLodDistance = GetConfiguration()->GetReal("body_lod_distance", 30.0f);
+  if (bodyLodDistance > 0.0f)
+    BuildBodyLod(GetConfiguration()->GetReal("body_lod_cell", 0.02f));
 
   delete straightAnim;
   delete baseAnim;
@@ -578,6 +599,8 @@ void HumanoidBase::UpdateFullbodyNodes() {
     hairStyle->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   }
 
+  ChooseBodyLod();
+
   // hairStyle->SetRotation(nodeMap.find("neck")->second->GetDerivedRotation());
   // hairStyle->SetPosition(nodeMap.find("neck")->second->GetDerivedPosition() +
   // joints[2].orientation * Vector3(0, 0, player->GetPlayerData()->GetHeight() -
@@ -585,17 +608,16 @@ void HumanoidBase::UpdateFullbodyNodes() {
 }
 
 bool HumanoidBase::NeedsModelUpdate() {
+  // The copy that just came on holds whatever it was left with; skin it now.
+  if (bodyLodSwitched) {
+    bodyLodSwitched = false;
+    return true;
+  }
   return Skinning::BodyNeedsSkinning(buf_LowDetailMode, halveDistantBodyRate, buf_bodyUpdatePhase,
                                      buf_bodyUpdatePhaseOffset);
 }
 
 void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
-  boost::intrusive_ptr<Resource<GeometryData>> fullbodyGeometryData =
-      boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->GetGeometryData();
-  fullbodyGeometryData->resourceMutex.lock();
-  std::vector<MaterializedTriangleMesh>& materializedTriangleMeshes =
-      fullbodyGeometryData->GetResource()->GetTriangleMeshesRef();
-
   // Each joint's transform, built once for the whole body. The per-influence
   // form rotated every vertex, normal, tangent and bitangent separately, so a
   // two-bone vertex cost eight quaternion rotations and every joint's rotation
@@ -608,19 +630,46 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
                                                       joints[j].position, zMultiplier);
   }
 
+  // Only the copy that is showing. The bake at load (updateSrc) is always the
+  // full body: the coarse copy is cut from it afterwards.
+  boost::intrusive_ptr<Geometry> geometry =
+      updateSrc ? boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))
+                : GetActiveBodyGeometry();
+  const bool lod = !updateSrc && bodyLodActive;
+  boost::intrusive_ptr<Resource<GeometryData>> geometryData = geometry->GetGeometryData();
+  geometryData->resourceMutex.lock();
+  SkinInto(*geometryData->GetResource(), lod ? bodyLodMesh : uniqueFullbodyMesh,
+           lod ? bodyLodWeights : weightedVerticesVec, updateSrc);
+  geometryData->resourceMutex.unlock();
+}
+
+void HumanoidBase::SkinInto(GeometryData& geometryData, std::vector<FloatArray>& bindMeshes,
+                            const std::vector<std::vector<WeightedVertex>>& weights,
+                            bool updateSrc) {
+  std::vector<MaterializedTriangleMesh>& materializedTriangleMeshes =
+      geometryData.GetTriangleMeshesRef();
+
   // normal, tangent and bitangent, as multiples of the attribute stride
   static const int directionOffsets[3] = {1, 3, 4};
 
-  for (unsigned int subgeom = 0; subgeom < fullbodySubgeomCount; subgeom++) {
-    FloatArray& uniqueMesh = uniqueFullbodyMesh.at(subgeom);
+  // Where the skin goes: the graphics system's concatenated array when it has
+  // published one and this is a per-frame skin, else this body's own submesh
+  // arrays (the bake at load, or no graphics system at all - the tests).
+  const GeometryData::UploadTarget& uploadTarget = geometryData.GetUploadTarget();
+  const bool direct = !updateSrc && uploadTarget.data && geometryData.WritesUploadTarget();
 
-    const std::vector<WeightedVertex>& weightedVertices = weightedVerticesVec.at(subgeom);
+  for (unsigned int subgeom = 0; subgeom < bindMeshes.size(); subgeom++) {
+    FloatArray& uniqueMesh = bindMeshes[subgeom];
+
+    const std::vector<WeightedVertex>& weightedVertices = weights[subgeom];
 
     int uniqueVertexCount = weightedVertices.size();
 
     int uniqueElementOffset = uniqueMesh.size / GetTriangleMeshElementCount();
 
-    float* target = materializedTriangleMeshes[subgeom].vertices;
+    float* target = direct ? uploadTarget.data + uploadTarget.submeshOffset[subgeom]
+                           : materializedTriangleMeshes[subgeom].vertices;
+    const int targetElementOffset = direct ? uploadTarget.elementStride : uniqueElementOffset;
     Skinning::JointTransform blended;
     Vector3 result;
 
@@ -657,13 +706,92 @@ void HumanoidBase::UpdateFullbodyModel(bool updateSrc) {
         // rotations does not, which is where the engine has always renormalised.
         if (blendedInfluences) result.FastNormalize();
         if (updateSrc) memcpy(&uniqueMesh.data[atDirection], result.coords, 3 * sizeof(float));
-        memcpy(&target[atDirection], result.coords, 3 * sizeof(float));
+        memcpy(&target[at + targetElementOffset * directionOffsets[d]], result.coords,
+               3 * sizeof(float));
       }
     }
 
   }  // subgeom
+}
 
-  fullbodyGeometryData->resourceMutex.unlock();
+boost::intrusive_ptr<Geometry> HumanoidBase::GetActiveBodyGeometry() {
+  if (bodyLodActive) return bodyLodGeometry;
+  return boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"));
+}
+
+void HumanoidBase::ChooseBodyLod() {
+  if (!bodyLodGeometry) return;
+  // The camera has been placed for this frame by Match::Put, before the bodies.
+  const float distance =
+      (match->GetCamera()->GetDerivedPosition() - humanoidNode->GetPosition()).GetLength();
+  const bool lod = Skinning::UseBodyLod(distance, bodyLodDistance, bodyLodActive);
+  if (lod == bodyLodActive) return;
+  bodyLodActive = lod;
+  bodyLodSwitched = true;  // NeedsModelUpdate: skin the copy coming on this frame
+  boost::intrusive_ptr<Geometry> full =
+      boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"));
+  if (lod) {
+    full->Disable();
+    bodyLodGeometry->Enable();
+  } else {
+    bodyLodGeometry->Disable();
+    full->Enable();
+  }
+}
+
+void HumanoidBase::BuildBodyLod(float cell) {
+  boost::intrusive_ptr<Geometry> full =
+      boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"));
+  boost::intrusive_ptr<Resource<GeometryData>> fullData = full->GetGeometryData();
+
+  boost::intrusive_ptr<Resource<GeometryData>> lodData =
+      ResourceManagerPool::GetInstance()
+          .GetManager<GeometryData>(e_ResourceType_GeometryData)
+          ->Fetch(fullData->GetIdentString() + " lod", false, false);
+
+  fullData->resourceMutex.lock();
+  std::vector<MaterializedTriangleMesh>& fullMeshes = fullData->GetResource()->GetTriangleMeshesRef();
+  int fullVertices = 0, lodVertices = 0;
+  for (unsigned int subgeom = 0; subgeom < fullbodySubgeomCount; subgeom++) {
+    const FloatArray& bind = uniqueFullbodyMesh[subgeom];
+    const std::vector<WeightedVertex>& weights = weightedVerticesVec[subgeom];
+    Skinning::ClusteredMesh coarse = Skinning::ClusterDecimate(
+        bind.data, (int)weights.size(), GetTriangleMeshElementCount(), fullMeshes[subgeom].indices,
+        cell);
+    fullVertices += weights.size();
+    lodVertices += coarse.vertexCount();
+
+    // The bind mesh skinning reads and the submesh array the geometry owns are
+    // both this copy; the geometry takes ownership of its one.
+    FloatArray lodBind;
+    lodBind.size = (int)coarse.vertices.size();
+    lodBind.data = new float[lodBind.size];
+    memcpy(lodBind.data, coarse.vertices.data(), lodBind.size * sizeof(float));
+    bodyLodMesh.push_back(lodBind);
+    float* owned = new float[lodBind.size];
+    memcpy(owned, coarse.vertices.data(), lodBind.size * sizeof(float));
+    lodData->GetResource()->AddTriangleMesh(fullMeshes[subgeom].material, owned, lodBind.size,
+                                            coarse.indices);
+
+    std::vector<WeightedVertex> lodWeights;
+    lodWeights.reserve(coarse.vertexCount());
+    for (int source : coarse.sourceVertex) lodWeights.push_back(weights[source]);
+    bodyLodWeights.push_back(std::move(lodWeights));
+  }
+  lodData->GetResource()->SetDynamic(true);
+  lodData->GetResource()->SetDynamicElements(fullData->GetResource()->GetDynamicElements());
+  lodData->GetResource()->SetWritesUploadTarget(true);
+  fullData->resourceMutex.unlock();
+
+  bodyLodGeometry = boost::static_pointer_cast<Geometry>(
+      ObjectFactory::GetInstance().CreateObject(full->GetName() + "_lod", e_ObjectType_Geometry));
+  scene3D->CreateSystemObjects(bodyLodGeometry);
+  bodyLodGeometry->SetLocalMode(e_LocalMode_Absolute);
+  bodyLodGeometry->SetGeometryData(lodData);
+  bodyLodGeometry->Disable();  // the full body shows until the camera is far
+  fullbodyNode->AddObject(bodyLodGeometry);
+  if (Verbose())
+    printf("body lod: %i -> %i vertices at %.3f m cells\n", fullVertices, lodVertices, cell);
 }
 
 /* moved this to gametask upload thread, so it can be multithreaded, whilst assuring its lifetime
@@ -1009,11 +1137,17 @@ void HumanoidBase::Put() {
 
   // printf("anim ptr: %i\n", fetchedbuf_animApplyBuffer.anim);
   // printf("nodemap size: %i\n", nodeMap.size());
+  static PhaseProbe probeApply("hb.Apply"), probeHand("hb.HandRig"),
+      probeSpatial("hb.RecursiveUpdate2"), probeTail("hb.tail"), probePut("hb.Put");
+  probePut.Begin();
+  probeApply.Begin();
   fetchedbuf_animApplyBuffer.anim->Apply(
       nodeMap, fetchedbuf_animApplyBuffer.frameNum, -1, fetchedbuf_animApplyBuffer.smooth,
       fetchedbuf_animApplyBuffer.smoothFactor, fetchedbuf_animApplyBuffer.position,
       fetchedbuf_animApplyBuffer.orientation, fetchedbuf_animApplyBuffer.offsets,
       &movementHistory.Get(), timeDiff_ms, fetchedbuf_animApplyBuffer.noPos, false);
+  probeApply.End();
+  probeHand.Begin();
   // The clip has had its say; the fingers are what it does not carry. PES drives
   // them from a pose library rather than from the body animation, and so does this
   // (handrig.hpp). A clip that DOES author finger channels wins, because Apply()
@@ -1024,8 +1158,12 @@ void HumanoidBase::Put() {
                                      : e_FunctionType_None,
                                  spatialState.floatVelocity));
   }
+  probeHand.End();
 
+  probeSpatial.Begin();
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
+  probeSpatial.End();
+  probeTail.Begin();
 
   // we've just set the humanoid positions for time fetchedbuf_animApplyBuffer.snapshotTime_ms.
   // however, it's eventually going to be displayed in a historic position, for temporal smoothing.
@@ -1057,6 +1195,8 @@ void HumanoidBase::Put() {
   humanoidNode->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
 
   UpdateFullbodyNodes();
+  probeTail.End();
+  probePut.End();
 }
 
 void HumanoidBase::CalculateGeomOffsets() {
@@ -1357,6 +1497,19 @@ void HumanoidBase::SetKit(boost::intrusive_ptr<Resource<Surface>> newKit) {
   bodyGeom->resourceMutex.unlock();
 
   boost::static_pointer_cast<Geometry>(fullbodyNode->GetObject("fullbody"))->OnUpdateGeometryData();
+
+  // The coarse copy wears the same materials, submesh for submesh.
+  if (bodyLodGeometry) {
+    boost::intrusive_ptr<Resource<GeometryData>> lodGeom = bodyLodGeometry->GetGeometryData();
+    lodGeom->resourceMutex.lock();
+    std::vector<MaterializedTriangleMesh>& lodMesh = lodGeom->GetResource()->GetTriangleMeshesRef();
+    bodyGeom->resourceMutex.lock();
+    for (unsigned int i = 0; i < lodMesh.size() && i < tmesh.size(); i++)
+      lodMesh.at(i).material = tmesh.at(i).material;
+    bodyGeom->resourceMutex.unlock();
+    lodGeom->resourceMutex.unlock();
+    bodyLodGeometry->OnUpdateGeometryData();
+  }
 }
 
 void HumanoidBase::ResetSituation(const Vector3& focusPos) {

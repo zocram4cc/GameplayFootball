@@ -42,9 +42,10 @@ bool FaceRig::Load(const std::string& modelDir) {
   return active;
 }
 
-void FaceRig::Bind(boost::intrusive_ptr<Geometry> geometry) {
+void FaceRig::Bind(boost::intrusive_ptr<Geometry> geometry, std::vector<float*> sources) {
   if (!active) return;
   boundGeometry = geometry;
+  this->sources = std::move(sources);
   meshBindings.assign(data.vertices.size(), {});
 
   std::vector<MaterializedTriangleMesh>& tmesh =
@@ -90,17 +91,19 @@ void FaceRig::SetExpression(e_FaceExpression expression) {
 
 void FaceRig::ApplyOffsets(const std::vector<std::array<float, 3>>& offsets) {
   if (!boundGeometry) return;
-  std::vector<MaterializedTriangleMesh>& tmesh =
-      boundGeometry->GetGeometryData()->GetResource()->GetTriangleMeshesRef();
+  // The same lock skinning holds while it reads these; it runs on the put phase's
+  // workers, this on the game thread.
+  boost::intrusive_ptr<Resource<GeometryData>> geometryData = boundGeometry->GetGeometryData();
+  geometryData->resourceMutex.lock();
   for (size_t v = 0; v < offsets.size() && v < meshBindings.size(); v++) {
     for (const auto& binding : meshBindings[v]) {
-      float* vp = &tmesh[binding.first].vertices[binding.second];
+      float* vp = &sources[binding.first][binding.second];
       vp[0] += offsets[v][0];
       vp[1] += offsets[v][1];
       vp[2] += offsets[v][2];
     }
   }
-  boundGeometry->OnUpdateGeometryData(false);
+  geometryData->resourceMutex.unlock();
 }
 
 }  // namespace blunted

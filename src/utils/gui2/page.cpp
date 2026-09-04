@@ -93,6 +93,12 @@ Gui2Page::~Gui2Page() {}
 void Gui2Page::GoBack() {
   // moved to View::Exit: sig_OnClose();
 
+  // One trip back per page, however many escapes land in the same frame: a
+  // second one used to Exit an already-exited page and build the previous page
+  // twice.
+  if (goingBack) return;
+  goingBack = true;
+
   this->Exit();
 
   windowManager->GetPagePath()->Pop();
@@ -103,8 +109,11 @@ void Gui2Page::GoBack() {
     windowManager->GetPageFactory()->CreatePage(prevPage);
   }  // else: no mo menus :[
 
-  delete this;
-  return;
+  // Deferred to the top of the next frame. This runs inside the page's own
+  // event dispatch: Gui2View::ProcessEvent reads members of the view after the
+  // handler returns, and the page that built the previous page above is still
+  // on the stack below it.
+  windowManager->MarkForDeletion(this);
 }
 
 void Gui2Page::ProcessWindowingEvent(WindowingEvent* event) {

@@ -100,3 +100,40 @@ The destination mapping was right and stays: `pitch_to_pixel` is
 Proof: `/home/z/.claude/jobs/f858a344/tmp/overlay_ab.png` - st002's crest
 before and after. "GIRLS CAN LOVE GIRLS" and "設立2012年7月" read upside down on
 the left and upright on the right.
+
+## 1 + 2. The monkey, and the five crashes it found
+
+`menu_smoke_script` gained a `monkey=<seed>:<taps>` action: one random key per
+driver tick, pushed into `UserEventManager` like any keyboard, so it walks the
+same guitask -> windowing event -> focused widget path a human does. The keys
+are weighted towards movement and confirm with escape and 'x' often enough to
+open and abandon submenus mid-drag, and the stream is a pure function of
+(seed, index) - so every crash it finds is replayable from two numbers, printed
+on every tap.
+
+    "menu_smoke_script" "2500:left;3000:monkey=1:3000;600000:quit"
+
+Seed 1 segfaulted at tap 772 within twenty seconds of first being run. Five
+distinct defects, each found by re-running under the ASan build
+(`build-asan`, `-fsanitize=address`), all in gui2 rather than in the game
+plan's own maths:
+
+| # | tap | what ASan said | cause | fix |
+|---|---|---|---|---|
+| 1 | 772 | heap-use-after-free in `Gui2View::SetInFocusPath` from `SetFocus` | the window manager kept `focus` pointing into a page that had just been deleted; the next `SetFocus` told the outgoing view it had lost focus, walking its freed parent chain | `Gui2WindowManager::ForgetFocusIn(view)`, called from `Gui2View::Exit`: the focus is dropped if it is that view **or anything below it** |
+| 2 | 69 | UAF in `Gui2View::Exit`'s child loop | `Exit` iterated a *copy* of `children`; a child's `sig_OnClose` deletes other children (the game plan's submenu close rebuilds the button column), so the copy held freed pointers | the loop takes `children.back()` from the live vector |
+| 3 | 69 | still UAF at the same line | a handler can also *add* views to the dying grid, and the loop could revisit an entry | pop and unparent **before** exiting each child |
+| 4 | 358 | UAF reading `gridNav` inside `GamePlanPage::OnClose` | `Exit` ran twice on a page (once from `GoBack`, once from the manager's `pendingDelete`), so every close handler ran twice - the second time on state the first had destroyed | `Gui2View::Exit` is idempotent (`exited`) |
+| 5 | 358 | UAF deleting the same view twice | one view in two `children` lists: the button column is taken out of its grid when a submenu opens and put back when one closes, and two closes in a row added it twice | `Gui2View::AddView` moves a parented view instead of duplicating it; `Gui2Grid::AddView` replaces its own container entry |
+
+Two more were fixed on the way, both found by reading rather than by the
+monkey: `GamePlanSubMenu` did `delete this` inside its own event handler (now
+`MarkForDeletion`, and one close per submenu however many escapes arrive in a
+frame), and `Gui2Grid::RemoveView(row, col)` detached only the last view in a
+cell and called `Gui2View::RemoveView(nullptr)` - a logged fatal - when the
+cell was empty.
+
+**Result: seed 1 now runs its full 3,000 taps with no crash** (`monkey7.log`).
+The page is also one-way at teardown: `tearingDown` stops a submenu's close
+signal from rebuilding the column, saving tactics, or writing to the names db
+while the page is being deleted.

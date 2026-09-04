@@ -54,6 +54,19 @@ void Gui2Grid::Process() {
 }
 
 void Gui2Grid::AddView(Gui2View* view, int row, int col) {
+  if (!view) return;
+  // Same view, second cell: keep one entry, not two (Gui2View::AddView is a
+  // no-op for a view already parented here, so without this the layout would
+  // hold it at both places).
+  {
+    auto iter = container.begin();
+    while (iter != container.end()) {
+      if (iter->view == view)
+        iter = container.erase(iter);
+      else
+        iter++;
+    }
+  }
   Gui2View::AddView(view);
 
   int adaptedRow = row;
@@ -97,16 +110,22 @@ void Gui2Grid::RemoveView(Gui2View* view) {
 }
 
 void Gui2Grid::RemoveView(int row, int col) {
-  Gui2View* view = nullptr;
+  // Every view in the cell, not the last one found: two views sharing a cell
+  // left the earlier ones erased from the layout while still parented here,
+  // and an empty cell called Gui2View::RemoveView(nullptr), which logs a fatal
+  // error. A grid asked to clear a cell that is already clear has nothing to
+  // complain about.
+  std::vector<Gui2View*> removed;
   auto iter = container.begin();
   while (iter != container.end()) {
     if (iter->row == row && iter->col == col) {
-      view = iter->view;
+      removed.push_back(iter->view);
       iter = container.erase(iter);
     } else
       iter++;
   }
-  Gui2View::RemoveView(view);
+  for (Gui2View* view : removed)
+    if (view) Gui2View::RemoveView(view);
 }
 
 Gui2View* Gui2Grid::FindView(int row, int col) {

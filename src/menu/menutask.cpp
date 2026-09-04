@@ -170,6 +170,27 @@ void MenuTask::TickMenuScript() {
     return;
   }
 
+  // A monkey run owns the driver until its taps are spent: one key per tick,
+  // every tick, so a screen is hammered as fast as the game can take input.
+  if (menuMonkeyActive) {
+    if (menuMonkeyRemaining == 0) {
+      menuMonkeyActive = false;
+      printf("[menu-script] monkey done: seed %lu, %lu tap(s)\n", menuMonkeySeed,
+             menuMonkeyIndex);
+    } else {
+      const MenuScript::Key key = MenuScript::MonkeyKey(menuMonkeySeed, menuMonkeyIndex);
+      menuScriptHeldKey = KeycodeForScriptKey(key);
+      UserEventManager::GetInstance().SetKeyboardState(menuScriptHeldKey, true);
+      // Every tap is printed, because the last line before a crash is the
+      // reproduction: seed plus index replays the identical sequence.
+      printf("[monkey] seed %lu tap %lu key %d\n", menuMonkeySeed, menuMonkeyIndex, (int)key);
+      fflush(stdout);
+      menuMonkeyIndex++;
+      menuMonkeyRemaining--;
+      return;
+    }
+  }
+
   if (menuScriptNextStep >= menuScriptSteps.size()) return;
 
   const MenuScript::Step& step = menuScriptSteps.at(menuScriptNextStep);
@@ -190,6 +211,13 @@ void MenuTask::TickMenuScript() {
                                    step.name + ".bmp");
         printf("[menu-script] screenshot requested: %s\n", step.name.c_str());
       }
+      break;
+    case MenuScript::Action::Monkey:
+      menuMonkeyActive = true;
+      menuMonkeySeed = step.seed;
+      menuMonkeyRemaining = step.taps;
+      menuMonkeyIndex = 0;
+      printf("[menu-script] monkey starts: seed %lu, %lu tap(s)\n", step.seed, step.taps);
       break;
     case MenuScript::Action::Quit:
       printf("[menu-script] quit\n");

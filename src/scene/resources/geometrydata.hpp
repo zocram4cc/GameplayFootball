@@ -64,11 +64,37 @@ public:
   unsigned int GetDynamicElements() const { return dynamicElementMask; }
   static constexpr unsigned int kAllElements = 0xFFFFFFFFu;
 
+  // The graphics system concatenates every submesh into one element-major array
+  // before uploading it: all positions, then all normals, and so on, with submesh
+  // i's vertices starting `submeshOffset[i]` floats into each element. Skinning
+  // wrote each submesh's own array and the interpreter then copied the changed
+  // elements into that one - a copy that only existed to concatenate, about
+  // 17 MB a frame over a squad. The interpreter publishes its array here so a
+  // writer can put its output straight into it; a writer that does says so with
+  // SetWritesUploadTarget, and the interpreter stops copying the dynamic
+  // elements for it. Whoever owns the array clears this before freeing it.
+  struct UploadTarget {
+    float* data = nullptr;
+    int elementStride = 0;
+    std::vector<int> submeshOffset;
+  };
+  void SetUploadTarget(float* data, int elementStride, std::vector<int> submeshOffset) {
+    uploadTarget.data = data;
+    uploadTarget.elementStride = elementStride;
+    uploadTarget.submeshOffset = std::move(submeshOffset);
+  }
+  void ClearUploadTarget() { uploadTarget = UploadTarget(); }
+  const UploadTarget& GetUploadTarget() const { return uploadTarget; }
+  void SetWritesUploadTarget(bool writes) { writesUploadTarget = writes; }
+  bool WritesUploadTarget() const { return writesUploadTarget; }
+
   AABB GetAABB() const;
 
 protected:
   bool isDynamic;
   unsigned int dynamicElementMask = kAllElements;
+  UploadTarget uploadTarget;
+  bool writesUploadTarget = false;
   std::vector<MaterializedTriangleMesh> triangleMeshes;
 
   mutable AABBCache aabb;

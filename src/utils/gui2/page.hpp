@@ -35,6 +35,10 @@ public:
 
 protected:
   Gui2PageData pageData;
+
+protected:
+  // GoBack is idempotent; see Gui2Page::GoBack.
+  bool goingBack = false;
 };
 
 class Gui2PageFactory {

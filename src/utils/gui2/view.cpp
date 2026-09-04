@@ -30,20 +30,50 @@ Gui2View::~Gui2View() {}
 void Gui2View::Exit() {
   // printf("exiting %s.. ", name.c_str());
 
+  // Once. Exit is called from the owner and again by the window manager when a
+  // view is handed to MarkForDeletion, and a second pass fires sig_OnClose a
+  // second time - so every close handler ran twice, on state the first pass
+  // had already destroyed (GamePlanPage::OnClose read its deleted button
+  // column: the monkey's fourth crash, seed 1 tap 358).
+  if (exited) return;
+  exited = true;
+
   this->sig_OnClose();
 
-  if (IsFocussed())
-    windowManager->SetFocus(0);
+  // Anywhere in this subtree, not only this view itself. A focussed child
+  // whose ancestor is being deleted leaves the manager holding a pointer whose
+  // parent chain is freed, and the next SetFocus walks that chain
+  // (Gui2View::SetInFocusPath) - a use-after-free the game-plan monkey found
+  // in a second. Children clear it on their own way out too; this closes the
+  // case where the handler that is deleting us re-focuses something first.
+  windowManager->ForgetFocusIn(this);
 
   this->Hide();
 
-  std::vector<Gui2View*> childrenCopy =
-      children;  // need to make copy: child->Exit will remove itself from *this->children
-  for (int i = (signed int)childrenCopy.size() - 1; i >= 0; i--) {  // filo
-    childrenCopy.at(i)->Exit();
-    delete childrenCopy.at(i);
+  // Taken from the live vector one at a time, last first. A copy was made here
+  // instead, on the reasoning that Exit removes the child from `children` and
+  // would invalidate the loop - but a child's Exit fires sig_OnClose, and a
+  // handler is free to delete *other* children (the game plan's submenu close
+  // puts the button column back and takes it away again). The copy then held
+  // pointers that had already been deleted, and Exit was called on freed
+  // memory: the second crash the monkey found (seed 1, tap 69).
+  //
+  // A child's own Exit ends with parent->RemoveView(this), so the vector
+  // shrinks as we go; the pop is only a guard for a child that does not.
+  while (!children.empty()) {
+    // Detached before it is exited, and taken from the live vector each time.
+    // Both matter: a child's Exit fires sig_OnClose, and the handlers here add
+    // and remove views in the tree that is being destroyed (the game plan's
+    // submenu close puts the button column back into the very grid being torn
+    // down). Popping first means no entry can be visited twice and no handler
+    // can leave a freed pointer behind for this loop to read - the monkey's
+    // second and third crashes, both at this line.
+    Gui2View* child = children.back();
+    children.pop_back();
+    child->SetParent(0);
+    child->Exit();
+    delete child;
   }
-  children.clear();
 
   if (parent)
     parent->RemoveView(this);
@@ -82,6 +112,14 @@ void Gui2View::UpdateImageVisibility() {
 }
 
 void Gui2View::AddView(Gui2View* view) {
+  if (!view) return;
+  // A view has one parent. Adding one that already has a place put it in two
+  // children lists (or twice in the same one), and teardown then deleted it
+  // twice - the game plan's button column, which is taken out of its grid
+  // whenever a submenu opens and put back when one closes, so two closes in a
+  // row added it twice. Moving it is what every caller means.
+  if (view->GetParent() == this) return;
+  if (view->GetParent()) view->GetParent()->RemoveView(view);
   children.push_back(view);
   view->SetParent(this);
   view->UpdateImagePosition();

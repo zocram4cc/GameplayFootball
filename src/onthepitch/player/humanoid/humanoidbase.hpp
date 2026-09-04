@@ -228,6 +228,9 @@ public:
   void UpdateFullbodyNodes();
   bool NeedsModelUpdate();
   void UpdateFullbodyModel(bool updateSrc = false);
+  // The body geometry showing this frame - the full mesh or, far from the camera,
+  // its coarse copy - which is the one to skin and upload.
+  boost::intrusive_ptr<Geometry> GetActiveBodyGeometry();
 
   virtual void Process();
   void PreparePutBuffers(unsigned long snapshotTime_ms);
@@ -406,6 +409,20 @@ protected:
   std::vector<std::vector<WeightedVertex>> weightedVerticesVec;  // < subgeoms < vertices > >
   unsigned int fullbodySubgeomCount;
   std::vector<int*> uniqueIndicesVec;
+  // The coarse copy (Skinning::ClusterDecimate) of the body for when it is far
+  // from the camera: its own geometry under fullbodyNode, its own bind mesh and
+  // weight table in the same per-submesh shape as the full body's. Empty when
+  // "body_lod_distance" is 0.
+  boost::intrusive_ptr<Geometry> bodyLodGeometry;
+  std::vector<FloatArray> bodyLodMesh;
+  std::vector<std::vector<WeightedVertex>> bodyLodWeights;
+  float bodyLodDistance = 0.0f;
+  bool bodyLodActive = false;
+  bool bodyLodSwitched = false;
+  void BuildBodyLod(float cell);
+  void ChooseBodyLod();
+  void SkinInto(GeometryData& geometryData, std::vector<FloatArray>& bindMeshes,
+                const std::vector<std::vector<WeightedVertex>>& weights, bool updateSrc);
   std::vector<Joint> joints;
   // one affine transform per joint, rebuilt at the top of every skinning pass
   // and kept here so the pass allocates nothing
