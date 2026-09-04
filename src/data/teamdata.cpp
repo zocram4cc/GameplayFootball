@@ -315,11 +315,16 @@ TeamData::TeamData(int teamDatabaseID) : databaseID(teamDatabaseID) {
 TeamData::~TeamData() {}
 
 FormationEntry TeamData::GetFormationEntry(int num) {
-  assert(num >= 0 && num < playerNum);
+  // Only the eleven have one. A bench player's index is a perfectly ordinary
+  // squad index and the game plan hands squad indices around, so this has to
+  // answer rather than read past the array: with NDEBUG the assert is gone and
+  // the read went into the next heap block (the line-up monkey, seed 1 tap 56).
+  if (num < 0 || num >= playerNum) return FormationEntry();
   return formation[num];
 }
 
 void TeamData::SetFormationEntry(int num, FormationEntry entry) {
+  if (num < 0 || num >= playerNum) return;
   formation[num] = entry;
 }
 

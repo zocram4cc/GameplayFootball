@@ -5,6 +5,7 @@
 
 #include "match.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <set>
 
@@ -5091,40 +5092,36 @@ boost::intrusive_ptr<Node> Match::GetDynamicNode() {
 
 void Match::ApplyReplayFrame(unsigned long replayTime_ms) {
   for (unsigned int i = 0; i < replay.size(); i++) {
-    /* todo: smoothing
-    std::map<unsigned long, ReplayFrame>::iterator iter1 = replay.at(i).frames.find(first_ms);
-    if (iter1 == replay.at(i).frames.end()) printf("FRAME NOT FOUND, SHOULD NOT HAPPEN AAARGHH\n");
-    std::map<unsigned long, ReplayFrame>::iterator iter2 = replay.at(i).frames.find(last_ms);
-    if (iter2 == replay.at(i).frames.end()) printf("FRAME NOT FOUND, SHOULD NOT HAPPEN AAARGHH\n");
-    */
+    // same stale-entry hazard as CaptureReplayFrame: skip null spatials
+    if (!replay.at(i)->spatial) continue;
+    blunted::circular_buffer<ReplaySpatialFrame>& frames = replay.at(i)->frames;
+    // Frames are captured in time order, so the first one at or past the replay
+    // time is a binary search away. This used to walk from the front for every
+    // spatial on every put: some 1,300 skeleton nodes over a 1,000-frame buffer,
+    // and a fifth of the CPU while a goal replay ran (perf, 04-09).
+    blunted::circular_buffer<ReplaySpatialFrame>::iterator iter = std::lower_bound(
+        frames.begin(), frames.end(), replayTime_ms,
+        [](const ReplaySpatialFrame& frame, unsigned long time_ms) {
+          return frame.frameTime_ms < time_ms;
+        });
+    if (iter == frames.end()) continue;
+    blunted::circular_buffer<ReplaySpatialFrame>::iterator iterPrev = iter;
+    if (iterPrev != frames.begin())
+      iterPrev--;
+    const ReplaySpatialFrame& frame1 = *iterPrev;
+    const ReplaySpatialFrame& frame2 = *iter;
+    int count = frame2.frameTime_ms - frame1.frameTime_ms;
+    int offset = replayTime_ms - frame1.frameTime_ms;
+    if (count == 0)
+      count = 1;  // never divide by zero, will implode universe
+    float bias = (float)offset / (float)count;
 
-    blunted::circular_buffer<ReplaySpatialFrame>::iterator iter = replay.at(i)->frames.begin();
-    while (iter != replay.at(i)->frames.end()) {
-      if (iter->frameTime_ms >= replayTime_ms) {
-        blunted::circular_buffer<ReplaySpatialFrame>::iterator iterPrev = iter;
-        if (iterPrev != replay.at(i)->frames.begin())
-          iterPrev--;
-        const ReplaySpatialFrame& frame1 = *iterPrev;  //->frames.at(frame - 1);
-        const ReplaySpatialFrame& frame2 = *iter;      //->frames.at(frame);
-        int count = frame2.frameTime_ms - frame1.frameTime_ms;
-        int offset = replayTime_ms - frame1.frameTime_ms;
-        if (count == 0)
-          count = 1;  // never divide by zero, will implode universe
-        float bias = (float)offset / (float)count;
-        // printf("bias: %f\n", bias);
-
-        // same stale-entry hazard as CaptureReplayFrame: skip null spatials
-        if (!replay.at(i)->spatial) break;
-        replay.at(i)->spatial->SetPosition(frame1.position * (1.0f - bias) + frame2.position * bias,
-                                           false);
-        // frame1.orientation.MakeSameNeighborhood(frame2.orientation); only needed for Lerp
-        replay.at(i)->spatial->SetRotation(
-            frame1.orientation.GetSlerped(bias, frame2.orientation).GetNormalized(), false);
-        replay.at(i)->spatial->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
-        break;
-      }
-      iter++;
-    }
+    replay.at(i)->spatial->SetPosition(frame1.position * (1.0f - bias) + frame2.position * bias,
+                                       false);
+    // frame1.orientation.MakeSameNeighborhood(frame2.orientation); only needed for Lerp
+    replay.at(i)->spatial->SetRotation(
+        frame1.orientation.GetSlerped(bias, frame2.orientation).GetNormalized(), false);
+    replay.at(i)->spatial->RecursiveUpdateSpatialData(e_SpatialDataType_Both);
   }
 
   std::vector<Player*> players;
