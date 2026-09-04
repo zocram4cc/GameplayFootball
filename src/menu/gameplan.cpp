@@ -370,6 +370,9 @@ void GamePlanPage::ToggleRoleFromMap(int squadIndex) {
                                 : (playerData->GetRoles().empty() ? e_PlayerRole_CM
                                                                   : playerData->GetRoles().front());
   const bool has = playerData->ToggleRole(role);
+  // The card says how many other positions he is registered for, so it has to
+  // be re-printed or the toggle is invisible where it is used.
+  map->RefreshRole(squadIndex);
   SetHints(playerData->GetLastName() + ": " + GetRoleName(role) + " " +
            Localization::GetInstance().Translate(has ? "role_registered" : "role_unregistered"));
 }

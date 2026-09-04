@@ -10,6 +10,7 @@
 
 #include "gamedefines.hpp"
 #include "gametypes.hpp"
+#include "planmapcard.hpp"
 #include "planmapinteraction.hpp"
 #include "scene/objects/image2d.hpp"
 #include "utils/gui2/view.hpp"
@@ -39,6 +40,19 @@ public:
   // draws its own focus/toggle border (button.cpp) - no extra art asset.
   void SetHighlight(e_Highlight highlight);
 
+  // Re-prints the position strip, which is where the count of a player's other
+  // registered roles lives ("CB+1"). Only the text: the card is not rebuilt,
+  // because deleting views inside the event that asked for the change is the
+  // use-after-free this file has already been fixed for twice.
+  void SetRoleText(const std::string& text);
+
+  // Re-draws the medal and re-tints the name: registering a player for the
+  // position he is standing in is exactly what the medal reports, and it is
+  // the only visible answer to the secondary button (the count beside the
+  // position is of his OTHER positions, which a toggle of this one cannot
+  // change).
+  void SetAptitude(PlanMapCard::e_Aptitude aptitude);
+
 protected:
   e_PlayerRole role;
   Gui2Image* portraitImage = nullptr;
@@ -67,6 +81,9 @@ public:
   // an external change such as picking a new formation from the pitch's own
   // 'x' submenu, which the map has no other way to learn about.
   void Refresh();
+
+  // Re-prints one card's position strip after its player's roles changed.
+  void RefreshRole(int index);
   Gui2PlanMap(Gui2WindowManager* windowManager, const std::string& name, float x_percent,
               float y_percent, float width_percent, float height_percent, TeamData* teamData);
   virtual ~Gui2PlanMap();
@@ -116,6 +133,7 @@ protected:
   // do it on this screen (the owner asked for it), so the bench has to be on
   // the same map as the eleven rather than in a list of its own.
   PlanMapInteraction::PitchPoint BenchPoint(int benchOrder) const;
+
   // The bench is one row of cards under the pitch - two rows of them do not fit
   // the band the diagram leaves, and a card any smaller loses the 22px caption
   // floor. A squad with more substitutes than the row holds scrolls: reaching

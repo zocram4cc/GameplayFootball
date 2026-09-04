@@ -350,6 +350,34 @@ void Gui2PlanMap::RebuildEntries() {
   UpdateBenchVisibility();
 }
 
+void Gui2PlanMapEntry::SetRoleText(const std::string& text) {
+  if (roleNameCaption) roleNameCaption->SetCaption(text);
+}
+
+void Gui2PlanMapEntry::SetAptitude(PlanMapCard::e_Aptitude aptitude) {
+  const PlanMapCard::Colour colour = PlanMapCard::AptitudeColour(aptitude);
+  if (playerNameCaption) playerNameCaption->SetColor(ToVector3(colour));
+  if (!medalMark) return;
+  boost::intrusive_ptr<Image2D>& image = medalMark->GetImage2D();
+  const int w = (int)image->GetSize().coords[0];
+  const int h = (int)image->GetSize().coords[1];
+  image->DrawRectangle(0, 0, w, h, Vector3(0, 0, 0), 190);
+  image->DrawRectangle(1, 1, w - 2, h - 2, ToVector3(colour), 255);
+  image->OnChange();
+}
+
+void Gui2PlanMap::RefreshRole(int index) {
+  if (index < 0 || index >= (int)entries.size()) return;
+  PlayerData* playerData = teamData->GetPlayerData(index);
+  const std::vector<e_PlayerRole> roles =
+      playerData ? playerData->GetRoles() : std::vector<e_PlayerRole>();
+  const e_PlayerRole role = entries.at(index)->GetRole();
+  entries.at(index)->SetRoleText(
+      PlanMapCard::SlotRoleText(GetRoleName(role),
+                                PlanMapCard::OtherRegisteredRoles(role, roles)));
+  entries.at(index)->SetAptitude(PlanMapCard::AptitudeFor(role, roles));
+}
+
 void Gui2PlanMap::Refresh() {
   RebuildEntries();
   UpdateHighlights();
@@ -396,8 +424,13 @@ void Gui2PlanMap::ProcessWindowingEvent(WindowingEvent* event) {
       // Registers the position under the cursor for this player, or takes it
       // away again. Not while dragging: the card is between two positions then
       // and it is not clear which one would be meant.
+      //
+      // The handler re-prints the one card (RefreshRole). It used to rebuild
+      // every card here, inside the event that asked for the toggle - which
+      // deleted the card holding the focus, so the answer to pressing the
+      // button was the cursor falling out of the map, and it is the same
+      // delete-during-dispatch that the five crashes of 04-09 were.
       sig_OnToggleRole(selectedIndex);
-      RebuildEntries();
       UpdateHighlights();
     } else {
       event->Ignore();
