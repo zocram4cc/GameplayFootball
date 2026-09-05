@@ -90,10 +90,59 @@ def is_cloth(block):
 
 def cloth_radius(blocks):
     """-> the radius the flag reaches, from the cloth meshes themselves."""
+    # The authored cloth only. A disc this tool built before is also "cloth",
+    # and measuring it re-measured the answer instead of the question.
     radii = [math.hypot(v[0], v[1])
-             for block in blocks if is_cloth(block)
+             for block in blocks
+             if is_cloth(block) and block_name(block) not in (NODE, UNDERSIDE_NODE)
              for v in block_vertices(block)]
     return max(radii) if radii else 0.0
+
+
+def bearer_radius(blocks):
+    """-> the radius of the ring of bearers, for a file with no cloth left.
+
+    The flag is the size of the ring that carries it, so the bearers say how
+    big it is. This is the path for a file this tool has already rebuilt: the
+    cloth it replaced is gone, and it must still be able to rebuild the flag
+    (measured on st002 the two agree to 6%: cloth 8.38 m, bearers 8.87 m at
+    their outer edge, and the flag is held inside that).
+    """
+    ring = None
+    for block in blocks:
+        vertices = block_vertices(block)
+        if not vertices or block_name(block) in (NODE, UNDERSIDE_NODE):
+            continue
+        top = max(v[2] for v in vertices)
+        if top < CLOTH_MAX_Z:
+            continue          # not a bearer: a flat mesh
+        # The OUTER ring - the tallest bearers, standing at the flag's rim.
+        # Averaging every bearer mesh in pulled the rim to 5.4 m, inside a
+        # second group that stands nearer the middle.
+        if ring is None or top > ring[0]:
+            ring = (top, [math.hypot(v[0], v[1]) for v in vertices])
+    if not ring:
+        return 0.0
+    radii = sorted(ring[1])
+    # Their hands, not their backs: the inner edge of that ring, so the sheet
+    # stops at the arms instead of cutting through the bodies.
+    return radii[int(len(radii) * 0.02)]
+
+
+def emblem_materials(text):
+    """-> (material for the emblem side, material for the backing).
+
+    Read off the material list rather than off a cloth mesh, so a file whose
+    cloth has already been replaced can still be rebuilt.
+    """
+    top = under = 0
+    for index, bitmap in enumerate(re.findall(r"\*BITMAP \"([^\"]+)\"", text)):
+        name = os.path.basename(bitmap).lower()
+        if "prop000" in name or "emblem" in name:
+            top = index
+        elif "prop001" in name:
+            under = index
+    return top, under
 
 
 def disc(radius, height=HOLD_HEIGHT, sag=SAG, segments=SEGMENTS, rings=RINGS):
@@ -122,9 +171,12 @@ def disc(radius, height=HOLD_HEIGHT, sag=SAG, segments=SEGMENTS, rings=RINGS):
             nxt = (step + 1) % segments
             faces.append((inner + step, outer + nxt, outer + step))
             faces.append((inner + step, inner + nxt, outer + nxt))
-    # u mirrored: the sheet that faces the sky is the reversed winding, so an
-    # unmirrored map put the wordmark on backwards.
-    uvs = [(0.5 - 0.5 * v[0] / radius, 0.5 - 0.5 * v[1] / radius) for v in vertices]
+    # Turned to the broadcast side, not mirrored: the sheet that faces the sky
+    # is the reversed winding, so mapping it straight put the wordmark on
+    # backwards, and mapping it mirrored in one axis only put it the right way
+    # round for the tunnel camera and upside down for the one that films the
+    # ceremony (measured on a recorded entrance).
+    uvs = [(0.5 + 0.5 * v[0] / radius, 0.5 + 0.5 * v[1] / radius) for v in vertices]
     return vertices, faces, uvs
 
 
@@ -170,19 +222,19 @@ def write_mesh(name, material, vertices, faces, uvs, flip=False):
 def rebuild(text):
     """-> (new text, how many cloth meshes were replaced, the radius used)."""
     header, blocks = mesh_blocks(text)
-    cloth = [b for b in blocks if is_cloth(b)]
-    if not cloth:
-        return text, 0, 0.0
-    radius = cloth_radius(blocks)
+    # The authored cloth, and a disc this tool wrote on an earlier run. Both go;
+    # only the first says how big the flag is, and when it is already gone the
+    # bearers do.
+    authored = [b for b in blocks
+                if is_cloth(b) and block_name(b) not in (NODE, UNDERSIDE_NODE)]
+    ours = [b for b in blocks if block_name(b) in (NODE, UNDERSIDE_NODE)]
+    radius = cloth_radius(blocks) if authored else bearer_radius(blocks)
     if radius <= 0.0:
         return text, 0, 0.0
     # The emblem material is the one the top sheets already use; the underside
     # keeps whichever material the flat navy backing had, so the flag is opaque
     # from below without a new texture.
-    tops = [b for b in cloth if max(v[2] for v in block_vertices(b)) > 0.3]
-    top_material = block_material(tops[0] if tops else cloth[0])
-    unders = [b for b in cloth if b not in tops]
-    under_material = block_material(unders[0]) if unders else top_material
+    top_material, under_material = emblem_materials(text)
 
     vertices, faces, uvs = disc(radius)
     kept = [b for b in blocks if not is_cloth(b)]
@@ -194,7 +246,7 @@ def rebuild(text):
     # disc showed its navy backing from above and the emblem to the grass.
     made = (write_mesh(NODE, top_material, vertices, faces, uvs, flip=True) +
             write_mesh(UNDERSIDE_NODE, under_material, vertices, faces, under_uvs))
-    return header + "".join(kept) + made, len(cloth), radius
+    return header + "".join(kept) + made, len(authored) + len(ours), radius
 
 
 def main():
