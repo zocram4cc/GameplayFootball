@@ -53,6 +53,11 @@ public:
   // aside, the cards become the thing being navigated, and dragging one is how
   // the formation is changed (owner, 04-09). Escape brings the column back.
   void GoLineupMode();
+  // Escape while the pitch has the panel: it brings the column back, and only
+  // then does another escape leave the page. The map ignores escape unless it
+  // is dragging, so without this it reached Gui2Page::GoBack and LINEUP could
+  // not be left without closing the whole GAME PLAN.
+  void ProcessWindowingEvent(WindowingEvent* event) override;
   // Both teams at once: the side being edited on the pitch, the other beside
   // it as a read-only sheet. In one-pad coach mode the two can be swapped -
   // PES gives you only your own, but a coach running both benches needs both

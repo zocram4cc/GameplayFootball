@@ -337,6 +337,20 @@ void GamePlanPage::GoLineupMode() {
   ShowLineupHints();
 }
 
+void GamePlanPage::ProcessWindowingEvent(WindowingEvent* event) {
+  // LINEUP is a state of this page, not a page of its own, and the only view
+  // holding focus in it is the map - which ignores escape unless it is
+  // dragging a card. So escape bubbled here and Gui2Page took it as "leave",
+  // against the hint the page itself prints ("B - DONE"). Bring the column
+  // back instead; the next escape leaves, as it does from browsing.
+  if (lineupMode && !tearingDown && event->IsEscape()) {
+    event->Accept();
+    Reactivate(buttonLineup);
+    return;
+  }
+  Gui2Page::ProcessWindowingEvent(event);
+}
+
 bool GamePlanPage::SubstituteFromMap(int starterSlot, int benchIndex) {
   if (tearingDown) return false;
   PlayerData* starter = teamData->GetPlayerData(starterSlot);

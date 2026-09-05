@@ -169,12 +169,47 @@ WELD_RADIUS = 0.005
 COINCIDENT_RADIUS = 0.001
 
 
-def weld(parts, radius=WELD_RADIUS):
-    """Influence lists with coincident vertices in the same part made identical.
+def _patches(count, faces):
+    """A representative per vertex, one per connected run of triangles.
 
-    Same shape in and out, like reconcile(). Every vertex within `radius` of
-    another in its own part gets the sum of their influences, so a UV seam can
-    no longer skin its two halves to two different joints.
+    A UV seam does not bend a surface: it CUTS it. The exporter emits the two
+    sides as separate triangle runs that happen to share a coordinate, which is
+    exactly the duplicate this module exists to reconcile. Two vertices a few
+    millimetres apart inside ONE run are not that - they are the mesh's own
+    sampling, and the weights across them are the gradient the artist authored.
+    """
+    parent = list(range(count))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for tri in faces:
+        for corner in tri[1:]:
+            if corner >= count or tri[0] >= count:
+                continue
+            ra, rb = find(tri[0]), find(corner)
+            if ra != rb:
+                parent[ra] = rb
+    return [find(v) for v in range(count)]
+
+
+def weld(parts, radius=WELD_RADIUS, faces=None):
+    """Influence lists with duplicated vertices in the same part made identical.
+
+    Same shape in and out, like reconcile(). A vertex within `radius` of one in
+    another triangle run of its own part gets the sum of their influences, so a
+    UV seam can no longer skin its two halves to two different joints.
+
+    `faces` is one triangle list per part, indices into that part. Without it
+    only exact duplicates (COINCIDENT_RADIUS) are welded, because distance
+    alone cannot tell a seam duplicate from the mesh's own spacing: these
+    characters are dense enough that 5 mm reaches the next authored vertex, and
+    a transitive union over that band swallowed whole limbs - measured on
+    lcg_2709, a 2,544-vertex hand carrying 1,900 authored blends came out with
+    one, which is a rigid hand under HandRig instead of a torn one.
 
     Grouped by proximity and not by a rounded coordinate: a grid cell has
     boundaries, and the first version of this bucketed on round(x / radius),
@@ -183,12 +218,14 @@ def weld(parts, radius=WELD_RADIUS):
     reconcile side already does.
     """
     out = []
-    for part in parts:
+    for index, part in enumerate(parts):
+        part_faces = faces[index] if faces is not None and index < len(faces) else None
+        patch = _patches(len(part), part_faces) if part_faces is not None else None
         grid = {}
         for v, (position, _) in enumerate(part):
             grid.setdefault(_cells(position, radius), []).append(v)
-        # Union-find over vertices that touch, so a chain of duplicates all
-        # ends up in one group rather than each pair agreeing separately.
+        # Union-find over vertices that touch, so a coordinate covered by three
+        # runs ends up in one group rather than each pair agreeing separately.
         parent = list(range(len(part)))
 
         def find(a):
@@ -208,13 +245,17 @@ def weld(parts, radius=WELD_RADIUS):
                             distance = math.dist(position, part[other][0])
                             if distance > radius:
                                 continue
-                            # Past a coordinate's worth of rounding, two
-                            # surfaces that genuinely cover one place always
-                            # have a bone in common; two that share nothing are
-                            # different limbs passing close (_shares_a_joint).
-                            if distance > COINCIDENT_RADIUS and \
-                                    not _shares_a_joint(part[v][1], part[other][1]):
-                                continue
+                            if distance > COINCIDENT_RADIUS:
+                                # Past a coordinate's worth of rounding, two
+                                # surfaces that genuinely cover one place always
+                                # have a bone in common; two that share nothing
+                                # are different limbs passing close.
+                                if not _shares_a_joint(part[v][1], part[other][1]):
+                                    continue
+                                # ...and they are two runs, not two samples of
+                                # one. Without the faces to say so, leave it.
+                                if patch is None or patch[v] == patch[other]:
+                                    continue
                             ra, rb = find(v), find(other)
                             if ra != rb:
                                 parent[ra] = rb

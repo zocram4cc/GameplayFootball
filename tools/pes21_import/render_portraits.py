@@ -56,11 +56,19 @@ def render(viewer, data_dir, ase_rel, out_raw, timeout=180):
     env["SDL_VIDEODRIVER"] = "offscreen"
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("DISPLAY", None)
+    # The scratch file is shared by every model in the run, and this function
+    # answered "did it write frames?" by asking whether a big enough file
+    # exists. One viewer failure after any success and the NEXT player's
+    # portrait was the previous player's last frame, saved and bound as his.
+    if os.path.exists(out_raw):
+        os.remove(out_raw)
     try:
-        subprocess.run([viewer, ase_rel, "--portrait", "--shots", "1", "--out", out_raw],
-                       cwd=data_dir, env=env, timeout=timeout,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        done = subprocess.run([viewer, ase_rel, "--portrait", "--shots", "1", "--out", out_raw],
+                              cwd=data_dir, env=env, timeout=timeout,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
     except subprocess.TimeoutExpired:
+        return False
+    if done.returncode != 0:
         return False
     return os.path.exists(out_raw) and os.path.getsize(out_raw) >= WIDTH * HEIGHT * 4
 

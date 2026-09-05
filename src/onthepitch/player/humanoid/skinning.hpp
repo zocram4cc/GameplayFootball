@@ -121,9 +121,9 @@ inline void TransformDirection(const JointTransform& transform, const float in[3
 // caller runs the work inline and splitting it would only add overhead.
 int BatchSize(int bodyCount, int workerCount);
 
-// Whether a body must be skinned on this frame. The engine used to skin any body
-// away from the action on alternate frames only, so it animated at half the frame
-// rate; that is off by default now that a body costs a quarter of what it did.
+// Whether a body must be skinned on this frame. A body away from the action is
+// skinned on alternate frames only - it animates at half the frame rate - when
+// `halveDistantRate` is set, which "animation_halve_distant_bodies" leaves on.
 bool BodyNeedsSkinning(bool distantFromAction, bool halveDistantRate, int phase, int phaseOffset);
 
 // A coarser copy of a skinned mesh for bodies far from the camera. The imported

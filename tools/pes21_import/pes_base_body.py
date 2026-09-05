@@ -951,7 +951,7 @@ def assemble(args):
         # Welded first: a UV seam duplicates a vertex inside one shell, and
         # reconcile() only looks across shells, so those duplicates kept two
         # different guesses and tore at the bind pose (seams.weld).
-        agreed = seams.weld(before)
+        agreed = seams.weld(before, faces=[faces for _, _, faces, _ in built])
         welded, _ = seams.reconciled_count(before, agreed)
         if welded:
             print("  seams: %d coincident vertex weight(s) welded" % welded)

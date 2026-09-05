@@ -217,8 +217,12 @@ Gui2PlanMap::Gui2PlanMap(Gui2WindowManager* windowManager, const std::string& na
   pitchHeight = height_percent * kPitchHeightFraction;
   pitchWidth = windowManager->GetWidthPercentForHeight(pitchHeight, kPitchDiagramAspectRatio);
   pitchX = (width_percent - pitchWidth) * 0.5f;
-  Gui2Image* bg =
-      new Gui2Image(windowManager, "image_planmap_bg", pitchX, 0, pitchWidth, pitchHeight);
+  // Named after this map. gui2 fetches a view's surface from the resource pool
+  // BY NAME, so the two maps on this page shared one background surface (and
+  // its "...source"), each SetData freeing the other's - the same collision
+  // 2d720a4 fixed for the cards.
+  Gui2Image* bg = new Gui2Image(windowManager, GetName() + "_bg", pitchX, 0, pitchWidth,
+                                pitchHeight);
   bg->LoadImage("media/ui/pes/plan_pitch.png");
   this->AddView(bg);
   bg->Show();

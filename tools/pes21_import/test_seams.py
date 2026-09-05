@@ -248,11 +248,45 @@ class WeldsCoincidentVertices(unittest.TestCase):
         self.assertEqual(dict(welded[0][1]), {7: 0.5, 9: 0.5})
 
     def test_a_vertex_a_millimetre_away_is_left_alone(self):
+        # 3 mm apart with no bone in common: inside WELD_RADIUS, so this is the
+        # guard being tested rather than the radius. It used to be 50 mm apart,
+        # ten times the radius, and passed without exercising anything.
         part = [((0.0, 0.0, 1.0), [(7, 1.0)]),
-                ((0.0, 0.0, 1.05), [(9, 1.0)])]
+                ((0.0, 0.0, 1.003), [(9, 1.0)])]
         welded = seams.weld([part])[0]
         self.assertEqual(welded[0][1], [(7, 1.0)])
         self.assertEqual(welded[1][1], [(9, 1.0)])
+
+    def test_a_weight_gradient_inside_one_run_survives(self):
+        # Twelve centimetres of forearm at 4 mm spacing, weights handing over
+        # from one joint to the next - what an artist authors, and what the
+        # transitive union over the 5 mm band collapsed into a single blend
+        # (measured: a 2,544-vertex hand's 1,900 blends became one).
+        count = 30
+        part = [((0.0, 0.0, 1.0 + i * 0.004),
+                 [(7, 1.0 - i / (count - 1.0)), (9, i / (count - 1.0))])
+                for i in range(count)]
+        faces = [(i, i + 1, min(i + 2, count - 1)) for i in range(count - 2)]
+        welded = seams.weld([part], faces=[faces])[0]
+        # Blends, not token order: the pass sorts an influence list by weight.
+        self.assertEqual([dict(j) for _, j in welded], [dict(j) for _, j in part])
+
+    def test_a_seam_across_two_runs_still_welds(self):
+        # The same 3 mm gap, sharing a bone, but in two triangle runs: this is
+        # a seam duplicate and it must still agree.
+        part = [((0.0, 0.0, 1.0), [(7, 0.9), (9, 0.1)]),
+                ((0.0, 0.1, 1.0), [(7, 1.0)]),
+                ((0.0, 0.0, 1.003), [(9, 0.9), (7, 0.1)]),
+                ((0.1, 0.0, 1.0), [(9, 1.0)])]
+        faces = [(0, 1, 1), (2, 3, 3)]
+        welded = seams.weld([part], faces=[faces])[0]
+        self.assertEqual(welded[0][1], welded[2][1])
+
+    def test_without_faces_only_exact_duplicates_agree(self):
+        part = [((0.0, 0.0, 1.0), [(7, 1.0)]),
+                ((0.0, 0.0, 1.003), [(7, 0.5), (9, 0.5)])]
+        welded = seams.weld([part])[0]
+        self.assertEqual(welded[0][1], [(7, 1.0)])
 
     def test_positions_and_order_survive(self):
         part = [((0.1, 0.2, 0.3), [(1, 1.0)]), ((0.4, 0.5, 0.6), [(2, 1.0)])]
