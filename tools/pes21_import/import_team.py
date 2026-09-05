@@ -734,7 +734,7 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
     # is how "no seam was welded in four teams" came to be believed: the weld
     # was working (783 vertices on one SMBG player) and its line was going into
     # a captured pipe nobody read.
-    for line in result.stdout.splitlines():
+    for line in (getattr(result, "stdout", "") or "").splitlines():
         stripped = line.strip()
         if stripped.startswith(("seams:", "dropped", "texture ")) and "NOT FOUND" not in stripped:
             print("       " + stripped)
