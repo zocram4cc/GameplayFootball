@@ -597,8 +597,22 @@ def install_dir(game_dir, prefix, export_id):
                         "%s_%s" % (prefix, export_id))
 
 
+def kit_texture_name(dest):
+    """The kit texture's file name inside a model directory.
+
+    Unique per model, because the engine's resource manager keys surfaces by
+    BASENAME (ResourceManager::Fetch): every model directory used to hold this
+    file as plain "body.png", so all 186 installed models resolved to whichever
+    one loaded first and every player in the match wore the first team's kit.
+    Owner, 05-09: "Wario is mapping on HDG's kit", HDG being team 1 and Wario
+    an SMBG player. The pack's own textures were already prefixed for exactly
+    this reason; this one was not.
+    """
+    return "%s_kit.png" % os.path.basename(os.path.normpath(dest))
+
+
 def install_kit_texture(pack_dir, dest):
-    """Puts the team's outfield kit in the model directory as body.png.
+    """Puts the team's outfield kit in the model directory as <model>_kit.png.
 
     A 4cc character model carries its own textures for hair, dress and so on,
     but the mesh wearing the actual football kit still points at the shared
@@ -620,7 +634,7 @@ def install_kit_texture(pack_dir, dest):
         if image.mode != "RGBA":
             image = image.convert("RGBA")
         os.makedirs(dest, exist_ok=True)
-        image.save(os.path.join(dest, "body.png"))
+        image.save(os.path.join(dest, kit_texture_name(dest)))
         return True
     except Exception as error:
         print("  kit texture failed: %s" % error)
@@ -1113,13 +1127,13 @@ def main():
             # known after a first import, so this is a second pass over the same
             # output: force=True, strays dropped, stock body composited.
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", args.force, args.max_edge,
+                                   rel + "/" + kit_texture_name(dest), args.force, args.max_edge,
                                    args.base or None, extra_fmdls=rest_of_him)
             verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
             if verdict == "carries scenery" and os.path.isfile(
                     os.path.join(args.game_dir, STOCK_BODY_REL)):
                 status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                       rel + "/body.png", True, args.max_edge,
+                                       rel + "/" + kit_texture_name(dest), True, args.max_edge,
                                        os.path.join(args.game_dir, STOCK_BODY_REL),
                                        extra_fmdls=rest_of_him, drop_stray=True)
                 verdict = describe_import(dest, args.prefix, export_id)
@@ -1148,7 +1162,7 @@ def main():
         if (not args.dry_run and not composited and os.path.isfile(stock_body)
                 and not whole_body([fmdl] + rest_of_him, args.fmdl_lib)):
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/body.png", True, args.max_edge, stock_body,
+                                   rel + "/" + kit_texture_name(dest), True, args.max_edge, stock_body,
                                    extra_fmdls=rest_of_him)
             verdict = describe_import(dest, args.prefix, export_id)
             composited = True

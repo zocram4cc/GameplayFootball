@@ -2079,6 +2079,17 @@ std::vector<CameraStandoff::Body> Match::StandoffBodies() {
   return bodies;
 }
 
+void Match::ResetStandoff() {
+  // The dolly belongs to the shot it is in. Nothing cleared it between plays,
+  // so a pool entry or a goal track drawn twice began with the residual push
+  // from its last outing - and the shot's first frame is the one composition
+  // PES authored exactly.
+  standoffShot = nullptr;
+  standoffCut = -1;
+  standoffPush = 0.0f;
+  standoffSpeed = 0.0f;
+}
+
 void Match::ApplyStandoff(const void* shot, int cut, const Vector3& forward, float clearance,
                           Vector3& eye) {
   const float push = CameraStandoff::PushBack(StandoffBodies(), eye, forward, clearance);
@@ -2693,6 +2704,7 @@ void Match::UpdateCutsceneChoreo() {
     // the camera films where they are not. A player at yaw a faces (sin a,
     // -cos a), so turning the frame by the yaw is adding it.
     const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
+    bool performing = false;
     for (auto& cast : cutsceneCast) {
       Vector3 local;
       radian yaw = 0;
@@ -2701,14 +2713,23 @@ void Match::UpdateCutsceneChoreo() {
       const Vector3 world(
           goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
           goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
-      // An actor who is done holds his last pose. SetChoreoPose wraps the frame,
-      // which is right for a walk-on marking time at the tunnel mouth and wrong
-      // for a performance: it played the celebration again from the top, over
-      // and over, for as long as the window lasted.
-      animFrame = std::min(animFrame, cast.clip->GetEffectiveFrameCount());
+      // An actor who is done is handed back to the animation machinery, not held
+      // on his last frame. A posed humanoid's Process() returns early
+      // (ProcessChoreo), so pinning the frame made him a statue for the rest of
+      // the window - measured on this fixture: a 1590 ms performance inside a
+      // 6000 ms celebration left the scorer frozen for 4.4 s of it, which is
+      // what "the celebration starts and the scorer gets stuck" is. PES holds
+      // the camera long after the bodies are done; the bodies keep moving.
+      // Dropping the feed lets HumanoidBase::ProcessChoreo release him from
+      // where the choreography left him and jog back like everyone else.
+      if (animFrame > cast.clip->GetEffectiveFrameCount()) continue;
+      performing = true;
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
     }
+    // Nobody left performing: stop feeding poses entirely, so the cast is not
+    // re-fed on the next tick and the camera window runs on alone.
+    if (!performing) EndGoalCast();
     return;
   }
   // The choreography lives as long as its own clock, not as long as a camera track.
@@ -2862,6 +2883,7 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
         pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
                      pool->second.size()];
     activeCutscene = &track;
+    ResetStandoff();
     seconds = std::min(capSeconds, track.GetDurationSeconds());
     // PES's foul shots are a static camera five metres from the origin: they
     // are authored about the incident, not the stadium. Used as world positions
@@ -3749,11 +3771,16 @@ void Match::UpdateIngameCamera() {
                                    frame.position[2]);
       // Kept out of the bodies like the walk-on is: PES's closing shots had
       // Bowser's chest over the whole team photo and a knight's arm over the
-      // winners' celebration (m1 capture, 926 s and 940 s). Sampled by row, the
-      // whole track counts as one shot for the dolly's purposes.
+      // winners' celebration (m1 capture, 926 s and 940 s).
+      //
+      // Per cut, not per track: passing 0 meant every internal cut of a
+      // multi-cut track inherited the previous composition's push - up to the
+      // whole clearance - and then glided forward out of it for seconds, in a
+      // shot PES framed exactly.
       {
         const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
-        ApplyStandoff(activeCutscene, 0, Vector3(fwd[0], fwd[1], fwd[2]), kPrematchLensClearance,
+        ApplyStandoff(activeCutscene, activeCutscene->CutIndexAt(cutsceneElapsed_ms * 0.03f),
+                      Vector3(fwd[0], fwd[1], fwd[2]), kPrematchLensClearance,
                       cameraNodePosition);
       }
       cameraNodeOrientation = QUATERNION_IDENTITY;
@@ -4235,6 +4262,10 @@ void Match::UpdateIngameCamera() {
           // of them is still performing. That is the second half a celebration
           // played on the spot never had. Without one, the clip on the spot as
           // before.
+          // A new shot, so the dolly starts where PES framed it: the same
+          // goal track comes round again in a match and used to open with the
+          // push left over from the last goal it filmed.
+          ResetStandoff();
           if (StartGoalCast(chosen.name)) {
             goalCelebrationLength_ms =
                 GoalSequence::CelebrationLength_ms(goalCastLength_ms);
@@ -4255,10 +4286,13 @@ void Match::UpdateIngameCamera() {
                   " ms, whole performance " + int_to_str((int)goalCelebrationLength_ms) +
                   " ms (intro " + int_to_str(introFrames) + " frames, loop " +
                   int_to_str(loopFrames) + (GoalCastActive() ? ", cast" : "") + ")");
+          // With the clock on it, a recording can be read without hunting for
+          // the goal in it: video time = kickoff + clock / (90 / duration).
           Log(e_Notice, "Match", "UpdateIngameCamera",
               "celebration: " + chosen.name + " (var " + int_to_str(chosen.var) + "), " +
                   (assigned.empty() ? "drawn for" : "assigned to") + " player " + scorer +
-                  ", filmed by " +
+                  ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
+                  int_to_str((matchTime_ms / 1000) % 60) + ", filmed by " +
                   (goalCelebrationCamera >= 0 ? wanted : std::string("nothing; falling back")));
         }
       }

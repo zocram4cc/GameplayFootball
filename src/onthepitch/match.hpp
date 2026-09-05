@@ -618,6 +618,7 @@ protected:
   std::vector<CameraStandoff::Body> StandoffBodies();
   void ApplyStandoff(const void* shot, int cut, const Vector3& forward, float clearance,
                      Vector3& eye);
+  void ResetStandoff();
   const void* standoffShot = nullptr;
   int standoffCut = -1;
   float standoffPush = 0.0f;
