@@ -791,17 +791,36 @@ def is_non_render_pass(material_name, base_texture):
     return False
 
 
-def unresolved_group_texture(base_ase, fallback_texture):
+# PES's own uniform maps: u<team>p<kit> for outfield, u<team>g<kit> for the
+# keeper, with 4cc packs leaving the team as the literal "XXX". A mesh pointing
+# at one of these IS the kit; anything else the pack failed to ship is not.
+UNIFORM_TEXTURE_RE = re.compile(r"^u[0-9a-z]*[pg]\d+$", re.I)
+
+
+def is_uniform_texture(name):
+    return bool(name) and bool(UNIFORM_TEXTURE_RE.match(name))
+
+
+def unresolved_group_texture(base_ase, fallback_texture, name=None, own_texture=None):
     """Texture for a mesh whose own texture the pack does not ship.
 
     4cc models point their kit mesh at the shared PES kit map (u0XXXp0), which
     no pack contains. A whole-character import gets that kit dropped in beside
     it (import_team.install_kit_texture) and uses it directly. A face-slot
-    import composited onto a base body has no such file - and the mesh is kit,
-    so it belongs in the engine's kit slot, where the team's own kit is swapped
-    in per match instead of being baked to one strip.
+    import composited onto a base body has no such file - and that mesh is
+    kit, so it belongs in the engine's kit slot, where the team's own kit is
+    swapped in per match instead of being baked to one strip.
+
+    Only that mesh, though. Sending every unresolved group to the kit slot put
+    the team's kit on geometry wearing the character's own UVs: Bowser's face
+    was painted with SMBG's first kit (owner, 05-09), because his pack does not
+    ship the texture that group names. A group that is not a uniform map falls
+    back to the character's own base texture instead - wrong colours on a small
+    mesh beats the kit repainted over a face every match.
     """
-    return KIT_SLOT_TEXTURE if base_ase else fallback_texture
+    if is_uniform_texture(name) or name is None:
+        return KIT_SLOT_TEXTURE if base_ase else fallback_texture
+    return own_texture or (KIT_SLOT_TEXTURE if base_ase else fallback_texture)
 
 
 def base_material_plan(base_material_count, group_textures, fallback_texture):
@@ -1027,10 +1046,20 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     exported = export_textures(fmdl_path, out_dir, [g[0] for g in groups], model_id)
     texture_rel = os.path.dirname(texture)
 
+    def exported_path(unique):
+        return "%s/%s" % (texture_rel, unique) if texture_rel else unique
+
+    # The character's own biggest map: his body texture, and the least wrong
+    # thing to hand a group whose own texture the pack omitted.
+    own = None
+    if exported:
+        own = exported_path(max(exported.values(),
+                                key=lambda unique: os.path.getsize(os.path.join(out_dir, unique))))
+
     def group_texture_path(name):
         if name and name in exported:
-            return "%s/%s" % (texture_rel, exported[name]) if texture_rel else exported[name]
-        return unresolved_group_texture(base_ase, texture)
+            return exported_path(exported[name])
+        return unresolved_group_texture(base_ase, texture, name, own)
 
     # the engine's resource cache keys geometry by BASENAME, so every model
     # needs a unique ase filename or it collides with the stock fullbody.ase

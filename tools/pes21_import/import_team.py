@@ -60,10 +60,23 @@ import ted
 
 EXPORT_DIR_RE = re.compile(r"^([kgf])(\d+)\s*-\s*(.+)$")
 
-# The engine's own skinned body, put under a pack that ships none. Relative to
-# the game directory, and the repository's own asset rather than PES's, so an
-# import composited onto it stays distributable.
-STOCK_BODY_REL = "media/objects/players/models/fullbody.ase"
+# The body put under a pack that ships none: PES's own, which is also what the
+# engine loads for a player with no model at all (PlayerBody::kDefaultBody).
+# It used to be the repository's legacy GF body on a distribution argument that
+# does not hold - an imported model is never committed either - and it put GF's
+# 453-vertex body inside every composited character: its head inside the
+# character's head, and its kit_template shirt for the engine to repaint. That
+# is "the default body is back to the GF one" (owner, 05-09). PES's plates
+# expect PES's body under them, at PES's kit UVs; the legacy body is kept as
+# the fallback for a data directory where PES's has not been generated yet.
+STOCK_BODY_REL = "media/objects/players/models/fullbody_pes.ase"
+LEGACY_BODY_REL = "media/objects/players/models/fullbody.ase"
+
+
+def stock_body(game_dir):
+    """-> the base body to composite onto, PES's if it has been generated."""
+    pes = os.path.join(game_dir, STOCK_BODY_REL)
+    return pes if os.path.isfile(pes) else os.path.join(game_dir, LEGACY_BODY_REL)
 
 
 def find_players(pack_dir, kind="Boots", model_name="boots.fmdl"):
@@ -453,21 +466,58 @@ TORSO_AXIS_RADIUS_M = 0.25
 TORSO_AXIAL_VERTICES = 200
 
 
+# The chest band in rig metres, stretched only for a character taller than the
+# rig: 0.95-1.55 is where a PES chest is, and a 2.5 m 4cc character's chest is
+# proportionally higher. Measuring it as a pure fraction of the model's own
+# height was wrong for a mesh that IS only a chest - there the height is the
+# chest's own and the band slid off it.
+CHEST_LOW_M = 0.95
+CHEST_HIGH_M = 1.55
+RIG_HEIGHT_M = 1.81
+
+# Per 10 cm slice of that band, on the axis. A total was not enough: SMBG's
+# "Shiddy" is legs, arms and a large head with NOTHING between - 1 axial vertex
+# at 1.0-1.1 m and 0 at 1.1-1.2 - and his head alone put 800 into a band that
+# reached 1.55, so the gate called him a whole body and he was drawn with no
+# torso, his legs hanging under a floating head (owner, 05-09).
+TORSO_AXIAL_SLICE_VERTICES = 20
+
+
+def axial_torso_slices(meshes, slice_m=BODY_SLICE_M):
+    """-> (total, thinnest slice) of axial chest vertices.
+
+    Measured over the character's own chest band, one slice at a time: a torso
+    is continuous on the axis, and a head sitting above a gap is not a torso.
+    """
+    heights = [v.position.y for mesh in meshes if mesh.vertices and not _off_the_rig(mesh)
+               for v in mesh.vertices]
+    if not heights:
+        return 0, 0
+    scale = max(1.0, max(heights) / RIG_HEIGHT_M)
+    low, high = CHEST_LOW_M * scale, CHEST_HIGH_M * scale
+    if high - low < slice_m:
+        return 0, 0
+    slices = [0] * max(1, int((high - low) / slice_m))
+    for mesh in meshes:
+        if not mesh.vertices or _off_the_rig(mesh):
+            continue
+        for v in mesh.vertices:
+            y = v.position.y
+            if not (low <= y < high):
+                continue
+            if v.position.x ** 2 + v.position.z ** 2 >= TORSO_AXIS_RADIUS_M ** 2:
+                continue
+            slices[min(len(slices) - 1, int((y - low) / slice_m))] += 1
+    return sum(slices), min(slices)
+
+
 def axial_torso_count(meshes):
     """-> vertices at chest height within TORSO_AXIS_RADIUS_M of the rig axis.
 
     Split out from whole_body so it can be measured on its own: it is the test
     that tells a player from a prop standing in his place.
     """
-    count = 0
-    for mesh in meshes:
-        if not mesh.vertices or _off_the_rig(mesh):
-            continue
-        for v in mesh.vertices:
-            if (0.95 < v.position.y < 1.55
-                    and v.position.x ** 2 + v.position.z ** 2 < TORSO_AXIS_RADIUS_M ** 2):
-                count += 1
-    return count
+    return axial_torso_slices(meshes)[0]
 
 
 def whole_body(fmdl_paths, fmdl_lib):
@@ -495,7 +545,7 @@ def whole_body(fmdl_paths, fmdl_lib):
     """
     bands = {"head": 0, "torso": 0, "feet": 0}
     heights = []
-    axial_torso = 0
+    meshes = []
     try:
         sys.path.insert(0, fmdl_lib)
         import FmdlFile
@@ -505,6 +555,7 @@ def whole_body(fmdl_paths, fmdl_lib):
             for mesh in fmdl.meshes:
                 if not mesh.vertices or _off_the_rig(mesh):
                     continue
+                meshes.append(mesh)
                 for v in mesh.vertices:
                     y = v.position.y
                     heights.append(y)
@@ -514,14 +565,13 @@ def whole_body(fmdl_paths, fmdl_lib):
                         bands["feet"] += 1
                     elif 0.95 < y < 1.55:
                         bands["torso"] += 1
-                        if (v.position.x ** 2 + v.position.z ** 2
-                                < TORSO_AXIS_RADIUS_M ** 2):
-                            axial_torso += 1
     except Exception:
         return True
     # No chest on the axis, no body: whatever else these vertices are, a player
-    # is not standing here and PES's own body has to go underneath.
-    if axial_torso < TORSO_AXIAL_VERTICES:
+    # is not standing here and PES's own body has to go underneath. Continuous
+    # on the axis, not merely numerous: a head above a hole is not a torso.
+    axial_torso, thinnest = axial_torso_slices(meshes)
+    if axial_torso < TORSO_AXIAL_VERTICES or thinnest < TORSO_AXIAL_SLICE_VERTICES:
         return False
     if (bands["head"] >= HEAD_PRESENT_VERTICES
             and bands["torso"] >= TORSO_PRESENT_VERTICES
@@ -680,6 +730,16 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return "FAILED: " + (result.stderr.strip().splitlines() or ["?"])[-1]
+    # The converter's own measurements belong in this run's log. Swallowing them
+    # is how "no seam was welded in four teams" came to be believed: the weld
+    # was working (783 vertices on one SMBG player) and its line was going into
+    # a captured pipe nobody read.
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("seams:", "dropped", "texture ")) and "NOT FOUND" not in stripped:
+            print("       " + stripped)
+        elif "NOT FOUND" in stripped:
+            print("       " + stripped)
     return "imported"
 
 
@@ -1131,10 +1191,10 @@ def main():
                                    args.base or None, extra_fmdls=rest_of_him)
             verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
             if verdict == "carries scenery" and os.path.isfile(
-                    os.path.join(args.game_dir, STOCK_BODY_REL)):
+                    stock_body(args.game_dir)):
                 status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                        rel + "/" + kit_texture_name(dest), True, args.max_edge,
-                                       os.path.join(args.game_dir, STOCK_BODY_REL),
+                                       stock_body(args.game_dir),
                                        extra_fmdls=rest_of_him, drop_stray=True)
                 verdict = describe_import(dest, args.prefix, export_id)
                 composited = True
@@ -1152,22 +1212,22 @@ def main():
         # vertices above the head joint) while 2411 is whole - one command cannot
         # ask which is which. Thirty of the ninety-three installed bodies are in
         # the same position (docs/PES21_IMPORT.md).
-        stock_body = os.path.join(args.game_dir, STOCK_BODY_REL)
+        base_body = stock_body(args.game_dir)
         # Asked of every slot together, and as a whole-body test: HDG's
         # "Helldiver Headless" boots stop at the neck but its head is in
         # Faces/XXX02, so a head-only gate skips the composite it needs - while
         # LCG's k2701 has a head and no legs, so a head-only gate wrongly skips
         # the composite it also needs. What decides it is whether the character
         # dresses the whole rig once every slot is on.
-        if (not args.dry_run and not composited and os.path.isfile(stock_body)
+        if (not args.dry_run and not composited and os.path.isfile(base_body)
                 and not whole_body([fmdl] + rest_of_him, args.fmdl_lib)):
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/" + kit_texture_name(dest), True, args.max_edge, stock_body,
-                                   extra_fmdls=rest_of_him)
+                                   rel + "/" + kit_texture_name(dest), True, args.max_edge,
+                                   base_body, extra_fmdls=rest_of_him)
             verdict = describe_import(dest, args.prefix, export_id)
             composited = True
             print("       %s ships no body of its own; composited over %s"
-                  % (export_id, os.path.basename(stock_body)))
+                  % (export_id, os.path.basename(base_body)))
 
         bindable = may_bind_as_body(verdict, composited=composited)
         print("%-6s %-28s %-34s %s%s" % (export_id, name[:28], rel, status,

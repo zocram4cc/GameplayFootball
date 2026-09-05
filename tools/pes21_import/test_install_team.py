@@ -732,11 +732,27 @@ class APackWithNoBodyGetsOneUnderIt(unittest.TestCase):
             self.assertTrue(import_team.may_bind_as_body(verdict, composited=True),
                             verdict)
 
-    def test_the_stock_body_is_the_engines_own(self):
-        """Composited onto PES's body an import could not be distributed; this
-        one is the repository's."""
+    def test_the_stock_body_is_pes_own_when_it_has_been_generated(self):
+        """PES's plates expect PES's body under them.
+
+        This asserted the opposite - the repository's legacy body - on the
+        grounds that a composite onto PES's could not be distributed. Nothing
+        about an imported model is distributed: it is generated from the user's
+        own install, and the body under it has to be the one whose rig and kit
+        UVs the pack's geometry was authored against. The legacy body stays as
+        the fallback for a data directory where PES's has not been built yet.
+        """
         self.assertTrue(import_team.STOCK_BODY_REL.startswith("media/objects/players/"))
-        self.assertNotIn("pes", import_team.STOCK_BODY_REL.lower())
+        self.assertIn("pes", import_team.STOCK_BODY_REL.lower())
+        with tempfile.TemporaryDirectory() as game:
+            models = os.path.join(game, "media", "objects", "players", "models")
+            os.makedirs(models)
+            legacy = os.path.join(models, "fullbody.ase")
+            open(legacy, "w").write("*3DSMAX_ASCIIEXPORT 200\n")
+            self.assertEqual(import_team.stock_body(game), legacy)
+            pes = os.path.join(models, "fullbody_pes.ase")
+            open(pes, "w").write("*3DSMAX_ASCIIEXPORT 200\n")
+            self.assertEqual(import_team.stock_body(game), pes)
 
 
 class APackKeepsHandsInAnotherSlot(unittest.TestCase):

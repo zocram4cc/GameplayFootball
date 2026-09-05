@@ -7,6 +7,7 @@
 #define _HPP_MENU_GAMEOVER
 
 #include "../../onthepitch/match.hpp"
+#include "statsoverlay.hpp"
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/frame.hpp"
@@ -26,6 +27,8 @@ public:
   void GoRematch();
   void GoMainMenu();
 
+  // The half-time card, under a FULL TIME title (statsoverlay.hpp).
+  Gui2StatsOverlay* card = nullptr;
   Gui2Button* buttonOkay;
 
 protected:
