@@ -108,8 +108,9 @@ TEST(MenuScriptMonkeyTest, TheSameSeedGivesTheSameSequence) {
 TEST(MenuScriptMonkeyTest, EveryKeyIsReachedAndNothingElseIs) {
   std::map<MenuScript::Key, int> seen;
   for (unsigned long n = 0; n < 20000; n++) seen[MenuScript::MonkeyKey(3, n)]++;
-  // All seven navigation keys, none of them vanishingly rare: a monkey that
-  // never presses escape never abandons a drag.
-  EXPECT_EQ(seen.size(), 7u);
+  // All eight keys, none of them vanishingly rare: a monkey that never presses
+  // escape never abandons a drag, and one that never presses the secondary
+  // button never toggles a role on a card.
+  EXPECT_EQ(seen.size(), 8u);
   for (const auto& entry : seen) EXPECT_GT(entry.second, 500) << "key starved";
 }

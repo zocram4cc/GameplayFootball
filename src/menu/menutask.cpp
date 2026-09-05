@@ -145,6 +145,7 @@ SDL_Keycode KeycodeForScriptKey(MenuScript::Key key) {
     case MenuScript::Key::Enter: return SDLK_RETURN;
     case MenuScript::Key::Escape: return SDLK_ESCAPE;
     case MenuScript::Key::X: return SDLK_x;
+    case MenuScript::Key::Secondary: return SDLK_c;
   }
   return SDLK_UNKNOWN;
 }

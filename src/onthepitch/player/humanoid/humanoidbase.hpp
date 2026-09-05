@@ -459,9 +459,12 @@ protected:
   int buf_bodyUpdatePhase;
   int buf_bodyUpdatePhaseOffset;
   // "animation_halve_distant_bodies": skin bodies away from the action on
-  // alternate frames only. Off by default - it is visible as juddering animation
-  // on everyone but the player on the ball, and skinning is no longer the cost
-  // it was when this was written.
+  // alternate frames only. ON by default (humanoidbase.cpp reads it that way),
+  // which is worth knowing when reading a frame: everyone but the men around
+  // the ball animates at half the frame rate, and a cut to one of them shows
+  // the pose from the frame before for up to 16 ms. Set it false to spend the
+  // headroom the one-transform-per-vertex skinning bought; the member's
+  // initialiser is only what applies before the config is read.
   bool halveDistantBodyRate = false;
 
   AnimApplyBuffer fetchedbuf_animApplyBuffer;

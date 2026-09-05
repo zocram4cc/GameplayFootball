@@ -23,6 +23,7 @@ bool ParseKey(const std::string& word, Key* key) {
   if (word == "enter") { *key = Key::Enter; return true; }
   if (word == "escape") { *key = Key::Escape; return true; }
   if (word == "x") { *key = Key::X; return true; }
+  if (word == "secondary") { *key = Key::Secondary; return true; }
   return false;
 }
 
@@ -49,7 +50,7 @@ Key MonkeyKey(unsigned long seed, unsigned long n) {
   static const Key table[] = {
       Key::Up,    Key::Up,    Key::Down,  Key::Down, Key::Left,  Key::Left,
       Key::Right, Key::Right, Key::Enter, Key::Enter, Key::Enter, Key::X,
-      Key::Escape,
+      Key::Escape, Key::Secondary, Key::Secondary,
   };
   return table[x % (sizeof(table) / sizeof(table[0]))];
 }

@@ -882,17 +882,16 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                   % (len(meshes) - len(kept), STRAY_DROP_RADIUS))
         meshes = kept
 
-    # The character's own standing height, for scaling the bone envelopes the
-    # weight guess reads (BONE_RADIUS was measured on a 1.81 m body, and these
-    # exports run to two and a half metres).
-    heights = [fox_to_gf(v.position)[2] for m in meshes for v in m.vertices]
-    model_height = (max(heights) - min(heights)) if heights else MEASURED_BODY_HEIGHT
-    model_scale = MEASURED_BODY_HEIGHT / model_height if model_height > 0.1 else 1.0
-
     # An effect mesh no player can wear (MAX_MESH_SPAN_M): dropped whatever the
     # slot said, because everything downstream - the height the engine scales to,
     # the bone envelopes, the stretched-triangle cut - is measured off the
     # model's own bounds, and one 11 m column moves all of them.
+    #
+    # Which is why it is dropped BEFORE those bounds are taken. It used to run
+    # after, so EAT's 40-vertex 11 m ray still set model_scale = 1.81/11 and
+    # squeezed the whole character to a sixth of its size in rig space, binding
+    # all of it to the trunk - the gate defeated in the one case that motivated
+    # it.
     def spans_too_far(mesh):
         ys = [v.position.y for v in mesh.vertices]
         return bool(ys) and (max(ys) - min(ys)) > MAX_MESH_SPAN_M
@@ -901,6 +900,13 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     if tall:
         meshes = [m for m in meshes if not spans_too_far(m)]
         print("dropped %d mesh(es) spanning more than %.1f m" % (len(tall), MAX_MESH_SPAN_M))
+
+    # The character's own standing height, for scaling the bone envelopes the
+    # weight guess reads (BONE_RADIUS was measured on a 1.81 m body, and these
+    # exports run to two and a half metres).
+    heights = [fox_to_gf(v.position)[2] for m in meshes for v in m.vertices]
+    model_height = (max(heights) - min(heights)) if heights else MEASURED_BODY_HEIGHT
+    model_scale = MEASURED_BODY_HEIGHT / model_height if model_height > 0.1 else 1.0
 
     # One group per source texture.
     #
@@ -959,7 +965,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # in other parts). Those duplicates were skinning to different joints and
     # tearing at the bind pose - the shards, measured on lcg_2709 at 315x.
     before = [[(v[0], v[3]) for v in group[1]] for group in groups]
-    agreed = seams.weld(before)
+    # With the faces: a duplicate is a vertex the seam CUT into two triangle
+    # runs, and only those may agree. Without them the pass reached the next
+    # authored vertex on any dense mesh and flattened whole limbs (seams.weld).
+    agreed = seams.weld(before, faces=[group[2] for group in groups])
     welded, _ = seams.reconciled_count(before, agreed)
     if welded:
         print("  seams: %d coincident vertex weight(s) welded" % welded)

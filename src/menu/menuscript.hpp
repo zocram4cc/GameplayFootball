@@ -25,7 +25,10 @@ namespace MenuScript {
 
 // The keys the menus actually navigate with: four directions, confirm,
 // cancel, and the 'x' the game plan pitch opens its role submenu on.
-enum class Key { Up, Down, Left, Right, Enter, Escape, X };
+// X opens a card's roles from the keyboard; Secondary ('c', pad X) toggles the
+// role in place. Two different paths through Gui2PlanMap, and the monkey could
+// only reach the first - so the toggle b479636 fixed was never fuzzed.
+enum class Key { Up, Down, Left, Right, Enter, Escape, X, Secondary };
 
 enum class Action { Tap, Shot, Quit, Monkey };
 

@@ -52,7 +52,12 @@ public:
   // vector index# is entry in formation[index#]
   const std::vector<std::unique_ptr<PlayerData>>& GetPlayerData() { return playerData; }
   int GetPlayerNum() { return static_cast<int>(playerData.size()); }
-  PlayerData* GetPlayerData(int num) { return playerData.at(num).get(); }
+  // nullptr rather than a throw for an index nobody has: the game plan's map
+  // asks about a slot the squad may not have (a bench card past the end), and
+  // it checks the answer. .at() made those checks unreachable.
+  PlayerData* GetPlayerData(int num) {
+    return (num >= 0 && num < (int)playerData.size()) ? playerData.at(num).get() : nullptr;
+  }
   PlayerData* GetPlayerDataByDatabaseID(int id);
 
   void SaveLineup();
