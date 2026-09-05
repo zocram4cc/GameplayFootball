@@ -101,8 +101,13 @@ ffmpeg -y -loglevel error \
   "$raw" &
 encoder=$!
 
-# Two halves, the walkout, and the hold on the result, with room to spare.
-budget=$(( minutes * 60 * 2 + 600 ))
+# Two halves, the walkout, and the hold on the result, with room to spare - and
+# the clock only runs while the ball is in play. A 10-minute-half match with
+# five goals, their celebrations and replays, an entrance and a half-time card
+# took past 1800 s to reach 87:21, so the old budget cut the match a few minutes
+# from full time and the run was still reported as a success (see the teardown
+# check below, which SIGTERM survives).
+budget=$(( minutes * 60 * 3 + 900 ))
 
 echo "recording ${minutes}-minute halves, team $team1 v team $team2 -> $out"
 # SDL's offscreen driver renders through EGL straight onto the card - no X
@@ -130,6 +135,19 @@ wait "$encoder"
 # anyway, exit 0 - so an interrupted match could still be handed over as
 # evidence. The frames are kept either way (they are worth looking at); what
 # the caller must not get is a success.
+# A match that was cut short still tears down cleanly, so teardown alone does
+# not say the match finished. In full-match mode the engine prints its own
+# completion line, and that is what "complete" means.
+if grep -q '"menu_smoke_test_full_match" "true"' "$cfg" &&
+   ! grep -q "Full match complete" "$log"; then
+  echo "the match did not reach full time (exit $status)" >&2
+  grep -aE "clock [0-9]+:" "$log" | tail -3 >&2
+  cp "$log" "${out%.*}.log" 2>/dev/null
+  [ -s "$raw" ] && mv "$raw" "${out%.*}.partial.mp4" &&
+    echo "partial recording at ${out%.*}.partial.mp4" >&2
+  exit 1
+fi
+
 if ! grep -q "destroying scenemanager" "$log"; then
   echo "run did not reach teardown (exit $status); this is not a complete match" >&2
   tail -20 "$log" >&2
