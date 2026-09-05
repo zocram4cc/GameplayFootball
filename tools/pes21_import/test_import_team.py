@@ -268,3 +268,20 @@ class ABodyNeedsMassOnTheAxis(unittest.TestCase):
     # band still counts, which is why this is a threshold on a COUNT rather than
     # a yes/no - a real chest measures thousands. If a pack ever ships a
     # player-shaped column, the next test is breadth (the x span of the band).
+
+
+class KitTextureNameIsUniquePerModel(unittest.TestCase):
+    """The engine keys surfaces by basename, so two models may not share one.
+
+    Every model directory holds a copy of its team's kit texture. While that
+    copy was called "body.png" in all of them, the resource manager handed
+    every model whichever copy loaded first: in an HDG v SMBG fixture, SMBG's
+    players wore HDG's kit.
+    """
+
+    def test_two_models_do_not_share_a_texture_basename(self):
+        a = import_team.kit_texture_name("data/media/players/custom/smg_2579")
+        b = import_team.kit_texture_name("data/media/players/custom/hdg_2402/")
+        self.assertNotEqual(a, b)
+        self.assertEqual(a, "smg_2579_kit.png")
+        self.assertEqual(b, "hdg_2402_kit.png")

@@ -99,16 +99,22 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
       buttonStart(nullptr),
       pageCreatedTime_ms(EnvironmentManager::GetInstance().GetTime_ms()),
       autoAdvanceTriggered(false) {
-  Gui2Frame* frame = new Gui2Frame(windowManager, "matchoptions_frame", 25, 15, 50, 75, true);
+  // Two columns, and wide enough for them. Sixteen rows of a 6%-tall slider do
+  // not fit a 75%-tall frame however they are stacked: at 720p the sheet ran
+  // off the bottom of the screen and GAME PLAN, START and BACK were drawn below
+  // it, reachable by focus and invisible - which is why a capture cropped to
+  // the sliders never showed it (owner, 05-09: "the pre-match menu goes way
+  // past off the screen").
+  Gui2Frame* frame = new Gui2Frame(windowManager, "matchoptions_frame", 12, 14, 76, 74, true);
   this->AddView(frame);
   frame->Show();
 
-  Gui2Caption* header = new Gui2Caption(windowManager, "matchoptions_caption", 2, 2, 46, 3,
+  Gui2Caption* header = new Gui2Caption(windowManager, "matchoptions_caption", 2, 2, 72, 3,
                                         TR("match_options_title"));
   frame->AddView(header);
   header->Show();
 
-  Gui2Grid* grid = new Gui2Grid(windowManager, "matchoptions_grid", 2, 10, 46, 60);
+  Gui2Grid* grid = new Gui2Grid(windowManager, "matchoptions_grid", 2, 9, 72, 60);
 
   difficultySlider = new Gui2Slider(windowManager, "matchoptions_slider_difficulty", 0, 0, 29, 6,
                                     TR("match_difficulty"));
@@ -222,6 +228,10 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
     return caption;
   };
 
+  // Left column: the rules of the match and the broadcast around it. Right
+  // column: the two teams, their game plans and the way out. Nine rows against
+  // seven, so the tallest column is 47% of the screen and the whole sheet is on
+  // it at 720p.
   int row = 0;
   grid->AddView(sectionCaption("match", "matchoptions_section_match"), row++, 0);
   grid->AddView(difficultySlider, row++, 0);
@@ -232,13 +242,14 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(stadiumSlider, row++, 0);
   grid->AddView(entranceSlider, row++, 0);
   grid->AddView(resultCutsceneSlider, row++, 0);
-  grid->AddView(sectionCaption("teams", "matchoptions_section_teams"), row++, 0);
-  grid->AddView(kitSlider[0], row++, 0);
-  grid->AddView(kitSlider[1], row++, 0);
-  grid->AddView(buttonGamePlan1, row++, 0);
-  grid->AddView(buttonGamePlan2, row++, 0);
-  grid->AddView(buttonStart, row++, 0);
-  grid->AddView(buttonBack, row++, 0);
+  row = 0;
+  grid->AddView(sectionCaption("teams", "matchoptions_section_teams"), row++, 1);
+  grid->AddView(kitSlider[0], row++, 1);
+  grid->AddView(kitSlider[1], row++, 1);
+  grid->AddView(buttonGamePlan1, row++, 1);
+  grid->AddView(buttonGamePlan2, row++, 1);
+  grid->AddView(buttonStart, row++, 1);
+  grid->AddView(buttonBack, row++, 1);
   grid->UpdateLayout(0.5);
 
   frame->AddView(grid);
