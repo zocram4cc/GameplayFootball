@@ -41,115 +41,58 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
     return;
   }
   match->Pause(true);
+  // The same card as half time. PRESENTATION_SPEC 3.4 calls for one template
+  // for both breaks, and statsoverlay.hpp says so too, but this page had kept
+  // its own: a menu frame, its own score caption, and five hand-laid rows of
+  // the same six numbers - two screens to maintain that a viewer cannot tell
+  // apart (owner, 05-09). The crests, the possession bar and the heatmap come
+  // with the card; only the title and the actions differ.
+  //
+  // Lighter than a menu panel: the closing ceremony - this ground's crowd, the
+  // winners, the walk over, the team photo - plays behind it, as on the
+  // broadcast.
+  card = new Gui2StatsOverlay(windowManager, match, "gameover_card");
+  this->AddView(card);
+  card->SetTitle(Localization::GetInstance().Translate("gameover_full_time") + "   " +
+                 int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
+                 int_to_str(match->GetMatchData()->GetGoalCount(1)));
+  card->UpdateStats();
+  card->Show();
 
-  // Lighter than a menu panel: the closing ceremony - this ground's crowd, the winners,
-  // the walk over, the team photo - plays behind it, as it does on the broadcast.
-  Gui2Frame* frame = new Gui2Frame(windowManager, "gameover_frame", 10, 8, 80, 84, true, 120);
-  this->AddView(frame);
-  frame->Show();
+  // The action bar in the band under the card, laid out exactly as the
+  // half-time page's (phasemenu.cpp).
+  float cardX, cardY, cardW, cardH;
+  card->GetPosition(cardX, cardY);
+  card->GetSize(cardW, cardH);
+  const float barHeight = 5.5f;
+  const float barY = std::min(cardY + cardH + 1.5f, 100.0f - barHeight - 1.5f);
+  const float barWidth = cardW * 0.7f;
+  const float barX = (100.0f - barWidth) * 0.5f;
+  Gui2Image* bar =
+      new Gui2Image(windowManager, "gameover_actionbar", barX, barY, barWidth, barHeight);
+  this->AddView(bar);
+  bar->LoadImage("media/ui/pes/banner_panel.png");
+  bar->Show();
 
-  std::string scoreStr = match->GetTeam(0)->GetTeamData()->GetName() + " " +
-                         int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
-                         int_to_str(match->GetMatchData()->GetGoalCount(1)) + " " +
-                         match->GetTeam(1)->GetTeamData()->GetName();
-  Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_gameover_title", 2, 3, 76, 3, "FULL TIME");
-  title->SetPosition(40 - title->GetTextWidthPercent() * 0.5f, 3);
-  frame->AddView(title);
-  title->Show();
-
-  Gui2Caption* header =
-      new Gui2Caption(windowManager, "caption_gameover_header", 2, 8, 76, 4, scoreStr);
-  header->SetPosition(40 - header->GetTextWidthPercent() * 0.5f, 8);
-  frame->AddView(header);
-  header->Show();
-
-  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", 42, 76, 24, 4,
-                              Localization::GetInstance().Translate("gameover_continue"));
-  frame->AddView(buttonOkay);
+  const float buttonWidth = barWidth * 0.46f;
+  const float buttonHeight = barHeight * 0.64f;
+  const float buttonY = barY + (barHeight - buttonHeight) * 0.5f;
+  const float gap = barWidth * 0.04f;
+  Gui2Button* buttonHistory =
+      new Gui2Button(windowManager, "button_gameover_history", barX + gap, buttonY, buttonWidth,
+                     buttonHeight, Localization::GetInstance().Translate("gameover_match_history"));
+  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok",
+                              barX + barWidth - gap - buttonWidth, buttonY, buttonWidth,
+                              buttonHeight, Localization::GetInstance().Translate("gameover_continue"));
+  this->AddView(buttonHistory);
+  this->AddView(buttonOkay);
+  buttonHistory->Show();
   buttonOkay->Show();
   buttonOkay->sig_OnClick.connect([this](...) { GoMainMenu(); });
-
-  float possession1 = match->GetMatchData()->GetPossessionTime_ms(0);
-  float possession2 = match->GetMatchData()->GetPossessionTime_ms(1);
-  int shots1 = match->GetMatchData()->GetShots(0);
-  int shots2 = match->GetMatchData()->GetShots(1);
-  int shotsOnTarget1 = match->GetMatchData()->GetShotsOnTarget(0);
-  int shotsOnTarget2 = match->GetMatchData()->GetShotsOnTarget(1);
-  int passes1 = match->GetMatchData()->GetPassAttempts(0);
-  int passes2 = match->GetMatchData()->GetPassAttempts(1);
-  int passComp1 = match->GetMatchData()->GetPassesCompleted(0);
-  int passComp2 = match->GetMatchData()->GetPassesCompleted(1);
-  int fouls1 = match->GetMatchData()->GetFouls(0);
-  int fouls2 = match->GetMatchData()->GetFouls(1);
-
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_gameover_stats", 5, 18, 70, 44);
-
-  float totalPossession = possession1 + possession2;
-  int possession1Pct = (totalPossession > 0) ? round(possession1 / totalPossession * 100) : 50;
-  int possession2Pct = (totalPossession > 0) ? round(possession2 / totalPossession * 100) : 50;
-
-  grid->AddView(new Gui2Caption(windowManager, "caption_possession_t1", 0, 0, 25, 3,
-                                int_to_str(possession1Pct) + "%"),
-                0, 0);
-  grid->AddView(new Gui2Caption(windowManager, "caption_possession_header", 0, 0, 35, 3,
-                                Localization::GetInstance().Translate("gameover_possession")),
-                0, 1);
-  grid->AddView(new Gui2Caption(windowManager, "caption_possession_t2", 0, 0, 10, 3,
-                                int_to_str(possession2Pct) + "%"),
-                0, 2);
-
-  grid->AddView(new Gui2Caption(windowManager, "caption_shots_t1", 0, 0, 25, 3, int_to_str(shots1)),
-                1, 0);
-  grid->AddView(new Gui2Caption(windowManager, "caption_shots_header", 0, 0, 35, 3,
-                                Localization::GetInstance().Translate("gameover_shots")),
-                1, 1);
-  grid->AddView(new Gui2Caption(windowManager, "caption_shots_t2", 0, 0, 10, 3, int_to_str(shots2)),
-                1, 2);
-
-  auto shotOnTargetStr = [](int onTarget, int total) -> std::string {
-    if (total == 0)
-      return "0";
-    return int_to_str(onTarget) + "/" + int_to_str(total);
-  };
-  grid->AddView(new Gui2Caption(windowManager, "caption_sot_t1", 0, 0, 25, 3,
-                                shotOnTargetStr(shotsOnTarget1, shots1)),
-                2, 0);
-  grid->AddView(new Gui2Caption(windowManager, "caption_sot_header", 0, 0, 35, 3,
-                                Localization::GetInstance().Translate("gameover_shots_on_target")),
-                2, 1);
-  grid->AddView(new Gui2Caption(windowManager, "caption_sot_t2", 0, 0, 10, 3,
-                                shotOnTargetStr(shotsOnTarget2, shots2)),
-                2, 2);
-
-  auto passAccStr = [](int completed, int attempted) -> std::string {
-    if (attempted == 0)
-      return "0%";
-    return int_to_str(int(round(completed * 100.0f / attempted))) + "% (" + int_to_str(completed) +
-           "/" + int_to_str(attempted) + ")";
-  };
-  grid->AddView(new Gui2Caption(windowManager, "caption_passacc_t1", 0, 0, 25, 3,
-                                passAccStr(passComp1, passes1)),
-                3, 0);
-  grid->AddView(new Gui2Caption(windowManager, "caption_passacc_header", 0, 0, 35, 3,
-                                Localization::GetInstance().Translate("gameover_pass_accuracy")),
-                3, 1);
-  grid->AddView(new Gui2Caption(windowManager, "caption_passacc_t2", 0, 0, 10, 3,
-                                passAccStr(passComp2, passes2)),
-                3, 2);
-
-  grid->AddView(new Gui2Caption(windowManager, "caption_fouls_t1", 0, 0, 25, 3, int_to_str(fouls1)),
-                4, 0);
-  grid->AddView(new Gui2Caption(windowManager, "caption_fouls_header", 0, 0, 35, 3,
-                                Localization::GetInstance().Translate("gameover_fouls")),
-                4, 1);
-  grid->AddView(new Gui2Caption(windowManager, "caption_fouls_t2", 0, 0, 10, 3, int_to_str(fouls2)),
-                4, 2);
-
-  grid->UpdateLayout(0.5);
-
-  frame->AddView(grid);
-  grid->Show();
+  buttonHistory->sig_OnClick.connect([this](...) {
+    Properties props;
+    CreatePage((int)e_PageID_MatchHistory, props);
+  });
 
   buttonOkay->SetFocus();
 
@@ -196,16 +139,6 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
     MatchHistory::EnsureTable();
     MatchHistory::SaveMatch(entry);
   }
-
-  Gui2Button* buttonHistory =
-      new Gui2Button(windowManager, "button_gameover_history", 14, 76, 24, 4,
-                     Localization::GetInstance().Translate("gameover_match_history"));
-  frame->AddView(buttonHistory);
-  buttonHistory->Show();
-  buttonHistory->sig_OnClick.connect([this](...) {
-    Properties props;
-    CreatePage((int)e_PageID_MatchHistory, props);
-  });
 
   this->Show();
 }

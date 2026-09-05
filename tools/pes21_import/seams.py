@@ -169,31 +169,29 @@ WELD_RADIUS = 0.005
 COINCIDENT_RADIUS = 0.001
 
 
-def _patches(count, faces):
-    """A representative per vertex, one per connected run of triangles.
+def _edge_neighbours(count, faces):
+    """-> a set of directly connected vertices per vertex.
 
-    A UV seam does not bend a surface: it CUTS it. The exporter emits the two
-    sides as separate triangle runs that happen to share a coordinate, which is
-    exactly the duplicate this module exists to reconcile. Two vertices a few
-    millimetres apart inside ONE run are not that - they are the mesh's own
-    sampling, and the weights across them are the gradient the artist authored.
+    The discriminator between a seam's duplicate and the mesh's own sampling is
+    whether an EDGE joins the two. A duplicate has none: the seam cut the
+    surface and both halves were emitted separately, at one coordinate. The
+    next vertex along an authored gradient is joined by an edge by definition.
+
+    Connected components were tried first and are useless here: a UV seam cuts
+    a LINE across a surface, so the sheet stays one component and the pass
+    welded nothing at all (measured: four teams re-imported, zero vertices
+    welded, every shard back).
     """
-    parent = list(range(count))
-
-    def find(a):
-        while parent[a] != a:
-            parent[a] = parent[parent[a]]
-            a = parent[a]
-        return a
-
+    adjacent = [set() for _ in range(count)]
     for tri in faces:
-        for corner in tri[1:]:
-            if corner >= count or tri[0] >= count:
+        if len(tri) < 3:
+            continue
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            if a == b or a >= count or b >= count or a < 0 or b < 0:
                 continue
-            ra, rb = find(tri[0]), find(corner)
-            if ra != rb:
-                parent[ra] = rb
-    return [find(v) for v in range(count)]
+            adjacent[a].add(b)
+            adjacent[b].add(a)
+    return adjacent
 
 
 def weld(parts, radius=WELD_RADIUS, faces=None):
@@ -220,13 +218,17 @@ def weld(parts, radius=WELD_RADIUS, faces=None):
     out = []
     for index, part in enumerate(parts):
         part_faces = faces[index] if faces is not None and index < len(faces) else None
-        patch = _patches(len(part), part_faces) if part_faces is not None else None
+        adjacent = _edge_neighbours(len(part), part_faces) if part_faces is not None else None
         grid = {}
         for v, (position, _) in enumerate(part):
             grid.setdefault(_cells(position, radius), []).append(v)
         # Union-find over vertices that touch, so a coordinate covered by three
         # runs ends up in one group rather than each pair agreeing separately.
         parent = list(range(len(part)))
+        # ...but bounded: every member of a group is within `radius` of the
+        # vertex that started it, so a run of near neighbours cannot chain one
+        # blend across a whole hand.
+        seed = [position for position, _ in part]
 
         def find(a):
             while parent[a] != a:
@@ -252,13 +254,19 @@ def weld(parts, radius=WELD_RADIUS, faces=None):
                                 # are different limbs passing close.
                                 if not _shares_a_joint(part[v][1], part[other][1]):
                                     continue
-                                # ...and they are two runs, not two samples of
-                                # one. Without the faces to say so, leave it.
-                                if patch is None or patch[v] == patch[other]:
+                                # An edge between them means they are two
+                                # samples of one surface, not a seam's two
+                                # halves: that is the artist's gradient, and
+                                # agreeing it is what flattened the hands.
+                                # Without the faces to say so, leave it.
+                                if adjacent is None or other in adjacent[v]:
                                     continue
                             ra, rb = find(v), find(other)
-                            if ra != rb:
-                                parent[ra] = rb
+                            if ra == rb:
+                                continue
+                            if math.dist(seed[ra], seed[rb]) > radius:
+                                continue
+                            parent[ra] = rb
         totals = {}
         for v, (_, joints) in enumerate(part):
             total = totals.setdefault(find(v), {})

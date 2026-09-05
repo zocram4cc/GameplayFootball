@@ -16,6 +16,9 @@ base="$repo/data/menu_smoke_2hug_smbg.config"
 team1=16
 team2=13
 stadium="media/objects/stadiums/pes_st017/pes_st017.object"
+# The walk-out. "" lets the engine pick one for the stadium, "none" skips it;
+# an id names one of the nineteen families under media/cutscenes/ent.
+entrance=""
 minutes=10
 out=/tmp/showcase.mp4
 width=1280
@@ -28,6 +31,7 @@ while [ $# -gt 0 ]; do
     --team1) team1="$2"; shift 2 ;;
     --team2) team2="$2"; shift 2 ;;
     --stadium) stadium="$2"; shift 2 ;;
+    --entrance) entrance="$2"; shift 2 ;;
     --minutes) minutes="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --base) base="$2"; shift 2 ;;
@@ -65,13 +69,14 @@ trap salvage EXIT INT TERM HUP
 # The base config keeps whatever recording path it was last used with. Strip
 # every key this harness owns and write our own, so the engine can only ever
 # record into the fifo below.
-grep -vE '"(frame_recording_path|showcase_team1|showcase_team2|stadium_object|match_duration_minutes)"' \
+grep -vE '"(frame_recording_path|showcase_team1|showcase_team2|stadium_object|match_duration_minutes|entrance_id)"' \
   "$base" > "$cfg"
 {
   echo "\"frame_recording_path\" \"$fifo\""
   echo "\"showcase_team1\" \"$team1\""
   echo "\"showcase_team2\" \"$team2\""
   echo "\"stadium_object\" \"$stadium\""
+  echo "\"entrance_id\" \"$entrance\""
   # The engine's key is the whole match: it scales real time against a 90
   # minute clock (MatchDurationFactorFromMinutes), so half-time falls at half
   # of it. --minutes is per HALF, which is how this script has always described

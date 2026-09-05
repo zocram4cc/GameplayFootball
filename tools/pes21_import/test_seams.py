@@ -271,14 +271,17 @@ class WeldsCoincidentVertices(unittest.TestCase):
         # Blends, not token order: the pass sorts an influence list by weight.
         self.assertEqual([dict(j) for _, j in welded], [dict(j) for _, j in part])
 
-    def test_a_seam_across_two_runs_still_welds(self):
-        # The same 3 mm gap, sharing a bone, but in two triangle runs: this is
-        # a seam duplicate and it must still agree.
+    def test_a_seam_with_no_edge_between_the_halves_still_welds(self):
+        # The same 3 mm gap, sharing a bone, but with NO edge joining the two:
+        # that is a seam's two halves and they must still agree. A UV seam
+        # leaves the surface in one piece, so this cannot be judged by
+        # connected components - only by whether an edge joins the pair.
         part = [((0.0, 0.0, 1.0), [(7, 0.9), (9, 0.1)]),
                 ((0.0, 0.1, 1.0), [(7, 1.0)]),
                 ((0.0, 0.0, 1.003), [(9, 0.9), (7, 0.1)]),
                 ((0.1, 0.0, 1.0), [(9, 1.0)])]
-        faces = [(0, 1, 1), (2, 3, 3)]
+        # One connected sheet - 0-1, 1-3, 3-2 - with no 0-2 edge.
+        faces = [(0, 1, 3), (1, 3, 2)]
         welded = seams.weld([part], faces=[faces])[0]
         self.assertEqual(welded[0][1], welded[2][1])
 
