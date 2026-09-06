@@ -90,6 +90,35 @@ def _point_to_segment(point, a, b):
     return math.dist(point, closest), t
 
 
+# How far along the skeleton one vertex's weight may be shared. Two hops reaches
+# from a shoulder to the chest through the clavicle, which is the boundary that
+# tore; it does not reach from a hand to a hip, which is the blend that ruins a
+# character (see nearest_bone).
+BLEND_HOPS = 2
+# And a bone this much worse than the best fit takes no part in it.
+BLEND_SCORE_RATIO = 1.8
+
+
+def _bone_hops(a, b, parents=None):
+    """-> how many joints apart two bones are along the skeleton."""
+    parents = parents if parents is not None else retarget.GF_PARENT
+    if a == b:
+        return 0
+    up = {}
+    node, depth = a, 0
+    while node is not None and depth < 32:
+        up[node] = depth
+        node = parents.get(node)
+        depth += 1
+    node, depth = b, 0
+    while node is not None and depth < 32:
+        if node in up:
+            return up[node] + depth
+        node = parents.get(node)
+        depth += 1
+    return 99
+
+
 def bone_segments(joint_positions, parents=None):
     """-> [(child joint name, parent joint name, child pos, parent pos)].
 
@@ -185,15 +214,45 @@ def nearest_bone(position, joint_positions, parents=None, model_scale=1.0):
         trunk = [seg for seg in segments if seg[0] in TRUNK_BONES]
         if trunk:
             best = min(trunk, key=lambda seg: _point_to_segment(position, seg[3], seg[2])[0])
-    _distance, t = _point_to_segment(position, best[3], best[2])
-    child, parent = best[0], best[1]
-    # t is measured from the parent end, so a vertex at the parent joint rides
-    # the parent and one at the child rides the child.
-    weights = [(JOINT_ID[child], t), (JOINT_ID[parent], 1.0 - t)]
-    kept = [(j, w) for j, w in weights if w > MIN_INFLUENCE]
+    # Shared with the bones NEXT to that one, by how well each fits.
+    #
+    # One bone per vertex draws a hard line wherever the winner changes, and the
+    # authoring->bind bake turns the arm 45 degrees while leaving the trunk
+    # alone (retarget.PES_ALIGN), so a line that runs between the chest and the
+    # shoulder moves the two sides of it half a metre apart. Measured on
+    # smbg_2582: 795 edges torn at the BIND pose, worst 23.7x on a 1.7 cm edge,
+    # every one of them chest-shoulder, clavicle-shoulder or neck-elbow - the
+    # black blades that grew out of the mascots' shoulders in the entrance.
+    #
+    # Sharing it turns that line into a ramp. Only along the skeleton, though:
+    # a hand hangs beside a hip and blending those two is the cross-limb blend
+    # this function exists to avoid, so a bone more than BLEND_HOPS from the
+    # winner is not a candidate however well it scores.
+    share = {}
+    cut = score(best) * BLEND_SCORE_RATIO
+    for seg in segments:
+        if _bone_hops(seg[0], best[0], parents) > BLEND_HOPS:
+            continue
+        fit = score(seg)
+        if fit >= cut:
+            continue
+        # Falls to nothing at the cut, so a bone that only just qualifies takes
+        # only a sliver and the ramp is smooth in both directions.
+        strength = 1.0 / max(fit, 1e-6) - 1.0 / max(cut, 1e-6)
+        if strength <= 0.0:
+            continue
+        _d, along = _point_to_segment(position, seg[3], seg[2])
+        share[JOINT_ID[seg[0]]] = share.get(JOINT_ID[seg[0]], 0.0) + strength * along
+        share[JOINT_ID[seg[1]]] = share.get(JOINT_ID[seg[1]], 0.0) + strength * (1.0 - along)
+    if not share:
+        _distance, t = _point_to_segment(position, best[3], best[2])
+        share = {JOINT_ID[best[0]]: t, JOINT_ID[best[1]]: 1.0 - t}
+    ranked = sorted(share.items(), key=lambda jw: -jw[1])[:MAX_INFLUENCES]
+    total = sum(w for _, w in ranked) or 1.0
+    kept = [(j, w / total) for j, w in ranked if w / total > MIN_INFLUENCE]
     total = sum(w for _, w in kept)
     if not kept or total <= 0.0:
-        return [(JOINT_ID[child], 1.0)]
+        return [(JOINT_ID[best[0]], 1.0)]
     return [(j, w / total) for j, w in kept]
 
 
@@ -983,6 +1042,17 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # which reconcile() does not look at (it agrees a vertex with its neighbours
     # in other parts). Those duplicates were skinning to different joints and
     # tearing at the bind pose - the shards, measured on lcg_2709 at 315x.
+    # Smoothed along each group's own surface first. The guess names one bone
+    # per vertex, so the weight field steps from bone to bone across a single
+    # edge, and the authoring->bind bake turns that step into a tear - 1,438
+    # edges at 23.7x on smbg_2582, a sphere whose surface sits half a metre
+    # from every bone, drawn as a black blade out of its shoulder. Only the
+    # pack's own meshes: PES's base body arrives with its authored weights and
+    # keeps them (write_sidecar merges that file verbatim).
+    for group in groups:
+        blended = seams.smooth_field([v[3] for v in group[1]], group[2])
+        group[1] = [tuple(v[:3]) + (blend,) for v, blend in zip(group[1], blended)]
+
     before = [[(v[0], v[3]) for v in group[1]] for group in groups]
     # With the faces: a duplicate is a vertex the seam CUT into two triangle
     # runs, and only those may agree. Without them the pass reached the next

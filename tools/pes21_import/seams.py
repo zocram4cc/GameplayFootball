@@ -304,6 +304,62 @@ def disagreement(parts, radius=DEFAULT_RADIUS):
 DEFAULT_PASSES = 3
 
 
+# How many times the weight field is averaged along the mesh. Six spreads a
+# bone boundary over roughly a dozen vertices, which is what a hand-rigged
+# character has and what a guess does not.
+SMOOTH_PASSES = 8
+
+
+def smooth_field(influences, faces, passes=SMOOTH_PASSES, keep=4, floor=0.02):
+    """-> influence lists averaged with each vertex's neighbours in the mesh.
+
+    A guess assigns one bone per vertex, so the weight field steps from one
+    bone to the next across a single edge. The engine bakes an imported mesh
+    from its authoring pose into the rig's (retarget.PES_ALIGN turns the arms
+    45 degrees and leaves the trunk alone), and a step across one edge moves
+    its two ends apart by the whole difference between those two transforms:
+    measured on smbg_2582 - a 5,129-vertex sphere whose surface sits 0.4-0.6 m
+    from every bone - 1,438 edges torn at the bind pose, worst 23.7x, which is
+    the black blade that grew out of its shoulder.
+
+    Averaging along the mesh turns the step into a ramp. It runs over the
+    SURFACE, so it can only mix bones that the geometry itself joins - it
+    cannot reach across the gap from a hand to a hip, which is the blend that
+    ruins a character (fmdl_to_fullbody.nearest_bone).
+    """
+    count = len(influences)
+    if count == 0 or passes <= 0:
+        return influences
+    neighbours = [set() for _ in range(count)]
+    for tri in faces:
+        if len(tri) < 3:
+            continue
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            if a == b or not (0 <= a < count) or not (0 <= b < count):
+                continue
+            neighbours[a].add(b)
+            neighbours[b].add(a)
+    field = [dict(inf) for inf in influences]
+    for _ in range(passes):
+        nxt = []
+        for v, own in enumerate(field):
+            total = dict(own)
+            for other in neighbours[v]:
+                for joint, weight in field[other].items():
+                    total[joint] = total.get(joint, 0.0) + weight
+            scale = 1.0 + len(neighbours[v])
+            nxt.append({j: w / scale for j, w in total.items()})
+        field = nxt
+    out = []
+    for v, blend in enumerate(field):
+        ranked = sorted(blend.items(), key=lambda jw: -jw[1])[:keep]
+        total = sum(w for _, w in ranked) or 1.0
+        kept = [(j, w / total) for j, w in ranked if w / total > floor]
+        total = sum(w for _, w in kept) or 1.0
+        out.append([(j, w / total) for j, w in kept] or influences[v])
+    return out
+
+
 def reconcile(parts, radius=DEFAULT_RADIUS, passes=DEFAULT_PASSES):
     """Influence lists, with overlapping vertices agreed.
 
