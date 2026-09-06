@@ -118,9 +118,55 @@ TEST(GoalReplayWindow, TheWindowIsStillCappedByTheBuffer) {
 // how long they are: over the 387 imported celebration animations at 10 ms a frame
 // they run 0.4 s to 10.0 s, median 2.7 s, p90 6.8 s.
 
-TEST(CelebrationLength, ItTakesTheClipsOwnLength) {
-  EXPECT_EQ(GoalSequence::CelebrationLength_ms(6800), 6800u);
-  EXPECT_EQ(GoalSequence::CelebrationLength_ms(10000), 10000u);
+TEST(CelebrationLength, TheMontageRunsWhateverTheClipDoes) {
+  // This used to assert the clip's own length, which is what made a goal a
+  // thirty-second affair: PES's celebration is as long as its three SHOTS
+  // (tracking, tight, mob), and the median clip is 2.7 s. A clip shorter than
+  // the montage does not shorten it - the cast is released and jogs back while
+  // the shots run on, which is what the reference shows.
+  EXPECT_EQ(GoalSequence::CelebrationLength_ms(6800), GoalSequence::kMinCelebration_ms);
+  EXPECT_EQ(GoalSequence::CelebrationLength_ms(10000), GoalSequence::kMinCelebration_ms);
+}
+
+TEST(CelebrationLength, AClipLongerThanTheMontageExtendsIt) {
+  // A chained intro-and-loop performance keeps its own length: the mob shot
+  // holds while he is still performing.
+  EXPECT_EQ(GoalSequence::CelebrationLength_ms(GoalSequence::kMinCelebration_ms + 4000),
+            GoalSequence::kMinCelebration_ms + 4000);
+}
+
+TEST(GoalMontage, ThreeShotsInOrder) {
+  const unsigned long length = GoalSequence::CelebrationLength_ms(0);
+  EXPECT_EQ(GoalSequence::ShotAt(0, length), GoalSequence::Shot::Tracking);
+  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms - 1, length),
+            GoalSequence::Shot::Tracking);
+  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms, length),
+            GoalSequence::Shot::Tight);
+  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms + GoalSequence::kTightShot_ms,
+                                 length),
+            GoalSequence::Shot::Group);
+  // The tail of a clip that outran the montage stays on the mob rather than
+  // cycling back to the tracking shot.
+  EXPECT_EQ(GoalSequence::ShotAt(length - 1, length), GoalSequence::Shot::Group);
+}
+
+TEST(GoalMontage, EachShotStartsItsOwnCameraAtZero) {
+  const unsigned long length = GoalSequence::CelebrationLength_ms(0);
+  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(0, length), 0u);
+  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(GoalSequence::kTrackingShot_ms + 10, length),
+            GoalSequence::kTrackingShot_ms);
+  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(length - 1, length),
+            GoalSequence::kTrackingShot_ms + GoalSequence::kTightShot_ms);
+}
+
+TEST(GoalMontage, TheWholeSequenceIsTheReferencesSixtyToEightySeconds) {
+  // PES's goal, celebration, replay and restart run 60-80 s end to end
+  // (youtu.be/ns5C3zpD6Ig). Ours measured about thirty.
+  for (unsigned long anim : {0ul, 400ul, 2700ul, 10000ul, 60000ul}) {
+    const unsigned long whole = GoalSequence::WholeSequence_ms(anim);
+    EXPECT_GE(whole, 60000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
+    EXPECT_LE(whole, 80000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
+  }
 }
 
 TEST(CelebrationLength, AVeryShortClipIsFloored) {
@@ -139,12 +185,16 @@ TEST(CelebrationLength, AnUnknownClipFallsBackToTheDefault) {
 TEST(CelebrationLength, TheReplayFiresWhenTheClipIsDoneRatherThanAtNineSeconds) {
   // Both clips sit above kMinCelebration_ms, so what is under test here is the
   // clip driving the timing - the floor has its own test above.
-  const unsigned long shortClip = GoalSequence::CelebrationLength_ms(7000);
-  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, shortClip), kGoal + 7000)
-      << "a seven second celebration should not be held for nine";
-  const unsigned long longClip = GoalSequence::CelebrationLength_ms(10000);
-  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, longClip), kGoal + 10000)
-      << "a ten second celebration should not be cut at nine";
+  // The replay fires when the CELEBRATION is done - the montage for an ordinary
+  // clip, and the clip itself when it outlasts the montage.
+  const unsigned long ordinary = GoalSequence::CelebrationLength_ms(7000);
+  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, ordinary),
+            kGoal + GoalSequence::kMinCelebration_ms);
+  const unsigned long chained =
+      GoalSequence::CelebrationLength_ms(GoalSequence::kMinCelebration_ms + 5000);
+  EXPECT_EQ(GoalSequence::ReplayFiresAt_ms(kGoal, 0, chained),
+            kGoal + GoalSequence::kMinCelebration_ms + 5000)
+      << "a performance that outran the montage should not be cut at it";
 }
 
 TEST(CelebrationLength, EveryClipLengthLeavesTheGoalInTheReplay) {

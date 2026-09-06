@@ -916,6 +916,9 @@ protected:
   int lastGoalTeamID;
   Player* lastGoalScorer;
   std::map<const Player*, int> goalsToday;
+  // Which shot of the celebration montage is on air, so the camera cuts once
+  // per shot rather than every frame (GoalSequence::Shot).
+  GoalSequence::Shot goalCelebrationShot = GoalSequence::Shot::Tracking;
   std::unique_ptr<Gui2GoalBug> goalBug;
   int lastTouchTeamIDs[e_TouchType_SIZE];
   int lastTouchTeamID;

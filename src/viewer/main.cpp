@@ -26,9 +26,10 @@
 //
 //   ffmpeg -f rawvideo -pixel_format rgba -video_size 1280x720 -i out.raw shot%02d.png
 //
-// The file holds N frames, occasionally N+1, and the first of them is sometimes empty:
-// the recording stream opens against the swap chain rather than in step with it. A
-// frame with no variance in it is one of those and can be dropped.
+// The recorder is paced at 60 Hz off its own clock and writes whichever frame was
+// last presented, so a shot held for 40 ms lands in the file two or three times over.
+// The first frame is the first shot; drop consecutive duplicates (mpdecimate) to get
+// one still per shot.
 
 #include <algorithm>
 #include <cmath>
@@ -371,6 +372,17 @@ struct ClothRig {
 // and then an exit has to be the thing that counts them. Sitting in the graphics
 // sequence's Put phase means one call per presented frame, which is exactly the
 // unit being counted.
+//
+// Nothing here waits for the model. The engine loads it before the scheduler ever
+// runs: ObjectLoader::LoadObject parses on the calling thread, AddNode hands the
+// geometry to GraphicsGeometry_GeometryInterpreter::OnLoad on the same thread, and
+// every message that puts to the renderer thread - CreateVertexBuffer, the texture
+// uploads - is Wait()ed on before it returns (VertexBuffer::CreateOrUpdateVertexBuffer).
+// By the first PutPhase the geometry is on the card. The "empty early frames" a
+// twelve-frame, 1.5 s warm-up used to paper over were the camera: a task that
+// returned before placing it drew the first frames from the origin, and the recorder,
+// opened in that same frame, kept them. Place the camera, then open the recorder, and
+// the first frame in the file is the first shot.
 class TurntableTask : public IUserTask {
  public:
   TurntableTask(boost::intrusive_ptr<Node> cameraNode, boost::intrusive_ptr<Camera> camera,
@@ -380,63 +392,31 @@ class TurntableTask : public IUserTask {
   void GetPhase() override {}
   void ProcessPhase() override {}
 
-  // Presents before the first one worth keeping. The pipeline holds several frames in
-  // flight, and those land in the recording after it opens: at five, a --shots 1 run
-  // recorded nothing but background and --shots 3 gave one drawn frame of four. Twelve
-  // is past the deepest staleness measured, so every recorded frame has the model in
-  // it - which is what a one-shot audit of ninety-three models needs.
-  static const int kWarmupFrames = 12;
-
-  // And at least this long on the clock, because the geometry loads asynchronously.
-  static const unsigned long kWarmupMilliseconds = 1500;
-
-  // Frames the recorder writes before a live one lands. Measured: a four-shot run put
-  // its first live frame in file position four.
-  static const int kRecorderLeadIn = 4;
-
   void PutPhase() override {
-    // Warm up by the clock as well as by frame count. The frame count alone was not
-    // enough: the model's geometry loads on worker threads, so the early frames are
-    // an empty scene and a one-shot run recorded nothing but background. Whichever
-    // gate is later wins.
-    if (warmupStart_ms == 0)
-      warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
-    const bool framesReady = warmup >= kWarmupFrames;
-    const bool clockReady =
-        EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >= kWarmupMilliseconds;
-    if (!framesReady || !clockReady) {
-      warmup++;
-      // Recording starts once the pipeline is drawing the model, so the file holds
-      // exactly the shots asked for rather than the warm-up as well.
-      if (framesReady && clockReady)
-        StartFrameRecording(out);
-      return;
-    }
+    ViewerCamera::Shot turned = shot;
+    turned.yaw = ViewerCamera::TurntableYaw(shot, drawn, frames > 0 ? frames : 1);
+    Place(cameraNode, camera, turned);
     if (!recording) {
       recording = true;
       StartFrameRecording(out);
-      return;
     }
-    ViewerCamera::Shot turned = shot;
-    turned.yaw = ViewerCamera::TurntableYaw(shot, drawn, frames > 0 ? frames : 1);
-    const std::array<float, 3> eye = ViewerCamera::Position(turned);
+    drawn++;
+    if (frames > 0 && drawn >= frames) EnvironmentManager::GetInstance().SignalQuit();
+  }
+
+  // Split the way the match camera splits it: the node carries the yaw about Z and
+  // the camera object the pitch about X, a quarter turn off because a camera looks
+  // down its own -z (Match::UpdateIngameCamera).
+  static void Place(boost::intrusive_ptr<Node>& cameraNode, boost::intrusive_ptr<Camera>& camera,
+                    const ViewerCamera::Shot& at) {
+    const std::array<float, 3> eye = ViewerCamera::Position(at);
     cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
-    // Split the way the match camera splits it: the node carries the yaw about Z and
-    // the camera object the pitch about X, a quarter turn off because a camera looks
-    // down its own -z (Match::UpdateIngameCamera).
     Quaternion yaw;
-    yaw.SetAngleAxis(turned.yaw, Vector3(0, 0, 1));
+    yaw.SetAngleAxis(at.yaw, Vector3(0, 0, 1));
     cameraNode->SetRotation(yaw);
     Quaternion pitch;
-    pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
+    pitch.SetAngleAxis(0.5f * pi - at.pitch, Vector3(1, 0, 0));
     camera->SetRotation(pitch);
-    drawn++;
-    // The recorder writes the presented buffer, which lags the scene by a few frames:
-    // the first frames in the file are the empty scene from before the model was
-    // drawn, however long the warm-up. So draw the lead-in as well and let the caller
-    // take the last `frames`; the count is printed rather than left to be discovered.
-    if (frames > 0 && drawn >= frames + kRecorderLeadIn)
-      EnvironmentManager::GetInstance().SignalQuit();
   }
 
   std::string GetName() const override { return "turntable"; }
@@ -449,8 +429,6 @@ class TurntableTask : public IUserTask {
   ViewerCamera::Shot shot;
   int frames = 0;
   int drawn = 0;
-  int warmup = 0;
-  unsigned long warmupStart_ms = 0;
   bool recording = false;
   std::string out;
 };
@@ -473,21 +451,6 @@ class AnimTask : public IUserTask {
   void ProcessPhase() override {}
 
   void PutPhase() override {
-    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
-    const bool framesReady = warmup >= TurntableTask::kWarmupFrames;
-    const bool clockReady = EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
-                            TurntableTask::kWarmupMilliseconds;
-    if (!framesReady || !clockReady) {
-      warmup++;
-      Pose(0);
-      if (framesReady && clockReady) StartFrameRecording(out);
-      return;
-    }
-    if (!recording) {
-      recording = true;
-      StartFrameRecording(out);
-      return;
-    }
     const int steps = std::max(1, frames);
     const int last = std::max(0, clip->GetFrameCount() - 1);
     Pose(steps > 1 ? last * std::min(drawn, steps - 1) / (steps - 1) : 0);
@@ -495,17 +458,13 @@ class AnimTask : public IUserTask {
     // Half a turn over the run, not a full one: the back of a body says less
     // about a skin than three quarters round the front does.
     turned.yaw = shot.yaw + pi * (steps > 1 ? (float)std::min(drawn, steps - 1) / (steps - 1) : 0.0f);
-    const std::array<float, 3> eye = ViewerCamera::Position(turned);
-    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
-    Quaternion yaw;
-    yaw.SetAngleAxis(turned.yaw, Vector3(0, 0, 1));
-    cameraNode->SetRotation(yaw);
-    Quaternion pitch;
-    pitch.SetAngleAxis(0.5f * pi - turned.pitch, Vector3(1, 0, 0));
-    camera->SetRotation(pitch);
+    TurntableTask::Place(cameraNode, camera, turned);
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
+    }
     drawn++;
-    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
-      EnvironmentManager::GetInstance().SignalQuit();
+    if (frames > 0 && drawn >= frames) EnvironmentManager::GetInstance().SignalQuit();
   }
 
   std::string GetName() const override { return "anim"; }
@@ -528,8 +487,6 @@ class AnimTask : public IUserTask {
   ViewerCamera::Shot shot;
   int frames = 0;
   int drawn = 0;
-  int warmup = 0;
-  unsigned long warmupStart_ms = 0;
   bool recording = false;
   std::string out;
 };
@@ -556,41 +513,24 @@ class ClothShotTask : public IUserTask {
     // Round in front of the goalmouth rather than square on the side, so the ball
     // comes towards the camera and the billow is across the frame.
     from.yaw = 0.9f;
-    const std::array<float, 3> eye = ViewerCamera::Position(from);
-    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
-    Quaternion yaw;
-    yaw.SetAngleAxis(from.yaw, Vector3(0, 0, 1));
-    cameraNode->SetRotation(yaw);
-    Quaternion pitch;
-    pitch.SetAngleAxis(0.5f * pi - from.pitch, Vector3(1, 0, 0));
-    camera->SetRotation(pitch);
+    TurntableTask::Place(cameraNode, camera, from);
   }
 
   void GetPhase() override {}
   void ProcessPhase() override {}
 
   void PutPhase() override {
-    // Every tick: the scheduler resets nothing, but placing it once during warm-up
-    // and never again put the camera back at the origin for the first live frames.
+    // Every tick: the scheduler resets nothing, but placing it once and never again
+    // put the camera back at the origin for the first live frames.
     PlaceCamera();
-    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
-    const bool ready =
-        warmup >= TurntableTask::kWarmupFrames &&
-        EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
-            TurntableTask::kWarmupMilliseconds;
-    if (!ready) {
-      warmup++;
-      return;
-    }
     if (!recording) {
       recording = true;
-      StartFrameRecording(out);
       // Let it take up its own sag before the ball arrives, exactly as the match
       // does, so what the shot shows is the shot and not the settling.
       for (int i = 0; i < 60; i++)
         rig->cloth.Step(0.01f, Vector3(0, 0, -6.0f), 0.97f, 4);
       rig->Write();
-      return;
+      StartFrameRecording(out);
     }
 
     // The ball's flight: in through the mouth, across the goal, out the back. Timed
@@ -610,8 +550,7 @@ class ClothShotTask : public IUserTask {
       std::cout << "  frame " << drawn << " ball x " << ball.coords[0] << " sag "
                 << (int)(rig->cloth.Displacement() * 1000) << " mm" << std::endl;
     drawn++;
-    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
-      EnvironmentManager::GetInstance().SignalQuit();
+    if (frames > 0 && drawn >= frames) EnvironmentManager::GetInstance().SignalQuit();
   }
 
   std::string GetName() const override { return "clothshot"; }
@@ -623,8 +562,6 @@ class ClothShotTask : public IUserTask {
   ViewerCamera::Shot shot;
   int frames = 0;
   int drawn = 0;
-  int warmup = 0;
-  unsigned long warmupStart_ms = 0;
   bool recording = false;
   std::string out;
 };
@@ -662,29 +599,16 @@ class CutsceneTask : public IUserTask {
   void ProcessPhase() override {}
 
   void PutPhase() override {
-    // The same warm-up the turntable needs, for the same reasons (TurntableTask).
-    if (warmupStart_ms == 0) warmupStart_ms = EnvironmentManager::GetInstance().GetTime_ms();
-    const bool framesReady = warmup >= TurntableTask::kWarmupFrames;
-    const bool clockReady = EnvironmentManager::GetInstance().GetTime_ms() - warmupStart_ms >=
-                            TurntableTask::kWarmupMilliseconds;
-    if (!framesReady || !clockReady) {
-      warmup++;
-      Pose(0.0f);
-      if (framesReady && clockReady) StartFrameRecording(out);
-      return;
-    }
-    if (!recording) {
-      recording = true;
-      StartFrameRecording(out);
-      return;
-    }
     const int steps = std::max(1, frames);
     // The last shot lands on the last moment, not one step short of it.
     const float t_ms = steps > 1 ? duration_ms * std::min(drawn, steps - 1) / (steps - 1) : 0.0f;
     Pose(t_ms);
+    if (!recording) {
+      recording = true;
+      StartFrameRecording(out);
+    }
     drawn++;
-    if (frames > 0 && drawn >= frames + TurntableTask::kRecorderLeadIn)
-      EnvironmentManager::GetInstance().SignalQuit();
+    if (frames > 0 && drawn >= frames) EnvironmentManager::GetInstance().SignalQuit();
   }
 
   std::string GetName() const override { return "cutscene"; }
@@ -729,14 +653,7 @@ class CutsceneTask : public IUserTask {
       camera->SetCapping(std::max(0.1f, frame.nearPlane), frame.farPlane);
       return;
     }
-    const std::array<float, 3> eye = ViewerCamera::Position(fallback);
-    cameraNode->SetPosition(Vector3(eye[0], eye[1], eye[2]));
-    Quaternion yaw;
-    yaw.SetAngleAxis(fallback.yaw, Vector3(0, 0, 1));
-    cameraNode->SetRotation(yaw);
-    Quaternion pitch;
-    pitch.SetAngleAxis(0.5f * pi - fallback.pitch, Vector3(1, 0, 0));
-    camera->SetRotation(pitch);
+    TurntableTask::Place(cameraNode, camera, fallback);
     camera->SetFOV(fallback.fov);
   }
 
@@ -749,8 +666,6 @@ class CutsceneTask : public IUserTask {
   float duration_ms;
   int frames = 0;
   int drawn = 0;
-  int warmup = 0;
-  unsigned long warmupStart_ms = 0;
   bool recording = false;
   bool authoredCamera = false;
   std::string out;
@@ -821,8 +736,9 @@ int PlayAnim(const Options& options, std::shared_ptr<Scene3D> scene3D) {
   GetScheduler()->RegisterTaskSequence(sequence);
   Run();
   StopFrameRecording();
-  std::cout << "drew frames to " << options.out << "; the first "
-            << TurntableTask::kRecorderLeadIn << " are lead-in\n";
+  std::cout << "drew " << (options.shots > 0 ? options.shots : 8) << " shot(s) to " << options.out
+            << "; the 60 Hz recorder repeats a shot it sees twice, so drop consecutive"
+               " duplicates\n";
   lightNode->Exit();
   lightNode.reset();
   cameraNode->Exit();
@@ -964,9 +880,10 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
     GetScheduler()->RegisterTaskSequence(sequence);
     Run();
     StopFrameRecording();
-    std::cout << "drew frames to " << options.out << "; the first " << TurntableTask::kRecorderLeadIn
-              << " are pipeline lead-in, the last " << options.shots << " span 0 to "
-              << duration_ms / 1000.0f << " s\n";
+    std::cout << "drew " << options.shots << " shot(s) to " << options.out << " spanning 0 to "
+              << duration_ms / 1000.0f
+              << " s; the 60 Hz recorder repeats a shot it sees twice, so drop consecutive"
+                 " duplicates\n";
     sequence.reset();
   }
 
@@ -1169,7 +1086,12 @@ int main(int argc, const char** argv) {
     else
       driver = std::shared_ptr<IUserTask>(
           new TurntableTask(cameraNode, camera, shot, options.shots, options.out));
-    std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 0, true));
+    // Paced like the anim and cutscene modes, and for the same measured reason: the
+    // recorder samples the presented frame at 60 Hz, and an unpaced turntable drew
+    // faster than that and lost shots (--shots 2 put one frame in the file). Forty
+    // milliseconds a frame keeps every shot, at the price of the recorder writing each
+    // two or three times; ffmpeg's mpdecimate drops the repeats.
+    std::shared_ptr<TaskSequence> sequence(new TaskSequence("viewer", 40, true));
     // The order the game's own graphics sequence uses: the user task writes the
     // camera in its Put phase, then the graphics Get phase reads it and enqueues the
     // view. Getting first renders the frame before the camera has been placed.
@@ -1181,9 +1103,9 @@ int main(int argc, const char** argv) {
 
     Run();
     StopFrameRecording();
-    std::cout << "drew frames to " << options.out
-              << "; the first 4 are pipeline lead-in, the last " << options.shots
-              << " are the shots\n";
+    std::cout << "drew " << options.shots << " shot(s) to " << options.out
+              << "; the 60 Hz recorder repeats a shot it sees twice, so drop consecutive"
+                 " duplicates\n";
     sequence.reset();
   }
 

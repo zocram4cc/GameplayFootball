@@ -1273,4 +1273,35 @@ TEST(RigdioFidelity, DbgSpecialVictoryAnthemsNeverAutoPlay) {
   ASSERT_NE(e, nullptr);
   EXPECT_EQ(e->file, "VA - Dan Dan Kokoro Hikareteku.mp3");
 }
+
+// The two anthems play back to back inside the walkout (AnthemHandsOver).
+TEST(RigdioAnthemHandover, AwayAnthemRunsToItsOwnEnd) {
+  // A 20 s anthem inside a 100 s entrance: nothing cuts it at halfway, which
+  // is what used to happen.
+  EXPECT_FALSE(AnthemHandsOver(12.0, 20.0, 50.0, 100.0, 2.0));
+  EXPECT_FALSE(AnthemHandsOver(17.9, 20.0, 55.0, 100.0, 2.0));
+  // It hands over a fade before its end, so the home anthem starts clean.
+  EXPECT_TRUE(AnthemHandsOver(18.0, 20.0, 56.0, 100.0, 2.0));
+}
+
+TEST(RigdioAnthemHandover, AnAnthemLongerThanTheWalkoutYieldsAtTheDeadline) {
+  // A 200 s anthem cannot have the whole entrance: the last quarter belongs to
+  // the home side, so it yields at 0.75 * total - fade.
+  EXPECT_FALSE(AnthemHandsOver(70.0, 200.0, 70.0, 100.0, 2.0));
+  EXPECT_TRUE(AnthemHandsOver(73.0, 200.0, 73.0, 100.0, 2.0));
+}
+
+TEST(RigdioAnthemHandover, AnUnmeasuredTrackStillHandsOver) {
+  // Duration 0 = the decoder never measured it; only the deadline applies, so
+  // a stream that never reports an end cannot starve the home anthem.
+  EXPECT_FALSE(AnthemHandsOver(10.0, 0.0, 10.0, 100.0, 2.0));
+  EXPECT_TRUE(AnthemHandsOver(80.0, 0.0, 80.0, 100.0, 2.0));
+}
+
+TEST(RigdioAnthemHandover, NoEntranceMeansNoDeadline) {
+  // A fixture with no walkout: the anthem runs on its own length rather than
+  // being cut by a zero-length window.
+  EXPECT_FALSE(AnthemHandsOver(5.0, 30.0, 0.0, 0.0, 2.0));
+  EXPECT_TRUE(AnthemHandsOver(28.0, 30.0, 0.0, 0.0, 2.0));
+}
 }  // namespace

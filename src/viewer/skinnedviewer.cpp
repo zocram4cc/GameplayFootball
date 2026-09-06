@@ -198,6 +198,11 @@ bool ViewerSkinnedModel::Prepare() {
   weightedVerticesVec.clear();
   uniqueFullbodyMesh.clear();
   uniqueIndicesVec.clear();
+  // A vertex the weights know nothing about rides joint 0 rigidly. The match's
+  // binding gate never casts such a model; the viewer's job is to show it: a prop
+  // with no weights at all comes out as a rigid body on the hip, and a body with
+  // holes in its weights shows exactly which patch does not follow the rig.
+  int unweighted = 0;
   for (unsigned int subgeom = 0; subgeom < fullbodySubgeomCount; subgeom++) {
     std::vector<WeightedVertex> wvVec;
     weightedVerticesVec.push_back(wvVec);
@@ -246,16 +251,18 @@ bool ViewerSkinnedModel::Prepare() {
                         uniqueMesh.data[v + 2]);
       WeightedVertex wv;
       wv.vertexID = v / 3;
-      const std::vector<SkinInfluence>* influences = skinWeights.Find(vertexPos);
-      if (!influences) {
-        std::cout << "skinned viewer: no weight for " << vertexPos.coords[0] << " "
-                  << vertexPos.coords[1] << " " << vertexPos.coords[2] << "\n";
-        assert(influences);
-      }
-      for (auto& inf : *influences) {
+      if (const std::vector<SkinInfluence>* influences = skinWeights.Find(vertexPos)) {
+        for (auto& inf : *influences) {
+          WeightedBone wb;
+          wb.jointID = inf.jointID;
+          wb.weight = inf.weight;
+          wv.bones.push_back(wb);
+        }
+      } else {
+        unweighted++;
         WeightedBone wb;
-        wb.jointID = inf.jointID;
-        wb.weight = inf.weight;
+        wb.jointID = 0;
+        wb.weight = 1.0f;
         wv.bones.push_back(wb);
       }
       // See HumanoidBase::PrepareFullbodyModel: bake at default height then scale
@@ -278,6 +285,9 @@ bool ViewerSkinnedModel::Prepare() {
       meshes[subgeom].indices.push_back(uniqueIndices[v / 3]);
   }
   fullbodyGeometryData->resourceMutex.unlock();
+  if (unweighted > 0)
+    std::cout << "skinned viewer: " << unweighted
+              << " vertex(es) have no skin weight and ride joint 0 rigidly\n";
   static_cast<Geometry*>(fullbodyNode->GetObject("fullbody").get())
       ->OnUpdateGeometryData();
   Animation* straightAnim = new Animation();

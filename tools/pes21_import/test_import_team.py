@@ -53,6 +53,27 @@ class WhichExportsMayBeBoundAsABody(unittest.TestCase):
         self.assertTrue(import_team.may_bind_as_body("carries scenery", composited=True))
 
 
+class WhoNeedsPesBodyUnderThem(unittest.TestCase):
+    """#83: both signals must put the stock body under an export, not just one."""
+
+    def test_an_export_that_does_not_dress_the_rig_needs_one(self):
+        self.assertTrue(import_team.needs_stock_body("whole", False))
+
+    def test_the_coverage_verdict_alone_is_enough(self):
+        # This is the hole #83 names: the model passes the geometric gate (every
+        # slot together covers the rig) and still converts to a body with a bare
+        # chest, which body_coverage reports and nothing acted on.
+        self.assertTrue(import_team.needs_stock_body("needs base", True))
+        self.assertTrue(import_team.needs_stock_body("carries scenery", True))
+
+    def test_a_whole_body_needs_nothing(self):
+        self.assertFalse(import_team.needs_stock_body("whole", True))
+
+    def test_an_already_composited_export_is_not_composited_twice(self):
+        self.assertFalse(import_team.needs_stock_body("needs base", True, composited=True))
+        self.assertFalse(import_team.needs_stock_body("whole", False, composited=True))
+
+
 if __name__ == "__main__":
     unittest.main()
 

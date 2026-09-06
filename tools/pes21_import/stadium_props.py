@@ -31,9 +31,12 @@ import argparse
 import glob
 import math
 import os
+import re
 import sys
 
 import ase_util
+import camera_cut
+import pennant_flag
 import stadium_staff
 import stadium_crowd  # noqa: E402
 import stadium_to_gf
@@ -278,6 +281,52 @@ def marks_for_entrance(role, pitch_half_x=PITCH_HALF_X, pitch_half_y=PITCH_HALF_
     return []
 
 
+# PES's own staging of the walkout furniture: dt12_g4's
+# common/demo/fixdemo/ent/cut_data/ent_obj_*.fdc, one tag-0x05 record per prop
+# (camera_cut.ObjectCut). The banners are what it settles: the competition banner
+# is authored FLAT ON THE GRASS at (0, 0.03, 27.5) - a pitch banner 6.5 m inside
+# the tunnel touchline, not a carried one - and the two national flags at
+# (-+7, 0.025, 32). marks_for_entrance had all three stood at the tunnel mouth.
+CUT_DATA_GLOB = os.path.join("**", "cut_data", "ent_obj_*.fdc")
+# Which roles take PES's mark as their whole placement. A rigid prop's record is
+# its placement; the circle flag's is not - its gani lifts the whole prop a metre
+# through sk_prop, so it keeps the ground lift prop_placement measures.
+STAGED_ROLES = ("banner",)
+
+
+def is_ground_staging(path):
+    """Whether an ent_obj pack stages for one ground or one side rather than for
+    every ground: *_stNNN packs (a per-ground arch or host-city banner) and *_back
+    packs (the same prop on the far touchline) are alternatives, not marks."""
+    stem = os.path.splitext(os.path.basename(str(path)))[0]
+    return stem.endswith("_back") or re.search(r"_st\d{3}", stem) is not None
+
+
+def staged_marks(fdc_paths, scale=None):
+    """-> {model stem: (x, y, z, yaw)} in GF metres: where PES stands each prop.
+
+    The Fox position (x, y up, z) lands as (x, -z, y), scaled onto this engine's
+    pitch about the centre spot like everything else PES authored on its own; a
+    Fox turn about +Y is the same turn about GF's +Z. First pack wins for a stem.
+    """
+    sx, sy, _sz = scale or stadium_to_gf.pitch_scale()
+    marks = {}
+    for path in sorted(fdc_paths):
+        if is_ground_staging(path):
+            continue
+        for obj in camera_cut.load(path).objects:
+            x, up, z = obj.position
+            marks.setdefault(obj.stem, (x * sx, -z * sy, up, obj.yaw))
+    return marks
+
+
+def staged_placement(mark):
+    """-> the prop_placement of a staged prop: its origin on PES's mark, nothing
+    recentred and nothing set down - PES's height is part of the mark (the banners
+    lie 2.5-3 cm over the grass so they do not fight the pitch for it)."""
+    return {"dx": 0.0, "dy": 0.0, "lift": mark[2]}
+
+
 def prop_role(path):
     """-> what a prop is for ('cornerflag', 'camera', 'bench', 'barrier'), or None."""
     stem = os.path.splitext(os.path.basename(str(path)))[0].lower()
@@ -434,6 +483,20 @@ def assign(models, marks):
     return [(models[i % len(models)], mark) for i, mark in enumerate(marks)]
 
 
+def place_models(role, models, marks, staged):
+    """-> [(model, (x, y, yaw), placement or None)]: a staged prop on PES's own
+    mark with its own placement, everything else shared out over the role's marks
+    and placed by what it stands on. `models` are (stem, ...) tuples."""
+    out, unstaged = [], []
+    for model in models:
+        mark = staged.get(model[0]) if role in STAGED_ROLES else None
+        if mark:
+            out.append((model, (mark[0], mark[1], mark[3]), staged_placement(mark)))
+        else:
+            unstaged.append(model)
+    return out + [(model, mark, None) for model, mark in assign(unstaged, marks)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("props", help="a directory of extracted PES prop models")
@@ -444,6 +507,10 @@ def main():
                         help="where this will be installed under media/objects/stadiums, "
                              "for the .ase's own texture paths (e.g. pes_st017/props)")
     parser.add_argument("--textures", action="append", default=[])
+    parser.add_argument("--cut-data", default="",
+                        help="PES's fixdemo extraction, holding "
+                             "common/demo/fixdemo/ent/cut_data/ent_obj_*.fdc - where PES "
+                             "records what stands where at the walkout")
     parser.add_argument("--emblem", default=None,
                         help="a PNG for the pennant ring's flag faces: the competition's "
                              "own emblem, which for these packs is emblemLc/emb_0004 (the "
@@ -524,15 +591,29 @@ def main():
         meshes = [fmdl.meshes[i] for i in keep]
         by_role.setdefault(role, []).append((stem, meshes, [skins[i] for i in keep]))
 
+    staged = {}
+    if args.set != "touchline":
+        # PES's own marks come from its ent_obj packs, which live in the dt12
+        # fixdemo extraction rather than beside the prop models - so the source
+        # is named separately (docs/ASSETS.md). Without it the banners fall back
+        # to the tunnel mouth, which is the #76 defect.
+        cut_data_root = args.cut_data or args.props
+        staged = staged_marks(
+            glob.glob(os.path.join(cut_data_root, CUT_DATA_GLOB), recursive=True))
+        if not staged:
+            print("  no ent_obj_*.fdc under %s: the banners stand at the tunnel mouth "
+                  "instead of on PES's marks" % args.props)
+
     for role in sorted(by_role):
-        marks = marks_of(role)
-        for (stem, meshes, skins), mark in assign(by_role[role], marks):
+        placed = place_models(role, by_role[role], marks_of(role), staged)
+        for (stem, meshes, skins), mark, placement in placed:
             # One placement for the whole prop. Measured per mesh, a corner flag's
             # cloth is set down on the grass and centred on the pole - which is how
             # the flag came out lying on the floor beside it.
-            placement = prop_placement(
-                [[stadium_staff._fox_to_gf(v.position) for v in mesh.vertices]
-                 for mesh in meshes])
+            if placement is None:
+                placement = prop_placement(
+                    [[stadium_staff._fox_to_gf(v.position) for v in mesh.vertices]
+                     for mesh in meshes])
             for mesh, texture in zip(meshes, skins):
                 ident = getattr(texture, "filename", None) if texture else None
                 own = placeholder_bitmap(ident, stem)
@@ -552,8 +633,9 @@ def main():
                 figures.append((mesh, (mark[0], mark[1]), mark[2], bitmap, stem, None,
                                 placement))
         print("  %-10s %d mark(s) from %d model(s): %s"
-              % (role, len(marks), len(by_role[role]),
-                 ", ".join(m[0] for m in by_role[role])))
+              % (role, len(placed), len(by_role[role]),
+                 ", ".join(m[0] + (" (PES's mark)" if m[0] in staged and role in STAGED_ROLES
+                                   else "") for m in by_role[role])))
 
     if skipped:
         print("  left out for want of their skins: %s" % ", ".join(skipped))

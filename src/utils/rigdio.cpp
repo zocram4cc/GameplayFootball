@@ -959,4 +959,18 @@ double MatchSession::CachedPosition(bool home, const std::string& file) const {
   return it == positionCache_.end() ? 0.0 : it->second;
 }
 
+bool AnthemHandsOver(double awayElapsedSeconds, double awayDurationSeconds,
+                     double entranceElapsedSeconds, double entranceTotalSeconds,
+                     double fadeSeconds) {
+  // Its own end, fading out so the home anthem starts into silence.
+  if (awayDurationSeconds > 0.0 &&
+      awayElapsedSeconds >= awayDurationSeconds - fadeSeconds)
+    return true;
+  // Or the deadline: whatever is left of the entrance belongs to the home side.
+  if (entranceTotalSeconds <= 0.0) return false;
+  const double deadline =
+      entranceTotalSeconds * kAwayAnthemShare - fadeSeconds;
+  return entranceElapsedSeconds >= (deadline > 0.0 ? deadline : 0.0);
+}
+
 }  // namespace rigdio

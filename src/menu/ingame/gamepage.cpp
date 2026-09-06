@@ -135,7 +135,18 @@ void GamePage::GoExtendedReplayPage() {
                                    ? (int)match->GetReplayStartOffset_ms()
                                    : match->GetReplaySize_ms();
   bool stayInReplay = true;
-  replayPage->Autorun(replayHistoryOffset_ms, stayInReplay, match->GetReplayCamera());
+  // A goal gets PES's two cuts, both ending at the goal itself: the wide of the
+  // build-up, then the close-up of the finish at half speed. Anything else -
+  // a foul, a near miss - keeps the single angle it always had.
+  if (match->IsGoalScored() && match->GetReplayStartOffset_ms() > 0) {
+    const int stopBefore_ms =
+        (int)match->GetReplayStartOffset_ms() - (int)GoalSequence::kReplayLeadIn_ms;
+    replayPage->AutorunAngles(replayHistoryOffset_ms, stayInReplay,
+                              {match->GetReplayCamera(), 2 /* close-up */},
+                              stopBefore_ms > 0 ? stopBefore_ms : 0);
+  } else {
+    replayPage->Autorun(replayHistoryOffset_ms, stayInReplay, match->GetReplayCamera());
+  }
 
   delete this;
 }
