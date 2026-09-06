@@ -457,6 +457,17 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
       -DDEST=$<TARGET_FILE_DIR:gameplayfootball>/media
       -DFALLBACK_COPY=$<IF:$<BOOL:${WIN32}>,ON,OFF>
       -P ${PROJECT_SOURCE_DIR}/cmake/link_media.cmake
+    # music/ the same way, and for the same reason: a rigdio export is tens of
+    # megabytes of mp3 per team and there is no point copying it per build
+    # configuration. It was not here at all, which is why every match played
+    # from a build directory was silent - no anthems, no goal horns, no victory
+    # (measured 06-09; RigdioDirector::ResolveMusicDir now also finds it
+    # through the media link, but the asset belongs beside the binary).
+    COMMAND ${CMAKE_COMMAND}
+      -DSOURCE=${PROJECT_SOURCE_DIR}/data/music
+      -DDEST=$<TARGET_FILE_DIR:gameplayfootball>/music
+      -DFALLBACK_COPY=$<IF:$<BOOL:${WIN32}>,ON,OFF>
+      -P ${PROJECT_SOURCE_DIR}/cmake/link_media.cmake
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${PROJECT_SOURCE_DIR}/data/locale
       $<TARGET_FILE_DIR:gameplayfootball>/data/locale
