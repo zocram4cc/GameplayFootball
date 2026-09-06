@@ -684,6 +684,30 @@ def material_block(texture, shadeless=False):
         "*MATERIAL_SELFILLUM 0.0")
 
 
+# PES's placeholder textures: a mesh on one of these carries no art at all,
+# it is the stand-in PES swaps for the team's kit (dummy_kit) or a competition
+# emblem (dummy_emb*). Importing it draws a blank stand-in over the character -
+# and worse, it counts as a torso, so smbg_2588 (a stick figure whose only
+# "body" was a dummy_kit shell) passed the whole-body gate and was drawn with
+# no body under him at all.
+PLACEHOLDER_TEXTURES = ("dummy",)
+
+# PES's effect meshes: an aura is drawn additively over the character there and
+# opaque here, so it arrives as a solid shell around him. DBG's k2016 ships one
+# of 56,268 vertices reaching 2.94 m around a 1.54 m Vegeta - it swallowed him
+# and it set the model's bounds, so every framing of him was of the aura.
+EFFECT_TEXTURES = ("aura", "effect", "fx_", "smoke", "flare")
+
+
+def is_placeholder_texture(name):
+    return bool(name) and name.lower().startswith(PLACEHOLDER_TEXTURES)
+
+
+def is_effect_texture(name):
+    lowered = (name or "").lower()
+    return any(mark in lowered for mark in EFFECT_TEXTURES)
+
+
 def mesh_base_texture(mesh):
     """File name of a mesh's colour texture, without directory or suffix.
 
@@ -1004,8 +1028,13 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # together loses the distinction whichever way it is resolved - every group unlit,
     # or none - so a texture whose meshes disagree becomes two materials.
     group_shadeless = []
+    placeholders = 0
     for mesh in meshes:
         name = mesh_base_texture(mesh) or ""
+        # A blank stand-in, not the character (is_placeholder_texture).
+        if is_placeholder_texture(name) or is_effect_texture(name):
+            placeholders += 1
+            continue
         shadeless = is_shadeless(mesh)
         key = (name, shadeless)
         if key not in group_of:
@@ -1042,6 +1071,9 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # which reconcile() does not look at (it agrees a vertex with its neighbours
     # in other parts). Those duplicates were skinning to different joints and
     # tearing at the bind pose - the shards, measured on lcg_2709 at 315x.
+    if placeholders:
+        print("  dropped %d placeholder mesh(es) (PES swaps these for the kit)" % placeholders)
+
     # Smoothed along each group's own surface first. The guess names one bone
     # per vertex, so the weight field steps from bone to bone across a single
     # edge, and the authoring->bind bake turns that step into a tear - 1,438
