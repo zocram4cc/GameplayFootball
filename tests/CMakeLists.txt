@@ -649,7 +649,7 @@ add_executable(gameplayfootball_pass_failure_tests
   ${PROJECT_SOURCE_DIR}/src/data/teamdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
-  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playerskills.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
@@ -679,14 +679,15 @@ target_link_libraries(gameplayfootball_pass_failure_tests PRIVATE
 
 gtest_discover_tests(gameplayfootball_pass_failure_tests DISCOVERY_MODE PRE_TEST)
 
-# PES Playing Styles and COM playing cards: parse/serialize, inference from a
-# player's own ratings, and the effectors the AI reads. Inference takes a
+# PES Playing Styles, COM playing cards and Player Skills: parse/serialize,
+# inference from a player's own ratings, and the effectors the AI reads. Inference takes a
 # PlayerData, which drags in its database/XML chain (compile-only SDL).
 add_executable(gameplayfootball_playing_styles_tests
   data/playing_styles_test.cpp
+  data/player_skills_test.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
-  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playerskills.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
@@ -740,8 +741,6 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/team_instructions_test.cpp
   onthepitch/gameplay_tuning_test.cpp
   onthepitch/match_mentality_test.cpp
-  data/player_traits_test.cpp
-  data/player_cards_test.cpp
   onthepitch/match_pressure_test.cpp
   onthepitch/pitch_conditions_test.cpp
   onthepitch/referee_profile_test.cpp
@@ -771,7 +770,6 @@ add_executable(gameplayfootball_simulation_tests
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/remotecontrol.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchmentality.cpp
-  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/pitchconditions.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/refereeprofile.cpp

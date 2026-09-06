@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "ball.hpp"
+#include "data/playerskills.hpp"
 #include "base/log.hpp"
 #include "base/math/bluntmath.hpp"
 #include "match.hpp"
@@ -116,9 +117,11 @@ Player* PenaltyShootoutController::SelectTaker(int teamID) {
   std::vector<float> ratings;
   ratings.reserve(outfield.size());
   for (Player* candidate : outfield) {
-    // Composure counts as much as technique from twelve yards.
-    ratings.push_back(candidate->GetStat("technical_shot") * 0.6f +
-                      candidate->GetStat("mental_calmness") * 0.4f);
+    // Composure counts as much as technique from twelve yards; a penalty
+    // specialist steps up first.
+    ratings.push_back(PlayerSkills::GetPenaltyRating(
+        candidate->GetPlayerData()->GetSkills(),
+        candidate->GetStat("technical_shot") * 0.6f + candidate->GetStat("mental_calmness") * 0.4f));
   }
 
   const int index = PenaltyShootout::SelectTakerIndex(ratings, takenMask[teamID]);
@@ -166,15 +169,18 @@ void PenaltyShootoutController::SetUpKick() {
   PenaltyShootout::Shooter shooter;
   if (currentTaker) {
     shooter.vision = currentTaker->GetStat("mental_vision");
-    shooter.shot = currentTaker->GetStat("technical_shot");
+    shooter.shot = PlayerSkills::GetPenaltyRating(currentTaker->GetPlayerData()->GetSkills(),
+                                                  currentTaker->GetStat("technical_shot"));
   }
   const int keepingTeam = state.shootingTeam == 0 ? 1 : 0;
   Player* keeperPlayer = match->GetTeam(keepingTeam)->GetGoalie();
   PenaltyShootout::Keeper keeper;
   if (keeperPlayer) {
     // PES's GK attributes; PlayerData defaults them from physical_reaction and
-    // mental_defensivepositioning for profiles written before they existed.
-    keeper.reflexes = keeperPlayer->GetStat("gk_reflexes");
+    // mental_defensivepositioning for profiles written before they existed. A
+    // GK Penalty Saver reads the kick better than his reflexes alone say.
+    keeper.reflexes = PlayerSkills::GetPenaltyReflexes(keeperPlayer->GetPlayerData()->GetSkills(),
+                                                       keeperPlayer->GetStat("gk_reflexes"));
     keeper.awareness = keeperPlayer->GetStat("gk_awareness");
   }
 

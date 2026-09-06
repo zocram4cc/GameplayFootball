@@ -20,6 +20,7 @@
 
 #include <cmath>
 
+#include "../../data/playerskills.hpp"
 #include "../../data/playingstyles.hpp"
 #include "../../main.hpp"
 #include "../aitactics.hpp"
@@ -280,6 +281,7 @@ void AI_GetPassRatings(Match* match, int thisPlayerID, const MentalImage* mental
   }
 
   signed int side = match->GetPlayer(thisPlayerID)->GetTeam()->GetSide();
+  const PlayerSkills::Mask skills = match->GetPlayer(thisPlayerID)->GetPlayerData()->GetSkills();
 
   for (int i = 0; i < (signed int)playerImages.size(); i++) {
     PlayerImage targetPlayerImage = mentalImage->GetPlayerImage(playerImages.at(i).playerID);
@@ -289,6 +291,8 @@ void AI_GetPassRatings(Match* match, int thisPlayerID, const MentalImage* mental
     bodyDirPenalty = clamp(bodyDirPenalty, -1.0, 0.0) + 1;  // 0 .. 1
     bodyDirPenalty *= 0.7;
     bodyDirPenalty += 0.3;  // 0.3 .. 1.0
+    // A no-look passer plays the ball where he is not facing without paying for it.
+    bodyDirPenalty = PlayerSkills::GetBodyDirectionPassPenalty(skills, bodyDirPenalty);
 
     float odds =
         AI_CalculatePassingOdds(match, thisPlayerImage, targetPlayerImage, opponentPlayerImages);

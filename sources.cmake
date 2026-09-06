@@ -745,7 +745,7 @@ set(DATA_HEADERS
    src/data/setpiececonfig.hpp
    src/data/formations.hpp
    src/data/matchanalytics.hpp
-   src/data/playertraits.hpp
+   src/data/playerskills.hpp
    src/data/playingstyles.hpp
 )
 
@@ -766,6 +766,6 @@ set(DATA_SOURCES
    src/data/setpiececonfig.cpp
    src/data/formations.cpp
    src/data/matchanalytics.cpp
-   src/data/playertraits.cpp
+   src/data/playerskills.cpp
    src/data/playingstyles.cpp
 )

@@ -9,7 +9,7 @@
 #include <fstream>
 #include <set>
 
-#include "../data/playertraits.hpp"
+#include "../data/playerskills.hpp"
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "ballphysics.hpp"
@@ -3457,7 +3457,10 @@ void Match::ProcessAutoSubstitutions() {
       candidate.fatigueFactorInv = player->GetFatigueFactorInv();
       candidate.injuryLevel = player->GetInjuryLevel();
       candidate.isOnPitch = player->IsActive();
-      candidate.averageStat = player->GetAverageStat();
+      // A super-sub is the bench's first choice, rating aside.
+      candidate.averageStat =
+          player->GetAverageStat() +
+          PlayerSkills::GetSubstituteBonus(player->GetPlayerData()->GetSkills(), player->IsActive());
       squad.push_back(candidate);
       considered.push_back(player);
     }
@@ -5975,8 +5978,8 @@ void Match::CheckBallCollisions() {
         }
         // A target man shields the ball with his body while holding position
         // (proposal 3A).
-        boundingBoxSizeOffset += PlayerTraits::GetShieldingRadiusBonus(
-            players[i]->GetPlayerData()->GetTraits(), players[i]->GetMovement().GetLength() < 1.0f);
+        boundingBoxSizeOffset += PlayerSkills::GetShieldingRadiusBonus(
+            players[i]->GetPlayerData()->GetSkills(), players[i]->GetMovement().GetLength() < 1.0f);
 
         if (((players[i]->GetPosition() + Vector3(0, 0, 0.8f)) - ball->Predict(0)).GetLength() <
             2.5f) {  // premature optimization is the root of all evil :D

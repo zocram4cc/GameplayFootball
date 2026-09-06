@@ -73,7 +73,7 @@ def set_bits(rec, byte_offset, bit_offset, nbits, value):
 
 
 def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=None,
-           abilities=None, playing_style=None, com_styles=()):
+           abilities=None, playing_style=None, com_styles=(), skills=()):
     rec = bytearray(ted.PLAYER_RECORD_SIZE)
     if magic:
         rec[0:4] = magic
@@ -91,6 +91,9 @@ def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=No
     for com, byte_off, bit_off in ted.COM_STYLE_FIELDS:
         if com in com_styles:
             set_bits(rec, byte_off, bit_off, 1, 1)
+    byte_off, bit_off = ted.SKILL_FIELD
+    set_bits(rec, byte_off, bit_off, len(ted.SKILLS),
+             sum(1 << ted.SKILLS.index(skill) for skill in skills))
     rec[ted.REC_NAME:ted.REC_NAME + len(name)] = name.encode()
     rec[ted.REC_SHIRT_NAME:ted.REC_SHIRT_NAME + len(shirt)] = shirt.encode()
     rec[ted.REC_EXTRA:ted.REC_EXTRA + len(extra)] = extra.encode()
@@ -243,6 +246,19 @@ class ThePlayerStats(unittest.TestCase):
             record("Plain", "P"))
         self.assertEqual(players[0]["com_styles"], ["trickster", "incisive_run", "long_ranger"])
         self.assertEqual(players[1]["com_styles"], [])
+
+    def test_the_skills_come_back_in_pes_bit_order_and_leave_the_cards_alone(self):
+        # The 41-bit skill field starts at 0x30:6, right after Long Ranger at
+        # 0x30:5: bit 0 is Scissors Feint, bit 40 Fighting Spirit.
+        players = self.roster(
+            record("Skilled", "S", com_styles=("long_ranger",),
+                   skills=("fighting_spirit", "scissors_feint", "rabona", "gk_low_punt")),
+            record("Plain", "P"))
+        self.assertEqual(players[0]["skills"],
+                         ["scissors_feint", "rabona", "gk_low_punt", "fighting_spirit"])
+        self.assertEqual(players[0]["com_styles"], ["long_ranger"])
+        self.assertEqual(players[1]["skills"], [])
+        self.assertEqual(len(ted.SKILLS), 41)
 
 
 def team_payload():

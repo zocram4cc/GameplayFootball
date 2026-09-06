@@ -8,6 +8,7 @@
 #include <atomic>
 #include <thread>
 
+#include "data/playerskills.hpp"
 #include "humanoid.hpp"
 #include "humanoid_utils.hpp"
 #include "main.hpp"
@@ -538,6 +539,21 @@ void AnimCollection::Load(std::filesystem::path directory) {
         // written into the generated files themselves.
         if (file.find("/pes/") != std::string::npos || file.find("\\pes\\") != std::string::npos)
           animation->SetVariable("imported", "true");
+        // The imported feint clips are ballcontrol anims that must never answer a
+        // plain ballcontrol query: their family (PlayerSkills::Feint) goes into
+        // specialvar1, which CrudeSelection matches exactly, so only a trick
+        // command carrying that family sees them. The entry angle the file name
+        // encodes is kept for the log and the tests.
+        const PlayerSkills::Feint feint =
+            file.find("/feint/") != std::string::npos || file.find("\\feint\\") != std::string::npos
+                ? PlayerSkills::FeintFromClipName(file)
+                : PlayerSkills::Feint::None;
+        if (feint != PlayerSkills::Feint::None) {
+          animation->SetVariable("specialvar1", int_to_str(static_cast<int>(feint)));
+          animation->SetVariable("feint", PlayerSkills::GetFeintName(feint));
+          animation->SetVariable("feint_angle",
+                                 int_to_str(PlayerSkills::FeintAngleFromClipName(file)));
+        }
         parsed[i] = animation;
       }
     };

@@ -67,24 +67,24 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
   XMLTree tree = loader.Load(profileString);
 
   // printf("player: %s, %s (age %i)\n", lastName.c_str(), firstName.c_str(), age);
-  traits = PlayerTraits::traitMaskNone;
+  skills = PlayerSkills::maskNone;
   playingStyle = PlayingStyles::Player::None;
   comStyles = PlayingStyles::comMaskNone;
   playerAge = age;
-  bool traitsFromDatabase = false;
+  bool skillsFromDatabase = false;
   bool styleFromDatabase = false;
   bool comFromDatabase = false;
 
   map_XMLTree::const_iterator iter = tree.children.begin();
   while (iter != tree.children.end()) {
     const std::string& tag = (*iter).first;
-    // The profile may carry a comma-separated list of traits alongside the
-    // numeric stats (see SIMULATION_IMPROVEMENT_PROPOSAL 3A), and PES's own
-    // Playing Style and COM cards. A tag that is present is PES's answer, even
-    // "none": only an absent tag is inferred below.
-    if (tag.compare("traits") == 0) {
-      traits = PlayerTraits::Parse((*iter).second.value);
-      traitsFromDatabase = traits != PlayerTraits::traitMaskNone;
+    // The profile may carry PES's Player Skills as a comma-separated list under
+    // <skills> (older profiles: <traits>) alongside the numeric stats, and
+    // PES's own Playing Style and COM cards. A tag that is present is PES's
+    // answer, even "none": only an absent tag is inferred below.
+    if (tag.compare("skills") == 0 || tag.compare("traits") == 0) {
+      skills = PlayerSkills::Parse((*iter).second.value);
+      skillsFromDatabase = true;
       iter++;
       continue;
     }
@@ -112,9 +112,9 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
 
   FillMissingStats();
 
-  if (!traitsFromDatabase)
-    AssignPlayingStyles();
   const e_PlayerRole role = roles.empty() ? e_PlayerRole_CM : roles.at(0);
+  if (!skillsFromDatabase)
+    skills = PlayerSkills::Infer(databaseID, role, *this);
   if (!styleFromDatabase)
     playingStyle = PlayingStyles::InferPlayer(databaseID, role, *this);
   if (!comFromDatabase)
@@ -219,7 +219,7 @@ PlayerData::PlayerData() {
   stats.Set("gk_reflexes", 0.6);
   stats.Set("gk_coverage", 0.6);
 
-  traits = PlayerTraits::traitMaskNone;
+  skills = PlayerSkills::maskNone;
   playingStyle = PlayingStyles::Player::None;
   comStyles = PlayingStyles::comMaskNone;
   playerAge = MatchPressure::unknownAge;
@@ -241,13 +241,6 @@ bool PlayerData::ToggleRole(e_PlayerRole role) {
   }
   roles.push_back(role);
   return true;
-}
-
-void PlayerData::AssignPlayingStyles() {
-  // Nothing in the database, so give him a style of his own: deterministic from
-  // his id, suited to his position and his finishing.
-  const e_PlayerRole role = roles.empty() ? e_PlayerRole_CM : roles.at(0);
-  traits = PlayerTraits::AssignForPlayer(databaseID, role, stats.GetReal("technical_shot", 0.5f));
 }
 
 float PlayerData::GetAverageStat() const {
@@ -292,12 +285,12 @@ float PlayerData::GetStat(const char* name) const {
   float value = stats.GetReal(name, 1.0f);
 
   // Traits bend the raw stats: a speed merchant is quicker off the mark, a
-  // target man is stronger in the air (see SIMULATION_IMPROVEMENT_PROPOSAL 3A).
-  if (traits != PlayerTraits::traitMaskNone) {
+  // target man or a header specialist is stronger in the air.
+  if (skills != PlayerSkills::maskNone) {
     if (std::strcmp(name, "physical_acceleration") == 0)
-      value *= PlayerTraits::GetAccelerationMultiplier(traits);
+      value *= PlayerSkills::GetAccelerationMultiplier(skills);
     else if (std::strcmp(name, "technical_header") == 0)
-      value *= PlayerTraits::GetHeaderMultiplier(traits);
+      value *= PlayerSkills::GetHeaderMultiplier(skills);
     value = std::min(value, 1.0f);
   }
 

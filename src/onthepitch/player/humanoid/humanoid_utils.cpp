@@ -25,6 +25,7 @@
 #include "../../gameplaytuning.hpp"
 #include "../../match.hpp"
 #include "../playerbase.hpp"
+#include "data/playerskills.hpp"
 #include "animcollection.hpp"
 #include "humanoid.hpp"
 #include "utils/animationextensions/footballanimationextension.hpp"
@@ -553,6 +554,9 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
   float playerMovBallMovEasinessFactor = (touchMovement - ball->GetMovement()).GetLength();
   playerMovBallMovEasinessFactor =
       1.0f - playerMovBallMovPowerFactor * (0.5f - player->GetStat("technical_volley") * 0.3f);
+  // An acrobatic finisher connects cleanly however the ball arrives.
+  playerMovBallMovEasinessFactor = PlayerSkills::GetVolleyEase(
+      player->GetPlayerData()->GetSkills(), playerMovBallMovEasinessFactor);
   if (Verbose())
     printf("(ease) playerMovBallMovEasinessFactor: %f\n", playerMovBallMovEasinessFactor);
 
@@ -572,7 +576,10 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
 
   // best case result
 
-  float desiredHeight = 0.05f;
+  // A chip (ElizaController: Chip Shot Control over a keeper who has come out)
+  // asks for its loft through the direction's z; a normal shot is kept down.
+  const float desiredHeight =
+      std::max(0.05f, currentAnim->originatingCommand.touchInfo.desiredDirection.coords[2]);
   Vector3 desiredShot = (currentAnim->originatingCommand.touchInfo.desiredDirection.Get2D() +
                          Vector3(0, 0, desiredHeight))
                             .GetNormalized() *

@@ -29,7 +29,7 @@
 #include "base/geometry/triangle.hpp"
 #include "controller/elizacontroller.hpp"
 #include "controller/strategies/strategy.hpp"
-#include "data/playertraits.hpp"
+#include "data/playerskills.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/pitchconditions.hpp"
@@ -456,8 +456,10 @@ void Player::Process() {
       previousDirectionVec = currentDirection;
     }
 
-    // A high-pressing philosophy burns more stamina (proposal 2A).
-    const float staminaDrain = team->GetController()->GetStaminaDrainMultiplier();
+    // A high-pressing philosophy burns more stamina (proposal 2A); fighting
+    // spirit keeps a player going.
+    const float staminaDrain = team->GetController()->GetStaminaDrainMultiplier() *
+                               PlayerSkills::GetFatigueDrainMultiplier(playerData->GetSkills());
     fatigueFactorInv -= distance * 0.00003f * (2.0f - GetStaminaStat()) * fatigueWorkload *
                         staminaDrain * (1.0f / match->GetMatchDurationFactor());
     fatigueFactorInv = clamp(fatigueFactorInv, 0.01f, 1.0f);
@@ -686,12 +688,12 @@ float Player::GetStat(const char* name) const {
   multiplier *= 1.0f - injuryLevel * 0.4f;
   // A speed merchant loses his head at full tilt (proposal 3A).
   if (std::strcmp(name, "mental_calmness") == 0) {
-    const PlayerTraits::TraitMask traits = playerData->GetTraits();
-    if (traits != PlayerTraits::traitMaskNone) {
+    const PlayerSkills::Mask skills = playerData->GetSkills();
+    if (skills != PlayerSkills::maskNone) {
       const float speedFactor =
           GetMaxVelocity() > 0.0f ? clamp(GetMovement().GetLength() / GetMaxVelocity(), 0.0f, 1.0f)
                                   : 0.0f;
-      return PlayerTraits::GetCalmnessAtSpeed(traits, playerData->GetStat(name) * multiplier,
+      return PlayerSkills::GetCalmnessAtSpeed(skills, playerData->GetStat(name) * multiplier,
                                               speedFactor);
     }
   }
