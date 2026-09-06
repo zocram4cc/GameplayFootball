@@ -68,8 +68,12 @@ class TheFlagIsBuiltWhereTheBearersHoldIt(unittest.TestCase):
         cloth = _mesh("cloth", [(0.0, 0.0, 0.0), (8.0, 0.0, 0.42), (0.0, 8.0, 0.10)], material=1)
         new, replaced, radius = pennant_flag.rebuild(_ase(bearer, cloth))
         self.assertEqual(replaced, 1)
-        self.assertAlmostEqual(radius, 8.0, places=3)
-        self.assertIn('*NODE_NAME "bearers"', new)
+        # The cloth reaches the ring at 8.0 m; the rim is held an arm inside it.
+        self.assertAlmostEqual(radius, 8.0 - pennant_flag.ARM_REACH, places=3)
+        # The bearers come back as one instance per place in the ring, so the
+        # name carries the slot: PES's own figures, stood evenly round the flag.
+        self.assertIn('*NODE_NAME "bearers_bearer00"', new)
+        self.assertEqual(new.count('_bearer'), 2 * pennant_flag.RING_BEARERS)
         self.assertNotIn('*NODE_NAME "cloth"', new)
         self.assertIn(pennant_flag.NODE, new)
         self.assertIn(pennant_flag.UNDERSIDE_NODE, new)

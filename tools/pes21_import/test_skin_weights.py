@@ -179,15 +179,26 @@ class NearestBoneNeverMixesLimbs(unittest.TestCase):
         named = self.joints(tuple(self.bind["left_index_dip"]))
         self.assertIn("left_index_dip", named)
 
-    def test_only_the_two_ends_of_one_bone_are_ever_blended(self):
-        # Whatever the vertex, the joints it names are a parent and its child -
-        # never two limbs.
+    def test_a_vertex_is_never_shared_across_two_limbs(self):
+        # This used to demand that a vertex name a parent and its child and
+        # nothing else. That is what tore: one bone per vertex draws a hard
+        # line wherever the winner changes, and the authoring->bind bake turns
+        # the arm 45 degrees while leaving the trunk alone, so a line between
+        # the chest and the shoulder moved its two sides half a metre apart
+        # (smbg_2582: 795 edges torn at the bind, worst 23.7x). The weight is
+        # shared along the skeleton now; what must still never happen is a
+        # blend between two LIMBS, which is what put a hip on a fingertip.
         for position in ((0.0, 0.0, 1.4), (0.3, 0.0, 1.2), (-0.2, 0.1, 0.5),
                          (0.6, 0.0, 1.0), (0.0, 0.3, 2.0)):
             named = sorted(self.joints(position))
-            self.assertLessEqual(len(named), 2, named)
-            if len(named) == 2:
-                a, b = named
-                self.assertTrue(retarget.GF_PARENT.get(a) == b or
-                                retarget.GF_PARENT.get(b) == a,
-                                "%s and %s are not one bone" % (a, b))
+            self.assertLessEqual(len(named), f.MAX_INFLUENCES, named)
+            # One of them is within BLEND_HOPS of all the others: the share
+            # reaches that far from the bone that won and no further, so the
+            # joints named are one run of the skeleton. A hand blended with a
+            # hip has no such joint - that is the shape of the defect this
+            # guards, and the reach along the spine (body..head, four hops end
+            # to end) is not it.
+            hub = [a for a in named
+                   if all(f._bone_hops(a, b) <= f.BLEND_HOPS for b in named)]
+            self.assertTrue(hub, "no joint within %d hops of all of %s"
+                            % (f.BLEND_HOPS, named))

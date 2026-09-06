@@ -43,6 +43,9 @@ CLOTH_MAX_Z = 0.6
 HOLD_HEIGHT = 1.05
 SAG = 0.32
 
+# How far inside the ring of bearers the rim sits: a forearm and a hand.
+ARM_REACH = 0.30
+
 SEGMENTS = 72
 RINGS = 10
 
@@ -180,10 +183,16 @@ def disc(radius, height=HOLD_HEIGHT, sag=SAG, segments=SEGMENTS, rings=RINGS):
     return vertices, faces, uvs
 
 
-def write_mesh(name, material, vertices, faces, uvs, flip=False):
-    """One GEOMOBJECT, in the shape stadium_to_gf writes them."""
+def write_mesh(name, material, vertices, faces, uvs, flip=False, uv_faces=None):
+    """One GEOMOBJECT, in the shape stadium_to_gf writes them.
+
+    `uv_faces` indexes `uvs` per face when the two lists do not run together,
+    which is how an imported mesh carries them (one UV per vertex, shared).
+    """
     if flip:
         faces = [(a, c, b) for a, b, c in faces]
+        if uv_faces:
+            uv_faces = [(a, c, b) for a, b, c in uv_faces]
     out = ["*GEOMOBJECT {", '\t*NODE_NAME "%s"' % name,
            "\t*NODE_TM {", '\t\t*NODE_NAME "%s"' % name,
            "\t\t*INHERIT_POS 0 0 0", "\t\t*INHERIT_ROT 0 0 0", "\t\t*INHERIT_SCL 0 0 0",
@@ -209,7 +218,7 @@ def write_mesh(name, material, vertices, faces, uvs, flip=False):
     out.append("\t\t}")
     out.append("\t\t*MESH_NUMTVFACES %d" % len(faces))
     out.append("\t\t*MESH_TFACELIST {")
-    for i, (a, b, c) in enumerate(faces):
+    for i, (a, b, c) in enumerate(uv_faces if uv_faces else faces):
         out.append("\t\t\t*MESH_TFACE %d\t%d\t%d\t%d" % (i, a, b, c))
     out.append("\t\t}")
     out.append("\t}")
@@ -217,6 +226,167 @@ def write_mesh(name, material, vertices, faces, uvs, flip=False):
     out.append("\t*MATERIAL_REF %d" % material)
     out.append("}")
     return "\n".join(out) + "\n"
+
+
+# What a mesh of bearers has to look like to be one: people stand on the grass
+# and their heads are over 1.4 m up. st002's pennant carries two such meshes and
+# only one of them is people - the other is 404 disconnected shells of which 24
+# touch the ground and 2 reach head height, hovering between 0.4 and 1.2 m. On
+# screen that is a stand-in sunk to his chest in the pitch with a forearm
+# floating above him, and a slab that crossed 40% of the frame for three
+# seconds (owner, 05-09: "the staff's legs are still detached from their body").
+STANDING_HEAD_M = 1.4
+# How close two shells stand to be the same person.
+FIGURE_FOOTPRINT = 0.35
+# How many bearers stand around the flag. PES's ceremony has one every 15
+# degrees; st002's import carries 15 whole ones, so the rest of the circle is
+# filled with copies of those.
+RING_BEARERS = 24
+
+
+def _shells(vertices, faces):
+    """-> [(lowest z, highest z, vertex count)] per connected run."""
+    parent = list(range(len(vertices)))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for tri in faces:
+        if len(tri) < 3 or max(tri) >= len(vertices):
+            continue
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2])):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+    runs = {}
+    for v in range(len(vertices)):
+        runs.setdefault(find(v), []).append(v)
+    return [(min(vertices[m][2] for m in members), max(vertices[m][2] for m in members),
+             len(members)) for members in runs.values()]
+
+
+def _faces_of(block):
+    return [(int(a), int(b), int(c)) for a, b, c in
+            re.findall(r"\*MESH_FACE\s+\d+:\s+A:\s+(\d+)\s+B:\s+(\d+)\s+C:\s+(\d+)", block)]
+
+
+def whole_figures(blocks):
+    """-> the vertex sets, per block, that belong to a complete bearer.
+
+    The prop as imported is not a ring of people: clustered by where they stand,
+    st002's carries 76 footprints and only 15 of them reach from the grass to
+    head height. The rest are a torso with no legs, or a hand on its own at
+    flag height - PES's own geometry, minus whatever the conversion could not
+    dress (stadium_props.dressed_meshes drops a mesh whose texture is missing).
+    On screen those are the missing limbs and the stand-in sunk to his chest.
+
+    A figure is whole when its shells together run from the ground to above
+    STANDING_HEAD_M. Everything else is dropped: a ring of fewer, complete
+    bearers reads as a ceremony, and a ring of torsos does not.
+    """
+    shells = []
+    for index, block in enumerate(blocks):
+        vertices = block_vertices(block)
+        faces = _faces_of(block)
+        if not vertices or not faces:
+            continue
+        parent = list(range(len(vertices)))
+
+        def find(a):
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        for tri in faces:
+            if max(tri) >= len(vertices):
+                continue
+            for a, b in ((tri[0], tri[1]), (tri[1], tri[2])):
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+        runs = {}
+        for v in range(len(vertices)):
+            runs.setdefault(find(v), []).append(v)
+        for members in runs.values():
+            xs = [vertices[m][0] for m in members]
+            ys = [vertices[m][1] for m in members]
+            zs = [vertices[m][2] for m in members]
+            shells.append({"block": index, "members": members,
+                           "x": sum(xs) / len(xs), "y": sum(ys) / len(ys),
+                           "low": min(zs), "high": max(zs)})
+    figures = []
+    for shell in sorted(shells, key=lambda s: -len(s["members"])):
+        for figure in figures:
+            if math.hypot(shell["x"] - figure["x"], shell["y"] - figure["y"]) < FIGURE_FOOTPRINT:
+                figure["shells"].append(shell)
+                break
+        else:
+            figures.append({"x": shell["x"], "y": shell["y"], "shells": [shell]})
+    out = []
+    for figure in figures:
+        low = min(s["low"] for s in figure["shells"])
+        high = max(s["high"] for s in figure["shells"])
+        if low > 0.06 or high < STANDING_HEAD_M:
+            continue
+        members = [set() for _ in blocks]
+        for shell in figure["shells"]:
+            members[shell["block"]].update(shell["members"])
+        out.append({"angle": math.atan2(figure["y"], figure["x"]),
+                    "radius": math.hypot(figure["x"], figure["y"]),
+                    "members": members})
+    out.sort(key=lambda f: f["angle"])
+    return out, len(figures)
+
+
+def filter_block(block, keep, turn=0.0, suffix=""):
+    """-> the mesh with only the faces whose corners are all in `keep`.
+
+    `turn` rotates the copy about the centre of the ring, which is how one of
+    PES's own bearers is stood in another's place.
+    """
+    vertices = block_vertices(block)
+    faces = _faces_of(block)
+    tverts = [(float(u), float(v)) for _, u, v, _ in
+              re.findall(r"\*MESH_TVERT\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)", block)]
+    tfaces = [(int(a), int(b), int(c)) for a, b, c in
+              re.findall(r"\*MESH_TFACE\s+\d+\s+(\d+)\s+(\d+)\s+(\d+)", block)]
+    kept = [i for i, face in enumerate(faces)
+            if max(face) < len(vertices) and all(c in keep for c in face)]
+    if not kept:
+        return ""
+    cos_t, sin_t = math.cos(turn), math.sin(turn)
+    remap = {}
+    out_vertices = []
+    for i in kept:
+        for corner in faces[i]:
+            if corner not in remap:
+                remap[corner] = len(out_vertices)
+                x, y, z = vertices[corner]
+                out_vertices.append((x * cos_t - y * sin_t, x * sin_t + y * cos_t, z))
+    out_faces = [tuple(remap[c] for c in faces[i]) for i in kept]
+    uv_remap = {}
+    out_uvs = []
+    out_tfaces = []
+    for i in kept:
+        if i < len(tfaces) and tfaces[i] and max(tfaces[i]) < len(tverts):
+            row = []
+            for corner in tfaces[i]:
+                if corner not in uv_remap:
+                    uv_remap[corner] = len(out_uvs)
+                    out_uvs.append(tverts[corner])
+                row.append(uv_remap[corner])
+            out_tfaces.append(tuple(row))
+        else:
+            out_tfaces.append((0, 0, 0))
+    if not out_uvs:
+        out_uvs = [(0.0, 0.0)]
+        out_tfaces = [(0, 0, 0)] * len(out_faces)
+    return write_mesh(block_name(block) + suffix, block_material(block), out_vertices,
+                      out_faces, out_uvs, uv_faces=out_tfaces)
 
 
 def rebuild(text):
@@ -229,6 +399,14 @@ def rebuild(text):
                 if is_cloth(b) and block_name(b) not in (NODE, UNDERSIDE_NODE)]
     ours = [b for b in blocks if block_name(b) in (NODE, UNDERSIDE_NODE)]
     radius = cloth_radius(blocks) if authored else bearer_radius(blocks)
+    # Held at arm's length, not against their chests. The authored cloth reaches
+    # the ring itself (8.38 m on st002 against bearers at 7.87-8.87), so from
+    # above the sheet cut across the near bearers' bodies and their legs read as
+    # detached below the rim. An arm inside the ring and every body is clear of
+    # it, which is what carrying a flag looks like.
+    ring = bearer_radius(blocks)
+    if ring > 0.0:
+        radius = min(radius, ring - ARM_REACH)
     if radius <= 0.0:
         return text, 0, 0.0
     # The emblem material is the one the top sheets already use; the underside
@@ -237,7 +415,26 @@ def rebuild(text):
     top_material, under_material = emblem_materials(text)
 
     vertices, faces, uvs = disc(radius)
-    kept = [b for b in blocks if not is_cloth(b)]
+    bearers = [b for b in blocks if not is_cloth(b)]
+    figures, footprints = whole_figures(bearers)
+    # A full ring, built from the whole bearers there are. PES stands one every
+    # 15 degrees; the import leaves complete figures on part of the circle only
+    # (15 of 76 footprints on st002), so each empty place is filled with one of
+    # them turned into it - PES's own geometry, PES's own spacing.
+    kept = []
+    if figures:
+        step = 2.0 * math.pi / RING_BEARERS
+        for slot in range(RING_BEARERS):
+            source = figures[slot % len(figures)]
+            turn = slot * step - source["angle"]
+            for index, block in enumerate(bearers):
+                if not source["members"][index]:
+                    continue
+                piece = filter_block(block, source["members"][index], turn,
+                                     "_bearer%02d" % slot)
+                if piece:
+                    kept.append(piece)
+    globals()["LAST_FIGURES"] = (len(figures), footprints)
     # Under-side UVs sit on the backing's own patch of the bearers' map: one
     # flat navy, which is what PES's backing sheet samples.
     under_uvs = [(0.87, 0.42)] * len(vertices)
