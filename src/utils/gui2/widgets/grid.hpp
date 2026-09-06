@@ -42,6 +42,17 @@ public:
     colWrap = colOnOff;
   }
 
+  // Whether running off the top or bottom of a column steps into the next
+  // one, at its far end - the reading order a list of columns actually has.
+  //
+  // A grid whose cells are sliders cannot be navigated across otherwise:
+  // Gui2Slider takes the same directional event the grid navigates with and
+  // spends every horizontal press on its own value, so left and right never
+  // change column. The match options sheet - two columns, nine sliders on the
+  // left and START on the right - was therefore a trap: reach the sliders and
+  // there is no way back to the button that starts the match (owner, 06-09).
+  virtual void SetColumnWrapping(bool onOff = true) { columnWrap = onOff; }
+
   virtual void SetMaxVisibleRows(int visibleRowCount);
   virtual void UpdateLayout(float margin_left_percent = 0.5f, float margin_right_percent = 0.5f,
                             float margin_top_percent = 0.5f, float margin_bottom_percent = 0.5f);
@@ -84,6 +95,7 @@ protected:
   bool quickScroll;  // left/right == pageup/pagedown (if 1 column)
   bool rowWrap;
   bool colWrap;
+  bool columnWrap = false;
 
   Gui2Scrollbar* scrollX;
   Gui2Scrollbar* scrollY;

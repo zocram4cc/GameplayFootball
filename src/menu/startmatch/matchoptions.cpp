@@ -250,6 +250,10 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(buttonGamePlan2, row++, 1);
   grid->AddView(buttonStart, row++, 1);
   grid->AddView(buttonBack, row++, 1);
+  // Sliders eat left and right for their own value, so down off the last
+  // slider steps into the right column and START, and up off the top comes
+  // back. Without this the sheet cannot be navigated at all with a keyboard.
+  grid->SetColumnWrapping(true);
   grid->UpdateLayout(0.5);
 
   frame->AddView(grid);
@@ -258,7 +262,10 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   buttonStart->sig_OnClick.connect([this](...) { GoLoadingMatchPage(); });
   buttonBack->sig_OnClick.connect([this](...) { GoBack(); });
 
-  buttonStart->SetFocus();
+  // Focus opens on the first thing in reading order - the difficulty slider -
+  // rather than on START in the far column, so the sheet reads left to right
+  // the way it is laid out.
+  difficultySlider->SetFocus();
 
   this->Show();
 }
