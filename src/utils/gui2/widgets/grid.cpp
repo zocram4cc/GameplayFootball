@@ -325,6 +325,20 @@ void Gui2Grid::ProcessWindowingEvent(WindowingEvent* event) {
           provisionalSelectedRow = 0;
         if (provisionalSelectedRow < 0)
           provisionalSelectedRow = rows - 1;
+      } else if (columnWrap && cols > 1 && yoffset != 0 &&
+                 (provisionalSelectedRow > rows - 1 || provisionalSelectedRow < 0)) {
+        // Off the end of a column: continue into the next one, at its far end,
+        // and off the last column back to the first. This is the only way out
+        // of a column of sliders (see SetColumnWrapping) - and it also lets
+        // the whole sheet be walked with one axis, which is what a keyboard
+        // player has.
+        const int step = provisionalSelectedRow < 0 ? -1 : 1;
+        provisionalSelectedRow = step > 0 ? 0 : rows - 1;
+        provisionalSelectedCol += step;
+        if (provisionalSelectedCol > cols - 1)
+          provisionalSelectedCol = 0;
+        if (provisionalSelectedCol < 0)
+          provisionalSelectedCol = cols - 1;
       } else {
         if (provisionalSelectedRow > rows - 1) {
           provisionalSelectedRow = rows - 1;
