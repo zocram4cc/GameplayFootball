@@ -54,8 +54,7 @@ bool IsOnTarget(const Aim& aim) {
 }
 
 float GetSaveChance(const Keeper& keeper, const Aim& aim) {
-  const float ability =
-      Clamp01((Clamp01(keeper.reaction) + Clamp01(keeper.defensivePositioning)) * 0.5f);
+  const float ability = Clamp01((Clamp01(keeper.reflexes) + Clamp01(keeper.awareness)) * 0.5f);
 
   // How far into the corner the kick is placed, 0 down the middle and 1 right in
   // the angle. A well-placed penalty is unreachable however good the keeper is.

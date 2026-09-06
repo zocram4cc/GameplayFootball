@@ -650,6 +650,7 @@ add_executable(gameplayfootball_pass_failure_tests
   ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
@@ -677,6 +678,38 @@ target_link_libraries(gameplayfootball_pass_failure_tests PRIVATE
 )
 
 gtest_discover_tests(gameplayfootball_pass_failure_tests DISCOVERY_MODE PRE_TEST)
+
+# PES Playing Styles and COM playing cards: parse/serialize, inference from a
+# player's own ratings, and the effectors the AI reads. Inference takes a
+# PlayerData, which drags in its database/XML chain (compile-only SDL).
+add_executable(gameplayfootball_playing_styles_tests
+  data/playing_styles_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/playertraits.cpp
+  ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/database.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/xmlloader.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/properties.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/utils.cpp
+  ${PROJECT_SOURCE_DIR}/src/base/log.cpp
+)
+
+target_include_directories(gameplayfootball_playing_styles_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+  ${GF_BOOST_INCLUDE_DIRS}
+)
+
+target_link_libraries(gameplayfootball_playing_styles_tests PRIVATE
+  gf_mathlib
+  GTest::gtest_main
+  SQLite::SQLite3
+)
+
+gtest_discover_tests(gameplayfootball_playing_styles_tests DISCOVERY_MODE PRE_TEST)
 
 # Pass-error tuning: the multiplier/web-scale bar a drilled short-passing
 # style has to meet. Pure logic, no SDL dependency.

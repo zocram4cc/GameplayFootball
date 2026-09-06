@@ -28,12 +28,14 @@
 #   overlay=formation_home / formation_away
 #                     the TV-style lineup panel for that side
 #                     (spec section 1.1)
+#   overlay=versus    both crests, both names and the fixture, which is what PES
+#                     puts over its opening aerial (shots 001-017)
 #
 # Competitions differ: drop <entrance_id>.timeline next to this file and the
 # match picks it up automatically, or name one with "presentation_timeline".
 # Unknown keys are ignored, so a file may carry more than this build reads.
 
-beat stadium_card       12.0  camera=orbit
+beat stadium_card       12.0  camera=orbit    overlay=versus
 
 # The walk-on: ent_009's per-stadium packs start the squads outside the
 # touchline and bring them in. The tunnel packs (ent_007 passage*) stage a

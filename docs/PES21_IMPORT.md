@@ -875,3 +875,52 @@ the longest printable run instead of using the fixed offset.
 That is where /a/'s real roster came from: ACCELERATOR, W I D E F A C E,
 SMUG ANIME FACE, INFERNO COP, TRUCK-KUN and the rest, rather than the
 placeholder names the import invented.
+
+### Ratings, Playing Styles and COM cards: the whole PES model, 1:1
+
+A `.ted` player record is PES's own 312-byte "Player entry" + "Player
+appearance entry", so every rating on his card is in it. `ted.read_players`
+decodes all of them (offsets confirmed against TEditor's field table, the
+wiki's byte:bit addressing):
+
+- `stats`: the 25 seven-bit 40-99 ratings (`STAT_FIELDS`), goalkeeping ones
+  included.
+- `abilities`: the non-7-bit ones, one-based as the card shows them -
+  Weak Foot Usage / Accuracy 1-4 (`0x0F:6`, `0x27:6`), Form 1-8 (`0x1F:4`),
+  Injury Resistance 1-3 (`0x28:7`).
+- `playing_style`: the 5-bit index at `0x22:2` into `PLAYING_STYLES`
+  (0 = none, 1 = goal_poacher ... 21 = defensive_goalkeeper, PES's own order).
+- `com_styles`: the seven card bits, Trickster at `0x2F:7` and the other six
+  in `0x30` bits 0-5.
+
+`install_team.stat_profile_xml` writes every one of them into `profile_xml`
+under the engine's keys (`STAT_KEYS`), 0..1. The engine's original 22 keys
+keep their meaning; PES's remaining attributes get their own:
+
+| PES | engine key |
+|---|---|
+| Tight Possession, Place Kicking, Curl | `technical_tightpossession`, `technical_setpiece`, `technical_curl` |
+| Jump, Physical Contact | `physical_jump`, `physical_contact` |
+| Ball Winning, Aggression | `technical_ballwinning`, `mental_aggression` (and, as before, the two tackle keys and `mental_workrate`) |
+| Weak Foot Usage / Accuracy, Form, Injury Resistance | `technical_weakfootusage`, `technical_weakfootaccuracy`, `physical_form`, `physical_injuryresistance` - `(shown - 1) / (max - 1)` |
+| GK Awareness / Catching / Clearing / Reflexes / Reach | `gk_awareness`, `gk_catching`, `gk_clearing`, `gk_reflexes`, `gk_coverage` |
+| (none in PES 2021) | `technical_interceptions` starts from Defensive Awareness, which is where PES 2021 keeps it |
+
+plus `<playing_style>hole_player</playing_style>` and
+`<com_styles>trickster,mazing_run</com_styles>` (`none` when PES's bytes say
+so - that is an answer, not a gap). A team without decoded stats
+(`profile_xml(base_stat, role, seed)`) infers all of it from the role, the
+base stat and the same crc32 wobble as before: `ROLE_BIAS` puts a keeper's
+`gk_*` above his outfield ratings and every outfielder's at PES's floor, the
+style is a settled pick from `ROLE_STYLES` (a CF who heads better than he
+finishes is a Target Man), and the COM cards go to whichever of his ratings
+stand clearly above his own mean (`infer_com_styles`).
+
+On the engine side `PlayerData` parses all of it, fills any key an older
+`profile_xml` lacks from its nearest neighbour (a keeper's `gk_reflexes` from
+his `physical_reaction`, an outfielder's `gk_*` at the floor), infers the
+styles through `PlayingStyles::InferPlayer/InferCom` only when the tags are
+absent, and rates a keeper's overall (`GetAverageStat`) on his `gk_*` set
+rather than as a poor striker. Form, injury resistance and weak foot stay
+out of the overall for everyone; they describe availability and habits, not
+level.

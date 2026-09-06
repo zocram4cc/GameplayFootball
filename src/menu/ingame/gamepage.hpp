@@ -10,6 +10,7 @@
 
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/caption.hpp"
+#include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/windowmanager.hpp"
 
 class Match;
@@ -34,8 +35,18 @@ public:
   void OnCreatedMatch();
 
 protected:
+  // The opening versus banner: both crests, both names, over the beat that
+  // asked for PrematchTimeline::Overlay::Versus. Built once, faded with the
+  // beat's own cross-fade.
+  void BuildVersusBanner();
+  void UpdateVersusBanner();
+
   blunted::Gui2Caption* betaSign = nullptr;
   bool betaSignHidden = false;
+  blunted::Gui2Image* versusCrest[2] = {nullptr, nullptr};
+  blunted::Gui2Caption* versusName[2] = {nullptr, nullptr};
+  blunted::Gui2Caption* versusVs = nullptr;
+  float versusAlpha = -1.0f;
   Match* match;
   unsigned long matchReadyTime_ms;
   bool gamePlanShotTriggered = false;

@@ -24,6 +24,7 @@
 #include "../data/matchdata.hpp"
 #include "../menu/ingame/banner.hpp"
 #include "../menu/ingame/formationgraphic.hpp"
+#include "../menu/ingame/goalbug.hpp"
 #include "../menu/ingame/radar.hpp"
 #include "../menu/ingame/playerhud.hpp"
 #include "../menu/ingame/scoreboard.hpp"
@@ -137,6 +138,11 @@ public:
   // rather than a Hide() from the page, so the presentation still wins - the
   // HUD does not come back mid-walkout.
   void SuppressHud(bool suppressed);
+  // What of the in-match chrome PES has on air, measured off the VGL26
+  // broadcast: everything in live play, the scoreboard alone over a goal
+  // celebration, and nothing at all over any other staged shot.
+  enum class HudLevel { None, ScoreboardOnly, All };
+  void ApplyHudVisibility();
 
   void SetSunParams();
   // The crowd's stand flags, painted with the playing teams' badges (teamflag.hpp).
@@ -199,6 +205,13 @@ public:
                : 0;
   }
   Player* GetLastGoalScorer() const { return lastGoalScorer; }
+  // How many this player has scored in this match: PES's scorer bug carries it
+  // ("Goles hoy 1", then 2 for his second), so it is counted per goal rather
+  // than derived at the end.
+  int GetGoalsToday(const Player* player) const {
+    auto found = goalsToday.find(player);
+    return found == goalsToday.end() ? 0 : found->second;
+  }
 
   // The match entrance: teams walking out and lining up before the kickoff.
   // While this is true the kickoff is held and no football is played.
@@ -663,6 +676,8 @@ protected:
   // leaves the cast released instead of hauling it back to the tunnel.
   bool stagingHasRun = false;
   bool hudSuppressed = false;
+  HudLevel hudLevel = HudLevel::All;
+  bool hudApplied = false;
   // The camera track paired with the staging currently on the pitch.
   std::string stagedCameraKey;
   // Where this staging has to be moved to happen on our pitch rather than in
@@ -900,6 +915,8 @@ protected:
   bool ballIsInGoal;
   int lastGoalTeamID;
   Player* lastGoalScorer;
+  std::map<const Player*, int> goalsToday;
+  std::unique_ptr<Gui2GoalBug> goalBug;
   int lastTouchTeamIDs[e_TouchType_SIZE];
   int lastTouchTeamID;
   signed int bestPossessionTeamID;

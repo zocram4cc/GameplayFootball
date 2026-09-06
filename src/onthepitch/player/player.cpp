@@ -157,16 +157,17 @@ bool Player::KeeperAttemptsSave() {
   if (GetFormationEntry().role != e_PlayerRole_GK)
     return true;
 
-  // The shot is identified by the opponent's last touch; one roll per shot.
+  // The shot is identified by the opponent's last touch; one roll per shot. PES
+  // GK Reflexes decides it (gk_reflexes; PlayerData defaults it from
+  // physical_reaction for profiles written before the GK attributes existed).
   Team* oppTeam = match->GetTeam(abs(team->GetID() - 1));
   Player* lastOppToucher = oppTeam->GetLastTouchPlayer();
   const unsigned long shotTouchTime_ms = lastOppToucher ? lastOppToucher->GetLastTouchTime_ms() : 0;
 
   if (shotTouchTime_ms != keeperRollTouchTime_ms) {
     keeperRollTouchTime_ms = shotTouchTime_ms;
-    keeperRollSave =
-        blunted::random(0.0f, 1.0f) <
-        GameplayTuning::GetKeeperSaveChance(*GetConfiguration(), GetStat("physical_reaction"));
+    keeperRollSave = blunted::random(0.0f, 1.0f) <
+                     GameplayTuning::GetKeeperSaveChance(*GetConfiguration(), GetStat("gk_reflexes"));
   }
   return keeperRollSave;
 }

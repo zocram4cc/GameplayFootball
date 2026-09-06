@@ -21,6 +21,7 @@ Run: python3 -m unittest test_install_team -v
 """
 
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -161,28 +162,57 @@ class InstallingATeam(unittest.TestCase):
         self.assertEqual(len(self.rows("select id from teams")), 1)
 
 
+# The full PES 2021 attribute set, as the engine's keys - what PlayerData reads.
+CONTRACT_KEYS = (
+    "physical_balance", "physical_reaction", "physical_acceleration",
+    "physical_velocity", "physical_stamina", "physical_agility",
+    "physical_shotpower", "technical_standingtackle", "technical_slidingtackle",
+    "technical_ballcontrol", "technical_dribble", "technical_shortpass",
+    "technical_highpass", "technical_header", "technical_shot",
+    "technical_volley", "mental_calmness", "mental_workrate",
+    "mental_resilience", "mental_defensivepositioning",
+    "mental_offensivepositioning", "mental_vision",
+    "physical_jump", "physical_contact", "physical_form", "physical_injuryresistance",
+    "technical_tightpossession", "technical_setpiece", "technical_curl",
+    "technical_interceptions", "technical_ballwinning",
+    "technical_weakfootusage", "technical_weakfootaccuracy",
+    "mental_aggression",
+    "gk_awareness", "gk_catching", "gk_clearing", "gk_reflexes", "gk_coverage")
+
+
+def gk_mean(values):
+    return sum(values[k] for k in install_team.GK_KEYS) / len(install_team.GK_KEYS)
+
+
+def outfield_mean(values):
+    keys = [k for k in values if k not in install_team.GK_KEYS]
+    return sum(values[k] for k in keys) / len(keys)
+
+
+def styles_of(xml):
+    """-> (playing style, [com styles]) out of a profile_xml."""
+    style = re.search(r"<playing_style>(\w+)</playing_style>", xml).group(1)
+    com = re.search(r"<com_styles>([\w,]*)</com_styles>", xml).group(1)
+    return style, [c for c in com.split(",") if c and c != "none"]
+
+
 class EveryPlayerNeedsAProfile(unittest.TestCase):
     """An empty profile_xml is fatal, not merely bare.
 
     PlayerData parses profile_xml into its stats and PlayerData::GetStat asserts the
     stat it is asked for exists - so a player with no profile kills the match at the
-    first lookup rather than playing badly. The 22 keys are the ones the shipped
-    teams carry (physical_*, technical_*, mental_*).
+    first lookup rather than playing badly. The keys are PES 2021's whole
+    attribute set under the engine's names (physical_*, technical_*, mental_*,
+    gk_*), plus the Playing Style and the COM cards.
     """
-
-    KEYS = ("physical_balance", "physical_reaction", "physical_acceleration",
-            "physical_velocity", "physical_stamina", "physical_agility",
-            "physical_shotpower", "technical_standingtackle", "technical_slidingtackle",
-            "technical_ballcontrol", "technical_dribble", "technical_shortpass",
-            "technical_highpass", "technical_header", "technical_shot",
-            "technical_volley", "mental_calmness", "mental_workrate",
-            "mental_resilience", "mental_defensivepositioning",
-            "mental_offensivepositioning", "mental_vision")
 
     def test_every_stat_the_engine_asks_for_is_there(self):
         xml = install_team.profile_xml(0.62, "CF", 3)
-        for key in self.KEYS:
+        for key in CONTRACT_KEYS:
             self.assertIn("<%s>" % key, xml)
+        self.assertEqual(set(CONTRACT_KEYS), set(install_team.STAT_KEYS))
+        self.assertIn("<playing_style>", xml)
+        self.assertIn("<com_styles>", xml)
 
     def test_nothing_lands_outside_zero_to_one(self):
         for role in ("GK", "CB", "CM", "CF"):
@@ -210,6 +240,42 @@ class EveryPlayerNeedsAProfile(unittest.TestCase):
         self.assertGreater(striker["technical_shot"], keeper["technical_shot"])
         self.assertGreater(keeper["mental_defensivepositioning"],
                            striker["mental_defensivepositioning"])
+
+    def test_only_the_keeper_is_a_keeper(self):
+        # a flat-stat squad: his gk_* sit above his own outfield stats, and every
+        # outfielder's gk_* sit at PES's floor, well under his own
+        for seed in range(4):
+            keeper = install_team.stat_values(install_team.profile_xml(0.62, "GK", seed))
+            self.assertGreater(gk_mean(keeper), outfield_mean(keeper))
+            for role in ("CB", "CM", "CF"):
+                out = install_team.stat_values(install_team.profile_xml(0.62, role, seed))
+                self.assertLess(gk_mean(out) + 0.3, outfield_mean(out))
+
+    def test_a_flat_team_still_gets_per_role_styles(self):
+        for role, options in install_team.ROLE_STYLES.items():
+            style, com = styles_of(install_team.profile_xml(0.62, role, 7))
+            self.assertIn(style, options)
+            if role == "GK":
+                self.assertEqual(com, [])
+        self.assertEqual(styles_of(install_team.profile_xml(0.62, "CM", 7)),
+                         styles_of(install_team.profile_xml(0.62, "CM", 7)))
+
+    def test_a_striker_who_heads_is_a_target_man(self):
+        values = install_team.stat_values(install_team.profile_xml(0.62, "CF", 1))
+        values["technical_header"] = 0.95
+        values["technical_shot"] = 0.60
+        self.assertEqual(install_team.infer_playing_style(values, "CF", 1), "target_man")
+
+    def test_com_cards_follow_the_stats_that_earn_them(self):
+        values = install_team.stat_values(install_team.profile_xml(0.62, "LM", 1))
+        for key in values:
+            values[key] = 0.5
+        values["technical_dribble"] = 0.9
+        values["technical_curl"] = 0.9
+        self.assertEqual(install_team.infer_com_styles(values, "LM"), ["trickster", "early_cross"])
+        # early cross is a wide man's card; a centre-mid with the same curl keeps only his dribble
+        self.assertEqual(install_team.infer_com_styles(values, "CM"), ["trickster"])
+        self.assertEqual(install_team.infer_com_styles(values, "GK"), [])
 
     def test_a_better_base_stat_lifts_the_profile(self):
         weak = install_team.stat_values(install_team.profile_xml(0.40, "CM", 2))
@@ -276,6 +342,52 @@ class TheStatConversion(unittest.TestCase):
         low = install_team.stat_values(install_team.stat_profile_xml(full_stats(40), "CM", 0))
         high = install_team.stat_values(install_team.stat_profile_xml(full_stats(99), "CM", 0))
         self.assertGreater(high["mental_vision"], low["mental_vision"])
+
+    def test_every_pes_attribute_lands_on_its_own_key(self):
+        stats = install_team.stat_values(install_team.stat_profile_xml(
+            full_stats(60, tight_possession=99, place_kicking=99, curl=99, jump=99,
+                       physical_contact=99, ball_winning=99, aggression=99,
+                       gk_reach=99), "CM", 0))
+        for key in ("technical_tightpossession", "technical_setpiece", "technical_curl",
+                    "physical_jump", "physical_contact", "technical_ballwinning",
+                    "mental_aggression"):
+            self.assertGreater(stats[key], install_team.pes_to_base(90), key)
+        # a centre-mid's real GK Reach reaches gk_coverage, less the outfield floor
+        self.assertGreater(stats["gk_coverage"], install_team.pes_to_base(99) - 0.5)
+
+    def test_a_real_keepers_gk_stats_stay_above_his_outfield_ones(self):
+        stats = install_team.stat_values(install_team.stat_profile_xml(
+            full_stats(50, gk_awareness=85, gk_catching=85, gk_clearing=85,
+                       gk_reflexes=85, gk_reach=85), "GK", 0))
+        self.assertGreater(gk_mean(stats), outfield_mean(stats))
+
+    def test_interceptions_come_from_defensive_awareness(self):
+        low = install_team.stat_values(install_team.stat_profile_xml(
+            full_stats(80, defensive_awareness=40), "CB", 0))
+        high = install_team.stat_values(install_team.stat_profile_xml(
+            full_stats(80, defensive_awareness=99), "CB", 0))
+        self.assertGreater(high["technical_interceptions"], low["technical_interceptions"])
+
+    def test_the_non_seven_bit_ratings_are_normalised_by_their_own_maximum(self):
+        best = {"weak_foot_usage": 4, "weak_foot_accuracy": 4, "form": 8, "injury_resistance": 3}
+        worst = {"weak_foot_usage": 1, "weak_foot_accuracy": 1, "form": 1, "injury_resistance": 1}
+        a = install_team.stat_values(install_team.stat_profile_xml(full_stats(70), "CM", 0, best))
+        b = install_team.stat_values(install_team.stat_profile_xml(full_stats(70), "CM", 0, worst))
+        for key in ("technical_weakfootusage", "technical_weakfootaccuracy",
+                    "physical_form", "physical_injuryresistance"):
+            self.assertGreater(a[key], 0.9, key)
+            self.assertLess(b[key], 0.1, key)
+
+    def test_pes_own_styles_round_trip_and_none_is_kept(self):
+        xml = install_team.stat_profile_xml(full_stats(70), "CF", 0, None,
+                                            "fox_in_the_box", ["long_ranger", "trickster"])
+        self.assertEqual(styles_of(xml), ("fox_in_the_box", ["long_ranger", "trickster"]))
+        # PES saying "no style" is an answer, not a gap to fill
+        self.assertEqual(styles_of(install_team.stat_profile_xml(
+            full_stats(70), "CF", 0, None, "none", [])), ("none", []))
+        # an unread style is a gap
+        self.assertIn(styles_of(install_team.stat_profile_xml(full_stats(70), "CF", 0))[0],
+                      install_team.ROLE_STYLES["CF"])
 
 
 class TheInstalledRosterCarriesRealStats(InstallingATeam):

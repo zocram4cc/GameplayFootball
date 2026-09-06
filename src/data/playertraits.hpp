@@ -1,7 +1,8 @@
-// Player traits ("specialties" / PES-style cards): conditional stat modifiers
-// and logic overrides that give individual players a recognisable signature.
-// See SIMULATION_IMPROVEMENT_PROPOSAL.md section 3A and TECHNICAL_ROADMAP.md
-// section 4D.
+// Player traits ("specialties" / PES-style skill cards): conditional stat
+// modifiers and logic overrides that give individual players a recognisable
+// signature. Playing Styles (how a player reads the game) live in
+// playingstyles.hpp. See SIMULATION_IMPROVEMENT_PROPOSAL.md section 3A and
+// TECHNICAL_ROADMAP.md section 4D.
 
 #ifndef _HPP_PLAYERTRAITS
 #define _HPP_PLAYERTRAITS
@@ -19,20 +20,12 @@ enum e_Trait {
   e_Trait_Knuckleballer = 1 << 2,
   e_Trait_OneTouchPass = 1 << 3,
   e_Trait_FirstTimeShot = 1 << 4,
-  e_Trait_GoalPoacher = 1 << 5,
-  e_Trait_CreativePlaymaker = 1 << 6,
-  // Playing styles in the PES sense: how a player reads the game around him.
-  e_Trait_FoxInTheBox = 1 << 7,
-  e_Trait_LongRangeShooter = 1 << 8,
-  e_Trait_ProlificWinger = 1 << 9,
-  e_Trait_BoxToBox = 1 << 10,
-  e_Trait_Anchorman = 1 << 11,
 };
 
 using TraitMask = unsigned int;
 
 const TraitMask traitMaskNone = 0;
-const int traitCount = 12;
+const int traitCount = 5;
 
 // Long shots only start knuckling from this distance, in metres.
 const float knuckleballMinDistance = 25.0f;
@@ -40,16 +33,15 @@ const float knuckleballMinDistance = 25.0f;
 const float knuckleballMaxSpin = 12.0f;
 // A pass released within this window counts as a one-touch pass.
 const unsigned long oneTouchWindow_ms = 200;
-// How far behind the opponent offside line a poacher lurks, in metres.
-const float poacherOffsideCushion = 0.5f;
 
 e_Trait GetTraitAt(int index);
 std::string GetName(e_Trait trait);
 bool Has(TraitMask mask, e_Trait trait);
 
 // Gives a player his flair when the database says nothing: deterministic from his
-// id, suited to the position he plays and to how well he finishes, so every squad
-// is varied and the same player behaves the same way in every match.
+// id, suited to the position he plays and to how well he finishes (long-range
+// knuckleballs belong to the players who can strike a ball), so every squad is
+// varied and the same player behaves the same way in every match.
 TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotStat);
 
 // How readily this player has a go, and from how much further out (in metres).
@@ -80,13 +72,6 @@ float GetQuickReleaseAccuracyPenalty(TraitMask mask, unsigned long timeInPossess
 
 // First-Time Shot. `ballSpeed` is the incoming ball speed in m/s.
 float GetFirstTimeShotPowerMultiplier(TraitMask mask, bool isFirstTimeShot, float ballSpeed);
-
-// Goal Poacher. `teamSide` is -1 or 1 and points towards the team's own goal.
-float GetPoacherTargetX(TraitMask mask, float defaultX, float opponentOffsideLineX, int teamSide);
-
-// Creative Playmaker: how heavily "distance from opponent" counts when rating a
-// spot to move into.
-float GetSpaceRatingWeight(TraitMask mask, float baseWeight);
 
 }  // namespace PlayerTraits
 

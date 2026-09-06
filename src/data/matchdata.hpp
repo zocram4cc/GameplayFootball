@@ -124,6 +124,10 @@ public:
 #endif
   }
   void RecordBallTouch(int receivingTeamID) {
+    // Taken off an opponent in open play, with nothing in flight to intercept:
+    // that is a tackle. Decided before lastTouchTeamID is moved on.
+    bool wonFromOpponent = lastTouchTeamID >= 0 && lastTouchTeamID != receivingTeamID &&
+                           pendingPassTeamID < 0;
     lastTouchTeamID = receivingTeamID;
     ResolveExpiredCleanChecks();
     const bool lastWasGoalkeeper = pendingPassIsGoalkeeper;
@@ -135,7 +139,12 @@ public:
       // ResolveExpiredCleanChecks. This runs in release too, since it feeds
       // the [balance-passing] accuracy line rather than debug instrumentation.
       pendingCleanChecks.push_back({receivingTeamID, matchTime_ms + cleanCompletionWindow_ms});
+      wonFromOpponent = false;
     } else if (pendingPassTeamID >= 0) {
+      // The ball was cut out of a pass in flight: an interception for whoever
+      // met it, whichever build this is.
+      interceptions[receivingTeamID]++;
+      wonFromOpponent = false;
       // A pending pass met by the OTHER team: the passer just played it straight to
       // an opponent. Debug-only - this is a quality signal, not a rule.
 #ifndef NDEBUG
@@ -157,6 +166,7 @@ public:
       pendingOwnThirdGiveawayTeam = -1;
     }
 #endif
+    if (wonFromOpponent) tackles[receivingTeamID]++;
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
@@ -207,6 +217,40 @@ public:
   // foul tracking
   void AddFoul(int teamID) { foulsCommitted[teamID]++; }
   int GetFouls(int teamID) const { return foulsCommitted[teamID]; }
+
+  // The rest of PES's half-time table (docs/PRESENTATION_SPEC.md 3.4): the
+  // referee's own decisions, the ball won back off an opponent, the ball put
+  // into the box from wide, and the keeper stopping a shot that was going in.
+  // All release counters - this table is shown to the player, not measured for
+  // tuning.
+  void AddOffside(int teamID) { offsides[teamID]++; }
+  int GetOffsides(int teamID) const { return offsides[teamID]; }
+  void AddCorner(int teamID) { corners[teamID]++; }
+  int GetCorners(int teamID) const { return corners[teamID]; }
+  void AddFreeKick(int teamID) { freeKicks[teamID]++; }
+  int GetFreeKicks(int teamID) const { return freeKicks[teamID]; }
+  void AddCross(int teamID) { crosses[teamID]++; }
+  int GetCrosses(int teamID) const { return crosses[teamID]; }
+  int GetInterceptions(int teamID) const { return interceptions[teamID]; }
+  int GetTackles(int teamID) const { return tackles[teamID]; }
+  int GetSaves(int teamID) const { return saves[teamID]; }
+
+  // A shot on target is left pending: it becomes a save if the defending
+  // keeper has the ball before the window runs out, and simply lapses if it
+  // went in or nobody stopped it.
+  static constexpr unsigned long saveWindow_ms = 4000;
+  void OpenSaveChance(int shootingTeamID) {
+    pendingShotTeamID = shootingTeamID;
+    pendingShotTime_ms = matchTime_ms;
+  }
+  void CloseSaveChance() { pendingShotTeamID = -1; }
+  void RecordGoalkeeperTouch(int keeperTeamID) {
+    if (pendingShotTeamID >= 0 && pendingShotTeamID != keeperTeamID &&
+        matchTime_ms - pendingShotTime_ms <= saveWindow_ms) {
+      saves[keeperTeamID]++;
+    }
+    pendingShotTeamID = -1;
+  }
 
   // Questionable-play logging, debug-only (see the deny list in the match goal).
   // Passed to the log at the end of the match by GameOverPage so pass/play quality
@@ -333,6 +377,15 @@ protected:
   int goalkeeperLost[2] = {0, 0};
   int ownThirdGiveaway[2] = {0, 0};
   int passFailIntercept[2] = {0, 0};
+  int offsides[2] = {0, 0};
+  int corners[2] = {0, 0};
+  int freeKicks[2] = {0, 0};
+  int crosses[2] = {0, 0};
+  int interceptions[2] = {0, 0};
+  int tackles[2] = {0, 0};
+  int saves[2] = {0, 0};
+  int pendingShotTeamID = -1;
+  unsigned long pendingShotTime_ms = 0;
   int passFailTrap[2] = {0, 0};
   int passFailOob[2] = {0, 0};
   // Clean-completion tracking (release-safe, see RecordBallTouch and

@@ -5,7 +5,10 @@
 
 #include "gamepage.hpp"
 
+#include <filesystem>
+
 #include "../../onthepitch/match.hpp"
+#include "../../onthepitch/team.hpp"
 #include "../pagefactory.hpp"
 #include "gameover.hpp"
 #include "main.hpp"
@@ -64,9 +67,11 @@ void GamePage::Process() {
   Gui2Page::Process();
 
   // The version watermark is in-match chrome too: it has no business sitting
-  // over a broadcast opening (see Match::ShowMatchHud).
+  // over a broadcast opening - or over a celebration, a card, a replay or the
+  // closing ceremony, which is where the last showcase still had it (see
+  // Match::ApplyHudVisibility).
   if (betaSign && match) {
-    const bool inEntrance = match->IsInEntrance();
+    const bool inEntrance = match->IsStaged();
     if (inEntrance != betaSignHidden) {
       betaSignHidden = inEntrance;
       if (inEntrance)
@@ -99,6 +104,8 @@ void GamePage::Process() {
     }
     GetGameTask()->matchLifetimeMutex.unlock();
   }
+
+  UpdateVersusBanner();
 
   if (match && !autoQuitTriggered && MenuSmokeQuickMatchEnabled() && !MenuSmokeFullMatchEnabled() &&
       matchReadyTime_ms != 0 &&
@@ -146,6 +153,85 @@ void GamePage::GoGameOverPage() {
 }
 
 void GamePage::OnCreatedMatch() {}
+
+void GamePage::BuildVersusBanner() {
+  if (!match || versusCrest[0]) return;
+
+  // PES's opening graphic: a crest either side of the fixture, low in the
+  // frame so the aerial keeps the stadium. The crest artwork is the team's own
+  // logo - the same file the loading page and the scoreboard read.
+  constexpr float kCrestHeight = 14.0f;
+  const float crestWidth = windowManager->GetWidthPercentForHeight(kCrestHeight, 1.0f);
+  const float centre[2] = {29.0f, 71.0f};
+  for (int side = 0; side < 2; side++) {
+    Team* team = match->GetTeam(side);
+    if (!team || !team->GetTeamData()) return;
+    const std::string logo = team->GetTeamData()->GetLogoUrl();
+
+    versusCrest[side] =
+        new Gui2Image(windowManager, "image_versus_crest" + int_to_str(side),
+                      centre[side] - crestWidth * 0.5f, 58.0f, crestWidth, kCrestHeight);
+    this->AddView(versusCrest[side]);
+    if (!logo.empty() && std::filesystem::exists(logo)) versusCrest[side]->LoadImage(logo);
+
+    versusName[side] = new Gui2Caption(windowManager, "caption_versus_name" + int_to_str(side), 0,
+                                       74.0f, 0, 3.4f, team->GetTeamData()->GetName());
+    versusName[side]->SetPosition(centre[side] - versusName[side]->GetTextWidthPercent() * 0.5f,
+                                  74.0f);
+    this->AddView(versusName[side]);
+  }
+
+  versusVs = new Gui2Caption(windowManager, "caption_versus_vs", 0, 63.0f, 0, 4.0f, "VS");
+  versusVs->SetPosition(50.0f - versusVs->GetTextWidthPercent() * 0.5f, 63.0f);
+  this->AddView(versusVs);
+
+  // Hidden until the beat that wants it: Show() here would put it over the
+  // first frame of the walkout.
+  versusAlpha = 0.0f;
+  for (int side = 0; side < 2; side++) {
+    versusCrest[side]->Hide();
+    versusName[side]->Hide();
+  }
+  versusVs->Hide();
+}
+
+void GamePage::UpdateVersusBanner() {
+  // The page outlives its match pointer's arrival: it picks the match up in
+  // Process (OnCreatedMatch is never called), so the banner is built the first
+  // frame there is a match to name.
+  BuildVersusBanner();
+  if (!match || !versusCrest[0]) return;
+
+  const PrematchTimeline::State beat = match->GetPrematchState();
+  const float alpha = (match->IsInEntrance() &&
+                       beat.overlay == PrematchTimeline::Overlay::Versus)
+                          ? beat.overlayAlpha
+                          : 0.0f;
+  if (alpha == versusAlpha) return;
+  versusAlpha = alpha;
+
+  // Images are shown or hidden, never faded - Surface::SetAlpha multiplies
+  // into the alpha channel and would erase a crest's transparency for good
+  // (the same trap Gui2FormationGraphic::ApplyAlpha documents). Captions
+  // cross-fade properly.
+  const bool visible = alpha > 0.02f;
+  for (int side = 0; side < 2; side++) {
+    if (visible)
+      versusCrest[side]->Show();
+    else
+      versusCrest[side]->Hide();
+    if (visible)
+      versusName[side]->Show();
+    else
+      versusName[side]->Hide();
+    versusName[side]->SetTransparency(1.0f - alpha);
+  }
+  if (visible)
+    versusVs->Show();
+  else
+    versusVs->Hide();
+  versusVs->SetTransparency(1.0f - alpha);
+}
 
 void GamePage::ProcessWindowingEvent(WindowingEvent* event) {
   if (Verbose())

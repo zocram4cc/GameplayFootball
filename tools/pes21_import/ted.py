@@ -108,6 +108,34 @@ STAT_FIELDS = (
     ("kicking_power", 0x2D, 5),
 )
 
+# The Player entry's non-7-bit ratings, at the same byte:bit addressing. PES
+# stores each one zero-based and shows it one-based, so a stored 0 is the "1"
+# on a player's card: (name, byte, bit, width, shown maximum).
+ABILITY_FIELDS = (
+    ("weak_foot_usage", 0x0F, 6, 2, 4),
+    ("weak_foot_accuracy", 0x27, 6, 2, 4),
+    ("form", 0x1F, 4, 3, 8),
+    ("injury_resistance", 0x28, 7, 2, 3),
+)
+
+# The Playing Style is a 5-bit index into this table, 0 meaning "none"; the
+# order is PES's own (the one every editor lists them in).
+PLAYING_STYLE_FIELD = (0x22, 2, 5)
+PLAYING_STYLES = (
+    "none", "goal_poacher", "dummy_runner", "fox_in_the_box", "target_man",
+    "creative_playmaker", "prolific_winger", "roaming_flank", "cross_specialist",
+    "classic_no_10", "hole_player", "box_to_box", "the_destroyer", "orchestrator",
+    "anchor_man", "build_up", "offensive_full_back", "full_back_finisher",
+    "defensive_full_back", "extra_frontman", "offensive_goalkeeper",
+    "defensive_goalkeeper")
+
+# The COM Playing Styles ("playing cards"), one bit each, in PES's own order.
+COM_STYLE_FIELDS = (
+    ("trickster", 0x2F, 7), ("mazing_run", 0x30, 0), ("speeding_bullet", 0x30, 1),
+    ("incisive_run", 0x30, 2), ("long_ball_expert", 0x30, 3), ("early_cross", 0x30, 4),
+    ("long_ranger", 0x30, 5),
+)
+
 
 # PES colours a name from markup inside the string, and 4cc packs use it:
 #
@@ -197,6 +225,25 @@ def read_player_stats(plain, offset):
             for name, byte_off, bit_off in STAT_FIELDS}
 
 
+def read_player_abilities(plain, offset):
+    """-> {name: shown value} for the non-7-bit ratings (weak foot usage and
+    accuracy 1-4, form 1-8, injury resistance 1-3), one-based as the card shows
+    them. Kept apart from read_player_stats so a mean over the 40-99 ratings
+    stays a mean over 40-99 ratings."""
+    return {name: get_bits(plain, offset + byte_off, bit_off, width) + 1
+            for name, byte_off, bit_off, width, _ in ABILITY_FIELDS}
+
+
+def read_player_styles(plain, offset):
+    """-> (playing style token, [com style tokens]); an index past the table
+    (a corrupt or newer record) reads as "none"."""
+    byte_off, bit_off, width = PLAYING_STYLE_FIELD
+    index = get_bits(plain, offset + byte_off, bit_off, width)
+    style = PLAYING_STYLES[index] if index < len(PLAYING_STYLES) else "none"
+    com = [name for name, b, bit in COM_STYLE_FIELDS if get_bits(plain, offset + b, bit, 1)]
+    return style, com
+
+
 def read_squad_order(plain):
     raw = plain[SQUAD_ORDER_OFFSET:SQUAD_ORDER_OFFSET + SQUAD_SIZE]
     return [b for b in raw]
@@ -240,8 +287,8 @@ def strip_markup(text):
 
 
 def read_players(plain):
-    """-> [{id, name, shirt_name, extra, stats}] in record order, from their own
-    fields.
+    """-> [{id, name, shirt_name, extra, stats, abilities, playing_style,
+    com_styles}] in record order, from their own fields.
 
     Reading the longest printable run instead was wrong twice on HDG's export: it
     dragged in the colour markup and the stray bytes of the packed block before a
@@ -254,6 +301,7 @@ def read_players(plain):
         name, colours = parse_name(read_string(plain, offset + REC_NAME))
         if not name:
             break
+        style, com = read_player_styles(plain, offset)
         players.append({
             "id": read_player_id(plain, offset + REC_ID),
             "name": name,
@@ -262,6 +310,9 @@ def read_players(plain):
             "shirt_name": strip_markup(read_string(plain, offset + REC_SHIRT_NAME)),
             "extra": strip_markup(read_string(plain, offset + REC_EXTRA)),
             "stats": read_player_stats(plain, offset),
+            "abilities": read_player_abilities(plain, offset),
+            "playing_style": style,
+            "com_styles": com,
         })
         offset += PLAYER_RECORD_SIZE
     return players

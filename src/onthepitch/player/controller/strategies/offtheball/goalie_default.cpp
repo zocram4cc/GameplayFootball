@@ -7,6 +7,7 @@
 
 #include "../../../../../main.hpp"
 #include "../../../../gameplaytuning.hpp"
+#include "data/playingstyles.hpp"
 #include "base/geometry/triangle.hpp"
 
 GoalieDefaultStrategy::GoalieDefaultStrategy(ElizaController* controller) : Strategy(controller) {
@@ -43,11 +44,16 @@ Vector3 CalculateBestAchievableTarget(Player* player, const Vector3& pos1, float
 
 void GoalieDefaultStrategy::RequestInput(const MentalImage* mentalImage, Vector3& direction,
                                          float& velocity) {
-  // base position
+  // base position. PES GK Awareness decides how far ahead he reads the ball;
+  // PlayerData defaults gk_awareness from mental_defensivepositioning for
+  // profiles written before the GK attributes existed.
   float lineDistance = 10.0f;  // default distance keeper stays in front of goal line
   Vector3 ballPos =
-      mentalImage->GetBallPrediction(600 + CastPlayer()->GetTimeNeededToGetToBall_ms() * 0.2f)
-          .Get2D();  // todo: not sure if we should keep this to 'now' or more predictive
+      mentalImage
+          ->GetBallPrediction(GameplayTuning::GetKeeperAnticipation_ms(
+                                  CastPlayer()->GetStat("gk_awareness")) +
+                              CastPlayer()->GetTimeNeededToGetToBall_ms() * 0.2f)
+          .Get2D();
   Vector3 targetPos = Vector3((pitchHalfW - lineDistance) * team->GetSide(), 0, 0);
   Vector3 goalPos = Vector3(pitchHalfW * team->GetSide(), 0, 0);
 
@@ -87,9 +93,17 @@ void GoalieDefaultStrategy::RequestInput(const MentalImage* mentalImage, Vector3
       intersect.coords[1] = clamp(intersect.coords[1], -3.7f, 3.7f);
       ballToGoal.SetVertex(1, intersect);
 
+      // PES GK Coverage: how far off his line he lives, and how readily he comes
+      // out (gk_coverage; PlayerData defaults it from physical_agility for
+      // profiles written before the GK attributes existed). An Offensive or
+      // Defensive Goalkeeper playing style stretches or shrinks that.
+      const float coverage = CastPlayer()->GetStat("gk_coverage");
+      const float styleBias =
+          PlayingStyles::GetKeeperComeOutBias(CastPlayer()->GetPlayerData()->GetPlayingStyle());
       float awayFromGoalOffset_m =
           0.7f;  // meters away from goal line (over the ballToGoal line, not straight forward)
-      float awayFromGoalBias = 0.3f;  // factor between goal and ball
+      float awayFromGoalBias = GameplayTuning::GetKeeperComeOutBias(coverage) *
+                               styleBias;  // factor between goal and ball
       awayFromGoalBias *= NormalizedClamp(controller->GetFadingTeamPossessionAmount(), 1.0f, 1.5f);
 
       // when opponent comes rushing in and team mates are too far away to help, come out to 'reduce
@@ -125,7 +139,9 @@ void GoalieDefaultStrategy::RequestInput(const MentalImage* mentalImage, Vector3
           mateToThresholdDistance = (shootingPoint - matePos).GetLength();
         }
 
-        if (mateToThresholdDistance > oppToThresholdDistance + 1.0f) {  // come out, brave keeper!
+        if (mateToThresholdDistance >
+            oppToThresholdDistance + GameplayTuning::GetKeeperComeOutMargin_m(coverage) /
+                                         styleBias) {  // come out, brave keeper!
 
           awayFromGoalBias = 1.0f;
 
@@ -278,9 +294,7 @@ void GoalieDefaultStrategy::CalculateIfBallIsBoundForGoal(const MentalImage* men
 
   int side = team->GetSide();
 
-  float panic = 1.02f + (1.0f - (CastPlayer()->GetStat("mental_defensivepositioning") * 0.6f +
-                                 CastPlayer()->GetStat("mental_vision") * 0.4f)) *
-                            0.5f;
+  float panic = GameplayTuning::GetKeeperGoalMouthPanic(CastPlayer()->GetStat("gk_awareness"));
   if (mentalImage->GetBallPrediction(4000).coords[0] * side > pitchHalfW &&
       (player->GetPosition() - mentalImage->GetBallPrediction(250)).GetLength() <
           32.0f) {  // only if ball is close enough (cpu optimization)

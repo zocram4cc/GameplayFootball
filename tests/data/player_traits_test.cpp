@@ -27,7 +27,7 @@ TEST(PlayerTraitsParseTest, IgnoresUnknownEntriesAndEmptyInput) {
 
 TEST(PlayerTraitsParseTest, SerializeRoundTripsThroughParse) {
   const PlayerTraits::TraitMask mask =
-      PlayerTraits::e_Trait_GoalPoacher | PlayerTraits::e_Trait_OneTouchPass;
+      PlayerTraits::e_Trait_Knuckleballer | PlayerTraits::e_Trait_OneTouchPass;
   EXPECT_EQ(PlayerTraits::Parse(PlayerTraits::Serialize(mask)), mask);
   EXPECT_EQ(PlayerTraits::Serialize(PlayerTraits::traitMaskNone), "");
 }
@@ -135,17 +135,17 @@ TEST(KnuckleballerTest, PlayersWithoutTheTraitFlyTrue) {
   EXPECT_FLOAT_EQ(result.coords[1], rotVec.coords[1]);
 }
 
-// --- Playing styles every player carries, so the flair actually shows up ---
+// --- Skills every player carries, so the flair actually shows up ---
 
-TEST(PlayingStyleTest, EveryPlayerGetsAStyleWithoutTouchingTheDatabase) {
-  // Same player, same style, every match: deterministic from his id.
+TEST(PlayerSkillsTest, EveryPlayerGetsASkillWithoutTouchingTheDatabase) {
+  // Same player, same skills, every match: deterministic from his id.
   const PlayerTraits::TraitMask first = PlayerTraits::AssignForPlayer(1234, e_PlayerRole_CF, 0.7f);
   const PlayerTraits::TraitMask again = PlayerTraits::AssignForPlayer(1234, e_PlayerRole_CF, 0.7f);
   EXPECT_EQ(first, again);
   EXPECT_NE(first, PlayerTraits::traitMaskNone);
 }
 
-TEST(PlayingStyleTest, DifferentPlayersGetDifferentFlair) {
+TEST(PlayerSkillsTest, DifferentPlayersGetDifferentFlair) {
   std::set<PlayerTraits::TraitMask> masks;
   for (int id = 1; id <= 40; id++)
     masks.insert(PlayerTraits::AssignForPlayer(id, e_PlayerRole_CM, 0.6f));
@@ -153,44 +153,41 @@ TEST(PlayingStyleTest, DifferentPlayersGetDifferentFlair) {
   EXPECT_GE(masks.size(), 4u);
 }
 
-TEST(PlayingStyleTest, StylesSuitThePositionTheyArePlayedIn) {
-  // A striker can poach or finish, but never plays as a deep-lying anchor.
+TEST(PlayerSkillsTest, SkillsSuitThePositionTheyArePlayedIn) {
+  // A full-back never gets the target man's aerial game.
   for (int id = 1; id <= 60; id++) {
-    const PlayerTraits::TraitMask striker =
-        PlayerTraits::AssignForPlayer(id, e_PlayerRole_CF, 0.7f);
-    EXPECT_FALSE(PlayerTraits::Has(striker, PlayerTraits::e_Trait_Anchorman)) << id;
-
-    const PlayerTraits::TraitMask centreBack =
-        PlayerTraits::AssignForPlayer(id, e_PlayerRole_CB, 0.4f);
-    EXPECT_FALSE(PlayerTraits::Has(centreBack, PlayerTraits::e_Trait_GoalPoacher)) << id;
-    EXPECT_FALSE(PlayerTraits::Has(centreBack, PlayerTraits::e_Trait_FoxInTheBox)) << id;
+    const PlayerTraits::TraitMask fullBack =
+        PlayerTraits::AssignForPlayer(id, e_PlayerRole_LB, 0.4f);
+    EXPECT_FALSE(PlayerTraits::Has(fullBack, PlayerTraits::e_Trait_TargetMan)) << id;
+    EXPECT_FALSE(PlayerTraits::Has(fullBack, PlayerTraits::e_Trait_Knuckleballer)) << id;
   }
+  EXPECT_EQ(PlayerTraits::AssignForPlayer(7, e_PlayerRole_GK, 0.5f), PlayerTraits::traitMaskNone);
 }
 
-TEST(PlayingStyleTest, GoodFinishersAreTheOnesWhoShootFromRange) {
-  int rangeShootersAmongGoodStrikers = 0;
-  int rangeShootersAmongPoorStrikers = 0;
+TEST(PlayerSkillsTest, GoodFinishersAreTheOnesWhoKnuckleTheBall) {
+  int knucklersAmongGoodStrikers = 0;
+  int knucklersAmongPoorStrikers = 0;
   for (int id = 1; id <= 60; id++) {
     if (PlayerTraits::Has(PlayerTraits::AssignForPlayer(id, e_PlayerRole_AM, 0.95f),
-                          PlayerTraits::e_Trait_LongRangeShooter))
-      rangeShootersAmongGoodStrikers++;
+                          PlayerTraits::e_Trait_Knuckleballer))
+      knucklersAmongGoodStrikers++;
     if (PlayerTraits::Has(PlayerTraits::AssignForPlayer(id, e_PlayerRole_AM, 0.15f),
-                          PlayerTraits::e_Trait_LongRangeShooter))
-      rangeShootersAmongPoorStrikers++;
+                          PlayerTraits::e_Trait_Knuckleballer))
+      knucklersAmongPoorStrikers++;
   }
-  EXPECT_GT(rangeShootersAmongGoodStrikers, rangeShootersAmongPoorStrikers);
+  EXPECT_GT(knucklersAmongGoodStrikers, knucklersAmongPoorStrikers);
 }
 
-TEST(PlayingStyleTest, NobodyIsOverloadedWithStyles) {
+TEST(PlayerSkillsTest, NobodyIsOverloadedWithSkills) {
   for (int id = 1; id <= 60; id++) {
     const PlayerTraits::TraitMask mask = PlayerTraits::AssignForPlayer(id, e_PlayerRole_CM, 0.6f);
-    int styles = 0;
+    int skills = 0;
     for (int i = 0; i < PlayerTraits::traitCount; i++) {
       if (PlayerTraits::Has(mask, PlayerTraits::GetTraitAt(i)))
-        styles++;
+        skills++;
     }
-    EXPECT_GE(styles, 1) << id;
-    EXPECT_LE(styles, 3) << id;
+    EXPECT_GE(skills, 1) << id;
+    EXPECT_LE(skills, 3) << id;
   }
 }
 
@@ -201,18 +198,12 @@ TEST(ShotAppetiteTest, APlainPlayerHasNeutralAppetite) {
   EXPECT_FLOAT_EQ(PlayerTraits::GetShootingRangeBonus(PlayerTraits::traitMaskNone), 0.0f);
 }
 
-TEST(ShotAppetiteTest, RangeShootersTryFromFurtherOut) {
-  EXPECT_GT(PlayerTraits::GetShootingRangeBonus(PlayerTraits::e_Trait_LongRangeShooter), 0.0f);
-  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_LongRangeShooter), 1.0f);
+TEST(ShotAppetiteTest, FirstTimeShootersAndKnucklersTryTheirLuck) {
+  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_FirstTimeShot), 1.0f);
+  EXPECT_GT(PlayerTraits::GetShootingRangeBonus(PlayerTraits::e_Trait_Knuckleballer), 0.0f);
 }
 
-TEST(ShotAppetiteTest, PoachersAndBoxFoxesShootMoreReadilyThanPlaymakers) {
-  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_FoxInTheBox), 1.0f);
-  EXPECT_GT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_GoalPoacher), 1.0f);
-  EXPECT_LT(PlayerTraits::GetShotAppetite(PlayerTraits::e_Trait_CreativePlaymaker), 1.0f);
-}
-
-TEST(ShotAppetiteTest, AppetiteStaysSaneEvenWithEveryStyleStacked) {
+TEST(ShotAppetiteTest, AppetiteStaysSaneEvenWithEverySkillStacked) {
   PlayerTraits::TraitMask everything = PlayerTraits::traitMaskNone;
   for (int i = 0; i < PlayerTraits::traitCount; i++)
     everything |= PlayerTraits::GetTraitAt(i);

@@ -12,6 +12,7 @@
 #include "base/properties.hpp"
 #include "defines.hpp"
 #include "playertraits.hpp"
+#include "playingstyles.hpp"
 
 class PlayerData {
 public:
@@ -33,15 +34,22 @@ public:
   // expects (AssignPlayingStyles, the plan card's aptitude colours).
   bool ToggleRole(e_PlayerRole role);
 
-  float GetStat(const char* name);
+  float GetStat(const char* name) const;
 
-  // The mean of the twenty-two stats: the engine's own notion of how good a player
-  // is, used for substitution decisions and printed on the game plan's cards. It
-  // lived inside PlayerBase, which the menus have no access to before kick-off.
+  // PES's overall: the mean of the outfield skill ratings, or of the gk_* ones
+  // for a player listed as a keeper. Used for substitution decisions and printed
+  // on the game plan's cards. It lived inside PlayerBase, which the menus have no
+  // access to before kick-off.
   float GetAverageStat() const;
 
   // Gives the player a style of his own when the database defines none.
   void AssignPlayingStyles();
+
+  // PES 2021 Playing Style and COM Playing Styles ("playing cards"): from
+  // profile_xml's <playing_style>/<com_styles>, inferred when the profile
+  // carries neither tag.
+  PlayingStyles::Player GetPlayingStyle() const { return playingStyle; }
+  PlayingStyles::ComMask GetComStyles() const { return comStyles; }
 
   // Traits / specialties this player carries.
   PlayerTraits::TraitMask GetTraits() const { return traits; }
@@ -54,6 +62,9 @@ public:
   float GetHeight() { return height; }
 
 protected:
+  // Profiles from before PES's remaining attributes had keys get each missing
+  // one from its nearest older neighbour, so GetStat never asserts on them.
+  void FillMissingStats();
   int databaseID;
   std::string firstName;
   std::string lastName;
@@ -61,6 +72,8 @@ protected:
 
   Properties stats;
   PlayerTraits::TraitMask traits;
+  PlayingStyles::Player playingStyle;
+  PlayingStyles::ComMask comStyles;
   int playerAge;
 
   int skinColor;

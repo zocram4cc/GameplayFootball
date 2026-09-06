@@ -1112,6 +1112,11 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
   root->AddView(formationGraphic.get());
   formationGraphic->Init();
 
+  goalBug = std::make_unique<Gui2GoalBug>(menuTask->GetWindowManager(), "game_goalbug", this);
+  root->AddView(goalBug.get());
+  goalBug->Show();
+  goalBug->Init();
+
   banner = std::make_unique<Gui2Banner>(menuTask->GetWindowManager(), "game_banner", this);
   root->AddView(banner.get());
   banner->Init();
@@ -1248,6 +1253,8 @@ void Match::Exit() {
   // heap-use-after-free when Match's destructor runs.
   formationGraphic->Exit();
   formationGraphic.reset();
+  goalBug->Exit();
+  goalBug.reset();
   banner->Exit();
   banner.reset();
 
@@ -1898,23 +1905,44 @@ bool Match::CoverForRestart() {
 
 void Match::ShowMatchHud(bool visible) {
   // The persistent in-match chrome, hidden for the pre-match presentation and
-  // for a replay, and brought back after.
-  if (visible && hudSuppressed) return;
+  // for a replay, and brought back after. Kept as the coarse switch the
+  // presentation code calls; what is on air frame to frame is decided by
+  // ApplyHudVisibility.
+  (void)visible;
+  ApplyHudVisibility();
+}
+
+void Match::ApplyHudVisibility() {
+  // PES's rule, read off the VGL26 broadcast: over a goal celebration only the
+  // scoreboard stays (the close-up carries it in the corner), over any other
+  // staged shot - a foul cutscene, a card, a substitution, a replay, the
+  // walkout, the closing ceremony - the picture is clean. Ours drew the
+  // scoreboard, the radar and both player plates across all of them, with the
+  // radar and captions still on through a card cutscene and the half-time
+  // whistle (owner's review of the 05-09 showcase, defect 2).
+  HudLevel want = HudLevel::All;
+  if (entranceActive || gameOver || hudSuppressed || activeCutscene != nullptr)
+    want = HudLevel::None;
+  else if (goalScored)
+    want = HudLevel::ScoreboardOnly;
+  if (want == hudLevel && hudApplied) return;
+  hudLevel = want;
+  hudApplied = true;
   if (scoreboard) {
-    if (visible)
+    if (want != HudLevel::None)
       scoreboard->Show();
     else
       scoreboard->Hide();
   }
   if (radar) {
-    if (visible)
+    if (want == HudLevel::All)
       radar->Show();
     else
       radar->Hide();
   }
   for (int side = 0; side < 2; side++) {
     if (!playerHUD[side]) continue;
-    if (visible)
+    if (want == HudLevel::All)
       playerHUD[side]->Show();
     else
       playerHUD[side]->Hide();
@@ -3878,6 +3906,30 @@ void Match::UpdateIngameCamera() {
                           : 0.0f;
       const PrematchTimeline::State beat = GetPrematchState();
 
+      // Whether a cut can be reproduced at this ground at all.
+      //
+      // PES's entrance cameras are authored in its own stadium's coordinates
+      // and moved onto this pitch by stagingOffset (ComputeStagingOffset).
+      // Three of ent_009's eighteen cuts sit at y = -44, z = 0.9 - inside PES's
+      // own tunnel mouth, filming the players coming up the ramp. The imported
+      // ground has the ramp (st002's own geometry descends from y = -42 to
+      // -48, down to -2.13 m) but not the lit interior around it, so those cuts
+      // came out as ten seconds of near-black frame with a flag pole and a pair
+      // of legs crossing it (owner's review of the 05-09 showcase, defect 1).
+      // A cut whose lens is under our turf, or off the pitch far enough to be
+      // inside the stand, is one this import cannot light: it is dropped and
+      // the beat falls back to the cast-framing walkout, which films the same
+      // players from the pitch. Everything inside the envelope - PES shoots
+      // from as low as a corner flag and from the photographers' ring - plays
+      // exactly as authored.
+      auto shotIsRenderable = [](const Vector3& eye) {
+        static const float kLowestLens = 0.25f;      // under the turf
+        static const float kOutsideStructure = 8.0f;  // past the pitchside ring
+        return eye.coords[2] >= kLowestLens &&
+               std::fabs(eye.coords[1]) <= pitchHalfH + kOutsideStructure &&
+               std::fabs(eye.coords[0]) <= pitchHalfW + kOutsideStructure;
+      };
+
       // Each beat of the presentation asks for its own kind of shot; a
       // timeline with no beats at all falls back to running the imported
       // camerawork straight through, which is what this used to do.
@@ -3942,7 +3994,11 @@ void Match::UpdateIngameCamera() {
         // characters are broader and carry props, the tight ones end up inside
         // somebody. Dolly straight back until the nearest body clears the lens -
         // the framing, the lens and the move stay PES's (camerastandoff.hpp).
-        {
+        if (!shotIsRenderable(cameraNodePosition)) {
+          // A tunnel cut, at a ground with no tunnel to light. The walkout
+          // camera below films the same players from the pitch.
+          want = PrematchTimeline::Camera::Walkout;
+        } else {
           Quaternion aim = QUATERNION_IDENTITY;
           aim.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
           const Vector3 forward = aim * Vector3(0, 0, -1);
@@ -4499,6 +4555,10 @@ void Match::Process() {
   for (int side = 0; side < 2; side++)
     if (playerHUD[side]) playerHUD[side]->Refresh();
 
+  // And what of the chrome is on air follows the same state - a cutscene can
+  // start and end between two of the calls that used to toggle it by hand.
+  ApplyHudVisibility();
+
   unsigned long time_ms =
       EnvironmentManager::GetInstance().GetTime_ms() - gameSequenceInfo.startTime_ms;
   timeSincePreviousProcess_ms = time_ms - GetPreviousProcessTime_ms();
@@ -4777,6 +4837,7 @@ void Match::Process() {
         if (!ownGoal) {
           lastGoalScorer = teams[GetLastGoalTeamID()]->GetLastTouchPlayer();
           if (lastGoalScorer) {
+            goalsToday[lastGoalScorer]++;
             SpamMessage("GOAL for " + matchData->GetTeamData(GetLastGoalTeamID())->GetName() +
                             "! " + lastGoalScorer->GetPlayerData()->GetLastName() + " scores!",
                         4000);

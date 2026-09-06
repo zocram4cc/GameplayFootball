@@ -68,16 +68,35 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
 
   // printf("player: %s, %s (age %i)\n", lastName.c_str(), firstName.c_str(), age);
   traits = PlayerTraits::traitMaskNone;
+  playingStyle = PlayingStyles::Player::None;
+  comStyles = PlayingStyles::comMaskNone;
   playerAge = age;
   bool traitsFromDatabase = false;
+  bool styleFromDatabase = false;
+  bool comFromDatabase = false;
 
   map_XMLTree::const_iterator iter = tree.children.begin();
   while (iter != tree.children.end()) {
+    const std::string& tag = (*iter).first;
     // The profile may carry a comma-separated list of traits alongside the
-    // numeric stats (see SIMULATION_IMPROVEMENT_PROPOSAL 3A).
-    if ((*iter).first.compare("traits") == 0) {
+    // numeric stats (see SIMULATION_IMPROVEMENT_PROPOSAL 3A), and PES's own
+    // Playing Style and COM cards. A tag that is present is PES's answer, even
+    // "none": only an absent tag is inferred below.
+    if (tag.compare("traits") == 0) {
       traits = PlayerTraits::Parse((*iter).second.value);
       traitsFromDatabase = traits != PlayerTraits::traitMaskNone;
+      iter++;
+      continue;
+    }
+    if (tag.compare("playing_style") == 0) {
+      playingStyle = PlayingStyles::ParsePlayer((*iter).second.value);
+      styleFromDatabase = true;
+      iter++;
+      continue;
+    }
+    if (tag.compare("com_styles") == 0) {
+      comStyles = PlayingStyles::ParseCom((*iter).second.value);
+      comFromDatabase = true;
       iter++;
       continue;
     }
@@ -87,12 +106,70 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
     float value = CalculateStat(baseStat, profileStat, age, e_DevelopmentCurveType_Normal);
     // printf("base: %f; profile: %f; result: %f\n", baseStat, profileStat, value);
 
-    stats.Set((*iter).first.c_str(), value);
+    stats.Set(tag.c_str(), value);
     iter++;
   }
 
+  FillMissingStats();
+
   if (!traitsFromDatabase)
     AssignPlayingStyles();
+  const e_PlayerRole role = roles.empty() ? e_PlayerRole_CM : roles.at(0);
+  if (!styleFromDatabase)
+    playingStyle = PlayingStyles::InferPlayer(databaseID, role, *this);
+  if (!comFromDatabase)
+    comStyles = PlayingStyles::InferCom(databaseID, playingStyle, *this);
+}
+
+void PlayerData::FillMissingStats() {
+  // A partial profile (test fixtures, hand-written rows) gets the engine's
+  // original keys at the middle, and profiles written before PES's remaining
+  // attributes had keys get each of those from its nearest older neighbour -
+  // so an incomplete database plays, not asserts, and the style inference
+  // below can read any stat it likes.
+  static const char* kCore[] = {
+      "physical_balance",           "physical_reaction",
+      "physical_acceleration",      "physical_velocity",
+      "physical_stamina",           "physical_agility",
+      "physical_shotpower",         "technical_standingtackle",
+      "technical_slidingtackle",    "technical_ballcontrol",
+      "technical_dribble",          "technical_shortpass",
+      "technical_highpass",         "technical_header",
+      "technical_shot",             "technical_volley",
+      "mental_calmness",            "mental_workrate",
+      "mental_resilience",          "mental_defensivepositioning",
+      "mental_offensivepositioning", "mental_vision"};
+  for (const char* key : kCore)
+    if (!stats.Exists(key)) stats.Set(key, 0.5f);
+  struct Fallback {
+    const char* key;
+    const char* from;
+  };
+  static const Fallback kOutfield[] = {
+      {"physical_jump", "technical_header"},
+      {"physical_contact", "physical_balance"},
+      {"technical_tightpossession", "technical_dribble"},
+      {"technical_setpiece", "technical_shot"},
+      {"technical_curl", "technical_highpass"},
+      {"technical_interceptions", "mental_defensivepositioning"},
+      {"technical_ballwinning", "technical_standingtackle"},
+      {"mental_aggression", "mental_workrate"}};
+  // A keeper's gk_* read off what the engine used for him until now; PES rates
+  // an outfielder's goalkeeping at the floor.
+  static const Fallback kKeeper[] = {{"gk_awareness", "mental_defensivepositioning"},
+                                     {"gk_catching", "technical_ballcontrol"},
+                                     {"gk_clearing", "technical_highpass"},
+                                     {"gk_reflexes", "physical_reaction"},
+                                     {"gk_coverage", "physical_agility"}};
+  static const char* kMid[] = {"physical_form", "physical_injuryresistance",
+                               "technical_weakfootusage", "technical_weakfootaccuracy"};
+  const bool keeper = !roles.empty() && roles.at(0) == e_PlayerRole_GK;
+  for (const Fallback& f : kOutfield)
+    if (!stats.Exists(f.key)) stats.Set(f.key, stats.GetReal(f.from, 0.5f));
+  for (const Fallback& f : kKeeper)
+    if (!stats.Exists(f.key)) stats.Set(f.key, keeper ? stats.GetReal(f.from, 0.5f) : 0.1f);
+  for (const char* key : kMid)
+    if (!stats.Exists(key)) stats.Set(key, 0.5f);
 }
 
 PlayerData::PlayerData() {
@@ -124,8 +201,27 @@ PlayerData::PlayerData() {
   stats.Set("mental_defensivepositioning", 0.6);
   stats.Set("mental_offensivepositioning", 0.6);
   stats.Set("mental_vision", 0.6);
+  stats.Set("physical_jump", 0.6);
+  stats.Set("physical_contact", 0.6);
+  stats.Set("physical_form", 0.6);
+  stats.Set("physical_injuryresistance", 0.6);
+  stats.Set("technical_tightpossession", 0.6);
+  stats.Set("technical_setpiece", 0.6);
+  stats.Set("technical_curl", 0.6);
+  stats.Set("technical_interceptions", 0.6);
+  stats.Set("technical_ballwinning", 0.6);
+  stats.Set("technical_weakfootusage", 0.6);
+  stats.Set("technical_weakfootaccuracy", 0.6);
+  stats.Set("mental_aggression", 0.6);
+  stats.Set("gk_awareness", 0.6);
+  stats.Set("gk_catching", 0.6);
+  stats.Set("gk_clearing", 0.6);
+  stats.Set("gk_reflexes", 0.6);
+  stats.Set("gk_coverage", 0.6);
 
   traits = PlayerTraits::traitMaskNone;
+  playingStyle = PlayingStyles::Player::None;
+  comStyles = PlayingStyles::comMaskNone;
   playerAge = MatchPressure::unknownAge;
 }
 
@@ -155,7 +251,13 @@ void PlayerData::AssignPlayingStyles() {
 }
 
 float PlayerData::GetAverageStat() const {
-  static const char* kStats[] = {
+  // PES's overall rating is a mean of the skill ratings for the position the
+  // player is listed at. Form, injury resistance and weak foot are traits of
+  // his availability and habits, not of his level, and stay out; so do the
+  // gk_* ratings of an outfielder (PES rates them at the floor for everyone
+  // but keepers) and the outfield ratings of a keeper, who used to be scored
+  // as a poor striker.
+  static const char* kOutfield[] = {
       "physical_balance",           "physical_reaction",
       "physical_acceleration",      "physical_velocity",
       "physical_stamina",           "physical_agility",
@@ -166,14 +268,23 @@ float PlayerData::GetAverageStat() const {
       "technical_shot",             "technical_volley",
       "mental_calmness",            "mental_workrate",
       "mental_resilience",          "mental_defensivepositioning",
-      "mental_offensivepositioning", "mental_vision"};
-  const int count = sizeof(kStats) / sizeof(kStats[0]);
+      "mental_offensivepositioning", "mental_vision",
+      "physical_jump",              "physical_contact",
+      "technical_tightpossession",  "technical_setpiece",
+      "technical_curl",             "technical_interceptions",
+      "technical_ballwinning",      "mental_aggression"};
+  static const char* kKeeper[] = {"gk_awareness", "gk_catching", "gk_clearing", "gk_reflexes",
+                                  "gk_coverage"};
+  const bool keeper = !roles.empty() && roles.at(0) == e_PlayerRole_GK;
+  const char* const* keys = keeper ? kKeeper : kOutfield;
+  const int count = keeper ? sizeof(kKeeper) / sizeof(kKeeper[0])
+                           : sizeof(kOutfield) / sizeof(kOutfield[0]);
   float total = 0.0f;
-  for (int i = 0; i < count; i++) total += stats.GetReal(kStats[i], 0.0f);
+  for (int i = 0; i < count; i++) total += stats.GetReal(keys[i], 0.0f);
   return total / static_cast<float>(count);
 }
 
-float PlayerData::GetStat(const char* name) {
+float PlayerData::GetStat(const char* name) const {
   bool exists = stats.Exists(name);
   if (!exists)
     printf("Stat named '%s' does not exist!\n", name);
