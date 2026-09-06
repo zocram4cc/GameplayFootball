@@ -22,17 +22,19 @@ PenaltyShootout::Shooter PoorShooter() {
   return shooter;
 }
 
+// Keepers are rated on PES's GK attributes (reflexes, awareness), not the
+// outfield reaction/positioning stats the struct used to mirror.
 PenaltyShootout::Keeper GoodKeeper() {
   PenaltyShootout::Keeper keeper;
-  keeper.reaction = 0.9f;
-  keeper.defensivePositioning = 0.9f;
+  keeper.reflexes = 0.9f;
+  keeper.awareness = 0.9f;
   return keeper;
 }
 
 PenaltyShootout::Keeper PoorKeeper() {
   PenaltyShootout::Keeper keeper;
-  keeper.reaction = 0.1f;
-  keeper.defensivePositioning = 0.1f;
+  keeper.reflexes = 0.1f;
+  keeper.awareness = 0.1f;
   return keeper;
 }
 

@@ -22,10 +22,19 @@ const bool quantizeDirection = true;
 
 const float analogStickDeadzone = 0.75f;
 
-const float _default_CameraZoom = 0.5f;
-const float _default_CameraHeight = 0.3f;
-const float _default_CameraFOV = 0.4f;
-const float _default_CameraAngleFactor = 0.0f;
+// PES's main broadcast camera, solved back through this rig from the reference
+// frames (docs/VGL26_REFERENCE.md, and the measurement in docs/PICTURE.md):
+// the ad-board ring sits on the top edge of frame and a player at mid-pitch is
+// about 6.8% of the frame's height. That is a LONG lens from far back and low -
+// 55 m out, 18 m up, 18 degrees of elevation, 28 degrees vertical - not the
+// wide, steep shot GF opened with (35 m out, 19 m up, 28 degrees down), which
+// is what "the camera is 1.4x too close and shows no touchline" was: too steep
+// to see the far side, too near to hold the width. Each of these four is the
+// game's own knob, so a user can still shoot it however he likes.
+const float _default_CameraZoom = 0.62f;    // 55 m back
+const float _default_CameraHeight = 0.0f;   // 18 m up: 18 degrees, not 28
+const float _default_CameraFOV = 0.9f;      // 28 degrees vertical / 48 across
+const float _default_CameraAngleFactor = 0.4f;  // pans with play, as PES does
 
 const float _default_Difficulty = 0.8f;
 // Legacy normalized 5-25 minute match-duration setting. New code stores minutes explicitly.

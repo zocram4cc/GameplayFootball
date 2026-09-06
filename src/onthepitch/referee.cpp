@@ -204,6 +204,7 @@ void Referee::Process() {
             y = -pitchHalfH;
           buffer.restartPos = Vector3(pitchHalfW * lastSide, y, 0);
           buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          match->GetMatchData()->AddCorner(buffer.teamID);
 
         } else {
           buffer.desiredSetPiece = e_SetPiece_GoalKick;
@@ -545,6 +546,8 @@ void Referee::BallTouched() {
           buffer.restartPos =
               OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
           buffer.teamID = abs(lastTouchTeamID - 1);
+          match->GetMatchData()->AddOffside(lastTouchTeamID);
+          match->GetMatchData()->AddFreeKick(buffer.teamID);
           buffer.active = true;
         buffer.prepared = false;
         buffer.started = false;
@@ -801,6 +804,8 @@ bool Referee::CheckFoul() {
           Vector3((pitchHalfW - 11.0) * foul.foulPlayer->GetTeam()->GetSide(), 0, 0);
     }
     buffer.teamID = foul.foulVictim->GetTeam()->GetID();
+    if (buffer.desiredSetPiece == e_SetPiece_FreeKick)
+      match->GetMatchData()->AddFreeKick(buffer.teamID);
     buffer.active = true;
         buffer.prepared = false;
         buffer.started = false;

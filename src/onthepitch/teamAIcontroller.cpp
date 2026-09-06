@@ -21,7 +21,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "../data/playertraits.hpp"
+#include "../data/playingstyles.hpp"
 #include "../main.hpp"
 #include "../misc/hungarian.h"
 #include "AIsupport/AIfunctions.hpp"
@@ -143,7 +143,26 @@ Player* SelectAttackingRunPlayer(Team* team) {
   Vector3 offenseFocusPos =
       possessionPlayer->GetPosition() + Vector3(-team->GetSide() * 26.0f, 0, 0);
 
-  Player* attackingRunPlayer = AI_GetClosestPlayer(team, offenseFocusPos, true, possessionPlayer);
+  // The nearest AI teammate to the focus, except that a hole player or a
+  // full-back finisher volunteers from further away and an anchor man never
+  // leaves his post (PES Playing Styles).
+  Player* attackingRunPlayer = nullptr;
+  float bestCost = 10000.0f;
+  for (const std::unique_ptr<Player>& candidate : team->GetAllPlayers()) {
+    if (!candidate->IsActive() || candidate.get() == possessionPlayer ||
+        team->IsHumanControlled(candidate->GetID()))
+      continue;
+    const float affinity = PlayingStyles::GetAttackingRunAffinity(
+        candidate->GetPlayerData()->GetPlayingStyle(), candidate->GetPlayerData()->GetComStyles());
+    if (affinity <= 0.0f)
+      continue;
+    const float cost =
+        (candidate->GetPosition() - offenseFocusPos).GetLength() * (1.5f - affinity);
+    if (cost < bestCost) {
+      bestCost = cost;
+      attackingRunPlayer = candidate.get();
+    }
+  }
   return attackingRunPlayer;
 }
 
@@ -630,20 +649,24 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
       xFocusStrength, yFocus, yFocusStrength, microFocus, microFocusStrength, midfieldFocus,
       midfieldFocusStrength, useDynamicFormationPosition);
 
-  desiredPos.coords[0] = clamp(desiredPos.coords[0], -pitchHalfW, pitchHalfW);
-  desiredPos.coords[1] = clamp(desiredPos.coords[1], -pitchHalfH, pitchHalfH);
-
-  // A goal poacher ignores his formation depth while his team is attacking and
-  // lurks on the opponent's offside line instead (roadmap 4D).
-  const PlayerTraits::TraitMask traits = player->GetPlayerData()->GetTraits();
-  if (PlayerTraits::Has(traits, PlayerTraits::e_Trait_GoalPoacher) && teamHasPossession &&
+  // The playing style bends the formation spot: a hole player pushes on while
+  // his team attacks, an anchor man sits, a roaming flank tucks inside, and a
+  // goal poacher ignores his depth altogether to lurk on the opponent's
+  // offside line (roadmap 4D, docs/PES21_IMPORT.md).
+  const PlayingStyles::Player style = player->GetPlayerData()->GetPlayingStyle();
+  desiredPos.coords[0] +=
+      -team->GetSide() * PlayingStyles::GetDepthOffset(style, teamHasPossession);
+  desiredPos.coords[1] += signSide(desiredPos.coords[1]) *
+                          PlayingStyles::GetWidthOffset(style, teamHasPossession);
+  if (style == PlayingStyles::Player::GoalPoacher && teamHasPossession &&
       AI_GetMindSet(role) > 0.5f) {
     const float oppOffsideLineX =
         AI_GetOffsideLine(match, match->GetMentalImage(0), abs(team->GetID() - 1));
-    desiredPos.coords[0] = clamp(PlayerTraits::GetPoacherTargetX(traits, desiredPos.coords[0],
-                                                                 oppOffsideLineX, team->GetSide()),
-                                 -pitchHalfW, pitchHalfW);
+    desiredPos.coords[0] = PlayingStyles::GetPoacherTargetX(style, desiredPos.coords[0],
+                                                            oppOffsideLineX, team->GetSide());
   }
+  desiredPos.coords[0] = clamp(desiredPos.coords[0], -pitchHalfW, pitchHalfW);
+  desiredPos.coords[1] = clamp(desiredPos.coords[1], -pitchHalfH, pitchHalfH);
 
   return desiredPos;
 }
@@ -1256,7 +1279,10 @@ void TeamAIController::ApplyTeamPressure() {
       const float distance = (candidate->GetPosition() - pressureTarget).GetLength();
       const float rolePenalty = AITactics::GetSecondaryPressureRolePenalty(
           AI_GetMindSet(candidate->GetDynamicFormationEntry().role));
-      const float pressureRating = distance + rolePenalty;
+      // A destroyer hunts the ball; a number ten leaves that to others.
+      const float pressureRating =
+          distance + rolePenalty +
+          PlayingStyles::GetPressingDistanceBias(candidate->GetPlayerData()->GetPlayingStyle());
       if (pressureRating < bestPressureRating) {
         bestPressureRating = pressureRating;
         teamPressurePlayer = candidate;

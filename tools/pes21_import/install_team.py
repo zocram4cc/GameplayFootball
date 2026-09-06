@@ -49,6 +49,9 @@ FIELD_ROLES = ("CB", "CB", "LB", "RB", "DM", "CM", "CM", "LM", "RM", "CF", "CF",
 # The stats PlayerData parses out of profile_xml. GetStat asserts the stat it is
 # asked for exists, so a player with an empty profile kills the match at the first
 # lookup rather than merely playing badly - every one of these has to be written.
+# The first 22 are the engine's own; the rest carry PES 2021's remaining
+# attributes 1:1 (physical_form and the like are PES's non-7-bit ratings, put on
+# the same 0..1 scale).
 STAT_KEYS = (
     "physical_balance", "physical_reaction", "physical_acceleration",
     "physical_velocity", "physical_stamina", "physical_agility", "physical_shotpower",
@@ -56,30 +59,54 @@ STAT_KEYS = (
     "technical_dribble", "technical_shortpass", "technical_highpass",
     "technical_header", "technical_shot", "technical_volley",
     "mental_calmness", "mental_workrate", "mental_resilience",
-    "mental_defensivepositioning", "mental_offensivepositioning", "mental_vision")
+    "mental_defensivepositioning", "mental_offensivepositioning", "mental_vision",
+    "physical_jump", "physical_contact", "physical_form", "physical_injuryresistance",
+    "technical_tightpossession", "technical_setpiece", "technical_curl",
+    "technical_interceptions", "technical_ballwinning",
+    "technical_weakfootusage", "technical_weakfootaccuracy",
+    "mental_aggression",
+    "gk_awareness", "gk_catching", "gk_clearing", "gk_reflexes", "gk_coverage")
+GK_KEYS = ("gk_awareness", "gk_catching", "gk_clearing", "gk_reflexes", "gk_coverage")
 
 # What a role is for. An offset on the base stat, so a keeper is not a striker who
-# happens to stand in goal.
+# happens to stand in goal. Every outfield role shares OUTFIELD_BIAS: PES rates
+# an outfielder's goalkeeping at the floor, and a flat-stat team must not field
+# ten spare keepers.
+OUTFIELD_BIAS = {key: -0.45 for key in GK_KEYS}
 ROLE_BIAS = {
     "GK": {"technical_shot": -0.22, "technical_volley": -0.20, "technical_dribble": -0.18,
            "mental_defensivepositioning": +0.14, "physical_reaction": +0.12,
-           "mental_offensivepositioning": -0.20},
+           "mental_offensivepositioning": -0.20, "technical_tightpossession": -0.18,
+           "technical_setpiece": -0.15, "technical_curl": -0.15,
+           "technical_ballwinning": -0.20, "technical_interceptions": -0.10,
+           "mental_aggression": -0.10, "gk_awareness": +0.15, "gk_catching": +0.15,
+           "gk_clearing": +0.15, "gk_reflexes": +0.15, "gk_coverage": +0.15},
     "CB": {"technical_standingtackle": +0.12, "technical_header": +0.10,
            "mental_defensivepositioning": +0.10, "technical_dribble": -0.08,
-           "technical_shot": -0.10},
+           "technical_shot": -0.10, "physical_jump": +0.10, "physical_contact": +0.10,
+           "technical_interceptions": +0.10, "technical_ballwinning": +0.10,
+           "mental_aggression": +0.06, "technical_tightpossession": -0.08},
     "LB": {"physical_velocity": +0.08, "technical_slidingtackle": +0.08,
-           "technical_shot": -0.08},
+           "technical_shot": -0.08, "technical_ballwinning": +0.06, "technical_curl": +0.04},
     "RB": {"physical_velocity": +0.08, "technical_slidingtackle": +0.08,
-           "technical_shot": -0.08},
+           "technical_shot": -0.08, "technical_ballwinning": +0.06, "technical_curl": +0.04},
     "DM": {"technical_standingtackle": +0.10, "technical_shortpass": +0.06,
-           "mental_defensivepositioning": +0.08},
-    "CM": {"technical_shortpass": +0.10, "mental_vision": +0.10, "physical_stamina": +0.08},
-    "LM": {"physical_acceleration": +0.10, "technical_dribble": +0.08},
-    "RM": {"physical_acceleration": +0.10, "technical_dribble": +0.08},
+           "mental_defensivepositioning": +0.08, "technical_ballwinning": +0.10,
+           "technical_interceptions": +0.08, "mental_aggression": +0.06},
+    "CM": {"technical_shortpass": +0.10, "mental_vision": +0.10, "physical_stamina": +0.08,
+           "technical_tightpossession": +0.06, "technical_setpiece": +0.04},
+    "LM": {"physical_acceleration": +0.10, "technical_dribble": +0.08,
+           "technical_tightpossession": +0.06, "technical_curl": +0.08},
+    "RM": {"physical_acceleration": +0.10, "technical_dribble": +0.08,
+           "technical_tightpossession": +0.06, "technical_curl": +0.08},
     "CF": {"technical_shot": +0.14, "technical_volley": +0.10,
            "mental_offensivepositioning": +0.12, "technical_standingtackle": -0.10,
-           "mental_defensivepositioning": -0.08},
+           "mental_defensivepositioning": -0.08, "physical_jump": +0.06,
+           "technical_ballwinning": -0.10, "technical_interceptions": -0.10},
 }
+for _role, _bias in ROLE_BIAS.items():
+    if _role != KEEPER_ROLE:
+        _bias.update(OUTFIELD_BIAS)
 
 
 # ted.read_players decodes every one of a player's own PES ratings straight off
@@ -93,28 +120,68 @@ ROLE_BIAS = {
 # player a pack author hand-edited off his tier's template - a real difference
 # in the file, not a typo to be corrected away.
 #
-# The engine's stat set is coarser than PES's: it has no place kicking, curl,
-# jump, physical-contact, or goalkeeping-specific keys, so those PES stats go
-# unused here, and it has no separate key for Dribbling versus Tight
-# Possession, so only the more literally-named one is mapped. Ball Winning
-# feeds both tackle keys, since PES does not split it the way the engine does.
+# Every PES 2021 attribute has its own key. Two PES stats fan out: Ball Winning
+# feeds the engine's two tackle keys as well as its own, and Aggression feeds
+# mental_workrate (the engine's pre-existing reading of it) as well as its own.
+# PES 2021 has no Interceptions rating - that arrived with eFootball - so
+# technical_interceptions starts from Defensive Awareness, the stat PES folds
+# it into.
 PES_TO_ENGINE_STAT = {
     "offensive_awareness": "mental_offensivepositioning",
     "ball_control": "technical_ballcontrol",
+    "tight_possession": "technical_tightpossession",
     "low_pass": "technical_shortpass",
     "lofted_pass": "technical_highpass",
     "finishing": "technical_shot",
+    "place_kicking": "technical_setpiece",
+    "curl": "technical_curl",
     "speed": "physical_velocity",
     "acceleration": "physical_acceleration",
+    "jump": "physical_jump",
+    "physical_contact": "physical_contact",
     "balance": "physical_balance",
     "stamina": "physical_stamina",
-    "aggression": "mental_workrate",
+    "ball_winning": "technical_ballwinning",
+    "aggression": "mental_aggression",
     "defensive_awareness": "mental_defensivepositioning",
     "heading": "technical_header",
     "dribbling": "technical_dribble",
     "kicking_power": "physical_shotpower",
+    "gk_awareness": "gk_awareness",
+    "gk_catching": "gk_catching",
+    "gk_clearing": "gk_clearing",
+    "gk_reflexes": "gk_reflexes",
+    "gk_reach": "gk_coverage",
 }
-BALL_WINNING_KEYS = ("technical_standingtackle", "technical_slidingtackle")
+# (engine key, PES stat) for the keys that borrow a second reading of a PES stat.
+DERIVED_KEYS = (("technical_standingtackle", "ball_winning"),
+                ("technical_slidingtackle", "ball_winning"),
+                ("mental_workrate", "aggression"),
+                ("technical_interceptions", "defensive_awareness"))
+# The non-7-bit ratings, (engine key, ted ability name): shown 1..max -> 0..1.
+ABILITY_KEYS = (("technical_weakfootusage", "weak_foot_usage"),
+                ("technical_weakfootaccuracy", "weak_foot_accuracy"),
+                ("physical_form", "form"),
+                ("physical_injuryresistance", "injury_resistance"))
+ABILITY_MAX = {name: shown_max for name, _, _, _, shown_max in ted.ABILITY_FIELDS}
+
+# The Playing Styles PES allows a position (the engine's ten roles; PES's
+# wingers and second strikers fold into LM/RM and CF), for a player whose
+# record names none. PlayingStyles::InferPlayer in the engine makes the same
+# call at load; this is the importer's copy so the database carries the answer.
+ROLE_STYLES = {
+    "GK": ("offensive_goalkeeper", "defensive_goalkeeper"),
+    "CB": ("build_up", "the_destroyer", "extra_frontman", "none"),
+    "LB": ("offensive_full_back", "full_back_finisher", "defensive_full_back"),
+    "RB": ("offensive_full_back", "full_back_finisher", "defensive_full_back"),
+    "DM": ("anchor_man", "box_to_box", "the_destroyer", "orchestrator"),
+    "CM": ("box_to_box", "orchestrator", "hole_player", "classic_no_10"),
+    "LM": ("roaming_flank", "cross_specialist", "prolific_winger", "creative_playmaker"),
+    "RM": ("roaming_flank", "cross_specialist", "prolific_winger", "creative_playmaker"),
+    "AM": ("creative_playmaker", "classic_no_10", "hole_player", "dummy_runner"),
+    "CF": ("goal_poacher", "fox_in_the_box", "target_man", "dummy_runner"),
+}
+WIDE_ROLES = ("LB", "RB", "LM", "RM")
 
 
 def pes_to_base(value):
@@ -127,7 +194,76 @@ def pes_to_base(value):
     return min(1.0, max(0.0, (value - 40) / 59.0))
 
 
-def stat_profile_xml(stats, role, seed):
+def wobble(key, seed):
+    """A settled +-0.05, from the name and the seed and nothing else.
+
+    crc32, not hash(): Python randomises string hashing per process, so hash()
+    would give a different team every time the importer ran.
+    """
+    digest = zlib.crc32(("%s:%d" % (key, seed)).encode()) & 0xffff
+    return (digest / 65535.0 - 0.5) * 0.10
+
+
+def infer_playing_style(values, role, seed):
+    """The style a player of `role` with these engine-key values would carry.
+
+    A CF who heads better than he finishes is a Target Man and one quicker
+    than he is accurate a Goal Poacher; otherwise a settled pick from the
+    position's own list."""
+    options = ROLE_STYLES.get(role, ("none",))
+    if role == "CF":
+        if values["technical_header"] > values["technical_shot"] + 0.05:
+            return "target_man"
+        if values["physical_velocity"] > values["technical_shot"] + 0.05:
+            return "goal_poacher"
+    return options[(zlib.crc32(("style:%d" % seed).encode()) & 0xffff) % len(options)]
+
+
+def infer_com_styles(values, role):
+    """The COM playing cards these engine-key values earn: each card goes to a
+    player whose defining stats stand clearly above his own mean. A keeper
+    carries none - PES gives none to keepers either."""
+    if role == KEEPER_ROLE:
+        return []
+    outfield = [v for k, v in values.items() if k not in GK_KEYS]
+    bar = sum(outfield) / len(outfield) + 0.08
+    cards = []
+    if values["technical_dribble"] > bar:
+        cards.append("trickster")
+    if values["technical_tightpossession"] > bar:
+        cards.append("mazing_run")
+    if (values["physical_velocity"] + values["physical_acceleration"]) / 2 > bar:
+        cards.append("speeding_bullet")
+    if role in WIDE_ROLES and values["technical_shot"] > bar:
+        cards.append("incisive_run")
+    if values["technical_highpass"] > bar:
+        cards.append("long_ball_expert")
+    if role in WIDE_ROLES and values["technical_curl"] > bar:
+        cards.append("early_cross")
+    if (values["physical_shotpower"] + values["technical_shot"]) / 2 > bar:
+        cards.append("long_ranger")
+    return cards[:5]
+
+
+def render_profile(starts, role, seed, playing_style=None, com_styles=None):
+    """-> profile_xml from a per-key 0..1 starting value each: the role's bias
+    and the settled wobble go on top, then the styles - the given ones, or the
+    ones the finished values earn."""
+    bias = ROLE_BIAS.get(role, {})
+    values = {key: min(1.0, max(0.0, starts[key] + bias.get(key, 0.0) + wobble(key, seed)))
+              for key in STAT_KEYS}
+    if playing_style is None:
+        playing_style = infer_playing_style(values, role, seed)
+    if com_styles is None:
+        com_styles = infer_com_styles(values, role)
+    lines = ["<%s>%.6f</%s>" % (key, values[key], key) for key in STAT_KEYS]
+    lines.append("<playing_style>%s</playing_style>" % playing_style)
+    lines.append("<com_styles>%s</com_styles>" % (",".join(com_styles) or "none"))
+    return "\n".join(lines) + "\n"
+
+
+def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
+                     com_styles=None):
     """One player's stats, as the engine's profile_xml, converted straight from
     his own decoded PES ratings.
 
@@ -136,25 +272,21 @@ def stat_profile_xml(stats, role, seed):
     value, per player, rather than one flat number for the player's whole
     profile. A key with no PES analogue (mental_vision and the like) starts
     from this player's own mean rating across every stat he does have: his own
-    overall level, not a guess at what that key specifically should be.
+    overall level, not a guess at what that key specifically should be. The
+    non-7-bit ratings come from `abilities` (ted.read_player_abilities) when
+    the record carried them, and from that same mean otherwise. A "none"
+    playing style is PES's own answer and is kept; only None (unread) infers.
     """
-    bias = ROLE_BIAS.get(role, {})
     mean_pes = sum(stats.values()) / len(stats)
     pes_by_key = {engine_key: stats[pes_stat]
                   for pes_stat, engine_key in PES_TO_ENGINE_STAT.items()}
-    for key in BALL_WINNING_KEYS:
-        pes_by_key[key] = stats["ball_winning"]
-    lines = []
-    for key in STAT_KEYS:
-        pes_value = pes_by_key.get(key, mean_pes)
-        # a settled +-0.05 wobble, from the name and the seed and nothing else
-        # crc32, not hash(): Python randomises string hashing per process, so hash()
-        # would give a different team every time the importer ran.
-        digest = zlib.crc32(("%s:%d" % (key, seed)).encode()) & 0xffff
-        wobble = (digest / 65535.0 - 0.5) * 0.10
-        value = pes_to_base(pes_value) + bias.get(key, 0.0) + wobble
-        lines.append("<%s>%.6f</%s>" % (key, min(1.0, max(0.0, value)), key))
-    return "\n".join(lines) + "\n"
+    for engine_key, pes_stat in DERIVED_KEYS:
+        pes_by_key[engine_key] = stats[pes_stat]
+    starts = {key: pes_to_base(pes_by_key.get(key, mean_pes)) for key in STAT_KEYS}
+    for engine_key, ability in ABILITY_KEYS:
+        if abilities and ability in abilities:
+            starts[engine_key] = (abilities[ability] - 1) / float(ABILITY_MAX[ability] - 1)
+    return render_profile(starts, role, seed, playing_style, com_styles)
 
 
 def profile_xml(base_stat, role, seed):
@@ -165,17 +297,7 @@ def profile_xml(base_stat, role, seed):
     updated. The spread is a fixed hash of the stat name and the seed, so two players
     of the same role differ without either being random.
     """
-    bias = ROLE_BIAS.get(role, {})
-    lines = []
-    for key in STAT_KEYS:
-        # a settled +-0.05 wobble, from the name and the seed and nothing else
-        # crc32, not hash(): Python randomises string hashing per process, so hash()
-        # would give a different team every time the importer ran.
-        digest = zlib.crc32(("%s:%d" % (key, seed)).encode()) & 0xffff
-        wobble = (digest / 65535.0 - 0.5) * 0.10
-        value = base_stat + bias.get(key, 0.0) + wobble
-        lines.append("<%s>%.6f</%s>" % (key, min(1.0, max(0.0, value)), key))
-    return "\n".join(lines) + "\n"
+    return render_profile({key: base_stat for key in STAT_KEYS}, role, seed)
 
 
 def stat_values(xml):
@@ -263,7 +385,9 @@ def install(database, team, tactics, dry_run=False):
             stats = player.get("stats")
             if stats:
                 base_stat = pes_to_base(sum(stats.values()) / len(stats))
-                profile = stat_profile_xml(stats, role, slot)
+                profile = stat_profile_xml(stats, role, slot, player.get("abilities"),
+                                           player.get("playing_style"),
+                                           player.get("com_styles"))
             else:
                 base_stat = BASE_STAT
                 profile = profile_xml(BASE_STAT, role, slot)

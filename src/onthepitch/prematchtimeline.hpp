@@ -53,6 +53,11 @@ enum class Overlay {
   None,
   FormationHome,
   FormationAway,
+  // Both crests, both names and the fixture line, over whatever the beat is
+  // filming. PES opens its broadcast with this over the aerial (VGL26 shots
+  // 001-017); ours opened on a bare stadium orbit, with the two teams named
+  // only on the loading card the match sits behind while it loads.
+  Versus,
 };
 
 struct Beat {

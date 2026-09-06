@@ -722,6 +722,7 @@ set(MENU_SOURCES
    src/menu/ingame/formationgraphic.cpp
    src/menu/ingame/formationgraphiclayout.cpp
    src/menu/ingame/banner.cpp
+   src/menu/ingame/goalbug.cpp
    src/menu/ingame/bannerpresentation.cpp
    src/menu/settings.cpp
 )
@@ -745,6 +746,7 @@ set(DATA_HEADERS
    src/data/formations.hpp
    src/data/matchanalytics.hpp
    src/data/playertraits.hpp
+   src/data/playingstyles.hpp
 )
 
 set(DATA_SOURCES
@@ -765,4 +767,5 @@ set(DATA_SOURCES
    src/data/formations.cpp
    src/data/matchanalytics.cpp
    src/data/playertraits.cpp
+   src/data/playingstyles.cpp
 )

@@ -8,10 +8,8 @@ namespace PlayerTraits {
 namespace {
 
 const e_Trait allTraits[traitCount] = {
-    e_Trait_SpeedMerchant,     e_Trait_TargetMan,     e_Trait_Knuckleballer,
-    e_Trait_OneTouchPass,      e_Trait_FirstTimeShot, e_Trait_GoalPoacher,
-    e_Trait_CreativePlaymaker, e_Trait_FoxInTheBox,   e_Trait_LongRangeShooter,
-    e_Trait_ProlificWinger,    e_Trait_BoxToBox,      e_Trait_Anchorman,
+    e_Trait_SpeedMerchant, e_Trait_TargetMan,     e_Trait_Knuckleballer,
+    e_Trait_OneTouchPass,  e_Trait_FirstTimeShot,
 };
 
 // Lowercases and drops separators so "Target Man", "target_man" and "targetman"
@@ -35,7 +33,6 @@ const float targetManShieldingRadius = 0.08f;
 const float rollingBallSpeed = 1.0f;
 const float firstTimeShotFullSpeed = 12.0f;
 const float firstTimeShotPowerBonus = 0.15f;
-const float playmakerSpaceEmphasis = 0.35f;
 
 }  // namespace
 
@@ -55,20 +52,6 @@ std::string GetName(e_Trait trait) {
       return "one_touch_pass";
     case e_Trait_FirstTimeShot:
       return "first_time_shot";
-    case e_Trait_GoalPoacher:
-      return "goal_poacher";
-    case e_Trait_CreativePlaymaker:
-      return "creative_playmaker";
-    case e_Trait_FoxInTheBox:
-      return "fox_in_the_box";
-    case e_Trait_LongRangeShooter:
-      return "long_range_shooter";
-    case e_Trait_ProlificWinger:
-      return "prolific_winger";
-    case e_Trait_BoxToBox:
-      return "box_to_box";
-    case e_Trait_Anchorman:
-      return "anchorman";
     default:
       return "";
   }
@@ -128,38 +111,18 @@ unsigned int PlayerHash(int playerDatabaseID, int salt) {
   return hash ^ (hash >> 16);
 }
 
-// Whether a style makes sense for the position a player is fielded in.
+// Whether a skill makes sense for the position a player is fielded in.
 bool SuitsRole(e_Trait trait, e_PlayerRole role) {
-  const bool isForward = role == e_PlayerRole_CF;
-  const bool isWide = role == e_PlayerRole_LM || role == e_PlayerRole_RM ||
-                      role == e_PlayerRole_LB || role == e_PlayerRole_RB;
-  const bool isMidfield = role == e_PlayerRole_CM || role == e_PlayerRole_AM ||
-                          role == e_PlayerRole_DM || role == e_PlayerRole_LM ||
-                          role == e_PlayerRole_RM;
   const bool isDefender = role == e_PlayerRole_CB || role == e_PlayerRole_LB ||
                           role == e_PlayerRole_RB || role == e_PlayerRole_DM;
 
   switch (trait) {
-    case e_Trait_GoalPoacher:
-    case e_Trait_FoxInTheBox:
-      return isForward;
     case e_Trait_TargetMan:
-      return isForward || role == e_PlayerRole_CB;
-    case e_Trait_ProlificWinger:
-      return isWide;
-    case e_Trait_CreativePlaymaker:
-      return role == e_PlayerRole_AM || role == e_PlayerRole_CM;
-    case e_Trait_Anchorman:
-      return role == e_PlayerRole_DM || role == e_PlayerRole_CB;
-    case e_Trait_BoxToBox:
-      return isMidfield;
-    case e_Trait_LongRangeShooter:
+      return role == e_PlayerRole_CF || role == e_PlayerRole_CB;
     case e_Trait_Knuckleballer:
       return !isDefender || role == e_PlayerRole_DM;
-    case e_Trait_SpeedMerchant:
-      return role != e_PlayerRole_GK;
     default:
-      // One-touch passing and first-time shooting suit anybody outfield.
+      // Pace, one-touch passing and first-time shooting suit anybody outfield.
       return role != e_PlayerRole_GK;
   }
 }
@@ -170,7 +133,7 @@ TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotSta
   if (role == e_PlayerRole_GK)
     return traitMaskNone;
 
-  // One signature style, plus a chance of one or two more, so a squad has a few
+  // One signature skill, plus a chance of one or two more, so a squad has a few
   // stand-out players rather than eleven identical ones.
   const unsigned int roll = PlayerHash(playerDatabaseID, 1);
   const int wanted = 1 + static_cast<int>(roll % 3u);
@@ -183,8 +146,8 @@ TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotSta
     if (Has(mask, candidate) || !SuitsRole(candidate, role))
       continue;
 
-    // Shooting from distance belongs to the players who can actually finish.
-    if (candidate == e_Trait_LongRangeShooter) {
+    // Knuckleballs from distance belong to the players who can actually strike one.
+    if (candidate == e_Trait_Knuckleballer) {
       const float threshold = 0.35f + (1.0f - std::max(0.0f, std::min(shotStat, 1.0f))) * 0.6f;
       if (static_cast<float>(PlayerHash(playerDatabaseID, 31 + attempt) % 1000u) / 1000.0f <
           threshold)
@@ -203,31 +166,13 @@ TraitMask AssignForPlayer(int playerDatabaseID, e_PlayerRole role, float shotSta
 
 float GetShotAppetite(TraitMask mask) {
   float appetite = 1.0f;
-  if (Has(mask, e_Trait_LongRangeShooter))
-    appetite += 0.35f;
-  if (Has(mask, e_Trait_FoxInTheBox))
-    appetite += 0.3f;
-  if (Has(mask, e_Trait_GoalPoacher))
-    appetite += 0.25f;
   if (Has(mask, e_Trait_FirstTimeShot))
     appetite += 0.1f;
-  // A playmaker looks for the pass before the shot.
-  if (Has(mask, e_Trait_CreativePlaymaker))
-    appetite -= 0.2f;
-  if (Has(mask, e_Trait_Anchorman))
-    appetite -= 0.25f;
   return std::max(0.55f, std::min(appetite, 2.0f));
 }
 
 float GetShootingRangeBonus(TraitMask mask) {
-  float bonus = 0.0f;
-  if (Has(mask, e_Trait_LongRangeShooter))
-    bonus += 9.0f;
-  if (Has(mask, e_Trait_Knuckleballer))
-    bonus += 3.0f;
-  if (Has(mask, e_Trait_FoxInTheBox))
-    bonus -= 2.0f;  // he wants it inside the six-yard box
-  return std::max(0.0f, std::min(bonus, 14.0f));
+  return Has(mask, e_Trait_Knuckleballer) ? 3.0f : 0.0f;
 }
 
 float GetAccelerationMultiplier(TraitMask mask) {
@@ -282,24 +227,6 @@ float GetFirstTimeShotPowerMultiplier(TraitMask mask, bool isFirstTimeShot, floa
   // The quicker the ball is travelling, the more there is to time well.
   const float speedFactor = std::min(ballSpeed / firstTimeShotFullSpeed, 1.0f);
   return 1.0f + firstTimeShotPowerBonus * speedFactor;
-}
-
-float GetPoacherTargetX(TraitMask mask, float defaultX, float opponentOffsideLineX, int teamSide) {
-  if (!Has(mask, e_Trait_GoalPoacher) || teamSide == 0)
-    return defaultX;
-
-  // Sit a stride on the own-goal side of the line, whatever the formation says.
-  const float side = static_cast<float>(teamSide > 0 ? 1 : -1);
-  return opponentOffsideLineX + side * poacherOffsideCushion;
-}
-
-float GetSpaceRatingWeight(TraitMask mask, float baseWeight) {
-  if (!Has(mask, e_Trait_CreativePlaymaker))
-    return baseWeight;
-
-  const float base = std::max(0.0f, std::min(baseWeight, 1.0f));
-  // Shift the weight towards "find the pocket of space" without ever exceeding 1.
-  return base + (1.0f - base) * playmakerSpaceEmphasis;
 }
 
 }  // namespace PlayerTraits

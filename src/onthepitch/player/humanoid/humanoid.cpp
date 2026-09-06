@@ -732,8 +732,20 @@ void Humanoid::Process() {
         // is recorded as a clearance rather than a pass nobody could complete.
         if (currentAnim->originatingCommand.touchInfo.isClearance)
           match->GetMatchData()->AddClearance(team->GetID());
-        else
+        else {
           match->GetMatchData()->AddPassAttempt(team->GetID());
+          // A cross is a ball played in from wide in the attacking third,
+          // across the pitch and off the ground - which is how PES's table
+          // counts them (the high pass from the flank into the box).
+          const Vector3 from = CastPlayer()->GetPosition();
+          const bool wide = std::fabs(from.coords[1]) > 20.0f;
+          const bool attackingThird =
+              from.coords[0] * -team->GetSide() > pitchHalfW * 0.33f;
+          const bool inward = touchVec.coords[1] * from.coords[1] < 0.0f;
+          if (wide && attackingThird && inward &&
+              currentAnim->functionType == e_FunctionType_HighPass)
+            match->GetMatchData()->AddCross(team->GetID());
+        }
 #ifndef NDEBUG
         // [pass-dist] instrumentation: how far the AI actually chose to play
         // this ball, measured to where the receiver is predicted to be.
@@ -915,6 +927,9 @@ void Humanoid::Process() {
             if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
                 z_at_goal < goalHeight) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());
+              // On target and still travelling: if the other keeper ends up
+              // with it inside the window, that was a save (MatchData).
+              match->GetMatchData()->OpenSaveChance(team->GetID());
               match->AddExcitementBoost(0.55f, 2500);
             }
           }
@@ -947,6 +962,10 @@ void Humanoid::Process() {
       }
 
       else if (currentAnim->functionType == e_FunctionType_Deflect) {
+        // Deflect anims are keeper-only. Whether he holds the ball is his GK
+        // Catching, how quickly he gets set is his GK Reflexes, and a parry is
+        // pushed to safety by his GK Clearing (PlayerData defaults the gk_*
+        // keys from the outfield analogues for profiles that predate them).
         bool canRetain = true;  // can we grab hold of the ball?
         if (currentAnim->anim->GetVariable("outgoing_retain_state").compare("") == 0)
           canRetain = false;  // not the right anim, hopeless!
@@ -960,10 +979,10 @@ void Humanoid::Process() {
         Player* lastTouchPlayer = match->GetTeam(abs(team->GetID() - 1))->GetLastTouchPlayer();
         if (lastTouchPlayer) {
           reactionDifficulty = std::pow(
-              lastTouchPlayer->GetLastTouchBias(1200 - player->GetStat("physical_reaction") * 400),
-              0.6f);
+              lastTouchPlayer->GetLastTouchBias(1200 - player->GetStat("gk_reflexes") * 400), 0.6f);
         }
-        if ((1.0f - veloDifficulty) * (1.0f - reactionDifficulty) < 0.3f)
+        if ((1.0f - veloDifficulty) * (1.0f - reactionDifficulty) <
+            GameplayTuning::GetKeeperCatchThreshold(player->GetStat("gk_catching")))
           canRetain = false;  // too hard!
         if (Verbose())
           printf("deflect: velodiff: %f, reactiondiff: %f, total diff inv: %f\n", veloDifficulty,
@@ -976,7 +995,9 @@ void Humanoid::Process() {
           Vector3 playerMovement = spatialState.movement;
           Vector3 touchVec =
               (-currentBallMovement * 0.1f + playerMovement * 2.0f +
-               Vector3(-team->GetSide(), 0, 0) * 4.0f + Vector3(0, random(-1, 1), 0))
+               Vector3(-team->GetSide(), 0, 0) *
+                   GameplayTuning::GetKeeperParryPush(player->GetStat("gk_clearing")) +
+               Vector3(0, random(-1, 1), 0))
                   .GetNormalized(0) *
               (currentBallMovement.GetLength() * 0.3f + playerMovement.GetLength() * 2.5f);
           touchVec.coords[2] += 1.2f;
@@ -1029,8 +1050,10 @@ void Humanoid::Process() {
                                     bodyPart->GetDerivedRotation() * Vector3(0, 0, -0.36f));
       team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Intentional_Nonkicked);
       match->GetMatchData()->AddGhostTouch(team->GetID(), 4);  // keeper holds the ball
-      if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
+      if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
         match->GetMatchData()->RecordPassGoalkeeperCatch();
+        match->GetMatchData()->RecordGoalkeeperTouch(team->GetID());
+      }
     } else {
       // no longer retaining
       match->SetBallRetainer(0);
@@ -3250,11 +3273,14 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   float difficultyFactor = atof(currentAnim->anim->GetVariable("touch_difficultyfactor").c_str());
 
   // apply stats. The stat weighs heavier than it used to: an elite passer keeps
-  // his passing in the low-to-mid 80s, a poor one well under 60.
+  // his passing in the low-to-mid 80s, a poor one well under 60. A keeper's
+  // lofted ball is a clearance: PES GK Clearing, not his lofted passing.
+  const bool keeper = CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK;
   if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass)
     difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.80f);
   if (functionType == e_FunctionType_HighPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_highpass") * 0.80f);
+    difficultyFactor *=
+        (1.0f - CastPlayer()->GetStat(keeper ? "gk_clearing" : "technical_highpass") * 0.80f);
 
   // The team's style shapes precision too: a drilled short-passing side knocks
   // it around more cleanly, a long-ball side accepts more risk per pass.

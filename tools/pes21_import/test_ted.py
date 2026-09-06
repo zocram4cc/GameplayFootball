@@ -72,7 +72,8 @@ def set_bits(rec, byte_offset, bit_offset, nbits, value):
             rec[byte_i] &= ~(1 << bit_i) & 0xff
 
 
-def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=None):
+def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=None,
+           abilities=None, playing_style=None, com_styles=()):
     rec = bytearray(ted.PLAYER_RECORD_SIZE)
     if magic:
         rec[0:4] = magic
@@ -81,6 +82,15 @@ def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=No
     for stat_name, byte_off, bit_off in ted.STAT_FIELDS:
         if stats and stat_name in stats:
             set_bits(rec, byte_off, bit_off, 7, stats[stat_name])
+    for ability, byte_off, bit_off, width, _ in ted.ABILITY_FIELDS:
+        if abilities and ability in abilities:
+            set_bits(rec, byte_off, bit_off, width, abilities[ability] - 1)
+    if playing_style is not None:
+        byte_off, bit_off, width = ted.PLAYING_STYLE_FIELD
+        set_bits(rec, byte_off, bit_off, width, ted.PLAYING_STYLES.index(playing_style))
+    for com, byte_off, bit_off in ted.COM_STYLE_FIELDS:
+        if com in com_styles:
+            set_bits(rec, byte_off, bit_off, 1, 1)
     rec[ted.REC_NAME:ted.REC_NAME + len(name)] = name.encode()
     rec[ted.REC_SHIRT_NAME:ted.REC_SHIRT_NAME + len(shirt)] = shirt.encode()
     rec[ted.REC_EXTRA:ted.REC_EXTRA + len(extra)] = extra.encode()
@@ -191,6 +201,48 @@ class ThePlayerStats(unittest.TestCase):
             record("Odd Silver", "B", stats={"defensive_awareness": 50}))
         self.assertEqual(players[0]["stats"]["defensive_awareness"], 60)
         self.assertEqual(players[1]["stats"]["defensive_awareness"], 50)
+
+    def test_the_non_seven_bit_ratings_read_as_the_card_shows_them(self):
+        # stored zero-based, shown one-based: a stored 0 is the card's "1"
+        players = self.roster(
+            record("Lefty", "L", abilities={"weak_foot_usage": 4, "weak_foot_accuracy": 1,
+                                             "form": 8, "injury_resistance": 3}),
+            record("Blank", "B"))
+        self.assertEqual(players[0]["abilities"],
+                         {"weak_foot_usage": 4, "weak_foot_accuracy": 1,
+                          "form": 8, "injury_resistance": 3})
+        self.assertEqual(players[1]["abilities"],
+                         {"weak_foot_usage": 1, "weak_foot_accuracy": 1,
+                          "form": 1, "injury_resistance": 1})
+
+    def test_injury_resistance_does_not_bleed_into_dribbling(self):
+        # Dribbling is bits 0-6 of 0x28 and Injury Resistance the two bits after it
+        players = self.roster(record("Glass", "G", stats={"dribbling": 99},
+                                      abilities={"injury_resistance": 1}))
+        self.assertEqual(players[0]["stats"]["dribbling"], 99)
+        self.assertEqual(players[0]["abilities"]["injury_resistance"], 1)
+
+    def test_the_playing_style_index_names_pes_own_style(self):
+        players = self.roster(record("Ten", "T", playing_style="classic_no_10"),
+                              record("Sweeper", "S", playing_style="offensive_goalkeeper"),
+                              record("Plain", "P"))
+        self.assertEqual(players[0]["playing_style"], "classic_no_10")
+        self.assertEqual(players[1]["playing_style"], "offensive_goalkeeper")
+        self.assertEqual(players[2]["playing_style"], "none")
+
+    def test_an_index_past_the_table_reads_as_none(self):
+        rec = bytearray(record("Future", "F"))
+        byte_off, bit_off, width = ted.PLAYING_STYLE_FIELD
+        set_bits(rec, byte_off, bit_off, width, 31)
+        self.assertEqual(self.roster(bytes(rec))[0]["playing_style"], "none")
+
+    def test_the_com_cards_come_back_in_pes_order(self):
+        # Trickster is the top bit of 0x2F, the other six the low bits of 0x30
+        players = self.roster(
+            record("Cards", "C", com_styles=("long_ranger", "trickster", "incisive_run")),
+            record("Plain", "P"))
+        self.assertEqual(players[0]["com_styles"], ["trickster", "incisive_run", "long_ranger"])
+        self.assertEqual(players[1]["com_styles"], [])
 
 
 def team_payload():

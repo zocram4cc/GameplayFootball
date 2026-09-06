@@ -22,7 +22,7 @@ constexpr float kCardPixelAspect = 1.32f;  // width / height
 constexpr float kCardHeight = 74.0f;
 
 constexpr float kHeaderFraction = 0.13f;
-constexpr float kRowHeight = 4.2f;
+constexpr float kRowHeight = 3.4f;  // PES's table is eleven rows plus ours
 constexpr float kRowTextFraction = 0.60f;
 constexpr float kBarHeight = 0.8f;
 
@@ -116,8 +116,17 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
 
   Localization& text = Localization::GetInstance();
   float y = headerHeight + kCardHeight * 0.05f;
-  const char* labels[] = {"stats_possession", "stats_shots",     "stats_shots_on_target",
-                          "stats_passes",     "stats_pass_accuracy", "stats_fouls",
+  // PES's half-time table, in its order and with its combined rows (the
+  // reference screen: Goals Scored, Possession, Shots (On Target), Fouls
+  // (Offside), Corner Kicks, Free Kicks, Passes Completed (%), Crosses,
+  // Interceptions, Tackles, Saves), followed by the two readings PES has no
+  // row for: expected goals and the ball heatmap below.
+  const char* labels[] = {"stats_possession",    "stats_goals",
+                          "stats_shots",         "stats_fouls",
+                          "stats_corners",       "stats_free_kicks",
+                          "stats_passes",        "stats_pass_accuracy",
+                          "stats_crosses",       "stats_interceptions",
+                          "stats_tackles",       "stats_saves",
                           "stats_expected_goals"};
   for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); i++) {
     rows.push_back(AddRow(text.Translate(labels[i]), y, i == 0));
@@ -286,23 +295,37 @@ void Gui2StatsOverlay::UpdateStats() {
   SetRowValues(rows[0], Percent(pct1), Percent(100 - pct1));
   DrawPossessionBar(total > 0 ? poss1 / total : 0.5f);
 
-  SetRowValues(rows[1], int_to_str(md->GetShots(0)), int_to_str(md->GetShots(1)));
-  SetRowValues(rows[2], int_to_str(md->GetShotsOnTarget(0)), int_to_str(md->GetShotsOnTarget(1)));
+  // "12 (7)": the headline number with the qualifier in brackets, as PES pairs
+  // shots with shots on target and fouls with offsides.
+  auto pair = [](int headline, int bracketed) {
+    return int_to_str(headline) + " (" + int_to_str(bracketed) + ")";
+  };
+
+  SetRowValues(rows[1], int_to_str(md->GetGoalCount(0)), int_to_str(md->GetGoalCount(1)));
+  SetRowValues(rows[2], pair(md->GetShots(0), md->GetShotsOnTarget(0)),
+               pair(md->GetShots(1), md->GetShotsOnTarget(1)));
+  SetRowValues(rows[3], pair(md->GetFouls(0), md->GetOffsides(0)),
+               pair(md->GetFouls(1), md->GetOffsides(1)));
+  SetRowValues(rows[4], int_to_str(md->GetCorners(0)), int_to_str(md->GetCorners(1)));
+  SetRowValues(rows[5], int_to_str(md->GetFreeKicks(0)), int_to_str(md->GetFreeKicks(1)));
 
   const int attempts0 = md->GetPassAttempts(0);
   const int attempts1 = md->GetPassAttempts(1);
-  SetRowValues(rows[3],
+  SetRowValues(rows[6],
                int_to_str(md->GetPassesCompleted(0)) + "/" + int_to_str(attempts0),
                int_to_str(md->GetPassesCompleted(1)) + "/" + int_to_str(attempts1));
   SetRowValues(
-      rows[4],
+      rows[7],
       Percent(attempts0 > 0 ? int(std::round(md->GetPassesCompleted(0) * 100.0f / attempts0)) : 0),
       Percent(attempts1 > 0 ? int(std::round(md->GetPassesCompleted(1) * 100.0f / attempts1)) : 0));
 
-  SetRowValues(rows[5], int_to_str(md->GetFouls(0)), int_to_str(md->GetFouls(1)));
+  SetRowValues(rows[8], int_to_str(md->GetCrosses(0)), int_to_str(md->GetCrosses(1)));
+  SetRowValues(rows[9], int_to_str(md->GetInterceptions(0)), int_to_str(md->GetInterceptions(1)));
+  SetRowValues(rows[10], int_to_str(md->GetTackles(0)), int_to_str(md->GetTackles(1)));
+  SetRowValues(rows[11], int_to_str(md->GetSaves(0)), int_to_str(md->GetSaves(1)));
 
   const MatchAnalytics::ShotTally& tally = match->GetShotTally();
-  SetRowValues(rows[6], TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 0)),
+  SetRowValues(rows[12], TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 0)),
                TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 1)));
 
   DrawHeatmap();

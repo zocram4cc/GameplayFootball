@@ -30,8 +30,8 @@ struct Shooter {
 };
 
 struct Keeper {
-  float reaction = 0.5f;              // physical_reaction
-  float defensivePositioning = 0.5f;  // mental_defensivepositioning
+  float reflexes = 0.5f;   // gk_reflexes: getting down to it
+  float awareness = 0.5f;  // gk_awareness: reading the kick
 };
 
 // Point the shooter is aiming at, relative to the centre of the goal line:

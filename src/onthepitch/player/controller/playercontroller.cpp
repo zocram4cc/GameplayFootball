@@ -21,6 +21,7 @@
 #include <cmath>
 
 #include "../../../main.hpp"
+#include "../../gameplaytuning.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "../../humanspeed.hpp"
@@ -101,7 +102,10 @@ Player* PlayerController::CastPlayer() {
 }
 
 int PlayerController::GetReactionTime_ms() {
-  int reactionTime_ms = IController::GetReactionTime_ms();
+  // A keeper's latency is his GK Reflexes; outfielders keep physical_reaction.
+  int reactionTime_ms = CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK
+                            ? GameplayTuning::GetReactionTime_ms(player->GetStat("gk_reflexes"))
+                            : IController::GetReactionTime_ms();
   if (team->GetHumanGamerCount() == 0)
     reactionTime_ms += (1.0f - GetMatch()->GetMatchDifficulty()) * 100;
   return reactionTime_ms;
@@ -337,7 +341,7 @@ void PlayerController::_KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
     return;
 
   // Whether he gets across at all is decided once per incoming shot, from his
-  // reaction stat, by the same roll the body-collision pass consults - so a
+  // GK Reflexes, by the same roll the body-collision pass consults - so a
   // beaten keeper is beaten everywhere. The stock engine always played the
   // save, which is why almost nothing went in.
   if (!CastPlayer()->KeeperAttemptsSave())

@@ -5,6 +5,7 @@
 
 #include "icontroller.hpp"
 
+#include "../../gameplaytuning.hpp"
 #include "../../match.hpp"
 #include "../playerbase.hpp"
 
@@ -13,5 +14,5 @@ void IController::SetPlayer(PlayerBase* player) {
 }
 
 int IController::GetReactionTime_ms() {
-  return int(round(80.0f - player->GetStat("physical_reaction") * 40.0f));
+  return GameplayTuning::GetReactionTime_ms(player->GetStat("physical_reaction"));
 }

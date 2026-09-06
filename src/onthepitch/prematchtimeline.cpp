@@ -19,6 +19,7 @@ Camera ParseCamera(const std::string& value) {
 }
 
 Overlay ParseOverlay(const std::string& value) {
+  if (value == "versus") return Overlay::Versus;
   if (value == "formation_home") return Overlay::FormationHome;
   if (value == "formation_away") return Overlay::FormationAway;
   return Overlay::None;
@@ -95,7 +96,7 @@ Timeline Default() {
   // reference spends between its title card and the first whistle.
   Timeline timeline;
   timeline.beats = {
-      MakeBeat("stadium_card", 12.0f, Camera::Orbit, Overlay::None),
+      MakeBeat("stadium_card", 12.0f, Camera::Orbit, Overlay::Versus),
       // PES's own camerawork for each of these, moved onto our pitch with the
       // choreography it films (see Match::ComputeStagingOffset). The cast-framing
       // cameras are the fallback for a pack that ships none.

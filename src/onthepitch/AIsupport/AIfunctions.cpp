@@ -20,6 +20,7 @@
 
 #include <cmath>
 
+#include "../../data/playingstyles.hpp"
 #include "../../main.hpp"
 #include "../aitactics.hpp"
 #include "../ball.hpp"
@@ -456,18 +457,26 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
   Player* player = match->GetPlayer(thisPlayerID);
   Vector3 myPos = player->GetPosition();
   Vector3 myMov = player->GetMovement();
+  Team* team = player->GetTeam();
+  signed int side = team->GetSide();
 
-  const float offenseFactor = AITactics::GetDribbleForwardDrive(
-      player->GetTeam()->GetController()->GetLiveTacticReal("dribble_offensiveness", 0.5f),
-      AI_GetMindSet(player->GetDynamicFormationEntry().role));
+  // The playing style and COM cards bend how he carries it: a mazing runner
+  // drives at goal through bodies, a target man holds it up (docs/PES21_IMPORT.md).
+  const PlayingStyles::Player style = player->GetPlayerData()->GetPlayingStyle();
+  const PlayingStyles::ComMask comStyles = player->GetPlayerData()->GetComStyles();
+  const float offenseFactor = PlayingStyles::GetDribbleDrive(
+      style, comStyles,
+      AITactics::GetDribbleForwardDrive(
+          team->GetController()->GetLiveTacticReal("dribble_offensiveness", 0.5f),
+          AI_GetMindSet(player->GetDynamicFormationEntry().role)));
+  const float opponentRepel = PlayingStyles::GetOpponentRepel(style, comStyles, 2.0f);
+  const float centerMagnet = PlayingStyles::GetDribbleCenterPull(
+      style, comStyles, team->GetController()->GetLiveTacticReal("dribble_centermagnet", 0.5f));
   float powerMultiplier = 1.0f;  // should alter (average) resulting velocity
 
   float future_sec = 0.25f;
 
   PlayerImage thisPlayerImage = mentalImage->GetPlayerImage(thisPlayerID);
-
-  Team* team = player->GetTeam();
-  signed int side = team->GetSide();
 
   std::vector<PlayerImage> opponentPlayerImages;
 
@@ -484,12 +493,8 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
                       2.0f);  // near the end of the pitch, we want to get inside again
   centerModifierInv *= 0.5f;  // stop going to the sides! wtf, todo, why does it prefer the sideline
                               // so much (probably because of no opponents :P)
-  Vector3 oppGoalPos = Vector3(
-      -side * pitchHalfW,
-      myPos.coords[1] *
-          (1.0f - team->GetController()->GetLiveTacticReal("dribble_centermagnet", 0.5f)) *
-          centerModifierInv,
-      0);
+  Vector3 oppGoalPos =
+      Vector3(-side * pitchHalfW, myPos.coords[1] * (1.0f - centerMagnet) * centerModifierInv, 0);
 
   // Killing the game off: take the ball into the corner instead of driving at
   // the goal (proposal 2B).
@@ -509,7 +514,7 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
     spot.origin = oppPos;
     spot.magnetType = e_MagnetType_Repel;
     spot.decayType = e_DecayType_Variable;
-    spot.power = 2.0f * powerMultiplier;  // 1.0f;
+    spot.power = opponentRepel * powerMultiplier;
     spot.scale = 10.0f;                   // 16.0f;
     spot.exp = 1.0f;                      // 0.7f;
     forceField.push_back(spot);
@@ -561,7 +566,7 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
   desiredDirection = forceFieldMovement.GetNormalized(player->GetDirectionVec());
   desiredVelocity = clamp(forceFieldMovement.GetLength() * distanceToVelocityMultiplier,
                           idleVelocity, sprintVelocity);
-  desiredVelocity = RangeVelocity(desiredVelocity);
+  desiredVelocity = RangeVelocity(PlayingStyles::GetDribbleVelocity(style, comStyles, desiredVelocity));
 }
 
 Vector3 AI_GetForceFieldMovement(const std::vector<ForceSpot>& forceField,

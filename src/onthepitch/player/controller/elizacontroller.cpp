@@ -28,6 +28,7 @@
 #include "../humanoid/humanoid_utils.hpp"
 #include "../playerofficial.hpp"
 #include "data/playertraits.hpp"
+#include "data/playingstyles.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/setpiecelaws.hpp"
@@ -1038,8 +1039,11 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   oneTouchIsHard =
       movementDiff - CastPlayer()->GetStat("technical_shortpass") * movementDiff * 0.8f;
 
-  // Cards and philosophy shape how this player uses the ball (roadmap 4D).
+  // Cards, playing style and philosophy shape how this player uses the ball
+  // (roadmap 4D).
   const PlayerTraits::TraitMask traits = CastPlayer()->GetPlayerData()->GetTraits();
+  const PlayingStyles::Player style = CastPlayer()->GetPlayerData()->GetPlayingStyle();
+  const PlayingStyles::ComMask comStyles = CastPlayer()->GetPlayerData()->GetComStyles();
   const TeamPhilosophy::e_Philosophy philosophy = team->GetController()->GetPhilosophy();
   // A one-touch passer does not pay the control penalty on a quick release.
   oneTouchIsHard = PlayerTraits::GetQuickReleaseAccuracyPenalty(
@@ -1055,7 +1059,7 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
 
   // first selection
   float forwardSpaceWeight = 0.4f;
-  float spaceWeight = PlayerTraits::GetSpaceRatingWeight(traits, 0.3f);
+  float spaceWeight = PlayingStyles::GetSpaceRatingWeight(style, 0.3f);
   float forwardWeight = 2.0f + AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role) * 6.0f;
 
   float totalWeight1 = forwardSpaceWeight + spaceWeight + forwardWeight;
@@ -1157,13 +1161,19 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
                                                               longPossessionFactor)
                              : 0.0f;
         float passingOddsShort =
-            _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages);
+            _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages) *
+            PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_ShortPass);
         if (TeamPhilosophy::PrefersShortPassing(philosophy))
-          passingOddsShort = std::min(passingOddsShort * 1.2f, 1.0f);
-        float passingOddsLong =
-            _GetPassingOdds(mates.at(i), e_FunctionType_LongPass, opponentPlayerImages);
-        float passingOddsHigh =
-            _GetPassingOdds(mates.at(i), e_FunctionType_HighPass, opponentPlayerImages);
+          passingOddsShort *= 1.2f;
+        passingOddsShort = std::min(passingOddsShort, 1.0f);
+        float passingOddsLong = std::min(
+            _GetPassingOdds(mates.at(i), e_FunctionType_LongPass, opponentPlayerImages) *
+                PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_LongPass),
+            1.0f);
+        float passingOddsHigh = std::min(
+            _GetPassingOdds(mates.at(i), e_FunctionType_HighPass, opponentPlayerImages) *
+                PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_HighPass),
+            1.0f);
         if (passingOddsShort >= passingOddsLong && passingOddsShort >= passingOddsHigh) {
           mateRating.passRating = passingOddsShort;
           mateRating.passType = e_FunctionType_ShortPass;
@@ -1260,13 +1270,15 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - player->GetPosition()).GetLength(), 0.0f,
         32.0f);
     // How far out a player will have a go: the classic 16 metre window was so
-    // tight that whole matches passed with three or four shots. Range shooters and
-    // the team's appetite for a shot widen it further (proposal: an offensive,
-    // flowing game).
+    // tight that whole matches passed with three or four shots. Poachers, long
+    // rangers and the team's appetite for a shot widen it further (proposal: an
+    // offensive, flowing game).
     const float shotAppetite = PlayerTraits::GetShotAppetite(traits) *
+                               PlayingStyles::GetShotAppetite(style, comStyles) *
                                GameplayTuning::GetShotAppetite(*GetConfiguration());
     const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
-                                PlayerTraits::GetShootingRangeBonus(traits);
+                                PlayerTraits::GetShootingRangeBonus(traits) +
+                                PlayingStyles::GetShootingRangeBonus(style, comStyles);
     float idealShotPosFactor =
         1.0f - NormalizedClamp(
                    (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())

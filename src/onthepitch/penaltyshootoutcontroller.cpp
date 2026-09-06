@@ -172,8 +172,10 @@ void PenaltyShootoutController::SetUpKick() {
   Player* keeperPlayer = match->GetTeam(keepingTeam)->GetGoalie();
   PenaltyShootout::Keeper keeper;
   if (keeperPlayer) {
-    keeper.reaction = keeperPlayer->GetStat("physical_reaction");
-    keeper.defensivePositioning = keeperPlayer->GetStat("mental_defensivepositioning");
+    // PES's GK attributes; PlayerData defaults them from physical_reaction and
+    // mental_defensivepositioning for profiles written before they existed.
+    keeper.reflexes = keeperPlayer->GetStat("gk_reflexes");
+    keeper.awareness = keeperPlayer->GetStat("gk_awareness");
   }
 
   // The outcome comes from the players' stats, as the roadmap prescribes: the

@@ -71,14 +71,50 @@ TEST(GameplayTuningKeeperTest, TheBestKeeperStillLeavesShotsToBeScored) {
   EXPECT_LT(best, 0.8f) << "at nearly every shot, three xG finishes 0-0";
 }
 
-// The reaction stat still separates keepers, just not by whether they bother.
-TEST(GameplayTuningKeeperTest, ReactionStillSeparatesKeepersWithoutFreezingThem) {
+// GK Reflexes still separates keepers, just not by whether they bother. (The
+// roll used to read physical_reaction; PES rates keepers on gk_reflexes.)
+TEST(GameplayTuningKeeperTest, ReflexesStillSeparateKeepersWithoutFreezingThem) {
   const Properties config;
   const float poor = GameplayTuning::GetKeeperSaveChance(config, 0.1f);
   const float great = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
   EXPECT_GT(great, poor);
   EXPECT_LT(great - poor, 0.3f) << "the gap should be a shade, not a wall";
 }
+
+// The remaining PES GK attributes each move one behaviour in the direction PES
+// describes, and the engine's 0.6 default reproduces what it shipped with.
+TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
+  EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
+  EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);
+}
+
+TEST(GameplayTuningKeeperTest, AwarenessReadsTheBallEarlierAndPanicsLess) {
+  EXPECT_GT(GameplayTuning::GetKeeperAnticipation_ms(1.0f),
+            GameplayTuning::GetKeeperAnticipation_ms(0.0f));
+  EXPECT_EQ(GameplayTuning::GetKeeperAnticipation_ms(0.6f), 600u);
+  EXPECT_LT(GameplayTuning::GetKeeperGoalMouthPanic(1.0f),
+            GameplayTuning::GetKeeperGoalMouthPanic(0.0f));
+  EXPECT_GE(GameplayTuning::GetKeeperGoalMouthPanic(1.0f), 1.0f)
+      << "he never treats the goal as smaller than it is";
+}
+
+TEST(GameplayTuningKeeperTest, CoverageBringsHimOffHisLine) {
+  EXPECT_GT(GameplayTuning::GetKeeperComeOutBias(1.0f), GameplayTuning::GetKeeperComeOutBias(0.0f));
+  EXPECT_NEAR(GameplayTuning::GetKeeperComeOutBias(0.6f), 0.3f, 1e-5f);
+  EXPECT_LT(GameplayTuning::GetKeeperComeOutMargin_m(1.0f),
+            GameplayTuning::GetKeeperComeOutMargin_m(0.0f));
+  EXPECT_GT(GameplayTuning::GetKeeperComeOutMargin_m(1.0f), 0.0f)
+      << "even a sweeper keeper wants some head start";
+}
+
+TEST(GameplayTuningKeeperTest, CatchingHoldsHarderBallsAndClearingParriesFurther) {
+  EXPECT_LT(GameplayTuning::GetKeeperCatchThreshold(1.0f),
+            GameplayTuning::GetKeeperCatchThreshold(0.0f));
+  EXPECT_NEAR(GameplayTuning::GetKeeperCatchThreshold(0.6f), 0.3f, 1e-5f);
+  EXPECT_GT(GameplayTuning::GetKeeperParryPush(1.0f), GameplayTuning::GetKeeperParryPush(0.0f));
+  EXPECT_NEAR(GameplayTuning::GetKeeperParryPush(0.6f), 4.0f, 1e-5f);
+}
+
 TEST(GameplayTuningTrapTest, SupportWebImprovesTrapPrediction) {
   EXPECT_LT(GameplayTuning::GetTrapPredictionAssist(0.20f), 0.95f);
   EXPECT_LT(GameplayTuning::GetTrapPredictionAssist(0.20f),

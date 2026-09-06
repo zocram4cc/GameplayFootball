@@ -183,13 +183,15 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
-// Whether a keeper goes for a shot at all.
+// Whether a keeper goes for a shot at all. Driven by PES's GK Reflexes; a
+// profile written before the GK attributes existed gets gk_reflexes defaulted
+// from physical_reaction by PlayerData, so this always has a real input.
 //
 // The stock engine always played the save animation and almost nothing went in,
 // so this roll was introduced to beat him sometimes - but at 0.32 sharpness it
 // meant an average keeper tried for fewer than one shot in four and stood
 // watching the rest, which is not a keeper being beaten, it is a keeper not
-// playing. Reaction still separates keepers, by a shade rather than by whether
+// playing. Reflexes still separate keepers, by a shade rather than by whether
 // they bother.
 //
 // 0.88 went too far the other way. Measured over eight full headless matches:
@@ -204,11 +206,54 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // match should have. Whether he reaches a shot is still the save animation's
 // decision - the search only accepts a save that can actually get to the ball -
 // this only decides how often he goes.
-inline float GetKeeperSaveChance(const blunted::Properties& config, float reactionStat) {
+inline float GetKeeperSaveChance(const blunted::Properties& config, float reflexesStat) {
   const float sharpness =
       blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.66f), 0.2f, 1.0f);
-  const float reaction = blunted::clamp(reactionStat, 0.0f, 1.0f);
-  return blunted::clamp(sharpness * (0.80f + reaction * 0.20f), 0.05f, 0.99f);
+  const float reflexes = blunted::clamp(reflexesStat, 0.0f, 1.0f);
+  return blunted::clamp(sharpness * (0.80f + reflexes * 0.20f), 0.05f, 0.99f);
+}
+
+// How long a controller lags behind the world: 40 ms for a perfect stat, 80 ms
+// for none. Outfielders feed physical_reaction, a keeper his GK Reflexes.
+inline int GetReactionTime_ms(float reactionStat) {
+  return int(std::round(80.0f - Clamp01(reactionStat) * 40.0f));
+}
+
+// The five PES goalkeeper attributes, each anchored so that the stock value
+// (the engine's 0.6 default) reproduces the behaviour the engine shipped with.
+
+// GK Awareness: how far ahead he reads the ball when picking his base position.
+inline unsigned int GetKeeperAnticipation_ms(float awareness) {
+  return static_cast<unsigned int>(300.0f + Clamp01(awareness) * 500.0f);
+}
+
+// GK Awareness: how much wider than the goal he treats an incoming ball as a
+// threat (1.0 = the real goal mouth). Poor awareness overreacts to balls going
+// wide; the stock formula blended defensive positioning and vision to 1.22.
+inline float GetKeeperGoalMouthPanic(float awareness) {
+  return 1.02f + (1.0f - Clamp01(awareness)) * 0.5f;
+}
+
+// GK Coverage (PES "GK Reach"): how far off his line he stands with the ball
+// in front of him, and how much of a head start on his own defenders an
+// attacker needs before he comes rushing out.
+inline float GetKeeperComeOutBias(float coverage) {
+  return 0.15f + Clamp01(coverage) * 0.25f;
+}
+inline float GetKeeperComeOutMargin_m(float coverage) {
+  return 1.6f - Clamp01(coverage);
+}
+
+// GK Catching: the hardest ball (0 = impossible, 1 = trivial) he still holds
+// on to rather than parries. The stock engine held everything easier than 0.3.
+inline float GetKeeperCatchThreshold(float catching) {
+  return 0.45f - Clamp01(catching) * 0.25f;
+}
+
+// GK Clearing: how hard a parry is pushed away from goal, in the same units as
+// the stock 4.0 forward component of the deflect touch.
+inline float GetKeeperParryPush(float clearing) {
+  return 2.2f + Clamp01(clearing) * 3.0f;
 }
 
 // Distance remains the primary fatigue input. This workload factor makes
