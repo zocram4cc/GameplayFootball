@@ -499,7 +499,7 @@ def axial_torso_slices(meshes, slice_m=BODY_SLICE_M):
         return 0, 0
     slices = [0] * max(1, int((high - low) / slice_m))
     for mesh in meshes:
-        if not mesh.vertices or _off_the_rig(mesh):
+        if not mesh.vertices or _off_the_rig(mesh) or _is_placeholder(mesh):
             continue
         for v in mesh.vertices:
             y = v.position.y
@@ -553,7 +553,7 @@ def whole_body(fmdl_paths, fmdl_lib):
             fmdl = FmdlFile.FmdlFile()
             fmdl.readFile(path)
             for mesh in fmdl.meshes:
-                if not mesh.vertices or _off_the_rig(mesh):
+                if not mesh.vertices or _off_the_rig(mesh) or _is_placeholder(mesh):
                     continue
                 meshes.append(mesh)
                 for v in mesh.vertices:
@@ -578,6 +578,24 @@ def whole_body(fmdl_paths, fmdl_lib):
             and bands["feet"] >= FEET_PRESENT_VERTICES):
         return True
     return is_continuous_body(heights)
+
+
+def _is_placeholder(mesh):
+    """Whether this mesh is one of PES's blank stand-ins rather than the model.
+
+    A pack that means "draw me on PES's body wearing the team's kit" ships a
+    `dummy_kit` shell to stand in for it. Counted as the character's own torso,
+    it told this gate the export was a whole body: SMBG's k2588 is a stick
+    figure whose only mass is that shell, and he was drawn with no body.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import fmdl_to_fullbody
+        name = fmdl_to_fullbody.mesh_base_texture(mesh)
+        return (fmdl_to_fullbody.is_placeholder_texture(name)
+                or fmdl_to_fullbody.is_effect_texture(name))
+    except Exception:
+        return False
 
 
 def _off_the_rig(mesh):
