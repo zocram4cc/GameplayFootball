@@ -73,6 +73,24 @@ The walk/warmup motion itself is bind-relative root motion inside the gani
 placements + near-in-place clips, with the camera cuts hiding repositions
 between the packs of a family.
 
+Object record (tag 0x05, 444 bytes) — where a fixed prop stands. The ent_obj_*
+packs (dt12 common/demo/fixdemo/ent/cut_data/) place the walkout furniture with
+one of these per prop; read off every ent_obj pack in PES21:
+  +0x00 u16    slot (80 banner/circle flag, 85 competition banner, 90 tunnel arch,
+               100/110 cup stand and cup, 200/201 national flags, 4000+ backdrops)
+  +0x04 f32[3] position, Fox metres, Y up, pitch-centre origin. The competition
+               banner is at (0, 0.03, 27.5) - flat on the grass 6.5 m inside the
+               tunnel touchline; the national flags at (-+7, 0.025, 32); the arch
+               at (0, 0, 34.2..39.1) by ground; the circle flag on the spot
+  +0x10 f32[4] rotation quaternion (x, y, z, w); identity, or (0, 1, 0, 0) in the
+               *_back packs that stage the same prop on the far touchline
+  +0x20 char[0x80] fpk path of the model ("cpk_dat/common/demo/fixdemoobj/
+               banner_euro_competition/banner_euro_competition.fpk")
+  +0xa0 char[0x80] skeleton (*.ask) path, empty for a rigid prop
+  +0x120 char[0x80] gani path that animates it (the circle flag's
+               dml_prop_circleflag_uefa_cl_01_anm.gani), empty for a rigid prop
+  +0x1a0 u8[]  small flag bytes
+
 Camera cut record (tag 0x06, 284 bytes):
   +0x00 u32    startFrame        (frame in the demo timeline where this shot begins;
                                  records ascend, typically in 0/10/100/110/200/... pairs)
@@ -190,6 +208,7 @@ RECORD_SIZES = {
 # near/far) sit at identical offsets in both, well inside the shorter one.
 CAMERA_CUT_SIZES = (0x114, 0x11C)
 TAG_ACTOR_CUT = 0x04
+TAG_OBJECT = 0x05
 TAG_CAMERA_CUT = 0x06
 
 # canm channel indices
@@ -476,6 +495,33 @@ class ActorCut:
             (self.slot,) + self.position + (self.yaw_deg, self.phase_ticks, self.gani_name))
 
 
+class ObjectCut:
+    """One tag-0x05 record: where a fixed prop stands, and what animates it."""
+
+    def __init__(self, data):
+        self.slot = struct.unpack_from("<H", data, 0)[0]
+        self.position = struct.unpack_from("<3f", data, 4)
+        self.rotation = struct.unpack_from("<4f", data, 0x10)
+        self.fpk_path = _cstr(data, 0x20, 0x80)
+        self.skel_path = _cstr(data, 0xA0, 0x80)
+        self.gani_path = _cstr(data, 0x120, 0x80)
+
+    @property
+    def stem(self):
+        """The model's name, as its fmdl is named: 'banner_euro_competition'."""
+        return os.path.splitext(os.path.basename(self.fpk_path))[0]
+
+    @property
+    def yaw(self):
+        """Rotation about Fox +Y in radians - the only turn a prop on the grass has."""
+        x, y, z, w = self.rotation
+        return 2.0 * math.atan2(y, w)
+
+    def __repr__(self):
+        return "ObjectCut(slot=%d pos=(%.2f, %.2f, %.2f) yaw=%.0f %s)" % (
+            (self.slot,) + self.position + (math.degrees(self.yaw), self.stem))
+
+
 def _cstr(data, offset, maxlen):
     end = data.find(b"\0", offset)
     if end < 0 or end > offset + maxlen:
@@ -489,6 +535,7 @@ class Fdc:
         self.cpk_path = ""       # the file's own path as recorded inside it
         self.cuts = []           # CameraCut, in table order
         self.actors = []         # ActorCut, in table order
+        self.objects = []        # ObjectCut, in table order
         self.cameras = []        # Canm, in file order
         self.records = {}        # tag -> [Entry] of the cut table
         self.assets = []         # (name, size) of leaf refs (*.gani, *.seq, *.ask)
@@ -531,6 +578,8 @@ def parse_fdc(blob, path=""):
                 fdc.cuts.append(CameraCut(rec.data))
             elif rec.tag == TAG_ACTOR_CUT and rec.size == RECORD_SIZES[TAG_ACTOR_CUT]:
                 fdc.actors.append(ActorCut(rec.data))
+            elif rec.tag == TAG_OBJECT and rec.size == RECORD_SIZES[TAG_OBJECT]:
+                fdc.objects.append(ObjectCut(rec.data))
     fdc.cuts.sort(key=lambda c: c.start_frame)
     return fdc
 

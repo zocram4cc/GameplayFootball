@@ -279,6 +279,25 @@ class MatchSession {
   std::map<std::string, double> durations_;
 };
 
+// Whether the away anthem should hand over to the home one now.
+//
+// rigdio plays them back to back (docs/RIGDIO.md: the away hook, then the
+// home one), and the entrance is the window both have to fit in. This used to
+// hand over at the entrance's halfway mark whatever the track was doing, which
+// cut a 24 s anthem off at 12 s and left silence when it was shorter than that.
+// Now the away anthem runs to its own end, and the deadline only bites when it
+// is longer than the walkout can hold - keeping the last quarter of the
+// entrance for the home anthem, which is the one the crowd sings.
+//
+// `awayDurationSeconds` 0 means the length is unknown (a stream, or a file the
+// decoder would not measure), in which case only the deadline applies.
+bool AnthemHandsOver(double awayElapsedSeconds, double awayDurationSeconds,
+                     double entranceElapsedSeconds, double entranceTotalSeconds,
+                     double fadeSeconds);
+
+// The share of the entrance the away anthem may keep at most.
+constexpr double kAwayAnthemShare = 0.75;
+
 }  // namespace rigdio
 
 #endif

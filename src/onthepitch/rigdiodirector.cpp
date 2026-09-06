@@ -43,6 +43,43 @@ std::string ArtTag(const std::string& name) {
   return tag.empty() ? "team" : tag;
 }
 
+// Where the music actually is. "rigdio_dir" is data-relative like every other
+// asset path, but the engine does not always run with data/ as its working
+// directory - a config given on the command line leaves it at the repo root
+// (main.cpp AnchorWorkingDirectory), and every match played there found no
+// export for either side and went silent: no anthems, no goal horns, no
+// victory. Looked for beside the working directory and under data/, which is
+// the same pair ResolveConfigFilename uses.
+fs::path ResolveMusicDir(const std::string& configured) {
+  std::error_code ec;
+  // Whichever of these actually holds a team's export, tried in this order,
+  // and reported absolutely so a silent match says where it looked.
+  // A build tree runs with build/ as its working directory and reaches its
+  // assets through the media symlink cmake/link_media.cmake makes, so the data
+  // root is that link's target - which is how "music" was never found in any
+  // match ever played from build/ (measured 06-09: silent anthems and no goal
+  // horn in every showcase recorded).
+  fs::path viaMedia;
+  {
+    const fs::path media = fs::weakly_canonical(fs::path("media"), ec);
+    if (!ec && !media.empty()) viaMedia = media.parent_path() / configured;
+  }
+  for (const fs::path& candidate :
+       {fs::path(configured), fs::path("data") / configured, viaMedia,
+        fs::current_path(ec) / configured,
+        fs::current_path(ec) / "data" / configured}) {
+    if (candidate.empty() || !fs::is_directory(candidate, ec)) continue;
+    bool anyExport = false;
+    for (fs::recursive_directory_iterator it(candidate, ec), end;
+         it != end && !anyExport; it.increment(ec)) {
+      if (ec) break;
+      if (it->path().extension() == ".4ccm") anyExport = true;
+    }
+    if (anyExport) return fs::absolute(candidate, ec);
+  }
+  return fs::absolute(fs::path(configured), ec);
+}
+
 // The team's .4ccm under <dir>/<tag>/: <tag>.4ccm preferred, else the
 // lexicographically last (dbgvgl26 beats dbgvgl25).
 fs::path FindFourccm(const fs::path& teamDir, const std::string& tag) {
@@ -127,7 +164,7 @@ void BakeGain(WavData* wav, double gainDb) {
 
 RigdioDirector::RigdioDirector(Match* match) : match_(match) {
   if (!GetConfiguration()->GetBool("rigdio_enabled", true)) return;
-  const std::string musicDir = GetConfiguration()->Get("rigdio_dir", "music");
+  const fs::path musicDir = ResolveMusicDir(GetConfiguration()->Get("rigdio_dir", "music"));
   const std::string gametype =
       GetConfiguration()->Get("rigdio_gametype", "group");
   normalize_ = GetConfiguration()->GetBool("rigdio_normalize", true);
@@ -138,7 +175,7 @@ RigdioDirector::RigdioDirector(Match* match) : match_(match) {
   for (int t = 0; t < 2; t++) {
     const std::string teamName = match_->GetMatchData()->GetTeamData(t)->GetName();
     const std::string tag = ArtTag(teamName);
-    const fs::path teamDir = fs::path(musicDir) / tag;
+    const fs::path teamDir = musicDir / tag;
     const fs::path fourccm = FindFourccm(teamDir, tag);
     if (fourccm.empty()) {
       Log(e_Notice, "RigdioDirector", "RigdioDirector",
@@ -325,7 +362,14 @@ void RigdioDirector::Update() {
       }
       break;
     case EntrancePhase::Away:
-      if (!inEntrance || elapsed >= std::max(total * 0.5f - kFadeSeconds, 0.0f)) {
+      // Back to back, as rigdio plays them: the away anthem runs to its own
+      // end and only yields early when it is longer than the walkout can hold
+      // (rigdio::AnthemHandsOver).
+      if (!inEntrance ||
+          rigdio::AnthemHandsOver(
+              anthem_[1].track ? (now_ms - anthem_[1].startedWall_ms) / 1000.0 : 0.0,
+              anthem_[1].track ? anthem_[1].track->durationSeconds : 0.0, elapsed, total,
+              kFadeSeconds)) {
         FadeOut(anthem_[1]);
         entrance_ = inEntrance ? EntrancePhase::AwayFading : EntrancePhase::Done;
       }

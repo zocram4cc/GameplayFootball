@@ -27,15 +27,20 @@ namespace GoalSequence {
 // three second spotlight on the scorer. Four seconds put the restart in motion
 // while the celebration was still the thing on screen; with a median clip of 2.7 s
 // the floor is what most goals actually get, so it has to cover the beat.
-constexpr unsigned long kMinCelebration_ms = 6000;
+// The montage below is the floor and the default now: three shots run back to
+// back whatever the clip does, because PES's celebration is as long as its
+// SHOTS, not as long as the scorer's animation (a 2.7 s median clip used to
+// mean a 6 s celebration and a thirty-second sequence).
+constexpr unsigned long kMinCelebration_ms = 42000;  // = the three shots
 
 // Kept as the plain default for callers with no clip to hand.
-constexpr unsigned long kCelebration_ms = 9000;
+constexpr unsigned long kCelebration_ms = kMinCelebration_ms;
 
-// The longest celebration the schedule will run: the longest single clip is 10.0 s,
-// and a celebration may chain an intro into a loop, so two of them. Everything below
+// The longest celebration the schedule will run: the montage plus room for a
+// clip that outlasts the shot it plays under (the longest single celebration
+// clip is 10.0 s, and one may chain an intro into a loop). Everything below
 // depends on this, because the recorded buffer has to reach back past it.
-constexpr unsigned long kLongestCelebration_ms = 20000;
+constexpr unsigned long kLongestCelebration_ms = 52000;
 
 // How far before the goal the replay opens, so it shows the build-up rather
 // than the celebration it just interrupted.
@@ -55,11 +60,46 @@ constexpr unsigned long kRestartPrepareAfterReplay_ms = 1500;
 // Prepared set piece to actual kickoff.
 constexpr unsigned long kKickOffAfterPrepare_ms = 2000;
 
-// How long a celebration of `animLength_ms` should be held on screen: the clip's own
-// length, floored so a very short one is not cut to nothing and capped so a long one
-// cannot outrun the recorded buffer. Pass 0 when the clip is unknown and it falls
-// back to the plain default.
+// PES's goal sequence is a MONTAGE, not one held shot. Frame by frame off the
+// reference (youtu.be/ns5C3zpD6Ig at 0:05 and 0:44): the goal goes in on the
+// live camera, then a tracking shot follows the scorer with the score bug up,
+// then a tight close-up carries his card, then a wide holds the teammates
+// mobbing him - and only then does it dip to black for a multi-angle replay
+// and hand back to the restart. Goal to kickoff runs 60-80 s.
+//
+// Ours ran one shot and one replay angle in about thirty seconds. These are
+// the three shots; each is filmed by its own goal camtrack (Match picks a
+// different one per beat), and the length is the SHOTS, never a timer held
+// over a finished performance - the cast is released to the animation
+// machinery when its clips run out (Match::UpdateCutsceneChoreo) and jogs
+// back like PES's does, so a long window is motion rather than statues.
+enum class Shot { Tracking, Tight, Group };
+constexpr int kShotCount = 3;
+constexpr unsigned long kTrackingShot_ms = 15000;
+constexpr unsigned long kTightShot_ms = 12000;
+constexpr unsigned long kGroupShot_ms = 15000;
+
+// The replay PES cuts to shows the BUILD-UP and the finish, from two angles -
+// and then hands back. Ours played the tape all the way to the present, so a
+// goal replay replayed the celebration that had just been on screen. Each
+// angle plays a window ending at the goal; the close one runs at half speed,
+// so its wall time is twice the tape it covers.
+constexpr unsigned long kReplayWideAngle_ms = 9000;
+constexpr unsigned long kReplayCloseAngle_ms = 7000;
+constexpr unsigned long kReplayPlayback_ms = kReplayWideAngle_ms + kReplayCloseAngle_ms;
+
+// The whole celebration: the three shots back to back. A clip longer than the
+// montage extends the shot it is playing under rather than being cut off.
 unsigned long CelebrationLength_ms(unsigned long animLength_ms);
+
+// Which shot is on air `celebration_ms` into a celebration of that length, and
+// where the current shot began (so the camera can cut rather than drift).
+Shot ShotAt(unsigned long celebration_ms, unsigned long celebrationLength_ms);
+unsigned long ShotStartedAt_ms(unsigned long celebration_ms,
+                               unsigned long celebrationLength_ms);
+
+// Goal to kickoff, for the test that pins the reference's 60-80 s window.
+unsigned long WholeSequence_ms(unsigned long animLength_ms);
 
 // When the replay should fire for a goal scored at `goalTime_ms`.
 // `cutsceneEnd_ms` is the end of a goal cutscene if one is playing, 0 if not;

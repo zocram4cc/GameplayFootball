@@ -10,6 +10,7 @@
 #include "framework/scheduler.hpp"
 #include "gametask.hpp"
 #include "main.hpp"
+#include "onthepitch/goalsequence.hpp"
 #include "onthepitch/match.hpp"
 #include "managers/environmentmanager.hpp"
 #include "utils/gui2/widgets/caption.hpp"
@@ -62,7 +63,7 @@ ReplayPage::ReplayPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   header->Show();
   replayChrome.push_back(header);
   Gui2Caption* title =
-      new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "INSTANT REPLAY");
+      new Gui2Caption(windowManager, "caption_replay_title", 2, 1.4f, 24, 2.6f, "REPLAY");
   SuppressMatchHud(true);
 
   // The 4cc wipe over the cut into the replay. Full screen, on top of everything the
@@ -198,6 +199,38 @@ void ReplayPage::Autorun(int replayHistoryOffset_ms, bool stayInReplay, int came
   signed long tmp = maxTime_ms - replayHistoryOffset_ms;
   actualTime_ms = clamp(tmp, minTime_ms, maxTime_ms);
   this->stayInReplay = stayInReplay;
+}
+
+void ReplayPage::AutorunAngles(int replayHistoryOffset_ms, bool stayInReplay,
+                               const std::vector<int>& angles, int stopBefore_ms) {
+  if (angles.empty()) return;
+  angleQueue = angles;
+  angleIndex = 0;
+  angleStop_ms = clamp((signed long)maxTime_ms - stopBefore_ms, (signed long)minTime_ms,
+                       (signed long)maxTime_ms);
+  angleStart_ms = clamp(angleStop_ms - (signed long)GoalSequence::kReplayWideAngle_ms,
+                        (signed long)minTime_ms, angleStop_ms);
+  Autorun(replayHistoryOffset_ms, stayInReplay, angles.front());
+  actualTime_ms = angleStart_ms;
+  // The first cut is the wide of the build-up; the close-up that follows runs
+  // at half speed over the finish alone.
+  slowMotion = false;
+}
+
+// -> whether another angle took over (so playback continues) rather than the
+// replay being over.
+bool ReplayPage::AdvanceAngle() {
+  if (angleQueue.empty() || angleIndex + 1 >= angleQueue.size()) return false;
+  angleIndex++;
+  cam = clamp(angleQueue[angleIndex], 0, replayCamCount - 1);
+  // Each further cut is tighter and slower over the finish itself: half speed
+  // covers half the tape in the same wall time, which is why the window shrinks.
+  slowMotion = true;
+  const signed long tape = (signed long)GoalSequence::kReplayCloseAngle_ms / 2;
+  angleStart_ms = clamp(angleStop_ms - tape, (signed long)minTime_ms, angleStop_ms);
+  actualTime_ms = angleStart_ms;
+  autoRun = true;
+  return true;
 }
 
 void ReplayPage::UpdateTimeLabel() {
@@ -421,7 +454,13 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
   float timeMovement = direction.coords[0] * 2.0f * speedMultiplier;
   actualTime_ms += int(round(timeMovement * 10.0f));
 
-  if (autoRun && actualTime_ms >= (signed int)maxTime_ms) {
+  // A multi-cut replay ends each angle at the goal rather than at the present.
+  const signed long autorunEnd =
+      angleQueue.empty() ? (signed long)maxTime_ms : angleStop_ms;
+  if (autoRun && actualTime_ms >= autorunEnd) {
+    if (AdvanceAngle()) {
+      actualTime_ms = angleStart_ms;
+    } else {
     autoRun = false;
     if (closeWhenAutorunCompletes) {
       closeWhenAutorunCompletes = false;
@@ -434,6 +473,7 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
       }
       GoBack();
       return;
+    }
     }
   }
 

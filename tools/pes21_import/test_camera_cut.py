@@ -56,6 +56,23 @@ def build_fdc(cut_records, cpk_path=b"common/demo/fixdemo/foul/cut_data/x.fdc"):
     return build_container([(cut_table, cpk_path)])
 
 
+def build_object_record(slot, position, rotation=(0.0, 0.0, 0.0, 1.0),
+                        fpk=b"cpk_dat/common/demo/fixdemoobj/x/x.fpk", gani=b""):
+    """A tag-0x05 record with the fields at the offsets read off PES21's ent_obj packs."""
+    buf = bytearray(camera_cut.RECORD_SIZES[camera_cut.TAG_OBJECT])
+    struct.pack_into("<H", buf, 0x00, slot)
+    struct.pack_into("<3f", buf, 0x04, *position)
+    struct.pack_into("<4f", buf, 0x10, *rotation)
+    buf[0x20:0x20 + len(fpk)] = fpk
+    buf[0x120:0x120 + len(gani)] = gani
+    return bytes(buf)
+
+
+def build_object_fdc(records):
+    cut_table = build_container([(rec, b"\x05") for rec in records])
+    return build_container([(cut_table, b"common/demo/fixdemo/ent/cut_data/ent_obj_x.fdc")])
+
+
 def build_fdc_with_camera(cut_record, canm_blob, canm_name):
     cut_table = build_container([(cut_record, b"\x06")])
     return build_container([
@@ -123,6 +140,44 @@ class TheNoCardFoulPackEndToEnd(unittest.TestCase):
         self.assertEqual(len(timeline), 1)
         cut, cam = timeline[0]
         self.assertIsNotNone(cam)
+
+
+class ThePropStagingRecords(unittest.TestCase):
+    """Tag 0x05 is where PES stands its walkout furniture; the national flags'
+    pack carries two of them, one either side of the halfway line."""
+
+    def test_both_flags_come_out_with_their_marks_and_names(self):
+        fdc = camera_cut.parse_fdc(build_object_fdc([
+            build_object_record(200, (-7.0, 0.025, 32.0),
+                                fpk=b"cpk_dat/common/demo/fixdemoobj/banner_nationalflag_home/"
+                                    b"banner_nationalflag_home.fpk"),
+            build_object_record(201, (7.0, 0.025, 32.0),
+                                fpk=b"cpk_dat/common/demo/fixdemoobj/banner_nationalflag_away/"
+                                    b"banner_nationalflag_away.fpk"),
+        ]))
+        self.assertEqual([o.slot for o in fdc.objects], [200, 201])
+        self.assertEqual([o.stem for o in fdc.objects],
+                         ["banner_nationalflag_home", "banner_nationalflag_away"])
+        for got, want in zip(fdc.objects[0].position, (-7.0, 0.025, 32.0)):
+            self.assertAlmostEqual(got, want, places=6)
+        self.assertEqual(fdc.objects[0].gani_path, "")
+        self.assertAlmostEqual(fdc.objects[0].yaw, 0.0)
+
+    def test_a_back_staged_prop_is_turned_half_a_circle(self):
+        fdc = camera_cut.parse_fdc(build_object_fdc([
+            build_object_record(85, (0.0, 0.025, -27.5), rotation=(0.0, 1.0, 0.0, 0.0))]))
+        self.assertAlmostEqual(abs(fdc.objects[0].yaw), 3.14159, places=4)
+
+    def test_an_animated_prop_names_its_clip(self):
+        gani = b"cpk_dat/common/demo/anime/FoxAnim/FixDemo/Animations/dml_prop_circleflag_uefa_cl_01_anm.gani"
+        fdc = camera_cut.parse_fdc(build_object_fdc([
+            build_object_record(80, (0.0, 0.0, 0.0), gani=gani)]))
+        self.assertEqual(fdc.objects[0].gani_path, gani.decode())
+
+    def test_a_record_of_the_wrong_size_is_not_an_object(self):
+        short = build_object_record(80, (0.0, 0.0, 0.0))[:-8]
+        fdc = camera_cut.parse_fdc(build_object_fdc([short]))
+        self.assertEqual(fdc.objects, [])
 
 
 if __name__ == "__main__":

@@ -272,6 +272,21 @@ def may_bind_as_body(verdict, composited=False):
     return verdict != "carries scenery"
 
 
+def needs_stock_body(verdict, dresses_the_rig, composited=False):
+    """-> whether PES's own skinned body has to go under this import (#83).
+
+    Two things can say so, and only the first was ever acted on: the export can
+    fail to dress the rig at all (`dresses_the_rig` False - the geometric gate,
+    every slot together), or the converted model's own coverage can come back
+    "needs base" / "carries scenery" (body_coverage.verdict, which measures the
+    bare chest or bare legs the gate cannot see). A character already composited
+    needs nothing further.
+    """
+    if composited:
+        return False
+    return not dresses_the_rig or verdict in NOT_A_BODY
+
+
 def describe_import(dest, prefix, export_id):
     """-> body_coverage's verdict on the .ase the import just wrote."""
     ase = os.path.join(dest, "fullbody_%s_%s.ase" % (prefix, export_id))
@@ -1245,6 +1260,23 @@ def main():
             verdict = describe_import(dest, args.prefix, export_id)
             composited = True
             print("       %s ships no body of its own; composited over %s"
+                  % (export_id, os.path.basename(base_body)))
+
+        # And the coverage verdict itself, which is the measurement rather than
+        # the geometric shortcut above: `whole_body` asks whether the slots
+        # together dress the rig, but a character can pass that and still land
+        # with a bare chest or bare legs once converted - body_coverage says so
+        # in as many words. #83: that verdict was computed, printed as "NOT
+        # BOUND: needs base", and never acted on, so the model the user got was
+        # the broken one.
+        if (not args.dry_run and os.path.isfile(base_body)
+                and needs_stock_body(verdict, True, composited)):
+            status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
+                                   rel + "/" + kit_texture_name(dest), True, args.max_edge,
+                                   base_body, extra_fmdls=rest_of_him)
+            verdict = describe_import(dest, args.prefix, export_id)
+            composited = True
+            print("       %s needs a base body; composited over %s"
                   % (export_id, os.path.basename(base_body)))
 
         bindable = may_bind_as_body(verdict, composited=composited)

@@ -5,6 +5,7 @@
 
 #include "../../data/playerdata.hpp"
 #include "../../data/teamdata.hpp"
+#include "../../onthepitch/goalsequence.hpp"
 #include "../../onthepitch/match.hpp"
 #include "../../onthepitch/player/player.hpp"
 #include "../../onthepitch/team.hpp"
@@ -25,13 +26,12 @@ constexpr float kTextHeight = 2.6f;
 constexpr float kSubHeight = 2.0f;
 constexpr float kPadX = 1.0f;
 
-// The cut PES makes between its two graphics: the score bug comes up about a
-// second after the goal and holds for the first, tracking shot; the scorer's
-// card replaces it on the cut to the tight close-up and stays to the end of
-// the celebration. Fractions of the celebration's own length, so a short clip
-// still gets both and a long one does not run out of graphic.
-constexpr float kScoreIn = 0.12f;
-constexpr float kScorerIn = 0.45f;
+// The cut PES makes between its two graphics follows the montage itself
+// (GoalSequence::Shot): the score bug comes up a beat after the goal and holds
+// through the tracking shot, the scorer's card replaces it on the cut to the
+// tight close-up, and the wide of the mob carries neither - which is what the
+// reference shows at 0:07 and 0:11.
+constexpr unsigned long kScoreIn_ms = 1500;
 
 const Vector3 kTextColor(255, 255, 255);
 const Vector3 kSubColor(186, 200, 224);
@@ -47,10 +47,16 @@ Gui2GoalBug::~Gui2GoalBug() {}
 Gui2GoalBug::Stage Gui2GoalBug::StageAt(unsigned long celebration_ms,
                                         unsigned long celebrationLength_ms) {
   if (celebrationLength_ms == 0 || celebration_ms > celebrationLength_ms) return Stage::None;
-  const float t = celebration_ms / (float)celebrationLength_ms;
-  if (t < kScoreIn) return Stage::None;   // the goal itself, still on the live camera
-  if (t < kScorerIn) return Stage::Score;
-  return Stage::Scorer;
+  if (celebration_ms < kScoreIn_ms) return Stage::None;  // still on the live camera
+  switch (GoalSequence::ShotAt(celebration_ms, celebrationLength_ms)) {
+    case GoalSequence::Shot::Tracking:
+      return Stage::Score;
+    case GoalSequence::Shot::Tight:
+      return Stage::Scorer;
+    case GoalSequence::Shot::Group:
+      break;
+  }
+  return Stage::None;  // the mob is played clean
 }
 
 void Gui2GoalBug::Init() {

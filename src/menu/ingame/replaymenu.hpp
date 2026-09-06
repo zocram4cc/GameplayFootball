@@ -26,6 +26,14 @@ public:
   // `camera` is one of Match::SetReplayCamera's modes: a goal replay opens
   // behind the goal, a foul on the close view.
   void Autorun(int replayHistoryOffset_ms, bool stayInReplay, int camera = 1);
+  // PES's goal replay is two cuts, not one: a wide of the build-up and finish,
+  // then a slow close-up of the finish alone - and both STOP at the goal. This
+  // one played the tape to the present, so a goal replay replayed the
+  // celebration that had just been on screen (owner, 06-09). `angles` are
+  // Match::SetReplayCamera modes; `stopBefore_ms` is how far short of the
+  // present each angle ends, i.e. where the goal is.
+  void AutorunAngles(int replayHistoryOffset_ms, bool stayInReplay,
+                     const std::vector<int>& angles, int stopBefore_ms);
 
 protected:
   Match* match;
@@ -48,6 +56,14 @@ protected:
   bool stayInReplay;
   bool slowMotion;
   bool closeWhenAutorunCompletes;
+
+  // The remaining angles of a multi-cut replay, and where each of them starts
+  // and stops. Empty = the single-angle replay this page always had.
+  std::vector<int> angleQueue;
+  size_t angleIndex = 0;
+  signed long angleStart_ms = 0;
+  signed long angleStop_ms = 0;
+  bool AdvanceAngle();
 
   // A replay the match started for itself, rather than one the user asked for.
   // PES plays the goal and foul replays as part of the cutscene - clean picture,

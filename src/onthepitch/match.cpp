@@ -2047,7 +2047,11 @@ static const float kPrematchShotFrameRate = 30.0f;
 static const float kPrematchLensClearance = 1.8f;
 // A goal camera is composed on a face on purpose, so it keeps only the mesh
 // itself off the glass.
-static const float kCelebrationLensClearance = 0.5f;
+// A 4cc character is not a footballer: the imported bodies reach 1.3 m across
+// (Bowser's shell, Boo's whole head), so half a metre of clearance still put
+// the lens inside one on the tight shot of the montage. Cleared to a body's
+// own radius instead.
+static const float kCelebrationLensClearance = 1.4f;
 // How the standoff dolly moves. Back fast enough to stay ahead of a body walking
 // down the lens - measured in cut 8 of ent_009 at st002 the camera dollies
 // toward the column at 1.75 m/s and the column walks at 2.4, a 4.2 m/s closing
@@ -4355,10 +4359,53 @@ void Match::UpdateIngameCamera() {
                   (goalCelebrationCamera >= 0 ? wanted : std::string("nothing; falling back")));
         }
       }
-      int pick = goalCelebrationCamera >= 0
-                     ? goalCelebrationCamera
-                     : (lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3) %
-                           (int)goalCamTracks.size();
+      // Three shots, three cameras (GoalSequence::Shot): a tracking shot, a
+      // tight close-up, then the wide of the mob. Each is a different imported
+      // goal track sampled from ITS OWN start, so the montage cuts where PES
+      // cuts instead of running one track over the whole celebration.
+      const GoalSequence::Shot celebrationShot =
+          GoalSequence::ShotAt(goalScoredTimer, goalCelebrationLength_ms);
+      const unsigned long shotElapsed_ms =
+          goalScoredTimer -
+          GoalSequence::ShotStartedAt_ms(goalScoredTimer, goalCelebrationLength_ms);
+      if (celebrationShot != goalCelebrationShot) {
+        goalCelebrationShot = celebrationShot;
+        // A new shot starts on PES's own framing, not with the previous shot's
+        // dolly still pushed in.
+        ResetStandoff();
+      }
+      // The angle for each shot is chosen by the DISTANCE PES authored it at,
+      // not by an index stride. Striding picked whatever sorted 37 names later
+      // and dropped the lens inside the scorer: 4cc characters are two to three
+      // times a footballer's bulk (Boo, Bowser), so a track authored four
+      // metres out for a PES striker is inside one of them, and the frames at
+      // 06-09 showed a glove and a shell filling the screen. Measured over the
+      // 516 imported tracks the opening distance runs 2-40 m with a median of
+      // 12.6, so each shot takes the track nearest its own reach.
+      const float wanted = celebrationShot == GoalSequence::Shot::Tracking
+                               ? 12.0f
+                               : (celebrationShot == GoalSequence::Shot::Tight ? 8.0f : 20.0f);
+      int pick = goalCelebrationCamera >= 0 ? goalCelebrationCamera : 0;
+      {
+        float best = 1e9f;
+        const int seed = lastGoalTeamID * 7 + GetScore(0) + GetScore(1) * 3;
+        for (int i = 0; i < (int)goalCamTracks.size(); i++) {
+          // Rotated by the seed so the same goal does not always draw the same
+          // three tracks, and every candidate is judged on its own opening.
+          const int candidate = (i + seed) % (int)goalCamTracks.size();
+          if (goalCamTracks[candidate].GetFrameCount() == 0) continue;
+          const CamTrackFrame opening = goalCamTracks[candidate].Sample(0.0f);
+          const float distance =
+              std::sqrt(opening.position[0] * opening.position[0] +
+                        opening.position[1] * opening.position[1] +
+                        opening.position[2] * opening.position[2]);
+          const float error = std::fabs(distance - wanted);
+          if (error < best) {
+            best = error;
+            pick = candidate;
+          }
+        }
+      }
       const CamTrack& track = goalCamTracks[pick];
       // PES's goal cutscenes are a montage, not one shot: goal_A_celebrate_0229
       // cuts low-static (cam_00) to two closer angles and back, at frames
@@ -4368,7 +4415,7 @@ void Match::UpdateIngameCamera() {
       // it - exactly the sequencing this stage is trying to fix. SampleTimeline
       // plays each cut only from its own rows (falling back to plain Sample
       // when there is only one, so single-shot celebrations are unaffected).
-      CamTrackFrame frame = track.SampleTimeline(goalScoredTimer * 0.03f);
+      CamTrackFrame frame = track.SampleTimeline(shotElapsed_ms * 0.03f);
       // These tracks are not authored in world space, and reading them as if they
       // were is what used to jam a one-degree lens against a scorer's head. PES
       // authors a goal camera in the celebration's own space, with the scorer at the

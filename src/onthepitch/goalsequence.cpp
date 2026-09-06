@@ -4,12 +4,46 @@
 
 namespace GoalSequence {
 
+namespace {
+constexpr unsigned long kMontage_ms = kTrackingShot_ms + kTightShot_ms + kGroupShot_ms;
+static_assert(kMontage_ms == kMinCelebration_ms,
+              "the floor IS the montage: three shots back to back");
+}  // namespace
+
 unsigned long CelebrationLength_ms(unsigned long animLength_ms) {
-  if (animLength_ms == 0)
-    return kCelebration_ms;
-  if (animLength_ms < kMinCelebration_ms)
-    return kMinCelebration_ms;
+  // The montage always runs. A clip that outlasts it extends the celebration
+  // (the group shot holds while he is still performing) up to the cap the
+  // replay buffer can reach back past.
+  if (animLength_ms <= kMontage_ms) return kMontage_ms;
   return animLength_ms > kLongestCelebration_ms ? kLongestCelebration_ms : animLength_ms;
+}
+
+Shot ShotAt(unsigned long celebration_ms, unsigned long celebrationLength_ms) {
+  if (celebration_ms < kTrackingShot_ms) return Shot::Tracking;
+  if (celebration_ms < kTrackingShot_ms + kTightShot_ms) return Shot::Tight;
+  (void)celebrationLength_ms;  // the tail belongs to the group shot
+  return Shot::Group;
+}
+
+unsigned long ShotStartedAt_ms(unsigned long celebration_ms,
+                               unsigned long celebrationLength_ms) {
+  switch (ShotAt(celebration_ms, celebrationLength_ms)) {
+    case Shot::Tracking:
+      return 0;
+    case Shot::Tight:
+      return kTrackingShot_ms;
+    case Shot::Group:
+      break;
+  }
+  return kTrackingShot_ms + kTightShot_ms;
+}
+
+unsigned long WholeSequence_ms(unsigned long animLength_ms) {
+  // Goal to kickoff in wall time: the montage, the two replay angles it dips
+  // into, then the referee's restart. This is the number the reference puts at
+  // 60-80 s, and the test that pins it.
+  return CelebrationLength_ms(animLength_ms) + kReplayPlayback_ms +
+         kRestartPrepareAfterReplay_ms + kKickOffAfterPrepare_ms;
 }
 
 unsigned long ReplayFiresAt_ms(unsigned long goalTime_ms, unsigned long cutsceneEnd_ms,
