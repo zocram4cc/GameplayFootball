@@ -4395,6 +4395,28 @@ void Match::UpdateIngameCamera() {
           const int candidate = (i + seed) % (int)goalCamTracks.size();
           if (goalCamTracks[candidate].GetFrameCount() == 0) continue;
           const CamTrackFrame opening = goalCamTracks[candidate].Sample(0.0f);
+          // Staged where it will actually be filmed from, and rejected if that
+          // lands inside this ground rather than on it. A goal camera authored
+          // 20 m out is fine behind the halfway line and inside the stand at a
+          // corner - which is what put eight seconds of black frame at the head
+          // of the montage (owner's frames, 06-09). Same envelope the entrance
+          // uses for the cuts it cannot light.
+          {
+            const CamTrackFrame staged = StageCamTrackFrame(
+                opening,
+                {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+                goalCelebrationYaw);
+            // ON THE GRASS, not in the ring around it. The +8 m envelope the
+            // entrance uses is right for a walkout camera and wrong here: a
+            // celebration camera a few metres past the touchline sits behind
+            // the advertising hoardings and films their unlit backs, which is
+            // the twelve-second black window at the head of the montage
+            // (owner's frames, 06-09 - and the ring test alone did not fix
+            // it). PES stages these around the scorer, who is on the pitch.
+            if (std::fabs(staged.position[0]) > pitchHalfW ||
+                std::fabs(staged.position[1]) > pitchHalfH)
+              continue;
+          }
           const float distance =
               std::sqrt(opening.position[0] * opening.position[0] +
                         opening.position[1] * opening.position[1] +
