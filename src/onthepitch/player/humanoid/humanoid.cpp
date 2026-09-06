@@ -26,7 +26,7 @@
 #include "../../team.hpp"
 #include "../player.hpp"
 #include "data/matchanalytics.hpp"
-#include "data/playertraits.hpp"
+#include "data/playerskills.hpp"
 #include "humanoid_utils.hpp"
 #include "managers/resourcemanagerpool.hpp"
 #include "onthepitch/gameplaytuning.hpp"
@@ -614,6 +614,10 @@ void Humanoid::Process() {
         if (currentAnim->originatingCommand.modifier & e_PlayerCommandModifier_KnockOn) {
           touchVec *= 1.35f;
         }
+        // A trick move that goes wrong: the touch runs loose (see
+        // PlayerController::_BallControlCommand for the decision).
+        if (currentAnim->originatingCommand.modifier & e_PlayerCommandModifier_Fumble)
+          touchVec = PlayerSkills::FumbleTouch(touchVec, random(-1.0f, 1.0f));
 
         touchVec = touchVec * (1.0f - bumpyRideBias) +
                    currentBallVec * bumpyRideBias *
@@ -698,7 +702,9 @@ void Humanoid::Process() {
             bodyTouchAngle = (1.0f - fabs(bodyTouchAngle)) * signSide(bodyTouchAngle);
           bodyTouchAngle *= 2.0f;
           // printf("bodyTouchAngle: %f\n", bodyTouchAngle);
-          radian amount = bodyTouchAngle * 0.25f;
+          // An outside curler bends it further than the body angle alone would.
+          radian amount = PlayerSkills::GetPassCurve(player->GetPlayerData()->GetSkills(),
+                                                     bodyTouchAngle * 0.25f);
           if (currentAnim->functionType == e_FunctionType_HighPass)
             amount *= 0.2f;
           touchVec.Rotate2D(amount *
@@ -707,6 +713,11 @@ void Humanoid::Process() {
 
           // SetRedDebugPilon(match->GetBall()->Predict(0).Get2D() + touchVec.Get2D() * 0.4f);
         }
+        // A low lofted pass flies flatter and quicker; an acrobatic clearance
+        // goes further.
+        touchVec = PlayerSkills::ShapePassTouch(
+            player->GetPlayerData()->GetSkills(), currentAnim->functionType,
+            currentAnim->originatingCommand.touchInfo.isClearance, touchVec);
 
         touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
         if (player->GetDebug() && bumpyRideBias > 0.01f)
@@ -820,24 +831,25 @@ void Humanoid::Process() {
         if (player->GetDebug() && bumpyRideBias > 0.01f)
           printf("bumpyridebias (shot): %f\n", bumpyRideBias);
 
-        // Trait effects on the strike itself (proposal 3A, roadmap 4D).
-        const PlayerTraits::TraitMask shotTraits = player->GetPlayerData()->GetTraits();
-        if (shotTraits != PlayerTraits::traitMaskNone) {
+        // Skill effects on the strike itself.
+        const PlayerSkills::Mask shotSkills = player->GetPlayerData()->GetSkills();
+        if (shotSkills != PlayerSkills::maskNone) {
           const float incomingBallSpeed = match->GetBall()->GetMovement().GetLength();
           // A first-time shot at a rolling ball is struck cleaner and harder.
           const bool firstTimeShot =
               match->GetActualTime_ms() - player->GetLastTouchTime_ms() > 400;
-          touchVec *= PlayerTraits::GetFirstTimeShotPowerMultiplier(shotTraits, firstTimeShot,
+          touchVec *= PlayerSkills::GetFirstTimeShotPowerMultiplier(shotSkills, firstTimeShot,
                                                                     incomingBallSpeed);
 
-          // A knuckleballer's long-range efforts wobble unpredictably.
+          // A knuckle shot wobbles from range; dipping and rising shots carry
+          // top- and backspin.
           const float goalDistance =
               (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - spatialState.position).GetLength();
-          const Vector3 knuckled = PlayerTraits::ApplyKnuckleballSpin(
-              shotTraits, Vector3(xRot, yRot, zRot), goalDistance, random(-1.0f, 1.0f));
-          xRot = knuckled.coords[0];
-          yRot = knuckled.coords[1];
-          zRot = knuckled.coords[2];
+          const Vector3 spun = PlayerSkills::ApplyShotSpin(
+              shotSkills, Vector3(xRot, yRot, zRot), touchVec, goalDistance, random(-1.0f, 1.0f));
+          xRot = spun.coords[0];
+          yRot = spun.coords[1];
+          zRot = spun.coords[2];
         }
 
         // Keep the shot under the bar: the raw shot vector regularly arrived at
@@ -1891,10 +1903,22 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
   if (match->GetBallRetainer() == player)
     query.properties.Set("incoming_retain_state",
                          currentAnim->anim->GetVariable("outgoing_retain_state"));
+  // A trick command names its clips (specialvar1 = PlayerSkills::Feint). The
+  // imported feints were captured at dribbling pace with the body a little
+  // open, so the pace and body-angle gates that keep stock ball control honest
+  // would leave none of them; the direction narrowing and the reach check
+  // below still decide whether the move fits.
+  const bool trick =
+      command.useSpecialVar1 && command.desiredFunctionType == e_FunctionType_BallControl;
   if (command.useSpecialVar1)
     query.properties.Set("specialvar1", command.specialVar1);
   if (command.useSpecialVar2)
     query.properties.Set("specialvar2", command.specialVar2);
+  if (trick) {
+    query.incomingVelocity_Strict = false;
+    query.incomingVelocity_ForceLinearity = false;
+    query.byIncomingBodyDirection = false;
+  }
 
   if (currentAnim->anim->GetVariable("outgoing_special_state").compare("") != 0)
     query.incomingVelocity = e_Velocity_Idle;  // standing up anims always start out idle
@@ -1903,6 +1927,10 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
   anims->CrudeSelection(dataSet, query);
   // if (command.desiredFunctionType == e_FunctionType_Special) printf("size: %i\n",
   // dataSet.size());
+  if (trick && Verbose())
+    printf("feint: %i clips of family %i pass crude selection (velocity %i)\n", (int)dataSet.size(),
+           command.specialVar1, (int)spatialState.enumVelocity);
+
   if (dataSet.size() == 0) {
     if (command.desiredFunctionType == e_FunctionType_Movement) {
       // if (player->GetDebug()) printf("selected player: ");
@@ -1915,8 +1943,6 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
     } else
       return false;
   }
-
-  // printf("dataset size after crude selection: %i\n", dataSet.size());
 
   if (command.useDesiredMovement) {
     Vector3 relDesiredDirection = command.desiredDirection.GetRotated2D(-spatialState.angle);
@@ -2329,6 +2355,12 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
           positions_tmp, touchFrame_tmp, radiusOffset_tmp, touchPos_tmp, fullActionSmuggle_tmp,
           actionSmuggle_tmp, rotationSmuggle_tmp, hasteFactor, localInterruptAnim,
           preferPassAndShot);
+      if (trick && Verbose())
+        printf("feint: %i candidates after narrowing, cheatable pick %i (%s)\n",
+               (int)dataSet.size(), selectedAnimID,
+               selectedAnimID >= 0 ? anims->GetAnim(selectedAnimID)->GetName().c_str() : "-");
+    } else if (trick && Verbose()) {
+      printf("feint: no touch needed, %s dropped\n", anims->GetAnim(*dataSet.begin())->GetName().c_str());
     }
   } else if (command.desiredFunctionType == e_FunctionType_Trap ||
              command.desiredFunctionType == e_FunctionType_Interfere ||
@@ -2466,6 +2498,16 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
     currentAnim->movementSmuggle =
         CalculateMovementSmuggle(command.desiredDirection, command.desiredVelocityFloat);
     currentAnim->movementSmuggleOffset = Vector3(0);
+
+    // A trick move was picked over plain ball control: name the clip, so a
+    // match log shows which feints actually play (docs/PES21_IMPORT.md).
+    if (command.useSpecialVar1 && command.desiredFunctionType == e_FunctionType_BallControl) {
+      Log(e_Notice, "Humanoid", "Feint",
+          player->GetPlayerData()->GetLastName() + " plays " +
+              currentAnim->anim->GetVariable("feint") + " (" + currentAnim->anim->GetName() +
+              ", angle " + currentAnim->anim->GetVariable("feint_angle") + ")" +
+              ((command.modifier & e_PlayerCommandModifier_Fumble) ? " - fumbled" : ""));
+    }
 
     /*
         // visualise difference between what we wanted and what we got
@@ -2990,6 +3032,17 @@ signed int Humanoid::GetBestCheatableAnimID(
           radiusFactor *= 0.3f;
         }
 
+        // An imported feint was captured with PES's ball, which its own clip
+        // carried along; here the ball rolls on physics, so the move gets the
+        // reach a pass gets, and is not shrunk for the dribble touch that
+        // always precedes it (a dribbler touches the ball every stride).
+        const bool feint =
+            functionType == e_FunctionType_BallControl && !anim->GetVariable("feint").empty();
+        if (feint) {
+          radiusFactor *= 1.5f;
+          radiusCheatOffset += 0.25f;
+        }
+
         radiusCheatOffset *= (1.0f - touchFrameAwkwardness);
 
         float touchVelo = touchMovement.GetLength();
@@ -3009,7 +3062,7 @@ signed int Humanoid::GetBestCheatableAnimID(
         // just touched ball
         float lastTouchBias = curve(
             player->GetLastTouchBias(600, match->GetActualTime_ms() + animTouchFrame * 10), 1.0f);
-        if (lastTouchBias > 0.0f) {
+        if (lastTouchBias > 0.0f && !feint) {
           float factor = 1.0f - lastTouchBias * 0.97f *
                                     (1.0f - player->GetStat("technical_ballcontrol") * 0.1f);
           radiusFactor *= factor;
@@ -3024,6 +3077,12 @@ signed int Humanoid::GetBestCheatableAnimID(
             adaptedOutgoingMovement, predictedAngle, bodyPos, FFO, animBallPos.Get2D(),
             ballPos.Get2D(), ballMovement.Get2D(), touchFramedRadiusFactor, radiusCheatOffset, 1.0f,
             debug);
+        if (Verbose() && functionType == e_FunctionType_BallControl &&
+            !anim->GetVariable("feint").empty())
+          printf("feint:   %s touch frame %i: ball off by %.2fm (z %.2f), advantage %.2f, radius %.2f, lastTouch %.2f\n",
+                 anim->GetName().c_str(), animTouchFrame, actionSmuggleVec2D.GetLength(),
+                 actionSmuggleVec3D.coords[2], bodyBallDistanceAdvantage, touchFramedRadiusFactor,
+                 lastTouchBias);
 
         if (bodyBallDistanceAdvantage >= 1.0f || match->GetBallRetainer() == player) {
           // SetGreenDebugPilon(spatialState.position +
@@ -3281,6 +3340,16 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   if (functionType == e_FunctionType_HighPass)
     difficultyFactor *=
         (1.0f - CastPlayer()->GetStat(keeper ? "gk_clearing" : "technical_highpass") * 0.80f);
+  // Weighted Pass (ground), Pinpoint Crossing (a high ball in from the flank),
+  // Low Lofted Pass (any other lofted ball) take the error down further.
+  {
+    const Vector3 from = CastPlayer()->GetPosition();
+    const bool isCross = std::fabs(from.coords[1]) > 20.0f &&
+                         from.coords[0] * -team->GetSide() > pitchHalfW * 0.33f &&
+                         desiredTouch.coords[1] * from.coords[1] < 0.0f;
+    difficultyFactor *= PlayerSkills::GetPassDifficultyMultiplier(
+        CastPlayer()->GetPlayerData()->GetSkills(), functionType, isCross);
+  }
 
   // The team's style shapes precision too: a drilled short-passing side knocks
   // it around more cleanly, a long-ball side accepts more risk per pass.

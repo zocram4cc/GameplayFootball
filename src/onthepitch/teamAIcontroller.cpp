@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../data/playerskills.hpp"
 #include "../data/playingstyles.hpp"
 #include "../main.hpp"
 #include "../misc/hungarian.h"
@@ -654,8 +655,12 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
   // goal poacher ignores his depth altogether to lurk on the opponent's
   // offside line (roadmap 4D, docs/PES21_IMPORT.md).
   const PlayingStyles::Player style = player->GetPlayerData()->GetPlayingStyle();
+  // Track Back: a midfielder or forward with the card drops deeper when his
+  // team loses the ball.
   desiredPos.coords[0] +=
-      -team->GetSide() * PlayingStyles::GetDepthOffset(style, teamHasPossession);
+      -team->GetSide() * (PlayingStyles::GetDepthOffset(style, teamHasPossession) +
+                          PlayerSkills::GetTrackBackDepth(player->GetPlayerData()->GetSkills(),
+                                                          teamHasPossession));
   desiredPos.coords[1] += signSide(desiredPos.coords[1]) *
                           PlayingStyles::GetWidthOffset(style, teamHasPossession);
   if (style == PlayingStyles::Player::GoalPoacher && teamHasPossession &&
@@ -873,7 +878,10 @@ void TeamAIController::CalculateManMarking() {
     // find closest player for this opponent
     while (iter != players.end()) {
       if ((*iter)->GetFormationEntry().role != e_PlayerRole_GK) {
-        float markingQuality = CalculateMarkingQuality((*iter), oppPlayer);
+        // A man marker is the one sent to pick up the dangerous runner.
+        float markingQuality =
+            CalculateMarkingQuality((*iter), oppPlayer) +
+            PlayerSkills::GetMarkingQualityBonus((*iter)->GetPlayerData()->GetSkills());
 
         if (markingQuality > bestMarkingQuality) {
           closestPlayer = *iter;

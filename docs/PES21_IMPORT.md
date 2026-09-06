@@ -892,6 +892,9 @@ wiki's byte:bit addressing):
   (0 = none, 1 = goal_poacher ... 21 = defensive_goalkeeper, PES's own order).
 - `com_styles`: the seven card bits, Trickster at `0x2F:7` and the other six
   in `0x30` bits 0-5.
+- `skills`: the 41 Player Skill bits at `0x30:6` onwards, PES's own order
+  (bit 0 Scissors Feint ... bit 40 Fighting Spirit, `ted.SKILLS`); the same
+  order and tokens as the engine's `PlayerSkills::Skill`.
 
 `install_team.stat_profile_xml` writes every one of them into `profile_xml`
 under the engine's keys (`STAT_KEYS`), 0..1. The engine's original 22 keys
@@ -906,15 +909,19 @@ keep their meaning; PES's remaining attributes get their own:
 | GK Awareness / Catching / Clearing / Reflexes / Reach | `gk_awareness`, `gk_catching`, `gk_clearing`, `gk_reflexes`, `gk_coverage` |
 | (none in PES 2021) | `technical_interceptions` starts from Defensive Awareness, which is where PES 2021 keeps it |
 
-plus `<playing_style>hole_player</playing_style>` and
-`<com_styles>trickster,mazing_run</com_styles>` (`none` when PES's bytes say
+plus `<playing_style>hole_player</playing_style>`,
+`<com_styles>trickster,mazing_run</com_styles>` and
+`<skills>scissors_feint,one_touch_pass</skills>` (`none` when PES's bytes say
 so - that is an answer, not a gap). A team without decoded stats
 (`profile_xml(base_stat, role, seed)`) infers all of it from the role, the
 base stat and the same crc32 wobble as before: `ROLE_BIAS` puts a keeper's
 `gk_*` above his outfield ratings and every outfielder's at PES's floor, the
 style is a settled pick from `ROLE_STYLES` (a CF who heads better than he
-finishes is a Target Man), and the COM cards go to whichever of his ratings
-stand clearly above his own mean (`infer_com_styles`).
+finishes is a Target Man), the COM cards go to whichever of his ratings
+stand clearly above his own mean (`infer_com_styles`), and two or three
+skills come off the role's list in `ROLE_SKILLS`, best-backed rating first
+(`infer_skills`), so a flat-statted squad still has a winger who steps over
+and a centre-half who heads.
 
 On the engine side `PlayerData` parses all of it, fills any key an older
 `profile_xml` lacks from its nearest neighbour (a keeper's `gk_reflexes` from
@@ -924,3 +931,48 @@ absent, and rates a keeper's overall (`GetAverageStat`) on his `gk_*` set
 rather than as a poor striker. Form, injury resistance and weak foot stay
 out of the overall for everyone; they describe availability and habits, not
 level.
+
+### Player Skills: what each card changes
+
+`PlayerData::GetSkills()` (profile_xml `<skills>`, or the pre-PES `<traits>`
+tag, inferred by `PlayerSkills::Infer` only when neither is present) feeds
+`src/data/playerskills.{hpp,cpp}`. Every skill bends a decision that already
+exists; a skill stored and never read is a defect.
+
+| Skill | Decision |
+|---|---|
+| Scissors Feint, Double Touch, Sombrero, Marseille Turn, Cut Behind & Turn, Cross Over Turn, Step On Skill Control, Rabona | `PlayerController::_BallControlCommand` queues a trick command ahead of plain ball control when a man is 1-4.5 m in front (`PlayerSkills::PickFeint`); turn moves need a real change of direction, beat moves a straight run. `technical_tightpossession`/`technical_dribble` decide whether it is fumbled (`FeintFumbled`, ball runs loose at the touch). |
+| COM Trickster | Raises the attempt rate (`tricksterFeintAttemptChance`) and unlocks the body fake, kick feint and nutmeg clips, which are on no card. |
+| Heading | `GetHeaderMultiplier` on `technical_header` (PlayerData::GetStat). |
+| Long Range Drive, Long Range Shooting, Knuckle Shot | Shooting range and appetite (ElizaController shot decision); Knuckle Shot also wobbles efforts from 25 m (`ApplyShotSpin`). |
+| Dipping Shots, Rising Shots | Top-/backspin on the shot (`ApplyShotSpin`, Humanoid shot touch). |
+| Chip Shot Control | Lifts the finish over a keeper who has come off his line (`WantsChip`; loft through `touchInfo.desiredDirection.z`, read in `GetShotVector`). |
+| Acrobatic Finishing | Easier connection with a ball moving relative to the body (`GetVolleyEase`, `GetShotVector`). |
+| First-time Shot | Power bonus on a first-time strike of a rolling ball. |
+| One-touch Pass | No control penalty on a release within 200 ms. |
+| Through Passing | Higher upside for the ball into a runner's path (ElizaController pass rating). |
+| Weighted Pass, Pinpoint Crossing, Low Lofted Pass | Lower pass difficulty for ground passes / crosses from the flank / other lofted balls (`Humanoid::GetBestPossibleTouch`); Low Lofted Pass also flattens and quickens the ball (`ShapePassTouch`). |
+| Outside Curler | More bend on the pass (`GetPassCurve`). |
+| No Look Pass | No odds penalty for passing where he is not facing (`AI_GetPassRatings`). |
+| Man Marking | Bonus on the marking quality when markers are assigned (`TeamAIController::CalculateManMarking`). |
+| Track Back | Sits 3 m deeper when his team loses the ball (`GetAdaptedFormationPosition`). |
+| Interception | Backs himself more in a ball duel (`PlayerController::CouldWinABallDuelLikeliness`). |
+| Acrobatic Clear | More power on a clearance (`ShapePassTouch`). |
+| Gamesmanship | Bonus on the referee's foul score when he is the one brought down (`Referee`). |
+| GK Low Punt, GK High Punt, GK Long Throw | The keeper's distribution when he has the ball in hand: driven long pass to halfway, high ball into the opposition half, or a throw to a full-back (`PickDistribution`, ElizaController). |
+| Long Throw | A throw-in becomes a high ball 18 m towards goal. |
+| Penalty Specialist, GK Penalty Saver | Shootout taker rating and shot, keeper reflexes from the spot (`PenaltyShootoutController`). |
+| Captaincy, Fighting Spirit | Lower chance of losing composure under pressure for the whole team / for himself (ElizaController); Fighting Spirit also tires 15% slower. |
+| Super-sub | Bench bonus when the manager picks who comes on (`Match` substitution candidates). |
+| Speed Merchant, Target Man (engine-only) | Acceleration and calmness at speed; heading and shielding radius. |
+
+Not wired, because the engine has no decision for them yet: Flip Flap, Scotch
+Move, Heel Trick (no imported clip of the move exists - the feint families
+are listed in `PlayerSkills::FeintFromClipName`).
+
+The 82 imported feint clips live in `ballcontrol/dribble/feint/`. On load
+`AnimCollection` reads each clip's family off its file name into
+`specialvar1` (and the entry angle into `feint_angle`), so a plain ballcontrol
+query never sees them and a trick command sees only its own move; the log
+names every one that plays (`Humanoid Feint: <player> plays <family> (<clip>,
+angle <deg>)`).

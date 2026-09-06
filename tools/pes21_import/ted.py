@@ -136,6 +136,23 @@ COM_STYLE_FIELDS = (
     ("long_ranger", 0x30, 5),
 )
 
+# The Player Skills: a 41-bit bitmask at 0x30:6 (right after the COM cards),
+# in PES's own order - the wiki's "Bit 0 - Scissors Feint ... Bit 40 - Fighting
+# Spirit". The engine's PlayerSkills::Skill enum uses the same order and the
+# same tokens.
+SKILL_FIELD = (0x30, 6)
+SKILLS = (
+    "scissors_feint", "double_touch", "flip_flap", "marseille_turn", "sombrero",
+    "cross_over_turn", "cut_behind_turn", "scotch_move", "step_on_skill_control",
+    "heading", "long_range_drive", "chip_shot_control", "long_range_shooting",
+    "knuckle_shot", "dipping_shots", "rising_shots", "acrobatic_finishing",
+    "heel_trick", "first_time_shot", "one_touch_pass", "through_passing",
+    "weighted_pass", "pinpoint_crossing", "outside_curler", "rabona", "no_look_pass",
+    "low_lofted_pass", "gk_low_punt", "gk_high_punt", "long_throw", "gk_long_throw",
+    "penalty_specialist", "gk_penalty_saver", "gamesmanship", "man_marking",
+    "track_back", "interception", "acrobatic_clear", "captaincy", "super_sub",
+    "fighting_spirit")
+
 
 # PES colours a name from markup inside the string, and 4cc packs use it:
 #
@@ -244,6 +261,13 @@ def read_player_styles(plain, offset):
     return style, com
 
 
+def read_player_skills(plain, offset):
+    """-> [skill tokens] in PES order, one per set bit of the Player Skills field."""
+    byte_off, bit_off = SKILL_FIELD
+    bits = get_bits(plain, offset + byte_off, bit_off, len(SKILLS))
+    return [name for i, name in enumerate(SKILLS) if bits >> i & 1]
+
+
 def read_squad_order(plain):
     raw = plain[SQUAD_ORDER_OFFSET:SQUAD_ORDER_OFFSET + SQUAD_SIZE]
     return [b for b in raw]
@@ -288,7 +312,7 @@ def strip_markup(text):
 
 def read_players(plain):
     """-> [{id, name, shirt_name, extra, stats, abilities, playing_style,
-    com_styles}] in record order, from their own fields.
+    com_styles, skills}] in record order, from their own fields.
 
     Reading the longest printable run instead was wrong twice on HDG's export: it
     dragged in the colour markup and the stray bytes of the packed block before a
@@ -313,6 +337,7 @@ def read_players(plain):
             "abilities": read_player_abilities(plain, offset),
             "playing_style": style,
             "com_styles": com,
+            "skills": read_player_skills(plain, offset),
         })
         offset += PLAYER_RECORD_SIZE
     return players

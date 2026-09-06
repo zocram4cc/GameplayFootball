@@ -5,6 +5,7 @@
 
 #include "referee.hpp"
 
+#include "../data/playerskills.hpp"
 #include "../main.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "foulseverity.hpp"
@@ -665,9 +666,12 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
                                  0.5f,
                                  0.0f, 1.0f);
 
-      const int foulType =
-          ApplyGoalDenial(RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact)),
-                          tripee, tripper, contact.ballDistance_m);
+      // Gamesmanship: the man brought down makes the contact look worse.
+      const int foulType = ApplyGoalDenial(
+          RefereeProfile::GetFoulType(
+              profile, FoulSeverity::Score(contact) +
+                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
+          tripee, tripper, contact.ballDistance_m);
       if (foulType > 0) {
         // uooooga uooooga foul!
         foul.foulType = foulType;
@@ -711,10 +715,11 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
       // How harshly this is judged depends on the referee's temperament. A
       // slide that never played at the ball (no touch data) was no genuine
       // attempt, whatever its distance says.
-      const int foulType =
-          ApplyGoalDenial(RefereeProfile::GetFoulType(profile, FoulSeverity::Score(contact)),
-                          tripee, tripper,
-                          contact.hasTouchData ? contact.ballDistance_m : 1000.0f);
+      const int foulType = ApplyGoalDenial(
+          RefereeProfile::GetFoulType(
+              profile, FoulSeverity::Score(contact) +
+                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
+          tripee, tripper, contact.hasTouchData ? contact.ballDistance_m : 1000.0f);
       if (foulType > 0) {
         // uooooga uooooga foul!
         // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -

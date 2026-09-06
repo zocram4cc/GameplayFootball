@@ -21,6 +21,7 @@
 #include <cmath>
 
 #include "../../../main.hpp"
+#include "data/playerskills.hpp"
 #include "../../gameplaytuning.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../AIsupport/mentalimage.hpp"
@@ -304,7 +305,9 @@ float PlayerController::CouldWinABallDuelLikeliness() {
   distance' is considered best now
   */
 
-  return (1.0f - dot);
+  // An interceptor backs himself to get there first more often.
+  return PlayerSkills::GetBallDuelLikeliness(CastPlayer()->GetPlayerData()->GetSkills(),
+                                             1.0f - dot);
 }
 
 void PlayerController::_Preprocess() {
@@ -425,7 +428,7 @@ void PlayerController::_BallControlCommand(PlayerCommandQueue& commandQueue,
         (CastPlayer()->GetEnumVelocity() == e_Velocity_Walk ||
          CastPlayer()->GetEnumVelocity() == e_Velocity_Dribble) &&
         FloatToEnumVelocity(command.desiredVelocityFloat) == e_Velocity_Dribble) {
-      // sidestep dribble and such tricks! (not implemented yet, methinks)
+      // keep facing where we are facing and shuffle sideways at walking pace
       command.desiredVelocityFloat = walkVelocity;
       command.desiredLookAt = CastPlayer()->GetPosition() + CastPlayer()->GetDirectionVec() * 10.0f;
     } else {
@@ -433,10 +436,43 @@ void PlayerController::_BallControlCommand(PlayerCommandQueue& commandQueue,
                               command.desiredDirection * 10.0f;
     }
 
-    // if (player->GetDebug()) SetRedDebugPilon(player->GetPosition() + command.desiredDirection *
-    // (2.0f + command.desiredVelocityFloat)); if (player->GetDebug())
-    // SetYellowDebugPilon(command.desiredLookAt); if (player->GetDebug())
-    // SetSmallDebugCircle1(player->GetPosition());
+    // Trick moves: with a man in front of him, a player who carries the skill
+    // (or the COM Trickster card) tries the imported feint clips first. The
+    // trick command carries the family as specialVar1, so the selector sees
+    // only that move's clips; when none fits the geometry it falls through to
+    // the plain ball control queued behind it. Human players keep the stick.
+    if (hasPossession && !team->IsHumanControlled(player->GetID())) {
+      Player* opp = AI_GetClosestPlayer(match->GetTeam(abs(team->GetID() - 1)),
+                                        CastPlayer()->GetPosition(), false, 0);
+      PlayerSkills::FeintSituation situation;
+      if (opp) {
+        const Vector3 toOpp = opp->GetPosition() - CastPlayer()->GetPosition();
+        situation.opponentDistance = toOpp.GetLength();
+        situation.opponentAngle = fabs(toOpp.GetAngle2D(CastPlayer()->GetDirectionVec()));
+      }
+      situation.turnAngle =
+          fabs(command.desiredDirection.GetAngle2D(CastPlayer()->GetDirectionVec()));
+      const PlayerSkills::Feint feint = PlayerSkills::PickFeint(
+          CastPlayer()->GetPlayerData()->GetSkills(), CastPlayer()->GetPlayerData()->GetComStyles(),
+          situation, random(0.0f, 1.0f), random(0.0f, 1.0f));
+      if (feint != PlayerSkills::Feint::None) {
+        PlayerCommand trick = command;
+        trick.useSpecialVar1 = true;
+        trick.specialVar1 = static_cast<int>(feint);
+        // A poor dribbler's trick can go wrong; the touch decides at contact.
+        if (PlayerSkills::FeintFumbled(CastPlayer()->GetStat("technical_tightpossession"),
+                                       CastPlayer()->GetStat("technical_dribble"),
+                                       random(0.0f, 1.0f)))
+          trick.modifier |= e_PlayerCommandModifier_Fumble;
+        if (Verbose())
+          printf("feint: %s queues %s (opp %.1fm at %.2f rad, turn %.2f rad)\n",
+                 CastPlayer()->GetPlayerData()->GetLastName().c_str(),
+                 PlayerSkills::GetFeintName(feint), situation.opponentDistance,
+                 situation.opponentAngle, situation.turnAngle);
+        commandQueue.push_back(trick);
+      }
+    }
+
     commandQueue.push_back(command);
   }
 }

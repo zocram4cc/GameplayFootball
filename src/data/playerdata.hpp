@@ -11,7 +11,7 @@
 #include "../utils.hpp"
 #include "base/properties.hpp"
 #include "defines.hpp"
-#include "playertraits.hpp"
+#include "playerskills.hpp"
 #include "playingstyles.hpp"
 
 class PlayerData {
@@ -31,7 +31,7 @@ public:
   // Adds the role if he does not have it, removes it if he does; -> whether he
   // has it afterwards. His listed position (the first) is never removed - a
   // player with no position at all is not a thing the rest of the engine
-  // expects (AssignPlayingStyles, the plan card's aptitude colours).
+  // expects (PlayerSkills::Infer, the plan card's aptitude colours).
   bool ToggleRole(e_PlayerRole role);
 
   float GetStat(const char* name) const;
@@ -42,17 +42,14 @@ public:
   // access to before kick-off.
   float GetAverageStat() const;
 
-  // Gives the player a style of his own when the database defines none.
-  void AssignPlayingStyles();
-
   // PES 2021 Playing Style and COM Playing Styles ("playing cards"): from
   // profile_xml's <playing_style>/<com_styles>, inferred when the profile
   // carries neither tag.
   PlayingStyles::Player GetPlayingStyle() const { return playingStyle; }
   PlayingStyles::ComMask GetComStyles() const { return comStyles; }
 
-  // Traits / specialties this player carries.
-  PlayerTraits::TraitMask GetTraits() const { return traits; }
+  // PES 2021 Player Skills (profile_xml <skills>, or the older <traits> tag).
+  PlayerSkills::Mask GetSkills() const { return skills; }
   // MatchPressure::unknownAge when the player was not loaded from the database.
   int GetAge() const { return playerAge; }
 
@@ -71,7 +68,7 @@ protected:
   std::vector<e_PlayerRole> roles;
 
   Properties stats;
-  PlayerTraits::TraitMask traits;
+  PlayerSkills::Mask skills;
   PlayingStyles::Player playingStyle;
   PlayingStyles::ComMask comStyles;
   int playerAge;

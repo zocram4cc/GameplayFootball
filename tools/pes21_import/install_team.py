@@ -245,10 +245,66 @@ def infer_com_styles(values, role):
     return cards[:5]
 
 
-def render_profile(starts, role, seed, playing_style=None, com_styles=None):
+# Which skills a role can carry and the engine key each one leans on; the same
+# table PlayerSkills::Infer uses, so a squad the database names no skills for
+# comes out the same whether the importer or the engine fills them in.
+ROLE_SKILLS = {
+    "GK": (("gk_low_punt", "gk_clearing"), ("gk_high_punt", "gk_clearing"),
+           ("gk_long_throw", "gk_clearing"), ("gk_penalty_saver", "gk_reflexes"),
+           ("captaincy", "mental_calmness")),
+    "CB": (("heading", "technical_header"), ("man_marking", "technical_ballwinning"),
+           ("interception", "technical_interceptions"),
+           ("acrobatic_clear", "technical_ballwinning"), ("captaincy", "mental_calmness"),
+           ("fighting_spirit", "mental_resilience")),
+    "LB": (("pinpoint_crossing", "technical_highpass"), ("long_throw", "physical_contact"),
+           ("man_marking", "technical_ballwinning"),
+           ("interception", "technical_interceptions"), ("scissors_feint", "technical_dribble"),
+           ("track_back", "mental_workrate")),
+    "DM": (("man_marking", "technical_ballwinning"),
+           ("interception", "technical_interceptions"), ("long_range_drive", "physical_shotpower"),
+           ("one_touch_pass", "technical_shortpass"), ("weighted_pass", "technical_shortpass"),
+           ("captaincy", "mental_calmness")),
+    "CM": (("one_touch_pass", "technical_shortpass"), ("weighted_pass", "technical_shortpass"),
+           ("through_passing", "mental_vision"), ("no_look_pass", "mental_vision"),
+           ("long_range_drive", "physical_shotpower"), ("track_back", "mental_workrate"),
+           ("double_touch", "technical_dribble")),
+    "LM": (("scissors_feint", "technical_dribble"), ("double_touch", "technical_dribble"),
+           ("pinpoint_crossing", "technical_highpass"), ("outside_curler", "technical_curl"),
+           ("cut_behind_turn", "technical_tightpossession"), ("rabona", "technical_dribble"),
+           ("track_back", "mental_workrate")),
+    "AM": (("marseille_turn", "technical_tightpossession"), ("double_touch", "technical_dribble"),
+           ("through_passing", "mental_vision"), ("no_look_pass", "mental_vision"),
+           ("chip_shot_control", "technical_shot"), ("dipping_shots", "technical_curl"),
+           ("long_range_drive", "physical_shotpower")),
+    "CF": (("first_time_shot", "technical_volley"), ("acrobatic_finishing", "technical_volley"),
+           ("heading", "technical_header"), ("chip_shot_control", "technical_shot"),
+           ("knuckle_shot", "physical_shotpower"), ("rising_shots", "technical_shot"),
+           ("sombrero", "technical_ballcontrol"), ("super_sub", "physical_stamina")),
+}
+ROLE_SKILLS["RB"] = ROLE_SKILLS["LB"]
+ROLE_SKILLS["RM"] = ROLE_SKILLS["LM"]
+
+
+def infer_skills(values, role, seed):
+    """The Player Skills a `role` player with these engine-key values would
+    carry: two or three from the role's list, settled by the seed, leaning to
+    the ones his own ratings back - so a flat-statted 4cc squad still gets a
+    winger who steps over and a centre-half who heads."""
+    options = ROLE_SKILLS.get(role, ())
+    if not options:
+        return []
+    # Best-backed first, the seed breaking the ties a flat squad is full of.
+    ranked = sorted(options,
+                    key=lambda o: (-values.get(o[1], 0.5),
+                                   zlib.crc32(("skill:%s:%d" % (o[0], seed)).encode())))
+    count = 2 + (zlib.crc32(("skills:%d" % seed).encode()) & 1)
+    return sorted(name for name, _ in ranked[:count])
+
+
+def render_profile(starts, role, seed, playing_style=None, com_styles=None, skills=None):
     """-> profile_xml from a per-key 0..1 starting value each: the role's bias
-    and the settled wobble go on top, then the styles - the given ones, or the
-    ones the finished values earn."""
+    and the settled wobble go on top, then the styles and skills - the given
+    ones, or the ones the finished values earn."""
     bias = ROLE_BIAS.get(role, {})
     values = {key: min(1.0, max(0.0, starts[key] + bias.get(key, 0.0) + wobble(key, seed)))
               for key in STAT_KEYS}
@@ -256,14 +312,17 @@ def render_profile(starts, role, seed, playing_style=None, com_styles=None):
         playing_style = infer_playing_style(values, role, seed)
     if com_styles is None:
         com_styles = infer_com_styles(values, role)
+    if skills is None:
+        skills = infer_skills(values, role, seed)
     lines = ["<%s>%.6f</%s>" % (key, values[key], key) for key in STAT_KEYS]
     lines.append("<playing_style>%s</playing_style>" % playing_style)
     lines.append("<com_styles>%s</com_styles>" % (",".join(com_styles) or "none"))
+    lines.append("<skills>%s</skills>" % (",".join(skills) or "none"))
     return "\n".join(lines) + "\n"
 
 
 def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
-                     com_styles=None):
+                     com_styles=None, skills=None):
     """One player's stats, as the engine's profile_xml, converted straight from
     his own decoded PES ratings.
 
@@ -275,7 +334,8 @@ def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
     overall level, not a guess at what that key specifically should be. The
     non-7-bit ratings come from `abilities` (ted.read_player_abilities) when
     the record carried them, and from that same mean otherwise. A "none"
-    playing style is PES's own answer and is kept; only None (unread) infers.
+    playing style or an empty skill list is PES's own answer and is kept; only
+    None (unread) infers.
     """
     mean_pes = sum(stats.values()) / len(stats)
     pes_by_key = {engine_key: stats[pes_stat]
@@ -286,7 +346,7 @@ def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
     for engine_key, ability in ABILITY_KEYS:
         if abilities and ability in abilities:
             starts[engine_key] = (abilities[ability] - 1) / float(ABILITY_MAX[ability] - 1)
-    return render_profile(starts, role, seed, playing_style, com_styles)
+    return render_profile(starts, role, seed, playing_style, com_styles, skills)
 
 
 def profile_xml(base_stat, role, seed):
@@ -387,7 +447,7 @@ def install(database, team, tactics, dry_run=False):
                 base_stat = pes_to_base(sum(stats.values()) / len(stats))
                 profile = stat_profile_xml(stats, role, slot, player.get("abilities"),
                                            player.get("playing_style"),
-                                           player.get("com_styles"))
+                                           player.get("com_styles"), player.get("skills"))
             else:
                 base_stat = BASE_STAT
                 profile = profile_xml(BASE_STAT, role, slot)

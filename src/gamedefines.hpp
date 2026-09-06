@@ -109,7 +109,10 @@ enum e_FunctionType {
 
 enum e_PlayerCommandModifier {
   e_PlayerCommandModifier_None = 0,
-  e_PlayerCommandModifier_KnockOn = 1
+  e_PlayerCommandModifier_KnockOn = 1,
+  // A trick move (specialVar1 = PlayerSkills::Feint) that goes wrong: the touch
+  // runs loose instead of past the man.
+  e_PlayerCommandModifier_Fumble = 2
 };
 
 class IController;

@@ -220,12 +220,15 @@ def prepare_match_anim(path, anim_class):
         if lie is not None:
             return None, None, "goes to ground: not a touch"
         # ballcontrol is the type the possession game runs through and GF
-        # filters it strictly on direction, so an imported batch competes
-        # directly with the tuned locomotion set. These ship dark: the
-        # engine skips any path containing "experimental" unless
-        # `anim_experimental` is set (AnimCollection::Load).
+        # filters it strictly on direction. A feint clip is kept out of that
+        # competition by the engine: AnimCollection::Load reads its family
+        # off the file name (PlayerSkills::FeintFromClipName) into specialvar1,
+        # which only a trick command asks for. Anything else that lands here
+        # is a plain touch and ships dark under "experimental".
         variables["type"] = "ballcontrol"
-        subdir = os.path.join("ballcontrol", velocity, "experimental")
+        stem = os.path.basename(path)
+        subdir = os.path.join("ballcontrol", velocity,
+                              "feint" if stem.startswith("feint") else "experimental")
     elif anim_class == "trap":
         if lie is not None:
             return None, None, "goes to ground: not a trap"

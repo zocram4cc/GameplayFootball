@@ -213,6 +213,7 @@ class EveryPlayerNeedsAProfile(unittest.TestCase):
         self.assertEqual(set(CONTRACT_KEYS), set(install_team.STAT_KEYS))
         self.assertIn("<playing_style>", xml)
         self.assertIn("<com_styles>", xml)
+        self.assertIn("<skills>", xml)
 
     def test_nothing_lands_outside_zero_to_one(self):
         for role in ("GK", "CB", "CM", "CF"):
@@ -276,6 +277,27 @@ class EveryPlayerNeedsAProfile(unittest.TestCase):
         # early cross is a wide man's card; a centre-mid with the same curl keeps only his dribble
         self.assertEqual(install_team.infer_com_styles(values, "CM"), ["trickster"])
         self.assertEqual(install_team.infer_com_styles(values, "GK"), [])
+
+    def test_skills_follow_the_role_and_the_ratings_and_are_settled(self):
+        # A flat squad still varies: two or three skills from the role's list,
+        # the same ones every run, and different roles get different skills.
+        winger = install_team.stat_values(install_team.profile_xml(0.62, "LM", 8))
+        centre_half = install_team.stat_values(install_team.profile_xml(0.62, "CB", 1))
+        self.assertEqual(install_team.infer_skills(winger, "LM", 8),
+                         install_team.infer_skills(winger, "LM", 8))
+        self.assertIn(len(install_team.infer_skills(winger, "LM", 8)), (2, 3))
+        for skill in install_team.infer_skills(centre_half, "CB", 1):
+            self.assertIn(skill, [name for name, _ in install_team.ROLE_SKILLS["CB"]])
+        self.assertNotEqual(set(install_team.infer_skills(winger, "LM", 8)),
+                            set(install_team.infer_skills(centre_half, "CB", 1)))
+        # The rating behind a skill puts it first: a winger who crosses gets the card.
+        winger["technical_highpass"] = 0.99
+        self.assertIn("pinpoint_crossing", install_team.infer_skills(winger, "LM", 8))
+        # PES's own answer is kept, an empty list included.
+        stats = {name: 70 for name, _, _ in ted.STAT_FIELDS}
+        self.assertIn("<skills>rabona,sombrero</skills>",
+                      install_team.stat_profile_xml(stats, "CF", 1, skills=["rabona", "sombrero"]))
+        self.assertIn("<skills>none</skills>", install_team.stat_profile_xml(stats, "CF", 1, skills=[]))
 
     def test_a_better_base_stat_lifts_the_profile(self):
         weak = install_team.stat_values(install_team.profile_xml(0.40, "CM", 2))

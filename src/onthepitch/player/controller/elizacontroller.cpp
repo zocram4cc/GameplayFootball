@@ -27,7 +27,7 @@
 #include "../../playercontrolsettings.hpp"
 #include "../humanoid/humanoid_utils.hpp"
 #include "../playerofficial.hpp"
-#include "data/playertraits.hpp"
+#include "data/playerskills.hpp"
 #include "data/playingstyles.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
@@ -287,11 +287,36 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
       } else if (team->GetController()->GetSetPieceType() == e_SetPiece_ThrowIn) {
         actionCommand.desiredFunctionType = e_FunctionType_ShortPass;
         desiredTargetPosition = player->GetPosition();  // closest to player
+        // Long Throw: hurled towards the box rather than to the nearest man.
+        if (PlayerSkills::Has(CastPlayer()->GetPlayerData()->GetSkills(),
+                              PlayerSkills::Skill::LongThrow)) {
+          actionCommand.desiredFunctionType = e_FunctionType_HighPass;
+          desiredTargetPosition += Vector3(-team->GetSide() * 18.0f, 0, 0);
+        }
 
       } else if (match->GetBallRetainer() == player) {  // keeper fetched ball, probably
+        // GK Long Throw rolls it out to a full-back, GK Low Punt drives it flat
+        // to the halfway line, GK High Punt hoofs it deep; a plain keeper hoofs.
+        const PlayerSkills::Distribution distribution = PlayerSkills::PickDistribution(
+            CastPlayer()->GetPlayerData()->GetSkills(), random(0.0f, 1.0f));
         actionCommand.desiredFunctionType = e_FunctionType_HighPass;
         desiredTargetPosition =
             Vector3(pitchHalfW * team->GetSide(), random(-pitchHalfH, pitchHalfH), 0.0f);
+        switch (distribution) {
+          case PlayerSkills::Distribution::LongThrow:
+            actionCommand.desiredFunctionType = e_FunctionType_ShortPass;
+            desiredTargetPosition.coords[0] = pitchHalfW * team->GetSide() * 0.6f;
+            break;
+          case PlayerSkills::Distribution::LowPunt:
+            actionCommand.desiredFunctionType = e_FunctionType_LongPass;
+            desiredTargetPosition.coords[0] = 0.0f;
+            break;
+          case PlayerSkills::Distribution::HighPunt:
+            desiredTargetPosition.coords[0] = pitchHalfW * -team->GetSide() * 0.3f;
+            break;
+          default:
+            break;
+        }
         Player* targetPlayer =
             AI_GetClosestPlayer(team, desiredTargetPosition, false, CastPlayer());
 
@@ -1039,15 +1064,14 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   oneTouchIsHard =
       movementDiff - CastPlayer()->GetStat("technical_shortpass") * movementDiff * 0.8f;
 
-  // Cards, playing style and philosophy shape how this player uses the ball
-  // (roadmap 4D).
-  const PlayerTraits::TraitMask traits = CastPlayer()->GetPlayerData()->GetTraits();
+  // Skills, playing style and philosophy shape how this player uses the ball.
+  const PlayerSkills::Mask skills = CastPlayer()->GetPlayerData()->GetSkills();
   const PlayingStyles::Player style = CastPlayer()->GetPlayerData()->GetPlayingStyle();
   const PlayingStyles::ComMask comStyles = CastPlayer()->GetPlayerData()->GetComStyles();
   const TeamPhilosophy::e_Philosophy philosophy = team->GetController()->GetPhilosophy();
   // A one-touch passer does not pay the control penalty on a quick release.
-  oneTouchIsHard = PlayerTraits::GetQuickReleaseAccuracyPenalty(
-      traits, CastPlayer()->GetPossessionDuration_ms(), oneTouchIsHard);
+  oneTouchIsHard = PlayerSkills::GetQuickReleaseAccuracyPenalty(
+      skills, CastPlayer()->GetPossessionDuration_ms(), oneTouchIsHard);
 
   std::vector<PlayerImage> opponentPlayerImages;
   _mentalImage->GetTeamPlayerImages(abs(team->GetID() - 1), -1, opponentPlayerImages);
@@ -1193,9 +1217,10 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         // nothing no matter how good the position it would reach.
         float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
                        mateRating.supportRating;
-        // The ball into the runner's path is the pass that makes a chance.
+        // The ball into the runner's path is the pass that makes a chance, and
+        // the through-ball specialist looks for it first.
         if (isActiveRunner)
-          upside += 0.3f;
+          upside += PlayerSkills::GetThroughBallBonus(skills, 0.3f);
 
         // The plain odds term survives alongside it so a safe ball with no
         // tactical gain is still worth playing.
@@ -1224,9 +1249,19 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         pressuringOpponents++;
     }
 
-    const float stumbleChance = MatchPressure::GetStumbleChance(
-        CastPlayer()->GetStat("mental_calmness"), CastPlayer()->GetPlayerData()->GetAge(),
-        pressuringOpponents);
+    // A captain on the pitch steadies everybody; fighting spirit steadies himself.
+    bool captainOnPitch = false;
+    std::vector<Player*> mates;
+    team->GetActivePlayers(mates);
+    for (Player* mate : mates) {
+      if (PlayerSkills::Has(mate->GetPlayerData()->GetSkills(), PlayerSkills::Skill::Captaincy))
+        captainOnPitch = true;
+    }
+    const float stumbleChance =
+        MatchPressure::GetStumbleChance(CastPlayer()->GetStat("mental_calmness"),
+                                        CastPlayer()->GetPlayerData()->GetAge(),
+                                        pressuringOpponents) *
+        PlayerSkills::GetStumbleChanceMultiplier(skills, captainOnPitch);
     if (MatchPressure::ShouldStumble(stumbleChance, random(0.0f, 1.0f))) {
       _AddPanicPass(commandQueue, opponentPlayerImages);
       if (Verbose())
@@ -1273,11 +1308,11 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     // tight that whole matches passed with three or four shots. Poachers, long
     // rangers and the team's appetite for a shot widen it further (proposal: an
     // offensive, flowing game).
-    const float shotAppetite = PlayerTraits::GetShotAppetite(traits) *
+    const float shotAppetite = PlayerSkills::GetShotAppetite(skills) *
                                PlayingStyles::GetShotAppetite(style, comStyles) *
                                GameplayTuning::GetShotAppetite(*GetConfiguration());
     const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
-                                PlayerTraits::GetShootingRangeBonus(traits) +
+                                PlayerSkills::GetShootingRangeBonus(skills) +
                                 PlayingStyles::GetShootingRangeBonus(style, comStyles);
     float idealShotPosFactor =
         1.0f - NormalizedClamp(
@@ -1332,6 +1367,15 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         command.touchInfo.autoDirectionBias = 1.0f;
         command.touchInfo.desiredPower =
             random(0.7f * (0.6f + goalDist * 0.4f), 1.0f * (0.6f + goalDist * 0.4f));
+        // Chip Shot Control: a keeper who has come off his line gets lifted over.
+        Player* keeper = match->GetTeam(abs(team->GetID() - 1))->GetGoalie();
+        if (keeper &&
+            PlayerSkills::WantsChip(
+                skills, (keeper->GetPosition() - CastPlayer()->GetPosition()).GetLength(),
+                std::fabs(pitchHalfW * -team->GetSide() - keeper->GetPosition().coords[0]))) {
+          command.touchInfo.desiredDirection.coords[2] = PlayerSkills::chipLoft;
+          command.touchInfo.desiredPower *= 0.6f;
+        }
         commandQueue.push_back(command);
         shooting = true;
       }
