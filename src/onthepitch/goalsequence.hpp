@@ -82,8 +82,10 @@ constexpr unsigned long kGroupShot_ms = 15000;
 // The replay PES cuts to shows the BUILD-UP and the finish, from two angles -
 // and then hands back. Ours played the tape all the way to the present, so a
 // goal replay replayed the celebration that had just been on screen. Each
-// angle plays a window ending at the goal; the close one runs at half speed,
-// so its wall time is twice the tape it covers.
+// angle plays a window ending at the goal. Times are WALL time: the wide
+// angle plays 9000 ms of tape at full speed, the close angle 3500 ms of tape
+// at half speed - both 9000/7000 ms on screen, and the sum below is what the
+// sequence costs (WholeSequence_ms and the 60-80 s test read it).
 constexpr unsigned long kReplayWideAngle_ms = 9000;
 constexpr unsigned long kReplayCloseAngle_ms = 7000;
 constexpr unsigned long kReplayPlayback_ms = kReplayWideAngle_ms + kReplayCloseAngle_ms;

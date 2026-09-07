@@ -919,6 +919,10 @@ protected:
   // Which shot of the celebration montage is on air, so the camera cuts once
   // per shot rather than every frame (GoalSequence::Shot).
   GoalSequence::Shot goalCelebrationShot = GoalSequence::Shot::Tracking;
+  // The track currently filming the celebration, and the one the previous shot
+  // used - the picker refuses to hand the same camera to adjacent shots.
+  int goalCelebrationTrack = -1;
+  int goalCelebrationLastTrack = -1;
   std::unique_ptr<Gui2GoalBug> goalBug;
   int lastTouchTeamIDs[e_TouchType_SIZE];
   int lastTouchTeamID;

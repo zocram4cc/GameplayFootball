@@ -460,9 +460,8 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
   if (autoRun && actualTime_ms >= autorunEnd) {
     if (AdvanceAngle()) {
       actualTime_ms = angleStart_ms;
-    } else {
-    autoRun = false;
-    if (closeWhenAutorunCompletes) {
+    } else if (closeWhenAutorunCompletes) {
+      autoRun = false;
       closeWhenAutorunCompletes = false;
       // Wipe out of the replay the same way it wiped in: the whole animation, with
       // the cut back to live play hidden under its cover.
@@ -473,7 +472,14 @@ void ReplayPage::ProcessInput(const Vector3& direction, bool button1, bool butto
       }
       GoBack();
       return;
-    }
+    } else {
+      // This replay belongs to the user now (he took control mid-play), so the
+      // end of the tape is not the end of the page. It froze here before: with
+      // autorun stopped, Process() never called ProcessInput again, nothing
+      // advanced, the match stayed paused on the last frame and only backing
+      // out unpaused it. Loop instead, which is what an owned replay is for.
+      actualTime_ms = angleQueue.empty() ? minTime_ms : angleStart_ms;
+      autoRun = true;
     }
   }
 

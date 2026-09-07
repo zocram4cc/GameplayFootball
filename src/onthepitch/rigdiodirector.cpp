@@ -290,12 +290,22 @@ RigdioDirector::Track* RigdioDirector::Load(bool home, const std::string& file,
 }
 
 void RigdioDirector::Start(Channel& ch, bool home, const rigdio::PlayAction& act) {
-  // Silence whatever the channel was doing.
-  if (ch.active && ch.track && ch.track->sound) ch.track->sound->Pause();
+  // Silence whatever the channel was doing, active or not: a channel whose
+  // wall clock has run past its track reads inactive while the sound is still
+  // sounding (AtEnd pauses the chant case, but Start is the last line of
+  // defence for every other channel), and starting over it is the layering
+  // the owner hears.
+  if (ch.track && ch.track->sound) ch.track->sound->Pause();
   ch = Channel();
 
   Track* track = Load(home, act.file, act.louder);
-  if (!track) return;
+  if (!track) {
+    // The session gate was already set by the call that produced this action.
+    // Returning without releasing it denied every later chant for the rest of
+    // the match with "one already playing" that nobody could hear.
+    if (ch.chant) session_->ChantEnded();
+    return;
+  }
   session_->SetDuration(home, act.file, track->durationSeconds);
 
   ch.track = track;
@@ -475,7 +485,11 @@ void RigdioDirector::Update() {
       if (!events.GetKeyboardState(keys[t])) continue;
       events.SetKeyboardState(keys[t], false);
       const bool home = t == 0;
-      if (chantCh_.active && chantCh_.action.home == home) {
+      if (chantCh_.active && chantCh_.target > 0.0f && chantCh_.action.home == home) {
+        // Only a still-playing chant is stopped; target already at zero means
+        // this channel is on its way out from an earlier press, and treating
+        // the key as another stop swallowed the restart it was asking for -
+        // the next press after the fade then started a chant out of nowhere.
         Log(e_Notice, "RigdioDirector", "Update", "rigdio: chant stopped early");
         FadeOut(chantCh_);
       } else {
@@ -510,6 +524,11 @@ void RigdioDirector::Update() {
     if (act) Start(victory_, victory_.action.home, *act);
   }
   if (AtEnd(chantCh_, now_ms)) {
+    // The wall clock reaches the track's end before the audio does - Start
+    // stamps the time before Seek/Poke - so without this the old chant's tail
+    // is still audible while both the channel and the session read idle, and
+    // the next Z/X starts a second chant on top of it (owner: "some cacophony").
+    if (chantCh_.track && chantCh_.track->sound) chantCh_.track->sound->Pause();
     chantCh_.active = false;
     session_->ChantEnded();
   }

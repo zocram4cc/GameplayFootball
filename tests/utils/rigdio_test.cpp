@@ -1010,6 +1010,23 @@ TEST(RigdioSession, ChantsFireOneAtATimeAndHonourUnrandom) {
   EXPECT_TRUE(s.Chant(true).has_value());
 }
 
+
+// The gate must release EXACTLY once per chant: the director's AtEnd branch
+// calls ChantEnded, and a second release (Advance's fade-out branch) must not
+// arm a second chant that nobody started.
+TEST(RigdioSession, ChantEndedIsIdempotent) {
+  // The director can legitimately release the gate twice for one chant - the
+  // AtEnd branch and Advance's fade-out both fire when the two cross - and a
+  // second release must not poison the pool counters. The next chant is still
+  // granted, still a home one (the fixture's away side has no chants).
+  MatchSession s = sesshelp::Make();
+  ASSERT_TRUE(s.Chant(true).has_value());
+  s.ChantEnded();
+  s.ChantEnded();  // AtEnd AND the fade-out both ran: release twice, no harm
+  auto again = s.Chant(true);
+  ASSERT_TRUE(again.has_value());
+  EXPECT_EQ(again->file, "h_chant1.mp3");
+}
 TEST(RigdioSession, TeamWithoutChantsFiresNothing) {
   MatchSession s = sesshelp::Make();
   EXPECT_FALSE(s.Chant(false).has_value());  // away has no chants

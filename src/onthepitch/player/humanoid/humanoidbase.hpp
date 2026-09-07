@@ -319,6 +319,11 @@ public:
 
   virtual void ResetSituation(const Vector3& focusPos);
 
+  // Plays a fed choreography pose (true = tick consumed); calling it with no
+  // pose pending is how a staged actor is RELEASED from the choreography -
+  // match.cpp's cast loop does exactly that when an actor's clip runs out.
+  bool ProcessChoreo();
+
 protected:
   // Far enough away to be outside any camera's frustum. A function rather than a
   // constant: Vector3 is not a literal type, so it cannot be constexpr.
@@ -350,7 +355,6 @@ protected:
   virtual bool SelectAnim(
       const PlayerCommand& command, e_InterruptAnim localInterruptAnim,
       bool preferPassAndShot = false);  // returns false on no applicable anim found
-  bool ProcessChoreo();  // plays a fed choreo pose; true = tick consumed
   void CalculatePredictedSituation(Vector3& predictedPos, radian& predictedAngle);
   Vector3 CalculateOutgoingMovement(const std::vector<Vector3>& positions) const;
 

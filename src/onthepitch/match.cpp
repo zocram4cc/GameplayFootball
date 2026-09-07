@@ -2752,9 +2752,21 @@ void Match::UpdateCutsceneChoreo() {
       // 6000 ms celebration left the scorer frozen for 4.4 s of it, which is
       // what "the celebration starts and the scorer gets stuck" is. PES holds
       // the camera long after the bodies are done; the bodies keep moving.
-      // Dropping the feed lets HumanoidBase::ProcessChoreo release him from
-      // where the choreography left him and jog back like everyone else.
-      if (animFrame > cast.clip->GetEffectiveFrameCount()) continue;
+      // An actor past his own clip is released INDIVIDUALLY: skipping only the
+      // SetChoreoPose call left his last pose latched (choreoPending stays set
+      // in HumanoidBase) - often horizontal in mid-air on a celebration clip -
+      // until the whole cast was torn down together. One tick without a feed
+      // and ProcessChoreo hands him back to the anim machinery, mid-beat.
+      if (animFrame > cast.clip->GetEffectiveFrameCount()) {
+        // Feed stopped: ProcessChoreo flips his choreo state off and hands him
+        // back to the anim machinery; ResetSituation puts his spatial state on
+        // the spot he is standing with the ball as focus, instead of whatever
+        // the last authored frame had (often horizontal, mid-air).
+        HumanoidBase* humanoid = cast.player->CastHumanoid();
+        humanoid->ProcessChoreo();
+        humanoid->ResetSituation(Vector3(0, -1, 0));
+        continue;
+      }
       performing = true;
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
@@ -4373,6 +4385,12 @@ void Match::UpdateIngameCamera() {
         // A new shot starts on PES's own framing, not with the previous shot's
         // dolly still pushed in.
         ResetStandoff();
+        // And it must not be the same camera the last shot used: the picker
+        // below judges distance alone, and one track whose opening sits neatly
+        // between two shots' wanted distances won both and played the same move
+        // twice as a jump cut.
+        goalCelebrationLastTrack = goalCelebrationTrack;
+        goalCelebrationTrack = -1;
       }
       // The angle for each shot is chosen by the DISTANCE PES authored it at,
       // not by an index stride. Striding picked whatever sorted 37 names later
@@ -4394,6 +4412,7 @@ void Match::UpdateIngameCamera() {
           // three tracks, and every candidate is judged on its own opening.
           const int candidate = (i + seed) % (int)goalCamTracks.size();
           if (goalCamTracks[candidate].GetFrameCount() == 0) continue;
+          if (candidate == goalCelebrationLastTrack) continue;  // see the shot change above
           const CamTrackFrame opening = goalCamTracks[candidate].Sample(0.0f);
           // Staged where it will actually be filmed from, and rejected if that
           // lands inside this ground rather than on it. A goal camera authored
@@ -4416,6 +4435,14 @@ void Match::UpdateIngameCamera() {
             if (std::fabs(staged.position[0]) > pitchHalfW ||
                 std::fabs(staged.position[1]) > pitchHalfH)
               continue;
+            // And above the turf, clear of the scorer's body - the tests that
+            // used to run only after the pick, on the winning frame, where a
+            // failure meant a black frame or a lens full of shirt for the
+            // whole shot.
+            if (staged.position[2] < 0.3f) continue;
+            const float dx = staged.position[0] - goalCelebrationSubject.coords[0];
+            const float dy = staged.position[1] - goalCelebrationSubject.coords[1];
+            if (std::sqrt(dx * dx + dy * dy) < kCelebrationLensClearance) continue;
           }
           const float distance =
               std::sqrt(opening.position[0] * opening.position[0] +
@@ -4428,6 +4455,7 @@ void Match::UpdateIngameCamera() {
           }
         }
       }
+      goalCelebrationTrack = pick;
       const CamTrack& track = goalCamTracks[pick];
       // PES's goal cutscenes are a montage, not one shot: goal_A_celebrate_0229
       // cuts low-static (cam_00) to two closer angles and back, at frames

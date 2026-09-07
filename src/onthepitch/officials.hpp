@@ -22,6 +22,11 @@ public:
 
   void GetPlayers(std::vector<PlayerBase*>& players);
   PlayerOfficial* GetReferee() { return referee.get(); }
+  // The names are the spawn sides and the accessor order is the array order;
+  // linesman[0] spawns at (25, -36.5) - the east touchline, which in this
+  // engine's axes is +X - so read these by POSITION at every call site
+  // (OffsideAssistantMark), never by which name "should" be where. The swap
+  // was latent, never a bug, and is documented here rather than churned.
   PlayerOfficial* GetLinesmanNorth() { return linesmen[0].get(); }
   PlayerOfficial* GetLinesmanSouth() { return linesmen[1].get(); }
 
