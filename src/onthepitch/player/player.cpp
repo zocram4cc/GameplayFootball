@@ -711,8 +711,30 @@ float Player::GetStat(const char* name) const {
 
   if (playerData->GetStat(name) == 0.0f)
     printf("NULLSTAT: name: %s\n", name);
-  // printf("stat %s: %f * %f\n", name, playerData->GetStat(name), multiplier);
-  return playerData->GetStat(name) * multiplier;
+  // PES's per-match arrays go on the BASE attribute and clamp at the ceiling
+  // before the situational factors above (difficulty, fatigue, injury, clutch)
+  // scale it: a player already at 1.00 on a red arrow gets 1.00, never more,
+  // and nothing that reads this ever sees a value past the range it was
+  // written for. The clamp at the end catches a clutch multiplier above one.
+  const float base = FormState::Apply(playerData->GetStat(name), conditionArrow,
+                                      GetDeployedFamiliarity(), name);
+  return clamp(base * multiplier, 0.0f, 1.0f);
+}
+
+FormState::Slot Player::GetDeployedSlot() const {
+  // Left and right are read off the formation position across the pitch, in
+  // the team's own frame: negative y is the left flank when attacking towards
+  // +x, so the sign flips with the side the team plays on.
+  const FormationEntry& entry = dynamicFormationEntry;
+  int side = 0;
+  const float across = entry.databasePosition.coords[1] * -const_cast<Team*>(team)->GetSide();
+  if (across < -0.25f) side = -1;
+  if (across > 0.25f) side = +1;
+  return FormState::SlotFor(entry.role, side);
+}
+
+FormState::Familiarity Player::GetDeployedFamiliarity() const {
+  return FormState::Rating(playerData->GetPositionFamiliarity(), GetDeployedSlot());
 }
 
 void Player::ResetSituation(const Vector3& focusPos) {

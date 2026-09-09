@@ -64,6 +64,18 @@ int OtherRegisteredRoles(e_PlayerRole slot, const std::vector<e_PlayerRole>& pla
 // where it is used rather than only in a submenu.
 std::string SlotRoleText(const std::string& roleName, int otherRegisteredRoles);
 
+// What the card's strip shows beside the position: PES toggles it with LB/RB
+// between the player's CONDITION ARROW for this match and his REGISTERED
+// position (VGL26 day 12, 5:23:37). One mode for every card on screen.
+enum class Indicator { ConditionArrow = 0, RegisteredPosition };
+Indicator GetIndicator();
+void ToggleIndicator();
+// The arrow's glyph and colour for the strip: an up/down/flat triangle in
+// PES's five colours (purple, blue, green, orange, red).
+std::string ArrowGlyph(int arrow);      // FormState::Arrow as int
+struct Rgb { int r, g, b; };
+Rgb ArrowRgb(int arrow);
+
 // The rating as the card prints it. PES shows an integer, and a squad whose stats have
 // never been rated must not print "0" over every card.
 std::string RatingText(float stat);

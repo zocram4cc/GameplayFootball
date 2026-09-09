@@ -4,6 +4,10 @@
 // :)
 
 #include "gameplan.hpp"
+
+#include <SDL2/SDL.h>
+
+#include "widgets/planmapcard.hpp"
 #include "utils/playermodelmap.hpp"
 #include <cstdlib>
 
@@ -65,6 +69,7 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   // The pitch beside the list rather than above it, and tall enough for eleven cards
   // to stand apart - the broadcast gives it most of the panel.
   map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 30, 54, teamData);
+  map->SetTeamSide(teamID);
   buttonLineup = new Gui2Button(windowManager, "gameplan_button_lineup", 0, 0, 32, 3,
                                 Localization::GetInstance().Translate("gameplan_lineup"));
   buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 32, 3,
@@ -151,6 +156,17 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   } else {
     namedb = nullptr;
   }
+}
+
+void GamePlanPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  if (event->GetKeyOnce(SDLK_q) || event->GetKeyOnce(SDLK_e)) {
+    PlanMapCard::ToggleIndicator();
+    if (map) map->RefreshIndicators();
+    if (opponentMap) opponentMap->RefreshIndicators();
+    event->Accept();
+    return;
+  }
+  Gui2Page::ProcessKeyboardEvent(event);
 }
 
 void GamePlanPage::Process() {
@@ -258,6 +274,7 @@ void GamePlanPage::BuildOpponentSheet() {
   // Swapping which side is edited is what the switch button is for.
   opponentMap = new Gui2PlanMap(windowManager, "gameplan_planmap_opponent", 51.0f, 49.0f, 24, 40,
                                 other);
+  opponentMap->SetTeamSide(1 - teamID);
   opponentMap->SetSelectable(false);
   this->AddView(opponentMap);
   opponentMap->Show();

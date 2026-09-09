@@ -14,6 +14,7 @@
 #include "onthepitch/matchduration.hpp"
 #include "systems/graphics/rendering/opengl_renderer3d.hpp"
 #include "utils/localization.hpp"
+#include "../../data/formstate.hpp"
 
 using namespace blunted;
 
@@ -208,6 +209,21 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   }
   UpdateKitCaptions();
 
+  // Each side's condition arrows for this match, as PES's General Rigging
+  // sheet has them ("Condition : Home / Away"): Random deals every player his
+  // own arrow off his Form; a colour deals that arrow to the whole side.
+  for (int teamID = 0; teamID < 2; teamID++) {
+    conditionSlider[teamID] = new Gui2Slider(
+        windowManager, "matchoptions_slider_condition_" + int_to_str(teamID), 0, 0, 29, 6, "");
+    conditionSlider[teamID]->SetQuantization((int)FormState::Policy::Count);
+    const FormState::Policy policy = FormState::ParsePolicy(GetConfiguration()->Get(
+        teamID == 0 ? "match_condition_home" : "match_condition_away", "random"));
+    conditionSlider[teamID]->SetValue((float)policy / ((int)FormState::Policy::Count - 1));
+    conditionSlider[teamID]->sig_OnChange.connect(
+        [this](Gui2Slider*) { UpdateConditionCaptions(); });
+  }
+  UpdateConditionCaptions();
+
   // Tactics for the coming match: the same game plan screen used in-match.
   Gui2Button* buttonGamePlan1 = new Gui2Button(windowManager, "matchoptions_button_gameplan_1", 0,
                                                0, 29, 3, TR("gameplan_header") + " 1");
@@ -246,6 +262,8 @@ MatchOptionsPage::MatchOptionsPage(Gui2WindowManager* windowManager, const Gui2P
   grid->AddView(sectionCaption("teams", "matchoptions_section_teams"), row++, 1);
   grid->AddView(kitSlider[0], row++, 1);
   grid->AddView(kitSlider[1], row++, 1);
+  grid->AddView(conditionSlider[0], row++, 1);
+  grid->AddView(conditionSlider[1], row++, 1);
   grid->AddView(buttonGamePlan1, row++, 1);
   grid->AddView(buttonGamePlan2, row++, 1);
   grid->AddView(buttonStart, row++, 1);
@@ -318,6 +336,20 @@ void MatchOptionsPage::UpdateKitCaptions() {
   }
 }
 
+void MatchOptionsPage::UpdateConditionCaptions() {
+  for (int teamID = 0; teamID < 2; teamID++) {
+    const int steps = (int)FormState::Policy::Count;
+    const int index = clamp((int)std::round(conditionSlider[teamID]->GetValue() * (steps - 1)), 0,
+                            steps - 1);
+    const FormState::Policy policy = (FormState::Policy)index;
+    std::string label = TR(policy == FormState::Policy::RandomPerPlayer
+                               ? "match_condition_random"
+                               : std::string("match_condition_") + FormState::PolicyName(policy));
+    conditionSlider[teamID]->SetCaption(
+        TRF("match_condition", {TR(teamID == 0 ? "match_home" : "match_away"), label}));
+  }
+}
+
 void MatchOptionsPage::GoGamePlan(int teamID) {
   Properties properties;
   properties.Set("teamID", teamID);
@@ -358,6 +390,18 @@ void MatchOptionsPage::Process() {
 }
 
 void MatchOptionsPage::GoLoadingMatchPage() {
+  for (int teamID = 0; teamID < 2; teamID++) {
+    const int steps = (int)FormState::Policy::Count;
+    const int index = clamp((int)std::round(conditionSlider[teamID]->GetValue() * (steps - 1)), 0,
+                            steps - 1);
+    GetConfiguration()->Set(teamID == 0 ? "match_condition_home" : "match_condition_away",
+                            FormState::SerializePolicy((FormState::Policy)index));
+  }
+  // A fresh deal for this match, unless a fixture pinned one (the harness and
+  // the smoke tests set it so a run is reproducible).
+  if (!GetConfiguration()->Exists("match_condition_seed"))
+    GetConfiguration()->Set("match_condition_seed",
+                            (int)(EnvironmentManager::GetInstance().GetTime_ms() & 0x7fffffff));
   GetConfiguration()->Set("match_weather", weatherSlider->GetValue());
   GetConfiguration()->Set("match_time_of_day", timeOfDaySlider->GetValue());
   for (int teamID = 0; teamID < 2; teamID++) {

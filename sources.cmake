@@ -542,6 +542,7 @@ set(GAME_SOURCES
    src/onthepitch/cutsceneviewer.cpp
    src/onthepitch/foulsequence.cpp
    src/onthepitch/goalsequence.cpp
+   src/data/formstate.cpp
    src/onthepitch/match.cpp
    src/onthepitch/prematchtimeline.cpp
    src/onthepitch/rigdiodirector.cpp

@@ -7,6 +7,7 @@
 
 #include <filesystem>
 
+#include "../data/formstate.hpp"
 #include "../gamedefines.hpp"
 #include "../main.hpp"
 #include "../utils.hpp"
@@ -131,11 +132,26 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
 
   Log(e_Notice, "Team", "Team", "Creating players");
 
+  // The condition arrows for the coming match, one side at a time: the
+  // pre-match "Condition: Home / Away" rows (match_condition_home/away) say
+  // whether every player on the side is dealt the same arrow or draws his own
+  // from his Form. Seeded off the team and the wall clock so a random side
+  // differs from match to match but not from player to player within one.
+  const FormState::Policy conditionPolicy = FormState::ParsePolicy(GetConfiguration()->Get(
+      id == 0 ? "match_condition_home" : "match_condition_away", "random"));
+  const unsigned int conditionSeed =
+      (unsigned int)GetConfiguration()->GetInt("match_condition_seed", 0);
+  int arrowsDealt[(int)FormState::Arrow::Count] = {0, 0, 0, 0, 0};
+
   // load all players in the team, even the players who sit on the bench. aww.
   for (int i = 0; i < static_cast<int>(teamData->GetPlayerNum()); i++) {
     PlayerData* playerData = teamData->GetPlayerData(i);
     auto playerPtr = std::make_unique<Player>(this, playerData);
     Player* player = playerPtr.get();
+    const FormState::Arrow arrow = FormState::ArrowForPlayer(
+        conditionPolicy, playerData->GetStat("physical_form"), conditionSeed, id, i);
+    player->SetConditionArrow(arrow);
+    arrowsDealt[(int)arrow]++;
     // Add the player to 'players' before Activate(), since Activate() (via
     // Player::GetFormationEntry() -> Team::GetFormationEntry(playerID)) looks
     // the player up by scanning this same vector.
@@ -146,6 +162,11 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
       ActivateWithModel(player, i, fullbodyNode, skinWeights);
     }
   }
+  Log(e_Notice, "Team", "InitPlayers",
+      std::string("condition arrows (") + FormState::PolicyName(conditionPolicy) +
+          "): purple " + int_to_str(arrowsDealt[0]) + ", blue " + int_to_str(arrowsDealt[1]) +
+          ", green " + int_to_str(arrowsDealt[2]) + ", orange " + int_to_str(arrowsDealt[3]) +
+          ", red " + int_to_str(arrowsDealt[4]));
 
   designatedTeamPossessionPlayer = players.at(0).get();
 }

@@ -39,6 +39,9 @@ public:
   void OnClose();
 
   virtual void Process();
+  // PES's LB/RB on this screen flip every card between the player's condition
+  // arrow and his registered position; Q/E are the keyboard's shoulders.
+  virtual void ProcessKeyboardEvent(KeyboardEvent* event);
 
   virtual void Deactivate();
   // focusTarget: who gets keyboard/gamepad focus back once the nav column is

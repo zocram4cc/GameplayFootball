@@ -29,7 +29,8 @@ public:
   // in percent of the page and 0 when the player has no imported portrait.
   Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::string& name, float x_percent,
                    float y_percent, float width_percent, float height_percent, e_PlayerRole role,
-                   PlayerData* playerData, float portraitHeight);
+                   PlayerData* playerData, float portraitHeight, int teamSide = 0,
+                   int playerIndex = 0);
   virtual ~Gui2PlanMapEntry();
 
   e_PlayerRole GetRole() const { return role; }
@@ -56,6 +57,7 @@ public:
 protected:
   e_PlayerRole role;
   Gui2Image* portraitImage = nullptr;
+  Gui2Caption* indicatorCaption = nullptr;
   Gui2Caption* roleNameCaption = nullptr;
   Gui2Caption* ratingCaption = nullptr;
   Gui2Caption* playerNameCaption = nullptr;
@@ -122,6 +124,14 @@ public:
   // must not close the page out from under an in-progress drag.
   bool IsDragging() const { return heldIndex != -1; }
 
+  // Redraw every card after PlanMapCard::ToggleIndicator: the page owns the
+  // shoulder keys (focus is usually on its buttons, not on this map), and both
+  // maps on the game plan follow the one mode.
+  void RefreshIndicators() {
+    RebuildEntries();
+    UpdateHighlights();
+  }
+
 protected:
   void RebuildEntries();
   void RepositionEntry(int index);
@@ -153,6 +163,11 @@ protected:
   SDL_Surface* bg;
 
   TeamData* teamData;
+  // 0 home, 1 away: which side's condition policy and seed the cards draw from.
+  int teamSide = 0;
+ public:
+  void SetTeamSide(int side) { teamSide = side; }
+ protected:
 
   float pitchX = 0.0f, pitchWidth = 0.0f, pitchHeight = 0.0f;
 

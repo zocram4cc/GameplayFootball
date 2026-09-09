@@ -5,6 +5,8 @@
 
 #include "playerdata.hpp"
 
+#include "formstate.hpp"
+
 #include <algorithm>
 #include <cstring>
 
@@ -100,6 +102,13 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
       iter++;
       continue;
     }
+    // PES's thirteen playable-position ratings, one letter each in PES's own
+    // byte order (FormState::Slot): the position familiarity Array 3 reads.
+    if (tag.compare("position_familiarity") == 0) {
+      positionFamiliarity = (*iter).second.value;
+      iter++;
+      continue;
+    }
 
     float profileStat = atof((*iter).second.value.c_str());  // profile value
 
@@ -119,6 +128,8 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
     playingStyle = PlayingStyles::InferPlayer(databaseID, role, *this);
   if (!comFromDatabase)
     comStyles = PlayingStyles::InferCom(databaseID, playingStyle, *this);
+  if (positionFamiliarity.empty())
+    positionFamiliarity = FormState::InferRatings(roles);
 }
 
 void PlayerData::FillMissingStats() {
@@ -222,6 +233,8 @@ PlayerData::PlayerData() {
   skills = PlayerSkills::maskNone;
   playingStyle = PlayingStyles::Player::None;
   comStyles = PlayingStyles::comMaskNone;
+  // Officials and fixtures: natural everywhere, so no penalty ever applies.
+  positionFamiliarity = std::string((size_t)FormState::Slot::Count, 'A');
   playerAge = MatchPressure::unknownAge;
 }
 

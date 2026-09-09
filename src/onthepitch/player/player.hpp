@@ -9,6 +9,7 @@
 #include "../../menu/menutask.hpp"
 #include "humanoid/humanoid.hpp"
 #include "playerbase.hpp"
+#include "../../data/formstate.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 
 class Match;
@@ -29,6 +30,15 @@ public:
 
   Humanoid* CastHumanoid();
   ElizaController* CastController();
+
+  // PES's per-match modifiers (FormState): the condition arrow this player was
+  // dealt at kick-off, and his familiarity with the formation slot he is
+  // DEPLOYED at - the slot, not where he is standing (docs/21Research.md,
+  // Arrays 2 and 3). Both multiply into GetStat and clamp at the ceiling.
+  void SetConditionArrow(FormState::Arrow arrow) { conditionArrow = arrow; }
+  FormState::Arrow GetConditionArrow() const { return conditionArrow; }
+  FormState::Slot GetDeployedSlot() const;
+  FormState::Familiarity GetDeployedFamiliarity() const;
 
   int GetTeamID() const;
   Team* GetTeam();
@@ -124,6 +134,7 @@ public:
   virtual void ResetSituation(const Vector3& focusPos);
 
 protected:
+  FormState::Arrow conditionArrow = FormState::Arrow::Normal;
   void _CalculateTacticalSituation();
 
   Team* team;

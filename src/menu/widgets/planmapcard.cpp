@@ -76,6 +76,42 @@ Colour AptitudeColour(e_Aptitude aptitude) {
   return Colour{230, 230, 230};
 }
 
+namespace {
+Indicator g_indicator = Indicator::ConditionArrow;
+}  // namespace
+
+Indicator GetIndicator() { return g_indicator; }
+void ToggleIndicator() {
+  g_indicator = g_indicator == Indicator::ConditionArrow ? Indicator::RegisteredPosition
+                                                         : Indicator::ConditionArrow;
+}
+
+std::string ArrowGlyph(int arrow) {
+  // Two chevrons for the ends, one for the near states, a dash for normal:
+  // readable at the strip's size without an art asset.
+  // One glyph, coloured: the colour carries the state as it does in PES, the
+  // glyph only says which way it points.
+  switch (arrow) {
+    case 0: return "v";
+    case 1: return "v";
+    case 2: return "-";
+    case 3: return "^";
+    case 4: return "^";
+  }
+  return "-";
+}
+
+Rgb ArrowRgb(int arrow) {
+  switch (arrow) {
+    case 0: return {170, 70, 220};   // purple
+    case 1: return {70, 130, 240};   // blue
+    case 2: return {60, 200, 90};    // green
+    case 3: return {245, 150, 40};   // orange
+    case 4: return {235, 60, 60};    // red
+  }
+  return {60, 200, 90};
+}
+
 std::string SlotRoleText(const std::string& roleName, int otherRegisteredRoles) {
   if (otherRegisteredRoles <= 0) return roleName;
   return roleName + "+" + std::to_string(otherRegisteredRoles);

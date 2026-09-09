@@ -24,6 +24,7 @@ bool ParseKey(const std::string& word, Key* key) {
   if (word == "escape") { *key = Key::Escape; return true; }
   if (word == "x") { *key = Key::X; return true; }
   if (word == "secondary") { *key = Key::Secondary; return true; }
+  if (word == "shoulder" || word == "q") { *key = Key::Shoulder; return true; }
   return false;
 }
 

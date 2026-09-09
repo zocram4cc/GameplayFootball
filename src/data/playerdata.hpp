@@ -47,6 +47,9 @@ public:
   // carries neither tag.
   PlayingStyles::Player GetPlayingStyle() const { return playingStyle; }
   PlayingStyles::ComMask GetComStyles() const { return comStyles; }
+  // PES's playable-position ratings, thirteen letters A/B/C in FormState::Slot
+  // order; inferred from the registered roles when the profile names none.
+  const std::string& GetPositionFamiliarity() const { return positionFamiliarity; }
 
   // PES 2021 Player Skills (profile_xml <skills>, or the older <traits> tag).
   PlayerSkills::Mask GetSkills() const { return skills; }
@@ -71,6 +74,7 @@ protected:
   PlayerSkills::Mask skills;
   PlayingStyles::Player playingStyle;
   PlayingStyles::ComMask comStyles;
+  std::string positionFamiliarity;
   int playerAge;
 
   int skinColor;

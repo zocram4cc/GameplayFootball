@@ -651,6 +651,7 @@ add_executable(gameplayfootball_pass_failure_tests
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerskills.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formstate.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
@@ -686,6 +687,7 @@ add_executable(gameplayfootball_playing_styles_tests
   data/playing_styles_test.cpp
   data/player_skills_test.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formstate.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerdata.cpp
   ${PROJECT_SOURCE_DIR}/src/data/playerskills.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
@@ -758,6 +760,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/ai_manager_test.cpp
   onthepitch/match_progression_test.cpp
   onthepitch/goal_sequence_test.cpp
+  onthepitch/form_state_test.cpp
   onthepitch/foul_sequence_test.cpp
   onthepitch/cutscene_viewer_test.cpp
   onthepitch/cutscene_playback_test.cpp
@@ -765,6 +768,7 @@ add_executable(gameplayfootball_simulation_tests
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneplayback.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/cutsceneviewer.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/goalsequence.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/formstate.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/foulsequence.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teamphilosophy.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/teaminstructions.cpp

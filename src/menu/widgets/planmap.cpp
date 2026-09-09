@@ -5,6 +5,9 @@
 
 #include "planmap.hpp"
 
+#include "../../data/formstate.hpp"
+#include "main.hpp"
+
 #include <SDL2/SDL.h>
 
 #include "../../data/teamdata.hpp"
@@ -81,7 +84,8 @@ Vector3 ToVector3(const PlanMapCard::Colour& colour) {
 Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::string& name,
                                    float x_percent, float y_percent, float width_percent,
                                    float height_percent, e_PlayerRole role,
-                                   PlayerData* playerData, float portraitHeight)
+                                   PlayerData* playerData, float portraitHeight,
+                                   int teamSide, int playerIndex)
     : Gui2View(windowManager, name, x_percent, y_percent, width_percent, height_percent),
       role(role) {
   const std::string roleName = GetRoleName(role);
@@ -119,7 +123,7 @@ Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::
 
   // Position on the left, coloured by line, and the rating on the right.
   roleNameCaption = new Gui2Caption(
-      windowManager, name + "_role", 0, stripY, width_percent * 0.6f, kStripH,
+      windowManager, name + "_role", 0, stripY, width_percent * 0.38f, kStripH,
       PlanMapCard::SlotRoleText(
           roleName, PlanMapCard::OtherRegisteredRoles(
                         role, playerData ? playerData->GetRoles()
@@ -127,6 +131,37 @@ Gui2PlanMapEntry::Gui2PlanMapEntry(Gui2WindowManager* windowManager, const std::
   roleNameCaption->SetColor(ToVector3(PlanMapCard::LineColour(PlanMapCard::LineOf(role))));
   this->AddView(roleNameCaption);
   roleNameCaption->Show();
+
+  // PES's toggle (LB/RB): the condition arrow he was dealt for this match, or
+  // the position he is registered at. The arrow is the same deal the Team
+  // makes at kick-off (FormState::ArrowForPlayer off match_condition_seed), so
+  // the sheet and the pitch agree.
+  if (playerData) {
+    std::string text;
+    Vector3 colour(220, 220, 220);
+    if (PlanMapCard::GetIndicator() == PlanMapCard::Indicator::ConditionArrow) {
+      const FormState::Policy policy = FormState::ParsePolicy(GetConfiguration()->Get(
+          teamSide == 0 ? "match_condition_home" : "match_condition_away", "random"));
+      const int arrow = (int)FormState::ArrowForPlayer(
+          policy, playerData->GetStat("physical_form"),
+          (unsigned int)GetConfiguration()->GetInt("match_condition_seed", 0), teamSide,
+          playerIndex);
+      text = PlanMapCard::ArrowGlyph(arrow);
+      const PlanMapCard::Rgb rgb = PlanMapCard::ArrowRgb(arrow);
+      colour = Vector3(rgb.r, rgb.g, rgb.b);
+    } else if (!playerData->GetRoles().empty()) {
+      const e_PlayerRole registered = playerData->GetRoles().front();
+      text = GetRoleName(registered);
+      colour = ToVector3(PlanMapCard::LineColour(PlanMapCard::LineOf(registered)));
+    }
+    // Its own column between the slot and the rating, so "CF" and "^^" never
+    // run into each other at card size.
+    indicatorCaption = new Gui2Caption(windowManager, name + "_indicator", width_percent * 0.40f,
+                                       stripY, width_percent * 0.22f, kStripH, text);
+    indicatorCaption->SetColor(colour);
+    this->AddView(indicatorCaption);
+    indicatorCaption->Show();
+  }
 
   const std::string rating = playerData ? PlanMapCard::RatingText(playerData->GetAverageStat())
                                         : std::string();
@@ -344,7 +379,7 @@ void Gui2PlanMap::RebuildEntries() {
     // opponent's read as the same squad.
     Gui2PlanMapEntry* card = new Gui2PlanMapEntry(
         windowManager, GetName() + "_entry" + int_to_str(i), ex, ey, kCardW,
-        cardH + kNameH, role, playerData, cardH);
+        cardH + kNameH, role, playerData, cardH, teamSide, i);
     this->AddView(card);
     card->Show();
     entries.push_back(card);

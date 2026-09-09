@@ -48,6 +48,8 @@ protected:
   Gui2Slider* weatherSlider;
   Gui2Slider* timeOfDaySlider;
   Gui2Slider* kitSlider[2];
+  Gui2Slider* conditionSlider[2];
+  void UpdateConditionCaptions();
   Gui2Slider* stadiumSlider;
   Gui2Slider* entranceSlider;
   Gui2Slider* resultCutsceneSlider;

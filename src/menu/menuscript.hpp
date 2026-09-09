@@ -28,7 +28,9 @@ namespace MenuScript {
 // X opens a card's roles from the keyboard; Secondary ('c', pad X) toggles the
 // role in place. Two different paths through Gui2PlanMap, and the monkey could
 // only reach the first - so the toggle b479636 fixed was never fuzzed.
-enum class Key { Up, Down, Left, Right, Enter, Escape, X, Secondary };
+// Shoulder ('q', pad LB/RB) flips the plan cards between condition arrow and
+// registered position, as PES's LB/RB do.
+enum class Key { Up, Down, Left, Right, Enter, Escape, X, Secondary, Shoulder };
 
 enum class Action { Tap, Shot, Quit, Monkey };
 
