@@ -44,6 +44,7 @@ protected:
   blunted::Gui2Caption* betaSign = nullptr;
   bool betaSignHidden = false;
   blunted::Gui2Image* versusCrest[2] = {nullptr, nullptr};
+  blunted::Gui2Image* versusPlate[3] = {nullptr, nullptr, nullptr};  // two crests, the VS
   blunted::Gui2Caption* versusName[2] = {nullptr, nullptr};
   blunted::Gui2Caption* versusVs = nullptr;
   float versusAlpha = -1.0f;

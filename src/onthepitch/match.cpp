@@ -3256,6 +3256,11 @@ void Match::ExecutePendingSubstitutions() {
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
     AddLostTime(MatchProgression::e_Stoppage_Substitution);
+    matchData->AddEvent(
+        MatchData::Event::Substitution, sub.teamID, GetMatchMinute(),
+        (sub.playerOut && sub.playerOut->GetPlayerData() ? sub.playerOut->GetPlayerData()->GetLastName() : "") +
+            " -> " +
+            (sub.playerIn && sub.playerIn->GetPlayerData() ? sub.playerIn->GetPlayerData()->GetLastName() : ""));
     // A substitution announces itself once, from Team::Substitute ("<TEAM>: X
     // on for Y") - there used to be a second, team-tagged banner here, and both
     // fired for every change. The tunnel cutscene is the exception rather than
@@ -3637,6 +3642,8 @@ void Match::UpdateBallHeatmap() {
   if (!IsInPlay() || actualTime_ms % 1000 != 0)
     return;
   MatchAnalytics::AddSample(ballHeatmap, ball->Predict(0).Get2D());
+  if (GetLastTouchTeamID() >= 0)
+    MatchAnalytics::AddSample(teamBallHeatmap[GetLastTouchTeamID()], ball->Predict(0).Get2D());
 }
 
 void Match::UpdateCrowdAudio() {
@@ -4965,6 +4972,8 @@ void Match::Process() {
 
         if (!ownGoal) {
           lastGoalScorer = teams[GetLastGoalTeamID()]->GetLastTouchPlayer();
+          matchData->AddEvent(MatchData::Event::Goal, GetLastGoalTeamID(), GetMatchMinute(),
+                              lastGoalScorer ? lastGoalScorer->GetPlayerData()->GetLastName() : "");
           if (lastGoalScorer) {
             goalsToday[lastGoalScorer]++;
             SpamMessage("GOAL for " + matchData->GetTeamData(GetLastGoalTeamID())->GetName() +
@@ -4977,6 +4986,8 @@ void Match::Process() {
 
         else {  // own goal
           lastGoalScorer = teams[abs(GetLastGoalTeamID() - 1)]->GetLastTouchPlayer();
+          matchData->AddEvent(MatchData::Event::OwnGoal, GetLastGoalTeamID(), GetMatchMinute(),
+                              lastGoalScorer ? lastGoalScorer->GetPlayerData()->GetLastName() : "");
           if (lastGoalScorer) {
             SpamMessage(
                 "OWN GOAL! " + lastGoalScorer->GetPlayerData()->GetLastName() + " is so unlucky!",

@@ -13,6 +13,7 @@
 #include "data/formations.hpp"
 #include "utils/database.hpp"
 #include "utils/gui2/page.hpp"
+#include "ingame/menuicons.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "utils/gui2/widgets/frame.hpp"
 #include "utils/gui2/widgets/grid.hpp"
@@ -132,6 +133,16 @@ protected:
   Gui2PlanMap* opponentMap = nullptr;
   Gui2Caption* opponentLabel = nullptr;
   Gui2Button* buttonSwitchTeam = nullptr;
+  // The five icon tabs of the active half, their locale keys, the caption
+  // under the bar, and the other half's static tab images.
+  Gui2Button* tabButtons[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+  const char* tabKeys[5] = {"", "", "", "", ""};
+  Gui2Caption* tabCaption = nullptr;
+  Gui2Image* tabIcons[5] = {nullptr, nullptr, nullptr, nullptr, nullptr};
+  std::vector<Gui2Image*> opponentTabs;
+  void BuildHalfHeader(Gui2View* parent, int side, TeamData* team, float x, float width);
+  void PaintTab(int index, MenuIcons::Icon icon);
+  void ShowTabCaption(int index);
   std::unique_ptr<TeamData> opponentTeamData;
   Gui2Caption* hintLine1 = nullptr;
   Gui2Caption* hintLine2 = nullptr;

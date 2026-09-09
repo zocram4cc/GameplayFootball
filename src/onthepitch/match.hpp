@@ -396,6 +396,12 @@ public:
   MatchAnalytics::ShotTally& GetShotTally() { return shotTally; }
   const MatchAnalytics::ShotTally& GetShotTally() const { return shotTally; }
   const MatchAnalytics::Heatmap& GetBallHeatmap() const { return ballHeatmap; }
+  // Where the ball was while each team had it (pause menu, ball activity card).
+  const MatchAnalytics::Heatmap& GetTeamBallHeatmap(int teamID) const {
+    return teamBallHeatmap[teamID];
+  }
+  // The match clock in whole minutes, as a scoreboard shows it.
+  int GetMatchMinute() const { return (int)(matchTime_ms / 60000); }
 
   PenaltyShootoutController* GetPenaltyShootout() { return penaltyShootout.get(); }
 
@@ -516,6 +522,7 @@ protected:
 
   MatchAnalytics::ShotTally shotTally;
   MatchAnalytics::Heatmap ballHeatmap;
+  MatchAnalytics::Heatmap teamBallHeatmap[2];
 
   CoachMode::Setup coachSetup;
   Substitutions::State substitutionState;

@@ -5,6 +5,8 @@
 
 #include "gameplan.hpp"
 
+#include "ingame/menuicons.hpp"
+
 #include <SDL2/SDL.h>
 
 #include "widgets/planmapcard.hpp"
@@ -40,11 +42,13 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
   teamID = pageData.properties->GetInt("teamID", 0);
   const int teamDatabaseID = pageData.properties->GetInt("teamDatabaseID", -1);
 
-  // Wide enough for the pitch and the list side by side, as the broadcast lays them
-  // out; it used to be a narrow centred column with the pitch stacked on top.
-  constexpr float xOffset = 17.0f;
-  // Before kick-off there is no match yet, so load the team straight from the
-  // database; during a match the live team data is edited instead.
+  // PES's Game Plan is BOTH teams at once, home on the left, away on the
+  // right, one screen before kick-off and from the pause menu (VGL 26 day 12
+  // at 5:23:37; docs/VGL26_DAY12_REFERENCE.md §2). Each half is a header
+  // band with the crest and tag, ">Game Plan", the pitch with its cards, and
+  // five icon tabs with the caption beneath. The half being edited is
+  // `teamID`; the other is drawn in full and read-only, and Tab (pad: the
+  // other shoulder) hands the controls across.
   Match* match = GetGameTask()->GetMatch();
   if (match) {
     teamData = match->GetTeam(teamID)->GetTeamData();
@@ -53,64 +57,60 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
     teamData = standaloneTeamData.get();
   }
 
-  Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", xOffset, 10, 66, 82, true);
+  Gui2Frame* frame = new Gui2Frame(windowManager, "gameplan_frame", 2.0f, 4.0f, 96.0f, 88.0f, true);
   this->AddView(frame);
   frame->Show();
 
-  // Named, like the opponent's sheet beside it: two unnamed sheets and a
-  // number tell a coach running both benches nothing about which is which.
-  Gui2Caption* header = new Gui2Caption(
-      windowManager, "gameplan_header", 1.5f, 1.5f, 32, 3,
-      Localization::GetInstance().Translate("gameplan_header") + " " + int_to_str(teamID + 1) +
-          (teamData ? ": " + teamData->GetName() : std::string()));
-  grid = new Gui2Grid(windowManager, "gameplan_grid", 1.5f, 6, 0, 0);
+  // Home always left: the half this page edits sits where its side belongs.
+  const float halfW = 47.0f;
+  const float activeX = teamID == 0 ? 0.5f : 48.5f;
+  BuildHalfHeader(this, teamID, teamData, activeX + 2.0f, halfW);
+
+  grid = new Gui2Grid(windowManager, "gameplan_grid", activeX + 0.5f, 12.0f, 0, 0);
   gridNav = new Gui2Grid(windowManager, "gameplan_grid_navigation", 0, 0, 0, 0);
 
-  // The pitch beside the list rather than above it, and tall enough for eleven cards
-  // to stand apart - the broadcast gives it most of the panel.
   map = new Gui2PlanMap(windowManager, "gameplan_planmap", 0, 0, 30, 54, teamData);
   map->SetTeamSide(teamID);
-  buttonLineup = new Gui2Button(windowManager, "gameplan_button_lineup", 0, 0, 32, 3,
-                                Localization::GetInstance().Translate("gameplan_lineup"));
-  buttonTactics = new Gui2Button(windowManager, "gameplan_button_tactics", 0, 0, 32, 3,
-                                 Localization::GetInstance().Translate("gameplan_tactics"));
-  buttonFormation = new Gui2Button(
-      windowManager, "gameplan_button_formation", 0, 0, 32, 3,
-      Localization::GetInstance().Translate("gameplan_formation") + ": " + GetFormationCaption());
 
-  buttonPhilosophy = new Gui2Button(
-      windowManager, "gameplan_button_philosophy", 0, 0, 32, 3,
-      Localization::GetInstance().Translate("gameplan_philosophy") + ": " + GetPhilosophyCaption());
-  buttonInstructions = new Gui2Button(
-      windowManager, "gameplan_button_instructions", 0, 0, 32, 3,
-      Localization::GetInstance().Translate("gameplan_instructions") + ": " +
-          GetInstructionsCaption());
-  buttonSubstitutions =
-      new Gui2Button(windowManager, "gameplan_button_substitutions", 0, 0, 32, 3,
-                     Localization::GetInstance().Translate("gameplan_substitutions"));
-
+  // The five tabs, as PES names them, wired to what this page already does:
+  // Team Sheet is the pitch itself; Tactics opens the tactics sheet (formation,
+  // philosophy, preset); the boot is the individual instructions; the gear is
+  // the support settings (substitutions live there for us); the folder saves.
+  struct Tab { const char* key; MenuIcons::Icon icon; };
+  const Tab tabs[5] = {{"gameplan_tab_teamsheet", MenuIcons::Icon::TeamSheet},
+                       {"gameplan_tab_tactics", MenuIcons::Icon::Tactics},
+                       {"gameplan_tab_instructions", MenuIcons::Icon::Boot},
+                       {"gameplan_tab_support", MenuIcons::Icon::Gear},
+                       {"gameplan_tab_data", MenuIcons::Icon::Folder}};
+  for (int i = 0; i < 5; i++) {
+    Gui2Button* tab = new Gui2Button(windowManager, std::string("gameplan_tab_") + int_to_str(i),
+                                     0, 0, 5.6f, 6.0f, " ");
+    tabButtons[i] = tab;
+    gridNav->AddView(tab, 0, i);
+  }
+  buttonLineup = tabButtons[0];
+  buttonTactics = tabButtons[1];
+  buttonInstructions = tabButtons[2];
+  buttonSubstitutions = tabButtons[3];
+  buttonFormation = tabButtons[1];   // the tactics sheet carries the formation
+  buttonPhilosophy = tabButtons[1];  // and the philosophy
   buttonLineup->sig_OnClick.connect([this](...) { GoLineupMode(); });
   buttonTactics->sig_OnClick.connect([this](...) { GoTacticsMenu(); });
-  buttonPhilosophy->sig_OnClick.connect([this](...) { GoPhilosophyMenu(); });
   buttonInstructions->sig_OnClick.connect([this](...) { GoInstructionsMenu(); });
   buttonSubstitutions->sig_OnClick.connect([this](...) { GoSubstitutionsMenu(); });
-
-  buttonFormation->sig_OnClick.connect([this](...) { GoFormationMenu(); });
+  tabButtons[4]->sig_OnClick.connect([this](...) { SaveLineup(); });
+  for (int i = 0; i < 5; i++) {
+    const int index = i;
+    tabButtons[i]->sig_OnGainFocus.connect([this, index](Gui2Button*) { ShowTabCaption(index); });
+  }
+  gridNav->UpdateLayout(0.3);
+  gridNav->SetWrapping(false, true);
 
   this->sig_OnClose.connect([this](...) { OnClose(); });
 
-  frame->AddView(header);
-  header->Show();
-
   frame->AddView(grid);
-  gridNav->AddView(buttonLineup, 0, 0);
-  gridNav->AddView(buttonTactics, 1, 0);
-  gridNav->AddView(buttonPhilosophy, 2, 0);
-  gridNav->AddView(buttonInstructions, 3, 0);
-  gridNav->AddView(buttonSubstitutions, 4, 0);
-  gridNav->AddView(buttonFormation, 5, 0);
-  gridNav->UpdateLayout(0.5);
   grid->AddView(map, 0, 0);
+  grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
   map->sig_OnOpenPlayerMenu.connect([this](int slotIndex) { GoPlayerMenu(slotIndex); });
   map->sig_OnSubstitute.connect(
       [this](int starter, int bench) { return SubstituteFromMap(starter, bench); });
@@ -122,19 +122,25 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
       ShowBrowsingHints();
   });
 
-  // The hint line, lower left of the page, outside the panel: two lines of
-  // "button - what it does", which is where the broadcast puts them and what
-  // the owner asked for.
-  hintLine1 = new Gui2Caption(windowManager, "gameplan_hint1", 2.0f, 88.0f, 40, 2.4f, "");
-  hintLine2 = new Gui2Caption(windowManager, "gameplan_hint2", 2.0f, 91.0f, 40, 2.4f, "");
+  // The tab's caption under the bar (PES: "Team Sheet/Edit Position" under the
+  // first tab), and the hint line below the frame.
+  tabCaption = new Gui2Caption(windowManager, "gameplan_tab_caption", activeX + 1.0f, 80.0f,
+                               halfW - 2.0f, 2.6f, " ");
+  this->AddView(tabCaption);
+  tabCaption->Show();
+  hintLine1 = new Gui2Caption(windowManager, "gameplan_hint1", 2.0f, 93.0f, 60, 2.2f, "");
+  hintLine2 = new Gui2Caption(windowManager, "gameplan_hint2", 2.0f, 95.6f, 60, 2.2f, "");
   this->AddView(hintLine1);
   this->AddView(hintLine2);
   hintLine1->Show();
   hintLine2->Show();
-  grid->AddView(gridNav, kGamePlanNavRow, kGamePlanNavColumn);
 
   grid->UpdateLayout(0.0);
   grid->Show();
+  // The icons are painted once the buttons have surfaces, i.e. after the grid
+  // has laid them out.
+  for (int i = 0; i < 5; i++) PaintTab(i, tabs[i].icon);
+  for (int i = 0; i < 5; i++) tabKeys[i] = tabs[i].key;
 
   BuildOpponentSheet();
 
@@ -159,6 +165,12 @@ GamePlanPage::GamePlanPage(Gui2WindowManager* windowManager, const Gui2PageData&
 }
 
 void GamePlanPage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  // Tab hands the controls to the other half (PES: the other shoulder pair).
+  if (event->GetKeyOnce(SDLK_TAB) && CanSwitchTeams()) {
+    SwitchTeam();
+    event->Accept();
+    return;
+  }
   if (event->GetKeyOnce(SDLK_q) || event->GetKeyOnce(SDLK_e)) {
     PlanMapCard::ToggleIndicator();
     if (map) map->RefreshIndicators();
@@ -264,33 +276,74 @@ void GamePlanPage::BuildOpponentSheet() {
   }
   if (!other) return;
 
-  opponentLabel = new Gui2Caption(windowManager, "gameplan_opponent_label", 51.0f, 46.0f, 30, 2.4f,
-                                  Localization::GetInstance().Translate("gameplan_header") + " " +
-                                      int_to_str(otherID + 1) + ": " + other->GetName());
-  this->AddView(opponentLabel);
-  opponentLabel->Show();
-
-  // Read-only: it is the other team's sheet, not this page's editing surface.
-  // Swapping which side is edited is what the switch button is for.
-  opponentMap = new Gui2PlanMap(windowManager, "gameplan_planmap_opponent", 51.0f, 49.0f, 24, 40,
-                                other);
-  opponentMap->SetTeamSide(1 - teamID);
+  // The other half, at full size, in its own place - away on the right, home
+  // on the left - with its header and its tab bar drawn but not focusable.
+  // It is the same sheet; Tab swaps which half the controls belong to.
+  const float halfW = 47.0f;
+  const float otherX = otherID == 0 ? 0.5f : 48.5f;
+  Gui2View* frame = this;
+  BuildHalfHeader(frame, otherID, other, otherX + 2.0f, halfW);
+  opponentMap = new Gui2PlanMap(windowManager, "gameplan_planmap_opponent", otherX + 2.5f, 16.0f,
+                                30, 54, other);
+  opponentMap->SetTeamSide(otherID);
   opponentMap->SetSelectable(false);
   this->AddView(opponentMap);
   opponentMap->Show();
+  const MenuIcons::Icon icons[5] = {MenuIcons::Icon::TeamSheet, MenuIcons::Icon::Tactics,
+                                    MenuIcons::Icon::Boot, MenuIcons::Icon::Gear,
+                                    MenuIcons::Icon::Folder};
+  for (int i = 0; i < 5; i++) {
+    Gui2Image* tab = new Gui2Image(windowManager, "gameplan_opponent_tab_" + int_to_str(i),
+                                   otherX + 2.5f + i * 6.2f, 72.5f, 5.6f, 6.0f);
+    this->AddView(tab);
+    tab->Show();
+    MenuIcons::Paint(tab, icons[i], Vector3(170, 180, 200), Vector3(40, 44, 56), 200);
+    opponentTabs.push_back(tab);
+  }
+}
 
-  if (!CanSwitchTeams()) return;
-  buttonSwitchTeam =
-      new Gui2Button(windowManager, "gameplan_button_switchteam", 0, 0, 32, 3,
-                     Localization::GetInstance().Translate("gameplan_switch_team"));
-  buttonSwitchTeam->sig_OnClick.connect([this](...) { SwitchTeam(); });
-  gridNav->AddView(buttonSwitchTeam, 6, 0);
-  // Shown by hand: the page's grid was already Show()n by the time the
-  // opponent's sheet is built, and Gui2View::Show does not recurse into
-  // children - so this row existed, navigated and was invisible.
-  buttonSwitchTeam->Show();
-  gridNav->UpdateLayout(0.5);
-  grid->UpdateLayout(0.0);
+void GamePlanPage::BuildHalfHeader(Gui2View* parent, int side, TeamData* team, float x,
+                                   float width) {
+  // Crest, the team tag beside it, ">Game Plan" beneath: PES's half header.
+  const float crestH = 6.0f;
+  const float crestW = windowManager->GetWidthPercentForHeight(crestH, 1.0f);
+  Gui2Image* crest = new Gui2Image(windowManager, "gameplan_crest_" + int_to_str(side), x + 1.0f,
+                                   5.0f, crestW, crestH);
+  parent->AddView(crest);
+  if (!team->GetLogoUrl().empty()) crest->LoadImage(team->GetLogoUrl());
+  crest->Show();
+  Gui2Caption* tag = new Gui2Caption(windowManager, "gameplan_tag_" + int_to_str(side),
+                                     x + 2.0f + crestW, 6.2f, width * 0.6f, 3.6f, team->GetName());
+  parent->AddView(tag);
+  tag->Show();
+  Gui2Caption* crumb = new Gui2Caption(windowManager, "gameplan_crumb_" + int_to_str(side), x + 1.0f,
+                                       11.6f, width * 0.5f, 2.4f,
+                                       ">" + Localization::GetInstance().Translate("gameplan_header"));
+  crumb->SetColor(windowManager->GetStyle()->GetColor(e_DecorationType_Bright1));
+  parent->AddView(crumb);
+  crumb->Show();
+}
+
+void GamePlanPage::PaintTab(int index, MenuIcons::Icon icon) {
+  if (index < 0 || index >= 5 || !tabButtons[index]) return;
+  // A button redraws its own face on every focus change, so the pictogram is
+  // a separate image laid over it - inset so the button's focus colour still
+  // shows as a rim around the icon.
+  float x, y, w, h;
+  tabButtons[index]->GetDerivedPosition(x, y);
+  tabButtons[index]->GetSize(w, h);
+  const float inset = 0.6f;
+  Gui2Image* face = new Gui2Image(windowManager, "gameplan_tab_icon_" + int_to_str(index),
+                                  x + inset, y + inset, w - 2.0f * inset, h - 2.0f * inset);
+  this->AddView(face);
+  face->Show();
+  MenuIcons::Paint(face, icon, Vector3(235, 240, 250), Vector3(40, 44, 56), 235);
+  tabIcons[index] = face;
+}
+
+void GamePlanPage::ShowTabCaption(int index) {
+  if (!tabCaption || index < 0 || index >= 5) return;
+  tabCaption->SetCaption(Localization::GetInstance().Translate(tabKeys[index]));
 }
 
 void GamePlanPage::SwitchTeam() {

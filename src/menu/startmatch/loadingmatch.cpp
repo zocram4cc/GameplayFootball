@@ -5,6 +5,8 @@
 
 #include "loadingmatch.hpp"
 
+#include "../ingame/menuicons.hpp"
+
 #include <filesystem>
 
 #include "../pagefactory.hpp"
@@ -48,6 +50,11 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(header);
   header->Show();
 
+  Gui2Image* versusPlate =
+      new Gui2Image(windowManager, "main_loading_versus_plate", 45.5f, 51.0f, 9.0f, 6.0f);
+  this->AddView(versusPlate);
+  MenuIcons::PaintPlate(versusPlate, Vector3(18, 22, 34), 190);
+  versusPlate->Show();
   Gui2Caption* versus =
       new Gui2Caption(windowManager, "main_loading_versus", 47, 52, 6, 4, "VS");
   versus->SetPosition(50.0f - versus->GetTextWidthPercent() * 0.5f, 52);
@@ -65,6 +72,15 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   float w = caption1->GetTextWidthPercent();
   caption1->SetPosition(30.0f - w * 0.5f, 35);
   this->AddView(caption1);
+  // Each crest on a plate, as PES sets them (white badges vanished on the panel).
+  for (int side = 0; side < 2; side++) {
+    Gui2Image* plate = new Gui2Image(windowManager, "main_loading_plate" + int_to_str(side),
+                                     (side == 0 ? 30.0f : 70.0f) - teamLogoWidth * 0.5f - 1.5f,
+                                     46.5f, teamLogoWidth + 3.0f, kTeamLogoHeight + 3.0f);
+    this->AddView(plate);
+    MenuIcons::PaintPlate(plate, Vector3(18, 22, 34), 190);
+    plate->Show();
+  }
   Gui2Image* logo1 = new Gui2Image(windowManager, "main_loading_team1logo",
                                    30.0f - teamLogoWidth * 0.5f, 48, teamLogoWidth, kTeamLogoHeight);
   this->AddView(logo1);

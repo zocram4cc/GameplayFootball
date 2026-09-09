@@ -8,6 +8,8 @@
 
 #include "../../gamedefines.hpp"
 #include "../../onthepitch/match.hpp"
+#include <memory>
+
 #include "utils/gui2/page.hpp"
 #include "utils/gui2/widgets/button.hpp"
 #include "statsoverlay.hpp"
@@ -29,9 +31,10 @@ public:
 
   void ContinueGame();
   virtual void ProcessWindowingEvent(WindowingEvent* event);
+  virtual void ProcessKeyboardEvent(KeyboardEvent* event);
 
 protected:
-  Gui2StatsOverlay* card = nullptr;
+  std::unique_ptr<PagedStatsCards> cards;
   e_MatchPhase nextPhase;
   unsigned long pageCreatedTime_ms;
   bool autoAdvanceTriggered;

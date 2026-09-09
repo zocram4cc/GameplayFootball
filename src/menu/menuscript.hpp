@@ -30,7 +30,7 @@ namespace MenuScript {
 // only reach the first - so the toggle b479636 fixed was never fuzzed.
 // Shoulder ('q', pad LB/RB) flips the plan cards between condition arrow and
 // registered position, as PES's LB/RB do.
-enum class Key { Up, Down, Left, Right, Enter, Escape, X, Secondary, Shoulder };
+enum class Key { Up, Down, Left, Right, Enter, Escape, X, Secondary, Shoulder, ShoulderRight };
 
 enum class Action { Tap, Shot, Quit, Monkey };
 

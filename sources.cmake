@@ -725,6 +725,7 @@ set(MENU_SOURCES
    src/menu/ingame/formationgraphiclayout.cpp
    src/menu/ingame/banner.cpp
    src/menu/ingame/goalbug.cpp
+   src/menu/ingame/menuicons.cpp
    src/menu/ingame/bannerpresentation.cpp
    src/menu/settings.cpp
 )

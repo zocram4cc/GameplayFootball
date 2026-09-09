@@ -410,7 +410,8 @@ RWF SS CF), rating A/B/C at each. Tiers differ from the arrows': tier 0
 | Position familiarity in the stat pipeline, profile key, inference | **done** (importer decode of PES's bytes pending offsets) |
 | Ceiling clamp on modified stats | **done**, tested |
 | Pre-match front card + three sub-pages | plan §1.4 |
-| Split-screen Game Plan with icon tabs | plan §2.1 (toggle done) |
-| Two-screen full time (stats card → result page) | plan §3.3 |
-| Six-beat celebration, HUD kept, scorer ribbon, crowd cuts, third replay angle | plan §4 |
+| Split-screen Game Plan with icon tabs, home left / away right, one screen pre-match and paused, Tab hands the controls across | **done** (`gameplan.cpp`, `menuicons.cpp`) |
+| Pause menu = half-time card + icon bar (Game Plan, Replay, Camera, System...); crest and VS plates on the opening graphic and the loading page | **done** (`ingame.cpp`, `phasemenu.cpp`, `gamepage.cpp`) |
+| Two-screen full time (stats card → result page) | **done** (`gameover.cpp`, `resultpage.cpp`) |
+| Six-beat celebration, HUD kept, scorer ribbon, crowd cuts, third replay angle | **done** (`goalsequence.cpp`, `goalbug.cpp`, `replaymenu.cpp`) |
 | Closing ceremony result bar, fade, Highlights prompt, losers-first order | plan §5 |

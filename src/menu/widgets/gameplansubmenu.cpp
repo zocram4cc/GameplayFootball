@@ -13,7 +13,7 @@ GamePlanSubMenu::GamePlanSubMenu(Gui2WindowManager* windowManager, Gui2View* par
   // ran the list off the bottom of the panel once the pitch grew.
   grid = new Gui2Grid(windowManager, "gameplan_grid_" + name, 0, 0, 0, 0);
   this->AddView(grid);
-  mainGrid->AddView(this, kGamePlanNavRow, kGamePlanNavColumn);
+  mainGrid->AddView(this, kGamePlanSubMenuRow, kGamePlanSubMenuColumn);
   mainGrid->UpdateLayout(0.0);
   grid->SetQuickScroll(true);
   grid->Show();

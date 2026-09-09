@@ -17,8 +17,13 @@ using namespace blunted;
 // Where the button column and every sub-menu sit in the game plan's grid: beside the
 // pitch, not below it. Shared so the page and the sub-menus cannot disagree - they
 // did, and a mismatched cell is a fatal in Gui2View::RemoveView.
-constexpr int kGamePlanNavRow = 0;
-constexpr int kGamePlanNavColumn = 1;
+// The tab bar sits UNDER the pitch (row 1), as PES's does; a sub-menu takes
+// the cell beside the pitch (row 0, column 1) where PES puts its tactics
+// readout and role lists.
+constexpr int kGamePlanNavRow = 1;
+constexpr int kGamePlanNavColumn = 0;
+constexpr int kGamePlanSubMenuRow = 0;
+constexpr int kGamePlanSubMenuColumn = 1;
 
 class GamePlanSubMenu : public Gui2View {
 public:

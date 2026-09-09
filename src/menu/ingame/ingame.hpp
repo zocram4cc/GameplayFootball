@@ -17,6 +17,11 @@
 
 using namespace blunted;
 
+#include <memory>
+
+class Gui2StatsOverlay;
+class PagedStatsCards;
+
 class IngamePage : public Gui2Page {
 public:
   IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pageData);
@@ -34,9 +39,11 @@ public:
   void GoSetPieceEditor();
 
   virtual void ProcessWindowingEvent(WindowingEvent* event);
+  virtual void ProcessKeyboardEvent(KeyboardEvent* event);
 
 protected:
-  int teamID;  // team that activated the ingame menu
+  int teamID;
+  std::unique_ptr<PagedStatsCards> cards;  // team that activated the ingame menu
 };
 
 class PreQuitPage : public Gui2Page {

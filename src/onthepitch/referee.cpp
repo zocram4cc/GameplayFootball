@@ -465,6 +465,9 @@ void Referee::IssueDeferredCards() {
       continue;
     const std::string playerName =
         card.player->GetPlayerData() ? card.player->GetPlayerData()->GetLastName() : "";
+    match->GetMatchData()->AddEvent(
+        card.foulType == 3 ? MatchData::Event::RedCard : MatchData::Event::YellowCard,
+        card.player->GetTeamID(), match->GetMatchMinute(), playerName);
     if (card.foulType == 2) {
       match->ShowBanner(card.player->GetTeamID(), "Yellow Card", playerName + " (advantage played)");
       card.player->GiveYellowCard(match->GetActualTime_ms() + 4000);
@@ -855,6 +858,15 @@ bool Referee::CheckFoul() {
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.
     match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());
+    {
+      PlayerData* foulPlayerData = foul.foulPlayer->GetPlayerData();
+      const std::string who = foulPlayerData ? foulPlayerData->GetLastName() : "";
+      const MatchData::Event::Kind kind = foul.foulType == 3   ? MatchData::Event::RedCard
+                                          : foul.foulType == 2 ? MatchData::Event::YellowCard
+                                                               : MatchData::Event::Foul;
+      match->GetMatchData()->AddEvent(kind, foul.foulPlayer->GetTeamID(), match->GetMatchMinute(),
+                                      who);
+    }
     if (Verbose())
       printf("referee: foul (type %i)%s\n", foul.foulType, penalty ? " penalty" : "");
 

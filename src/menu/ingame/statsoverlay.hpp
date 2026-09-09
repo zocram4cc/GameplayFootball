@@ -13,8 +13,10 @@
 #include <vector>
 
 #include "utils/gui2/view.hpp"
+#include "data/matchanalytics.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/image.hpp"
+#include "utils/gui2/events.hpp"
 
 using namespace blunted;
 class Match;
@@ -24,8 +26,11 @@ public:
   // Every widget's surface is fetched from the resource pool by name, so a
   // second card in the same window - the half-time page's - has to carry a
   // name of its own or it takes over the surfaces of the one TAB shows.
+  // The pause menu pages through three bodies under the same header (LB/RB):
+  // the stat table, each team's ball activity, and the match's events.
+  enum class Body { Stats, BallActivity, Events };
   Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match,
-                   const std::string& name = "statsoverlay");
+                   const std::string& name = "statsoverlay", Body body = Body::Stats);
   virtual ~Gui2StatsOverlay() = default;
 
   void UpdateStats();
@@ -54,7 +59,11 @@ protected:
   // label column, then centres the label itself.
   void SetRowValues(StatRow& row, const std::string& home, const std::string& away);
   void DrawPossessionBar(float homeFraction);
-  void DrawHeatmap();
+  void DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data);
+  void BuildStatsBody(float y);
+  void BuildBallActivityBody(float y);
+  void BuildEventsBody(float y);
+  void UpdateEvents();
   void ApplyZOrder();
 
   Match* match;
@@ -68,11 +77,34 @@ protected:
   std::vector<StatRow> rows;
   Gui2Caption* heatmapLabel = nullptr;
   Gui2Image* heatmap = nullptr;
+  Body body;
+  // Ball activity: one map per team with its tag and possession over it.
+  Gui2Image* teamHeatmap[2] = {nullptr, nullptr};
+  Gui2Caption* teamHeatmapLabel[2] = {nullptr, nullptr};
+  // Events: rows reused top-down; home entries on the left, away on the right.
+  Gui2Caption* eventsEmpty = nullptr;
 
   // column geometry, in percent, relative to this view
   float labelLeft = 0.0f, labelWidth = 0.0f;
   float valueMargin = 0.0f;
   float rowTextHeight = 0.0f;
+};
+
+// The three cards a break shows under one title, paged with LB/RB (Q/E):
+// stats, ball activity, match events. Owned by the page that adds them.
+class PagedStatsCards {
+public:
+  PagedStatsCards(Gui2WindowManager* windowManager, Gui2View* page, Match* match,
+                  const std::string& name, const std::string& titlePrefix);
+  void Show(int index);
+  void Step(int delta) { Show(index + delta); }
+  Gui2StatsOverlay* Current() const { return cards[index]; }
+  // True when the key was one of the shoulders and the page turned.
+  bool HandleKey(KeyboardEvent* event);
+
+private:
+  Gui2StatsOverlay* cards[3] = {nullptr, nullptr, nullptr};
+  int index = 0;
 };
 
 #endif

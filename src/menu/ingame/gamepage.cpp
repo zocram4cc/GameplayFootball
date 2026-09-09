@@ -5,6 +5,8 @@
 
 #include "gamepage.hpp"
 
+#include "menuicons.hpp"
+
 #include <filesystem>
 
 #include "../../onthepitch/match.hpp"
@@ -181,6 +183,14 @@ void GamePage::BuildVersusBanner() {
     if (!team || !team->GetTeamData()) return;
     const std::string logo = team->GetTeamData()->GetLogoUrl();
 
+    // A plate under the crest and its name: a white badge on a bright aerial
+    // was unreadable, and PES sets each crest on one.
+    versusPlate[side] = new Gui2Image(windowManager, "image_versus_plate" + int_to_str(side),
+                                      centre[side] - crestWidth * 0.5f - 2.0f, 56.5f,
+                                      crestWidth + 4.0f, 22.0f);
+    this->AddView(versusPlate[side]);
+    MenuIcons::PaintPlate(versusPlate[side], Vector3(18, 22, 34), 190);
+
     versusCrest[side] =
         new Gui2Image(windowManager, "image_versus_crest" + int_to_str(side),
                       centre[side] - crestWidth * 0.5f, 58.0f, crestWidth, kCrestHeight);
@@ -194,6 +204,9 @@ void GamePage::BuildVersusBanner() {
     this->AddView(versusName[side]);
   }
 
+  versusPlate[2] = new Gui2Image(windowManager, "image_versus_plate_vs", 45.5f, 62.0f, 9.0f, 6.0f);
+  this->AddView(versusPlate[2]);
+  MenuIcons::PaintPlate(versusPlate[2], Vector3(18, 22, 34), 190);
   versusVs = new Gui2Caption(windowManager, "caption_versus_vs", 0, 63.0f, 0, 4.0f, "VS");
   versusVs->SetPosition(50.0f - versusVs->GetTextWidthPercent() * 0.5f, 63.0f);
   this->AddView(versusVs);
@@ -205,6 +218,7 @@ void GamePage::BuildVersusBanner() {
     versusCrest[side]->Hide();
     versusName[side]->Hide();
   }
+  for (Gui2Image* plate : versusPlate) plate->Hide();
   versusVs->Hide();
 }
 
@@ -228,6 +242,12 @@ void GamePage::UpdateVersusBanner() {
   // (the same trap Gui2FormationGraphic::ApplyAlpha documents). Captions
   // cross-fade properly.
   const bool visible = alpha > 0.02f;
+  for (Gui2Image* plate : versusPlate) {
+    if (visible)
+      plate->Show();
+    else
+      plate->Hide();
+  }
   for (int side = 0; side < 2; side++) {
     if (visible)
       versusCrest[side]->Show();

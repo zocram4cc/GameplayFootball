@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "../gamedefines.hpp"
@@ -215,6 +216,20 @@ public:
   int GetPassFailBadTrap(int teamID) const { return passFailTrap[teamID]; }
 
   // foul tracking
+  // The match's timeline, for the pause menu's events card and the post-match
+  // pages: what happened, to whom, when. Minute is the match clock's.
+  struct Event {
+    enum Kind { Goal, OwnGoal, Foul, YellowCard, RedCard, Substitution };
+    Kind kind;
+    int teamID;
+    int minute;
+    std::string text;  // scorer, offender, or "out -> in"
+  };
+  void AddEvent(Event::Kind kind, int teamID, int minute, const std::string& text) {
+    events.push_back({kind, teamID, minute, text});
+  }
+  const std::vector<Event>& GetEvents() const { return events; }
+
   void AddFoul(int teamID) { foulsCommitted[teamID]++; }
   int GetFouls(int teamID) const { return foulsCommitted[teamID]; }
 
@@ -401,6 +416,7 @@ protected:
   int lastTouchTeamID = -1;
   static constexpr unsigned long cleanCompletionWindow_ms = 1500;
   std::vector<PendingCleanCheck> pendingCleanChecks;
+  std::vector<Event> events;
 #ifndef NDEBUG
   int passGoalkeeperCatch[2] = {0, 0};
   int passRestart[2] = {0, 0};

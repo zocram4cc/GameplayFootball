@@ -50,8 +50,8 @@ std::string TwoDecimals(float value) {
 }  // namespace
 
 Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* match,
-                                   const std::string& name)
-    : Gui2View(windowManager, name, 0, 0, 1, 1), match(match) {
+                                   const std::string& name, Body body)
+    : Gui2View(windowManager, name, 0, 0, 1, 1), match(match), body(body) {
   const float cardWidth = kCardHeight * kCardPixelAspect / windowManager->GetAspectRatio();
   SetPosition((100.0f - cardWidth) * 0.5f, (100.0f - kCardHeight) * 0.5f);
   SetSize(cardWidth, kCardHeight);
@@ -114,8 +114,22 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   valueMargin = cardWidth * 0.02f;
   rowTextHeight = kRowHeight * kRowTextFraction;
 
+  const float y = headerHeight + kCardHeight * 0.05f;
+  switch (body) {
+    case Body::Stats: BuildStatsBody(y); break;
+    case Body::BallActivity: BuildBallActivityBody(y); break;
+    case Body::Events: BuildEventsBody(y); break;
+  }
+
+  // Order the card now rather than waiting for the next frame's tree-wide
+  // reset - see Gui2View::SetRecursiveZPriority.
+  ApplyZOrder();
+}
+
+void Gui2StatsOverlay::BuildStatsBody(float y) {
+  float cardWidth, cardHeight;
+  GetSize(cardWidth, cardHeight);
   Localization& text = Localization::GetInstance();
-  float y = headerHeight + kCardHeight * 0.05f;
   // PES's half-time table, in its order and with its combined rows (the
   // reference screen: Goals Scored, Possession, Shots (On Target), Fouls
   // (Offside), Corner Kicks, Free Kicks, Passes Completed (%), Crosses,
@@ -152,9 +166,102 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   this->AddView(heatmap);
   heatmap->Show();
 
-  // Order the card now rather than waiting for the next frame's tree-wide
-  // reset - see Gui2View::SetRecursiveZPriority.
-  ApplyZOrder();
+}
+
+void Gui2StatsOverlay::BuildBallActivityBody(float y) {
+  // Two pitches, one per team, each showing where the ball was while that team
+  // had it; the team's tag and its share of possession sit over its map. Both
+  // attack left to right as drawn - the sample is pitch space, the same for
+  // both, so the reader compares territory rather than direction.
+  float cardWidth, cardHeight;
+  GetSize(cardWidth, cardHeight);
+  Localization& text = Localization::GetInstance();
+  const float labelH = rowTextHeight * 1.2f;
+  const float mapHeight = (kCardHeight - y - kCardHeight * 0.06f - labelH * 1.6f) * 0.5f;
+  const float mapWidth = std::min(cardWidth * 0.9f,
+                                  windowManager->GetWidthPercentForHeight(mapHeight, 105.0f / 68.0f));
+  for (int i = 0; i < 2; i++) {
+    teamHeatmapLabel[i] = new Gui2Caption(windowManager, GetName() + "_teammaplabel" + int_to_str(i),
+                                          0, y, cardWidth * 0.8f, labelH,
+                                          match->GetTeam(i)->GetTeamData()->GetShortName());
+    teamHeatmapLabel[i]->SetColor(i == 0 ? kTitleColor : kLabelColor);
+    teamHeatmapLabel[i]->SetOutlineColor(kOutlineColor);
+    this->AddView(teamHeatmapLabel[i]);
+    teamHeatmapLabel[i]->Show();
+    y += labelH * 1.3f;
+    teamHeatmap[i] = new Gui2Image(windowManager, GetName() + "_teammap" + int_to_str(i),
+                                   (cardWidth - mapWidth) * 0.5f, y, mapWidth, mapHeight);
+    this->AddView(teamHeatmap[i]);
+    teamHeatmap[i]->Show();
+    y += mapHeight + labelH * 0.3f;
+  }
+  (void)text;
+}
+
+void Gui2StatsOverlay::BuildEventsBody(float y) {
+  // The timeline: minute and what happened, the home side's entries on the
+  // left, the away side's on the right, the kind between them - PES's match
+  // events list. As many rows as the card holds; the latest are kept.
+  float cardWidth, cardHeight;
+  GetSize(cardWidth, cardHeight);
+  const int rowCount = (int)((kCardHeight - y - kCardHeight * 0.05f) / kRowHeight);
+  for (int i = 0; i < rowCount; i++) {
+    // Surfaces are pooled by name, so blank rows need distinct names or every
+    // row shows whatever was written last.
+    rows.push_back(AddRow("event" + int_to_str(i), y, false));
+    rows.back().label->SetCaption(" ");
+    y += kRowHeight;
+  }
+  eventsEmpty = new Gui2Caption(windowManager, GetName() + "_noevents", 0,
+                                y - kRowHeight * (rowCount * 0.5f), cardWidth * 0.6f, rowTextHeight,
+                                Localization::GetInstance().Translate("stats_no_events"));
+  eventsEmpty->SetColor(kLabelColor);
+  eventsEmpty->SetOutlineColor(kOutlineColor);
+  this->AddView(eventsEmpty);
+  eventsEmpty->SetPosition((cardWidth - eventsEmpty->GetTextWidthPercent()) * 0.5f,
+                           y - kRowHeight * (rowCount * 0.5f));
+}
+
+void Gui2StatsOverlay::UpdateEvents() {
+  const std::vector<MatchData::Event>& events = match->GetMatchData()->GetEvents();
+  const size_t shown = std::min(events.size(), rows.size());
+  const size_t first = events.size() - shown;
+  Localization& text = Localization::GetInstance();
+  auto kindName = [&text](MatchData::Event::Kind kind) {
+    switch (kind) {
+      case MatchData::Event::Goal: return text.Translate("event_goal");
+      case MatchData::Event::OwnGoal: return text.Translate("event_own_goal");
+      case MatchData::Event::Foul: return text.Translate("event_foul");
+      case MatchData::Event::YellowCard: return text.Translate("event_yellow_card");
+      case MatchData::Event::RedCard: return text.Translate("event_red_card");
+      case MatchData::Event::Substitution: return text.Translate("event_substitution");
+    }
+    return std::string();
+  };
+  for (size_t i = 0; i < rows.size(); i++) {
+    if (i >= shown) {
+      rows[i].label->SetCaption(" ");
+      SetRowValues(rows[i], " ", " ");
+      continue;
+    }
+    const MatchData::Event& e = events[first + i];
+    const std::string entry = int_to_str(e.minute) + "'  " + e.text;
+    rows[i].label->SetCaption(kindName(e.kind));
+    // The kind is coloured by its weight: goals in the title colour, cards in
+    // their own colours, everything else plain.
+    Vector3 colour = kLabelColor;
+    if (e.kind == MatchData::Event::Goal || e.kind == MatchData::Event::OwnGoal) colour = kTitleColor;
+    if (e.kind == MatchData::Event::YellowCard) colour = Vector3(250, 220, 60);
+    if (e.kind == MatchData::Event::RedCard) colour = Vector3(240, 70, 60);
+    rows[i].label->SetColor(colour);
+    SetRowValues(rows[i], e.teamID == 0 ? entry : " ", e.teamID == 1 ? entry : " ");
+  }
+  if (eventsEmpty) {
+    if (events.empty())
+      eventsEmpty->Show();
+    else
+      eventsEmpty->Hide();
+  }
 }
 
 Gui2StatsOverlay::StatRow Gui2StatsOverlay::AddRow(const std::string& label, float y,
@@ -245,17 +352,16 @@ void Gui2StatsOverlay::DrawPossessionBar(float homeFraction) {
   bar->GetImage2D()->OnChange();
 }
 
-void Gui2StatsOverlay::DrawHeatmap() {
+void Gui2StatsOverlay::DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data) {
   float mapWidth, mapHeight;
-  heatmap->GetSize(mapWidth, mapHeight);
+  target->GetSize(mapWidth, mapHeight);
   int x, y, w, h;
   windowManager->GetCoordinates(0, 0, mapWidth, mapHeight, x, y, w, h);
   if (w <= 0 || h <= 0) return;
 
-  Image2D* image = heatmap->GetImage2D().get();
+  Image2D* image = target->GetImage2D().get();
   image->DrawRectangle(0, 0, w, h, Vector3(18, 26, 48), 225);
 
-  const MatchAnalytics::Heatmap& data = match->GetBallHeatmap();
   const float cellW = w / (float)MatchAnalytics::Heatmap::cellsX;
   const float cellH = h / (float)MatchAnalytics::Heatmap::cellsY;
   for (int cy = 0; cy < MatchAnalytics::Heatmap::cellsY; cy++) {
@@ -287,6 +393,27 @@ void Gui2StatsOverlay::SetTitle(const std::string& text) {
 
 void Gui2StatsOverlay::UpdateStats() {
   MatchData* md = match->GetMatchData();
+  if (body == Body::Events) {
+    UpdateEvents();
+    return;
+  }
+  if (body == Body::BallActivity) {
+    const float poss[2] = {(float)md->GetPossessionTime_ms(0), (float)md->GetPossessionTime_ms(1)};
+    const float total = poss[0] + poss[1];
+    float cardWidth, cardHeight;
+    GetSize(cardWidth, cardHeight);
+    for (int i = 0; i < 2; i++) {
+      const int pct = total > 0 ? int(std::round(poss[i] / total * 100)) : 50;
+      teamHeatmapLabel[i]->SetCaption(match->GetTeam(i)->GetTeamData()->GetShortName() + "   " +
+                                      Percent(pct));
+      float lx, ly;
+      teamHeatmapLabel[i]->GetPosition(lx, ly);
+      teamHeatmapLabel[i]->SetPosition((cardWidth - teamHeatmapLabel[i]->GetTextWidthPercent()) * 0.5f,
+                                       ly);
+      DrawHeatmap(teamHeatmap[i], match->GetTeamBallHeatmap(i));
+    }
+    return;
+  }
 
   const float poss1 = md->GetPossessionTime_ms(0);
   const float poss2 = md->GetPossessionTime_ms(1);
@@ -328,7 +455,7 @@ void Gui2StatsOverlay::UpdateStats() {
   SetRowValues(rows[12], TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 0)),
                TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 1)));
 
-  DrawHeatmap();
+  DrawHeatmap(heatmap, match->GetBallHeatmap());
 }
 
 void Gui2StatsOverlay::ApplyZOrder() {
@@ -342,6 +469,11 @@ void Gui2StatsOverlay::ApplyZOrder() {
   if (title) title->SetZPriority(base + kZContent);
   if (heatmapLabel) heatmapLabel->SetZPriority(base + kZContent);
   if (heatmap) heatmap->SetZPriority(base + kZContent);
+  for (int i = 0; i < 2; i++) {
+    if (teamHeatmap[i]) teamHeatmap[i]->SetZPriority(base + kZContent);
+    if (teamHeatmapLabel[i]) teamHeatmapLabel[i]->SetZPriority(base + kZContent);
+  }
+  if (eventsEmpty) eventsEmpty->SetZPriority(base + kZContent);
   for (StatRow& row : rows) {
     if (row.label) row.label->SetZPriority(base + kZContent);
     if (row.home) row.home->SetZPriority(base + kZContent);
@@ -353,4 +485,48 @@ void Gui2StatsOverlay::ApplyZOrder() {
 void Gui2StatsOverlay::SetRecursiveZPriority(int prio) {
   Gui2View::SetRecursiveZPriority(prio);
   ApplyZOrder();
+}
+
+PagedStatsCards::PagedStatsCards(Gui2WindowManager* windowManager, Gui2View* page, Match* match,
+                                 const std::string& name, const std::string& titlePrefix) {
+  const Gui2StatsOverlay::Body bodies[3] = {Gui2StatsOverlay::Body::Stats,
+                                            Gui2StatsOverlay::Body::BallActivity,
+                                            Gui2StatsOverlay::Body::Events};
+  const char* names[3] = {"stats_title", "stats_ball_activity", "stats_match_events"};
+  for (int i = 0; i < 3; i++) {
+    cards[i] = new Gui2StatsOverlay(windowManager, match, name + "_" + int_to_str(i), bodies[i]);
+    page->AddView(cards[i]);
+    cards[i]->SetTitle(titlePrefix + "   " + Localization::GetInstance().Translate(names[i]));
+    cards[i]->UpdateStats();
+    cards[i]->Hide();
+  }
+  Show(0);
+}
+
+void PagedStatsCards::Show(int newIndex) {
+  index = (newIndex % 3 + 3) % 3;
+  for (int i = 0; i < 3; i++) {
+    if (i == index) {
+      cards[i]->Show();
+      cards[i]->ShowAllChildren();
+      // After the blanket show, so a body can hide what does not apply (the
+      // events card's "no events yet").
+      cards[i]->UpdateStats();
+    } else {
+      cards[i]->Hide();
+      cards[i]->HideAllChildren();
+    }
+  }
+}
+
+bool PagedStatsCards::HandleKey(KeyboardEvent* event) {
+  if (event->GetKeyOnce(SDLK_q)) {
+    Step(-1);
+    return true;
+  }
+  if (event->GetKeyOnce(SDLK_e)) {
+    Step(1);
+    return true;
+  }
+  return false;
 }

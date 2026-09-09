@@ -5,7 +5,10 @@
 
 #include "ingame.hpp"
 
+#include <algorithm>
+#include <memory>
 #include <cstdio>
+#include <vector>
 
 #include "../controllerselect.hpp"
 #include "../gameplan.hpp"
@@ -14,7 +17,9 @@
 #include "main.hpp"
 #include "onthepitch/coachmode.hpp"
 #include "onthepitch/match.hpp"
+#include "menuicons.hpp"
 #include "replaymenu.hpp"
+#include "statsoverlay.hpp"
 #include "utils/localization.hpp"
 
 using namespace blunted;
@@ -23,147 +28,82 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
     : Gui2Page(windowManager, pageData) {
   teamID = pageData.properties->GetInt("teamID", 0);
 
-  GetGameTask()->GetMatch()->Pause(true);
-
   Match* match = GetGameTask()->GetMatch();
-  int score0 = match->GetScore(0);
-  int score1 = match->GetScore(1);
-  std::string team0Name = match->GetTeam(0)->GetTeamData()->GetName();
-  std::string team1Name = match->GetTeam(1)->GetTeamData()->GetName();
+  match->Pause(true);
+  // The card takes the screen; the HUD has nothing to add over it.
+  match->SuppressHud(true);
 
-  unsigned long matchTime_ms = match->GetMatchTime_ms();
-  int matchMinute = static_cast<int>(matchTime_ms / 60000);
-  if (matchMinute > 90)
-    matchMinute = 90;
+  // PES's pause menu (VGL 26 day 12, 5:10:59; docs/VGL26_DAY12_REFERENCE.md
+  // §4): the same stats card as half time, titled "Pause Menu" with the score
+  // and the clock, and a bar of icon buttons under it - Game Plan, Replay,
+  // Camera Settings, System Settings and so on, B to return. It used to be a
+  // tall frame of text buttons in four sections; half time and pause were two
+  // different screens of the same thing.
+  // Three cards under one header, paged with LB/RB (Q/E): the stat table, each
+  // team's ball activity, the match's events. The title carries the score and
+  // the clock, and the card's own name after it, so the reader knows which
+  // page is up without a tab strip.
+  const unsigned long matchTime_ms = match->GetMatchTime_ms();
+  const int minute = std::min(90, static_cast<int>(matchTime_ms / 60000));
+  const std::string scoreline =
+      int_to_str(match->GetScore(0)) + "  " + int_to_str(minute) + ":" +
+      (matchTime_ms / 1000 % 60 < 10 ? "0" : "") + int_to_str(matchTime_ms / 1000 % 60) + "  " +
+      int_to_str(match->GetScore(1));
+  cards = std::make_unique<PagedStatsCards>(
+      windowManager, this, match, "pause_card",
+      Localization::GetInstance().Translate("ingame_pause") + "   " + scoreline);
+  Gui2StatsOverlay* card = cards->Current();
 
-  char scoreBuf[256];
-  snprintf(scoreBuf, sizeof(scoreBuf), "%s  %d - %d  %s  (%d')", team0Name.c_str(), score0, score1,
-           team1Name.c_str(), matchMinute);
-
-  Gui2Frame* frame = new Gui2Frame(windowManager, "frame_ingame", 20, 8, 60, 84, true);
-  this->AddView(frame);
-  frame->Show();
-
-  Gui2Caption* title = new Gui2Caption(windowManager, "caption_ingame_title", 2, 2, 56, 3,
-                                       Localization::GetInstance().Translate("ingame_pause"));
-  frame->AddView(title);
-  title->Show();
-
-  Gui2Caption* scoreLine =
-      new Gui2Caption(windowManager, "caption_ingame_score", 2, 6, 56, 3, scoreBuf);
-  frame->AddView(scoreLine);
-  scoreLine->Show();
-
-  // All selectable buttons live in ONE grid so arrow-key navigation flows
-  // continuously across every section (the previous layout used four separate
-  // grids, which trapped focus inside a single section).
-  Gui2Grid* grid = new Gui2Grid(windowManager, "grid_ingame", 2, 12, 56, 80);
-  int row = 0;
-
-  Gui2Caption* tacticsLabel =
-      new Gui2Caption(windowManager, "caption_ingame_section_tactics", 0, 0, 56, 2,
-                      Localization::GetInstance().Translate("ingame_section_tactics"));
-  grid->AddView(tacticsLabel, row++, 0);
+  float cardX, cardY, cardW, cardH;
+  card->GetPosition(cardX, cardY);
+  card->GetSize(cardW, cardH);
+  const float barH = 11.0f;
+  const float barY = std::min(cardY + cardH + 1.0f, 100.0f - barH - 4.0f);
 
   // In coach mode both touchlines are human-run, so each coached team gets its
   // own game plan entry rather than only the team that opened the menu.
-  Match* ingameMatch = GetGameTask()->GetMatch();
-  const bool managerDuel = ingameMatch && CoachMode::IsManagerDuel(ingameMatch->GetCoachSetup());
+  const bool managerDuel = CoachMode::IsManagerDuel(match->GetCoachSetup());
+  Localization& text = Localization::GetInstance();
+  std::vector<MenuIcons::BarItem> items = {
+      {MenuIcons::Icon::GamePlan,
+       text.Translate("ingame_game_plan") +
+           (managerDuel ? " " + int_to_str(teamID + 1) : std::string())}};
+  if (managerDuel)
+    items.push_back({MenuIcons::Icon::GamePlan,
+                     text.Translate("ingame_game_plan") + " " + int_to_str(2 - teamID)});
+  items.push_back({MenuIcons::Icon::Ball, text.Translate("ingame_set_pieces")});
+  items.push_back({MenuIcons::Icon::Play, text.Translate("ingame_replay")});
+  items.push_back({MenuIcons::Icon::Camera, text.Translate("ingame_camera_settings")});
+  items.push_back({MenuIcons::Icon::Substitute, text.Translate("ingame_controller_select")});
+  items.push_back({MenuIcons::Icon::Shield, text.Translate("ingame_visual_options")});
+  items.push_back({MenuIcons::Icon::Gear, text.Translate("ingame_system_settings")});
+  items.push_back({MenuIcons::Icon::Back, text.Translate("ingame_forfeit_match")});
+  const float barW = std::min(11.0f, (92.0f - (items.size() - 1) * 0.8f) / items.size());
+  std::vector<MenuIcons::IconButton> bar =
+      MenuIcons::MakeIconBar(windowManager, this, "pause_bar", barY, barW, barH, items);
 
-  Gui2Button* buttonGamePlan = new Gui2Button(
-      windowManager, "button_gameplan", 0, 0, 56, 3,
-      Localization::GetInstance().Translate("ingame_game_plan") +
-          (managerDuel ? " (" + Localization::GetInstance().Translate("ingame_team") + " " +
-                             int_to_str(teamID + 1) + ")"
-                       : ""));
-  Gui2Button* buttonSetPieces =
-      new Gui2Button(windowManager, "button_setpieces", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_set_pieces"));
-  buttonGamePlan->sig_OnClick.connect([this](...) { GoGamePlan(); });
-  buttonSetPieces->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
-  grid->AddView(buttonGamePlan, row++, 0);
-
+  size_t i = 0;
+  bar[i++].button->sig_OnClick.connect([this](...) { GoGamePlan(); });
   if (managerDuel) {
     const int opponentID = abs(teamID - 1);
-    Gui2Button* buttonGamePlanOpponent =
-        new Gui2Button(windowManager, "button_gameplan_opponent", 0, 0, 56, 3,
-                       Localization::GetInstance().Translate("ingame_game_plan") + " (" +
-                           Localization::GetInstance().Translate("ingame_team") + " " +
-                           int_to_str(opponentID + 1) + ")");
-    buttonGamePlanOpponent->sig_OnClick.connect(
+    bar[i++].button->sig_OnClick.connect(
         [this, opponentID](...) { GoGamePlanForTeam(opponentID); });
-    grid->AddView(buttonGamePlanOpponent, row++, 0);
   }
+  bar[i++].button->sig_OnClick.connect([this](...) { GoSetPieceEditor(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoReplay(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoCameraSettings(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoControllerSelect(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoVisualOptions(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoSystemSettings(); });
+  bar[i++].button->sig_OnClick.connect([this](...) { GoPreQuit(); });
 
-  grid->AddView(buttonSetPieces, row++, 0);
-
-  Gui2Caption* settingsLabel =
-      new Gui2Caption(windowManager, "caption_ingame_section_settings", 0, 0, 56, 2,
-                      Localization::GetInstance().Translate("ingame_section_settings"));
-  grid->AddView(settingsLabel, row++, 0);
-
-  Gui2Button* buttonControllerSelect =
-      new Gui2Button(windowManager, "button_controllerselect", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_controller_select"));
-  Gui2Button* buttonCameraSettings =
-      new Gui2Button(windowManager, "button_camerasettings", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_camera_settings"));
-  Gui2Button* buttonVisualOptions =
-      new Gui2Button(windowManager, "button_visualoptions", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_visual_options"));
-  Gui2Button* buttonSystemSettings =
-      new Gui2Button(windowManager, "button_systemsettings", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_system_settings"));
-  buttonControllerSelect->sig_OnClick.connect([this](...) { GoControllerSelect(); });
-  buttonCameraSettings->sig_OnClick.connect([this](...) { GoCameraSettings(); });
-  buttonVisualOptions->sig_OnClick.connect([this](...) { GoVisualOptions(); });
-  buttonSystemSettings->sig_OnClick.connect([this](...) { GoSystemSettings(); });
-  grid->AddView(buttonControllerSelect, row++, 0);
-  grid->AddView(buttonCameraSettings, row++, 0);
-  grid->AddView(buttonVisualOptions, row++, 0);
-  grid->AddView(buttonSystemSettings, row++, 0);
-
-  Gui2Caption* mediaLabel =
-      new Gui2Caption(windowManager, "caption_ingame_section_media", 0, 0, 56, 2,
-                      Localization::GetInstance().Translate("ingame_section_media"));
-  grid->AddView(mediaLabel, row++, 0);
-
-  Gui2Button* buttonReplay = new Gui2Button(windowManager, "button_replay", 0, 0, 56, 3,
-                                            Localization::GetInstance().Translate("ingame_replay"));
-  buttonReplay->sig_OnClick.connect([this](...) { GoReplay(); });
-  grid->AddView(buttonReplay, row++, 0);
-
-  Gui2Caption* exitLabel =
-      new Gui2Caption(windowManager, "caption_ingame_section_exit", 0, 0, 56, 2,
-                      Localization::GetInstance().Translate("ingame_section_match"));
-  grid->AddView(exitLabel, row++, 0);
-
-  Gui2Button* buttonResume =
-      new Gui2Button(windowManager, "button_resume", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_resume_match"));
-  Gui2Button* buttonPreQuit =
-      new Gui2Button(windowManager, "button_quit", 0, 0, 56, 3,
-                     Localization::GetInstance().Translate("ingame_forfeit_match"));
-  buttonResume->sig_OnClick.connect([this](...) {
-    GetMenuTask()->ReleaseAllButtons();
-    GetGameTask()->GetMatch()->Pause(false);
-    GoBack();  // reconstructs the GamePage, which restores GUI focus
-  });
-  buttonPreQuit->sig_OnClick.connect([this](...) { GoPreQuit(); });
-  grid->AddView(buttonResume, row++, 0);
-  grid->AddView(buttonPreQuit, row++, 0);
-
-  grid->UpdateLayout(0.5);
-  frame->AddView(grid);
-  grid->Show();
-
-  Gui2Caption* hintCaption = new Gui2Caption(windowManager, "caption_ingame_hint", 2, 79, 56, 2,
-                                             Localization::GetInstance().Translate("ingame_hint"));
-  frame->AddView(hintCaption);
+  Gui2Caption* hintCaption =
+      new Gui2Caption(windowManager, "caption_ingame_hint", 4.0f, std::min(97.5f, barY + barH + 0.4f),
+                      40.0f, 2.0f, text.Translate("ingame_hint"));
+  this->AddView(hintCaption);
   hintCaption->Show();
 
-  buttonResume->SetFocus();
-
+  bar[0].button->SetFocus();
   this->Show();
 }
 
@@ -216,10 +156,20 @@ void IngamePage::GoSetPieceEditor() {
   CreatePage((int)e_PageID_SetPieceEditor, properties);
 }
 
+void IngamePage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  // LB/RB page the cards; Q/E are the keyboard's shoulders, as on the game plan.
+  if (cards && cards->HandleKey(event)) {
+    event->Accept();
+    return;
+  }
+  Gui2Page::ProcessKeyboardEvent(event);
+}
+
 void IngamePage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape()) {
     GetMenuTask()->ReleaseAllButtons();
     GetGameTask()->GetMatch()->Pause(false);
+    GetGameTask()->GetMatch()->SuppressHud(false);
   }
   Gui2Page::ProcessWindowingEvent(event);
 }

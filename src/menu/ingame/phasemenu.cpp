@@ -6,8 +6,11 @@
 #include "phasemenu.hpp"
 
 #include <algorithm>
+#include <memory>
+#include <vector>
 
 #include "../gameplan.hpp"
+#include "menuicons.hpp"
 #include "../pagefactory.hpp"
 #include "main.hpp"
 #include "../../remotecontrolmode.hpp"
@@ -74,49 +77,37 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
   // the actions along the bottom. The card is the one TAB pulls up during play,
   // under this break's own title; what used to be here was an empty dark slab
   // with two menu items in its top-left corner.
-  card = new Gui2StatsOverlay(windowManager, match, "phase_card");
-  this->AddView(card);
-  // The reference puts the score on this screen above everything else; the
-  // header is where the eye lands, so it carries both the break and the score.
   const std::string breakName =
       nextPhase == e_MatchPhase_2ndHalf
           ? text.Translate("ingame_halftime")
           : (phaseName.empty() ? text.Translate("phase_match_phase") : phaseName);
-  card->SetTitle(breakName + "   " + int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
-                 int_to_str(match->GetMatchData()->GetGoalCount(1)));
-  card->UpdateStats();
-  card->Show();
+  cards = std::make_unique<PagedStatsCards>(
+      windowManager, this, match, "phase_card",
+      breakName + "   " + int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
+          int_to_str(match->GetMatchData()->GetGoalCount(1)));
+  Gui2StatsOverlay* card = cards->Current();
 
-  // The action bar sits in the band under the card. Two actions, the way the
-  // reference's bottom bar reads ("Kick Off / >Game Plan"), on the same dark
-  // rounded panel the tactical banner uses.
+  // The action bar under the card: PES's icon buttons (the pause menu's bar,
+  // 5:10:59), with "Begin Second Half" where Help sits, then Game Plan, Replay,
+  // Camera Settings, System Settings.
   float cardX, cardY, cardW, cardH;
   card->GetPosition(cardX, cardY);
   card->GetSize(cardW, cardH);
-  const float barHeight = 5.5f;
-  const float barY = std::min(cardY + cardH + 1.5f, 100.0f - barHeight - 1.5f);
-  const float barWidth = cardW * 0.7f;
-  const float barX = (100.0f - barWidth) * 0.5f;
-
-  Gui2Image* bar = new Gui2Image(windowManager, "phase_actionbar", barX, barY, barWidth, barHeight);
-  this->AddView(bar);
-  bar->LoadImage("media/ui/pes/banner_panel.png");
-  bar->Show();
-
+  const float barH = 11.0f;
+  const float barY = std::min(cardY + cardH + 1.0f, 100.0f - barH - 4.0f);
   const std::string phaseLabel = text.Translate("phase_begin") + " " + phaseName;
-  const float buttonWidth = barWidth * 0.46f;
-  const float buttonHeight = barHeight * 0.64f;
-  const float buttonY = barY + (barHeight - buttonHeight) * 0.5f;
-  const float gap = barWidth * 0.04f;
-  buttonNext = new Gui2Button(windowManager, "button_next", barX + gap, buttonY, buttonWidth,
-                              buttonHeight, phaseLabel);
-  Gui2Button* button1 =
-      new Gui2Button(windowManager, "button1", barX + barWidth - gap - buttonWidth, buttonY,
-                     buttonWidth, buttonHeight, text.Translate("phase_game_plan"));
-  this->AddView(buttonNext);
-  this->AddView(button1);
-  buttonNext->Show();
-  button1->Show();
+  std::vector<MenuIcons::IconButton> bar = MenuIcons::MakeIconBar(
+      windowManager, this, "phase_bar", barY, 13.0f, barH,
+      {{MenuIcons::Icon::Play, phaseLabel},
+       {MenuIcons::Icon::GamePlan, text.Translate("phase_game_plan")},
+       {MenuIcons::Icon::Records, text.Translate("ingame_replay")},
+       {MenuIcons::Icon::Camera, text.Translate("ingame_camera_settings")},
+       {MenuIcons::Icon::Gear, text.Translate("ingame_system_settings")}});
+  buttonNext = bar[0].button;
+  Gui2Button* button1 = bar[1].button;
+  bar[2].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Replay); });
+  bar[3].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Camera); });
+  bar[4].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Settings); });
 
   buttonNext->sig_OnClick.connect([this](...) { ContinueGame(); });
   button1->sig_OnClick.connect([this](...) { GoGamePlan(); });
@@ -181,6 +172,14 @@ void MatchPhasePage::ContinueGame() {
   GetGameTask()->GetMatch()->SuppressHud(false);
   GetGameTask()->GetMatch()->Pause(false);
   GoBack();  // back to gamepage
+}
+
+void MatchPhasePage::ProcessKeyboardEvent(KeyboardEvent* event) {
+  if (cards && cards->HandleKey(event)) {
+    event->Accept();
+    return;
+  }
+  Gui2Page::ProcessKeyboardEvent(event);
 }
 
 void MatchPhasePage::ProcessWindowingEvent(WindowingEvent* event) {
