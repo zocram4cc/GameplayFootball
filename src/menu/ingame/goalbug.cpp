@@ -16,11 +16,12 @@
 namespace blunted {
 namespace {
 
-// Centred low in frame, above the bottom edge where the player plates live -
-// where PES puts both bugs (reference frames at 0:07 and 0:11).
-constexpr float kPlateWidth = 34.0f;
-constexpr float kPlateHeight = 6.4f;
-constexpr float kPlateY = 78.0f;
+// The ribbon sits bottom-LEFT above the home plate, a short plate in the
+// scoring team's colour carrying the name alone (VGL 26 day 12 frames at
+// 5:10:11).
+constexpr float kPlateWidth = 26.0f;
+constexpr float kPlateHeight = 4.6f;
+constexpr float kPlateY = 84.0f;
 constexpr float kCrestHeight = 4.4f;
 constexpr float kTextHeight = 2.6f;
 constexpr float kSubHeight = 2.0f;
@@ -31,7 +32,6 @@ constexpr float kPadX = 1.0f;
 // through the tracking shot, the scorer's card replaces it on the cut to the
 // tight close-up, and the wide of the mob carries neither - which is what the
 // reference shows at 0:07 and 0:11.
-constexpr unsigned long kScoreIn_ms = 1500;
 
 const Vector3 kTextColor(255, 255, 255);
 const Vector3 kSubColor(186, 200, 224);
@@ -46,21 +46,26 @@ Gui2GoalBug::~Gui2GoalBug() {}
 
 Gui2GoalBug::Stage Gui2GoalBug::StageAt(unsigned long celebration_ms,
                                         unsigned long celebrationLength_ms) {
+  // PES 2021 (VGL 26 day 12, 5:09:59): ONE graphic, the scorer's name ribbon,
+  // rising on the two-shot about four seconds after the goal and staying
+  // through the mob; the stand cuts and the replay are clean. The score bug
+  // and the scorer card of the older reference are not what this broadcast
+  // draws.
   if (celebrationLength_ms == 0 || celebration_ms > celebrationLength_ms) return Stage::None;
-  if (celebration_ms < kScoreIn_ms) return Stage::None;  // still on the live camera
+  if (celebration_ms < GoalSequence::kRibbonIn_ms) return Stage::None;
   switch (GoalSequence::ShotAt(celebration_ms, celebrationLength_ms)) {
-    case GoalSequence::Shot::Tracking:
-      return Stage::Score;
-    case GoalSequence::Shot::Tight:
+    case GoalSequence::Shot::TwoShot:
+    case GoalSequence::Shot::MobClose:
+    case GoalSequence::Shot::MobWide:
       return Stage::Scorer;
-    case GoalSequence::Shot::Group:
+    default:
       break;
   }
-  return Stage::None;  // the mob is played clean
+  return Stage::None;
 }
 
 void Gui2GoalBug::Init() {
-  const float x = (100.0f - kPlateWidth) * 0.5f;
+  const float x = 2.0f;
 
   // AddView before LoadImage, and never Hide/Show a freshly built image - the
   // same two traps Gui2Banner::Init documents. Visibility is alpha here too:
@@ -169,26 +174,20 @@ void Gui2GoalBug::FillScorer() {
       }
   }
 
-  const std::string name = int_to_str(squadNumber) + " " + data->GetLastName();
-  const int cm = (int)std::round(data->GetHeight() * 100.0f);
-  std::string detail = int_to_str(cm) + "cm";
-  const int age = data->GetAge();
-  if (age != MatchPressure::unknownAge) detail += "   Age " + int_to_str(age);
+  // The ribbon: number and name, nothing else. Height, age and the day's
+  // tally were the older reference's card; the 2021 broadcast shows the name.
+  const std::string name = int_to_str(squadNumber) + "  " + data->GetLastName();
 
   leftText->SetCaption(name);
   centreText->SetCaption(" ");
-  rightText->SetCaption(detail);
-  subText->SetCaption(Localization::GetInstance().Translate("goal_bug_goals_today") + "   " +
-                      int_to_str(match->GetGoalsToday(scorer)));
+  rightText->SetCaption(" ");
+  subText->SetCaption(" ");
 
-  const float x = (100.0f - kPlateWidth) * 0.5f;
+  const float x = 2.0f;
   const float crestWidth = windowManager->GetWidthPercentForHeight(kCrestHeight, 1.0f);
   float unused, y;
   leftText->GetPosition(unused, y);
   leftText->SetPosition(x + kPadX * 2.0f + crestWidth, y);
-  rightText->SetPosition(x + kPlateWidth - kPadX * 2.0f - rightText->GetTextWidthPercent(), y);
-  subText->GetPosition(unused, y);
-  subText->SetPosition(50.0f - subText->GetTextWidthPercent() * 0.5f, y);
 }
 
 void Gui2GoalBug::Process() {

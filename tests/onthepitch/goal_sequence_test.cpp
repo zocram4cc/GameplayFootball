@@ -135,37 +135,56 @@ TEST(CelebrationLength, AClipLongerThanTheMontageExtendsIt) {
             GoalSequence::kMinCelebration_ms + 4000);
 }
 
-TEST(GoalMontage, ThreeShotsInOrder) {
+TEST(GoalMontage, SevenCutsInPesOrder) {
+  // VGL 26 day 12 at 5:09:59: behind, front, two-shot, mob close, mob wide,
+  // then two stand cuts - in that order, each of its own length.
   const unsigned long length = GoalSequence::CelebrationLength_ms(0);
-  EXPECT_EQ(GoalSequence::ShotAt(0, length), GoalSequence::Shot::Tracking);
-  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms - 1, length),
-            GoalSequence::Shot::Tracking);
-  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms, length),
-            GoalSequence::Shot::Tight);
-  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kTrackingShot_ms + GoalSequence::kTightShot_ms,
-                                 length),
-            GoalSequence::Shot::Group);
-  // The tail of a clip that outran the montage stays on the mob rather than
-  // cycling back to the tracking shot.
-  EXPECT_EQ(GoalSequence::ShotAt(length - 1, length), GoalSequence::Shot::Group);
+  unsigned long at = 0;
+  for (int i = 0; i < GoalSequence::kShotCount; i++) {
+    EXPECT_EQ(GoalSequence::ShotAt(at, length), (GoalSequence::Shot)i) << "cut " << i;
+    EXPECT_EQ(GoalSequence::ShotStartedAt_ms(at + 1, length), at) << "cut " << i;
+    at += GoalSequence::kShotLength_ms[i];
+  }
+  EXPECT_EQ(at, length);
+  EXPECT_EQ(GoalSequence::ShotAt(length - 1, length), GoalSequence::Shot::CrowdTwo);
 }
 
-TEST(GoalMontage, EachShotStartsItsOwnCameraAtZero) {
-  const unsigned long length = GoalSequence::CelebrationLength_ms(0);
-  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(0, length), 0u);
-  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(GoalSequence::kTrackingShot_ms + 10, length),
-            GoalSequence::kTrackingShot_ms);
-  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(length - 1, length),
-            GoalSequence::kTrackingShot_ms + GoalSequence::kTightShot_ms);
+TEST(GoalMontage, TheStandCutsAreNotFilmedOnTheScorer) {
+  EXPECT_FALSE(GoalSequence::kShotOnScorer[(int)GoalSequence::Shot::Crowd]);
+  EXPECT_FALSE(GoalSequence::kShotOnScorer[(int)GoalSequence::Shot::CrowdTwo]);
+  EXPECT_TRUE(GoalSequence::kShotOnScorer[(int)GoalSequence::Shot::Behind]);
+  EXPECT_TRUE(GoalSequence::kShotOnScorer[(int)GoalSequence::Shot::MobWide]);
 }
 
-TEST(GoalMontage, TheWholeSequenceIsTheReferencesSixtyToEightySeconds) {
-  // PES's goal, celebration, replay and restart run 60-80 s end to end
-  // (youtu.be/ns5C3zpD6Ig). Ours measured about thirty.
+TEST(GoalMontage, ALongPerformanceStretchesTheMobWideNotTheStands) {
+  // A clip longer than the montage holds the last player shot; the stand cuts
+  // still come after it and still last their own length.
+  const unsigned long extra = 6000;
+  const unsigned long length = GoalSequence::CelebrationLength_ms(GoalSequence::kMinCelebration_ms + extra);
+  unsigned long mobWideStart = 0;
+  for (int i = 0; i < (int)GoalSequence::Shot::MobWide; i++) mobWideStart += GoalSequence::kShotLength_ms[i];
+  const unsigned long mobWideEnd = mobWideStart + GoalSequence::kShotLength_ms[(int)GoalSequence::Shot::MobWide] + extra;
+  EXPECT_EQ(GoalSequence::ShotAt(mobWideEnd - 1, length), GoalSequence::Shot::MobWide);
+  EXPECT_EQ(GoalSequence::ShotAt(mobWideEnd, length), GoalSequence::Shot::Crowd);
+  EXPECT_EQ(GoalSequence::ShotStartedAt_ms(mobWideEnd, length), mobWideEnd);
+}
+
+TEST(GoalMontage, TheRibbonRisesOnTheTwoShot) {
+  // About four seconds after the goal, as the first teammate arrives.
+  EXPECT_EQ(GoalSequence::kRibbonIn_ms,
+            GoalSequence::kShotLength_ms[0] + GoalSequence::kShotLength_ms[1]);
+  const unsigned long length = GoalSequence::CelebrationLength_ms(0);
+  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kRibbonIn_ms, length), GoalSequence::Shot::TwoShot);
+}
+
+TEST(GoalMontage, TheWholeSequenceIsTheReferencesThirtyFiveToFiftySeconds) {
+  // VGL 26 day 12: goal to restart is about forty seconds - seven short cuts,
+  // three replay angles, the referee's restart. (An older PES ran sixty; the
+  // 2021 broadcast is the reference.)
   for (unsigned long anim : {0ul, 400ul, 2700ul, 10000ul, 60000ul}) {
     const unsigned long whole = GoalSequence::WholeSequence_ms(anim);
-    EXPECT_GE(whole, 60000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
-    EXPECT_LE(whole, 80000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
+    EXPECT_GE(whole, 35000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
+    EXPECT_LE(whole, 50000u) << "a clip of " << anim << " ms gives a " << whole << " ms sequence";
   }
 }
 

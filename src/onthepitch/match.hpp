@@ -141,7 +141,7 @@ public:
   // What of the in-match chrome PES has on air, measured off the VGL26
   // broadcast: everything in live play, the scoreboard alone over a goal
   // celebration, and nothing at all over any other staged shot.
-  enum class HudLevel { None, ScoreboardOnly, All };
+  enum class HudLevel { None, ScoreboardAndPlates, All };
   void ApplyHudVisibility();
 
   void SetSunParams();
@@ -918,7 +918,7 @@ protected:
   std::map<const Player*, int> goalsToday;
   // Which shot of the celebration montage is on air, so the camera cuts once
   // per shot rather than every frame (GoalSequence::Shot).
-  GoalSequence::Shot goalCelebrationShot = GoalSequence::Shot::Tracking;
+  GoalSequence::Shot goalCelebrationShot = GoalSequence::Shot::Behind;
   // The track currently filming the celebration, and the one the previous shot
   // used - the picker refuses to hand the same camera to adjacent shots.
   int goalCelebrationTrack = -1;

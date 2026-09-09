@@ -1920,11 +1920,15 @@ void Match::ApplyHudVisibility() {
   // scoreboard, the radar and both player plates across all of them, with the
   // radar and captions still on through a card cutscene and the half-time
   // whistle (owner's review of the 05-09 showcase, defect 2).
+  // Read again off VGL 26 day 12 (docs/VGL26_DAY12_REFERENCE.md §4): during
+  // the celebration the scoreboard AND both player plates stay on screen on
+  // every cut; only the replay is clean. Stoppage cutscenes, the walkout and
+  // the closing ceremony carry nothing.
   HudLevel want = HudLevel::All;
   if (entranceActive || gameOver || hudSuppressed || activeCutscene != nullptr)
     want = HudLevel::None;
   else if (goalScored)
-    want = HudLevel::ScoreboardOnly;
+    want = HudLevel::ScoreboardAndPlates;
   if (want == hudLevel && hudApplied) return;
   hudLevel = want;
   hudApplied = true;
@@ -1942,7 +1946,7 @@ void Match::ApplyHudVisibility() {
   }
   for (int side = 0; side < 2; side++) {
     if (!playerHUD[side]) continue;
-    if (want == HudLevel::All)
+    if (want == HudLevel::All || want == HudLevel::ScoreboardAndPlates)
       playerHUD[side]->Show();
     else
       playerHUD[side]->Hide();
@@ -4400,9 +4404,34 @@ void Match::UpdateIngameCamera() {
       // 06-09 showed a glove and a shell filling the screen. Measured over the
       // 516 imported tracks the opening distance runs 2-40 m with a median of
       // 12.6, so each shot takes the track nearest its own reach.
-      const float wanted = celebrationShot == GoalSequence::Shot::Tracking
-                               ? 12.0f
-                               : (celebrationShot == GoalSequence::Shot::Tight ? 8.0f : 20.0f);
+      // The two stand cuts are not goal camerawork at all: PES cuts to the
+      // crowd, and this ground's own audience camerawork (the end/audience
+      // pool the closing ceremony uses) is what films that here - world space,
+      // nothing staged on the scorer, sampled from the cut's own start.
+      if (!GoalSequence::kShotOnScorer[(int)celebrationShot]) {
+        const std::string stadiumTag =
+            EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+        auto pool = cutscenePools.find("end/audience_" + stadiumTag);
+        if (pool != cutscenePools.end() && !pool->second.empty()) {
+          const int which =
+              (lastGoalTeamID * 3 + GetScore(0) + GetScore(1) + (int)celebrationShot) %
+              (int)pool->second.size();
+          const CamTrack& stand = pool->second[which];
+          const CamTrackFrame frame = stand.SampleTimeline(shotElapsed_ms * 0.03f);
+          cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+          cameraNodeOrientation = QUATERNION_IDENTITY;
+          cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                                frame.rotation[3]);
+          cameraFOV = frame.fov;
+          cameraNearCap = std::max(0.1f, frame.nearPlane);
+          cameraFarCap = frame.farPlane;
+          return;
+        }
+        // A ground with no audience camerawork: the mob wide runs on.
+      }
+      const float wanted = GoalSequence::kShotDistance_m[(int)celebrationShot] > 0.0f
+                               ? GoalSequence::kShotDistance_m[(int)celebrationShot]
+                               : 10.0f;
       int pick = goalCelebrationCamera >= 0 ? goalCelebrationCamera : 0;
       {
         float best = 1e9f;

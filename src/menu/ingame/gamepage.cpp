@@ -141,8 +141,10 @@ void GamePage::GoExtendedReplayPage() {
   if (match->IsGoalScored() && match->GetReplayStartOffset_ms() > 0) {
     const int stopBefore_ms =
         (int)match->GetReplayStartOffset_ms() - (int)GoalSequence::kReplayLeadIn_ms;
+    // Behind the goal for the build-up, the default wide for the finish from
+    // the side, then the close rotatable at half speed (docs/VGL26_DAY12 §4).
     replayPage->AutorunAngles(replayHistoryOffset_ms, stayInReplay,
-                              {match->GetReplayCamera(), 2 /* close-up */},
+                              {match->GetReplayCamera(), 0 /* wide */, 2 /* close-up */},
                               stopBefore_ms > 0 ? stopBefore_ms : 0);
   } else {
     replayPage->Autorun(replayHistoryOffset_ms, stayInReplay, match->GetReplayCamera());

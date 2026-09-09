@@ -223,10 +223,14 @@ bool ReplayPage::AdvanceAngle() {
   if (angleQueue.empty() || angleIndex + 1 >= angleQueue.size()) return false;
   angleIndex++;
   cam = clamp(angleQueue[angleIndex], 0, replayCamCount - 1);
-  // Each further cut is tighter and slower over the finish itself: half speed
-  // covers half the tape in the same wall time, which is why the window shrinks.
-  slowMotion = true;
-  const signed long tape = (signed long)GoalSequence::kReplayCloseAngle_ms / 2;
+  // PES's three cuts (VGL 26 day 12): the wide of the build-up, a second wide
+  // of the finish from another side, then the close-up of the finish alone at
+  // half speed. Only the LAST angle is slow, and half speed covers half the
+  // tape in the same wall time, which is why its window is the shortest.
+  const bool last = angleIndex + 1 >= angleQueue.size();
+  slowMotion = last;
+  const signed long tape = last ? (signed long)GoalSequence::kReplayCloseAngle_ms / 2
+                                : (signed long)GoalSequence::kReplaySideAngle_ms;
   angleStart_ms = clamp(angleStop_ms - tape, (signed long)minTime_ms, angleStop_ms);
   actualTime_ms = angleStart_ms;
   autoRun = true;

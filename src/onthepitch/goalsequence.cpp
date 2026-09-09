@@ -5,37 +5,48 @@
 namespace GoalSequence {
 
 namespace {
-constexpr unsigned long kMontage_ms = kTrackingShot_ms + kTightShot_ms + kGroupShot_ms;
-static_assert(kMontage_ms == kMinCelebration_ms,
-              "the floor IS the montage: three shots back to back");
+constexpr unsigned long Montage_ms() {
+  unsigned long total = 0;
+  for (int i = 0; i < kShotCount; i++) total += kShotLength_ms[i];
+  return total;
+}
+static_assert(Montage_ms() == kMinCelebration_ms,
+              "the floor IS the montage: the seven cuts back to back");
 }  // namespace
 
 unsigned long CelebrationLength_ms(unsigned long animLength_ms) {
   // The montage always runs. A clip that outlasts it extends the celebration
-  // (the group shot holds while he is still performing) up to the cap the
-  // replay buffer can reach back past.
-  if (animLength_ms <= kMontage_ms) return kMontage_ms;
+  // (the last player shot holds while he is still performing) up to the cap
+  // the replay buffer can reach back past.
+  if (animLength_ms <= Montage_ms()) return Montage_ms();
   return animLength_ms > kLongestCelebration_ms ? kLongestCelebration_ms : animLength_ms;
 }
 
 Shot ShotAt(unsigned long celebration_ms, unsigned long celebrationLength_ms) {
-  if (celebration_ms < kTrackingShot_ms) return Shot::Tracking;
-  if (celebration_ms < kTrackingShot_ms + kTightShot_ms) return Shot::Tight;
-  (void)celebrationLength_ms;  // the tail belongs to the group shot
-  return Shot::Group;
+  // A celebration longer than the montage stretches the last player shot (the
+  // mob wide) by the extra, so the stand cuts still come last and the replay
+  // follows them.
+  const unsigned long extra =
+      celebrationLength_ms > Montage_ms() ? celebrationLength_ms - Montage_ms() : 0;
+  unsigned long at = 0;
+  for (int i = 0; i < kShotCount; i++) {
+    const unsigned long length =
+        kShotLength_ms[i] + ((Shot)i == Shot::MobWide ? extra : 0);
+    if (celebration_ms < at + length) return (Shot)i;
+    at += length;
+  }
+  return Shot::CrowdTwo;
 }
 
 unsigned long ShotStartedAt_ms(unsigned long celebration_ms,
                                unsigned long celebrationLength_ms) {
-  switch (ShotAt(celebration_ms, celebrationLength_ms)) {
-    case Shot::Tracking:
-      return 0;
-    case Shot::Tight:
-      return kTrackingShot_ms;
-    case Shot::Group:
-      break;
-  }
-  return kTrackingShot_ms + kTightShot_ms;
+  const unsigned long extra =
+      celebrationLength_ms > Montage_ms() ? celebrationLength_ms - Montage_ms() : 0;
+  const Shot shot = ShotAt(celebration_ms, celebrationLength_ms);
+  unsigned long at = 0;
+  for (int i = 0; i < (int)shot; i++)
+    at += kShotLength_ms[i] + ((Shot)i == Shot::MobWide ? extra : 0);
+  return at;
 }
 
 unsigned long WholeSequence_ms(unsigned long animLength_ms) {
