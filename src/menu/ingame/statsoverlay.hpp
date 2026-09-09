@@ -69,6 +69,7 @@ protected:
 
   Match* match;
 
+  Gui2Image* backing = nullptr;
   Gui2Image* panelBg = nullptr;
   Gui2Image* headerBg = nullptr;
   Gui2Image* crest[2] = {nullptr, nullptr};
@@ -82,6 +83,7 @@ protected:
   Gui2Caption* teamHeatmapLabel[2] = {nullptr, nullptr};
   // Events: rows reused top-down; home entries on the left, away on the right.
   Gui2Caption* eventsEmpty = nullptr;
+  std::vector<Gui2Caption*> eventLines;
 
   // column geometry, in percent, relative to this view
   float labelLeft = 0.0f, labelWidth = 0.0f;

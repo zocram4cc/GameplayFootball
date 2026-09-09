@@ -293,12 +293,17 @@ void GamePlanPage::BuildOpponentSheet() {
                                     MenuIcons::Icon::Boot, MenuIcons::Icon::Gear,
                                     MenuIcons::Icon::Folder};
   for (int i = 0; i < 5; i++) {
-    Gui2Image* tab = new Gui2Image(windowManager, "gameplan_opponent_tab_" + int_to_str(i),
-                                   otherX + 2.5f + i * 6.2f, 72.5f, 5.6f, 6.0f);
-    this->AddView(tab);
-    tab->Show();
-    MenuIcons::Paint(tab, icons[i], Vector3(170, 180, 200), Vector3(40, 44, 56), 200);
-    opponentTabs.push_back(tab);
+    // The same plate as the live tabs, only not selectable.
+    Gui2Button* plate = new Gui2Button(windowManager, "gameplan_opponent_tab_" + int_to_str(i),
+                                       otherX + 2.5f + i * 6.2f, 72.5f, 5.6f, 6.0f, " ");
+    plate->SetQuietFocus(true);
+    plate->SetSelectable(false);
+    this->AddView(plate);
+    plate->Show();
+    Gui2Image* face = nullptr;
+    MenuIcons::PaintIconFace(windowManager, this, "gameplan_opponent_tab_icon_" + int_to_str(i),
+                             otherX + 2.5f + i * 6.2f, 72.5f - 0.9f, 5.6f, 7.8f, icons[i], &face);
+    opponentTabs.push_back(face);
   }
 }
 
@@ -326,19 +331,23 @@ void GamePlanPage::BuildHalfHeader(Gui2View* parent, int side, TeamData* team, f
 
 void GamePlanPage::PaintTab(int index, MenuIcons::Icon icon) {
   if (index < 0 || index >= 5 || !tabButtons[index]) return;
-  // A button redraws its own face on every focus change, so the pictogram is
-  // a separate image laid over it - inset so the button's focus colour still
-  // shows as a rim around the icon.
+  // The same glyph band and stroke as every bar button, and the same focus
+  // treatment: the plate stays, the icon takes the accent.
   float x, y, w, h;
   tabButtons[index]->GetDerivedPosition(x, y);
   tabButtons[index]->GetSize(w, h);
-  const float inset = 0.6f;
-  Gui2Image* face = new Gui2Image(windowManager, "gameplan_tab_icon_" + int_to_str(index),
-                                  x + inset, y + inset, w - 2.0f * inset, h - 2.0f * inset);
-  this->AddView(face);
-  face->Show();
-  MenuIcons::Paint(face, icon, Vector3(235, 240, 250), Vector3(40, 44, 56), 235);
+  tabButtons[index]->SetQuietFocus(true);
+  Gui2Image* face = nullptr;
+  // Tabs carry no caption of their own, so the glyph band is the whole plate.
+  MenuIcons::PaintIconFace(windowManager, this, "gameplan_tab_icon_" + int_to_str(index), x,
+                           y - h * 0.15f, w, h * 1.3f, icon, &face);
   tabIcons[index] = face;
+  tabButtons[index]->sig_OnGainFocus.connect([face, icon](Gui2Button*) {
+    MenuIcons::Paint(face, icon, MenuIcons::kAccent, Vector3(0, 0, 0), 0);
+  });
+  tabButtons[index]->sig_OnLoseFocus.connect([face, icon](Gui2Button*) {
+    MenuIcons::Paint(face, icon, MenuIcons::kIconColour, Vector3(0, 0, 0), 0);
+  });
 }
 
 void GamePlanPage::ShowTabCaption(int index) {

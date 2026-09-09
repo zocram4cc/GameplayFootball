@@ -1,5 +1,7 @@
 #include "resultpage.hpp"
 
+#include "menuicons.hpp"
+
 #include <algorithm>
 #include <cstdio>
 
@@ -22,20 +24,19 @@ namespace {
 
 // The card, in the proportions of the reference frame: a header band of
 // about a fifth of its height, the ratings under it.
-constexpr float kCardX = 20.0f;
+// The stats card's footprint (statsoverlay.cpp: 74 tall, 1.32 aspect at 16:9,
+// top at 4), so paging from the stats card to this one moves nothing.
+constexpr float kCardX = 22.6f;
 constexpr float kCardY = 4.0f;
-constexpr float kCardW = 60.0f;
-constexpr float kCardH = 70.0f;
-constexpr float kHeaderH = 16.0f;
+constexpr float kCardW = 54.9f;
+constexpr float kCardH = 74.0f;
+constexpr float kHeaderH = kCardH * 0.13f;  // the stats card's band, same fraction
 constexpr float kRowH = 3.6f;
 constexpr float kRowTextH = 2.6f;
 constexpr int kRows = 11;
 
 // The icon bar under the card: five equal buttons across the card's width
 // plus a margin either side, captions beneath.
-constexpr float kBarY = 78.0f;
-constexpr float kButtonH = 9.0f;
-constexpr float kCaptionH = 2.6f;
 
 const Vector3 kText(255, 255, 255);
 const Vector3 kDim(186, 200, 224);
@@ -59,6 +60,10 @@ ResultPage::ResultPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   Localization& text = Localization::GetInstance();
   MatchData* md = match->GetMatchData();
 
+  Gui2Image* backing = new Gui2Image(windowManager, "result_backing", kCardX, kCardY, kCardW, kCardH);
+  this->AddView(backing);
+  MenuIcons::PaintPlate(backing, MenuIcons::kPlateColour, 235);
+  backing->Show();
   Gui2Image* panel = new Gui2Image(windowManager, "result_panel", kCardX, kCardY, kCardW, kCardH);
   this->AddView(panel);
   panel->LoadImage("media/ui/pes/formation_panel.png");
@@ -68,50 +73,41 @@ ResultPage::ResultPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   header->LoadImage("media/ui/pes/formation_header.png");
   header->Show();
 
-  // Header band: crest and tag at each end, "Full Time" over the score and
-  // the clock in the middle.
-  const float crestH = kHeaderH * 0.55f;
+  // Header band, laid out as the stats card lays its own: crest at each end,
+  // tag just inside, the title - "Full Time - 91:00 - 0 - 2" - centred.
+  const float crestH = kHeaderH * 0.66f;
   const float crestW = windowManager->GetWidthPercentForHeight(crestH, 1.0f);
+  const float sideMargin = kCardW * 0.05f;
+  const float tagH = kHeaderH * 0.38f;
   for (int i = 0; i < 2; i++) {
-    const float crestX = i == 0 ? kCardX + kCardW * 0.10f : kCardX + kCardW * 0.90f - crestW;
+    const float crestX = i == 0 ? kCardX + sideMargin : kCardX + kCardW - sideMargin - crestW;
     Gui2Image* crest = new Gui2Image(windowManager, "result_crest" + int_to_str(i), crestX,
-                                     kCardY + 1.0f, crestW, crestH);
+                                     kCardY + (kHeaderH - crestH) * 0.5f, crestW, crestH);
     this->AddView(crest);
     crest->LoadImage(match->GetTeam(i)->GetTeamData()->GetLogoUrl());
     crest->Show();
     Gui2Caption* tag = new Gui2Caption(windowManager, "result_tag" + int_to_str(i), 0,
-                                       kCardY + 1.5f + crestH, kCardW * 0.3f, 2.8f,
+                                       kCardY + (kHeaderH - tagH) * 0.5f, kCardW * 0.2f, tagH,
                                        match->GetTeam(i)->GetTeamData()->GetShortName());
-    tag->SetColor(kTitle);
+    tag->SetColor(kText);
     tag->SetOutlineColor(kOutline);
     this->AddView(tag);
-    tag->SetPosition(crestX + crestW * 0.5f - tag->GetTextWidthPercent() * 0.5f,
-                     kCardY + 1.5f + crestH);
+    const float tagCentre =
+        i == 0 ? crestX + crestW + kCardW * 0.055f : crestX - kCardW * 0.055f;
+    tag->SetPosition(tagCentre - tag->GetTextWidthPercent() * 0.5f,
+                     kCardY + (kHeaderH - tagH) * 0.5f);
     tag->Show();
   }
-  Gui2Caption* title = new Gui2Caption(windowManager, "result_title", 0, kCardY + 1.2f,
-                                       kCardW * 0.4f, 3.4f, text.Translate("gameover_full_time"));
-  title->SetColor(kText);
+  Gui2Caption* title = new Gui2Caption(
+      windowManager, "result_title", 0, kCardY + (kHeaderH - tagH) * 0.5f, kCardW * 0.5f, tagH,
+      MenuIcons::BreakTitle(text.Translate("gameover_full_time"),
+                            MenuIcons::Clock(match->GetMatchTime_ms()), md->GetGoalCount(0),
+                            md->GetGoalCount(1)));
+  title->SetColor(kTitle);
   title->SetOutlineColor(kOutline);
   this->AddView(title);
-  title->SetPosition(50.0f - title->GetTextWidthPercent() * 0.5f, kCardY + 1.2f);
+  title->SetPosition(50.0f - title->GetTextWidthPercent() * 0.5f, kCardY + (kHeaderH - tagH) * 0.5f);
   title->Show();
-  Gui2Caption* score = new Gui2Caption(
-      windowManager, "result_score", 0, kCardY + 5.4f, kCardW * 0.4f, 7.0f,
-      int_to_str(md->GetGoalCount(0)) + "   " + int_to_str(md->GetGoalCount(1)));
-  score->SetColor(kText);
-  score->SetOutlineColor(kOutline);
-  this->AddView(score);
-  score->SetPosition(50.0f - score->GetTextWidthPercent() * 0.5f, kCardY + 5.4f);
-  score->Show();
-  const int minutes = (int)(match->GetMatchTime_ms() / 60000);
-  Gui2Caption* clock = new Gui2Caption(windowManager, "result_clock", 0, kCardY + 12.4f,
-                                       kCardW * 0.3f, 2.6f, int_to_str(minutes) + ":00");
-  clock->SetColor(kDim);
-  clock->SetOutlineColor(kOutline);
-  this->AddView(clock);
-  clock->SetPosition(50.0f - clock->GetTextWidthPercent() * 0.5f, kCardY + 12.4f);
-  clock->Show();
 
   Gui2Caption* ratingsTitle = new Gui2Caption(
       windowManager, "result_ratings_title", 0, kCardY + kHeaderH + 0.8f, kCardW * 0.4f, 2.8f,
@@ -162,12 +158,15 @@ ResultPage::ResultPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
       name->SetColor(kText);
       name->SetOutlineColor(kOutline);
       this->AddView(name);
+      // Inside its column with a gutter before the rating, whatever the name.
+      name->FitWidth(columnW * 0.62f);
       name->Show();
-      Gui2Caption* value = new Gui2Caption(windowManager, id + "_rating", columnX + columnW * 0.80f, y,
-                                           columnW * 0.2f, kRowTextH, OneDecimal(rating));
-      value->SetColor(kText);
+      Gui2Caption* value = new Gui2Caption(windowManager, id + "_rating", 0, y, columnW * 0.2f,
+                                           kRowTextH, OneDecimal(rating));
+      value->SetColor(kDim);
       value->SetOutlineColor(kOutline);
       this->AddView(value);
+      value->SetPosition(columnX + columnW - value->GetTextWidthPercent(), y);
       value->Show();
       if (rating > best) {
         best = rating;
@@ -178,41 +177,23 @@ ResultPage::ResultPage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   }
   if (bestCaption) bestCaption->SetColor(kTitle);  // the man of the match, in the accent
 
-  // The five icon buttons. PES draws a pictogram on each with the caption
-  // beneath; the face here carries one glyph standing in for the pictogram
-  // (play, records, ball, shield, back arrow) so the caption below is the
-  // only text, as on the reference - the labels overran the buttons when they
-  // were drawn on the face.
-  const char* keys[5] = {"result_highlights", "result_match_records", "result_rematch",
-                         "result_select_team", "result_top_menu"};
-  const char* glyphs[5] = {">", "=", "O", "U", "<"};
-  const float barW = 90.0f;
-  const float barX = 5.0f;
-  const float gap = 1.2f;
-  const float buttonW = (barW - gap * 4.0f) / 5.0f;
-  Gui2Button* buttons[5];
-  for (int i = 0; i < 5; i++) {
-    const float x = barX + i * (buttonW + gap);
-    buttons[i] = new Gui2Button(windowManager, std::string("result_button_") + keys[i], x, kBarY,
-                                buttonW, kButtonH, glyphs[i]);
-    this->AddView(buttons[i]);
-    buttons[i]->Show();
-    Gui2Caption* caption = new Gui2Caption(windowManager, std::string("result_caption_") + keys[i],
-                                           x, kBarY + kButtonH + 0.4f, buttonW, kCaptionH,
-                                           text.Translate(keys[i]));
-    caption->SetColor(kDim);
-    caption->SetOutlineColor(kOutline);
-    this->AddView(caption);
-    caption->SetPosition(x + buttonW * 0.5f - caption->GetTextWidthPercent() * 0.5f,
-                         kBarY + kButtonH + 0.4f);
-    caption->Show();
-  }
-  buttons[0]->sig_OnClick.connect([this](...) { GoHighlights(); });
-  buttons[1]->sig_OnClick.connect([this](...) { GoMatchRecords(); });
-  buttons[2]->sig_OnClick.connect([this](...) { GoRematch(); });
-  buttons[3]->sig_OnClick.connect([this](...) { GoSelectTeam(); });
-  buttons[4]->sig_OnClick.connect([this](...) { GoTopMenu(); });
-  buttons[2]->SetFocus();  // Rematch is the one PES lands on
+  // The five icon buttons, on the same bar every break screen uses.
+  const float barY = kCardY + kCardH + MenuIcons::kCardToBarGap;
+  std::vector<MenuIcons::IconButton> bar = MenuIcons::MakeIconBar(
+      windowManager, this, "result_bar", barY,
+      {{MenuIcons::Icon::Play, text.Translate("result_highlights")},
+       {MenuIcons::Icon::Records, text.Translate("result_match_records")},
+       {MenuIcons::Icon::Ball, text.Translate("result_rematch")},
+       {MenuIcons::Icon::Shield, text.Translate("result_select_team")},
+       {MenuIcons::Icon::Back, text.Translate("result_top_menu")}});
+  bar[0].button->sig_OnClick.connect([this](...) { GoHighlights(); });
+  bar[1].button->sig_OnClick.connect([this](...) { GoMatchRecords(); });
+  bar[2].button->sig_OnClick.connect([this](...) { GoRematch(); });
+  bar[3].button->sig_OnClick.connect([this](...) { GoSelectTeam(); });
+  bar[4].button->sig_OnClick.connect([this](...) { GoTopMenu(); });
+  bar[2].button->SetFocus();  // Rematch is the one PES lands on
+  MenuIcons::MakeHintLine(windowManager, this, "result_hint", barY + MenuIcons::kBarItemH + 1.0f,
+                          text.Translate("result_hint"));
 
   this->Show();
 }

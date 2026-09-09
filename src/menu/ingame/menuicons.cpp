@@ -1,5 +1,6 @@
 #include "menuicons.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "scene/objects/image2d.hpp"
@@ -183,45 +184,120 @@ void PaintPlate(Gui2Image* image, const Vector3& colour, int alpha) {
   surface->OnChange();
 }
 
+void PaintIconFace(Gui2WindowManager* windowManager, Gui2View* page, const std::string& name,
+                   float x, float y, float w, float h, Icon icon, Gui2Image** out) {
+  // The glyph band: the upper 62% of the plate, square, centred - the same on
+  // a bar button and a tab face.
+  const float iconH = h * 0.62f;
+  const float iconW = windowManager->GetWidthPercentForHeight(iconH, 1.0f);
+  Gui2Image* face = new Gui2Image(windowManager, name, x + (w - iconW) * 0.5f, y + h * 0.05f,
+                                  iconW, iconH);
+  page->AddView(face);
+  face->Show();
+  Paint(face, icon, kIconColour, Vector3(0, 0, 0), 0);
+  *out = face;
+}
+
 IconButton MakeIconButton(Gui2WindowManager* windowManager, Gui2View* page,
                           const std::string& name, float x, float y, float w, float h, Icon icon,
                           const std::string& caption) {
   IconButton out;
   out.button = new Gui2Button(windowManager, name, x, y, w, h, " ");
+  out.button->SetQuietFocus(true);
   page->AddView(out.button);
   out.button->Show();
-  // Icon in the upper 62% of the plate, square, centred; caption in the band under it.
-  const float iconH = h * 0.62f;
-  const float iconW = windowManager->GetWidthPercentForHeight(iconH, 1.0f);
-  out.icon = new Gui2Image(windowManager, name + "_icon", x + (w - iconW) * 0.5f, y + h * 0.04f,
-                           iconW, iconH);
-  page->AddView(out.icon);
-  out.icon->Show();
-  Paint(out.icon, icon, Vector3(235, 240, 250), Vector3(0, 0, 0), 0);
-  out.caption = new Gui2Caption(windowManager, name + "_caption", x, y + h * 0.68f, w * 0.92f,
-                                h * 0.26f, caption);
+  PaintIconFace(windowManager, page, name + "_icon", x, y, w, h, icon, &out.icon);
+  // One caption size for every plate: a long label is shortened in en.ini, not
+  // shrunk here, so the bar reads in one type size (PES). FitWidth stays as
+  // the guard against a name nobody trimmed.
+  out.caption = new Gui2Caption(windowManager, name + "_caption", x, y + h * 0.72f, w * 0.92f,
+                                h * 0.2f, caption);
+  out.caption->SetColor(kLabelColour);
+  out.caption->SetOutlineColor(kOutlineColour);
   page->AddView(out.caption);
-  out.caption->FitWidth(w * 0.9f);
+  out.caption->FitWidth(w * 0.92f);
   float cx, cy;
   out.caption->GetPosition(cx, cy);
   out.caption->SetPosition(x + (w - out.caption->GetTextWidthPercent()) * 0.5f, cy);
   out.caption->Show();
+  // Focus tints the icon and the caption, never the plate.
+  Gui2Image* iconImage = out.icon;
+  Gui2Caption* captionWidget = out.caption;
+  out.button->sig_OnGainFocus.connect([iconImage, captionWidget, icon](Gui2Button*) {
+    Paint(iconImage, icon, kAccent, Vector3(0, 0, 0), 0);
+    captionWidget->SetColor(kAccent);
+  });
+  out.button->sig_OnLoseFocus.connect([iconImage, captionWidget, icon](Gui2Button*) {
+    Paint(iconImage, icon, kIconColour, Vector3(0, 0, 0), 0);
+    captionWidget->SetColor(kLabelColour);
+  });
+  return out;
+}
+
+CrestPlate MakeCrestPlate(Gui2WindowManager* windowManager, Gui2View* page,
+                          const std::string& name, float centreX, float top, float crestH,
+                          const std::string& logo, const std::string& label) {
+  CrestPlate out;
+  const float crestW = windowManager->GetWidthPercentForHeight(crestH, 1.0f);
+  const float labelH = crestH * 0.24f;
+  const float padX = 2.0f, padY = 1.5f;
+  const float plateW = crestW + padX * 2.0f;
+  out.height = crestH + labelH + padY * 3.0f;
+  out.plate = new Gui2Image(windowManager, name + "_plate", centreX - plateW * 0.5f, top, plateW,
+                            out.height);
+  page->AddView(out.plate);
+  PaintPlate(out.plate, kPlateColour, 190);
+  out.crest = new Gui2Image(windowManager, name + "_crest", centreX - crestW * 0.5f, top + padY,
+                            crestW, crestH);
+  page->AddView(out.crest);
+  if (!logo.empty()) out.crest->LoadImage(logo);
+  out.label = new Gui2Caption(windowManager, name + "_label", 0, top + padY * 2.0f + crestH,
+                              plateW, labelH, label);
+  out.label->SetOutlineColor(kOutlineColour);
+  page->AddView(out.label);
+  out.label->FitWidth(plateW - 1.0f);
+  float lx, ly;
+  out.label->GetPosition(lx, ly);
+  out.label->SetPosition(centreX - out.label->GetTextWidthPercent() * 0.5f, ly);
   return out;
 }
 
 std::vector<IconButton> MakeIconBar(Gui2WindowManager* windowManager, Gui2View* page,
-                                    const std::string& name, float y, float w, float h,
-                                    const std::vector<BarItem>& items) {
+                                    const std::string& name, float y,
+                                    const std::vector<BarItem>& items, float centreX) {
   std::vector<IconButton> out;
-  const float gap = 0.8f;
-  const float total = items.size() * w + (items.size() - 1) * gap;
-  float x = (100.0f - total) * 0.5f;
+  const float total = items.size() * kBarItemW + (items.size() - 1) * kBarGap;
+  float x = std::max(1.0f, std::min(99.0f - total, centreX - total * 0.5f));
   for (size_t i = 0; i < items.size(); i++) {
-    out.push_back(MakeIconButton(windowManager, page, name + "_" + std::to_string(i), x, y, w, h,
-                                 items[i].icon, items[i].caption));
-    x += w + gap;
+    out.push_back(MakeIconButton(windowManager, page, name + "_" + std::to_string(i), x, y,
+                                 kBarItemW, kBarItemH, items[i].icon, items[i].caption));
+    x += kBarItemW + kBarGap;
   }
   return out;
+}
+
+Gui2Caption* MakeHintLine(Gui2WindowManager* windowManager, Gui2View* page,
+                          const std::string& name, float y, const std::string& text) {
+  Gui2Caption* hint = new Gui2Caption(windowManager, name, 4.0f, y, 60.0f, kHintH, text);
+  hint->SetColor(kLabelColour);
+  hint->SetOutlineColor(kOutlineColour);
+  page->AddView(hint);
+  hint->Show();
+  return hint;
+}
+
+std::string Clock(unsigned long time_ms) {
+  const unsigned long minutes = time_ms / 60000, seconds = time_ms / 1000 % 60;
+  return std::to_string(minutes) + ":" + (seconds < 10 ? "0" : "") + std::to_string(seconds);
+}
+
+std::string BreakTitle(const std::string& phase, const std::string& clock, int home, int away,
+                       const std::string& page) {
+  std::string title = phase;
+  if (!clock.empty()) title += "  -  " + clock;
+  title += "  -  " + std::to_string(home) + " - " + std::to_string(away);
+  if (!page.empty()) title += "  -  " + page;
+  return title;
 }
 
 }  // namespace MenuIcons

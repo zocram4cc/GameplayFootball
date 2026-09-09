@@ -43,22 +43,17 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   // team's ball activity, the match's events. The title carries the score and
   // the clock, and the card's own name after it, so the reader knows which
   // page is up without a tab strip.
-  const unsigned long matchTime_ms = match->GetMatchTime_ms();
-  const int minute = std::min(90, static_cast<int>(matchTime_ms / 60000));
-  const std::string scoreline =
-      int_to_str(match->GetScore(0)) + "  " + int_to_str(minute) + ":" +
-      (matchTime_ms / 1000 % 60 < 10 ? "0" : "") + int_to_str(matchTime_ms / 1000 % 60) + "  " +
-      int_to_str(match->GetScore(1));
   cards = std::make_unique<PagedStatsCards>(
       windowManager, this, match, "pause_card",
-      Localization::GetInstance().Translate("ingame_pause") + "   " + scoreline);
+      MenuIcons::BreakTitle(Localization::GetInstance().Translate("ingame_pause"),
+                            MenuIcons::Clock(match->GetMatchTime_ms()), match->GetScore(0),
+                            match->GetScore(1)));
   Gui2StatsOverlay* card = cards->Current();
 
   float cardX, cardY, cardW, cardH;
   card->GetPosition(cardX, cardY);
   card->GetSize(cardW, cardH);
-  const float barH = 11.0f;
-  const float barY = std::min(cardY + cardH + 1.0f, 100.0f - barH - 4.0f);
+  const float barY = cardY + cardH + MenuIcons::kCardToBarGap;
 
   // In coach mode both touchlines are human-run, so each coached team gets its
   // own game plan entry rather than only the team that opened the menu.
@@ -78,9 +73,8 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   items.push_back({MenuIcons::Icon::Shield, text.Translate("ingame_visual_options")});
   items.push_back({MenuIcons::Icon::Gear, text.Translate("ingame_system_settings")});
   items.push_back({MenuIcons::Icon::Back, text.Translate("ingame_forfeit_match")});
-  const float barW = std::min(11.0f, (92.0f - (items.size() - 1) * 0.8f) / items.size());
   std::vector<MenuIcons::IconButton> bar =
-      MenuIcons::MakeIconBar(windowManager, this, "pause_bar", barY, barW, barH, items);
+      MenuIcons::MakeIconBar(windowManager, this, "pause_bar", barY, items);
 
   size_t i = 0;
   bar[i++].button->sig_OnClick.connect([this](...) { GoGamePlan(); });
@@ -97,11 +91,8 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   bar[i++].button->sig_OnClick.connect([this](...) { GoSystemSettings(); });
   bar[i++].button->sig_OnClick.connect([this](...) { GoPreQuit(); });
 
-  Gui2Caption* hintCaption =
-      new Gui2Caption(windowManager, "caption_ingame_hint", 4.0f, std::min(97.5f, barY + barH + 0.4f),
-                      40.0f, 2.0f, text.Translate("ingame_hint"));
-  this->AddView(hintCaption);
-  hintCaption->Show();
+  MenuIcons::MakeHintLine(windowManager, this, "caption_ingame_hint",
+                          barY + MenuIcons::kBarItemH + 1.0f, text.Translate("ingame_hint"));
 
   bar[0].button->SetFocus();
   this->Show();

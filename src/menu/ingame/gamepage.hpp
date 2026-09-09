@@ -9,6 +9,7 @@
 #include <boost/signals2.hpp>
 
 #include "utils/gui2/page.hpp"
+#include "menuicons.hpp"
 #include "utils/gui2/widgets/caption.hpp"
 #include "utils/gui2/widgets/image.hpp"
 #include "utils/gui2/windowmanager.hpp"
@@ -43,10 +44,10 @@ protected:
 
   blunted::Gui2Caption* betaSign = nullptr;
   bool betaSignHidden = false;
-  blunted::Gui2Image* versusCrest[2] = {nullptr, nullptr};
-  blunted::Gui2Image* versusPlate[3] = {nullptr, nullptr, nullptr};  // two crests, the VS
-  blunted::Gui2Caption* versusName[2] = {nullptr, nullptr};
+  MenuIcons::CrestPlate versus[2];
+  blunted::Gui2Image* versusPlate = nullptr;  // under the VS
   blunted::Gui2Caption* versusVs = nullptr;
+  void SetVersusVisible(bool visible);
   float versusAlpha = -1.0f;
   Match* match;
   unsigned long matchReadyTime_ms;

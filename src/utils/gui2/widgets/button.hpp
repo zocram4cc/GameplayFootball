@@ -31,6 +31,13 @@ public:
   void SetColor(const Vector3& color);
   virtual void Redraw();
 
+  // PES's icon plates never change colour on focus - the icon and caption over
+  // them do. A quiet button keeps its base face and marks focus with a thin
+  // accent rule along the bottom, leaving the tint to whoever laid the icon.
+  void SetQuietFocus(bool onOff) {
+    quietFocus = onOff;
+    Redraw();
+  }
   virtual void SetToggleable(bool toggleable) { this->toggleable = toggleable; }
   virtual bool IsToggled() { return this->toggled; }
   virtual void SetToggled(bool onOff) {
@@ -57,6 +64,7 @@ public:
 
 protected:
   Gui2Caption* captionView;
+  bool quietFocus = false;
 
   boost::intrusive_ptr<Image2D> image;
 

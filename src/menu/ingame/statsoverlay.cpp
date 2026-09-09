@@ -1,5 +1,7 @@
 #include "statsoverlay.hpp"
 
+#include "menuicons.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -60,6 +62,12 @@ Gui2StatsOverlay::Gui2StatsOverlay(Gui2WindowManager* windowManager, Match* matc
   const float headerHeight = kCardHeight * kHeaderFraction;
   const float sideMargin = cardWidth * 0.05f;
 
+  // A solid navy ground under the panel art: PES's card is an opaque slab, and
+  // the stat text lost its contrast with the pitch showing through.
+  backing = new Gui2Image(windowManager, GetName() + "_backing", 0, 0, cardWidth, kCardHeight);
+  this->AddView(backing);
+  MenuIcons::PaintPlate(backing, MenuIcons::kPlateColour, 235);
+  backing->Show();
   panelBg = new Gui2Image(windowManager, GetName() + "_panel", 0, 0, cardWidth, kCardHeight);
   this->AddView(panelBg);
   panelBg->LoadImage("media/ui/pes/formation_panel.png");
@@ -164,8 +172,8 @@ void Gui2StatsOverlay::BuildBallActivityBody(float y) {
     const float centre = cardWidth * (i == 0 ? 0.27f : 0.73f);
     teamHeatmapLabel[i] = new Gui2Caption(windowManager, GetName() + "_teammaplabel" + int_to_str(i),
                                           0, y, cardWidth * 0.45f, labelH,
-                                          match->GetTeam(i)->GetTeamData()->GetShortName());
-    teamHeatmapLabel[i]->SetColor(i == 0 ? kTitleColor : kLabelColor);
+                                          match->GetTeam(i)->GetTeamData()->GetShortName() + "   50%");
+    teamHeatmapLabel[i]->SetColor(kLabelColor);
     teamHeatmapLabel[i]->SetOutlineColor(kOutlineColor);
     this->AddView(teamHeatmapLabel[i]);
     teamHeatmapLabel[i]->Show();
@@ -177,17 +185,21 @@ void Gui2StatsOverlay::BuildBallActivityBody(float y) {
 }
 
 void Gui2StatsOverlay::BuildEventsBody(float y) {
-  // The timeline: minute and what happened, the home side's entries on the
-  // left, the away side's on the right, the kind between them - PES's match
-  // events list. As many rows as the card holds; the latest are kept.
+  // The timeline as full-width lines, one per event, centred on the card:
+  // "13'  WOOMY -> WEYYO  -  SUBSTITUTION", the line in the kind's colour. As
+  // many rows as the card holds; the latest are kept.
   float cardWidth, cardHeight;
   GetSize(cardWidth, cardHeight);
   const int rowCount = (int)((kCardHeight - y - kCardHeight * 0.05f) / kRowHeight);
   for (int i = 0; i < rowCount; i++) {
-    // Surfaces are pooled by name, so blank rows need distinct names or every
-    // row shows whatever was written last.
-    rows.push_back(AddRow("event" + int_to_str(i), y, false));
-    rows.back().label->SetCaption(" ");
+    // Surfaces are pooled by name, so every row needs a name of its own.
+    Gui2Caption* line = new Gui2Caption(windowManager, GetName() + "_event" + int_to_str(i), 0, y,
+                                        cardWidth * 0.9f, rowTextHeight, " ");
+    line->SetColor(kLabelColor);
+    line->SetOutlineColor(kOutlineColor);
+    this->AddView(line);
+    line->Show();
+    eventLines.push_back(line);
     y += kRowHeight;
   }
   eventsEmpty = new Gui2Caption(windowManager, GetName() + "_noevents", 0,
@@ -202,7 +214,7 @@ void Gui2StatsOverlay::BuildEventsBody(float y) {
 
 void Gui2StatsOverlay::UpdateEvents() {
   const std::vector<MatchData::Event>& events = match->GetMatchData()->GetEvents();
-  const size_t shown = std::min(events.size(), rows.size());
+  const size_t shown = std::min(events.size(), eventLines.size());
   const size_t first = events.size() - shown;
   Localization& text = Localization::GetInstance();
   auto kindName = [&text](MatchData::Event::Kind kind) {
@@ -216,32 +228,27 @@ void Gui2StatsOverlay::UpdateEvents() {
     }
     return std::string();
   };
-  for (size_t i = 0; i < rows.size(); i++) {
+  float cardWidth, cardHeight;
+  GetSize(cardWidth, cardHeight);
+  for (size_t i = 0; i < eventLines.size(); i++) {
+    Gui2Caption* line = eventLines[i];
     if (i >= shown) {
-      rows[i].label->SetCaption(" ");
-      SetRowValues(rows[i], " ", " ");
+      line->SetCaption(" ");
       continue;
     }
     const MatchData::Event& e = events[first + i];
-    const std::string entry = int_to_str(e.minute) + "'  " + e.text;
-    rows[i].label->SetCaption(kindName(e.kind));
-    // The kind is coloured by its weight: goals in the title colour, cards in
-    // their own colours, everything else plain.
+    const std::string team = match->GetTeam(e.teamID)->GetTeamData()->GetShortName();
+    line->SetCaption(int_to_str(e.minute) + "'  " + team + "  " + e.text + "  -  " +
+                     kindName(e.kind));
     Vector3 colour = kLabelColor;
     if (e.kind == MatchData::Event::Goal || e.kind == MatchData::Event::OwnGoal) colour = kTitleColor;
     if (e.kind == MatchData::Event::YellowCard) colour = Vector3(250, 220, 60);
     if (e.kind == MatchData::Event::RedCard) colour = Vector3(240, 70, 60);
-    rows[i].label->SetColor(colour);
-    SetRowValues(rows[i], e.teamID == 0 ? entry : " ", e.teamID == 1 ? entry : " ");
-    // A long name - substitutions carry two - stays inside its column.
-    const float columnWidth = labelLeft - valueMargin * 2.0f;
-    Gui2Caption* side = e.teamID == 0 ? rows[i].home : rows[i].away;
-    side->FitWidth(columnWidth);
-    if (e.teamID == 0) {
-      float sx, sy;
-      side->GetPosition(sx, sy);
-      side->SetPosition(labelLeft - valueMargin - side->GetTextWidthPercent(), sy);
-    }
+    line->SetColor(colour);
+    line->FitWidth(cardWidth * 0.9f);
+    float lx, ly;
+    line->GetPosition(lx, ly);
+    line->SetPosition((cardWidth - line->GetTextWidthPercent()) * 0.5f, ly);
   }
   if (eventsEmpty) {
     if (events.empty())
@@ -457,6 +464,7 @@ void Gui2StatsOverlay::UpdateStats() {
 
 void Gui2StatsOverlay::ApplyZOrder() {
   const int base = GetZPriority();
+  if (backing) backing->SetZPriority(base + kZPanel);
   if (panelBg) panelBg->SetZPriority(base + kZPanel);
   if (headerBg) headerBg->SetZPriority(base + kZHeader);
   for (int i = 0; i < 2; i++) {
@@ -469,6 +477,7 @@ void Gui2StatsOverlay::ApplyZOrder() {
     if (teamHeatmapLabel[i]) teamHeatmapLabel[i]->SetZPriority(base + kZContent);
   }
   if (eventsEmpty) eventsEmpty->SetZPriority(base + kZContent);
+  for (Gui2Caption* line : eventLines) line->SetZPriority(base + kZContent);
   for (StatRow& row : rows) {
     if (row.label) row.label->SetZPriority(base + kZContent);
     if (row.home) row.home->SetZPriority(base + kZContent);

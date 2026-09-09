@@ -5,6 +5,8 @@
 
 #include "gameover.hpp"
 
+#include "menuicons.hpp"
+
 #include <algorithm>
 
 #include <cmath>
@@ -53,9 +55,14 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   // broadcast.
   card = new Gui2StatsOverlay(windowManager, match, "gameover_card");
   this->AddView(card);
-  card->SetTitle(Localization::GetInstance().Translate("gameover_full_time") + "   " +
-                 int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
-                 int_to_str(match->GetMatchData()->GetGoalCount(1)));
+  card->SetTitle(MenuIcons::BreakTitle(Localization::GetInstance().Translate("gameover_full_time"),
+                                       MenuIcons::Clock(match->GetMatchTime_ms()),
+                                       match->GetMatchData()->GetGoalCount(0),
+                                       match->GetMatchData()->GetGoalCount(1)));
+  // Where the paged cards sit, so full time lands where the pause menu was.
+  float cardX0, cardY0;
+  card->GetPosition(cardX0, cardY0);
+  card->SetPosition(cardX0, 4.0f);
   card->UpdateStats();
   card->Show();
 
@@ -66,10 +73,11 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   float cardX, cardY, cardW, cardH;
   card->GetPosition(cardX, cardY);
   card->GetSize(cardW, cardH);
-  const float promptY = std::min(cardY + cardH + 1.2f, 100.0f - 4.0f);
+  const float promptY = cardY + cardH + MenuIcons::kCardToBarGap;
   buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", (100.0f - 24.0f) * 0.5f,
                               promptY, 24.0f, 3.2f,
                               Localization::GetInstance().Translate("gameover_confirm"));
+  buttonOkay->SetQuietFocus(true);
   this->AddView(buttonOkay);
   buttonOkay->Show();
   buttonOkay->sig_OnClick.connect([this](...) { GoResult(); });

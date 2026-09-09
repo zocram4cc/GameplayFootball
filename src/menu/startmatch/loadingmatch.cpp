@@ -37,7 +37,6 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   TeamData* teamData1 = matchData->GetTeamData(0);
   TeamData* teamData2 = matchData->GetTeamData(1);
   constexpr float kTeamLogoHeight = 12.5f;
-  const float teamLogoWidth = windowManager->GetWidthPercentForHeight(kTeamLogoHeight, 1.0f);
 
   Gui2Frame* loadingPanel =
       new Gui2Frame(windowManager, "frame_loading_match", 18, 24, 64, 52, true);
@@ -50,14 +49,16 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(header);
   header->Show();
 
+  const float plateH = kTeamLogoHeight * 1.24f + 4.5f;
+  const float vsY = 44.0f + (plateH - 6.0f) * 0.5f;
   Gui2Image* versusPlate =
-      new Gui2Image(windowManager, "main_loading_versus_plate", 45.5f, 51.0f, 9.0f, 6.0f);
+      new Gui2Image(windowManager, "main_loading_versus_plate", 45.5f, vsY, 9.0f, 6.0f);
   this->AddView(versusPlate);
   MenuIcons::PaintPlate(versusPlate, Vector3(18, 22, 34), 190);
   versusPlate->Show();
   Gui2Caption* versus =
-      new Gui2Caption(windowManager, "main_loading_versus", 47, 52, 6, 4, "VS");
-  versus->SetPosition(50.0f - versus->GetTextWidthPercent() * 0.5f, 52);
+      new Gui2Caption(windowManager, "main_loading_versus", 47, vsY + 1.0f, 6, 4, "VS");
+  versus->SetPosition(50.0f - versus->GetTextWidthPercent() * 0.5f, vsY + 1.0f);
   this->AddView(versus);
   versus->Show();
 
@@ -67,39 +68,13 @@ LoadingMatchPage::LoadingMatchPage(Gui2WindowManager* windowManager, const Gui2P
   this->AddView(status);
   status->Show();
 
-  Gui2Caption* caption1 = new Gui2Caption(windowManager, "main_loading_team1caption", 20, 35, 40, 5,
-                                          teamData1->GetName());
-  float w = caption1->GetTextWidthPercent();
-  caption1->SetPosition(30.0f - w * 0.5f, 35);
-  this->AddView(caption1);
-  // Each crest on a plate, as PES sets them (white badges vanished on the panel).
-  for (int side = 0; side < 2; side++) {
-    Gui2Image* plate = new Gui2Image(windowManager, "main_loading_plate" + int_to_str(side),
-                                     (side == 0 ? 30.0f : 70.0f) - teamLogoWidth * 0.5f - 1.5f,
-                                     46.5f, teamLogoWidth + 3.0f, kTeamLogoHeight + 3.0f);
-    this->AddView(plate);
-    MenuIcons::PaintPlate(plate, Vector3(18, 22, 34), 190);
-    plate->Show();
-  }
-  Gui2Image* logo1 = new Gui2Image(windowManager, "main_loading_team1logo",
-                                   30.0f - teamLogoWidth * 0.5f, 48, teamLogoWidth, kTeamLogoHeight);
-  this->AddView(logo1);
-  logo1->LoadImage(ResolveTeamLogo(teamData1));
-
-  Gui2Caption* caption2 = new Gui2Caption(windowManager, "main_loading_team2caption", 60, 35, 40, 5,
-                                          teamData2->GetName());
-  w = caption2->GetTextWidthPercent();
-  caption2->SetPosition(70.0f - w * 0.5f, 35);
-  this->AddView(caption2);
-  Gui2Image* logo2 = new Gui2Image(windowManager, "main_loading_team2logo",
-                                   70.0f - teamLogoWidth * 0.5f, 48, teamLogoWidth, kTeamLogoHeight);
-  this->AddView(logo2);
-  logo2->LoadImage(ResolveTeamLogo(teamData2));
-
-  caption1->Show();
-  caption2->Show();
-  logo1->Show();
-  logo2->Show();
+  // Each crest on a plate with its name inside, the same plate the opening
+  // graphic uses.
+  MenuIcons::MakeCrestPlate(windowManager, this, "main_loading_team0", 30.0f, 44.0f,
+                            kTeamLogoHeight, ResolveTeamLogo(teamData1), teamData1->GetName());
+  MenuIcons::MakeCrestPlate(windowManager, this, "main_loading_team1", 70.0f, 44.0f,
+                            kTeamLogoHeight, ResolveTeamLogo(teamData2), teamData2->GetName());
+  this->ShowAllChildren();
 
   this->SetFocus();
 

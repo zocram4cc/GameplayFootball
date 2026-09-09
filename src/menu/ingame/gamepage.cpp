@@ -170,56 +170,55 @@ void GamePage::GoGameOverPage() {
 void GamePage::OnCreatedMatch() {}
 
 void GamePage::BuildVersusBanner() {
-  if (!match || versusCrest[0]) return;
+  if (!match || versus[0].plate) return;
 
   // PES's opening graphic: a crest either side of the fixture, low in the
   // frame so the aerial keeps the stadium. The crest artwork is the team's own
   // logo - the same file the loading page and the scoreboard read.
   constexpr float kCrestHeight = 14.0f;
-  const float crestWidth = windowManager->GetWidthPercentForHeight(kCrestHeight, 1.0f);
   const float centre[2] = {29.0f, 71.0f};
   for (int side = 0; side < 2; side++) {
     Team* team = match->GetTeam(side);
     if (!team || !team->GetTeamData()) return;
     const std::string logo = team->GetTeamData()->GetLogoUrl();
-
-    // A plate under the crest and its name: a white badge on a bright aerial
-    // was unreadable, and PES sets each crest on one.
-    versusPlate[side] = new Gui2Image(windowManager, "image_versus_plate" + int_to_str(side),
-                                      centre[side] - crestWidth * 0.5f - 2.0f, 56.5f,
-                                      crestWidth + 4.0f, 22.0f);
-    this->AddView(versusPlate[side]);
-    MenuIcons::PaintPlate(versusPlate[side], Vector3(18, 22, 34), 190);
-
-    versusCrest[side] =
-        new Gui2Image(windowManager, "image_versus_crest" + int_to_str(side),
-                      centre[side] - crestWidth * 0.5f, 58.0f, crestWidth, kCrestHeight);
-    this->AddView(versusCrest[side]);
-    if (!logo.empty() && std::filesystem::exists(logo)) versusCrest[side]->LoadImage(logo);
-
-    versusName[side] = new Gui2Caption(windowManager, "caption_versus_name" + int_to_str(side), 0,
-                                       74.0f, 0, 3.4f, team->GetTeamData()->GetName());
-    versusName[side]->SetPosition(centre[side] - versusName[side]->GetTextWidthPercent() * 0.5f,
-                                  74.0f);
-    this->AddView(versusName[side]);
+    versus[side] = MenuIcons::MakeCrestPlate(
+        windowManager, this, "versus" + int_to_str(side), centre[side], 57.0f, kCrestHeight,
+        std::filesystem::exists(logo) ? logo : std::string(), team->GetTeamData()->GetName());
   }
 
-  versusPlate[2] = new Gui2Image(windowManager, "image_versus_plate_vs", 45.5f, 62.0f, 9.0f, 6.0f);
-  this->AddView(versusPlate[2]);
-  MenuIcons::PaintPlate(versusPlate[2], Vector3(18, 22, 34), 190);
-  versusVs = new Gui2Caption(windowManager, "caption_versus_vs", 0, 63.0f, 0, 4.0f, "VS");
-  versusVs->SetPosition(50.0f - versusVs->GetTextWidthPercent() * 0.5f, 63.0f);
+  // The VS mark, centred on the plates' midline.
+  const float vsH = 6.0f;
+  const float vsY = 57.0f + (versus[0].height - vsH) * 0.5f;
+  versusPlate = new Gui2Image(windowManager, "image_versus_plate_vs", 45.5f, vsY, 9.0f, vsH);
+  this->AddView(versusPlate);
+  MenuIcons::PaintPlate(versusPlate, MenuIcons::kPlateColour, 190);
+  versusVs = new Gui2Caption(windowManager, "caption_versus_vs", 0, vsY + 1.0f, 0, 4.0f, "VS");
+  versusVs->SetPosition(50.0f - versusVs->GetTextWidthPercent() * 0.5f, vsY + 1.0f);
   this->AddView(versusVs);
 
   // Hidden until the beat that wants it: Show() here would put it over the
   // first frame of the walkout.
   versusAlpha = 0.0f;
+  SetVersusVisible(false);
+}
+
+void GamePage::SetVersusVisible(bool visible) {
   for (int side = 0; side < 2; side++) {
-    versusCrest[side]->Hide();
-    versusName[side]->Hide();
+    for (Gui2View* view : {static_cast<Gui2View*>(versus[side].plate),
+                           static_cast<Gui2View*>(versus[side].crest),
+                           static_cast<Gui2View*>(versus[side].label)}) {
+      if (visible)
+        view->Show();
+      else
+        view->Hide();
+    }
   }
-  for (Gui2Image* plate : versusPlate) plate->Hide();
-  versusVs->Hide();
+  for (Gui2View* view : {static_cast<Gui2View*>(versusPlate), static_cast<Gui2View*>(versusVs)}) {
+    if (visible)
+      view->Show();
+    else
+      view->Hide();
+  }
 }
 
 void GamePage::UpdateVersusBanner() {
@@ -227,7 +226,7 @@ void GamePage::UpdateVersusBanner() {
   // Process (OnCreatedMatch is never called), so the banner is built the first
   // frame there is a match to name.
   BuildVersusBanner();
-  if (!match || !versusCrest[0]) return;
+  if (!match || !versus[0].plate) return;
 
   const PrematchTimeline::State beat = match->GetPrematchState();
   const float alpha = (match->IsInEntrance() &&
@@ -241,28 +240,8 @@ void GamePage::UpdateVersusBanner() {
   // into the alpha channel and would erase a crest's transparency for good
   // (the same trap Gui2FormationGraphic::ApplyAlpha documents). Captions
   // cross-fade properly.
-  const bool visible = alpha > 0.02f;
-  for (Gui2Image* plate : versusPlate) {
-    if (visible)
-      plate->Show();
-    else
-      plate->Hide();
-  }
-  for (int side = 0; side < 2; side++) {
-    if (visible)
-      versusCrest[side]->Show();
-    else
-      versusCrest[side]->Hide();
-    if (visible)
-      versusName[side]->Show();
-    else
-      versusName[side]->Hide();
-    versusName[side]->SetTransparency(1.0f - alpha);
-  }
-  if (visible)
-    versusVs->Show();
-  else
-    versusVs->Hide();
+  SetVersusVisible(alpha > 0.02f);
+  for (int side = 0; side < 2; side++) versus[side].label->SetTransparency(1.0f - alpha);
   versusVs->SetTransparency(1.0f - alpha);
 }
 

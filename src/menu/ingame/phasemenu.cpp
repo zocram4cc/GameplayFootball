@@ -83,22 +83,20 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
           : (phaseName.empty() ? text.Translate("phase_match_phase") : phaseName);
   cards = std::make_unique<PagedStatsCards>(
       windowManager, this, match, "phase_card",
-      breakName + "   " + int_to_str(match->GetMatchData()->GetGoalCount(0)) + " - " +
-          int_to_str(match->GetMatchData()->GetGoalCount(1)));
+      MenuIcons::BreakTitle(breakName, "", match->GetMatchData()->GetGoalCount(0),
+                            match->GetMatchData()->GetGoalCount(1)));
   Gui2StatsOverlay* card = cards->Current();
 
   // The action bar under the card: PES's icon buttons (the pause menu's bar,
-  // 5:10:59), with "Begin Second Half" where Help sits, then Game Plan, Replay,
+  // 5:10:59), with the next phase where Help sits, then Game Plan, Replay,
   // Camera Settings, System Settings.
   float cardX, cardY, cardW, cardH;
   card->GetPosition(cardX, cardY);
   card->GetSize(cardW, cardH);
-  const float barH = 11.0f;
-  const float barY = std::min(cardY + cardH + 1.0f, 100.0f - barH - 4.0f);
-  const std::string phaseLabel = text.Translate("phase_begin") + " " + phaseName;
+  const float barY = cardY + cardH + MenuIcons::kCardToBarGap;
   std::vector<MenuIcons::IconButton> bar = MenuIcons::MakeIconBar(
-      windowManager, this, "phase_bar", barY, 13.0f, barH,
-      {{MenuIcons::Icon::Play, phaseLabel},
+      windowManager, this, "phase_bar", barY,
+      {{MenuIcons::Icon::Play, phaseName},
        {MenuIcons::Icon::GamePlan, text.Translate("phase_game_plan")},
        {MenuIcons::Icon::Records, text.Translate("ingame_replay")},
        {MenuIcons::Icon::Camera, text.Translate("ingame_camera_settings")},
@@ -108,6 +106,8 @@ MatchPhasePage::MatchPhasePage(Gui2WindowManager* windowManager, const Gui2PageD
   bar[2].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Replay); });
   bar[3].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Camera); });
   bar[4].button->sig_OnClick.connect([this](...) { CreatePage(e_PageID_Settings); });
+  MenuIcons::MakeHintLine(windowManager, this, "phase_hint", barY + MenuIcons::kBarItemH + 1.0f,
+                          text.Translate("phase_hint"));
 
   buttonNext->sig_OnClick.connect([this](...) { ContinueGame(); });
   button1->sig_OnClick.connect([this](...) { GoGamePlan(); });

@@ -5,6 +5,8 @@
 
 #include "button.hpp"
 
+#include <algorithm>
+
 #include <cmath>
 #include "SDL2/SDL2_rotozoom.h"
 
@@ -71,6 +73,13 @@ void Gui2Button::Redraw() {
   if (!active) {
     baseColor = windowManager->GetStyle()->GetColor(e_DecorationType_Dark2);
     image->DrawRectangle(0, 0, w, h, baseColor, 120); // Disabled transparency
+  } else if (quietFocus) {
+    image->DrawRectangle(0, 0, w, h, baseColor, 255);
+    if (IsFocussed()) {
+      const int rule = std::max(2, h / 24);
+      image->DrawRectangle(0, h - rule, w, rule,
+                           windowManager->GetStyle()->GetColor(e_DecorationType_Bright2), 255);
+    }
   } else {
     // Dynamic full-button highlight overlay (Modern flat style)
     float bias = IsFocussed() ? 0.0f : (fadeOut_ms / (float)fadeOutTime_ms);
