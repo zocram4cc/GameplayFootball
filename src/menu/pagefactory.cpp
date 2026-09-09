@@ -13,6 +13,7 @@
 #include "credits.hpp"
 #include "gameplan.hpp"
 #include "ingame/gameover.hpp"
+#include "ingame/resultpage.hpp"
 #include "ingame/gamepage.hpp"
 #include "ingame/ingame.hpp"
 #include "ingame/matchhistorypage.hpp"
@@ -93,6 +94,10 @@ Gui2Page* PageFactory::CreatePage(const Gui2PageData& pageData) {
 
     case e_PageID_GameOver:
       page = new GameOverPage(windowManager, pageData);
+      break;
+
+    case e_PageID_Result:
+      page = new ResultPage(windowManager, pageData);
       break;
 
     case e_PageID_Ingame:

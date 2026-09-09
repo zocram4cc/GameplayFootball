@@ -24,6 +24,7 @@ enum e_PageID {
   e_PageID_LoadingMatch,
   e_PageID_MatchPhase,
   e_PageID_GameOver,
+  e_PageID_Result,
   e_PageID_Ingame,
   e_PageID_PreQuit,
   e_PageID_GamePlan,

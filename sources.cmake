@@ -710,6 +710,7 @@ set(MENU_SOURCES
    src/menu/ingame/gamepage.cpp
    src/menu/ingame/replaymenu.cpp
    src/menu/ingame/gameover.cpp
+   src/menu/ingame/resultpage.cpp
    src/menu/ingame/phasemenu.cpp
    src/menu/ingame/ingame.cpp
    src/menu/ingame/scoreboard.cpp

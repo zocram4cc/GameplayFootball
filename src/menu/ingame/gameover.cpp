@@ -59,41 +59,20 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
   card->UpdateStats();
   card->Show();
 
-  // The action bar in the band under the card, laid out exactly as the
-  // half-time page's (phasemenu.cpp).
+  // PES shows this card ALONE, with a Confirm prompt, and the actions live on
+  // the result page that follows (VGL 26 day 12, 5:15:08 then 5:15:13;
+  // docs/VGL26_DAY12_REFERENCE.md §3). The five buttons used to sit under the
+  // card here, which made one screen of PES's two.
   float cardX, cardY, cardW, cardH;
   card->GetPosition(cardX, cardY);
   card->GetSize(cardW, cardH);
-  const float barHeight = 5.5f;
-  const float barY = std::min(cardY + cardH + 1.5f, 100.0f - barHeight - 1.5f);
-  const float barWidth = cardW * 0.7f;
-  const float barX = (100.0f - barWidth) * 0.5f;
-  Gui2Image* bar =
-      new Gui2Image(windowManager, "gameover_actionbar", barX, barY, barWidth, barHeight);
-  this->AddView(bar);
-  bar->LoadImage("media/ui/pes/banner_panel.png");
-  bar->Show();
-
-  const float buttonWidth = barWidth * 0.46f;
-  const float buttonHeight = barHeight * 0.64f;
-  const float buttonY = barY + (barHeight - buttonHeight) * 0.5f;
-  const float gap = barWidth * 0.04f;
-  Gui2Button* buttonHistory =
-      new Gui2Button(windowManager, "button_gameover_history", barX + gap, buttonY, buttonWidth,
-                     buttonHeight, Localization::GetInstance().Translate("gameover_match_history"));
-  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok",
-                              barX + barWidth - gap - buttonWidth, buttonY, buttonWidth,
-                              buttonHeight, Localization::GetInstance().Translate("gameover_continue"));
-  this->AddView(buttonHistory);
+  const float promptY = std::min(cardY + cardH + 1.2f, 100.0f - 4.0f);
+  buttonOkay = new Gui2Button(windowManager, "button_gameover_ok", (100.0f - 24.0f) * 0.5f,
+                              promptY, 24.0f, 3.2f,
+                              Localization::GetInstance().Translate("gameover_confirm"));
   this->AddView(buttonOkay);
-  buttonHistory->Show();
   buttonOkay->Show();
-  buttonOkay->sig_OnClick.connect([this](...) { GoMainMenu(); });
-  buttonHistory->sig_OnClick.connect([this](...) {
-    Properties props;
-    CreatePage((int)e_PageID_MatchHistory, props);
-  });
-
+  buttonOkay->sig_OnClick.connect([this](...) { GoResult(); });
   buttonOkay->SetFocus();
 
   // Auto-save match result to history. Guarded so re-entering this page (e.g.
@@ -249,13 +228,20 @@ void GameOverPage::Process() {
 
 void GameOverPage::ProcessWindowingEvent(WindowingEvent* event) {
   if (event->IsEscape()) {
-    // The match is over; ESC should return to the main menu like "Continue"
-    // rather than walking back into the (now finished) match/game flow.
-    GoMainMenu();
+    // The match is over; ESC is Confirm here too - on to the result page,
+    // which is where leaving lives.
+    GoResult();
     return;
   } else {
     event->Ignore();
   }
+}
+
+void GameOverPage::GoResult() {
+  // Confirm: on to the result page, over the same closing ceremony. This page
+  // stays underneath so the smoke run's completion line is still printed.
+  Properties props;
+  CreatePage((int)e_PageID_Result, props);
 }
 
 void GameOverPage::GoRematch() {

@@ -24,6 +24,7 @@ public:
 
   virtual void Process();
   virtual void ProcessWindowingEvent(WindowingEvent* event);
+  void GoResult();
   void GoRematch();
   void GoMainMenu();
 
