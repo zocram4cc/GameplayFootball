@@ -392,10 +392,9 @@ public:
   }
   const MatchProgression::Stoppage& GetStoppage() const { return stoppage; }
 
-  // Expected-goals tally and ball heatmap for the post-match analysis (5B).
+  // Expected-goals tally and per-team ball heatmaps for the break cards (5B).
   MatchAnalytics::ShotTally& GetShotTally() { return shotTally; }
   const MatchAnalytics::ShotTally& GetShotTally() const { return shotTally; }
-  const MatchAnalytics::Heatmap& GetBallHeatmap() const { return ballHeatmap; }
   // Where the ball was while each team had it (pause menu, ball activity card).
   const MatchAnalytics::Heatmap& GetTeamBallHeatmap(int teamID) const {
     return teamBallHeatmap[teamID];
@@ -521,7 +520,6 @@ protected:
   std::unique_ptr<PenaltyShootoutController> penaltyShootout;
 
   MatchAnalytics::ShotTally shotTally;
-  MatchAnalytics::Heatmap ballHeatmap;
   MatchAnalytics::Heatmap teamBallHeatmap[2];
 
   CoachMode::Setup coachSetup;

@@ -3641,7 +3641,6 @@ void Match::UpdateBallHeatmap() {
   // One sample a second is plenty for a readable heatmap.
   if (!IsInPlay() || actualTime_ms % 1000 != 0)
     return;
-  MatchAnalytics::AddSample(ballHeatmap, ball->Predict(0).Get2D());
   if (GetLastTouchTeamID() >= 0)
     MatchAnalytics::AddSample(teamBallHeatmap[GetLastTouchTeamID()], ball->Predict(0).Get2D());
 }

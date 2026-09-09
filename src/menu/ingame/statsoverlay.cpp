@@ -135,7 +135,7 @@ void Gui2StatsOverlay::BuildStatsBody(float y) {
   // reference screen: Goals Scored, Possession, Shots (On Target), Fouls
   // (Offside), Corner Kicks, Free Kicks, Passes Completed (%), Crosses,
   // Interceptions, Tackles, Saves), followed by the two readings PES has no
-  // row for: expected goals and the ball heatmap below.
+  // row for: expected goals. The ball's whereabouts live on the ball activity card.
   const char* labels[] = {"stats_possession",    "stats_goals",
                           "stats_shots",         "stats_fouls",
                           "stats_corners",       "stats_free_kicks",
@@ -147,26 +147,6 @@ void Gui2StatsOverlay::BuildStatsBody(float y) {
     rows.push_back(AddRow(text.Translate(labels[i]), y, i == 0));
     y += kRowHeight;
   }
-  y += kRowHeight * 0.3f;
-
-  // Ball heatmap: an actual picture of the pitch rather than four rows of
-  // block characters, which is what this used to draw.
-  heatmapLabel = new Gui2Caption(windowManager, GetName() + "_heatmaplabel", 0, y, cardWidth * 0.6f,
-                                 rowTextHeight, text.Translate("stats_ball_heatmap"));
-  heatmapLabel->SetColor(kLabelColor);
-  heatmapLabel->SetOutlineColor(kOutlineColor);
-  this->AddView(heatmapLabel);
-  heatmapLabel->SetPosition((cardWidth - heatmapLabel->GetTextWidthPercent()) * 0.5f, y);
-  heatmapLabel->Show();
-  y += rowTextHeight * 1.7f;
-
-  const float heatmapHeight = std::max(1.0f, kCardHeight - y - kCardHeight * 0.055f);
-  const float heatmapWidth = windowManager->GetWidthPercentForHeight(heatmapHeight, 105.0f / 68.0f);
-  heatmap = new Gui2Image(windowManager, GetName() + "_heatmap", (cardWidth - heatmapWidth) * 0.5f,
-                          y, heatmapWidth, heatmapHeight);
-  this->AddView(heatmap);
-  heatmap->Show();
-
 }
 
 void Gui2StatsOverlay::BuildBallActivityBody(float y) {
@@ -473,7 +453,6 @@ void Gui2StatsOverlay::UpdateStats() {
   SetRowValues(rows[12], TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 0)),
                TwoDecimals(MatchAnalytics::GetExpectedGoals(tally, 1)));
 
-  DrawHeatmap(heatmap, match->GetBallHeatmap());
 }
 
 void Gui2StatsOverlay::ApplyZOrder() {
@@ -485,8 +464,6 @@ void Gui2StatsOverlay::ApplyZOrder() {
     if (teamTag[i]) teamTag[i]->SetZPriority(base + kZContent);
   }
   if (title) title->SetZPriority(base + kZContent);
-  if (heatmapLabel) heatmapLabel->SetZPriority(base + kZContent);
-  if (heatmap) heatmap->SetZPriority(base + kZContent);
   for (int i = 0; i < 2; i++) {
     if (teamHeatmap[i]) teamHeatmap[i]->SetZPriority(base + kZContent);
     if (teamHeatmapLabel[i]) teamHeatmapLabel[i]->SetZPriority(base + kZContent);

@@ -1,6 +1,6 @@
 // In-match statistics overlay (docs/PRESENTATION_SPEC.md section 3.4): a
 // centred card with the two teams' crests and tags in a header, a two-column
-// stat table under it, and a ball heatmap at the foot. Toggled by
+// stat table under it; the ball heatmaps live on the ball activity card. Toggled by
 // Match::ToggleStatsOverlay().
 //
 // Every row is home value / label / away value, laid out against three fixed
@@ -76,8 +76,6 @@ protected:
   Gui2Caption* title = nullptr;
 
   std::vector<StatRow> rows;
-  Gui2Caption* heatmapLabel = nullptr;
-  Gui2Image* heatmap = nullptr;
   Body body;
   // Ball activity: one map per team with its tag and possession over it.
   Gui2Image* teamHeatmap[2] = {nullptr, nullptr};
