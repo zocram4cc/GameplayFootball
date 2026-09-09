@@ -59,7 +59,8 @@ protected:
   // label column, then centres the label itself.
   void SetRowValues(StatRow& row, const std::string& home, const std::string& away);
   void DrawPossessionBar(float homeFraction);
-  void DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data);
+  // `portrait` draws the pitch short side across, long side down.
+  void DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data, bool portrait = false);
   void BuildStatsBody(float y);
   void BuildBallActivityBody(float y);
   void BuildEventsBody(float y);

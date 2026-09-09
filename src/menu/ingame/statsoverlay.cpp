@@ -169,33 +169,30 @@ void Gui2StatsOverlay::BuildStatsBody(float y) {
 }
 
 void Gui2StatsOverlay::BuildBallActivityBody(float y) {
-  // Two pitches, one per team, each showing where the ball was while that team
-  // had it; the team's tag and its share of possession sit over its map. Both
-  // attack left to right as drawn - the sample is pitch space, the same for
-  // both, so the reader compares territory rather than direction.
+  // Two pitches side by side, home left and away right, each drawn portrait -
+  // short side across, long side down - showing where the ball was while that
+  // team had it; the team's tag and its share of possession sit over its map.
   float cardWidth, cardHeight;
   GetSize(cardWidth, cardHeight);
-  Localization& text = Localization::GetInstance();
   const float labelH = rowTextHeight * 1.2f;
-  const float mapHeight = (kCardHeight - y - kCardHeight * 0.06f - labelH * 1.6f) * 0.5f;
-  const float mapWidth = std::min(cardWidth * 0.9f,
-                                  windowManager->GetWidthPercentForHeight(mapHeight, 105.0f / 68.0f));
+  const float mapTop = y + labelH * 1.4f;
+  const float mapHeight = kCardHeight - mapTop - kCardHeight * 0.06f;
+  const float mapWidth = std::min(cardWidth * 0.42f,
+                                  windowManager->GetWidthPercentForHeight(mapHeight, 68.0f / 105.0f));
   for (int i = 0; i < 2; i++) {
+    const float centre = cardWidth * (i == 0 ? 0.27f : 0.73f);
     teamHeatmapLabel[i] = new Gui2Caption(windowManager, GetName() + "_teammaplabel" + int_to_str(i),
-                                          0, y, cardWidth * 0.8f, labelH,
+                                          0, y, cardWidth * 0.45f, labelH,
                                           match->GetTeam(i)->GetTeamData()->GetShortName());
     teamHeatmapLabel[i]->SetColor(i == 0 ? kTitleColor : kLabelColor);
     teamHeatmapLabel[i]->SetOutlineColor(kOutlineColor);
     this->AddView(teamHeatmapLabel[i]);
     teamHeatmapLabel[i]->Show();
-    y += labelH * 1.3f;
     teamHeatmap[i] = new Gui2Image(windowManager, GetName() + "_teammap" + int_to_str(i),
-                                   (cardWidth - mapWidth) * 0.5f, y, mapWidth, mapHeight);
+                                   centre - mapWidth * 0.5f, mapTop, mapWidth, mapHeight);
     this->AddView(teamHeatmap[i]);
     teamHeatmap[i]->Show();
-    y += mapHeight + labelH * 0.3f;
   }
-  (void)text;
 }
 
 void Gui2StatsOverlay::BuildEventsBody(float y) {
@@ -352,7 +349,8 @@ void Gui2StatsOverlay::DrawPossessionBar(float homeFraction) {
   bar->GetImage2D()->OnChange();
 }
 
-void Gui2StatsOverlay::DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data) {
+void Gui2StatsOverlay::DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heatmap& data,
+                                   bool portrait) {
   float mapWidth, mapHeight;
   target->GetSize(mapWidth, mapHeight);
   int x, y, w, h;
@@ -362,24 +360,34 @@ void Gui2StatsOverlay::DrawHeatmap(Gui2Image* target, const MatchAnalytics::Heat
   Image2D* image = target->GetImage2D().get();
   image->DrawRectangle(0, 0, w, h, Vector3(18, 26, 48), 225);
 
-  const float cellW = w / (float)MatchAnalytics::Heatmap::cellsX;
-  const float cellH = h / (float)MatchAnalytics::Heatmap::cellsY;
-  for (int cy = 0; cy < MatchAnalytics::Heatmap::cellsY; cy++) {
-    for (int cx = 0; cx < MatchAnalytics::Heatmap::cellsX; cx++) {
+  // Landscape: the pitch's length runs across. Portrait: it runs down, so the
+  // length cells index rows and the width cells index columns.
+  const int across = portrait ? MatchAnalytics::Heatmap::cellsY : MatchAnalytics::Heatmap::cellsX;
+  const int down = portrait ? MatchAnalytics::Heatmap::cellsX : MatchAnalytics::Heatmap::cellsY;
+  const float cellW = w / (float)across;
+  const float cellH = h / (float)down;
+  for (int row = 0; row < down; row++) {
+    for (int col = 0; col < across; col++) {
+      const int cx = portrait ? row : col;
+      const int cy = portrait ? col : row;
       const float intensity = MatchAnalytics::GetNormalizedIntensity(data, cx, cy);
       if (intensity <= 0.01f) continue;
       // Cool blue where the ball rarely went, warming towards white where it
       // lived - the same reading the block characters gave, only legible.
       const Vector3 color(60.0f + intensity * 195.0f, 110.0f + intensity * 130.0f,
                           220.0f - intensity * 90.0f);
-      image->DrawRectangle((int)(cx * cellW), (int)(cy * cellH), (int)std::ceil(cellW),
+      image->DrawRectangle((int)(col * cellW), (int)(row * cellH), (int)std::ceil(cellW),
                            (int)std::ceil(cellH), color, (int)(60 + intensity * 175));
     }
   }
 
   // A halfway line, so the map reads as a pitch rather than a bare grid.
-  image->DrawLine(Line(Vector3(w * 0.5f, 0, 0), Vector3(w * 0.5f, h, 0)), Vector3(200, 220, 255),
-                  90);
+  if (portrait)
+    image->DrawLine(Line(Vector3(0, h * 0.5f, 0), Vector3(w, h * 0.5f, 0)), Vector3(200, 220, 255),
+                    90);
+  else
+    image->DrawLine(Line(Vector3(w * 0.5f, 0, 0), Vector3(w * 0.5f, h, 0)), Vector3(200, 220, 255),
+                    90);
   image->OnChange();
 }
 
@@ -408,9 +416,9 @@ void Gui2StatsOverlay::UpdateStats() {
                                       Percent(pct));
       float lx, ly;
       teamHeatmapLabel[i]->GetPosition(lx, ly);
-      teamHeatmapLabel[i]->SetPosition((cardWidth - teamHeatmapLabel[i]->GetTextWidthPercent()) * 0.5f,
-                                       ly);
-      DrawHeatmap(teamHeatmap[i], match->GetTeamBallHeatmap(i));
+      teamHeatmapLabel[i]->SetPosition(
+          cardWidth * (i == 0 ? 0.27f : 0.73f) - teamHeatmapLabel[i]->GetTextWidthPercent() * 0.5f, ly);
+      DrawHeatmap(teamHeatmap[i], match->GetTeamBallHeatmap(i), true);
     }
     return;
   }
