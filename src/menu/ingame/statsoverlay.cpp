@@ -23,8 +23,8 @@ constexpr float kCardHeight = 74.0f;
 constexpr float kPagedCardTop = 4.0f;  // where a card sits when a bar follows it
 
 constexpr float kHeaderFraction = 0.13f;
-constexpr float kRowHeight = 3.4f;  // PES's table is eleven rows plus ours
-constexpr float kRowTextFraction = 0.60f;
+constexpr float kRowHeight = 4.3f;  // thirteen rows fill the card now the heatmap has its own
+constexpr float kRowTextFraction = 0.70f;
 constexpr float kBarHeight = 0.8f;
 
 const Vector3 kLabelColor(168, 186, 214);
