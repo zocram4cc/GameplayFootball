@@ -198,9 +198,13 @@ IconButton MakeIconButton(Gui2WindowManager* windowManager, Gui2View* page,
   page->AddView(out.icon);
   out.icon->Show();
   Paint(out.icon, icon, Vector3(235, 240, 250), Vector3(0, 0, 0), 0);
-  out.caption = new Gui2Caption(windowManager, name + "_caption", x + w * 0.04f, y + h * 0.68f,
-                                w * 0.92f, h * 0.26f, caption);
+  out.caption = new Gui2Caption(windowManager, name + "_caption", x, y + h * 0.68f, w * 0.92f,
+                                h * 0.26f, caption);
   page->AddView(out.caption);
+  out.caption->FitWidth(w * 0.9f);
+  float cx, cy;
+  out.caption->GetPosition(cx, cy);
+  out.caption->SetPosition(x + (w - out.caption->GetTextWidthPercent()) * 0.5f, cy);
   out.caption->Show();
   return out;
 }

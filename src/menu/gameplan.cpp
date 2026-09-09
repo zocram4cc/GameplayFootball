@@ -342,8 +342,14 @@ void GamePlanPage::PaintTab(int index, MenuIcons::Icon icon) {
 }
 
 void GamePlanPage::ShowTabCaption(int index) {
-  if (!tabCaption || index < 0 || index >= 5) return;
+  if (!tabCaption || index < 0 || index >= 5 || !gridNav) return;
   tabCaption->SetCaption(Localization::GetInstance().Translate(tabKeys[index]));
+  // Centred under the tab bar, as PES sets it.
+  float bx, by, bw, bh, cx, cy;
+  gridNav->GetDerivedPosition(bx, by);
+  gridNav->GetSize(bw, bh);
+  tabCaption->GetPosition(cx, cy);
+  tabCaption->SetPosition(bx + (bw - tabCaption->GetTextWidthPercent()) * 0.5f, cy);
 }
 
 void GamePlanPage::SwitchTeam() {

@@ -30,6 +30,10 @@ public:
   void SetCaption(const std::string& newCaption);
   std::string GetCaption() { return caption; }
 
+  // Shrinks the text until it fits in `maxWidth_percent`, keeping its vertical
+  // centre: a caption's width follows its height, so a long name in a fixed
+  // column otherwise runs over whatever sits beside it.
+  void FitWidth(float maxWidth_percent);
   float GetTextWidthPercent() { return textWidth_percent; }
   float GetTextWidthPercent(int subStrLength);
 

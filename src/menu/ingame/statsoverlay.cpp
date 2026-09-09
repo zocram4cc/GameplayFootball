@@ -20,6 +20,7 @@ namespace {
 // the pre-match panel takes (see formationgraphiclayout.hpp).
 constexpr float kCardPixelAspect = 1.32f;  // width / height
 constexpr float kCardHeight = 74.0f;
+constexpr float kPagedCardTop = 4.0f;  // where a card sits when a bar follows it
 
 constexpr float kHeaderFraction = 0.13f;
 constexpr float kRowHeight = 3.4f;  // PES's table is eleven rows plus ours
@@ -252,6 +253,15 @@ void Gui2StatsOverlay::UpdateEvents() {
     if (e.kind == MatchData::Event::RedCard) colour = Vector3(240, 70, 60);
     rows[i].label->SetColor(colour);
     SetRowValues(rows[i], e.teamID == 0 ? entry : " ", e.teamID == 1 ? entry : " ");
+    // A long name - substitutions carry two - stays inside its column.
+    const float columnWidth = labelLeft - valueMargin * 2.0f;
+    Gui2Caption* side = e.teamID == 0 ? rows[i].home : rows[i].away;
+    side->FitWidth(columnWidth);
+    if (e.teamID == 0) {
+      float sx, sy;
+      side->GetPosition(sx, sy);
+      side->SetPosition(labelLeft - valueMargin - side->GetTextWidthPercent(), sy);
+    }
   }
   if (eventsEmpty) {
     if (events.empty())
@@ -503,6 +513,11 @@ PagedStatsCards::PagedStatsCards(Gui2WindowManager* windowManager, Gui2View* pag
   const char* names[3] = {"stats_title", "stats_ball_activity", "stats_match_events"};
   for (int i = 0; i < 3; i++) {
     cards[i] = new Gui2StatsOverlay(windowManager, match, name + "_" + int_to_str(i), bodies[i]);
+    // High on the screen: the icon bar takes the band under the card, and a
+    // centred card ran into it.
+    float x, y;
+    cards[i]->GetPosition(x, y);
+    cards[i]->SetPosition(x, kPagedCardTop);
     page->AddView(cards[i]);
     cards[i]->SetTitle(titlePrefix + "   " + Localization::GetInstance().Translate(names[i]));
     cards[i]->UpdateStats();

@@ -210,6 +210,16 @@ void Gui2Caption::SetCaption(const std::string& newCaption) {
   }
 }
 
+void Gui2Caption::FitWidth(float maxWidth_percent) {
+  const float width = GetTextWidthPercent();
+  if (maxWidth_percent <= 0.0f || width <= maxWidth_percent) return;
+  const float factor = maxWidth_percent / width;
+  const float newHeight = height_percent * factor;
+  y_percent += (height_percent - newHeight) * 0.5f;
+  height_percent = newHeight;
+  Redraw();
+}
+
 float Gui2Caption::GetTextWidthPercent(int subStrLength) {
   int x, y, w, h;
   windowManager->GetCoordinates(x_percent, y_percent, width_percent, height_percent, x, y, w, h);
