@@ -2862,6 +2862,25 @@ bool Match::StartGoalBeat(int index) {
     middle = middle * (1.0f / (float)goalCastWorlds.size());
     goalCelebrationSubject = Vector3(middle.coords[0], middle.coords[1], 0.0f);
   }
+  // The new cast's own marks at frame 0: the camera must clear where its
+  // people will be, not only where the last beat left them.
+  auto newCastWorlds = [&]() {
+    std::vector<Vector3> out;
+    if (!activeCutsceneChoreo) return out;
+    const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
+    for (const auto& slot : activeCutsceneChoreo->GetSlots()) {
+      Vector3 mark;
+      radian yaw = 0;
+      int animFrame = 0;
+      activeCutsceneChoreo->Sample(slot, 0.0f, mark, yaw, animFrame);
+      out.push_back(Vector3(goalCelebrationSubject.coords[0] + mark.coords[0] * c -
+                                mark.coords[1] * s,
+                            goalCelebrationSubject.coords[1] + mark.coords[0] * s +
+                                mark.coords[1] * c,
+                            0.0f));
+    }
+    return out;
+  };
   const GoalDirector::Shot* shot = beat.shot;
   int track = trackIndex(shot->Track());
   if (track >= 0 && !opensWell(track)) {
@@ -2882,10 +2901,30 @@ bool Match::StartGoalBeat(int index) {
   goalBeatTrack = track;
 
   // The people: this beat's own choreography, cast afresh on the scorer.
+  // (The clearance above ran on the last beat's cast; the new marks are tested
+  // once this beat's choreography is known, before the camera is committed.)
   EndGoalCast();
   const std::string actors = shot->Actors();
   unsigned long castLength = 0;
   if (!actors.empty() && StartGoalCast(actors)) castLength = goalCastLength_ms;
+  if (track >= 0 && activeCutsceneChoreo) {
+    const CamTrackFrame opening = StageCamTrackFrame(
+        goalCamTracks[track].SampleTimeline(0.0f),
+        {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+        goalCelebrationYaw);
+    bool buried = false;
+    for (const Vector3& at : newCastWorlds()) {
+      const float dx = opening.position[0] - at.coords[0];
+      const float dy = opening.position[1] - at.coords[1];
+      if (std::sqrt(dx * dx + dy * dy) < kCelebrationLensClearance) buried = true;
+    }
+    if (buried) {
+      Log(e_Notice, "Match", "StartGoalBeat",
+          shot->Track() + " opens inside its own cast; the follow camera takes the beat");
+      track = -1;
+      goalBeatTrack = -1;
+    }
+  }
   const unsigned long trackLength =
       track >= 0 ? (unsigned long)goalCamTracks[track].GetTimelineFrameCount() * 1000 / 30 : 0;
   // A follow camera's duration counts only when it is the camera; some rows
