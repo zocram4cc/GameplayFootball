@@ -2781,6 +2781,29 @@ void Match::PlanGoalBeats() {
     if (goalDirector.Find(own)) situation.celebration = own;
   }
   goalBeats = GoalDirector::Plan(goalDirector, situation);
+  // The whole walk's length up front, so the replay fires after the finish
+  // and not mid-walk: per beat the installed track's timeline, else the
+  // follow duration, else three seconds. The beats refine it as they go.
+  {
+    unsigned long walk_ms = 0;
+    for (const auto& beat : goalBeats) {
+      unsigned long beat_ms = 3000;
+      bool known = false;
+      for (size_t i = 0; i < goalCamNames.size(); i++)
+        if (goalCamNames[i] == beat.shot->Track() && goalCamTracks[i].GetFrameCount() > 0) {
+          beat_ms = (unsigned long)goalCamTracks[i].GetTimelineFrameCount() * 1000 / 30;
+          known = true;
+        }
+      if (!known && beat.shot->FollowCamera())
+        beat_ms = std::max(beat_ms, (unsigned long)beat.shot->Frames() * 1000 / 30);
+      walk_ms += std::min(beat_ms, (unsigned long)15000);
+    }
+    if (!goalBeats.empty()) {
+      goalCelebrationLength_ms =
+          GoalSequence::CelebrationLength_ms(std::max(walk_ms, (unsigned long)6000));
+      goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
+    }
+  }
   // PES stages a beat with the SCORER at the origin and lets the choreography
   // carry him - the run choreographies move him ten metres and more, into a
   // camera set forty metres out with a one-degree lens. The montage's origin
@@ -2971,8 +2994,15 @@ void Match::UpdateGoalBeats() {
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
         goalCelebrationYaw);
     frame.position[2] = std::max(0.3f, frame.position[2]);
-    // PES's aim as authored: the scorer runs into this frame, so re-aiming it
-    // at where he stands would undo the shot.
+    // Then the aim is corrected onto him and the lens opened to hold him: a
+    // 2-degree aim error with a 1-degree lens films the grass 1.6 m away, and
+    // a 4cc body is two to three times what PES's telephoto frames. The
+    // widening only acts when the subject does not fit, so ordinary tracks
+    // keep PES's lens; the run beat gains a pan that follows him instead.
+    // ponytail: 1.2 m half-height fits our athletes; revisit if bodies change.
+    frame = RetargetCamTrackFrame(
+        frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
+        kCelebrationLensClearance, 1.2f);
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
