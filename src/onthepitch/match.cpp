@@ -2755,9 +2755,12 @@ void Match::PlanGoalBeats() {
   // PES's quadrants as its cmnCam_S_{L,R}{B,M} names them: which touchline he
   // is nearer, and whether he is in the box or midfield of the attacked half.
   const int attackedSide = -teams[lastGoalTeamID]->GetSide();
+  // PES's rows pair the quadrant with the camera side (0 and 3 film from L,
+  // 1 and 2 from R). Read as: which touchline he is nearer, and whether he is
+  // in the box; the beat's camera is then the one that stays on the pitch.
   const bool left = goalCelebrationSubject.coords[1] * attackedSide < 0.0f;
   const bool box = std::fabs(goalCelebrationSubject.coords[0]) > pitchHalfW - 20.0f;
-  situation.quadrant = (left ? 0 : 2) + (box ? 1 : 2);
+  situation.quadrant = (box ? 0 : 2) + ((left == box) ? 0 : 1);
   const int scorerID = lastGoalScorer->GetPlayerData() ? lastGoalScorer->GetPlayerData()->GetDatabaseID() : 0;
   situation.seed = GoalCelebration::SeedFor(scorerID) + GetScore(0) * 3 + GetScore(1) * 7 +
                    (int)(matchTime_ms / 60000);
@@ -2795,31 +2798,71 @@ void Match::PlanGoalBeats() {
 
 bool Match::StartGoalBeat(int index) {
   if (index < 0 || index >= (int)goalBeats.size()) return false;
-  const GoalDirector::Beat& beat = goalBeats[index];
+  GoalDirector::Beat& beat = goalBeats[index];
   goalBeat = index;
   goalBeatStarted_ms = goalScoredTimer;
   goalBeatTrack = -1;
   ResetStandoff();
+
+  // Whether a track, staged on the scorer, films from somewhere sane: on this
+  // ground and not inside a body. A 4cc character is two to three times a
+  // footballer's bulk, and PES's closer cameras land in them.
+  std::vector<Player*> everyone;
+  GetActiveTeamPlayers(0, everyone);
+  GetActiveTeamPlayers(1, everyone);
+  auto trackIndex = [&](const std::string& name) {
+    for (size_t i = 0; i < goalCamNames.size(); i++)
+      if (goalCamNames[i] == name && goalCamTracks[i].GetFrameCount() > 0) return (int)i;
+    return -1;
+  };
+  auto opensWell = [&](int track) {
+    const CamTrackFrame opening = StageCamTrackFrame(
+        goalCamTracks[track].SampleTimeline(0.0f),
+        {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+        goalCelebrationYaw);
+    if (std::fabs(opening.position[0]) > pitchHalfW + 8.0f ||
+        std::fabs(opening.position[1]) > pitchHalfH + 8.0f)
+      return false;
+    for (Player* player : everyone) {
+      const Vector3 at = player->GetPosition();
+      const float dx = opening.position[0] - at.coords[0];
+      const float dy = opening.position[1] - at.coords[1];
+      if (std::sqrt(dx * dx + dy * dy) < kCelebrationLensClearance) return false;
+    }
+    return true;
+  };
+  // The director's pick first; if its camera opens badly, any other shot of
+  // the same state whose camera opens well (PES shot most states from both
+  // sides); failing all, the pick with a follow camera.
+  const GoalDirector::Shot* shot = beat.shot;
+  int track = trackIndex(shot->Track());
+  if (track >= 0 && !opensWell(track)) {
+    track = -1;
+    for (const GoalDirector::Shot& other : beat.state->shots) {
+      const int candidate = trackIndex(other.Track());
+      if (candidate >= 0 && opensWell(candidate)) {
+        shot = &other;
+        track = candidate;
+        break;
+      }
+    }
+    if (track < 0)
+      Log(e_Notice, "Match", "StartGoalBeat",
+          beat.state->name + ": no camera opens on the pitch clear of bodies; follow camera");
+  }
+  beat.shot = shot;
+  goalBeatTrack = track;
+
   // The people: this beat's own choreography, cast afresh on the scorer.
   EndGoalCast();
-  const std::string actors = beat.shot->Actors();
+  const std::string actors = shot->Actors();
   unsigned long castLength = 0;
   if (!actors.empty() && StartGoalCast(actors)) castLength = goalCastLength_ms;
-  // The camera: PES's authored track for this shot when it has one.
-  const std::string track = beat.shot->Track();
-  unsigned long trackLength = 0;
-  for (size_t i = 0; i < goalCamNames.size(); i++)
-    if (goalCamNames[i] == track) {
-      goalBeatTrack = (int)i;
-      trackLength = (unsigned long)goalCamTracks[i].GetTimelineFrameCount() * 1000 / 30;
-    }
-  // How long the beat holds: the performance, or the camera's own length, or
-  // the follow camera's duration, and never under a second - a cut shorter
-  // than that reads as a glitch.
+  const unsigned long trackLength =
+      track >= 0 ? (unsigned long)goalCamTracks[track].GetTimelineFrameCount() * 1000 / 30 : 0;
   // A follow camera's duration counts only when it is the camera; some rows
   // carry a follow layer beside the track with a 10 000-frame duration.
-  const unsigned long followLength =
-      goalBeatTrack < 0 ? (unsigned long)beat.shot->Frames() * 1000 / 30 : 0;
+  const unsigned long followLength = track < 0 ? (unsigned long)shot->Frames() * 1000 / 30 : 0;
   goalBeatLength_ms = std::max({castLength, trackLength, followLength, (unsigned long)1000});
   goalBeatLength_ms = std::min(goalBeatLength_ms, (unsigned long)15000);
   // The window grows to hold this beat, and the restart waits for it; the last
@@ -2834,7 +2877,7 @@ bool Match::StartGoalBeat(int index) {
       referee->AlterSetPiecePrepareTime(prepareAt);
   }
   Log(e_Notice, "Match", "StartGoalBeat",
-      beat.state->name + ": " + (track.empty() ? std::string("follow camera") : track) + " + " +
+      beat.state->name + ": " + (track < 0 ? std::string("follow camera") : shot->Track()) + " + " +
           (actors.empty() ? std::string("no cast") : actors) + ", " +
           int_to_str((int)goalBeatLength_ms) + " ms");
   return true;
@@ -2877,12 +2920,14 @@ void Match::UpdateGoalBeats() {
   // ponytail: the ladder is scaled by 4 to sit outside a 4cc body; tune against
   // the reference frames once the walk itself reads right.
   const GoalDirector::Layer* follow = beat.shot->FollowCamera();
-  const float distance = std::max(kCelebrationLensClearance,
-                                  (follow ? follow->follow.distance : 2.8f) * 4.0f);
+  // Never nearer than a 4cc body is wide; the lens rises with the distance
+  // so a tight shot looks down at him and a wide one looks across.
+  const float distance = std::max(2.5f, (follow ? follow->follow.distance : 2.8f) * 4.0f);
   const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
   const Vector3 subject = lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
   cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
-                               subject.coords[1] - std::cos(yaw) * distance, 1.6f);
+                               subject.coords[1] - std::cos(yaw) * distance,
+                               1.4f + distance * 0.15f);
   cameraNodeOrientation = QUATERNION_IDENTITY;
   const Vector3 aim = Vector3(subject.coords[0], subject.coords[1], 1.0f) - cameraNodePosition;
   cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
