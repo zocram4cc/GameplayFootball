@@ -118,10 +118,10 @@ echo "recording ${minutes}-minute halves, team $team1 v team $team2 -> $out"
 # not the renderer, is now the limit. Set SHOWCASE_SOFTWARE=1 to force the old
 # path on a machine with no usable render node.
 if [ "${SHOWCASE_SOFTWARE:-0}" = "1" ] || [ ! -e /dev/dri/renderD128 ]; then
-  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY SDL_VIDEODRIVER=x11 \
+  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY GF_NO_GAMEPADS=1 SDL_VIDEODRIVER=x11 \
       xvfb-run -a "$bin" "$cfg" ) > "$log" 2>&1
 else
-  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY -u DISPLAY \
+  ( cd "$repo" && timeout "$budget" env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 \
       SDL_VIDEODRIVER=offscreen "$bin" "$cfg" ) > "$log" 2>&1
 fi
 status=$?

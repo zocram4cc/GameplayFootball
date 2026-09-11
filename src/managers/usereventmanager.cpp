@@ -18,6 +18,8 @@
 
 #include "usereventmanager.hpp"
 
+#include <cstdlib>
+
 #include "environmentmanager.hpp"
 
 extern void AddGamepad(int deviceIndex, int gamepadID);
@@ -56,6 +58,12 @@ UserEventManager::UserEventManager() {
   }
 
   // init the joy!
+  //
+  // GF_NO_GAMEPADS=1 leaves the joystick subsystem closed: a headless harness
+  // on a machine with a pad plugged in must not have that pad drive a menu
+  // (owner, 09-09). Every harness sets it.
+  const char* noGamepads = std::getenv("GF_NO_GAMEPADS");
+  if (noGamepads && noGamepads[0] == '1') return;
 
   SDL_Init(SDL_INIT_JOYSTICK);
   for (int i = 0; i < SDL_NumJoysticks(); i++) {

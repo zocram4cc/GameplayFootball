@@ -19,7 +19,10 @@ Render on the card instead. SDL's offscreen driver goes through EGL to
 `/dev/dri/renderD128` with no X server and no window, which is what
 `tools/showcase.sh` uses:
 
-    env -u WAYLAND_DISPLAY -u DISPLAY SDL_VIDEODRIVER=offscreen ./gameplayfootball <config>
+    env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 SDL_VIDEODRIVER=offscreen ./gameplayfootball <config>
+
+`GF_NO_GAMEPADS=1` keeps the joystick subsystem closed, so a pad left plugged
+into the workstation cannot steer a headless menu. Always set it.
 
 Confirm it took, rather than assuming - the process should hold the render node open:
 
