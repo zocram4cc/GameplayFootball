@@ -2922,7 +2922,6 @@ bool Match::StartGoalBeat(int index) {
   }
   beat.shot = shot;
   goalBeatTrack = track;
-
   // The people: this beat's own choreography, cast afresh on the scorer.
   // (The clearance above ran on the last beat's cast; the new marks are tested
   // once this beat's choreography is known, before the camera is committed.)
@@ -2994,15 +2993,20 @@ void Match::UpdateGoalBeats() {
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
         goalCelebrationYaw);
     frame.position[2] = std::max(0.3f, frame.position[2]);
-    // Then the aim is corrected onto him and the lens opened to hold him: a
-    // 2-degree aim error with a 1-degree lens films the grass 1.6 m away, and
-    // a 4cc body is two to three times what PES's telephoto frames. The
-    // widening only acts when the subject does not fit, so ordinary tracks
-    // keep PES's lens; the run beat gains a pan that follows him instead.
-    // ponytail: 1.2 m half-height fits our athletes; revisit if bodies change.
+    // Then the aim is corrected onto the cast and the lens opened to hold
+    // it: a 2-degree aim error with a 1-degree lens films the grass 1.6 m
+    // away, and PES's 2.4 m frame holds one of our athletes where it held
+    // three of theirs - the rest of the frame is the grass between them. The
+    // widening only acts when the cast does not fit, so tight tracks keep
+    // PES's lens; the run beat gains a pan that follows him instead.
+    // ponytail: span-based widening for 4cc bulk; revisit if bodies change.
+    float castSpan = 1.2f;
+    for (const Vector3& at : goalCastWorlds)
+      castSpan = std::max(castSpan, at.GetDistance(goalCelebrationSubject));
+    castSpan = std::min(castSpan, 6.0f);
     frame = RetargetCamTrackFrame(
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
-        kCelebrationLensClearance, 1.2f);
+        kCelebrationLensClearance, castSpan);
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
