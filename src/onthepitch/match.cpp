@@ -2941,14 +2941,17 @@ void Match::UpdateGoalBeats() {
   // inside of the pile. A bigger cast also stands further off, mob-wide.
   Vector3 subject =
       lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
-  float castSize = 1.0f;
-  if (goalCastFed > 0) {
-    subject = goalCastMiddle * (1.0f / (float)goalCastFed);
-    castSize = (float)goalCastFed;
+  float pileRadius = 0.0f;
+  if (!goalCastWorlds.empty()) {
+    Vector3 middle(0, 0, 0);
+    for (const Vector3& at : goalCastWorlds) middle = middle + at;
+    subject = middle * (1.0f / (float)goalCastWorlds.size());
+    for (const Vector3& at : goalCastWorlds)
+      pileRadius = std::max(pileRadius, subject.GetDistance(at));
   }
+  // The tune, but never inside the pile: its radius plus a body width.
   const float distance =
-      std::max(2.5f, (follow ? follow->follow.distance : 2.8f) * 4.0f) *
-      (castSize >= 4.0f ? 1.5f : 1.0f);
+      std::max((follow ? follow->follow.distance : 2.8f) * 4.0f, pileRadius + 2.0f);
   const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
   cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
                                subject.coords[1] - std::cos(yaw) * distance,
@@ -2991,8 +2994,7 @@ void Match::UpdateCutsceneChoreo() {
     // -cos a), so turning the frame by the yaw is adding it.
     const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
     bool performing = false;
-    goalCastFed = 0;
-    goalCastMiddle = Vector3(0, 0, 0);
+    goalCastWorlds.clear();
     for (auto& cast : cutsceneCast) {
       Vector3 local;
       radian yaw = 0;
@@ -3023,8 +3025,7 @@ void Match::UpdateCutsceneChoreo() {
         humanoid->ResetSituation(Vector3(0, -1, 0));
         continue;
       }
-      goalCastFed++;
-      goalCastMiddle = goalCastMiddle + world;
+      goalCastWorlds.push_back(world);
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
     }

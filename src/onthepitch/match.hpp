@@ -837,10 +837,10 @@ protected:
   int goalBeat = -1;                       // the beat on air, -1 before the first
   unsigned long goalBeatStarted_ms = 0;    // goalScoredTimer when it went on
   unsigned long goalBeatLength_ms = 0;
-  // The cast positions the feed loop actually posed this tick (their sum and
-  // count), so a follow camera aims at the bodies and not at kickoff marks.
-  int goalCastFed = 0;
-  Vector3 goalCastMiddle = Vector3(0, 0, 0);
+  // Where the feed loop actually posed the cast this tick, so a follow
+  // camera aims at the bodies and not at kickoff marks - and stands off
+  // further than the pile is wide, or the lens opens inside it.
+  std::vector<Vector3> goalCastWorlds;
   int goalBeatTrack = -1;                  // its authored camera in goalCamTracks, or -1
   // The plan for this goal, staged at the whistle; whether a beat is due.
   void PlanGoalBeats();
