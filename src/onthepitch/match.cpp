@@ -2935,10 +2935,21 @@ void Match::UpdateGoalBeats() {
   // the reference frames once the walk itself reads right.
   const GoalDirector::Layer* follow = beat.shot->FollowCamera();
   // Never nearer than a 4cc body is wide; the lens rises with the distance
-  // so a tight shot looks down at him and a wide one looks across.
-  const float distance = std::max(2.5f, (follow ? follow->follow.distance : 2.8f) * 4.0f);
+  // so a tight shot looks down and a wide one looks across.
+  // The middle of the cast as posed, not the scorer and not kickoff marks:
+  // a hug piles the teammates onto him and a lens aimed at him films the
+  // inside of the pile. A bigger cast also stands further off, mob-wide.
+  Vector3 subject =
+      lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
+  float castSize = 1.0f;
+  if (goalCastFed > 0) {
+    subject = goalCastMiddle * (1.0f / (float)goalCastFed);
+    castSize = (float)goalCastFed;
+  }
+  const float distance =
+      std::max(2.5f, (follow ? follow->follow.distance : 2.8f) * 4.0f) *
+      (castSize >= 4.0f ? 1.5f : 1.0f);
   const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
-  const Vector3 subject = lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
   cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
                                subject.coords[1] - std::cos(yaw) * distance,
                                1.4f + distance * 0.15f);
@@ -2980,6 +2991,8 @@ void Match::UpdateCutsceneChoreo() {
     // -cos a), so turning the frame by the yaw is adding it.
     const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
     bool performing = false;
+    goalCastFed = 0;
+    goalCastMiddle = Vector3(0, 0, 0);
     for (auto& cast : cutsceneCast) {
       Vector3 local;
       radian yaw = 0;
@@ -3010,7 +3023,8 @@ void Match::UpdateCutsceneChoreo() {
         humanoid->ResetSituation(Vector3(0, -1, 0));
         continue;
       }
-      performing = true;
+      goalCastFed++;
+      goalCastMiddle = goalCastMiddle + world;
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
     }
