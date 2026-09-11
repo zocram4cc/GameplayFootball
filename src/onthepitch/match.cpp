@@ -2837,17 +2837,31 @@ bool Match::StartGoalBeat(int index) {
     if (std::fabs(opening.position[0]) > pitchHalfW + 8.0f ||
         std::fabs(opening.position[1]) > pitchHalfH + 8.0f)
       return false;
-    for (Player* player : everyone) {
-      const Vector3 at = player->GetPosition();
+    // ... and where the last beat posed them: sim positions are kickoff marks.
+    auto clearOf = [&](const Vector3& at) {
       const float dx = opening.position[0] - at.coords[0];
       const float dy = opening.position[1] - at.coords[1];
-      if (std::sqrt(dx * dx + dy * dy) < kCelebrationLensClearance) return false;
-    }
+      return std::sqrt(dx * dx + dy * dy) >= kCelebrationLensClearance;
+    };
+    for (Player* player : everyone)
+      if (!clearOf(player->GetPosition())) return false;
+    for (const Vector3& at : goalCastWorlds)
+      if (!clearOf(at)) return false;
     return true;
   };
   // The director's pick first; if its camera opens badly, any other shot of
   // the same state whose camera opens well (PES shot most states from both
   // sides); failing all, the pick with a follow camera.
+  // Re-stage on where the last beat left the cast: the run carries the scorer
+  // ten metres and more, and the next beat's camera is authored on him where
+  // he arrived, not where the whistle found him. Without this the celebration
+  // films the empty grass he ran from.
+  if (!goalCastWorlds.empty()) {
+    Vector3 middle(0, 0, 0);
+    for (const Vector3& at : goalCastWorlds) middle = middle + at;
+    middle = middle * (1.0f / (float)goalCastWorlds.size());
+    goalCelebrationSubject = Vector3(middle.coords[0], middle.coords[1], 0.0f);
+  }
   const GoalDirector::Shot* shot = beat.shot;
   int track = trackIndex(shot->Track());
   if (track >= 0 && !opensWell(track)) {
