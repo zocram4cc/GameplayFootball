@@ -22,7 +22,9 @@ matching the pools Match::StartCutscene loads.
 import argparse
 import os
 
+import camera_cut
 import canm_to_camtrack
+import director_table
 
 # the entrance has its own competition-aware exporter
 DEFAULT_CATEGORIES = ["goal", "foul", "change", "timeup", "pk", "result", "end", "mode"]
@@ -113,14 +115,30 @@ def export_category(cut_dir, dest_dir, max_per_category=0, category=""):
     return written, skipped
 
 
+def export_director(fixdemo_dir, category, dest_dir):
+    """The category's director table -> <dest>/director.txt (director_table.py):
+    which states a scene has and which shots each may play. Without it the
+    engine has the shots and not the sequence."""
+    table_path = os.path.join(fixdemo_dir, category, "table_%s.bin" % category)
+    if not os.path.exists(table_path):
+        return 0
+    table = director_table.load(table_path)
+    os.makedirs(dest_dir, exist_ok=True)
+    return director_table.write_director(table, os.path.join(fixdemo_dir, category, "cut_data"),
+                                         os.path.join(dest_dir, "director.txt"), camera_cut.load)
+
+
 def export(fixdemo_dir, out_dir, categories=None, max_per_category=0):
     total_written = total_skipped = 0
     for category in categories or DEFAULT_CATEGORIES:
         cut_dir = os.path.join(fixdemo_dir, category, "cut_data")
         written, skipped = export_category(
             cut_dir, os.path.join(out_dir, category), max_per_category, category)
+        director_lines = export_director(fixdemo_dir, category, os.path.join(out_dir, category))
         if written or skipped:
-            print("%-7s %4d tracks (%d skipped)" % (category, written, skipped))
+            print("%-7s %4d tracks (%d skipped)%s" % (
+                category, written, skipped,
+                ", director %d lines" % director_lines if director_lines else ""))
         total_written += written
         total_skipped += skipped
     return total_written, total_skipped

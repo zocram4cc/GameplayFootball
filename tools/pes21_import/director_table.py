@@ -30,6 +30,7 @@ Layout (PES21; foul is 12 KB and was the Rosetta, the others share it):
     director_table.py <table.bin>              summary
     director_table.py <table.bin> --states     every state with its rows
     director_table.py <table.bin> --graph      states -> the .fdc bases they use
+    director_table.py <table.bin> --write <cut_data dir> <director.txt>
 """
 
 import struct
@@ -155,6 +156,62 @@ def load(path):
         return Table(f.read(), path)
 
 
+def layer_kind(fdc):
+    """What one .fdc layer contributes: ('track', canm cut) for an authored
+    camera, ('follow', cut) for a procedural one, 'actors' when it stages
+    people, 'props' when it places objects, 'empty' otherwise. A file may be
+    several at once; the caller lists them all."""
+    kinds = []
+    for cut in fdc.cuts:
+        kinds.append(("follow" if cut.procedural else "track", cut))
+    if fdc.actors:
+        kinds.append(("actors", None))
+    if fdc.objects:
+        kinds.append(("props", None))
+    return kinds or [("empty", None)]
+
+
+def write_director(table, cut_dir, out_path, load_fdc):
+    """director.txt: every state, its phase, and every shot it may play as
+    the layers the engine loads - the installed .camtrack of an authored
+    camera, the tuning of a procedural one, the .chor of an actor set. The
+    weight, situation flags and zone/shot record ride along untouched; the
+    engine reads them, this file only carries them."""
+    import os
+    lines = ["# PES cutscene director, from %s" % os.path.basename(table.path),
+             "# state <name> phase <phase>",
+             "#   shot weight <f> flags <hex> on <n> rec <hex>",
+             "#     track|follow|actors|props <fdc base> [follow: dur angle turn dist damp offset]"]
+    cache = {}
+    for i, name in enumerate(table.states):
+        lines.append("state %s phase %s" % (name, table.phase_of(name)))
+        first, count = table.state_rows[i]
+        for k, row in enumerate(table.rows_of(i)):
+            r = first - 1 + k
+            flags, on = table.row_flags[r] if r < len(table.row_flags) else (0, 0)
+            lines.append("  shot weight %.1f flags %08x on %d rec %x" % (
+                table.row_weight[r], flags, on, table.row_records[r][0]))
+            for layer in row["layers"]:
+                base = layer[:-4] if layer.endswith(".fdc") else layer
+                if base not in cache:
+                    path = os.path.join(cut_dir, base + ".fdc")
+                    try:
+                        cache[base] = layer_kind(load_fdc(path))
+                    except Exception:
+                        cache[base] = [("missing", None)]
+                for kind, cut in cache[base]:
+                    if kind == "follow":
+                        lines.append("    follow %s dur %g angle %d turn %d dist %g damp %g offset %g" % (
+                            base, cut.duration_frames, cut.angle_a,
+                            cut.angle_b if cut.angle_b != 0xFFFFFFFF else -1, cut.distance,
+                            cut.damping, cut.offset_deg))
+                    else:
+                        lines.append("    %s %s" % (kind, base))
+    with open(out_path, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    return len(lines)
+
+
 def summary(table):
     h = table.header
     print("%s: %d bytes, %d strings, %d states, %d rows (version %d)" % (
@@ -181,6 +238,11 @@ def main(argv):
                 print("    %-8.1f flags %08x %-6d rec %-10x  %s" % (
                     table.row_weight[r], flags, on, table.row_records[r][0],
                     " + ".join(row["layers"])))
+    if "--write" in argv:
+        import camera_cut
+        k = argv.index("--write")
+        n = write_director(table, argv[k + 1], argv[k + 2], camera_cut.load)
+        print("wrote %d lines to %s" % (n, argv[k + 2]))
     if "--graph" in argv:
         for i, name in enumerate(table.states):
             print("%-10s %s: %s" % (table.phase_of(name), name, " ".join(table.bases_of(i))))

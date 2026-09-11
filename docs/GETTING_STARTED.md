@@ -127,9 +127,14 @@ python3 tools/pes21_import/goal_cutscenes.py data/media/cutscenes/goal
 ```
 
 `export_cutscenes.py` takes the *fixdemo directory*, not the whole `Data/`:
-`cpk.py` unpacks it first. The second command pairs each celebration with the
-camerawork PES shot it with (`celebrations.txt`), which is what stops a
-long-lens shot being used on a knee-slide. Entrances have their own exporter,
+`cpk.py` unpacks it first. Besides the camerawork it writes each category's
+`director.txt` from PES's `table_<category>.bin` - the director: the states
+a scene is made of and the shots each may play, as the layers to load (an
+authored track, a procedural follow camera with its tuning, an actor set).
+That is what sequences a goal the way PES does; the clips alone never could.
+The second command pairs each celebration with the camerawork PES shot it
+with (`celebrations.txt`), which is what stops a long-lens shot being used on
+a knee-slide. Entrances have their own exporter,
 `export_entrances.py`, because the engine picks a walkout by competition.
 
 Without it a goal is a goal with the match camera on it; with it the goal is a

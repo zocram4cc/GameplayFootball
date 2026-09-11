@@ -98,6 +98,46 @@ class DirectorTable(unittest.TestCase):
         self.assertEqual(self.table.row_flags[1], (0, 3))
         self.assertEqual(self.table.row_records[0][0], 0x3000f01)
 
+    def test_director_text_names_every_layer(self):
+        import os
+        import tempfile
+
+        class Cut:
+            def __init__(self, canm):
+                self.canm_name = canm
+                self.procedural = not canm
+                self.duration_frames, self.angle_a, self.angle_b = 120.0, 90, 180
+                self.distance, self.damping, self.offset_deg = 2.8, 1.5, 0.0
+
+        class Fdc:
+            def __init__(self, cuts, actors):
+                self.cuts, self.actors, self.objects = cuts, actors, []
+
+        fake = {
+            "goal_cmnCam_outM00": Fdc([Cut("")], []),
+            "goal_celebrate_0006_base": Fdc([Cut("a.canm"), Cut("b.canm")], [1, 2]),
+            "goal_Effect_h": Fdc([], []),
+            "goal_celebrate_0006_outH10": Fdc([Cut("")], []),
+            "goal_2018_run_30_banzai_Z_fromL": Fdc([Cut("c.canm")], []),
+            "goal_2018_run_30_banzai": Fdc([], [1]),
+        }
+
+        def load_fdc(path):
+            return fake[os.path.splitext(os.path.basename(path))[0]]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "director.txt")
+            director_table.write_director(self.table, tmp, out, load_fdc)
+            text = open(out).read()
+        self.assertIn("state GOAL_RUN_30_BANZAI phase run", text)
+        self.assertIn("follow goal_cmnCam_outM00 dur 120 angle 90 turn 180 dist 2.8 damp 1.5 offset 0",
+                      text)
+        # a base with two authored cuts is listed once per cut, and its actors once
+        self.assertEqual(text.count("track goal_celebrate_0006_base"), 2 * 2)  # two shots use it
+        self.assertIn("actors goal_2018_run_30_banzai", text)
+        self.assertIn("empty goal_Effect_h", text)
+        self.assertIn("shot weight 1366.2 flags 00000001 on 1 rec 3000f01", text)
+
     def test_phase_from_name(self):
         phase = self.table.phase_of
         self.assertEqual([phase(n) for n in ("GOAL_START", "GOAL_RUN_40_PLANE", "GOAL_CELEBRATE_0032",
