@@ -4694,6 +4694,17 @@ void Match::UpdateIngameCamera() {
       if (!goalBeats.empty()) {
         UpdateGoalBeats();
         if (goalBeat >= 0) return;
+        // The walk is over but the window is not (the replay still has to
+        // fire): the montage below takes over from where the cast stands, not
+        // from the stale run target, and re-picks its shot.
+        if (!goalCastWorlds.empty()) {
+          Vector3 middle(0, 0, 0);
+          for (const Vector3& at : goalCastWorlds) middle = middle + at;
+          middle = middle * (1.0f / (float)goalCastWorlds.size());
+          goalCelebrationSubject = Vector3(middle.coords[0], middle.coords[1], 0.0f);
+        }
+        goalCelebrationShot = GoalSequence::Shot::Behind;
+        goalCelebrationTrack = -1;
       }
       // Three shots, three cameras (GoalSequence::Shot): a tracking shot, a
       // tight close-up, then the wide of the mob. Each is a different imported
