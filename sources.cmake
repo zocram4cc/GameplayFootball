@@ -561,6 +561,7 @@ set(GAME_SOURCES
    src/onthepitch/replaywipe.cpp
    src/onthepitch/entrancecast.cpp
    src/onthepitch/goalcelebration.cpp
+   src/onthepitch/goaldirector.cpp
    src/systems/graphics/rendering/autoexposure.cpp
    src/onthepitch/pitchoverlay.cpp
    src/onthepitch/scenelighting.cpp

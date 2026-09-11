@@ -188,6 +188,17 @@ target_include_directories(gameplayfootball_goalcelebration_tests PRIVATE
 target_link_libraries(gameplayfootball_goalcelebration_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(gameplayfootball_goalcelebration_tests DISCOVERY_MODE PRE_TEST)
 
+# PES's goal director: the walk through run, celebrate, hug, approach, finish
+add_executable(gameplayfootball_goaldirector_tests
+  onthepitch/goal_director_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/onthepitch/goaldirector.cpp
+)
+target_include_directories(gameplayfootball_goaldirector_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_goaldirector_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(gameplayfootball_goaldirector_tests DISCOVERY_MODE PRE_TEST)
+
 # Who is on the pitch during the entrance
 add_executable(gameplayfootball_entrancecast_tests
   onthepitch/entrance_cast_test.cpp
