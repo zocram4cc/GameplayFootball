@@ -9,9 +9,10 @@ goal still look nothing like PES: we had the shots and not the director.
 
 Layout (PES21; foul is 12 KB and was the Rosetta, the others share it):
 
-    0x00  u32[15]  header. [6] pool length, [7] per-row weights, [8] = 0x3c
-                   start of the string index, [10] row flags, [11] the
-                   state -> rows table, [12] per-row bytes, [13] string pool.
+    0x00  u32[15]  header (PES21; 14 words in PES16/17, word 9 absent). [6]
+                   pool length, [7] per-row weights, [8] start of the string
+                   index = header length, [10] row flags, [11] the state ->
+                   rows table, [12] per-row bytes, [13] string pool.
     0x3c  u32[nStates]  END offset of each state name in the pool (the .fdc
                    names and the transition-target names that follow them in
                    the pool are not indexed; they are found by shape).
@@ -42,7 +43,12 @@ class Table:
     def __init__(self, blob, path=""):
         self.path = path
         self.blob = blob
-        h = struct.unpack_from("<15I", blob, 0)  # 0x3c bytes; the index starts right after
+        # PES21's header is 15 words (index at 0x3c); PES16/17's is 14 (index at
+        # 0x38). Word 8 names the index start in both, which is also the
+        # header's length; the words used here sit at the same slots in each.
+        index_offset = struct.unpack_from("<I", blob, 8 * 4)[0]
+        n_words = index_offset // 4
+        h = list(struct.unpack_from("<%dI" % n_words, blob, 0))
         self.header = h
         pool0 = h[13]
         self.pool = blob[pool0:pool0 + h[6]].decode("ascii", "replace")
@@ -50,8 +56,14 @@ class Table:
         # State -> rows comes first: its state count sizes the string index.
         a = h[11]
         version, n_states = struct.unpack_from("<HH", blob, a)
+        if version != 1:
+            # PES16/17 tables (14-word header, CSR headed by the count alone)
+            # lay the entries out differently; they are not needed for the
+            # PES21 import and are not decoded here.
+            raise ValueError("%s: unsupported director table (CSR version %d; PES21 writes 1)"
+                             % (path, version))
         # String index: the END offset of each state name, so the pool splits exactly.
-        ends = [struct.unpack_from("<I", blob, h[8] + 4 * k)[0] for k in range(n_states)]
+        ends = [struct.unpack_from("<I", blob, index_offset + 4 * k)[0] for k in range(n_states)]
         starts = [0] + ends[:-1]
         self.strings = [(s, self.pool[s:e]) for s, e in zip(starts, ends)]
         self.string_at = dict(self.strings)
@@ -81,7 +93,7 @@ class Table:
         # (goal_cmnCam_outM00, ..._Z_fromL), an actor variant, an effect
         # (goal_Effect_h), then the state's _base padding the rest. Playing a
         # row means loading every distinct layer together.
-        self.rows_offset = h[8] + 4 * n_states
+        self.rows_offset = index_offset + 4 * n_states
         self.rows = []
         for k in range(self.row_total):
             vals = struct.unpack_from("<%dI" % SLOTS_PER_ROW, blob,
