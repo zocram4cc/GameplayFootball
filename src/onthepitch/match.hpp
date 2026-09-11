@@ -13,6 +13,7 @@
 #include "prematchtimeline.hpp"
 #include "prematchshotpair.hpp"
 #include "goalcelebration.hpp"
+#include "goaldirector.hpp"
 #include "goalsequence.hpp"
 #include "replaywipe.hpp"
 #include "scenelighting.hpp"
@@ -827,6 +828,20 @@ protected:
   // with instead of by whatever the score happened to index (goalcelebration.hpp).
   std::vector<std::string> goalCamNames;
   std::vector<GoalCelebration::Celebration> goalCelebrations;
+  // PES's goal director (media/cutscenes/goal/director.txt): the walk through
+  // run, celebration, hug, approach and finish that a goal is, each beat its
+  // own cast and camera. With it loaded a goal plays PES's sequence; without
+  // it the celebration montage below stands in.
+  GoalDirector::Director goalDirector;
+  std::vector<GoalDirector::Beat> goalBeats;
+  int goalBeat = -1;                       // the beat on air, -1 before the first
+  unsigned long goalBeatStarted_ms = 0;    // goalScoredTimer when it went on
+  unsigned long goalBeatLength_ms = 0;
+  int goalBeatTrack = -1;                  // its authored camera in goalCamTracks, or -1
+  // The plan for this goal, staged at the whistle; whether a beat is due.
+  void PlanGoalBeats();
+  bool StartGoalBeat(int index);
+  void UpdateGoalBeats();
   // Chosen when the goal goes in and held for the celebration: which performance the
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;

@@ -6,6 +6,7 @@
 #include "match.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <set>
 
@@ -411,6 +412,21 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
       Log(e_Notice, "Match", "Match",
           "Loaded " + int_to_str((int)goalCelebrations.size()) + " goal celebrations, " +
               int_to_str(filmed) + " of them filmed");
+    }
+    // PES's director for the goal: the states and the shots each may play.
+    // With it a goal is PES's own walk (run, celebration, hug, approach,
+    // finish); without it the montage below stands in.
+    const std::string director = goalDir + "/director.txt";
+    if (std::filesystem::exists(director)) {
+      std::ifstream file(director);
+      std::stringstream contents;
+      contents << file.rdbuf();
+      goalDirector = GoalDirector::Parse(contents.str());
+      int shots = 0;
+      for (const auto& state : goalDirector.states) shots += (int)state.shots.size();
+      Log(e_Notice, "Match", "Match",
+          "Loaded the goal director: " + int_to_str((int)goalDirector.states.size()) +
+              " states, " + int_to_str(shots) + " shots");
     }
   }
 
@@ -2721,6 +2737,167 @@ void Match::EndGoalCast() {
   cutsceneOpponent = nullptr;
 }
 
+void Match::PlanGoalBeats() {
+  goalBeats.clear();
+  goalBeat = -1;
+  goalBeatTrack = -1;
+  if (goalDirector.empty() || !lastGoalScorer || lastGoalTeamID < 0) return;
+  GoalDirector::Situation situation;
+  // Who came to join him: teammates within twenty metres of where he will
+  // celebrate decide whether it is a hug or a mob.
+  std::vector<Player*> mates;
+  teams[lastGoalTeamID]->GetActivePlayers(mates);
+  for (Player* mate : mates)
+    if (mate != lastGoalScorer &&
+        mate->GetPosition().GetDistance(goalCelebrationSubject) < 20.0f)
+      situation.teammatesNear++;
+  situation.runDistance = lastGoalScorer->GetPosition().GetDistance(goalCelebrationSubject);
+  // PES's quadrants as its cmnCam_S_{L,R}{B,M} names them: which touchline he
+  // is nearer, and whether he is in the box or midfield of the attacked half.
+  const int attackedSide = -teams[lastGoalTeamID]->GetSide();
+  const bool left = goalCelebrationSubject.coords[1] * attackedSide < 0.0f;
+  const bool box = std::fabs(goalCelebrationSubject.coords[0]) > pitchHalfW - 20.0f;
+  situation.quadrant = (left ? 0 : 2) + (box ? 1 : 2);
+  const int scorerID = lastGoalScorer->GetPlayerData() ? lastGoalScorer->GetPlayerData()->GetDatabaseID() : 0;
+  situation.seed = GoalCelebration::SeedFor(scorerID) + GetScore(0) * 3 + GetScore(1) * 7 +
+                   (int)(matchTime_ms / 60000);
+  // His own celebration, as the director names it (GOAL_CELEBRATE_NNNN).
+  if (goalCelebrationIndex >= 0 && goalCelebrationIndex < (int)goalCelebrations.size()) {
+    // celebrations.txt names it "celebrate_0057" or "goal_celebrate_0057_base";
+    // the director's state is GOAL_CELEBRATE_0057.
+    std::string own = goalCelebrations[goalCelebrationIndex].name;
+    if (own.compare(0, 5, "goal_") != 0) own = "goal_" + own;
+    if (own.size() > 5 && own.compare(own.size() - 5, 5, "_base") == 0) own.resize(own.size() - 5);
+    for (char& ch : own) ch = (char)std::toupper((unsigned char)ch);
+    if (goalDirector.Find(own)) situation.celebration = own;
+  }
+  goalBeats = GoalDirector::Plan(goalDirector, situation);
+  // PES stages a beat with the SCORER at the origin and lets the choreography
+  // carry him - the run choreographies move him ten metres and more, into a
+  // camera set forty metres out with a one-degree lens. The montage's origin
+  // was where he would end up, which put that camera past him and the
+  // retarget pulled it back onto whoever stood there.
+  if (!goalBeats.empty()) {
+    goalCelebrationSubject = lastGoalScorer->GetPosition();
+    goalCelebrationSubject.coords[2] = 0.0f;
+  }
+  // The celebration window is the walk's: long enough for every beat, and
+  // the restart pushed back accordingly (StartGoalBeat refines it as each
+  // beat learns its own length).
+  std::string names;
+  for (const auto& beat : goalBeats) names += beat.state->name + " ";
+  Log(e_Notice, "Match", "PlanGoalBeats",
+      int_to_str((int)goalBeats.size()) + " beats (mates " + int_to_str(situation.teammatesNear) +
+          ", run " + int_to_str((int)situation.runDistance) + " m, quadrant " +
+          int_to_str(situation.quadrant) + "): " + names);
+  if (!goalBeats.empty()) StartGoalBeat(0);
+}
+
+bool Match::StartGoalBeat(int index) {
+  if (index < 0 || index >= (int)goalBeats.size()) return false;
+  const GoalDirector::Beat& beat = goalBeats[index];
+  goalBeat = index;
+  goalBeatStarted_ms = goalScoredTimer;
+  goalBeatTrack = -1;
+  ResetStandoff();
+  // The people: this beat's own choreography, cast afresh on the scorer.
+  EndGoalCast();
+  const std::string actors = beat.shot->Actors();
+  unsigned long castLength = 0;
+  if (!actors.empty() && StartGoalCast(actors)) castLength = goalCastLength_ms;
+  // The camera: PES's authored track for this shot when it has one.
+  const std::string track = beat.shot->Track();
+  unsigned long trackLength = 0;
+  for (size_t i = 0; i < goalCamNames.size(); i++)
+    if (goalCamNames[i] == track) {
+      goalBeatTrack = (int)i;
+      trackLength = (unsigned long)goalCamTracks[i].GetTimelineFrameCount() * 1000 / 30;
+    }
+  // How long the beat holds: the performance, or the camera's own length, or
+  // the follow camera's duration, and never under a second - a cut shorter
+  // than that reads as a glitch.
+  // A follow camera's duration counts only when it is the camera; some rows
+  // carry a follow layer beside the track with a 10 000-frame duration.
+  const unsigned long followLength =
+      goalBeatTrack < 0 ? (unsigned long)beat.shot->Frames() * 1000 / 30 : 0;
+  goalBeatLength_ms = std::max({castLength, trackLength, followLength, (unsigned long)1000});
+  goalBeatLength_ms = std::min(goalBeatLength_ms, (unsigned long)15000);
+  // The window grows to hold this beat, and the restart waits for it; the last
+  // beat's end then closes the window (UpdateGoalBeats).
+  const unsigned long needed = goalBeatStarted_ms + goalBeatLength_ms + 500;
+  if (needed > goalCelebrationLength_ms) {
+    goalCelebrationLength_ms = needed;
+    goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
+    const unsigned long prepareAt =
+        GoalSequence::RestartPrepareAt_ms(actualTime_ms - goalScoredTimer, goalCelebrationLength_ms);
+    if (referee->GetBuffer().active && referee->GetBuffer().prepareTime < prepareAt)
+      referee->AlterSetPiecePrepareTime(prepareAt);
+  }
+  Log(e_Notice, "Match", "StartGoalBeat",
+      beat.state->name + ": " + (track.empty() ? std::string("follow camera") : track) + " + " +
+          (actors.empty() ? std::string("no cast") : actors) + ", " +
+          int_to_str((int)goalBeatLength_ms) + " ms");
+  return true;
+}
+
+void Match::UpdateGoalBeats() {
+  if (goalBeat < 0) return;
+  if (goalScoredTimer - goalBeatStarted_ms >= goalBeatLength_ms) {
+    if (!StartGoalBeat(goalBeat + 1)) {
+      // The walk is done: the celebration ends with it, so the replay and the
+      // restart follow PES's sequence rather than the default window.
+      goalBeat = -1;
+      goalCelebrationLength_ms = std::min(goalCelebrationLength_ms, goalScoredTimer + 1);
+      return;
+    }
+  }
+  const GoalDirector::Beat& beat = goalBeats[goalBeat];
+  const float elapsed_s = (goalScoredTimer - goalBeatStarted_ms) * 0.001f;
+  if (goalBeatTrack >= 0) {
+    // PES's own camera, staged on the scorer as every goal track is.
+    const CamTrack& track = goalCamTracks[goalBeatTrack];
+    CamTrackFrame frame = track.SampleTimeline(elapsed_s * 30.0f);
+    frame = StageCamTrackFrame(
+        frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+        goalCelebrationYaw);
+    frame.position[2] = std::max(0.3f, frame.position[2]);
+    // PES's aim as authored: the scorer runs into this frame, so re-aiming it
+    // at where he stands would undo the shot.
+    cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
+    cameraNodeOrientation = QUATERNION_IDENTITY;
+    cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
+    cameraFOV = frame.fov;
+    cameraNearCap = std::max(0.1f, frame.nearPlane);
+    cameraFarCap = frame.farPlane;
+    return;
+  }
+  // A procedural follow camera: PES's tuning is a distance ladder and a yaw
+  // off the scorer's facing; the semantics of its record are not published,
+  // so this reads them as a chase at that distance and angle, aimed at him.
+  // ponytail: the ladder is scaled by 4 to sit outside a 4cc body; tune against
+  // the reference frames once the walk itself reads right.
+  const GoalDirector::Layer* follow = beat.shot->FollowCamera();
+  const float distance = std::max(kCelebrationLensClearance,
+                                  (follow ? follow->follow.distance : 2.8f) * 4.0f);
+  const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
+  const Vector3 subject = lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
+  cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
+                               subject.coords[1] - std::cos(yaw) * distance, 1.6f);
+  cameraNodeOrientation = QUATERNION_IDENTITY;
+  const Vector3 aim = Vector3(subject.coords[0], subject.coords[1], 1.0f) - cameraNodePosition;
+  cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
+  {
+    // pitch down onto him
+    const float horizontal = std::sqrt(aim.coords[0] * aim.coords[0] + aim.coords[1] * aim.coords[1]);
+    Quaternion tilt;
+    tilt.SetAngleAxis(0.5f * pi - std::atan2(horizontal, -aim.coords[2]) , Vector3(1, 0, 0));
+    cameraOrientation = cameraOrientation * tilt;
+  }
+  cameraFOV = 28.0f;
+  cameraNearCap = 0.3f;
+  cameraFarCap = 300.0f;
+}
+
 void Match::UpdateCutsceneChoreo() {
   if (!activeCutsceneChoreo)
     return;
@@ -2732,7 +2909,10 @@ void Match::UpdateCutsceneChoreo() {
       EndGoalCast();
       return;
     }
-    const float elapsedFrame = goalScoredTimer * 0.1f;  // 10 ms frames
+    // With the director walking beats, each beat's cast starts on its own zero;
+    // the montage's single cast runs from the goal.
+    const unsigned long castZero_ms = goalBeat >= 0 ? goalBeatStarted_ms : 0;
+    const float elapsedFrame = (goalScoredTimer - castZero_ms) * 0.1f;  // 10 ms frames
     // Staged where the goal camera is staged: PES authored the performance and
     // its camera in one space with the scorer's run target at the origin, and
     // StageCamTrackFrame turns the camera by goalCelebrationYaw and moves it to
@@ -4379,7 +4559,14 @@ void Match::UpdateIngameCamera() {
                   ", clock " + int_to_str(matchTime_ms / 60000) + ":" +
                   int_to_str((matchTime_ms / 1000) % 60) + ", filmed by " +
                   (goalCelebrationCamera >= 0 ? wanted : std::string("nothing; falling back")));
+          // With a director, the goal is its walk instead: the beats replace
+          // the single cast and the montage below from here on.
+          PlanGoalBeats();
         }
+      }
+      if (!goalBeats.empty()) {
+        UpdateGoalBeats();
+        if (goalBeat >= 0) return;
       }
       // Three shots, three cameras (GoalSequence::Shot): a tracking shot, a
       // tight close-up, then the wide of the mob. Each is a different imported
@@ -4841,6 +5028,24 @@ void Match::Process() {
 
     // ball
 
+    // Harness only: "debug_force_goal_at_s" N puts the ball into the goal the
+    // side in possession attacks, N seconds of match time in, once. A goal is
+    // otherwise a coin flip in a short capture, and the presentation after it
+    // is what the capture is for.
+    {
+      static const int forceAt_s = GetConfiguration()->GetInt("debug_force_goal_at_s", 0);
+      static bool forced = false;
+      if (forceAt_s > 0 && !forced && IsInPlay() && matchTime_ms >= (unsigned long)forceAt_s * 1000 &&
+          lastTouchTeamID >= 0) {
+        forced = true;
+        const int attacked = -teams[lastTouchTeamID]->GetSide();
+        // Just short of the line, flat and fast, at a height nobody reaches in
+        // the two ticks it takes to cross.
+        ball->SetPosition(Vector3(attacked * (pitchHalfW - 0.5f), 1.0f, 1.9f));
+        ball->SetMomentum(Vector3(attacked * 30.0f, 0.0f, 0.0f));
+        Log(e_Notice, "Match", "Process", "debug: forcing a goal for team " + int_to_str(lastTouchTeamID));
+      }
+    }
     previousBallPos = ball->Predict(0);
     ball->Process();
 
@@ -4926,6 +5131,9 @@ void Match::Process() {
       goalCelebrationIndex = -1;
       goalCelebrationCamera = -1;
       goalCelebrationYaw = 0.0f;
+      goalBeats.clear();
+      goalBeat = -1;
+      goalBeatTrack = -1;
     }
 
     if (IsInPlay() && !IsInSetPiece())

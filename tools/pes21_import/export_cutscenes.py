@@ -81,8 +81,11 @@ def classify(category, name):
 def export_category(cut_dir, dest_dir, max_per_category=0, category=""):
     if not os.path.isdir(cut_dir):
         return 0, 0
-    names = [n for n in sorted(os.listdir(cut_dir))
-             if n.endswith(".fdc") and is_camera_pack(n)]
+    # Every pack is tried: a pack with no authored camera yields no frames and
+    # is dropped below. The name test used to decide this, and "_pl" for the
+    # entrance's player packs also matched goal_2018_run_30_plane - so the
+    # plane run had no camera installed and the beat fell back to a bad one.
+    names = [n for n in sorted(os.listdir(cut_dir)) if n.endswith(".fdc")]
     # the cap applies per pool, so a big category does not starve its subpools
     if max_per_category > 0:
         per_pool = {}
