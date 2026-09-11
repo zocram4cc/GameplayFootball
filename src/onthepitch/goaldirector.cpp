@@ -201,8 +201,8 @@ std::vector<Beat> Plan(const Director& director, const Situation& s) {
     return beats;
   }
 
-  // The walk.
-  add(director.Find(RunState(s, director)));
+  // The walk. The run needs room: a scorer at the byline starts celebrating.
+  if (s.runDistance >= 20.0f) add(director.Find(RunState(s, director)));
   const State* celebrate = s.celebration.empty() ? nullptr : director.Find(s.celebration);
   if (!celebrate) celebrate = PickByPhase(director, Phase::Celebrate, s, "GOAL_CELEBRATE_");
   add(celebrate);

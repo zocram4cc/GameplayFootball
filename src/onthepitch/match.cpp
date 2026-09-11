@@ -2751,7 +2751,13 @@ void Match::PlanGoalBeats() {
     if (mate != lastGoalScorer &&
         mate->GetPosition().GetDistance(goalCelebrationSubject) < 20.0f)
       situation.teammatesNear++;
-  situation.runDistance = lastGoalScorer->GetPosition().GetDistance(goalCelebrationSubject);
+  // The room he has to run: from where he stands toward the goal he scored
+  // in, the way PES's run choreographies carry him. At the byline there is
+  // none, and PES starts at the celebration.
+  {
+    const int attackedSide = -teams[lastGoalTeamID]->GetSide();
+    situation.runDistance = pitchHalfW - attackedSide * lastGoalScorer->GetPosition().coords[0];
+  }
   // PES's quadrants as its cmnCam_S_{L,R}{B,M} names them: which touchline he
   // is nearer, and whether he is in the box or midfield of the attacked half.
   const int attackedSide = -teams[lastGoalTeamID]->GetSide();
@@ -2783,6 +2789,14 @@ void Match::PlanGoalBeats() {
   if (!goalBeats.empty()) {
     goalCelebrationSubject = lastGoalScorer->GetPosition();
     goalCelebrationSubject.coords[2] = 0.0f;
+    // PES's goal cameras are TOUCHLINE cameras: the run is authored along -Y
+    // (goal_move3_0013_windmill's root travels 0 -> -10.4 m on Y, nothing on
+    // X) and the camera sits 40 m out on +-X with a one-degree lens - a
+    // broadcast long lens from the stand. The frame is laid along the pitch,
+    // -Y toward the goal he attacked. Turning it by his facing is what put
+    // the lens in the goal, the stand or a body.
+    const int attackedSide = -teams[lastGoalTeamID]->GetSide();
+    goalCelebrationYaw = attackedSide > 0 ? 0.5f * pi : -0.5f * pi;
   }
   // The celebration window is the walk's: long enough for every beat, and
   // the restart pushed back accordingly (StartGoalBeat refines it as each

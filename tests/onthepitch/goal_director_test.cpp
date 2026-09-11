@@ -135,6 +135,15 @@ TEST(GoalDirector, AQuadrantPinnedShotWaitsForItsQuadrant) {
   ASSERT_TRUE(shot);
   EXPECT_TRUE(shot->FollowCamera());
 }
+TEST(GoalDirector, NoRoomMeansNoRun) {
+  Director d = Parse(kText);
+  Situation s;
+  s.runDistance = 5.0f;  // at the byline: straight to the celebration
+  s.teammatesNear = 0;
+  s.seed = 1;
+  EXPECT_EQ(Names(Plan(d, s)), (std::vector<std::string>{"GOAL_CELEBRATE_0032",
+                                                          "GOAL_C_FINISH_SUCCESS"}));
+}
 
 TEST(GoalDirector, HugsNeedAnOccasionTheirMaskAdmits) {
   Director d = Parse(kText);
