@@ -270,6 +270,11 @@ void GamePage::ProcessKeyboardEvent(KeyboardEvent* event) {
   }
 
   if (event->GetKeyOnce(SDLK_ESCAPE)) {
+    if (match && match->IsInEntrance()) {
+      match->EndEntrance();
+      event->Accept();
+      return;
+    }
     // check which team the keyboard belongs to
     int controllerID = 0;
     const std::vector<IHIDevice*>& controllers = GetControllers();

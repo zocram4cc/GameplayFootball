@@ -5401,6 +5401,47 @@ void Match::UpdateIngameCamera() {
 
 void Match::Get() {}
 
+void Match::EndEntrance() {
+  // No wipe here. The opening is a broadcast handing over to live football
+  // and PES cuts it straight; the matte belongs to what interrupts a match
+  // later, not to its start (owner, 03-09).
+  {
+    entranceActive = false;
+    ShowMatchHud(true);
+    // Both teams onto their kickoff marks now, under cover, rather than
+    // letting the referee's deferred kickoff walk them there in view. Same
+    // pair the half-time swap uses.
+    ResetSituation(Vector3(0, 0, 0));
+    if (referee) referee->PrepareSetPiece(e_SetPiece_KickOff);
+    // The walkout set goes back inside: banners, flag bearers, the arch,
+    // the pennant display on the centre circle.
+    //
+    // Hidden rather than deleted. Destroying these nodes here tore live
+    // geometry out from under a rendering graphics thread and crashed on a
+    // null GraphicsGeometry_GeometryInterpreter, intermittently - once in
+    // five headless matches, always on this exact frame. The teardown at
+    // the end of Match already deletes both nodes, and by then the
+    // graphics system has stopped, which is the only point deleting them
+    // is safe. Disabling looks identical and costs a hidden node for the
+    // rest of the match.
+    auto hide = [](boost::intrusive_ptr<Node>& node) {
+      if (!node) return;
+      std::list<boost::intrusive_ptr<Object>> objects;
+      node->GetObjects(objects, true);
+      for (auto& object : objects) object->Disable();
+    };
+    if (entrancePropsNode) {
+      hide(entrancePropsNode);
+      Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
+    }
+    hide(pennantNode);
+    Log(e_Notice, "Match", "Process",
+        "pre-match presentation over after " +
+            int_to_str((int)GetEntranceElapsedSeconds()) + "s real / " +
+            int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
+  }
+}
+
 void Match::Process() {
   // The player indicators follow whoever is being watched and whatever the
   // manager has set, so they are refreshed with the rest of the match state.
@@ -5464,46 +5505,8 @@ void Match::Process() {
       // shot 15 - the scoreboard arrives *with* the first whistle).
       ShowMatchHud(false);
     }
-    if (GetEntranceElapsedSeconds() >= entranceSeconds) {
-      // No wipe here. The opening is a broadcast handing over to live football
-      // and PES cuts it straight; the matte belongs to what interrupts a match
-      // later, not to its start (owner, 03-09).
-      {
-        entranceActive = false;
-        ShowMatchHud(true);
-        // Both teams onto their kickoff marks now, under cover, rather than
-        // letting the referee's deferred kickoff walk them there in view. Same
-        // pair the half-time swap uses.
-        ResetSituation(Vector3(0, 0, 0));
-        if (referee) referee->PrepareSetPiece(e_SetPiece_KickOff);
-        // The walkout set goes back inside: banners, flag bearers, the arch,
-        // the pennant display on the centre circle.
-        //
-        // Hidden rather than deleted. Destroying these nodes here tore live
-        // geometry out from under a rendering graphics thread and crashed on a
-        // null GraphicsGeometry_GeometryInterpreter, intermittently - once in
-        // five headless matches, always on this exact frame. The teardown at
-        // the end of Match already deletes both nodes, and by then the
-        // graphics system has stopped, which is the only point deleting them
-        // is safe. Disabling looks identical and costs a hidden node for the
-        // rest of the match.
-        auto hide = [](boost::intrusive_ptr<Node>& node) {
-          if (!node) return;
-          std::list<boost::intrusive_ptr<Object>> objects;
-          node->GetObjects(objects, true);
-          for (auto& object : objects) object->Disable();
-        };
-        if (entrancePropsNode) {
-          hide(entrancePropsNode);
-          Log(e_Notice, "Match", "Process", "walkout set cleared for kickoff");
-        }
-        hide(pennantNode);
-        Log(e_Notice, "Match", "Process",
-            "pre-match presentation over after " +
-                int_to_str((int)GetEntranceElapsedSeconds()) + "s real / " +
-                int_to_str((int)(actualTime_ms / 1000)) + "s match clock");
-      }
-    } else {
+    if (GetEntranceElapsedSeconds() >= entranceSeconds) EndEntrance();
+    else {
       // A full second ahead, not one tick. The referee defers the kickoff to
       // this value every tick and re-prepares the set piece the moment
       // actualTime_ms reaches it (referee.cpp) - kept only one tick out, that

@@ -232,6 +232,9 @@ public:
   // about five seconds. A presentation is measured in seconds the viewer
   // actually sits through.
   bool IsInEntrance() const { return entranceActive; }
+  // Escape during the walkout skips it straight to kickoff positions; the
+  // pause menu is for live play, not for cutting the presentation short.
+  void EndEntrance();
   // Whether a camera other than the match camera has the picture: the walkout,
   // a stoppage cutscene, a goal celebration, a replay, the closing ceremony.
   // In-world chrome - the name over a player's head - has no business in any of
