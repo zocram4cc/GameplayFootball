@@ -3162,10 +3162,20 @@ void Match::UpdateGoalBeats() {
   }
   if (goalScoredTimer - goalBeatStarted_ms >= goalBeatLength_ms) {
     if (!StartGoalBeat(goalBeat + 1)) {
-      // The walk is done: the celebration ends with it, so the replay and the
-      // restart follow PES's sequence rather than the default window.
+      // The walk is done: PES plays the replay off the finish, then the
+      // kickoff - and the kickoff's ResetSituation clears the goal state the
+      // replay trigger waits on, so the walk fires the replay itself instead
+      // of leaving it to a trigger that can never be reached.
       goalBeat = -1;
       goalCelebrationLength_ms = std::min(goalCelebrationLength_ms, goalScoredTimer + 1);
+      if (replayStartOffset_ms == 0) {
+        replayStartOffset_ms = GoalSequence::ReplayStartOffset_ms(goalScoredTimer);
+        replayCamera = kReplayCameraBehindGoal;
+        Log(e_Notice, "Match", "UpdateGoalBeats",
+            "goal replay: walk ran " + int_to_str((int)goalScoredTimer) +
+                " ms, replay reaches " + int_to_str((int)replayStartOffset_ms) + " ms back");
+        RequestExtendedReplay();
+      }
       return;
     }
   }
