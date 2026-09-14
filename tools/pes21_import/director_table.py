@@ -116,11 +116,15 @@ class Table:
         self.row_flags = [struct.unpack_from("<II", blob, h[10] + 8 * k) for k in range(n_flags)]
 
     def rows_of(self, state_index):
-        # The CSR counts rows from 1: with 0 the last state of every table
-        # landed on the sentinel row that points at the label list, and nine
-        # of thirty foul states named the wrong shot.
+        # The CSR counts rows from 1 - with 0 the last state of every table
+        # would land on the sentinel row that points at the label list, and
+        # nine of thirty foul states would name the wrong shot. The first
+        # state reads (0, n) for rows 0..n-1: 0 doubles as "the first row".
+        # Pinned by test_state_zero_reads_rows_zero_up and by FOUL_CMN_CARD_Y_B
+        # (6, 2) -> y02, y08 and FOUL_INJURY_DAMAGE01 (79, 1) -> damage01.
         first, count = self.state_rows[state_index]
-        return self.rows[first - 1:first - 1 + count]
+        base = first - 1 if first > 0 else 0
+        return self.rows[base:base + count]
 
     def bases_of(self, state_index):
         """The distinct .fdc bases (no extension) a state draws from."""

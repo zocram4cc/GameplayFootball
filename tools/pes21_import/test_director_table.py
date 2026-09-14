@@ -42,11 +42,11 @@ def build(states, rows, weights, flags, records):
     body += b"".join(struct.pack("<II", f, o) for f, o in flags)
     csr_off = index_off + len(body)
     body += struct.pack("<HH", 1, len(states))
-    first = 1  # the CSR counts rows from 1
+    first = 0  # the first state reads (0, n); the rest count from 1
     for name in states:
         n = len(states[name])
         body += struct.pack("<HH", first, n)
-        first += n
+        first += n + 1
     body += struct.pack("<H", len(rows))
     body += b"".join(struct.pack("<5I", *r) for r in records)
     small_off = index_off + len(body)
@@ -86,6 +86,10 @@ class DirectorTable(unittest.TestCase):
         self.assertEqual(self.table.rows_offset, self.rows_off)
         self.assertEqual(self.table.row_total, 3)
         self.assertEqual([r["layers"] for r in self.table.rows], self.rows)
+
+    def test_state_zero_reads_rows_zero_up(self):
+        self.assertEqual([r["layers"] for r in self.table.rows_of(0)], self.rows[:2])
+        self.assertEqual([r["layers"] for r in self.table.rows_of(1)], self.rows[2:])
 
     def test_state_owns_its_rows_and_bases(self):
         self.assertEqual([r["layers"] for r in self.table.rows_of(0)], self.rows[:2])
