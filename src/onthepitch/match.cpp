@@ -3182,6 +3182,27 @@ void Match::UpdateGoalBeats() {
     frame = RetargetCamTrackFrame(
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
         kCelebrationLensClearance, castSpan);
+    // The track dollies; its opening clearance says nothing about frame 200.
+    // When the cast closes to within a body width of the lens, the camera
+    // yields straight back along the aim instead of wearing a robe: PES's
+    // shot whenever it is clear, ground given only to keep flesh out.
+    {
+      float nearest = 1e9f;
+      for (const Vector3& at : goalCastWorlds)
+        nearest = std::min(nearest, (float)std::sqrt(
+                                        (frame.position[0] - at.coords[0]) *
+                                            (frame.position[0] - at.coords[0]) +
+                                        (frame.position[1] - at.coords[1]) *
+                                            (frame.position[1] - at.coords[1]) +
+                                        (frame.position[2] - at.coords[2]) *
+                                            (frame.position[2] - at.coords[2])));
+      if (nearest < 3.0f) {
+        float back = 3.0f - nearest;
+        const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
+        for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * back;
+        frame.position[2] = std::max(0.5f, frame.position[2]);
+      }
+    }
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
