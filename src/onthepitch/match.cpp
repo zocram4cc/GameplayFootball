@@ -3025,8 +3025,11 @@ bool Match::StartGoalBeat(int index) {
         goalCamTracks[track].SampleTimeline(0.0f),
         {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
         goalCelebrationYaw);
-    if (std::fabs(opening.position[0]) > pitchHalfW + 8.0f ||
-        std::fabs(opening.position[1]) > pitchHalfH + 8.0f)
+    // The ground, not the pitch: PES films from behind the goal and high
+    // in the corner stand, and the walk stages in the box where a pitch-tight
+    // envelope rejects all of that. Geometry itself is the sightline test's job.
+    if (std::fabs(opening.position[0]) > pitchHalfW + 25.0f ||
+        std::fabs(opening.position[1]) > pitchHalfH + 25.0f || opening.position[2] > 60.0f)
       return false;
     // ... and the lens must see the subject past the stadium: the run cameras
     // sit 47 m out along the touchline, straight through st002's ring arch.
