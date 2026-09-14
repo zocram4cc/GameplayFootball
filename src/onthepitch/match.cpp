@@ -2919,13 +2919,9 @@ void Match::PlanGoalBeats() {
     if (mate != lastGoalScorer &&
         mate->GetPosition().GetDistance(goalCelebrationSubject) < 20.0f)
       situation.teammatesNear++;
-  // The room he has to run: from where he stands toward the goal he scored
-  // in, the way PES's run choreographies carry him. At the byline there is
-  // none, and PES starts at the celebration.
-  {
-    const int attackedSide = -teams[lastGoalTeamID]->GetSide();
-    situation.runDistance = pitchHalfW - attackedSide * lastGoalScorer->GetPosition().coords[0];
-  }
+  // The shot distance picks the run length: a 40 m run for a strike, none
+  // for a tap-in (PES starts at the celebration).
+  if (lastGoalScorer) situation.runDistance = lastGoalScorer->GetPosition().GetDistance(goalBallPosition);
   // PES's quadrants as its cmnCam_S_{L,R}{B,M} names them: which touchline he
   // is nearer, and whether he is in the box or midfield of the attacked half.
   const int attackedSide = -teams[lastGoalTeamID]->GetSide();
@@ -2972,12 +2968,15 @@ void Match::PlanGoalBeats() {
       goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
     }
   }
-  // PES stages a beat with the SCORER at the origin and lets the choreography
-  // carry him - the run choreographies move him ten metres and more, into a
-  // camera set forty metres out with a one-degree lens. The montage's origin
-  // was where he would end up, which put that camera past him and the
-  // retarget pulled it back onto whoever stood there.
-  if (!goalBeats.empty()) {
+  // PES stages a beat with the GOAL at the origin: every goal camera is
+  // authored for a celebration in the box, and the run choreographies carry
+  // him the ten metres from where he shot to where the cameras wait. Staging
+  // on the scorer put the whole walk forty metres upfield wherever he
+  // happened to be standing, where no track was ever meant to play.
+  if (!goalBeats.empty() && lastGoalScorer) {
+    // The run stages on him where he shot - the choreography is his ten
+    // metres toward the cameras. Everything after stages on the goal: the
+    // cut into beat 1 hides the jump, the way cuts do.
     goalCelebrationSubject = lastGoalScorer->GetPosition();
     goalCelebrationSubject.coords[2] = 0.0f;
     // PES's goal cameras are TOUCHLINE cameras: the run is authored along -Y
@@ -3051,15 +3050,12 @@ bool Match::StartGoalBeat(int index) {
   // The director's pick first; if its camera opens badly, any other shot of
   // the same state whose camera opens well (PES shot most states from both
   // sides); failing all, the pick with a follow camera.
-  // Re-stage on where the last beat left the cast: the run carries the scorer
-  // ten metres and more, and the next beat's camera is authored on him where
-  // he arrived, not where the whistle found him. Without this the celebration
-  // films the empty grass he ran from.
-  if (!goalCastWorlds.empty()) {
-    Vector3 middle(0, 0, 0);
-    for (const Vector3& at : goalCastWorlds) middle = middle + at;
-    middle = middle * (1.0f / (float)goalCastWorlds.size());
-    goalCelebrationSubject = Vector3(middle.coords[0], middle.coords[1], 0.0f);
+  // Past the run, the walk plays at the goal - every camera is authored
+  // for a celebration in the box. The cut hides the jump from wherever the
+  // run ended.
+  if (beat.state && beat.state->phase != GoalDirector::Phase::Run) {
+    goalCelebrationSubject = goalBallPosition;
+    goalCelebrationSubject.coords[2] = 0.0f;
   }
   // The new cast's own marks at frame 0: the camera must clear where its
   // people will be, not only where the last beat left them.
@@ -5549,9 +5545,11 @@ void Match::Process() {
           lastTouchTeamID >= 0) {
         forced = true;
         const int attacked = -teams[lastTouchTeamID]->GetSide();
-        // Just short of the line, flat and fast, at a height nobody reaches in
-        // the two ticks it takes to cross.
-        ball->SetPosition(Vector3(attacked * (pitchHalfW - 0.5f), 1.0f, 1.9f));
+        // At the penalty spot, flat and fast, at a height nobody reaches in
+        // the two ticks it takes to cross: real goals happen in the box, and
+        // PES authors every celebration camera for one. A goal from midfield
+        // stages the whole walk where no track was ever meant to play.
+        ball->SetPosition(Vector3(attacked * (pitchHalfW - 11.0f), 2.0f, 1.9f));
         ball->SetMomentum(Vector3(attacked * 30.0f, 0.0f, 0.0f));
         Log(e_Notice, "Match", "Process", "debug: forcing a goal for team " + int_to_str(lastTouchTeamID));
       }
@@ -5680,6 +5678,10 @@ void Match::Process() {
       }
       if (t1goal || t2goal) {
         AddExcitementBoost(1.0f, 5000);
+        // Where the ball crossed: the celebration stages here, in the box
+        // where PES authors every goal camera to play - not where the scorer
+        // happened to be standing, which can be forty metres upfield.
+        goalBallPosition = ball->Predict(0);
 
         // find out who scored
         bool ownGoal = true;
