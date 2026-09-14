@@ -3040,9 +3040,11 @@ void Match::UpdateGoalBeats() {
   const float distance =
       std::max((follow ? follow->follow.distance : 2.8f) * 4.0f, pileRadius + 2.0f);
   const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
+  // High enough to look down past the nearest bodies: level with heads,
+  // every arm crosses the lens.
   cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
                                subject.coords[1] - std::cos(yaw) * distance,
-                               1.4f + distance * 0.15f);
+                               2.5f + distance * 0.25f);
   cameraNodeOrientation = QUATERNION_IDENTITY;
   const Vector3 aim = Vector3(subject.coords[0], subject.coords[1], 1.0f) - cameraNodePosition;
   cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
