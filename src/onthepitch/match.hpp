@@ -859,22 +859,12 @@ protected:
   // camera aims at the bodies and not at kickoff marks - and stands off
   // further than the pile is wide, or the lens opens inside it.
   std::vector<Vector3> goalCastWorlds;
-  // Who stands on each of those marks. A posed actor's simulation position is
-  // still his kickoff mark, so the lens guard cannot find him by GetPosition().
-  std::vector<Player*> goalCastPlayers;
   float goalBeatYield = 0.0f;  // how far the beat camera has yielded back off its track
   int goalBeatTrack = -1;                  // its authored camera in goalCamTracks, or -1
   // The plan for this goal, staged at the whistle; whether a beat is due.
   void PlanGoalBeats();
   bool StartGoalBeat(int index);
   void UpdateGoalBeats();
-  // A goal camera that ends the frame inside a body films the inside of a
-  // shirt (owner's "the UVs are completely messed up"): the beat's opening
-  // clearance and the cast yield only know the posed cast, while the other
-  // twenty players walk about, and 4cc bodies are twice a footballer's bulk.
-  // Backs the lens off along its own aim until every ACTIVE player is clear,
-  // and keeps it off the grass.
-  Vector3 ClearLensOfBodies(const Vector3& position);
   // Chosen when the goal goes in and held for the celebration: which performance the
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;
