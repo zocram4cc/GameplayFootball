@@ -3200,6 +3200,25 @@ void Match::UpdateGoalBeats() {
     for (const Vector3& at : goalCastWorlds)
       castSpan = std::max(castSpan, at.GetDistance(goalCelebrationSubject));
     castSpan = std::min(castSpan, 6.0f);
+    // Hold the span with PES's lens first: back the camera off along the aim
+    // until the cast fits the authored frame, at most 12 m. A widened lens
+    // makes a body at 3 m fill the frame; distance keeps the compression.
+    {
+      const float half = frame.fov * 0.5f * pi / 180.0f;
+      const float dist =
+          std::sqrt((frame.position[0] - goalCelebrationSubject.coords[0]) *
+                        (frame.position[0] - goalCelebrationSubject.coords[0]) +
+                    (frame.position[1] - goalCelebrationSubject.coords[1]) *
+                        (frame.position[1] - goalCelebrationSubject.coords[1]) +
+                    (frame.position[2] - 1.2f) * (frame.position[2] - 1.2f));
+      const float want = castSpan / (2.0f * std::max(0.02f, (float)std::tan(half)));
+      const float pull = std::max(0.0f, std::min(want - dist, 12.0f));
+      if (pull > 0.01f) {
+        const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
+        for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * pull;
+        frame.position[2] = std::max(0.5f, frame.position[2]);
+      }
+    }
     // The track dollies; its opening clearance says nothing about frame 200.
     // When the cast closes to within a body width of the lens, the camera
     // yields back along the aim instead of wearing a robe - but at most 8 m,
