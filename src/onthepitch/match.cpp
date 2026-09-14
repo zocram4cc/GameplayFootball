@@ -468,10 +468,14 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         std::ifstream file(entry.path());
         CamTrack track;
         if (!file.good() || !track.Load(file)) continue;
+        cutsceneTrackIndex[category][entry.path().stem().string()] = cutscenePools[category].size();
         cutscenePools[category].push_back(track);
         const std::string parent = entry.path().parent_path().filename().string();
-        if (parent != category)
+        if (parent != category) {
+          cutsceneTrackIndex[std::string(category) + "/" + parent][entry.path().stem().string()] =
+              cutscenePools[std::string(category) + "/" + parent].size();
           cutscenePools[std::string(category) + "/" + parent].push_back(track);
+        }
         // The post-match pool is flat, with PES's presentation family in the file
         // name rather than in a directory ("result_001_st000_cam1.camtrack"), so
         // give each family a pool of its own too. That is what lets the pre-match
@@ -479,21 +483,28 @@ Match::Match(MatchData* matchData, const std::vector<IHIDevice*>& controllers)
         // whatever the pool hands over.
         const std::string family =
             PrematchChoices::FamilyFromCamtrackName(entry.path().filename().string());
-        if (!family.empty())
+        if (!family.empty()) {
+          cutsceneTrackIndex[std::string(category) + "/" + family][entry.path().stem().string()] =
+              cutscenePools[std::string(category) + "/" + family].size();
           cutscenePools[std::string(category) + "/" + family].push_back(track);
+        }
         // The closing camerawork is flat too, with the family in the name rather than
         // a number: the crowd of one ground, the winners, the losers, the walk over
         // and the team photo. Filed so the whistle can ask for them in order.
         const std::string closing =
             CutsceneSequence::ClosingPoolForFile(entry.path().filename().string());
-        if (!closing.empty())
+        if (!closing.empty()) {
+          cutsceneTrackIndex[closing][entry.path().stem().string()] =
+              cutscenePools[closing].size();
           cutscenePools[closing].push_back(track);
+        }
       }
       // The people in shot: PES stages actors alongside the camera, so any
       // .chor exported next to the camerawork joins a matching pool.
       LoadCutsceneChoreo(category, dir);
       if (!cutscenePools[category].empty()) loadedPools++;
     }
+    LoadCutsceneDirectors();
     // The goal celebrations are choreographies too - PES stages the scorer's run
     // and his teammates arriving alongside the camera that films it (406 of 534
     // packs cast two to eleven actors) - and a goal plays its chosen one by name
@@ -2510,6 +2521,125 @@ Animation* Match::CutsceneClip(const std::string& animFile) {
   return clip.get();
 }
 
+void Match::LoadCutsceneDirectors() {
+  for (const char* category : {"foul", "change", "timeup", "pk", "result", "end"}) {
+    const std::string path =
+        std::string("media/cutscenes/") + category + "/director.txt";
+    if (!std::filesystem::exists(path)) continue;
+    std::ifstream file(path);
+    std::stringstream contents;
+    contents << file.rdbuf();
+    cutsceneDirectors[category] = GoalDirector::Parse(contents.str());
+    Log(e_Notice, "Match", "Match",
+        "Loaded the " + std::string(category) + " director: " +
+            int_to_str((int)cutsceneDirectors[category].states.size()) + " states");
+  }
+}
+
+std::vector<std::string> Match::DirectorStatesForPool(const std::string& pool) {
+  // The pools the callers ask for, to the director states that play them. A
+  // pool with several states draws by seed; the shot within the state comes
+  // from the director's flags.
+  static const std::pair<const char*, const char*> table[] = {
+      {"foul/card_red", "FOUL_CMN_CARD_R"},
+      {"foul/card_yellow", "FOUL_CMN_CARD_Y,FOUL_CMN_CARD_Y_B"},
+      {"foul/warning", "FOUL_WARN_CARD_Y,FOUL_WARN_CARD_N"},
+      {"foul/injury", "FOUL_INJURY_CARD_Y,FOUL_INJURY_CARD_R,FOUL_INJURY_CARD_W,"
+                      "FOUL_INJURY_CARD_N,FOUL_INJURY_FATIGUE01,FOUL_INJURY_DAMAGE01"},
+      {"foul/no_card", "FOUL_CARD_N"},
+      {"foul/protest", "FOUL_BEJUDGED,FOUL_BEJUDGED_HIGH"},
+      {"foul/referee_run", "FOUL_REFEREE_ONCOMING,FOUL_REFEREE_ONCOMING_PK,"
+                           "FOUL_REFEREE_ONCOMING_EXCITE"},
+      {"change", "CHANGE_CMN,CHANGE_NICEJOB,CHANGE_OVATION_001,CHANGE_OVATION_002,"
+                 "CHANGE_SUPERSUB_001,CHANGE_SUPERSUB_002,CHANGE_SUPERSUB_003,"
+                 "CHANGE_FRUSTRATION,CHANGE_INJURY"},
+      // The shootout walk-up, not the kick: the kicker and the keeper meeting.
+      {"pk", "PK_00_INTRO_C1_1STKICKER_FP,PK_00_INTRO_C2_1STKICKER_FP,"
+             "PK_00_INTRO_C1_1STKICKER_GK,PK_00_INTRO_C2_1STKICKER_GK"},
+      {"timeup/half", "TU_HALF_01,TU_HALF_02"},
+      {"end/joy", "END_JOY_RUN_HUG_01,END_JOY_HIGH_02,END_JOY_HIGH_03,END_JOY_HIGH_05"},
+      {"end/sad", "END_LOSE_SAD_CMN,END_LOSE_SAD_02,END_LOSE_SAD_03,END_LOSE_SAD_04"},
+      {"end/greet", "END_GREET_AUDI_01,END_GREET_AUDI_02"},
+  };
+  for (const auto& row : table)
+    // Stadium pools extend the base ("timeup/half_st002"); the base matches them.
+    if (pool == row.first ||
+        (pool.size() > std::string(row.first).size() &&
+         pool.compare(0, std::string(row.first).size(), row.first) == 0)) {
+      std::vector<std::string> out;
+      std::string list = row.second;
+      size_t at = 0;
+      while (at <= list.size()) {
+        const size_t comma = list.find(',', at);
+        out.push_back(list.substr(at, comma == std::string::npos ? comma : comma - at));
+        if (comma == std::string::npos) break;
+        at = comma + 1;
+      }
+      return out;
+    }
+  return {};
+}
+
+bool Match::StartDirectorShot(const std::string& category, const std::string& pool) {
+  auto director = cutsceneDirectors.find(category);
+  if (director == cutsceneDirectors.end()) return false;
+  const std::vector<std::string> states = DirectorStatesForPool(pool);
+  if (states.empty()) return false;
+  GoalDirector::Situation situation;
+  situation.seed = (int)(actualTime_ms / 10) + GetScore(0) * 3 + GetScore(1) * 7;
+  // The state first: one with a shot this install can play (an installed
+  // track, or a follow layer for the incident camera). Then the shot in it.
+  const GoalDirector::Shot* shot = nullptr;
+  const GoalDirector::State* picked = nullptr;
+  for (size_t attempt = 0; attempt < states.size(); attempt++) {
+    const GoalDirector::State* state =
+        director->second.Find(states[(situation.seed + (int)attempt) % states.size()]);
+    if (!state || state->shots.empty()) continue;
+    const GoalDirector::Shot* candidate = GoalDirector::ChooseShot(*state, situation);
+    if (!candidate) continue;
+    const bool trackInstalled =
+        !candidate->Track().empty() &&
+        cutsceneTrackIndex[category].count(candidate->Track()) > 0;
+    if (trackInstalled || candidate->FollowCamera()) {
+      shot = candidate;
+      picked = state;
+      break;
+    }
+  }
+  if (!shot) return false;
+  bool said = false;
+  // The camera: the shot's own installed track.
+  const std::string track = shot->Track();
+  auto trackIndex = cutsceneTrackIndex[category].find(track);
+  if (!track.empty() && trackIndex != cutsceneTrackIndex[category].end()) {
+    activeCutscene = &cutscenePools[category][trackIndex->second];
+    said = true;
+  }
+  // The actors: the shot's own choreography when it is installed.
+  const std::string actors = shot->Actors();
+  if (!actors.empty()) {
+    auto choreoPool = cutsceneChoreoPools.find(category);
+    if (choreoPool != cutsceneChoreoPools.end())
+      for (const EntranceChoreo& choreo : choreoPool->second)
+        if (choreo.GetName() == actors) {
+          activeCutsceneChoreo = &choreo;
+          said = true;
+          break;
+        }
+  }
+  // The follow tuning when the shot names no installed track.
+  activeCutsceneHasFollow = !shot->Track().empty() &&
+                            cutsceneTrackIndex[category].count(shot->Track()) == 0 &&
+                            shot->FollowCamera() != nullptr;
+  if (activeCutsceneHasFollow) activeCutsceneFollow = shot->FollowCamera()->follow;
+  if (said)
+    Log(e_Notice, "Match", "StartDirectorShot",
+        pool + ": " + picked->name + " films " +
+            (activeCutscene ? track : std::string("follow")) + " with " +
+            (activeCutsceneChoreo ? activeCutsceneChoreo->GetName() : std::string("rotation cast")));
+  return said;
+}
+
 void Match::StartCutsceneChoreo(const std::string& category) {
   activeCutsceneChoreo = nullptr;
   cutsceneCast.clear();
@@ -3269,7 +3399,22 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   float seconds = capSeconds;
   activeCutsceneAnchoring = CutsceneViewer::Anchoring::StadiumWorld;
   cutsceneShotTaken = false;
-  if (haveCamera) {
+  activeCutsceneHasFollow = false;
+  // The director stages the camera and the actors as one shot. Each axis it
+  // cannot install falls back below, so this never shows less than today.
+  const size_t baseSlash = category.find('/');
+  const bool directorStaged = StartDirectorShot(
+      baseSlash == std::string::npos ? category : category.substr(0, baseSlash), category);
+  if (directorStaged && activeCutscene) {
+    const CamTrack& track = *activeCutscene;
+    ResetStandoff();
+    seconds = std::min(capSeconds, track.GetDurationSeconds());
+    activeCutsceneAnchoring =
+        CutsceneViewer::ClassifyAnchoring(CutsceneViewer::MeasureTrack(track));
+    if (CutsceneViewer::AnchorsAtIncident(category))
+      activeCutsceneAnchoring = CutsceneViewer::Anchoring::IncidentLocal;
+  }
+  if (haveCamera && !activeCutscene) {
     const CamTrack& track =
         pool->second[(actualTime_ms / 10 + GetScore(0) + GetScore(1)) %
                      pool->second.size()];
@@ -3293,13 +3438,15 @@ void Match::StartCutscene(const std::string& category, float capSeconds) {
   // A change is made at the touchline; a foul and an offside where they happened.
   cutsceneAtTouchline = category.compare(0, 6, "change") == 0;
   activeCutsceneCategory = category;
-  StartCutsceneChoreo(category);
+  // The director casts the shot's own choreography; otherwise the rotation pick.
+  if (!activeCutsceneChoreo) StartCutsceneChoreo(category);
   // Some incidents are staged but not filmed: PES ships no camera pack at all
   // for an offside, because the assistant's flag and the disallowed-goal
   // reactions are meant to play out on the live broadcast camera. So a
   // choreography with no camerawork is a cutscene too - it just does not take
   // the camera. With nothing at all to show, there is no cutscene.
-  if (!haveCamera && !activeCutsceneChoreo) return;
+  if (!haveCamera && !activeCutscene && !activeCutsceneChoreo && !activeCutsceneHasFollow)
+    return;
   cutsceneEnd_ms = actualTime_ms + (unsigned long)(seconds * 1000.0f);
   // Where this incident happened, decided once and held: everything staged or aimed
   // for the rest of the cutscene is measured from here.
@@ -4205,6 +4352,31 @@ void Match::UpdateIngameCamera() {
       return;
     }
     activeCutscene = nullptr;
+  }
+
+  // A director shot with a procedural camera and no installed track: PES's
+  // follow tuning (angle, distance) frames the incident the actors were
+  // staged at, standing off further than a 4cc body the way the goal's does.
+  if (activeCutsceneHasFollow && !activeCutscene && activeCutsceneChoreo &&
+      CutscenePlayback::IsPlaying(cutscenePlayback) && !IsInPlay()) {
+    const Vector3 anchor = CutsceneAnchorPosition();
+    const float distance = std::max(2.5f, activeCutsceneFollow.distance * 4.0f);
+    const float yaw = activeCutsceneFollow.angleDeg * pi / 180.0f;
+    cameraNodePosition = Vector3(anchor.coords[0] + std::sin(yaw) * distance,
+                                 anchor.coords[1] - std::cos(yaw) * distance,
+                                 2.5f + distance * 0.25f);
+    cameraNodeOrientation = QUATERNION_IDENTITY;
+    const Vector3 aim = Vector3(anchor.coords[0], anchor.coords[1], 1.2f) - cameraNodePosition;
+    cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
+    const float horizontal =
+        std::sqrt(aim.coords[0] * aim.coords[0] + aim.coords[1] * aim.coords[1]);
+    Quaternion tilt;
+    tilt.SetAngleAxis(0.5f * pi - std::atan2(horizontal, -aim.coords[2]), Vector3(1, 0, 0));
+    cameraOrientation = cameraOrientation * tilt;
+    cameraFOV = 28.0f;
+    cameraNearCap = 0.3f;
+    cameraFarCap = 300.0f;
+    return;
   }
 
   // An incident PES stages but does not film. Its offside packs parse cleanly and

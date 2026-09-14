@@ -855,6 +855,24 @@ protected:
   // stoppage cutscenes: PES's other fixdemo categories, played at their
   // match-flow trigger points (halftime, cards, subs, penalties, fulltime)
   std::map<std::string, std::vector<CamTrack>> cutscenePools;
+  // The director per stoppage category (media/cutscenes/<cat>/director.txt):
+  // which states a scene has and which shots each may play. With it the camera
+  // and the actors are one pick; without it they are drawn independently.
+  std::map<std::string, GoalDirector::Director> cutsceneDirectors;
+  // Installed camera by file stem, per pool: the director names shots by stem.
+  std::map<std::string, std::map<std::string, size_t>> cutsceneTrackIndex;
+  // A procedural follow camera from the director's shot, when the shot names
+  // no installed track. Framed at the incident per frame, like the goal's.
+  GoalDirector::Follow activeCutsceneFollow;
+  bool activeCutsceneHasFollow = false;
+  void LoadCutsceneDirectors();
+  // The director's states for a pool ("foul/card_yellow" -> the bookings...).
+  static std::vector<std::string> DirectorStatesForPool(const std::string& pool);
+  // Stage one director shot: its installed track and/or its installed actors
+  // and/or its follow tuning. Each axis falls back to today's rotation pick
+  // when the shot's layer is not installed. True when the director said
+  // anything (even follow-only).
+  bool StartDirectorShot(const std::string& category, const std::string& pool);
   const CamTrack* activeCutscene = nullptr;
   std::vector<CutsceneSequence::Stage> cutsceneQueue;
   // Whether PES filmed the running category at all.
