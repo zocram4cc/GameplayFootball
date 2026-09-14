@@ -2969,6 +2969,7 @@ bool Match::StartGoalBeat(int index) {
   goalBeat = index;
   goalBeatStarted_ms = goalScoredTimer;
   goalBeatTrack = -1;
+  goalBeatYield = 0.0f;
   ResetStandoff();
 
   // Whether a track, staged on the scorer, films from somewhere sane: on this
@@ -3179,13 +3180,12 @@ void Match::UpdateGoalBeats() {
     for (const Vector3& at : goalCastWorlds)
       castSpan = std::max(castSpan, at.GetDistance(goalCelebrationSubject));
     castSpan = std::min(castSpan, 6.0f);
-    frame = RetargetCamTrackFrame(
-        frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
-        kCelebrationLensClearance, castSpan);
     // The track dollies; its opening clearance says nothing about frame 200.
     // When the cast closes to within a body width of the lens, the camera
-    // yields straight back along the aim instead of wearing a robe: PES's
-    // shot whenever it is clear, ground given only to keep flesh out.
+    // yields back along the aim instead of wearing a robe - but at most 8 m,
+    // and the aim is re-taken afterwards, or the yield backs through the pile
+    // and out the other side onto the center circle. PES's shot whenever it
+    // is clear, ground given only to keep flesh out.
     {
       float nearest = 1e9f;
       for (const Vector3& at : goalCastWorlds)
@@ -3196,13 +3196,16 @@ void Match::UpdateGoalBeats() {
                                             (frame.position[1] - at.coords[1]) +
                                         (frame.position[2] - at.coords[2]) *
                                             (frame.position[2] - at.coords[2])));
-      if (nearest < 3.0f) {
-        float back = 3.0f - nearest;
-        const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
-        for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * back;
-        frame.position[2] = std::max(0.5f, frame.position[2]);
-      }
+      const float want = nearest < 3.0f ? std::min(3.0f - nearest, 8.0f) : 0.0f;
+      goalBeatYield += (want - goalBeatYield) * 0.2f;
+      goalBeatYield = std::max(0.0f, std::min(8.0f, goalBeatYield));
+      const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
+      for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * goalBeatYield;
+      frame.position[2] = std::max(0.5f, frame.position[2]);
     }
+    frame = RetargetCamTrackFrame(
+        frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
+        kCelebrationLensClearance, castSpan);
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
