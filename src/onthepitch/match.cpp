@@ -5575,8 +5575,8 @@ void Match::Process() {
         // the two ticks it takes to cross: real goals happen in the box, and
         // PES authors every celebration camera for one. A goal from midfield
         // stages the whole walk where no track was ever meant to play.
-        ball->SetPosition(Vector3(attacked * (pitchHalfW - 25.0f), -8.0f, 1.9f));
-        ball->SetMomentum(Vector3(attacked * 30.0f, 2.0f, 0.0f));
+        ball->SetPosition(Vector3(attacked * (pitchHalfW - 25.0f), 2.0f, 1.9f));
+        ball->SetMomentum(Vector3(attacked * 30.0f, 1.0f, 0.0f));
         Log(e_Notice, "Match", "Process", "debug: forcing a goal for team " + int_to_str(lastTouchTeamID));
       }
     }
