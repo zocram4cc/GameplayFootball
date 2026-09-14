@@ -89,6 +89,7 @@ void Gui2GoalBug::Init() {
   plate = new Gui2Image(windowManager, GetName() + "_plate", x, kPlateY, kPlateWidth, kPlateHeight);
   this->AddView(plate);
   plate->LoadImage("media/ui/pes/formation_header.png");
+  plate->Show();  // once; visibility moves the container afterwards
 
   const float crestWidth = windowManager->GetWidthPercentForHeight(kCrestHeight, 1.0f);
   for (int i = 0; i < 2; i++) {
@@ -99,6 +100,8 @@ void Gui2GoalBug::Init() {
                              kCrestHeight);
     this->AddView(crest[i]);
     crest[i]->LoadImage(match->GetTeam(i)->GetTeamData()->GetLogoUrl());
+    crest[i]->Show();  // once; see ShowStage
+    crest[i]->GetPosition(crestHomeX[i], crestHomeY[i]);
   }
 
   auto caption = [&](const std::string& suffix, float y, float height) {
@@ -124,21 +127,19 @@ void Gui2GoalBug::Init() {
 
 void Gui2GoalBug::ShowStage(Stage next) {
   const bool visible = next != Stage::None;
-  if (plate) {
-    if (visible)
-      plate->Show();
-    else
-      plate->Hide();
-  }
+  // Never Hide/Show the images: cycling visibility on a freshly created
+  // Gui2Image leaves it permanently blank (banner.cpp). They are shown once
+  // at Init; the whole view moves off-screen when there is nothing to say.
+  // The score bug carries both crests, the scorer's card only his own: the
+  // unwanted crest is blanked by moving it off its plate, not by hiding it.
+  this->SetPosition(0.0f, visible ? 0.0f : 200.0f);
   for (int i = 0; i < 2; i++) {
     if (!crest[i]) continue;
-    // The score bug carries both crests, the scorer's card only his own.
     const bool wanted = visible && (next == Stage::Score ||
                                     i == std::max(0, match->GetLastGoalTeamID()));
-    if (wanted)
-      crest[i]->Show();
-    else
-      crest[i]->Hide();
+    float cx, cy;
+    crest[i]->GetPosition(cx, cy);
+    crest[i]->SetPosition(wanted ? crestHomeX[i] : -50.0f, wanted ? crestHomeY[i] : cy);
   }
   if (!visible) {
     leftText->SetCaption(" ");

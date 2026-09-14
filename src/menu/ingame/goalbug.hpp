@@ -57,6 +57,8 @@ protected:
 
   Match* match;
   Stage stage = Stage::None;
+  float crestHomeX[2] = {0.0f, 0.0f};
+  float crestHomeY[2] = {0.0f, 0.0f};
   std::string lastScorerText;
 
   Gui2Image* plate = nullptr;
