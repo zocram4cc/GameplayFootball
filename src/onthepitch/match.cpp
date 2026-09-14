@@ -5559,22 +5559,24 @@ void Match::Process() {
     // ball
 
     // Harness only: "debug_force_goal_at_s" N puts the ball into the goal the
-    // side in possession attacks, N seconds of match time in, once. A goal is
-    // otherwise a coin flip in a short capture, and the presentation after it
-    // is what the capture is for.
+    // side in possession attacks, N seconds of match time in. A forced ball
+    // can be saved or cleared, so it retries every 25 s until one goes in. A
+    // goal is otherwise a coin flip in a short capture, and the presentation
+    // after it is what the capture is for.
     {
       static const int forceAt_s = GetConfiguration()->GetInt("debug_force_goal_at_s", 0);
-      static bool forced = false;
-      if (forceAt_s > 0 && !forced && IsInPlay() && matchTime_ms >= (unsigned long)forceAt_s * 1000 &&
+      static int forceCount = 0;
+      if (forceAt_s > 0 && IsInPlay() && !IsGoalScored() &&
+          matchTime_ms >= (unsigned long)(forceAt_s + forceCount * 25) * 1000 &&
           lastTouchTeamID >= 0) {
-        forced = true;
+        forceCount++;
         const int attacked = -teams[lastTouchTeamID]->GetSide();
-        // At the penalty spot, flat and fast, at a height nobody reaches in
+        // From 25 m, aimed inside the far post, at a height nobody reaches in
         // the two ticks it takes to cross: real goals happen in the box, and
         // PES authors every celebration camera for one. A goal from midfield
         // stages the whole walk where no track was ever meant to play.
-        ball->SetPosition(Vector3(attacked * (pitchHalfW - 11.0f), 2.0f, 1.9f));
-        ball->SetMomentum(Vector3(attacked * 30.0f, 0.0f, 0.0f));
+        ball->SetPosition(Vector3(attacked * (pitchHalfW - 25.0f), -8.0f, 1.9f));
+        ball->SetMomentum(Vector3(attacked * 30.0f, 2.0f, 0.0f));
         Log(e_Notice, "Match", "Process", "debug: forcing a goal for team " + int_to_str(lastTouchTeamID));
       }
     }
