@@ -79,6 +79,17 @@ public:
   // Where the last cut's clip runs out, in timeline frames.
   int GetTimelineFrameCount() const;
 
+  // One shot is ONE cut. A .camtrack holds every cut PES made of that scene,
+  // concatenated; playing it end to end walks out of the shot the director
+  // asked for and into the next one, which was framed on something else
+  // entirely - measured on goal_celebrate_0211_mayaL1x and _0057_mayaL1x,
+  // where later cuts aim 40-58 degrees off the celebration and film the stand.
+  // This plays the first cut from its own frame 0 and holds its last frame.
+  CamTrackFrame SampleCut(float frameWithinCut) const;
+
+  // Frames in the first cut.
+  int GetCutFrameCount() const;
+
   // Which cut is on screen at this timeline frame (0 for a single-shot track).
   int CutIndexAt(float timelineFrame) const;
 

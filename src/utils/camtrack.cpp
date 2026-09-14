@@ -196,6 +196,20 @@ int CamTrack::CutIndexAt(float timelineFrame) const {
   return index;
 }
 
+CamTrackFrame CamTrack::SampleCut(float frameWithinCut) const {
+  if (frames.empty()) return CamTrackFrame();
+  if (cuts.empty()) return Sample(frameWithinCut);
+  const Cut& cut = cuts.front();
+  const float within =
+      std::max(0.0f, std::min(frameWithinCut, (float)(cut.rowCount - 1)));
+  return Sample((float)cut.firstRow + within);
+}
+
+int CamTrack::GetCutFrameCount() const {
+  if (cuts.empty()) return (int)frames.size();
+  return cuts.front().rowCount;
+}
+
 CamTrackFrame CamTrack::SampleTimeline(float timelineFrame) const {
   if (frames.empty()) return CamTrackFrame();
   if (cuts.size() <= 1) return Sample(timelineFrame);

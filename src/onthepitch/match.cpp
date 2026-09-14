@@ -3006,7 +3006,6 @@ bool Match::StartGoalBeat(int index) {
   goalBeat = index;
   goalBeatStarted_ms = goalScoredTimer;
   goalBeatTrack = -1;
-  goalBeatYield = 0.0f;
   ResetStandoff();
 
   // Whether a track, staged on the scorer, films from somewhere sane: on this
@@ -3101,65 +3100,13 @@ bool Match::StartGoalBeat(int index) {
     }
     return out;
   };
-  // The director's pick first; if its camera opens badly, every other shot
-  // of the same state is ranked by how far its opening stands off every body
-  // it would film - PES shot most states from both sides - and the widest
-  // clearance wins. A near mark under a widened lens fills the frame with a
-  // leg, which the old first-passing pick allowed.
-  auto markDistance = [&](const GoalDirector::Shot& candidate, int candidateTrack) {
-    const CamTrackFrame opening = StageCamTrackFrame(
-        goalCamTracks[candidateTrack].SampleTimeline(0.0f),
-        {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
-        goalCelebrationYaw);
-    float best = 1e9f;
-    for (Player* player : everyone) {
-      const Vector3 at = player->GetPosition();
-      best = std::min(best, (float)std::sqrt(
-                                 (opening.position[0] - at.coords[0]) *
-                                     (opening.position[0] - at.coords[0]) +
-                                 (opening.position[1] - at.coords[1]) *
-                                     (opening.position[1] - at.coords[1])));
-    }
-    const EntranceChoreo* choreo = FindGoalChoreo(candidate.Actors());
-    if (choreo) {
-      const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
-      for (const auto& slot : choreo->GetSlots()) {
-        Vector3 mark;
-        radian yaw = 0;
-        int animFrame = 0;
-        choreo->Sample(slot, 0.0f, mark, yaw, animFrame);
-        const float dx = opening.position[0] -
-                         (goalCelebrationSubject.coords[0] + mark.coords[0] * c - mark.coords[1] * s);
-        const float dy = opening.position[1] -
-                         (goalCelebrationSubject.coords[1] + mark.coords[0] * s + mark.coords[1] * c);
-        best = std::min(best, (float)std::sqrt(dx * dx + dy * dy));
-      }
-    }
-    return best;
-  };
+  // The director's pick, full stop. PES's table names the camera for this
+  // state; second-guessing it - rejecting shots that "open badly", ranking
+  // siblings by body clearance, falling back to a procedural follow camera -
+  // is the engine overruling the source, and the result was worse than the
+  // source every time it was tried (owner, 14-09).
   const GoalDirector::Shot* shot = beat.shot;
-  int track = trackIndex(shot->Track());
-  if (track >= 0 && !opensWell(track)) track = -1;
-  if (track < 0) {
-    float bestClearance = kCelebrationLensClearance;
-    for (const GoalDirector::Shot& other : beat.state->shots) {
-      const int candidate = trackIndex(other.Track());
-      if (candidate < 0 || !opensWell(candidate)) continue;
-      const float clearance = markDistance(other, candidate);
-      if (clearance > bestClearance) {
-        bestClearance = clearance;
-        shot = &other;
-        track = candidate;
-      }
-    }
-    if (track < 0)
-      Log(e_Notice, "Match", "StartGoalBeat",
-          beat.state->name + ": no camera opens on the pitch clear of bodies; follow camera");
-    else
-      Log(e_Notice, "Match", "StartGoalBeat",
-          beat.state->name + ": " + shot->Track() + " clears every mark by " +
-              int_to_str((int)(bestClearance * 10.0f) / 10) + " m");
-  }
+  const int track = trackIndex(shot->Track());
   beat.shot = shot;
   goalBeatTrack = track;
   // The people: this beat's own choreography, cast afresh on the scorer.
@@ -3169,26 +3116,8 @@ bool Match::StartGoalBeat(int index) {
   const std::string actors = shot->Actors();
   unsigned long castLength = 0;
   if (!actors.empty() && StartGoalCast(actors)) castLength = goalCastLength_ms;
-  if (track >= 0 && activeCutsceneChoreo) {
-    const CamTrackFrame opening = StageCamTrackFrame(
-        goalCamTracks[track].SampleTimeline(0.0f),
-        {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
-        goalCelebrationYaw);
-    bool buried = false;
-    for (const Vector3& at : newCastWorlds()) {
-      const float dx = opening.position[0] - at.coords[0];
-      const float dy = opening.position[1] - at.coords[1];
-      if (std::sqrt(dx * dx + dy * dy) < kCelebrationLensClearance) buried = true;
-    }
-    if (buried) {
-      Log(e_Notice, "Match", "StartGoalBeat",
-          shot->Track() + " opens inside its own cast; the follow camera takes the beat");
-      track = -1;
-      goalBeatTrack = -1;
-    }
-  }
   const unsigned long trackLength =
-      track >= 0 ? (unsigned long)goalCamTracks[track].GetTimelineFrameCount() * 1000 / 30 : 0;
+      track >= 0 ? (unsigned long)goalCamTracks[track].GetCutFrameCount() * 1000 / 30 : 0;
   // A follow camera's duration counts only when it is the camera; some rows
   // carry a follow layer beside the track with a 10 000-frame duration.
   const unsigned long followLength = track < 0 ? (unsigned long)shot->Frames() * 1000 / 30 : 0;
@@ -3219,33 +3148,6 @@ bool Match::StartGoalBeat(int index) {
           (actors.empty() ? std::string("no cast") : actors) + ", " +
           int_to_str((int)goalBeatLength_ms) + " ms");
   return true;
-}
-
-// PES's tightest celebration camera, measured over the 733 installed goal
-// tracks: goal_celebrate_0278 at 1.20 m, on a 27-degree lens - head and
-// shoulders of a 1.8 m footballer. No shot in the library sits nearer, so no
-// shot here has to.
-constexpr float kPesTightestShot = 1.2f;
-
-// How much bigger the body this celebration is filmed on is than the
-// footballer PES framed. 1.0 for anyone PES-sized or smaller - a shot is never
-// tightened, only stood off - and capped so a freak model cannot push a camera
-// into the stands.
-float Match::GoalSubjectScale() {
-  constexpr float kPesFootballer_m = 1.8f;
-  float tallest = kPesFootballer_m;
-  auto consider = [&](Player* player) {
-    if (!player) return;
-    HumanoidBase* humanoid = player->CastHumanoid();
-    if (!humanoid || !humanoid->GetFullbodyNode()) return;
-    const AABB box = humanoid->GetFullbodyNode()->GetAABB();
-    tallest = std::max(tallest, (float)(box.maxxyz.coords[2] - box.minxyz.coords[2]));
-  };
-  // The scorer, and whoever the choreography piled onto him: a hug is framed
-  // on the group, and the biggest body in it is what the lens has to clear.
-  consider(lastGoalScorer);
-  for (const auto& cast : cutsceneCast) consider(cast.player);
-  return std::min(3.0f, tallest / kPesFootballer_m);
 }
 
 void Match::UpdateGoalBeats() {
@@ -3284,117 +3186,18 @@ void Match::UpdateGoalBeats() {
   if (goalBeatTrack >= 0) {
     // PES's own camera, staged on the scorer as every goal track is.
     const CamTrack& track = goalCamTracks[goalBeatTrack];
-    CamTrackFrame frame = track.SampleTimeline(elapsed_s * 30.0f);
+    CamTrackFrame frame = track.SampleCut(elapsed_s * 30.0f);
     frame = StageCamTrackFrame(
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
         goalCelebrationYaw);
-    frame.position[2] = std::max(0.3f, frame.position[2]);
-    // PES's tightest celebration cameras stand 1.2-2.0 m off the subject with
-    // a 23-33 degree lens (measured over the 733 installed goal tracks: 9 are
-    // under 2 m, 25 under 3 m, median 12.9 m) - head and shoulders of a 1.8 m
-    // footballer. Our squads are not 1.8 m: an imported body runs to 4.18 m
-    // and as wide, so that same 1.5 m is INSIDE the mesh and the shot reads as
-    // smeared geometry (owner's g_uv.png).
-    //
-    // The shot is not edited - it is scaled. The whole authored offset from
-    // the subject, height included, is multiplied by how much bigger this
-    // actor is than PES's man, so the angle, the lens, the dolly and the
-    // framing survive exactly and only the metre scale follows the body. The
-    // alternative, clamping the camera out of the mesh, moves PES's camera to
-    // somewhere PES never put it - tried, reverted (3549ece).
-    {
-      // ONLY the shots that do not fit. Multiplying every distance by the body
-      // ratio pushed PES's wide cameras - most of the library, median 12.9 m -
-      // out to 20-40 m, and a goal then played out as specks on the far side
-      // of the pitch. The tight ones are lifted to the nearest distance that
-      // clears this body and no further; everything else keeps PES's own
-      // distance to the centimetre.
-      const float floorDistance = kPesTightestShot * GoalSubjectScale();
-      const float dx = frame.position[0] - goalCelebrationSubject.coords[0];
-      const float dy = frame.position[1] - goalCelebrationSubject.coords[1];
-      const float dz = frame.position[2];
-      const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-      if (distance > 0.01f && distance < floorDistance) {
-        const float lift = floorDistance / distance;
-        frame.position[0] = goalCelebrationSubject.coords[0] + dx * lift;
-        frame.position[1] = goalCelebrationSubject.coords[1] + dy * lift;
-        frame.position[2] = dz * lift;
-      }
-    }
-    // Then the aim is corrected onto the cast and the lens opened to hold
-    // it: a 2-degree aim error with a 1-degree lens films the grass 1.6 m
-    // away, and PES's 2.4 m frame holds one of our athletes where it held
-    // three of theirs - the rest of the frame is the grass between them. The
-    // widening only acts when the cast does not fit, so tight tracks keep
-    // PES's lens; the run beat gains a pan that follows him instead.
-    // ponytail: span-based widening for 4cc bulk; revisit if bodies change.
-    // A narrow lens is a closeup, not a group shot: PES's 1-degree lenses
-    // frame the scorer's head and shoulders, and any span "wants" hundreds of
-    // metres at that focal length - backing off buried the run cameras 12 m
-    // into the turf. Only group lenses (6 degrees and up) hold the cast's
-    // span, by distance first and widening for the residual.
-    float castSpan = 1.2f;
-    if (frame.fov >= 6.0f) {
-      for (const Vector3& at : goalCastWorlds)
-        castSpan = std::max(castSpan, at.GetDistance(goalCelebrationSubject));
-      castSpan = std::min(castSpan, 6.0f);
-      {
-        const float half = frame.fov * 0.5f * pi / 180.0f;
-        const float dist = std::sqrt(
-            (frame.position[0] - goalCelebrationSubject.coords[0]) *
-                (frame.position[0] - goalCelebrationSubject.coords[0]) +
-            (frame.position[1] - goalCelebrationSubject.coords[1]) *
-                (frame.position[1] - goalCelebrationSubject.coords[1]) +
-            (frame.position[2] - 1.2f) * (frame.position[2] - 1.2f));
-        const float want = castSpan / (2.0f * std::max(0.02f, (float)std::tan(half)));
-        const float pull = std::max(0.0f, std::min(want - dist, 12.0f));
-        if (pull > 0.01f) {
-          const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
-          for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * pull;
-          frame.position[2] = std::max(0.5f, frame.position[2]);
-        }
-      }
-    }
-    // The track dollies; its opening clearance says nothing about frame 200.
-    // When the cast closes to within a body width of the lens, the camera
-    // yields back along the aim instead of wearing a robe - but at most 8 m,
-    // and the aim is re-taken afterwards, or the yield backs through the pile
-    // and out the other side onto the center circle. PES's shot whenever it
-    // is clear, ground given only to keep flesh out.
-    {
-      float nearest = 1e9f;
-      for (const Vector3& at : goalCastWorlds)
-        nearest = std::min(nearest, (float)std::sqrt(
-                                        (frame.position[0] - at.coords[0]) *
-                                            (frame.position[0] - at.coords[0]) +
-                                        (frame.position[1] - at.coords[1]) *
-                                            (frame.position[1] - at.coords[1]) +
-                                        (frame.position[2] - at.coords[2]) *
-                                            (frame.position[2] - at.coords[2])));
-      // Integral, not proportional: the yield must clear the 3 m, not meet
-      // it halfway and film the inside of the pile forever.
-      if (nearest < 3.0f)
-        goalBeatYield += (3.0f - nearest) * 0.2f;
-      else
-        goalBeatYield *= 0.8f;
-      goalBeatYield = std::max(0.0f, std::min(8.0f, goalBeatYield));
-      const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
-      for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * goalBeatYield;
-      frame.position[2] = std::max(0.5f, frame.position[2]);
-    }
-    // On a run beat the aim travels with the runner: his choreography carries
-    // him ten metres from the whistle spot the camera is staged on, and a
-    // one-degree lens loses him in the first second otherwise (then it films
-    // hoardings). Every later beat stages a standing cast and keeps the
-    // staged aim.
-    Vector3 aimAt = goalCelebrationSubject;
-    if (beat.state && beat.state->phase == GoalDirector::Phase::Run && !goalCastWorlds.empty()) {
-      Vector3 middle(0, 0, 0);
-      for (const Vector3& at : goalCastWorlds) middle = middle + at;
-      aimAt = middle * (1.0f / (float)goalCastWorlds.size());
-    }
-    frame = RetargetCamTrackFrame(frame, {aimAt.coords[0], aimAt.coords[1], 1.2f},
-                                  kCelebrationLensClearance, castSpan);
+    // VERBATIM. PES's camera plays exactly as the table and the .camtrack
+    // have it, staged on the celebration and nothing else: no re-aim onto the
+    // cast, no widening for our bodies, no minimum distance, no pull, no
+    // yield, no height floor (owner, 14-09: "JUST play PES' exact sequence
+    // from its director's table with no bullshit and no manipulation"). Each
+    // of those corrections was a guess at what the shot needed, and every one
+    // of them made the goals worse; the pitch being the wrong size was what
+    // actually aimed the camera at grass (8163845).
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);

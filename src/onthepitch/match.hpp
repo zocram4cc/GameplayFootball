@@ -859,15 +859,11 @@ protected:
   // camera aims at the bodies and not at kickoff marks - and stands off
   // further than the pile is wide, or the lens opens inside it.
   std::vector<Vector3> goalCastWorlds;
-  float goalBeatYield = 0.0f;  // how far the beat camera has yielded back off its track
   int goalBeatTrack = -1;                  // its authored camera in goalCamTracks, or -1
   // The plan for this goal, staged at the whistle; whether a beat is due.
   void PlanGoalBeats();
   bool StartGoalBeat(int index);
   void UpdateGoalBeats();
-  // The authored shot is scaled to the body it is filmed on (see the comment
-  // at the call site): PES frames a 1.8 m man, a 4cc squad is not that.
-  float GoalSubjectScale();
   // Chosen when the goal goes in and held for the celebration: which performance the
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;
