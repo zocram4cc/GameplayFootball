@@ -3299,9 +3299,19 @@ void Match::UpdateGoalBeats() {
       for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * goalBeatYield;
       frame.position[2] = std::max(0.5f, frame.position[2]);
     }
-    frame = RetargetCamTrackFrame(
-        frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 1.2f},
-        kCelebrationLensClearance, castSpan);
+    // On a run beat the aim travels with the runner: his choreography carries
+    // him ten metres from the whistle spot the camera is staged on, and a
+    // one-degree lens loses him in the first second otherwise (then it films
+    // hoardings). Every later beat stages a standing cast and keeps the
+    // staged aim.
+    Vector3 aimAt = goalCelebrationSubject;
+    if (beat.state && beat.state->phase == GoalDirector::Phase::Run && !goalCastWorlds.empty()) {
+      Vector3 middle(0, 0, 0);
+      for (const Vector3& at : goalCastWorlds) middle = middle + at;
+      aimAt = middle * (1.0f / (float)goalCastWorlds.size());
+    }
+    frame = RetargetCamTrackFrame(frame, {aimAt.coords[0], aimAt.coords[1], 1.2f},
+                                  kCelebrationLensClearance, castSpan);
     cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
     cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
