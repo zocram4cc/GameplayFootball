@@ -404,10 +404,13 @@ int main(int argc, const char** argv) {
 
   Initialize(*config);
 
-  srand(time(nullptr));
-  rand();        // mingw32? buggy compiler? first value seems bogus
-  randomseed();  // for the boost random
-  fastrandomseed();
+  // "random_seed" pins every generator so a headless capture repeats: two
+  // builds can then be compared frame for frame. 0 (the default) is the clock.
+  const unsigned int seed = (unsigned int)config->GetInt("random_seed", 0);
+  srand(seed ? seed : (unsigned int)time(nullptr));
+  rand();            // mingw32? buggy compiler? first value seems bogus
+  randomseed(seed);  // for the boost random
+  fastrandomseed(seed);
 
   int timeStep_ms = config->GetInt("physics_frametime_ms", 10);
 

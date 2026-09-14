@@ -3197,6 +3197,83 @@ bool Match::StartGoalBeat(int index) {
   return true;
 }
 
+// Whatever aimed it, a camera inside a player films the inside of a shirt -
+// which is what the owner's "the UVs are completely messed up" frame is: the
+// lens at contact range with a body, reading as smeared geometry. Every camera
+// in the match funnels through PreparePutBuffers, so the guard lives there
+// rather than in each of the dozen places that place one.
+//
+// The body's own mesh, not a constant: a 4cc squad is not eleven footballers.
+// Measured on /dbg/ v /smb/, models run 1.5 m to 4.2 m tall and as wide, so a
+// lens 1.26 m from a player's feet - the closest this fixture got - is outside
+// a footballer and well inside Bowser. The narrower horizontal half-extent is
+// the radius: the wider one is arms, and yielding for an outstretched arm
+// would shove the camera out of every celebration.
+//
+// Sideways, not backwards: sliding out along the line from the body barely
+// changes the shot, while pulling back along the aim rewrites the framing PES
+// authored.
+// The radius a lens must keep from a body's centre: the mean of the mesh's two
+// horizontal extents, halved. The narrower extent alone lets a lens sit inside
+// a wide costume (measured: a 4cc model 2.8 m across one axis and 0.7 m across
+// the other filled the frame at contact range and was not pushed); the wider
+// alone shoves the camera out by an outstretched arm. A footballer lands near
+// 1 m, which is also where PES's tightest celebration lens sits.
+static float BodyLensRadius(const AABB& box) {
+  const float x = (float)(box.maxxyz.coords[0] - box.minxyz.coords[0]);
+  const float y = (float)(box.maxxyz.coords[1] - box.minxyz.coords[1]);
+  return std::max(0.5f, std::min(2.5f, (x + y) * 0.25f));
+}
+
+Vector3 Match::ClearLensOfBodies(const Vector3& position) {
+  // Every body on the grass: both squads and the crew. PES's officials are
+  // bodies like any other and the lens hits them just as hard.
+  std::vector<std::pair<HumanoidBase*, Vector3>> bodies;
+  auto add = [&](HumanoidBase* humanoid, const Vector3& at) {
+    if (humanoid && humanoid->GetFullbodyNode()) bodies.push_back({humanoid, at});
+  };
+  std::vector<Player*> onThePitch;
+  GetActiveTeamPlayers(0, onThePitch);
+  GetActiveTeamPlayers(1, onThePitch);
+  for (Player* player : onThePitch) {
+    // A posed actor is wherever the choreography put him, which is not where
+    // the simulation thinks he is: during a goal walk his GetPosition() is
+    // still his kickoff mark while his body is in the pile facing the lens.
+    Vector3 at = player->GetPosition();
+    for (size_t c = 0; c < goalCastPlayers.size() && c < goalCastWorlds.size(); c++)
+      if (goalCastPlayers[c] == player) at = goalCastWorlds[c];
+    add(player->CastHumanoid(), at);
+  }
+  if (officials)
+    for (PlayerOfficial* official : {officials->GetReferee(), officials->GetLinesmanNorth(),
+                                     officials->GetLinesmanSouth()})
+      if (official) add(official->CastHumanoid(), official->GetPosition());
+
+  Vector3 out = position;
+  for (const auto& entry : bodies) {
+    // The fullbody node's AABB is LOCAL - its centre reads (0,0,0) for every
+    // player on the pitch, which is why comparing a world camera against it
+    // silently never matched. Only its extents are used; the body stands at
+    // the position paired with it.
+    const AABB box = entry.first->GetFullbodyNode()->GetAABB();
+    const Vector3 at = entry.second;
+    const float top = at.coords[2] + (float)(box.maxxyz.coords[2] - box.minxyz.coords[2]);
+    if (out.coords[2] > top || out.coords[2] < at.coords[2] - 0.2f) continue;
+    const float radius = BodyLensRadius(box);
+    float dx = out.coords[0] - at.coords[0], dy = out.coords[1] - at.coords[1];
+    float distance = std::sqrt(dx * dx + dy * dy);
+    if (distance >= radius) continue;
+    if (distance < 0.01f) {  // dead centre: any direction will do
+      dx = 1.0f;
+      dy = 0.0f;
+      distance = 1.0f;
+    }
+    out.coords[0] = at.coords[0] + dx / distance * radius;
+    out.coords[1] = at.coords[1] + dy / distance * radius;
+  }
+  return out;
+}
+
 void Match::UpdateGoalBeats() {
   if (goalBeat < 0) return;
   // While the walk is on, the kickoff waits for it every tick, not just at
@@ -3389,6 +3466,7 @@ void Match::UpdateCutsceneChoreo() {
     const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
     bool performing = false;
     goalCastWorlds.clear();
+    goalCastPlayers.clear();
     for (auto& cast : cutsceneCast) {
       Vector3 local;
       radian yaw = 0;
@@ -3420,6 +3498,7 @@ void Match::UpdateCutsceneChoreo() {
         continue;
       }
       goalCastWorlds.push_back(world);
+      goalCastPlayers.push_back(cast.player);
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
     }
@@ -5901,7 +5980,7 @@ void Match::PreparePutBuffers() {
   // float xfun = sin((float)(EnvironmentManager::GetInstance().GetTime_ms() +
   // PredictFrameTimeToGo_ms(7)) * 0.001f) * 60; float xfun = sin(snapshotTime_ms * 0.001f) * 60.0f;
   // buf_cameraNodePosition.SetValue(cameraNodePosition + Vector3(xfun, 0, 0), snapshotTime_ms);
-  buf_cameraNodePosition.SetValue(cameraNodePosition, snapshotTime_ms);
+  buf_cameraNodePosition.SetValue(ClearLensOfBodies(cameraNodePosition), snapshotTime_ms);
 
   // printf("timetogo prediction: %i ms\n", PredictFrameTimeToGo_ms(7));
 

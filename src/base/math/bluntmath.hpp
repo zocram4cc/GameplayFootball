@@ -29,11 +29,14 @@ void normalize(real v[3]);
 bool sign(real n);
 signed int signSide(real n);  // returns -1 or 1
 bool is_odd(int n);
-void randomseed();
+// Seed 0 keeps the old behaviour (the wall clock). A fixed seed makes a
+// headless capture repeatable, which is the only way a camera or animation
+// change can be compared frame for frame between two builds.
+void randomseed(unsigned int seed = 0);
 real random(real min, real max);
 
-inline void fastrandomseed() {
-  fastrandseed = static_cast<unsigned int>(std::time(0));
+inline void fastrandomseed(unsigned int seed = 0) {
+  fastrandseed = seed ? seed : static_cast<unsigned int>(std::time(0));
   max_uint = std::numeric_limits<unsigned int>::max();
 }
 

@@ -62,8 +62,8 @@ bool is_odd(int n) {
   return n & 1;
 }
 
-void randomseed() {
-  rng_engine.seed(static_cast<unsigned int>(std::time(0)));
+void randomseed(unsigned int seed) {
+  rng_engine.seed(seed ? seed : static_cast<unsigned int>(std::time(0)));
 }
 
 inline real boostrandom() {
