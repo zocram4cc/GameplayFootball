@@ -198,8 +198,15 @@ void GamePage::BuildVersusBanner() {
 
   // Hidden until the beat that wants it: Show() here would put it over the
   // first frame of the walkout.
+  versusBatchesBaseline = DrawnBatches();
   versusAlpha = 0.0f;
   SetVersusVisible(false);
+}
+
+unsigned long GamePage::DrawnBatches() {
+  GraphicsSystem* system = GetGraphicsSystem();
+  if (!system || !system->GetRenderer3D()) return 0;
+  return system->GetRenderer3D()->DrawnBatches();
 }
 
 void GamePage::SetVersusVisible(bool visible) {
@@ -229,7 +236,10 @@ void GamePage::UpdateVersusBanner() {
   if (!match || !versus[0].plate) return;
 
   const PrematchTimeline::State beat = match->GetPrematchState();
-  const float alpha = (match->IsInEntrance() &&
+  // The scene draws a tick after the page comes up; the banner waits for its
+  // first drawn batch rather than playing over the blank swap (dbgink, 26 s).
+  const bool sceneUp = DrawnBatches() > versusBatchesBaseline;
+  const float alpha = (sceneUp && match->IsInEntrance() &&
                        beat.overlay == PrematchTimeline::Overlay::Versus)
                           ? beat.overlayAlpha
                           : 0.0f;

@@ -156,6 +156,14 @@ public:
   virtual ~Renderer3D(){};
 
   virtual void SwapBuffers() = 0;
+  // Frames actually presented. Overlays that must not play over an unpresented
+  // scene (the versus banner) baseline this when they appear and wait for a
+  // few fresh presents.
+  virtual unsigned long PresentedFrames() const { return 0; }
+  // 3D batches drawn, ever. Unlike presents, this only advances once the
+  // scene has geometry on screen - the frame a fresh page's overlay must wait
+  // for before playing over it.
+  virtual unsigned long DrawnBatches() const { return 0; }
 
   virtual void SetMatrix(const std::string& shaderUniformName, const Matrix4& matrix) = 0;
 

@@ -49,6 +49,10 @@ protected:
   blunted::Gui2Caption* versusVs = nullptr;
   void SetVersusVisible(bool visible);
   float versusAlpha = -1.0f;
+  // 3D batches drawn when the banner was built: the versus overlay waits for
+  // the scene to draw over a fresh page, never over the one blank swap before it.
+  unsigned long versusBatchesBaseline = 0;
+  static unsigned long DrawnBatches();
   Match* match;
   unsigned long matchReadyTime_ms;
   bool gamePlanShotTriggered = false;

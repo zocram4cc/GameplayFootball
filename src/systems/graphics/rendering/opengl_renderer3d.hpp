@@ -21,6 +21,8 @@
 
 #include "interface_renderer3d.hpp"
 
+#include <atomic>
+
 #ifdef WIN32
 #include <SDL2/SDL_syswm.h>
 #endif
@@ -33,6 +35,8 @@ public:
   virtual ~OpenGLRenderer3D();
 
   virtual void SwapBuffers();
+  virtual unsigned long PresentedFrames() const { return presentedFrames.load(); }
+  virtual unsigned long DrawnBatches() const { return drawnBatches.load(); }
 
   virtual void SetMatrix(const std::string& shaderUniformName, const Matrix4& matrix);
 
@@ -189,6 +193,9 @@ protected:
   // std::map<int, GLsync> VAOfence;
 
   signed int _cache_activeTextureUnit;
+
+  std::atomic<unsigned long> presentedFrames{0};
+  std::atomic<unsigned long> drawnBatches{0};
 
   // members and functions for rendering overlay with shaders instead of deprecated methods
   VertexBufferID

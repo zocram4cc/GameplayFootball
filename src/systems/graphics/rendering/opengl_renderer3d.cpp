@@ -253,6 +253,7 @@ void StopFrameRecording() {
 
 void OpenGLRenderer3D::SwapBuffers() {
   SDL_GL_SwapWindow(window);
+  presentedFrames++;
 
   // Screenshots: written straight after the frame is presented, so what lands
   // on disk is exactly what was drawn. Used for offscreen (xvfb) verification.
@@ -1555,6 +1556,7 @@ void DrawBufferChunk(int startIndex, int count, int instanceCount = 0) {
 
 void OpenGLRenderer3D::RenderVertexBuffer(
     const std::deque<VertexBufferQueueEntry>& vertexBufferQueue, e_RenderMode renderMode) {
+  if (!vertexBufferQueue.empty()) drawnBatches++;
   /*
   CPrecisionTimer myTimer;
   std::this_thread::yield();
