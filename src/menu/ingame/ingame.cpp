@@ -73,8 +73,11 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   items.push_back({MenuIcons::Icon::Shield, text.Translate("ingame_visual_options")});
   items.push_back({MenuIcons::Icon::Gear, text.Translate("ingame_system_settings")});
   items.push_back({MenuIcons::Icon::Back, text.Translate("ingame_forfeit_match")});
-  std::vector<MenuIcons::IconButton> bar =
-      MenuIcons::MakeIconBar(windowManager, this, "pause_bar", barY, items);
+  // Nine plates do not fit one row; the duel bar wraps 5+4 at full size
+  // rather than shrinking (one geometry everywhere).
+  const size_t rows = managerDuel ? 2 : 1;
+  std::vector<MenuIcons::IconButton> bar = MenuIcons::MakeIconBar(
+      windowManager, this, "pause_bar", barY, items, 50.0f, managerDuel ? 5 : 0);
 
   size_t i = 0;
   bar[i++].button->sig_OnClick.connect([this](...) { GoGamePlan(); });
@@ -92,7 +95,8 @@ IngamePage::IngamePage(Gui2WindowManager* windowManager, const Gui2PageData& pag
   bar[i++].button->sig_OnClick.connect([this](...) { GoPreQuit(); });
 
   MenuIcons::MakeHintLine(windowManager, this, "caption_ingame_hint",
-                          barY + MenuIcons::kBarItemH + 1.0f, text.Translate("ingame_hint"));
+                          barY + rows * (MenuIcons::kBarItemH + MenuIcons::kBarGap),
+                          text.Translate("ingame_hint"));
 
   bar[0].button->SetFocus();
   this->Show();

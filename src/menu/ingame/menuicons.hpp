@@ -102,7 +102,8 @@ struct BarItem {
 };
 std::vector<IconButton> MakeIconBar(blunted::Gui2WindowManager* windowManager,
                                     blunted::Gui2View* page, const std::string& name, float y,
-                                    const std::vector<BarItem>& items, float centreX = 50.0f);
+                                    const std::vector<BarItem>& items, float centreX = 50.0f,
+                                    size_t maxPerRow = 0);
 
 // The hint line under a bar: one place, one size, one casing.
 blunted::Gui2Caption* MakeHintLine(blunted::Gui2WindowManager* windowManager,

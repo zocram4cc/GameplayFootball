@@ -264,14 +264,27 @@ CrestPlate MakeCrestPlate(Gui2WindowManager* windowManager, Gui2View* page,
 
 std::vector<IconButton> MakeIconBar(Gui2WindowManager* windowManager, Gui2View* page,
                                     const std::string& name, float y,
-                                    const std::vector<BarItem>& items, float centreX) {
+                                    const std::vector<BarItem>& items, float centreX,
+                                    size_t maxPerRow) {
+  // Nine plates at full size run off the screen (manager-duel pause bar), and
+  // shrinking them breaks the one-geometry rule - so a long bar wraps into
+  // centred rows instead. Focus moves spatially, so arrows cross the wrap.
+  const size_t perRow = maxPerRow > 0 ? maxPerRow : items.size();
   std::vector<IconButton> out;
-  const float total = items.size() * kBarItemW + (items.size() - 1) * kBarGap;
-  float x = std::max(1.0f, std::min(99.0f - total, centreX - total * 0.5f));
-  for (size_t i = 0; i < items.size(); i++) {
-    out.push_back(MakeIconButton(windowManager, page, name + "_" + std::to_string(i), x, y,
-                                 kBarItemW, kBarItemH, items[i].icon, items[i].caption));
-    x += kBarItemW + kBarGap;
+  size_t done = 0;
+  int row = 0;
+  while (done < items.size()) {
+    const size_t count = std::min(perRow, items.size() - done);
+    const float total = count * kBarItemW + (count - 1) * kBarGap;
+    float x = std::max(1.0f, std::min(99.0f - total, centreX - total * 0.5f));
+    const float ry = y + row * (kBarItemH + kBarGap);
+    for (size_t i = 0; i < count; i++) {
+      out.push_back(MakeIconButton(windowManager, page, name + "_" + std::to_string(done), x, ry,
+                                   kBarItemW, kBarItemH, items[done].icon, items[done].caption));
+      x += kBarItemW + kBarGap;
+      done++;
+    }
+    row++;
   }
   return out;
 }
