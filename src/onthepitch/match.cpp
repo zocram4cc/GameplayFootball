@@ -3064,7 +3064,22 @@ bool Match::StartGoalBeat(int index) {
   // for a celebration in the box. The cut hides the jump from wherever the
   // run ended.
   if (beat.state && beat.state->phase != GoalDirector::Phase::Run) {
+    // In front of the goal, never in it. goalBallPosition is where the ball
+    // finished, which after a goal is inside the net at x 55 and beyond - and
+    // a celebration staged there puts PES's cameras outside the stadium on the
+    // deck, filming turf. Measured on this fixture before the clamp: subject
+    // 55,2 with the camera at 72,0 and z 0.5 for the whole walk, which is
+    // twenty-five seconds of grass ("the goals are awful"). PES celebrates in
+    // front of the goal it scored in, so the subject is pulled back onto the
+    // field of play and held clear of the touchlines the same way.
+    constexpr float kCelebrationInset_m = 8.0f;
     goalCelebrationSubject = goalBallPosition;
+    goalCelebrationSubject.coords[0] =
+        clamp(goalCelebrationSubject.coords[0], -pitchHalfW + kCelebrationInset_m,
+              pitchHalfW - kCelebrationInset_m);
+    goalCelebrationSubject.coords[1] =
+        clamp(goalCelebrationSubject.coords[1], -pitchHalfH + kCelebrationInset_m,
+              pitchHalfH - kCelebrationInset_m);
     goalCelebrationSubject.coords[2] = 0.0f;
   }
   // The new cast's own marks at frame 0: the camera must clear where its
@@ -3177,7 +3192,16 @@ bool Match::StartGoalBeat(int index) {
   // A follow camera's duration counts only when it is the camera; some rows
   // carry a follow layer beside the track with a 10 000-frame duration.
   const unsigned long followLength = track < 0 ? (unsigned long)shot->Frames() * 1000 / 30 : 0;
-  goalBeatLength_ms = std::max({castLength, trackLength, followLength, (unsigned long)1000});
+  // A beat lasts as long as the PERFORMANCE, not as long as the camera roll.
+  // PES's tracks are whole demo cuts concatenated - 12.7 s of camera behind a
+  // 2.6 s celebration, 22.6 s behind a 5.7 s hug - and taking the longer of
+  // the two left the walk sitting on a static wide shot of an empty six-yard
+  // box for ten and seventeen seconds (owner: "the goals are awful",
+  // tmp/g2_goal1.png). A camera track is a resource the beat samples, not a
+  // duration it owes. Without a cast there is nothing but the camera, so the
+  // roll is the beat.
+  goalBeatLength_ms = castLength > 0 ? std::max(castLength, (unsigned long)1500)
+                                     : std::max({trackLength, followLength, (unsigned long)1000});
   goalBeatLength_ms = std::min(goalBeatLength_ms, (unsigned long)15000);
   // The window grows to hold this beat, and the restart waits for it; the last
   // beat's end then closes the window (UpdateGoalBeats).
@@ -3196,6 +3220,12 @@ bool Match::StartGoalBeat(int index) {
           int_to_str((int)goalBeatLength_ms) + " ms");
   return true;
 }
+
+// PES's tightest celebration camera, measured over the 733 installed goal
+// tracks: goal_celebrate_0278 at 1.20 m, on a 27-degree lens - head and
+// shoulders of a 1.8 m footballer. No shot in the library sits nearer, so no
+// shot here has to.
+constexpr float kPesTightestShot = 1.2f;
 
 // How much bigger the body this celebration is filmed on is than the
 // footballer PES framed. 1.0 for anyone PES-sized or smaller - a shot is never
@@ -3273,12 +3303,23 @@ void Match::UpdateGoalBeats() {
     // alternative, clamping the camera out of the mesh, moves PES's camera to
     // somewhere PES never put it - tried, reverted (3549ece).
     {
-      const float scale = GoalSubjectScale();
-      if (scale > 1.01f)
-        for (int c = 0; c < 3; c++) {
-          const float origin = c == 2 ? 0.0f : goalCelebrationSubject.coords[c];
-          frame.position[c] = origin + (frame.position[c] - origin) * scale;
-        }
+      // ONLY the shots that do not fit. Multiplying every distance by the body
+      // ratio pushed PES's wide cameras - most of the library, median 12.9 m -
+      // out to 20-40 m, and a goal then played out as specks on the far side
+      // of the pitch. The tight ones are lifted to the nearest distance that
+      // clears this body and no further; everything else keeps PES's own
+      // distance to the centimetre.
+      const float floorDistance = kPesTightestShot * GoalSubjectScale();
+      const float dx = frame.position[0] - goalCelebrationSubject.coords[0];
+      const float dy = frame.position[1] - goalCelebrationSubject.coords[1];
+      const float dz = frame.position[2];
+      const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+      if (distance > 0.01f && distance < floorDistance) {
+        const float lift = floorDistance / distance;
+        frame.position[0] = goalCelebrationSubject.coords[0] + dx * lift;
+        frame.position[1] = goalCelebrationSubject.coords[1] + dy * lift;
+        frame.position[2] = dz * lift;
+      }
     }
     // Then the aim is corrected onto the cast and the lens opened to hold
     // it: a 2-degree aim error with a 1-degree lens films the grass 1.6 m
