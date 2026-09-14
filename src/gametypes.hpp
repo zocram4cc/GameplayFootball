@@ -49,8 +49,16 @@ enum e_MatchPhase {
   e_MatchPhase_Penalties,
 };
 
-const float pitchHalfW = 55;  // only inside side- and backlines
-const float pitchHalfH = 36;
+// PES's pitch, not GF's. Every PES-derived thing on this pitch - the goal
+// director's choreography marks, the camera tracks that film them, the
+// entrance staging - was authored for a 105 x 68 m field, which is also the
+// real-world standard. GF shipped 110 x 72, so an imported shot aimed at a
+// mark near a line missed it by two to three metres, and a 2-degree PES
+// telephoto lens covers 1.4 m at 40 m: the shot filmed grass (owner, 14-09).
+// The markings, the goals and the AI zones are all expressed in these two
+// numbers, so they move together.
+const float pitchHalfW = 52.5;  // only inside side- and backlines
+const float pitchHalfH = 34;
 const float pitchFullHalfW = 60;  // including 'rim'
 const float pitchFullHalfH = 40;
 const float lineHalfW = 0.06f;
