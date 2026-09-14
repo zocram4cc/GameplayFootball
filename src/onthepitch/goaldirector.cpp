@@ -174,17 +174,20 @@ const Shot* ChooseShot(const State& state, const Situation& situation) {
   for (const Shot& shot : state.shots)
     if (Admits(shot, situation)) admitted.push_back(&shot);
   if (admitted.empty()) return nullptr;
-  // Rows with an authored camera first: a follow-only row is PES's fallback,
-  // and the hug follow origin sits inside the pile of arriving teammates.
-  // Then the heaviest few, with the seed picking among them so a state does
-  // not always open on the same angle.
-  std::stable_sort(admitted.begin(), admitted.end(), [](const Shot* a, const Shot* b) {
-    const bool at = !a->Track().empty(), bt = !b->Track().empty();
-    if (at != bt) return at > bt;
-    return a->weight > b->weight;
-  });
-  const size_t top = std::min<size_t>(admitted.size(), 4);
-  return admitted[std::abs(situation.seed) % top];
+  // Rows with an authored camera win outright: a follow-only row is PES's
+  // fallback for when no camera is installed, not a coin flip against one
+  // (the hug follow origin sits inside the pile of arriving teammates). Then
+  // the heaviest few, with the seed picking among them so a state does not
+  // always open on the same angle.
+  std::vector<const Shot*> tracked;
+  for (const Shot* shot : admitted)
+    if (!shot->Track().empty()) tracked.push_back(shot);
+  const std::vector<const Shot*>& pool = tracked.empty() ? admitted : tracked;
+  std::vector<const Shot*> ranked(pool.begin(), pool.end());
+  std::stable_sort(ranked.begin(), ranked.end(),
+                   [](const Shot* a, const Shot* b) { return a->weight > b->weight; });
+  const size_t top = std::min<size_t>(ranked.size(), 4);
+  return ranked[std::abs(situation.seed) % top];
 }
 
 std::vector<Beat> Plan(const Director& director, const Situation& s) {

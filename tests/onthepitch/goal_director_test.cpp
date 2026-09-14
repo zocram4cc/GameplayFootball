@@ -145,6 +145,21 @@ TEST(GoalDirector, NoRoomMeansNoRun) {
                                                           "GOAL_C_FINISH_SUCCESS"}));
 }
 
+TEST(GoalDirector, AnAuthoredCameraBeatsEveryFollowRow) {
+  Director d = Parse(kText);
+  // GOAL_RUN_30_BANZAI's first row is follow-only, its second has a track:
+  // every seed must come back with the track.
+  const State* run = d.Find("GOAL_RUN_30_BANZAI");
+  for (int seed = 0; seed < 8; seed++) {
+    Situation s;
+    s.seed = seed;
+    s.quadrant = 1;
+    const Shot* shot = ChooseShot(*run, s);
+    ASSERT_TRUE(shot);
+    EXPECT_EQ(shot->Track(), "goal_2018_run_30_banzai_Z_fromR");
+  }
+}
+
 TEST(GoalDirector, HugsNeedAnOccasionTheirMaskAdmits) {
   Director d = Parse(kText);
   const State* lv3 = d.Find("GOAL_HUGA_LV3");
