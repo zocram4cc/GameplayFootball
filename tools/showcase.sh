@@ -37,6 +37,7 @@ while [ $# -gt 0 ]; do
     --base) base="$2"; shift 2 ;;
     --bin) bin="$2"; shift 2 ;;
     --limit-mb) limit_mb="$2"; shift 2 ;;
+    --seconds) seconds="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -108,6 +109,10 @@ encoder=$!
 # from full time and the run was still reported as a success (see the teardown
 # check below, which SIGTERM survives).
 budget=$(( minutes * 60 * 3 + 900 ))
+# --seconds N caps the run instead: a fail-fast capture of one moment (a forced
+# goal at 0:40, say) that lands as a playable file in a minute or two, rather
+# than a match that only finalises at full time.
+[ -n "${seconds:-}" ] && budget="$seconds"
 
 echo "recording ${minutes}-minute halves, team $team1 v team $team2 -> $out"
 # SDL's offscreen driver renders through EGL straight onto the card - no X
@@ -138,7 +143,7 @@ wait "$encoder"
 # A match that was cut short still tears down cleanly, so teardown alone does
 # not say the match finished. In full-match mode the engine prints its own
 # completion line, and that is what "complete" means.
-if grep -q '"menu_smoke_test_full_match" "true"' "$cfg" &&
+if [ -z "${seconds:-}" ] && grep -q '"menu_smoke_test_full_match" "true"' "$cfg" &&
    ! grep -q "Full match complete" "$log"; then
   echo "the match did not reach full time (exit $status)" >&2
   grep -aE "clock [0-9]+:" "$log" | tail -3 >&2
@@ -148,7 +153,7 @@ if grep -q '"menu_smoke_test_full_match" "true"' "$cfg" &&
   exit 1
 fi
 
-if ! grep -q "destroying scenemanager" "$log"; then
+if [ -z "${seconds:-}" ] && ! grep -q "destroying scenemanager" "$log"; then
   echo "run did not reach teardown (exit $status); this is not a complete match" >&2
   tail -20 "$log" >&2
   cp "$log" "${out%.*}.log" 2>/dev/null
