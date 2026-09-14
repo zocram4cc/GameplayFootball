@@ -2588,13 +2588,24 @@ void Match::BuildStadiumBlockers() {
   for (const auto& geom : geoms) {
     if (!geom) continue;
     const AABB box = geom->GetAABB();
-    // Taller than a man: stands, roofs, arches, tunnels. The turf, the
-    // line markings and the hoardings stay out, so play-level shots never trip.
-    if (box.maxxyz.coords[2] - box.minxyz.coords[2] > 1.5f) stadiumBlockers.push_back(box);
+    const float ex = box.maxxyz.coords[0] - box.minxyz.coords[0];
+    const float ey = box.maxxyz.coords[1] - box.minxyz.coords[1];
+    const float ez = box.maxxyz.coords[2] - box.minxyz.coords[2];
+    // A component, not a volume: taller than a man, smaller than a stand in
+    // every direction, near the ground. Whole bowls, roofs, the skydome and
+    // the city come as single meshes whose boxes span the picture - they
+    // would fail every sightline - and the turf and hoardings stay low.
+    // (The ring arch is one such mesh: its legs only count once the exporter
+    // splits it. Until then, beats can still open looking along one.)
+    const bool nearField = box.minxyz.coords[0] < 90.0f && box.maxxyz.coords[0] > -90.0f &&
+                           box.minxyz.coords[1] < 70.0f && box.maxxyz.coords[1] > -70.0f;
+    if (ez > 1.5f && ex <= 30.0f && ey <= 30.0f && ez <= 30.0f && nearField)
+      stadiumBlockers.push_back(box);
   }
   Log(e_Notice, "Match", "BuildStadiumBlockers",
       int_to_str((int)stadiumBlockers.size()) + " blockers from " +
           int_to_str((int)geoms.size()) + " stadium meshes");
+
 }
 
 bool Match::SightBlocked(const Vector3& from, const Vector3& to) {
