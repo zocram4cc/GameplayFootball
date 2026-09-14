@@ -865,6 +865,9 @@ protected:
   void PlanGoalBeats();
   bool StartGoalBeat(int index);
   void UpdateGoalBeats();
+  // The authored shot is scaled to the body it is filmed on (see the comment
+  // at the call site): PES frames a 1.8 m man, a 4cc squad is not that.
+  float GoalSubjectScale();
   // Chosen when the goal goes in and held for the celebration: which performance the
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;

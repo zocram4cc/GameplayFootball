@@ -145,6 +145,12 @@ struct Options {
   // actor is cast on.
   std::string cutscene;
   std::string camtrack;
+  // What the match does with a goal camera on a body that is not PES-sized:
+  // the whole authored offset from the subject is multiplied, so the angle,
+  // the lens and the dolly survive and only the metre scale follows the body
+  // (Match::GoalSubjectScale). 0 means "work it out from the body", 1 shows
+  // PES's own distance untouched.
+  float subjectScale = 0.0f;
   std::string body = "media/objects/players/models/fullbody.ase";
   // PES's camera as authored, without the match's re-aim at the primary actor.
   bool authoredCamera = false;
@@ -180,6 +186,7 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--cloth-texture" && hasNext) options.clothTexture = argv[++i];
     else if (arg == "--cutscene" && hasNext) options.cutscene = argv[++i];
     else if (arg == "--camtrack" && hasNext) options.camtrack = argv[++i];
+    else if (arg == "--subject-scale" && hasNext) options.subjectScale = atof(argv[++i]);
     else if (arg == "--body" && hasNext) options.body = argv[++i];
     else if (arg == "--authored-camera") options.authoredCamera = true;
     else if (arg == "--anim" && hasNext) options.anim = argv[++i];
@@ -590,10 +597,11 @@ class CutsceneTask : public IUserTask {
   CutsceneTask(const EntranceChoreo* choreo, std::vector<CutsceneActor>* cast,
                const CamTrack* track, boost::intrusive_ptr<Node> cameraNode,
                boost::intrusive_ptr<Camera> camera, const ViewerCamera::Shot& fallback,
-               float duration_ms, int frames, bool authoredCamera, const std::string& out)
-      : choreo(choreo), cast(cast), track(track), cameraNode(cameraNode), camera(camera),
-        fallback(fallback), duration_ms(duration_ms), frames(frames),
-        authoredCamera(authoredCamera), out(out) {}
+               float duration_ms, int frames, bool authoredCamera, float subjectScale,
+               const std::string& out)
+      : choreo(choreo), cast(cast), track(track), subjectScale(subjectScale),
+        cameraNode(cameraNode), camera(camera), fallback(fallback), duration_ms(duration_ms),
+        frames(frames), authoredCamera(authoredCamera), out(out) {}
 
   void GetPhase() override {}
   void ProcessPhase() override {}
@@ -641,6 +649,11 @@ class CutsceneTask : public IUserTask {
       // with the same guard (Match::UpdateIngameCamera, RetargetCamTrackFrame).
       // --authored-camera shows PES's aim untouched, which is how that offset was
       // measured in the first place.
+      if (havePrimary && subjectScale > 1.01f)
+        for (int c = 0; c < 3; c++) {
+          const float origin = c == 2 ? 0.0f : primary.coords[c];
+          frame.position[c] = origin + (frame.position[c] - origin) * subjectScale;
+        }
       if (!authoredCamera && havePrimary)
         frame = RetargetCamTrackFrame(
             frame, {primary.coords[0], primary.coords[1], primary.coords[2] + 1.0f}, 1.5f, 0.15f);
@@ -660,6 +673,7 @@ class CutsceneTask : public IUserTask {
   const EntranceChoreo* choreo;
   std::vector<CutsceneActor>* cast;
   const CamTrack* track;
+  float subjectScale = 1.0f;
   boost::intrusive_ptr<Node> cameraNode;
   boost::intrusive_ptr<Camera> camera;
   ViewerCamera::Shot fallback;
@@ -868,7 +882,7 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
     std::shared_ptr<IUserTask> driver(new CutsceneTask(&choreo, &cast, haveTrack ? &track : nullptr,
                                                        cameraNode, camera, fallback, duration_ms,
                                                        options.shots, options.authoredCamera,
-                                                       options.out));
+                                                       options.subjectScale, options.out));
     // Paced, unlike the turntable: the recorder samples the presented frame at 60 Hz
     // and a skinned cast draws fast enough that an unpaced run put three frames of
     // sixteen in the file. Forty milliseconds a frame keeps every shot.
@@ -899,7 +913,7 @@ int main(int argc, const char** argv) {
   const Options options = Parse(argc, argv);
   if (options.model.empty() && options.cutscene.empty()) {
     std::cout << "gfviewer <model.ase> [--anim CLIP] [--shots N] [--out DIR] [--fov D] [--pitch R]\n"
-              << "gfviewer --cutscene <pack.chor> [--camtrack T] [--body M] --shots N --out DIR\n";
+              << "gfviewer --cutscene <pack.chor> [--camtrack T] [--body M] [--subject-scale S] --shots N --out DIR\n";
     return 1;
   }
 

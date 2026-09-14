@@ -3197,6 +3197,27 @@ bool Match::StartGoalBeat(int index) {
   return true;
 }
 
+// How much bigger the body this celebration is filmed on is than the
+// footballer PES framed. 1.0 for anyone PES-sized or smaller - a shot is never
+// tightened, only stood off - and capped so a freak model cannot push a camera
+// into the stands.
+float Match::GoalSubjectScale() {
+  constexpr float kPesFootballer_m = 1.8f;
+  float tallest = kPesFootballer_m;
+  auto consider = [&](Player* player) {
+    if (!player) return;
+    HumanoidBase* humanoid = player->CastHumanoid();
+    if (!humanoid || !humanoid->GetFullbodyNode()) return;
+    const AABB box = humanoid->GetFullbodyNode()->GetAABB();
+    tallest = std::max(tallest, (float)(box.maxxyz.coords[2] - box.minxyz.coords[2]));
+  };
+  // The scorer, and whoever the choreography piled onto him: a hug is framed
+  // on the group, and the biggest body in it is what the lens has to clear.
+  consider(lastGoalScorer);
+  for (const auto& cast : cutsceneCast) consider(cast.player);
+  return std::min(3.0f, tallest / kPesFootballer_m);
+}
+
 void Match::UpdateGoalBeats() {
   if (goalBeat < 0) return;
   // While the walk is on, the kickoff waits for it every tick, not just at
@@ -3238,6 +3259,27 @@ void Match::UpdateGoalBeats() {
         frame, {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
         goalCelebrationYaw);
     frame.position[2] = std::max(0.3f, frame.position[2]);
+    // PES's tightest celebration cameras stand 1.2-2.0 m off the subject with
+    // a 23-33 degree lens (measured over the 733 installed goal tracks: 9 are
+    // under 2 m, 25 under 3 m, median 12.9 m) - head and shoulders of a 1.8 m
+    // footballer. Our squads are not 1.8 m: an imported body runs to 4.18 m
+    // and as wide, so that same 1.5 m is INSIDE the mesh and the shot reads as
+    // smeared geometry (owner's g_uv.png).
+    //
+    // The shot is not edited - it is scaled. The whole authored offset from
+    // the subject, height included, is multiplied by how much bigger this
+    // actor is than PES's man, so the angle, the lens, the dolly and the
+    // framing survive exactly and only the metre scale follows the body. The
+    // alternative, clamping the camera out of the mesh, moves PES's camera to
+    // somewhere PES never put it - tried, reverted (3549ece).
+    {
+      const float scale = GoalSubjectScale();
+      if (scale > 1.01f)
+        for (int c = 0; c < 3; c++) {
+          const float origin = c == 2 ? 0.0f : goalCelebrationSubject.coords[c];
+          frame.position[c] = origin + (frame.position[c] - origin) * scale;
+        }
+    }
     // Then the aim is corrected onto the cast and the lens opened to hold
     // it: a 2-degree aim error with a 1-degree lens films the grass 1.6 m
     // away, and PES's 2.4 m frame holds one of our athletes where it held
