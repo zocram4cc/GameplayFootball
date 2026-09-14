@@ -3216,8 +3216,12 @@ void Match::UpdateGoalBeats() {
                                             (frame.position[1] - at.coords[1]) +
                                         (frame.position[2] - at.coords[2]) *
                                             (frame.position[2] - at.coords[2])));
-      const float want = nearest < 3.0f ? std::min(3.0f - nearest, 8.0f) : 0.0f;
-      goalBeatYield += (want - goalBeatYield) * 0.2f;
+      // Integral, not proportional: the yield must clear the 3 m, not meet
+      // it halfway and film the inside of the pile forever.
+      if (nearest < 3.0f)
+        goalBeatYield += (3.0f - nearest) * 0.2f;
+      else
+        goalBeatYield *= 0.8f;
       goalBeatYield = std::max(0.0f, std::min(8.0f, goalBeatYield));
       const std::array<float, 3> fwd = CamTrackForward(frame.rotation);
       for (int c = 0; c < 3; c++) frame.position[c] -= fwd[c] * goalBeatYield;
