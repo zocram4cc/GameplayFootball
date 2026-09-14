@@ -3150,6 +3150,16 @@ bool Match::StartGoalBeat(int index) {
 
 void Match::UpdateGoalBeats() {
   if (goalBeat < 0) return;
+  // While the walk is on, the kickoff waits for it every tick, not just at
+  // beat starts: the referee schedules off the default length whenever it
+  // gets around to the goal, and any ordering gap lets ResetSituation fire
+  // under the celebration and hand a live camera empty grass.
+  if (referee->GetBuffer().active) {
+    const unsigned long prepareAt = GoalSequence::RestartPrepareAt_ms(
+        actualTime_ms - goalScoredTimer, goalCelebrationLength_ms);
+    if (referee->GetBuffer().prepareTime < prepareAt)
+      referee->AlterSetPiecePrepareTime(prepareAt);
+  }
   if (goalScoredTimer - goalBeatStarted_ms >= goalBeatLength_ms) {
     if (!StartGoalBeat(goalBeat + 1)) {
       // The walk is done: the celebration ends with it, so the replay and the
