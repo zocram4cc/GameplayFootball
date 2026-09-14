@@ -2991,10 +2991,12 @@ bool Match::StartGoalBeat(int index) {
         std::fabs(opening.position[1]) > pitchHalfH + 8.0f)
       return false;
     // ... and where the last beat posed them: sim positions are kickoff marks.
+    // 2.5 m, not the 1.4 m lens clearance: a mark nearer than that fills the
+    // frame edge with a leg once the lens opens to the cast's span.
     auto clearOf = [&](const Vector3& at) {
       const float dx = opening.position[0] - at.coords[0];
       const float dy = opening.position[1] - at.coords[1];
-      return std::sqrt(dx * dx + dy * dy) >= kCelebrationLensClearance;
+      return std::sqrt(dx * dx + dy * dy) >= 2.5f;
     };
     for (Player* player : everyone)
       if (!clearOf(player->GetPosition())) return false;
@@ -3034,21 +3036,64 @@ bool Match::StartGoalBeat(int index) {
     }
     return out;
   };
+  // The director's pick first; if its camera opens badly, every other shot
+  // of the same state is ranked by how far its opening stands off every body
+  // it would film - PES shot most states from both sides - and the widest
+  // clearance wins. A near mark under a widened lens fills the frame with a
+  // leg, which the old first-passing pick allowed.
+  auto markDistance = [&](const GoalDirector::Shot& candidate, int candidateTrack) {
+    const CamTrackFrame opening = StageCamTrackFrame(
+        goalCamTracks[candidateTrack].SampleTimeline(0.0f),
+        {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+        goalCelebrationYaw);
+    float best = 1e9f;
+    for (Player* player : everyone) {
+      const Vector3 at = player->GetPosition();
+      best = std::min(best, (float)std::sqrt(
+                                 (opening.position[0] - at.coords[0]) *
+                                     (opening.position[0] - at.coords[0]) +
+                                 (opening.position[1] - at.coords[1]) *
+                                     (opening.position[1] - at.coords[1])));
+    }
+    const EntranceChoreo* choreo = FindGoalChoreo(candidate.Actors());
+    if (choreo) {
+      const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
+      for (const auto& slot : choreo->GetSlots()) {
+        Vector3 mark;
+        radian yaw = 0;
+        int animFrame = 0;
+        choreo->Sample(slot, 0.0f, mark, yaw, animFrame);
+        const float dx = opening.position[0] -
+                         (goalCelebrationSubject.coords[0] + mark.coords[0] * c - mark.coords[1] * s);
+        const float dy = opening.position[1] -
+                         (goalCelebrationSubject.coords[1] + mark.coords[0] * s + mark.coords[1] * c);
+        best = std::min(best, (float)std::sqrt(dx * dx + dy * dy));
+      }
+    }
+    return best;
+  };
   const GoalDirector::Shot* shot = beat.shot;
   int track = trackIndex(shot->Track());
-  if (track >= 0 && !opensWell(track)) {
-    track = -1;
+  if (track >= 0 && !opensWell(track)) track = -1;
+  if (track < 0) {
+    float bestClearance = kCelebrationLensClearance;
     for (const GoalDirector::Shot& other : beat.state->shots) {
       const int candidate = trackIndex(other.Track());
-      if (candidate >= 0 && opensWell(candidate)) {
+      if (candidate < 0 || !opensWell(candidate)) continue;
+      const float clearance = markDistance(other, candidate);
+      if (clearance > bestClearance) {
+        bestClearance = clearance;
         shot = &other;
         track = candidate;
-        break;
       }
     }
     if (track < 0)
       Log(e_Notice, "Match", "StartGoalBeat",
           beat.state->name + ": no camera opens on the pitch clear of bodies; follow camera");
+    else
+      Log(e_Notice, "Match", "StartGoalBeat",
+          beat.state->name + ": " + shot->Track() + " clears every mark by " +
+              int_to_str((int)(bestClearance * 10.0f) / 10) + " m");
   }
   beat.shot = shot;
   goalBeatTrack = track;

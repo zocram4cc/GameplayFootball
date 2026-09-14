@@ -197,6 +197,14 @@ public:
   // How long the celebration has been running, for whoever needs to know which
   // half of it is playing (onthepitch/goalcelebration.hpp).
   unsigned long GetGoalScoredTimer() const { return goalScoredTimer; }
+  // The walk beat on air, or -1. The goal bug reads the phase off it.
+  int GetGoalBeat() const { return goalBeat; }
+  bool GetGoalBeatsEmpty() const { return goalBeats.empty(); }
+  GoalDirector::Phase GoalWalkPhase() const {
+    if (goalBeat < 0 || goalBeat >= (int)goalBeats.size() || !goalBeats[goalBeat].state)
+      return GoalDirector::Phase::Other;
+    return goalBeats[goalBeat].state->phase;
+  }
   // The performance the camera is filming, as the specialvar2 that asks for it, or 0
   // when there is no chosen celebration (goalcelebration.hpp). Only the scorer gives
   // it; his teammates celebrate however they like.

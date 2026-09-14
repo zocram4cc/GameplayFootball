@@ -1,5 +1,9 @@
 #include "goalbug.hpp"
 
+#include "onthepitch/match.hpp"
+
+#include "onthepitch/goaldirector.hpp"
+
 #include <algorithm>
 #include <cmath>
 
@@ -45,7 +49,7 @@ Gui2GoalBug::Gui2GoalBug(Gui2WindowManager* windowManager, const std::string& na
 Gui2GoalBug::~Gui2GoalBug() {}
 
 Gui2GoalBug::Stage Gui2GoalBug::StageAt(unsigned long celebration_ms,
-                                        unsigned long celebrationLength_ms) {
+                                        unsigned long celebrationLength_ms) const {
   // PES 2021 (VGL 26 day 12, 5:09:59): ONE graphic, the scorer's name ribbon,
   // rising on the two-shot about four seconds after the goal and staying
   // through the mob; the stand cuts and the replay are clean. The score bug
@@ -53,6 +57,18 @@ Gui2GoalBug::Stage Gui2GoalBug::StageAt(unsigned long celebration_ms,
   // draws.
   if (celebrationLength_ms == 0 || celebration_ms > celebrationLength_ms) return Stage::None;
   if (celebration_ms < GoalSequence::kRibbonIn_ms) return Stage::None;
+  // On the director's walk the ribbon rides the middle beats - the
+  // celebration, the hug, the approach - not the montage's shot machine.
+  if (!match->GetGoalBeatsEmpty()) {
+    switch (match->GoalWalkPhase()) {
+      case GoalDirector::Phase::Celebrate:
+      case GoalDirector::Phase::Hug:
+      case GoalDirector::Phase::Approach:
+        return Stage::Scorer;
+      default:
+        return Stage::None;
+    }
+  }
   switch (GoalSequence::ShotAt(celebration_ms, celebrationLength_ms)) {
     case GoalSequence::Shot::TwoShot:
     case GoalSequence::Shot::MobClose:

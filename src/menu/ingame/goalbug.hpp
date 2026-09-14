@@ -47,7 +47,7 @@ public:
   // Which of the two is on air. Public so a test - and the presentation
   // schedule - can name them.
   enum class Stage { None, Score, Scorer };
-  static Stage StageAt(unsigned long celebration_ms, unsigned long celebrationLength_ms);
+  Stage StageAt(unsigned long celebration_ms, unsigned long celebrationLength_ms) const;
 
 protected:
   void ApplyZOrder();
