@@ -841,6 +841,12 @@ protected:
   // own cast and camera. With it loaded a goal plays PES's sequence; without
   // it the celebration montage below stands in.
   GoalDirector::Director goalDirector;
+  std::vector<AABB> stadiumBlockers;
+  bool stadiumBlockersBuilt = false;
+  void BuildStadiumBlockers();
+  bool SightBlocked(const Vector3& from, const Vector3& to);
+  Vector3 cameraLastGood;
+  bool cameraHaveGood = false;
   std::vector<GoalDirector::Beat> goalBeats;
   int goalBeat = -1;                       // the beat on air, -1 before the first
   unsigned long goalBeatStarted_ms = 0;    // goalScoredTimer when it went on

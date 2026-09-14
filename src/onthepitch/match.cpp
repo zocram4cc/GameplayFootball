@@ -2580,6 +2580,33 @@ std::vector<std::string> Match::DirectorStatesForPool(const std::string& pool) {
   return {};
 }
 
+void Match::BuildStadiumBlockers() {
+  stadiumBlockersBuilt = true;
+  if (!stadiumNode) return;
+  std::list<boost::intrusive_ptr<Geometry>> geoms;
+  stadiumNode->GetObjects<Geometry>(e_ObjectType_Geometry, geoms);
+  for (const auto& geom : geoms) {
+    if (!geom) continue;
+    const AABB box = geom->GetAABB();
+    // Taller than a man: stands, roofs, arches, tunnels. The turf, the
+    // line markings and the hoardings stay out, so play-level shots never trip.
+    if (box.maxxyz.coords[2] - box.minxyz.coords[2] > 1.5f) stadiumBlockers.push_back(box);
+  }
+  Log(e_Notice, "Match", "BuildStadiumBlockers",
+      int_to_str((int)stadiumBlockers.size()) + " blockers from " +
+          int_to_str((int)geoms.size()) + " stadium meshes");
+}
+
+bool Match::SightBlocked(const Vector3& from, const Vector3& to) {
+  if (!stadiumBlockersBuilt) BuildStadiumBlockers();
+  Line sight;
+  sight.SetVertex(0, from);
+  sight.SetVertex(1, to);
+  for (const AABB& box : stadiumBlockers)
+    if (box.Intersects(sight)) return true;
+  return false;
+}
+
 bool Match::StartDirectorShot(const std::string& category, const std::string& pool) {
   auto director = cutsceneDirectors.find(category);
   if (director == cutsceneDirectors.end()) return false;
@@ -2990,6 +3017,11 @@ bool Match::StartGoalBeat(int index) {
         goalCelebrationYaw);
     if (std::fabs(opening.position[0]) > pitchHalfW + 8.0f ||
         std::fabs(opening.position[1]) > pitchHalfH + 8.0f)
+      return false;
+    // ... and the lens must see the subject past the stadium: the run cameras
+    // sit 47 m out along the touchline, straight through st002's ring arch.
+    if (SightBlocked(Vector3(opening.position[0], opening.position[1], opening.position[2]),
+                     goalCelebrationSubject))
       return false;
     // ... and where the last beat posed them: sim positions are kickoff marks.
     // 2.5 m, not the 1.4 m lens clearance: a mark nearer than that fills the
@@ -4893,6 +4925,15 @@ void Match::UpdateIngameCamera() {
       cameraFOV = 15.0f;
       cameraNearCap = 50 + zoom * 10.0f;
       cameraFarCap = 300;
+    }
+    // The broadcast camera is computed, not authored: when its next step would
+    // pass through a stand it holds its ground instead of flying through the
+    // ring (dbgink, 958 s). Authored tracks are never touched.
+    if (cameraHaveGood && SightBlocked(cameraLastGood, cameraNodePosition)) {
+      cameraNodePosition = cameraLastGood;
+    } else {
+      cameraLastGood = cameraNodePosition;
+      cameraHaveGood = true;
     }
 
   } else {
