@@ -183,36 +183,6 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
-// Whether a keeper goes for a shot at all. Driven by PES's GK Reflexes; a
-// profile written before the GK attributes existed gets gk_reflexes defaulted
-// from physical_reaction by PlayerData, so this always has a real input.
-//
-// The stock engine always played the save animation and almost nothing went in,
-// so this roll was introduced to beat him sometimes - but at 0.32 sharpness it
-// meant an average keeper tried for fewer than one shot in four and stood
-// watching the rest, which is not a keeper being beaten, it is a keeper not
-// playing. Reflexes still separate keepers, by a shade rather than by whether
-// they bother.
-//
-// 0.88 went too far the other way. Measured over eight full headless matches:
-// about 24.6 shots and 3.1 expected goals a match, against 1.6 actual - so the
-// chances were being created and then not taken, with roughly a tenth of the
-// shots on target going in where the real game manages about a third. Matches
-// finished 0-0 and 1-0 off three xG.
-//
-// The chance creation was never the problem, so the fix belongs here rather
-// than in shooting range or appetite: bring finishing back towards the xG the
-// same matches already produce, which lands in the three-to-five goal range a
-// match should have. Whether he reaches a shot is still the save animation's
-// decision - the search only accepts a save that can actually get to the ball -
-// this only decides how often he goes.
-inline float GetKeeperSaveChance(const blunted::Properties& config, float reflexesStat) {
-  const float sharpness =
-      blunted::clamp(config.GetReal("gameplay_keeper_sharpness", 0.66f), 0.2f, 1.0f);
-  const float reflexes = blunted::clamp(reflexesStat, 0.0f, 1.0f);
-  return blunted::clamp(sharpness * (0.80f + reflexes * 0.20f), 0.05f, 0.99f);
-}
-
 // How long a controller lags behind the world: 40 ms for a perfect stat, 80 ms
 // for none. Outfielders feed physical_reaction, a keeper his GK Reflexes.
 inline int GetReactionTime_ms(float reactionStat) {
@@ -242,6 +212,49 @@ inline float GetKeeperComeOutBias(float coverage) {
 }
 inline float GetKeeperComeOutMargin_m(float coverage) {
   return 1.6f - Clamp01(coverage);
+}
+
+// GK Coverage (PES "GK Reach"), as a distance: how far from his standing
+// position he still gets a hand to the ball. A dive, not a step - PES's own
+// keepers reach roughly their own height at full stretch, and the weakest
+// barely leave their feet.
+// Does he get a hand to it? The geometry of the save, kept pure so it can be
+// tested: the gap he has to close, the time the ball gives him, the latency his
+// reflexes cost, his reach at full stretch and the speed he closes the rest at.
+inline bool KeeperReachesShot(float gap_m, float timeToLine_s, float latency_s, float reach_m,
+                              float closingSpeed_ms) {
+  const float travel_m = std::max(0.0f, timeToLine_s - latency_s) * std::max(0.0f, closingSpeed_ms);
+  return gap_m <= reach_m + travel_m;
+}
+
+inline float GetKeeperDiveReach_m(float coverage) {
+  return 0.9f + Clamp01(coverage) * 1.5f;
+}
+
+// A keeper does not close the gap at a sprint: he reads, sets and dives, and
+// what matters is how fast the dive travels sideways. Calibrated against the
+// shots a viewer expects to go in - a 20 m drive at 25 m/s gives 0.8 s, in
+// which the best keeper covers 5.7 m (reach included, so the far corner is
+// his) and the worst 2.5 m (so it is not).
+inline float GetKeeperDiveSpeed_ms(float coverage) {
+  return 3.5f + Clamp01(coverage) * 2.0f;
+}
+
+// His own reaction, not the controller's tick: 350 ms for a keeper with no
+// reflexes, 200 ms for the best, which is where human goalkeepers actually
+// sit. GetReactionTime_ms is the input lag of the controller and is far too
+// short to stand in for this.
+inline float GetKeeperReactionTime_s(float reflexes) {
+  return 0.35f - Clamp01(reflexes) * 0.15f;
+}
+
+// GK Catching, as the fastest ball he can HOLD rather than parry, in m/s
+// relative to himself. Anything quicker is pushed away (GetKeeperParryPush,
+// which is GK Clearing). The stock threshold was a product of two normalised
+// difficulties against 0.45-0.25*catching, which no fast shot could clear at
+// any stat - every real shot was parried, and that is the fumbling.
+inline float GetKeeperCatchSpeed_ms(float catching) {
+  return 12.0f + Clamp01(catching) * 16.0f;
 }
 
 // GK Catching: the hardest ball (0 = impossible, 1 = trivial) he still holds

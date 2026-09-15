@@ -29,60 +29,61 @@ TEST(GameplayTuningTest, TheKnobsAreConfigurableAndClamped) {
   EXPECT_GE(GameplayTuning::GetShotAppetite(silly), 0.5f);
 }
 
-TEST(GameplayTuningKeeperTest, SharperKeepersGetAcrossMoreOften) {
-  const Properties config;
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 1.0f),
-            GameplayTuning::GetKeeperSaveChance(config, 0.0f));
+// A keeper's save is geometry, not a coin flip. The probability model that used
+// to live here (GetKeeperSaveChance, one random() per shot against 0.53-0.66)
+// left a third to a half of all shots unattempted whatever his quality, which
+// on screen is a keeper who stands and watches while the ball goes past him
+// (owner, 15-09). These tests pin the replacement's behaviour at the two ends
+// every viewer recognises.
+
+TEST(GameplayTuningKeeperTest, ATameShotStraightAtHimIsAlwaysSaved) {
+  // In his hands' path, 0.6 s of flight: even a keeper with no reach at all
+  // covers that standing still.
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
+      0.2f, 0.6f, GameplayTuning::GetKeeperReactionTime_s(0.0f),
+      GameplayTuning::GetKeeperDiveReach_m(0.0f),
+      GameplayTuning::GetKeeperDiveSpeed_ms(0.0f)));
 }
 
-TEST(GameplayTuningKeeperTest, EvenTheBestKeeperCanBeBeaten) {
-  const Properties config;
-  EXPECT_LT(GameplayTuning::GetKeeperSaveChance(config, 1.0f), 1.0f);
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.0f), 0.0f);
+TEST(GameplayTuningKeeperTest, ARocketIntoTheFarCornerBeatsAnybody) {
+  // 6 m away, 0.25 s of flight: the best reach in the game plus a sprinter's
+  // speed is not enough, and it should not be.
+  EXPECT_FALSE(GameplayTuning::KeeperReachesShot(
+      6.0f, 0.25f, GameplayTuning::GetKeeperReactionTime_s(1.0f),
+      GameplayTuning::GetKeeperDiveReach_m(1.0f),
+      GameplayTuning::GetKeeperDiveSpeed_ms(1.0f)));
 }
 
-TEST(GameplayTuningKeeperTest, TheKeeperKnobScalesTheWholeRange) {
-  Properties generous;
-  generous.Set("gameplay_keeper_sharpness", 0.4f);
-  Properties stingy;
-  stingy.Set("gameplay_keeper_sharpness", 1.0f);
-
-  EXPECT_LT(GameplayTuning::GetKeeperSaveChance(generous, 0.7f),
-            GameplayTuning::GetKeeperSaveChance(stingy, 0.7f));
+TEST(GameplayTuningKeeperTest, TheAttributesDecideTheShotsInBetween) {
+  // A 20 m drive at 25 m/s - 0.8 s of flight - into a corner 3.5 m from where
+  // he stands. The best keeper covers 2.4 m of reach plus 3.3 m of dive and
+  // gets there; the worst has 0.9 m plus 1.6 m and does not.
+  const float gap = 3.5f, flight = 0.8f;
+  const bool great = GameplayTuning::KeeperReachesShot(
+      gap, flight, GameplayTuning::GetKeeperReactionTime_s(1.0f),
+      GameplayTuning::GetKeeperDiveReach_m(1.0f),
+      GameplayTuning::GetKeeperDiveSpeed_ms(1.0f));
+  const bool poor = GameplayTuning::KeeperReachesShot(
+      gap, flight, GameplayTuning::GetKeeperReactionTime_s(0.0f),
+      GameplayTuning::GetKeeperDiveReach_m(0.0f),
+      GameplayTuning::GetKeeperDiveSpeed_ms(0.0f));
+  EXPECT_TRUE(great);
+  EXPECT_FALSE(poor);
 }
 
-// A keeper who only tries for one shot in four does not look like a keeper: he
-// stands and watches, which is what "very disinclined to dive" was. Going for
-// nearly every shot is the opposite mistake and was measured as such - eight
-// full matches produced 3.1 expected goals each and 1.6 actual, with about a
-// tenth of shots on target scored where the real game manages a third. So he
-// goes for most, not for all, and whether he *reaches* the ball is still the
-// save animation's decision - it only picks one that can get there.
-
-TEST(GameplayTuningKeeperTest, EvenAPoorKeeperTriesForMoreThanHalf) {
-  const Properties config;
-  EXPECT_GT(GameplayTuning::GetKeeperSaveChance(config, 0.2f), 0.5f);
+TEST(GameplayTuningKeeperTest, ReachAndCatchingRiseWithTheAttribute) {
+  EXPECT_GT(GameplayTuning::GetKeeperDiveReach_m(1.0f),
+            GameplayTuning::GetKeeperDiveReach_m(0.0f));
+  EXPECT_GT(GameplayTuning::GetKeeperCatchSpeed_ms(1.0f),
+            GameplayTuning::GetKeeperCatchSpeed_ms(0.0f));
 }
 
-TEST(GameplayTuningKeeperTest, TheBestKeeperStillLeavesShotsToBeScored) {
-  const Properties config;
-  const float best = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
-  EXPECT_GT(best, 0.6f) << "he should still go for most of them";
-  EXPECT_LT(best, 0.8f) << "at nearly every shot, three xG finishes 0-0";
+TEST(GameplayTuningKeeperTest, EvenTheBestKeeperCannotHoldEverything) {
+  // A 30 m/s shot is parried by anyone; a 10 m/s one is held by anyone.
+  EXPECT_LT(GameplayTuning::GetKeeperCatchSpeed_ms(1.0f), 30.0f);
+  EXPECT_GT(GameplayTuning::GetKeeperCatchSpeed_ms(0.0f), 10.0f);
 }
 
-// GK Reflexes still separates keepers, just not by whether they bother. (The
-// roll used to read physical_reaction; PES rates keepers on gk_reflexes.)
-TEST(GameplayTuningKeeperTest, ReflexesStillSeparateKeepersWithoutFreezingThem) {
-  const Properties config;
-  const float poor = GameplayTuning::GetKeeperSaveChance(config, 0.1f);
-  const float great = GameplayTuning::GetKeeperSaveChance(config, 1.0f);
-  EXPECT_GT(great, poor);
-  EXPECT_LT(great - poor, 0.3f) << "the gap should be a shade, not a wall";
-}
-
-// The remaining PES GK attributes each move one behaviour in the direction PES
-// describes, and the engine's 0.6 default reproduces what it shipped with.
 TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
   EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
   EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);

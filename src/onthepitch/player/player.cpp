@@ -157,19 +157,41 @@ bool Player::KeeperAttemptsSave() {
   if (GetFormationEntry().role != e_PlayerRole_GK)
     return true;
 
-  // The shot is identified by the opponent's last touch; one roll per shot. PES
-  // GK Reflexes decides it (gk_reflexes; PlayerData defaults it from
-  // physical_reaction for profiles written before the GK attributes existed).
-  Team* oppTeam = match->GetTeam(abs(team->GetID() - 1));
-  Player* lastOppToucher = oppTeam->GetLastTouchPlayer();
-  const unsigned long shotTouchTime_ms = lastOppToucher ? lastOppToucher->GetLastTouchTime_ms() : 0;
+  // Whether he gets there, not whether he is lucky. This used to be one
+  // random(0,1) per shot against 0.53-0.66 - so a third to a half of all shots
+  // went unattempted whatever the keeper's quality, which is what "they fumble
+  // a lot and it looks goofy" is (owner, 15-09).
+  //
+  // The model is the geometry of the save, and every term is one of PES's five
+  // GK attributes:
+  //   - the ball's own flight gives the time available (its speed towards his
+  //     line and how far out it is);
+  //   - GK Reflexes spends the first part of that as his own reaction
+  //     (GetKeeperReactionTime_s, 200-350 ms - a human's, not a pad's);
+  //   - GK Coverage is his reach - a dive, not a step;
+  //   - what is left he covers at diving speed (GetKeeperDiveSpeed_ms).
+  // Beaten means the ball crosses his line further away than he can get. A
+  // tame shot straight at him is therefore always saved, and a fast shot into
+  // the far corner always beats him, regardless of who is in goal - which is
+  // how a keeper reads on screen.
+  const Vector3 ballPosition = match->GetBall()->Predict(0);
+  const Vector3 ballMovement = match->GetBall()->GetMovement();
+  const float lineX = pitchHalfW * team->GetSide();
+  const float closingSpeed = ballMovement.coords[0] * (lineX > 0.0f ? 1.0f : -1.0f);
+  if (closingSpeed <= 0.1f) return true;  // not coming at him: his to collect
+  const float timeToLine_s = std::fabs(lineX - ballPosition.coords[0]) / closingSpeed;
+  const float crossingY = ballPosition.coords[1] + ballMovement.coords[1] * timeToLine_s;
+  const float crossingZ =
+      std::max(0.0f, ballPosition.coords[2] + ballMovement.coords[2] * timeToLine_s);
 
-  if (shotTouchTime_ms != keeperRollTouchTime_ms) {
-    keeperRollTouchTime_ms = shotTouchTime_ms;
-    keeperRollSave = blunted::random(0.0f, 1.0f) <
-                     GameplayTuning::GetKeeperSaveChance(*GetConfiguration(), GetStat("gk_reflexes"));
-  }
-  return keeperRollSave;
+  const float gap_m =
+      std::sqrt(std::pow(crossingY - GetPosition().coords[1], 2.0f) +
+                std::pow(std::max(0.0f, crossingZ - 0.9f), 2.0f));  // hands rest at hip height
+  const float latency_s = GameplayTuning::GetKeeperReactionTime_s(GetStat("gk_reflexes"));
+  const float reach_m = GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage"));
+  return GameplayTuning::KeeperReachesShot(
+      gap_m, timeToLine_s, latency_s, reach_m,
+      GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage")));
 }
 
 float Player::GetSlipVelocityMultiplier() const {

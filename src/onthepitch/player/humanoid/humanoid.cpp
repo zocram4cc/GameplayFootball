@@ -985,20 +985,20 @@ void Humanoid::Process() {
           canRetain = false;  // somebody is already holding the ball :( (dafuq, this should not
                               // happen, right?)
 
-        float veloDifficulty = NormalizedClamp(
-            (match->GetBall()->GetMovement() - player->GetMovement()).GetLength(), 0.0f, 40.0f);
-        float reactionDifficulty = 0.0f;
-        Player* lastTouchPlayer = match->GetTeam(abs(team->GetID() - 1))->GetLastTouchPlayer();
-        if (lastTouchPlayer) {
-          reactionDifficulty = std::pow(
-              lastTouchPlayer->GetLastTouchBias(1200 - player->GetStat("gk_reflexes") * 400), 0.6f);
-        }
-        if ((1.0f - veloDifficulty) * (1.0f - reactionDifficulty) <
-            GameplayTuning::GetKeeperCatchThreshold(player->GetStat("gk_catching")))
-          canRetain = false;  // too hard!
+        // Holding it is a question of pace, and GK Catching is the answer in
+        // m/s. The old test multiplied two normalised difficulties and compared
+        // them against 0.45-0.25*catching, which no genuine shot could clear at
+        // ANY stat - a 25 m/s shot scored 0.375 before the reaction term, so
+        // every shot was parried and the keeper looked like he could not hold a
+        // ball (owner, 15-09). Now: within his catching speed he holds it,
+        // beyond it he parries, and GK Clearing decides how far.
+        const float relativeSpeed =
+            (match->GetBall()->GetMovement() - player->GetMovement()).GetLength();
+        if (relativeSpeed > GameplayTuning::GetKeeperCatchSpeed_ms(player->GetStat("gk_catching")))
+          canRetain = false;  // too quick to hold: parry it
         if (Verbose())
-          printf("deflect: velodiff: %f, reactiondiff: %f, total diff inv: %f\n", veloDifficulty,
-                 reactionDifficulty, (1.0f - veloDifficulty) * (1.0f - reactionDifficulty));
+          printf("deflect: relative speed %f m/s, holds up to %f\n", relativeSpeed,
+                 GameplayTuning::GetKeeperCatchSpeed_ms(player->GetStat("gk_catching")));
 
         if (canRetain) {
           match->SetBallRetainer(CastPlayer());
