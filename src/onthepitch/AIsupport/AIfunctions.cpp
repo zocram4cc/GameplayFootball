@@ -1465,6 +1465,36 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
   sideFactor = std::pow(fabs(sideFactor), 0.7f) * signSide(sideFactor);
 
   goalPos.coords[1] = sideFactor * goalHalfWidth * 0.9f * player->GetTeam()->GetSide();
+  // A shot with nobody steering it goes where the keeper is not. Left to the
+  // input direction alone an AI striker aims down the middle of the goal -
+  // straight at the keeper - because his desired direction IS "at the goal",
+  // so sideFactor comes out near zero. That is why matches finished 0-0 and
+  // why the answer is not a worse keeper (owner, 15-09): a gold medal player
+  // (every attribute 0.99) should be able to pick a corner, and a bronze (0.88)
+  // to get close.
+  //
+  // PES's own shooting attribute is what decides how near the post he dares
+  // and how near he lands: Finishing places it, Kicking Power does not. The
+  // aim is the far post inset by his own error, so 0.99 leaves 0.16 m of the
+  // goal mouth unused and 0.60 leaves 1.6 m.
+  if (autoDirectionBias > 0.5f) {
+    const Player* keeper = player->GetTeam()->GetMatch()
+                               ->GetTeam(abs(player->GetTeam()->GetID() - 1))
+                               ->GetGoalie();
+    if (keeper) {
+      const float shooting =
+          clamp(player->GetStat("technical_shot") * 0.7f + player->GetStat("mental_calmness") * 0.3f,
+                0.0f, 1.0f);
+      const float inset_m = 0.2f + (1.0f - shooting) * 3.5f;
+      const float open = goalHalfWidth - inset_m;
+      if (open > 0.0f) {
+        // Whichever post the keeper is further from, in HIS half of the goal.
+        const float keeperY = keeper->GetPosition().coords[1];
+        const float corner = keeperY >= 0.0f ? -open : open;
+        goalPos.coords[1] = corner;
+      }
+    }
+  }
   Vector3 autoDirection =
       (goalPos - (player->GetPosition() + player->GetMovement() * 0.12f)).GetNormalized(0);
 

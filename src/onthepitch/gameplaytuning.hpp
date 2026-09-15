@@ -218,6 +218,25 @@ inline float GetKeeperComeOutMargin_m(float coverage) {
 // position he still gets a hand to the ball. A dive, not a step - PES's own
 // keepers reach roughly their own height at full stretch, and the weakest
 // barely leave their feet.
+// How much of the WORST-case strike ends up in a shot: 0 is exactly where he
+// aimed, 1 is the mishit. The stock curve was random(0,1) ^ (technical_shot *
+// 0.7), which even at a perfect 0.99 has a mean of 0.59 - the best finisher in
+// the game blended six parts mishit to four parts intention, and 80% of shots
+// missed the target (measured: 20 shots, 4 on target, 1.28 xG per match). The
+// medals have to mean something: a gold 4cc player (every attribute 0.99)
+// should place his shot, a bronze (0.88) nearly, and a poor finisher spray it.
+//
+// mean weight = 1 / (1 + exponent), so:
+//   stat 0.99 -> exponent 16.7 -> 6% mishit
+//   stat 0.91 -> exponent  6.9 -> 13%
+//   stat 0.88 -> exponent  5.7 -> 15%
+//   stat 0.60 -> exponent  2.3 -> 30%
+//   stat 0.00 -> exponent  1.0 -> 50%
+inline float GetShotWorstCaseWeight(float uniformRandom01, float shotStat) {
+  const float exponent = 1.0f / std::max(0.06f, 1.0f - Clamp01(shotStat) * 0.95f);
+  return std::pow(blunted::clamp(uniformRandom01, 0.0f, 1.0f), exponent);
+}
+
 // Does he get a hand to it? The geometry of the save, kept pure so it can be
 // tested: the gap he has to close, the time the ball gives him, the latency his
 // reflexes cost, his reach at full stretch and the speed he closes the rest at.

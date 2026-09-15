@@ -36,6 +36,30 @@ TEST(GameplayTuningTest, TheKnobsAreConfigurableAndClamped) {
 // (owner, 15-09). These tests pin the replacement's behaviour at the two ends
 // every viewer recognises.
 
+TEST(GameplayTuningShootingTest, MedalsPlaceTheirShots) {
+  // The same unlucky draw, three players: a 4cc gold medal (every attribute
+  // 0.99), a bronze (0.88) and a journeyman. The weight is how much of the
+  // MISHIT ends up in the shot, so lower is better placed. The stock curve gave
+  // the gold player 0.76 on this draw - more mishit than intention - which is
+  // why medals did not read on the pitch.
+  const float draw = 0.5f;
+  const float gold = GameplayTuning::GetShotWorstCaseWeight(draw, 0.99f);
+  const float bronze = GameplayTuning::GetShotWorstCaseWeight(draw, 0.88f);
+  const float journeyman = GameplayTuning::GetShotWorstCaseWeight(draw, 0.50f);
+  EXPECT_LT(gold, bronze);
+  EXPECT_LT(bronze, journeyman);
+  EXPECT_LT(gold, 0.05f) << "a gold medal shot goes where he aimed";
+  EXPECT_GT(journeyman, 0.2f) << "an ordinary player still sprays them";
+}
+
+TEST(GameplayTuningShootingTest, NobodyIsPerfectAndNobodyIsHopeless) {
+  // Bounds, over the whole draw: even the best has a bad one in him, and the
+  // worst can still hit what he aimed at.
+  EXPECT_GT(GameplayTuning::GetShotWorstCaseWeight(0.999f, 1.0f), 0.0f);
+  EXPECT_LT(GameplayTuning::GetShotWorstCaseWeight(0.001f, 0.0f), 0.01f);
+  EXPECT_FLOAT_EQ(GameplayTuning::GetShotWorstCaseWeight(0.0f, 0.5f), 0.0f);
+}
+
 TEST(GameplayTuningKeeperTest, ATameShotStraightAtHimIsAlwaysSaved) {
   // In his hands' path, 0.6 s of flight: even a keeper with no reach at all
   // covers that standing still.

@@ -617,8 +617,11 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
 
   // actual result
 
-  float worstCaseFactor = random(0.0f, 1.0f);
-  worstCaseFactor = std::pow(worstCaseFactor, player->GetStat("technical_shot") * 0.7f);
+  // Finishing decides how close to his intention the ball goes
+  // (GameplayTuning::GetShotWorstCaseWeight documents the curve and why the
+  // stock one made medals meaningless).
+  const float worstCaseFactor =
+      GameplayTuning::GetShotWorstCaseWeight(random(0.0f, 1.0f), player->GetStat("technical_shot"));
 
   Vector3 shot = desiredShot * (1.0f - worstCaseFactor) + worstCaseShot * worstCaseFactor;
 
