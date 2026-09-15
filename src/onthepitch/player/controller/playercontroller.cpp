@@ -343,9 +343,9 @@ void PlayerController::_KeeperDeflectCommand(PlayerCommandQueue& commandQueue,
   if (match->GetBall()->Predict(160).coords[0] * -team->GetSide() > -pitchHalfW + 16.4)
     return;
 
-  // Whether he gets across at all is decided once per incoming shot, from his
-  // GK Reflexes, by the same roll the body-collision pass consults - so a
-  // beaten keeper is beaten everywhere. The stock engine always played the
+  // Whether he gets across at all is the geometry of the save
+  // (Player::KeeperAttemptsSave), consulted by the body-collision pass too - so
+  // a beaten keeper is beaten everywhere. The stock engine always played the
   // save, which is why almost nothing went in.
   if (!CastPlayer()->KeeperAttemptsSave())
     return;

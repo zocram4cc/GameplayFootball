@@ -150,9 +150,9 @@ protected:
 
   // Slip bookkeeping.
   unsigned long lastSlipTime_ms = 0;
-  // Save roll, latched per opposing shot touch.
-  unsigned long keeperRollTouchTime_ms = 0;
-  bool keeperRollSave = true;
+  // (Removed: the old per-shot save roll latched here. KeeperAttemptsSave is
+  // now the geometry of the save, evaluated per call, so there is no roll to
+  // latch.)
   Vector3 previousDirectionVec;
   unsigned int timeNeededToGetToBall_ms;
   unsigned int timeNeededToGetToBall_optimistic_ms;

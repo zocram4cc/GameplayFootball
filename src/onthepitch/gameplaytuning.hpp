@@ -276,11 +276,10 @@ inline float GetKeeperCatchSpeed_ms(float catching) {
   return 12.0f + Clamp01(catching) * 16.0f;
 }
 
-// GK Catching: the hardest ball (0 = impossible, 1 = trivial) he still holds
-// on to rather than parries. The stock engine held everything easier than 0.3.
-inline float GetKeeperCatchThreshold(float catching) {
-  return 0.45f - Clamp01(catching) * 0.25f;
-}
+  // (Removed: GetKeeperCatchThreshold, the 0.45-0.25*catching product the old
+  // hold/parry test compared two normalised difficulties against. No shot could
+  // clear it at any attribute value, so play parried everything. GetKeeperCatchSpeed_ms
+  // above is the replacement: catching expressed as a speed in m/s.)
 
 // GK Clearing: how hard a parry is pushed away from goal, in the same units as
 // the stock 4.0 forward component of the deflect touch.

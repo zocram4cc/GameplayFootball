@@ -133,9 +133,9 @@ TEST(GameplayTuningKeeperTest, CoverageBringsHimOffHisLine) {
 }
 
 TEST(GameplayTuningKeeperTest, CatchingHoldsHarderBallsAndClearingParriesFurther) {
-  EXPECT_LT(GameplayTuning::GetKeeperCatchThreshold(1.0f),
-            GameplayTuning::GetKeeperCatchThreshold(0.0f));
-  EXPECT_NEAR(GameplayTuning::GetKeeperCatchThreshold(0.6f), 0.3f, 1e-5f);
+  EXPECT_LT(GameplayTuning::GetKeeperCatchSpeed_ms(0.0f),
+            GameplayTuning::GetKeeperCatchSpeed_ms(1.0f));
+  EXPECT_NEAR(GameplayTuning::GetKeeperCatchSpeed_ms(0.6f), 21.6f, 1e-5f);
   EXPECT_GT(GameplayTuning::GetKeeperParryPush(1.0f), GameplayTuning::GetKeeperParryPush(0.0f));
   EXPECT_NEAR(GameplayTuning::GetKeeperParryPush(0.6f), 4.0f, 1e-5f);
 }
