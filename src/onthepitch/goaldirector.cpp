@@ -154,11 +154,8 @@ Director Parse(const std::string& text) {
         std::string key;
         while (words >> key) {
           if (key == "dur") words >> layer.follow.durationFrames;
-          else if (key == "angle") words >> layer.follow.angleDeg;
-          else if (key == "turn") words >> layer.follow.turnDeg;
-          else if (key == "dist") words >> layer.follow.distance;
-          else if (key == "damp") words >> layer.follow.damping;
-          else if (key == "offset") words >> layer.follow.offsetDeg;
+          else if (key == "near") words >> layer.follow.nearPlane;
+          else if (key == "far") words >> layer.follow.farPlane;
         }
       } else if (first == "actors") layer.kind = Layer::Actors;
       else if (first == "props") layer.kind = Layer::Props;

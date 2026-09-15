@@ -24,14 +24,15 @@ namespace GoalDirector {
 enum class Phase { Start, Run, Celebrate, Hug, Approach, Finish, End, Situation, Insert, Other };
 
 struct Follow {
-  // The tuning PES stores for a procedural camera: see CameraCut in
-  // tools/pes21_import/camera_cut.py. Frames at 30 fps; degrees; metres.
+  // What a procedural camera's .fdc record actually carries (tag 0x06, see
+  // tools/pes21_import/camera_cut.py): a duration in frames at 30 fps and the
+  // clip planes. The record holds no camera placement - measured across PES's
+  // whole goal library, the fields that looked like one carry the same values
+  // on authored cuts, where the placement is in the .canm and does not follow
+  // them. utils/camtrack.hpp FollowCameraFrame has the numbers.
   float durationFrames = 0.0f;
-  int angleDeg = 90;
-  int turnDeg = -1;
-  float distance = 2.8f;
-  float damping = 1.5f;
-  float offsetDeg = 0.0f;
+  float nearPlane = 0.5f;
+  float farPlane = 400.0f;
 };
 
 struct Layer {

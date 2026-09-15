@@ -57,6 +57,26 @@ CamTrackFrame RetargetCamTrackFrame(const CamTrackFrame& frame,
 CamTrackFrame StageCamTrackFrame(const CamTrackFrame& frame,
                                  const std::array<float, 3>& subject, float yaw);
 
+// The frame one of PES's PROCEDURAL cameras gets - the cuts the director calls
+// up when a shot names no .canm (goal_cmnCam_outH10, ..._inH11, ..._noSwitch10).
+// Measured over PES's own goal library (1691 .fdc, 826 procedural cuts): their
+// records carry no placement whatsoever. Every field that looked like one -
+// +0xB4 "angle", +0xC8 "turn", +0xFC "dist" - also appears on the AUTHORED cuts
+// beside them, where the real camera is in the .canm, and none of them tracks it
+// (angle 90 -> median authored yaw 16 deg, angle 50 -> 72 deg; dist 2.8 -> median
+// authored distance 4.7 m, 5.6 -> 12.2 m, 1.4 -> 30.4 m). Only near (+0x90),
+// far (+0x94) and the duration (+0x04) mean what they say. PES keeps the
+// placement in its own code, keyed by the camera's name.
+//
+// So the placement comes from PES's authored goal camerawork instead, which is
+// the same camera department filming the same moment: over the 1197 installed
+// goal .camtrack frames belonging to shots that ALSO carry a procedural camera,
+// the median camera stands 10.65 m out at 0.69 m high behind a 9.1-degree lens,
+// aiming 2.7 degrees ABOVE the horizontal - eye-level-of-a-kneeling-man height,
+// looking up at a standing man's chest.
+CamTrackFrame FollowCameraFrame(const std::array<float, 3>& subject, float yaw,
+                                float nearPlane, float farPlane);
+
 class CamTrack {
 public:
   bool Load(std::istream& in);

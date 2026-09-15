@@ -96,7 +96,14 @@ constexpr bool kShotOnScorer[kShotCount] = {true, true, true, true, true, false,
 
 // The scorer's name ribbon comes up on the two-shot, about four seconds after
 // the goal, and stays through the mob.
-constexpr unsigned long kRibbonIn_ms = kShotLength_ms[0] + kShotLength_ms[1];
+// The two lower-thirds, timed off the reference (implying.fun "Summer 2026
+// Day 1" at 32:09, blue-mask over the clip): the score bug comes up 1.75 s
+// after the ball goes in and holds 2.25 s, then after a 0.75 s gap the
+// scorer's plate comes up and holds while the celebration is still on air.
+constexpr unsigned long kScoreBugIn_ms = 1750;
+constexpr unsigned long kScoreBugOut_ms = 4000;
+constexpr unsigned long kScorerBugIn_ms = 4750;
+constexpr unsigned long kRibbonIn_ms = kScorerBugIn_ms;
 
 // The replay PES cuts to shows the BUILD-UP and the finish, from two angles -
 // and then hands back. Ours played the tape all the way to the present, so a

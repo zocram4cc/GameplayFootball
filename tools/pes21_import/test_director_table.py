@@ -110,8 +110,7 @@ class DirectorTable(unittest.TestCase):
             def __init__(self, canm):
                 self.canm_name = canm
                 self.procedural = not canm
-                self.duration_frames, self.angle_a, self.angle_b = 120.0, 90, 180
-                self.distance, self.damping, self.offset_deg = 2.8, 1.5, 0.0
+                self.duration_frames, self.near, self.far = 120.0, 0.5, 400.0
 
         class Fdc:
             def __init__(self, cuts, actors):
@@ -134,8 +133,7 @@ class DirectorTable(unittest.TestCase):
             director_table.write_director(self.table, tmp, out, load_fdc)
             text = open(out).read()
         self.assertIn("state GOAL_RUN_30_BANZAI phase run", text)
-        self.assertIn("follow goal_cmnCam_outM00 dur 120 angle 90 turn 180 dist 2.8 damp 1.5 offset 0",
-                      text)
+        self.assertIn("follow goal_cmnCam_outM00 dur 120 near 0.5 far 400", text)
         # a base with two authored cuts is listed once per cut, and its actors once
         self.assertEqual(text.count("track goal_celebrate_0006_base"), 2 * 2)  # two shots use it
         self.assertIn("actors goal_2018_run_30_banzai", text)

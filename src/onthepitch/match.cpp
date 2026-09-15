@@ -2826,6 +2826,9 @@ bool Match::StartGoalCast(const std::string& celebration) {
   cutsceneOfficialCast.clear();
   activeCutsceneChoreo = choreo;
   activeCutsceneCategory = "goal";
+  // A beat's cast plays on the beat's clock (StartGoalBeat has already stamped
+  // it); the montage's single cast plays on the goal's.
+  goalCastZero_ms = goalBeat >= 0 ? goalBeatStarted_ms : 0;
   cutscenePrimary = lastGoalScorer;
   cutsceneOpponent = nullptr;
 
@@ -3206,49 +3209,22 @@ void Match::UpdateGoalBeats() {
     cameraFarCap = frame.farPlane;
     return;
   }
-  // A procedural follow camera: PES's tuning is a distance ladder and a yaw
-  // off the scorer's facing; the semantics of its record are not published,
-  // so this reads them as a chase at that distance and angle, aimed at him.
-  // ponytail: the ladder is scaled by 4 to sit outside a 4cc body; tune against
-  // the reference frames once the walk itself reads right.
+  // No authored camera for this beat: PES's procedural one, staged on the
+  // celebration exactly as the authored ones are (FollowCameraFrame carries the
+  // measurement - the record's angle/turn/dist fields are not geometry, and
+  // reading them as geometry is what had these beats staring at the turf).
+  // The row's own duration and clip planes still come from PES.
   const GoalDirector::Layer* follow = beat.shot->FollowCamera();
-  // Never nearer than a 4cc body is wide; the lens rises with the distance
-  // so a tight shot looks down and a wide one looks across.
-  // The middle of the cast as posed, not the scorer and not kickoff marks:
-  // a hug piles the teammates onto him and a lens aimed at him films the
-  // inside of the pile. A bigger cast also stands further off, mob-wide.
-  Vector3 subject =
-      lastGoalScorer ? lastGoalScorer->GetPosition() : goalCelebrationSubject;
-  float pileRadius = 0.0f;
-  if (!goalCastWorlds.empty()) {
-    Vector3 middle(0, 0, 0);
-    for (const Vector3& at : goalCastWorlds) middle = middle + at;
-    subject = middle * (1.0f / (float)goalCastWorlds.size());
-    for (const Vector3& at : goalCastWorlds)
-      pileRadius = std::max(pileRadius, subject.GetDistance(at));
-  }
-  // The tune, but never inside the pile: its radius plus a body width.
-  const float distance =
-      std::max((follow ? follow->follow.distance : 2.8f) * 4.0f, pileRadius + 2.0f);
-  const float yaw = goalCelebrationYaw + (follow ? follow->follow.angleDeg : 90) * pi / 180.0f;
-  // High enough to look down past the nearest bodies: level with heads,
-  // every arm crosses the lens.
-  cameraNodePosition = Vector3(subject.coords[0] + std::sin(yaw) * distance,
-                               subject.coords[1] - std::cos(yaw) * distance,
-                               2.5f + distance * 0.25f);
+  const GoalDirector::Follow tune = follow ? follow->follow : GoalDirector::Follow();
+  const CamTrackFrame frame = FollowCameraFrame(
+      {goalCelebrationSubject.coords[0], goalCelebrationSubject.coords[1], 0.0f},
+      goalCelebrationYaw, tune.nearPlane, tune.farPlane);
+  cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
   cameraNodeOrientation = QUATERNION_IDENTITY;
-  const Vector3 aim = Vector3(subject.coords[0], subject.coords[1], 1.0f) - cameraNodePosition;
-  cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
-  {
-    // pitch down onto him
-    const float horizontal = std::sqrt(aim.coords[0] * aim.coords[0] + aim.coords[1] * aim.coords[1]);
-    Quaternion tilt;
-    tilt.SetAngleAxis(0.5f * pi - std::atan2(horizontal, -aim.coords[2]) , Vector3(1, 0, 0));
-    cameraOrientation = cameraOrientation * tilt;
-  }
-  cameraFOV = 28.0f;
-  cameraNearCap = 0.3f;
-  cameraFarCap = 300.0f;
+  cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2], frame.rotation[3]);
+  cameraFOV = frame.fov;
+  cameraNearCap = std::max(0.1f, frame.nearPlane);
+  cameraFarCap = frame.farPlane;
 }
 
 void Match::UpdateCutsceneChoreo() {
@@ -3262,10 +3238,9 @@ void Match::UpdateCutsceneChoreo() {
       EndGoalCast();
       return;
     }
-    // With the director walking beats, each beat's cast starts on its own zero;
-    // the montage's single cast runs from the goal.
-    const unsigned long castZero_ms = goalBeat >= 0 ? goalBeatStarted_ms : 0;
-    const float elapsedFrame = (goalScoredTimer - castZero_ms) * 0.1f;  // 10 ms frames
+    // Each beat's cast plays on the zero it was staged with (goalCastZero_ms);
+    // the montage's single cast on the goal's own.
+    const float elapsedFrame = (goalScoredTimer - goalCastZero_ms) * 0.1f;  // 10 ms frames
     // Staged where the goal camera is staged: PES authored the performance and
     // its camera in one space with the scorer's run target at the origin, and
     // StageCamTrackFrame turns the camera by goalCelebrationYaw and moves it to
@@ -3283,19 +3258,20 @@ void Match::UpdateCutsceneChoreo() {
       const Vector3 world(
           goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
           goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
-      // An actor who is done is handed back to the animation machinery, not held
-      // on his last frame. A posed humanoid's Process() returns early
-      // (ProcessChoreo), so pinning the frame made him a statue for the rest of
-      // the window - measured on this fixture: a 1590 ms performance inside a
-      // 6000 ms celebration left the scorer frozen for 4.4 s of it, which is
-      // what "the celebration starts and the scorer gets stuck" is. PES holds
-      // the camera long after the bodies are done; the bodies keep moving.
-      // An actor past his own clip is released INDIVIDUALLY: skipping only the
+      // What happens to an actor whose clip has run out is the clip's own
+      // business, and PES's exporter already measured it: a clip that ends
+      // facing the way it began is a cycle and repeats, one that ends turned
+      // plays once (entrance_pl.clip_is_cycle -> the slot's loop flag). All
+      // 1789 goal slots are flagged cycles, so a finished performer simply
+      // performs again on his mark - SetChoreoPose's frame wrap IS that
+      // repeat - which matters because 251 of the 406 multi-slot goal packs
+      // have a slot running out more than half a second before the last one
+      // (median 2.0 s, worst 15.5 s), all of it on air.
+      // A non-cycle slot is released INDIVIDUALLY: skipping only the
       // SetChoreoPose call left his last pose latched (choreoPending stays set
       // in HumanoidBase) - often horizontal in mid-air on a celebration clip -
-      // until the whole cast was torn down together. One tick without a feed
-      // and ProcessChoreo hands him back to the anim machinery, mid-beat.
-      if (animFrame > cast.clip->GetEffectiveFrameCount()) {
+      // until the whole cast was torn down together.
+      if (!cast.slot->loop && animFrame > cast.clip->GetEffectiveFrameCount()) {
         // Feed stopped: ProcessChoreo flips his choreo state off and hands him
         // back to the anim machinery; ResetSituation puts his spatial state on
         // the spot he is standing with the ball as focus, instead of whatever
@@ -3305,6 +3281,7 @@ void Match::UpdateCutsceneChoreo() {
         humanoid->ResetSituation(Vector3(0, -1, 0));
         continue;
       }
+      performing = true;
       goalCastWorlds.push_back(world);
       cast.player->CastHumanoid()->SetChoreoPose(cast.clip, animFrame, world,
                                                  yaw + goalCelebrationYaw);
@@ -4415,28 +4392,24 @@ void Match::UpdateIngameCamera() {
     activeCutscene = nullptr;
   }
 
-  // A director shot with a procedural camera and no installed track: PES's
-  // follow tuning (angle, distance) frames the incident the actors were
-  // staged at, standing off further than a 4cc body the way the goal's does.
+  // A director shot with a procedural camera and no installed track. The same
+  // camera the goal walk's follow beats get (FollowCameraFrame), on the
+  // incident: PES's own goal-camera staging, from the broadcast touchline
+  // because a stoppage has no celebration to face. The row supplies its clip
+  // planes; its remaining fields are not geometry (utils/camtrack.hpp).
   if (activeCutsceneHasFollow && !activeCutscene && activeCutsceneChoreo &&
       CutscenePlayback::IsPlaying(cutscenePlayback) && !IsInPlay()) {
     const Vector3 anchor = CutsceneAnchorPosition();
-    const float distance = std::max(2.5f, activeCutsceneFollow.distance * 4.0f);
-    const float yaw = activeCutsceneFollow.angleDeg * pi / 180.0f;
-    cameraNodePosition = Vector3(anchor.coords[0] + std::sin(yaw) * distance,
-                                 anchor.coords[1] - std::cos(yaw) * distance,
-                                 2.5f + distance * 0.25f);
+    const CamTrackFrame frame =
+        FollowCameraFrame({anchor.coords[0], anchor.coords[1], anchor.coords[2]}, 0.0f,
+                          activeCutsceneFollow.nearPlane, activeCutsceneFollow.farPlane);
+    cameraNodePosition = Vector3(frame.position[0], frame.position[1], frame.position[2]);
     cameraNodeOrientation = QUATERNION_IDENTITY;
-    const Vector3 aim = Vector3(anchor.coords[0], anchor.coords[1], 1.2f) - cameraNodePosition;
-    cameraOrientation.SetAngleAxis(std::atan2(aim.coords[0], -aim.coords[1]), Vector3(0, 0, 1));
-    const float horizontal =
-        std::sqrt(aim.coords[0] * aim.coords[0] + aim.coords[1] * aim.coords[1]);
-    Quaternion tilt;
-    tilt.SetAngleAxis(0.5f * pi - std::atan2(horizontal, -aim.coords[2]), Vector3(1, 0, 0));
-    cameraOrientation = cameraOrientation * tilt;
-    cameraFOV = 28.0f;
-    cameraNearCap = 0.3f;
-    cameraFarCap = 300.0f;
+    cameraOrientation.Set(frame.rotation[0], frame.rotation[1], frame.rotation[2],
+                          frame.rotation[3]);
+    cameraFOV = frame.fov;
+    cameraNearCap = std::max(0.1f, frame.nearPlane);
+    cameraFarCap = frame.farPlane;
     return;
   }
 

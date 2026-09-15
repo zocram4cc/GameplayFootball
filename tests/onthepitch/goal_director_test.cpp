@@ -14,7 +14,7 @@ namespace {
 const char* kText = R"(# PES cutscene director
 state GOAL_RUN_30_BANZAI phase run
   shot weight 1043.1 flags 00000001 on 1 rec 8000e02
-    follow goal_2018_run_cmnCam_B_M dur 0 angle 90 turn 120 dist 1.4 damp 55 offset 55
+    follow goal_2018_run_cmnCam_B_M dur 180 near 0.5 far 400
     actors goal_2018_run_30_banzai
   shot weight 1366.2 flags 00000001 on 1 rec 22010e00
     track goal_2018_run_30_banzai_Z_fromR
@@ -76,9 +76,9 @@ TEST(GoalDirector, ParsesStatesShotsAndLayers) {
   EXPECT_EQ(run->shots[1].Actors(), "goal_2018_run_30_banzai");
   const Layer* follow = run->shots[0].FollowCamera();
   ASSERT_TRUE(follow);
-  EXPECT_EQ(follow->follow.angleDeg, 90);
-  EXPECT_EQ(follow->follow.turnDeg, 120);
-  EXPECT_FLOAT_EQ(follow->follow.distance, 1.4f);
+  EXPECT_FLOAT_EQ(follow->follow.durationFrames, 180.0f);
+  EXPECT_FLOAT_EQ(follow->follow.nearPlane, 0.5f);
+  EXPECT_FLOAT_EQ(follow->follow.farPlane, 400.0f);
 }
 
 TEST(GoalDirector, AnOrdinaryGoalRunsCelebratesAndFinishes) {

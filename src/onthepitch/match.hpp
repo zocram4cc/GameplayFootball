@@ -585,6 +585,11 @@ protected:
   // The staged performance's own length: the last actor's clip ending, set by
   // StartGoalCast. Not the choreography's cycle, which runs on past the bodies.
   unsigned long goalCastLength_ms = 0;
+  // The cast's own zero, latched when it is staged. Read off goalBeat every
+  // tick instead, it changed under the cast: the last beat retires (goalBeat
+  // -1) one tick before the celebration ends, and the clock fell back to the
+  // goal's own, jumping the sampled marks 10 to 20 m for that frame.
+  unsigned long goalCastZero_ms = 0;
   int replayCamera = 1;  // behind the goal, which is what a goal replay wants
   // A foul replay waits for its cutscene; 0 when none is pending.
   unsigned long foulReplayDue_ms = 0;

@@ -140,6 +140,29 @@ CamTrackFrame StageCamTrackFrame(const CamTrackFrame& frame,
   return out;
 }
 
+CamTrackFrame FollowCameraFrame(const std::array<float, 3>& subject, float yaw,
+                                float nearPlane, float farPlane) {
+  // PES's own medians over the goal camtracks of follow-bearing shots
+  // (see camtrack.hpp): 10.65 m out, 0.69 m high, 9.1-degree lens, aimed at a
+  // chest 1.2 m up - which is what puts the view axis 2.7 degrees above the
+  // horizontal, exactly where PES's authored cameras hold it.
+  const float kDistance = 10.65f;
+  const float kHeight = 0.69f;
+  const float kChest = 1.2f;
+  const float kFov = 9.1f;
+
+  CamTrackFrame frame;
+  frame.position = {subject[0] + std::sin(yaw) * kDistance,
+                    subject[1] - std::cos(yaw) * kDistance, subject[2] + kHeight};
+  frame.rotation = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.fov = kFov;
+  frame.nearPlane = nearPlane;
+  frame.farPlane = farPlane;
+  // No framing guard: the camera already stands at PES's own distance behind
+  // PES's own lens, so widening it would only undo the composition.
+  return RetargetCamTrackFrame(frame, {subject[0], subject[1], subject[2] + kChest}, 0.0f, 0.0f);
+}
+
 bool CamTrack::Load(std::istream& in) {
   int lastTimelineFrame = -1;
   frames.clear();

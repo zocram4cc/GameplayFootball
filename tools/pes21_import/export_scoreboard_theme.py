@@ -165,6 +165,14 @@ def main():
     chip.save(os.path.join(out_dir, "addedtime_panel.png"))
     print("wrote addedtime_panel.png %dx%d" % chip.size)
 
+    # The cream tile the goal bug's scoreline sits in: PES's goal bar carries a
+    # near-white box at its centre with navy digits (implying.fun "Summer 2026
+    # Day 1" 32:09, measured at x 45.00%-53.12% of frame). PES's own skin has no
+    # such region to bake, so this one is ours - flat, stretched by the widget.
+    Image.new("RGBA", (8, 8), (242, 240, 232, 255)).save(
+        os.path.join(out_dir, "score_box.png"))
+    print("wrote score_box.png 8x8")
+
     fonts = os.path.join(args.extracted, "fonts")
     export_font(os.path.join(fonts, "numMatch"), out_dir, "num_match")
     export_font(os.path.join(fonts, "numMid"), out_dir, "num_mid")

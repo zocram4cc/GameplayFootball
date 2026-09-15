@@ -380,3 +380,39 @@ TEST(CamTrackStageThenAim, AShotTooTightToShowAnythingIsStillOpenedUp) {
   out = blunted::RetargetCamTrackFrame(out, {0.0f, 0.0f, 1.0f}, 1.5f, 0.15f);
   EXPECT_GT(out.fov, 2.0f);
 }
+
+// --- the procedural camera: PES's records carry no placement, so it is staged
+// the way PES's authored goal cameras are (camtrack.hpp has the measurement) ---
+
+TEST(FollowCamera, LooksUpAtHimTheWayPesOwnGoalCamerasDo) {
+  // the defect this replaces: the invented follow camera stood 8 m up and
+  // pitched 23-38 degrees down, so the goal walk's hug beats filmed the turf
+  auto out = blunted::FollowCameraFrame({25.0f, -8.0f, 0.0f}, 0.0f, 0.5f, 400.0f);
+  auto fwd = blunted::CamTrackForward(out.rotation);
+  EXPECT_GT(fwd[2], 0.0f);  // above the horizontal, never at the ground
+  EXPECT_NEAR(out.position[2], 0.69f, 1e-4);
+  const float distance = std::sqrt(
+      (out.position[0] - 25.0f) * (out.position[0] - 25.0f) +
+      (out.position[1] + 8.0f) * (out.position[1] + 8.0f));
+  EXPECT_NEAR(distance, 10.65f, 1e-3);
+}
+
+TEST(FollowCamera, FramesHimWhereverTheCelebrationFaces) {
+  for (float yaw = -3.0f; yaw < 3.0f; yaw += 0.7f) {
+    const std::array<float, 3> subject = {-30.0f, 12.0f, 0.0f};
+    auto out = blunted::FollowCameraFrame(subject, yaw, 0.5f, 400.0f);
+    auto fwd = blunted::CamTrackForward(out.rotation);
+    const float aim[3] = {subject[0] - out.position[0], subject[1] - out.position[1],
+                          subject[2] + 1.2f - out.position[2]};
+    const float len = std::sqrt(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]);
+    const float dot = (fwd[0] * aim[0] + fwd[1] * aim[1] + fwd[2] * aim[2]) / len;
+    EXPECT_NEAR(dot, 1.0f, 1e-4);  // dead on his chest at every staging angle
+  }
+}
+
+TEST(FollowCamera, KeepsTheRowsOwnClipPlanes) {
+  auto out = blunted::FollowCameraFrame({0.0f, 0.0f, 0.0f}, 0.0f, 2.0f, 300.0f);
+  EXPECT_FLOAT_EQ(out.nearPlane, 2.0f);
+  EXPECT_FLOAT_EQ(out.farPlane, 300.0f);
+  EXPECT_FLOAT_EQ(out.fov, 9.1f);  // PES's own median lens on this shot
+}

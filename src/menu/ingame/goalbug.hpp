@@ -62,6 +62,8 @@ protected:
   std::string lastScorerText;
 
   Gui2Image* plate = nullptr;
+  Gui2Image* plateSlim = nullptr;
+  Gui2Image* scoreBox = nullptr;
   Gui2Image* crest[2] = {nullptr, nullptr};
   Gui2Caption* leftText = nullptr;
   Gui2Caption* centreText = nullptr;

@@ -455,17 +455,16 @@ class CameraCut:
         self.trailing = struct.unpack_from("<11f", data, 0xF0) if len(data) >= 0xF0 + 44 else ()
         # A cut with no canm name is a PROCEDURAL camera - PES's follow cameras
         # (goal_cmnCam_outH10, goal_2018_run_cmnCam_S_LB, ..._noSwitch10, ...) -
-        # 826 of the goal library's cuts. Their tuning sits in the tail: +0x04 a
-        # duration in frames (0/120/180/300/540), +0xB4 an angle (90/80/50/60),
-        # +0xC8 another (180/240/300 or -1), +0xFC a distance ladder
-        # (5.6/2.8/1.4/0.7/0.3), +0x104..+0x110 damping (1.5). Read and carried
-        # so the export loses nothing; the engine gives them their meaning.
+        # 826 of the goal library's cuts. Their record carries a duration in
+        # frames at +0x04 (0/120/180/300/540) and the clip planes at +0x90/+0x94,
+        # and no placement: +0xB4 (50/90/60/80), +0xC8 (180/240/300/-1) and the
+        # +0xFC ladder (5.6/2.8/1.4/0.7/0.3) were read as an angle, a turn and a
+        # distance, but every one of them also sits on the AUTHORED cuts, whose
+        # camera is in the .canm, and tracks none of it - over 3313 authored cuts,
+        # +0xFC 2.8 has a median camera distance of 4.7 m, 5.6 of 12.2 m, 1.4 of
+        # 30.4 m, and +0xB4 90 a median yaw of 16 degrees against 50's 72. PES
+        # places a procedural camera from its own code, keyed by the cut's name.
         self.duration_frames = self.unknown04_float
-        self.angle_a = self.unknown_b4
-        self.angle_b = struct.unpack_from("<I", data, 0xC8)[0] if len(data) >= 0xCC else 0
-        self.distance = struct.unpack_from("<f", data, 0xFC)[0] if len(data) >= 0x100 else 0.0
-        self.damping = struct.unpack_from("<f", data, 0x104)[0] if len(data) >= 0x108 else 0.0
-        self.offset_deg = struct.unpack_from("<f", data, 0xF4)[0] if len(data) >= 0xF8 else 0.0
 
     @property
     def procedural(self):

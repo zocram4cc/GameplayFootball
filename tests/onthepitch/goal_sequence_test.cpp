@@ -169,12 +169,17 @@ TEST(GoalMontage, ALongPerformanceStretchesTheMobWideNotTheStands) {
   EXPECT_EQ(GoalSequence::ShotStartedAt_ms(mobWideEnd, length), mobWideEnd);
 }
 
-TEST(GoalMontage, TheRibbonRisesOnTheTwoShot) {
-  // About four seconds after the goal, as the first teammate arrives.
-  EXPECT_EQ(GoalSequence::kRibbonIn_ms,
-            GoalSequence::kShotLength_ms[0] + GoalSequence::kShotLength_ms[1]);
+TEST(GoalMontage, TheTwoLowerThirdsFollowTheReference) {
+  // implying.fun "Summer 2026 Day 1" at 32:09, blue-mask over the clip: the
+  // score bug is on air 1.75-4.00 s after the ball goes in, then the scorer's
+  // plate from 4.75 s - so the two never overlap and there is a gap between
+  // them, and the scorer's plate lands on the two-shot, as the first teammate
+  // arrives.
+  EXPECT_LT(GoalSequence::kScoreBugIn_ms, GoalSequence::kScoreBugOut_ms);
+  EXPECT_LT(GoalSequence::kScoreBugOut_ms, GoalSequence::kScorerBugIn_ms);
   const unsigned long length = GoalSequence::CelebrationLength_ms(0);
-  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kRibbonIn_ms, length), GoalSequence::Shot::TwoShot);
+  EXPECT_EQ(GoalSequence::ShotAt(GoalSequence::kScorerBugIn_ms, length),
+            GoalSequence::Shot::TwoShot);
 }
 
 TEST(GoalMontage, TheWholeSequenceIsTheReferencesThirtyFiveToFiftySeconds) {

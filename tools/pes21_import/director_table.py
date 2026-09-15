@@ -185,13 +185,16 @@ def write_director(table, cut_dir, out_path, load_fdc):
     lines = ["# PES cutscene director, from %s" % os.path.basename(table.path),
              "# state <name> phase <phase>",
              "#   shot weight <f> flags <hex> on <n> rec <hex>",
-             "#     track|follow|actors|props <fdc base> [follow: dur angle turn dist damp offset]"]
+             "#     track|follow|actors|props <fdc base> [follow: dur near far]"]
     cache = {}
     for i, name in enumerate(table.states):
         lines.append("state %s phase %s" % (name, table.phase_of(name)))
         first, count = table.state_rows[i]
         for k, row in enumerate(table.rows_of(i)):
-            r = first - 1 + k
+            # the same window rows_of() reads: the CSR counts from 1, and the
+            # first state's 0 doubles as "the first row" (without the guard,
+            # state 0's first shot took the LAST row's weight and flags)
+            r = (first - 1 if first > 0 else 0) + k
             flags, on = table.row_flags[r] if r < len(table.row_flags) else (0, 0)
             lines.append("  shot weight %.1f flags %08x on %d rec %x" % (
                 table.row_weight[r], flags, on, table.row_records[r][0]))
@@ -205,10 +208,18 @@ def write_director(table, cut_dir, out_path, load_fdc):
                         cache[base] = [("missing", None)]
                 for kind, cut in cache[base]:
                     if kind == "follow":
-                        lines.append("    follow %s dur %g angle %d turn %d dist %g damp %g offset %g" % (
-                            base, cut.duration_frames, cut.angle_a,
-                            cut.angle_b if cut.angle_b != 0xFFFFFFFF else -1, cut.distance,
-                            cut.damping, cut.offset_deg))
+                        # A procedural camera's record carries a duration and its
+                        # clip planes, and no placement: the fields that read like
+                        # one (+0xB4, +0xC8, +0xFC) carry the same values on the
+                        # AUTHORED cuts beside them, where the camera is in the
+                        # .canm - and do not track it (dist 2.8 -> median authored
+                        # distance 4.7 m, 5.6 -> 12.2 m, 1.4 -> 30.4 m; angle 90 ->
+                        # median yaw 16 deg, 50 -> 72 deg). PES places these
+                        # cameras from its own code, by name. Exporting them under
+                        # geometric names invited the engine to aim by them, which
+                        # is what pointed the goal walk's follow shots at the turf.
+                        lines.append("    follow %s dur %g near %g far %g" % (
+                            base, cut.duration_frames, cut.near, cut.far))
                     else:
                         lines.append("    %s %s" % (kind, base))
     with open(out_path, "w") as f:
