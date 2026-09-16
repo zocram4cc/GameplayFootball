@@ -19,6 +19,7 @@ import { registrationRoutes } from './routes/register';
 
 import { streamerRoutes } from './routes/streamer';
 import { rigRoutes } from './routes/rig';
+import { statsRoutes } from './routes/stats';
 import { Tactics } from './types/fastify';
 
 
@@ -84,6 +85,7 @@ async function startServer() {
 
   fastify.register(streamerRoutes);
   fastify.register(rigRoutes);
+  fastify.register(statsRoutes);
 
   fastify.get('/', async (request, reply) => {
     return reply.redirect('/login');

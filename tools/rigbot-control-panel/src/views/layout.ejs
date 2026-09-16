@@ -15,6 +15,7 @@
             <% if (user.roles.includes('ADMIN')) { %>
                 <a href="/admin">Admin</a>
                 <a href="/rig">Rig</a>
+                <a href="/stats">Stats</a>
             <% } %>
             <% if (user.roles.includes('STREAMER') || user.roles.includes('ADMIN')) { %>
                 <a href="/streamer">Streamer</a>

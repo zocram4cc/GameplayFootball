@@ -1,0 +1,28 @@
+<h1>Match stats</h1>
+
+<% if (matches.length === 0) { %>
+    <p class="muted">No exported matches yet.</p>
+<% } else { %>
+    <table>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Competition</th>
+                <th>Match</th>
+                <th>Score</th>
+                <th>Wikitext</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% matches.forEach(m => { %>
+                <tr>
+                    <td><a href="/stats/<%= m.matchId %>"><%= m.date %></a></td>
+                    <td><%= m.competition || '' %></td>
+                    <td><%= m.home ? m.home.name : '?' %> v <%= m.away ? m.away.name : '?' %></td>
+                    <td><%= m.home ? m.home.score : '?' %> – <%= m.away ? m.away.score : '?' %></td>
+                    <td><%= m.hasWiki ? 'yes' : 'no' %></td>
+                </tr>
+            <% }) %>
+        </tbody>
+    </table>
+<% } %>

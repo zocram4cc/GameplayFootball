@@ -1,0 +1,60 @@
+<h1>Match stats — <%= doc.date %></h1>
+<p>
+    <%= doc.competition || '' %>
+    <% if (doc.stadium) { %> · <%= doc.stadium %><% } %>
+    <% if (doc.durationMinutes) { %> · <%= doc.durationMinutes %> min<% } %>
+</p>
+
+<div class="rig-teams">
+<% doc.teams.forEach(team => { %>
+    <section class="panel rig-team">
+        <h2><%= team.name %> (<%= team.side %>) — <strong><%= team.score %></strong></h2>
+
+        <% if (team.goals.length > 0) { %>
+            <h3>Goals</h3>
+            <ul>
+                <% team.goals.forEach(g => { %>
+                    <li><%= g.minute %>' <%= g.player %><%= g.penalty ? ' (pen)' : '' %><%= g.own ? ' (og)' : '' %></li>
+                <% }) %>
+            </ul>
+        <% } %>
+
+        <% if (team.cards.length > 0) { %>
+            <h3>Cards</h3>
+            <ul>
+                <% team.cards.forEach(c => { %>
+                    <li><%= c.minute %>' <%= c.player %> (<%= c.type %>)</li>
+                <% }) %>
+            </ul>
+        <% } %>
+
+        <table>
+            <tbody>
+                <% [
+                    ['Shots', 'shots'], ['Shots on target', 'shotsOnTarget'], ['Saves', 'saves'],
+                    ['Corners', 'corners'], ['Fouls', 'fouls'], ['Offsides', 'offsides'],
+                    ['Possession %', 'possessionPercent'], ['Passes', 'passes'],
+                    ['Passes completed', 'passesCompleted'], ['Pass accuracy %', 'passAccuracyPercent'],
+                    ['xG', 'expectedGoals'],
+                ].forEach(([label, key]) => { %>
+                    <% if (team[key] !== undefined) { %>
+                        <tr><th><%= label %></th><td><%= team[key] %></td></tr>
+                    <% } %>
+                <% }) %>
+            </tbody>
+        </table>
+    </section>
+<% }) %>
+</div>
+
+<section class="panel">
+    <h2>Wikitext</h2>
+    <% if (wiki !== null) { %>
+        <p><a href="/stats/<%= doc.matchId %>/wiki.txt">Download .wiki.txt</a></p>
+        <pre id="wiki-text"><%= wiki %></pre>
+    <% } else { %>
+        <p class="muted">No wikitext exported for this match.</p>
+    <% } %>
+</section>
+
+<p><a href="/stats">Back to match list</a></p>
