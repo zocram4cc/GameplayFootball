@@ -534,13 +534,10 @@ protected:
   MatchAnalytics::ShotTally shotTally;
   MatchAnalytics::Heatmap teamBallHeatmap[2];
 
-  // Last tick's ball position, so a goal-line crossing can be interpolated from
-  // the two physics steps that straddle the plane (GameplayTuning::
-  // FindGoalLineCrossing) instead of projected from the launch.
-  blunted::Vector3 prevBallPosition;
-  bool havePrevBallPosition = false;
   // True while the ball is behind the goal line, so one arrival is counted once
-  // rather than once per tick the ball spends rattling in the net.
+  // rather than once per tick the ball spends rattling in the net. The positions
+  // it straddles come from the pre-existing `previousBallPos`, set just before
+  // `ball->Process()`.
   bool goalLineCrossingOpen = false;
 
   CoachMode::Setup coachSetup;
