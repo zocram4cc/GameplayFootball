@@ -234,6 +234,10 @@ void GameOverPage::Process() {
         // heading inside the frame, so this is not the projection restated - and
         // it is the column to compare against the ~20-30% a real match sees.
         "on target (goals+saves) %i-%i | "
+        // The gate's audit: keeper touches that were NOT saves because the ball
+        // was not heading inside the frame. If this is ~0 the gate is rejecting
+        // nothing and the column above is just "any keeper touch".
+        "keeper collections %i-%i | "
         "possession %i%%-%i%%\n",
         matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
         matchData->GetShotsOnTarget(1), matchData->GetSaves(0), matchData->GetSaves(1),
@@ -248,7 +252,8 @@ void GameOverPage::Process() {
         // Crossed: `saves[i]` are the saves team i's keeper MADE, so team i's
         // own shots on target are its goals plus the saves the OTHER keeper made.
         matchData->GetGoalCount(0) + matchData->GetSaves(1),
-        matchData->GetGoalCount(1) + matchData->GetSaves(0), PossessionPercent(matchData, 0),
+        matchData->GetGoalCount(1) + matchData->GetSaves(0), matchData->GetKeeperCollections(0),
+        matchData->GetKeeperCollections(1), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The

@@ -253,6 +253,11 @@ inline bool CrossedInsideGoalFrame(const GoalLineCrossing& cross, float goalHalf
          cross.height_m < goalHeight_m;
 }
 
+// A shot is struck from inside this range and no further. The engine's own
+// shooting range knob maxes out at 45 m, so extrapolating a keeper's touch from
+// further away than that is describing a pass, not a shot at goal.
+constexpr float kShotRangeCap_m = 45.0f;
+
 // Where the ball *would* meet the plane, from its position and velocity now.
 // Used where the ball is stopped before it gets there - the keeper's hand, a
 // block - because "was this heading into the frame" is the only way to ask
@@ -267,15 +272,17 @@ inline GoalLineCrossing PredictGoalLineCrossing(const std::array<float, 3>& pos,
                                                 const std::array<float, 3>& vel,
                                                 float pitchHalfW) {
   GoalLineCrossing out;
-  const float inside = std::fabs(pos[0]);
-  if (inside >= pitchHalfW) return out;  // already level with the line
-  // Which way it is travelling: toward -x or +x. Both components keep their
-  // sign, so a ball moving away from the line never crosses.
-  const int side = (pos[0] > 0.0f) ? 1 : -1;
-  const float toward = vel[0] * side;
-  if (toward <= 0.01f) return out;
-  const float t = (pitchHalfW - inside) / toward;
-  if (t > 3.0f) return out;  // slower than a pass at walking pace: not a shot
+  // Which goal it is heading for comes from the VELOCITY, not from which half
+  // the ball happens to be in: a ball in its own half travelling at the far goal
+  // is heading for that goal, and taking the side from `pos[0]` reads its
+  // direction as backwards and reports no crossing at all.
+  if (std::fabs(vel[0]) <= 0.01f) return out;
+  const int side = (vel[0] > 0.0f) ? 1 : -1;
+  const float distance = pitchHalfW - pos[0] * side;
+  if (distance <= 0.0f) return out;   // already level with, or past, that line
+  if (distance > kShotRangeCap_m) return out;  // no shot is struck from here
+  const float t = distance / std::fabs(vel[0]);
+  if (t > 4.0f) return out;  // and at this pace it is a pass, not a shot
   out.crossed = true;
   out.lateral_m = pos[1] + vel[1] * t;
   out.height_m = pos[2] + vel[2] * t - 0.5f * kGravity_mps2 * t * t;

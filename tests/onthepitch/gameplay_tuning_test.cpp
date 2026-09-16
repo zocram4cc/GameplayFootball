@@ -514,3 +514,24 @@ TEST(GameplayTuningTest, ABallAimedOutsideTheFrameIsNotOnTarget) {
   EXPECT_GT(over.height_m, 2.5f);
   EXPECT_FALSE(GameplayTuning::CrossedInsideGoalFrame(over, 3.7f, 2.5f));
 }
+
+TEST(GameplayTuningTest, AStopIsAShotOnlyFromWithinRangeOfTheGoalItIsHeadingFor) {
+  // Which goal the ball is heading for comes from its velocity. Within shooting
+  // range that agrees with the ball's own half by construction - a ball aimed
+  // at the goal on the far side of the pitch is more than 45 m away from it, so
+  // the range cap rejects it whichever way the side is derived. This pins the
+  // reachable boundary, which is the one the save gate actually sees:
+  //
+  //   40 m out, heading for that goal -> a shot, and it was on target
+  const GameplayTuning::GoalLineCrossing inRange =
+      GameplayTuning::PredictGoalLineCrossing({-12.5f, 0.5f, 0.5f}, {-25.0f, 0.0f, 0.0f}, 52.5f);
+  EXPECT_TRUE(inRange.crossed);
+  EXPECT_NEAR(inRange.lateral_m, 0.5f, 0.01f);
+  EXPECT_TRUE(GameplayTuning::CrossedInsideGoalFrame(inRange, 3.7f, 2.5f));
+  //   57.5 m out at the far goal -> not a shot at all, however hard it is hit
+  EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-5.0f, 0.0f, 0.5f}, {30.0f, 0.0f, 0.0f}, 52.5f)
+                   .crossed);
+  //   past the line it travels toward -> nothing left to predict
+  EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-54.0f, 0.0f, 0.5f}, {-10.0f, 0.0f, 0.0f}, 52.5f)
+                   .crossed);
+}
