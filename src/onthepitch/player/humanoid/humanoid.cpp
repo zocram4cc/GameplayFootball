@@ -886,6 +886,9 @@ void Humanoid::Process() {
           // 1,522 m path and a 41 s flight). Fall back to the axis-aligned gap
           // there - conservative, and it is what the code did before.
           constexpr float kMinAimTowardGoalFraction = 0.3f;
+          // Beyond this the "flight" is a ball never meant for goal; the band is
+          // meaningless and the previous guard already covers the geometry.
+          constexpr float kMaxShotFlightTime_s = 3.0f;
           float distanceToGoal = std::fabs(goalLineX - ballNow.coords[0]);
           const Vector3 aim2D = ballDirection.Get2D().GetNormalized(Vector3(0));
           if (fabs(aim2D.coords[0]) > kMinAimTowardGoalFraction)
@@ -896,16 +899,9 @@ void Humanoid::Process() {
           // trusted.
           const float horizontalSpeed = touchVec.Get2D().GetLength();
           const float flightTime = distanceToGoal / std::max(1.0f, horizontalSpeed);
-          const bool bandApplies = flightTime > 0.05f && flightTime < 3.0f;
-          if (bandApplies) {
-            const float startZ = ballNow.coords[2];
-            const float drop = 0.5f * 9.81f * flightTime;
-            const float minVz =
-                (GameplayTuning::kShotArrivalMin_m - startZ) / flightTime + drop;
-            const float maxVz =
-                (GameplayTuning::kShotArrivalMax_m - startZ) / flightTime + drop;
-            touchVec.coords[2] = clamp(touchVec.coords[2], minVz, maxVz);
-          }
+          if (flightTime < kMaxShotFlightTime_s)
+            touchVec.coords[2] = GameplayTuning::ClampShotArrivalVelocityZ(
+                touchVec.coords[2], ballNow.coords[2], flightTime);
         }
 
         match->GetBall()->Touch(touchVec);
@@ -971,7 +967,9 @@ void Humanoid::Process() {
           if (fabs(shotVelX) > 0.1f && (dx * shotVelX > 0.0f)) {
             float t = dx / shotVelX;
             float y_at_goal = ballPos.coords[1] + touchVec.coords[1] * t;
-            float z_at_goal = ballPos.coords[2] + touchVec.coords[2] * t - 0.5f * 9.81f * t * t;
+            // Same trajectory model the strike band aims with, same gravity.
+            float z_at_goal = ballPos.coords[2] + touchVec.coords[2] * t -
+                              0.5f * GameplayTuning::kGravity_mps2 * t * t;
             if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
                 z_at_goal < goalHeight) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());

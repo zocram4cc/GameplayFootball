@@ -129,6 +129,36 @@ TEST(GameplayTuningShootingTest, WorthShootingAdmitsSpeculationDeclinesHopelessn
   EXPECT_TRUE(GameplayTuning::IsWorthShooting(0.30f));
 }
 
+TEST(GameplayTuningShootingTest, TheArrivalBandPutsTheBallBetweenThePosts) {
+  // A flat strike from the 27.7 m median distance at 20 m/s: the band's floor
+  // must lift it enough to arrive. Flight 1.385 s, so unclamped it would land
+  // 9.4 m short of the line.
+  const float flight = 27.7f / 20.0f;
+  const float lifted = GameplayTuning::ClampShotArrivalVelocityZ(0.0f, 0.11f, flight);
+  EXPECT_GT(lifted, 0.0f) << "a flat strike is raised, not left to drop";
+  EXPECT_NEAR(lifted,
+              GameplayTuning::ShotArrivalVelocityZ(GameplayTuning::kShotArrivalMin_m, 0.11f, flight),
+              1e-4f);
+
+  // A shot already lofted through the roof is pulled back to the top of the band.
+  const float tooHigh = GameplayTuning::ShotArrivalVelocityZ(2.1f, 0.11f, flight) + 5.0f;
+  const float clamped = GameplayTuning::ClampShotArrivalVelocityZ(tooHigh, 0.11f, flight);
+  EXPECT_NEAR(clamped, GameplayTuning::ShotArrivalVelocityZ(2.1f, 0.11f, flight), 1e-4f);
+
+  // A shot already inside the band is left exactly alone.
+  const float inside = GameplayTuning::ShotArrivalVelocityZ(1.0f, 0.11f, flight);
+  EXPECT_FLOAT_EQ(GameplayTuning::ClampShotArrivalVelocityZ(inside, 0.11f, flight), inside);
+}
+
+TEST(GameplayTuningShootingTest, TheBandIsOrderedAndHasNoFlightForNoShot) {
+  const float flight = 0.6f;
+  EXPECT_LT(GameplayTuning::ShotArrivalVelocityZ(GameplayTuning::kShotArrivalMin_m, 0.11f, flight),
+            GameplayTuning::ShotArrivalVelocityZ(GameplayTuning::kShotArrivalMax_m, 0.11f, flight));
+  EXPECT_LT(GameplayTuning::kShotArrivalMin_m, GameplayTuning::kShotArrivalMax_m);
+  // No flight time: nothing to aim ballistically, so the strike is untouched.
+  EXPECT_FLOAT_EQ(GameplayTuning::ClampShotArrivalVelocityZ(3.0f, 0.11f, 0.0f), 3.0f);
+}
+
 TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
   EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
   EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);

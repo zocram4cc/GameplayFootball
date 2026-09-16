@@ -190,6 +190,27 @@ inline float GetShotAppetite(const blunted::Properties& config) {
 // gravity alone drops the ball 8.9 m), above it goes over the bar.
 constexpr float kShotArrivalMin_m = 0.3f;
 constexpr float kShotArrivalMax_m = 2.1f;
+constexpr float kGravity_mps2 = 9.81f;
+
+// The vertical launch speed that puts the ball at `arrivalHeight_m` when it
+// reaches the goal line: h = z0 + vz*t - g*t^2/2, so vz = (h - z0)/t + g*t/2.
+// Pure, because the band is the difference between a shot that arrives and one
+// that dies on the turf (measured: 10 of 22 crossings below ground before it
+// existed) and it deserves a test rather than a comment.
+inline float ShotArrivalVelocityZ(float arrivalHeight_m, float startZ_m, float flightTime_s) {
+  const float t = std::max(0.01f, flightTime_s);
+  return (arrivalHeight_m - startZ_m) / t + 0.5f * kGravity_mps2 * t;
+}
+
+// The band a strike's vertical speed is held inside, so the ball crosses the
+// line between kShotArrivalMin_m and kShotArrivalMax_m. Returns `vz` untouched
+// when the shot is not to the goal line at all (no flight time to speak of).
+inline float ClampShotArrivalVelocityZ(float vz, float startZ_m, float flightTime_s) {
+  if (flightTime_s <= 0.05f) return vz;
+  const float bandMin = ShotArrivalVelocityZ(kShotArrivalMin_m, startZ_m, flightTime_s);
+  const float bandMax = ShotArrivalVelocityZ(kShotArrivalMax_m, startZ_m, flightTime_s);
+  return std::max(bandMin, std::min(vz, bandMax));
+}
 
 // A chance is worth shooting at when the same xG model that scores the stats
 // says so: 0.04 is a speculative hit (roughly a 27 m strike through traffic),
