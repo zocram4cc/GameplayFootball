@@ -1037,6 +1037,13 @@ void Humanoid::Process() {
         if (canRetain) {
           match->SetBallRetainer(CastPlayer());
         } else {
+          // A parry is a save too. Only the catch path used to record one, and
+          // since the catching model parries anything quicker than the keeper's
+          // catch speed - which is most on-target shots - the stats card and
+          // the balance line were counting catches while calling them saves.
+          // Any keeper touch inside the on-target window is one.
+          if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
+            match->GetMatchData()->RecordGoalkeeperTouch(team->GetID());
           Vector3 currentBallMovement = match->GetBall()->GetMovement().Get2D();
           Vector3 playerMovement = spatialState.movement;
           Vector3 touchVec =
