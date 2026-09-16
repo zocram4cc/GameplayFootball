@@ -198,3 +198,14 @@ TEST(HeatmapTest, AnEmptyHeatmapHasNoIntensityAnywhere) {
   const MatchAnalytics::Heatmap heatmap;
   EXPECT_FLOAT_EQ(MatchAnalytics::GetNormalizedIntensity(heatmap, 0, 0), 0.0f);
 }
+
+TEST(ExpectedGoalsTest, SmallBoxBeatsPenaltySpot) {
+  // A yard closer inside 6 m is a real gain: the tap-in rates above the
+  // six-yard line and that above the penalty spot, all below certainty.
+  const float onLine = MatchAnalytics::CalculateExpectedGoals(CentralShot(1.0f));
+  const float sixYards = MatchAnalytics::CalculateExpectedGoals(CentralShot(6.0f));
+  const float penaltySpot = MatchAnalytics::CalculateExpectedGoals(CentralShot(11.0f));
+  EXPECT_GT(onLine, sixYards);
+  EXPECT_GT(sixYards, penaltySpot);
+  EXPECT_LT(onLine, MatchAnalytics::maxExpectedGoals);
+}

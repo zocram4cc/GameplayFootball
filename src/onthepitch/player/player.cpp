@@ -188,7 +188,11 @@ bool Player::KeeperAttemptsSave() {
       std::sqrt(std::pow(crossingY - GetPosition().coords[1], 2.0f) +
                 std::pow(std::max(0.0f, crossingZ - 0.9f), 2.0f));  // hands rest at hip height
   const float latency_s = GameplayTuning::GetKeeperReactionTime_s(GetStat("gk_reflexes"));
-  const float reach_m = GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage"));
+  // Only the reach behind the ball counts: with almost no flight even the best
+  // keeper has barely started to extend, which is why point blank beats an
+  // ordinary keeper and still has to beat a good one reaching for it.
+  const float reach_m = GameplayTuning::KeeperEffectiveReach_m(
+      GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage")), timeToLine_s, latency_s);
   return GameplayTuning::KeeperReachesShot(
       gap_m, timeToLine_s, latency_s, reach_m,
       GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage")));

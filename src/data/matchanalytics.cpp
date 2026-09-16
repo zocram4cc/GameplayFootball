@@ -13,9 +13,9 @@ float Clamp01(float value) {
   return std::max(0.0f, std::min(value, 1.0f));
 }
 
-// Distance at which a chance is still as good as it gets, and the scale over
-// which it decays.
-const float pointBlankDistance = 6.0f;
+// One monotone curve from the goal line outward: closer is always better, so
+// no plateau to trap the small box. 9 m of decay values a central six-yard
+// chance at 0.51 and the penalty spot at 0.29, before defenders and angle.
 const float distanceDecay = 9.0f;
 // A shot from the byline keeps this share of its value.
 const float minAngleShare = 0.25f;
@@ -48,8 +48,11 @@ int ValidTeam(int teamID) {
 
 float CalculateExpectedGoals(const ShotContext& context) {
   const float distance = std::max(0.0f, context.distance);
-  const float distanceTerm =
-      std::min(std::exp(-(distance - pointBlankDistance) / distanceDecay), 1.0f);
+  // No plateau: one monotone curve from the line outward, so a tap-in rates
+  // above the six-yard line and that above the penalty spot by construction.
+  // Peak 1.0 sits only on the goal line itself, which is also the only place
+  // the certainty cap downstream binds.
+  const float distanceTerm = std::exp(-distance / distanceDecay);
   const float angleTerm = minAngleShare + (1.0f - minAngleShare) * Clamp01(context.angleFactor);
   const float defenderTerm =
       1.0f / (1.0f + defenderCost * static_cast<float>(std::max(0, context.defendersInPath)));

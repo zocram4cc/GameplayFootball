@@ -366,6 +366,19 @@ inline float GetShotCurveNoise(float shotStat) {
 // Does he get a hand to it? The geometry of the save, kept pure so it can be
 // tested: the gap he has to close, the time the ball gives him, the latency his
 // reflexes cost, his reach at full stretch and the speed he closes the rest at.
+// Arms need time to extend: with less flight than his own reaction the keeper
+// gets only part of his reach behind the ball, and the share follows his own
+// reaction time - so a 0.9 keeper keeps a hand in it at point blank while a
+// 0.6 keeper barely starts, with no dice anywhere. Never more than the reach
+// and never less than nothing; full flight leaves it untouched.
+constexpr float kKeeperReachExtensionShare = 1.0f;
+inline float KeeperEffectiveReach_m(float reach_m, float timeToLine_s, float latency_s) {
+  if (latency_s <= 0.0f)
+    return reach_m;
+  return reach_m * kKeeperReachExtensionShare *
+         std::min(1.0f, std::max(0.0f, timeToLine_s / latency_s));
+}
+
 inline bool KeeperReachesShot(float gap_m, float timeToLine_s, float latency_s, float reach_m,
                               float closingSpeed_ms) {
   const float travel_m = std::max(0.0f, timeToLine_s - latency_s) * std::max(0.0f, closingSpeed_ms);

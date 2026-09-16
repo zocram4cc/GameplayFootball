@@ -95,6 +95,32 @@ TEST(GameplayTuningKeeperTest, TheAttributesDecideTheShotsInBetween) {
   EXPECT_FALSE(poor);
 }
 
+TEST(GameplayTuningKeeperTest, ShortFlightShrinksEffectiveReachByStat) {
+  // Arms need time to extend: at point blank only part of the reach is behind
+  // the ball, and the share follows the keeper's own reaction, so the 0.9
+  // keeper keeps a hand in it while the 0.6 keeper has barely started. No
+  // dice anywhere: same inputs, same answer, every time.
+  const float gap = 2.0f, flight = 0.27f;
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
+      gap, flight, GameplayTuning::GetKeeperReactionTime_s(0.9f),
+      GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.9f), flight,
+                                             GameplayTuning::GetKeeperReactionTime_s(0.9f)),
+      GameplayTuning::GetKeeperDiveSpeed_ms(0.9f)));
+  EXPECT_FALSE(GameplayTuning::KeeperReachesShot(
+      gap, flight, GameplayTuning::GetKeeperReactionTime_s(0.6f),
+      GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.6f), flight,
+                                             GameplayTuning::GetKeeperReactionTime_s(0.6f)),
+      GameplayTuning::GetKeeperDiveSpeed_ms(0.6f)));
+  // Full flight leaves the reach untouched, and a shot straight at him with
+  // time is saved by anyone.
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperEffectiveReach_m(2.25f, 1.0f, 0.215f), 2.25f);
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
+      0.2f, 0.6f, GameplayTuning::GetKeeperReactionTime_s(0.0f),
+      GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.0f), 0.6f,
+                                             GameplayTuning::GetKeeperReactionTime_s(0.0f)),
+      GameplayTuning::GetKeeperDiveSpeed_ms(0.0f)));
+}
+
 TEST(GameplayTuningKeeperTest, ReachAndCatchingRiseWithTheAttribute) {
   EXPECT_GT(GameplayTuning::GetKeeperDiveReach_m(1.0f),
             GameplayTuning::GetKeeperDiveReach_m(0.0f));
