@@ -89,10 +89,11 @@ import re, sys, collections, statistics as st
 text = open(sys.argv[1]).read()
 scores = [(int(a), int(b)) for a, b in
           re.findall(r"Full match complete: \S+ (\d+) - (\d+) \S+", text)]
-bal = [(int(s1), int(s2), int(t1), int(t2), float(x1), float(x2))
-       for s1, s2, t1, t2, x1, x2 in
-       re.findall(r"\[balance\] shots (\d+)-(\d+) \| on target (\d+)-(\d+) \| xg ([\d.]+)-([\d.]+)",
-                  text)]
+bal = [(int(s1), int(s2), int(t1), int(t2), int(v1), int(v2), float(x1), float(x2),
+        int(g1), int(g2))
+       for s1, s2, t1, t2, v1, v2, x1, x2, g1, g2 in
+       re.findall(r"\[balance\] shots (\d+)-(\d+) \| on target (\d+)-(\d+) \| saves (\d+)-(\d+)"
+                  r" \| xg ([\d.]+)-([\d.]+) \| goals (\d+)-(\d+)", text)]
 pas = [(int(p1), int(p2), int(a1), int(a2))
        for p1, p2, a1, a2 in
        re.findall(r"\[balance-passing\] passes (\d+)-(\d+) \| accuracy (\d+)%-(\d+)%", text)]
@@ -107,9 +108,14 @@ print("distribution:", " ".join("%d:%d" % (g, hist[g]) for g in range(0, max(tot
 if bal:
     shots = [s for r in bal for s in r[0:2]]
     on = [s for r in bal for s in r[2:4]]
-    xg = [s for r in bal for s in r[4:6]]
-    print("per team: shots %.1f  on target %.1f (%.0f%%)  xG %.2f" %
-          (st.mean(shots), st.mean(on), 100.0 * sum(on) / max(1, sum(shots)), st.mean(xg)))
+    saves = [s for r in bal for s in r[4:6]]
+    xg = [s for r in bal for s in r[6:8]]
+    goals = [s for r in bal for s in r[8:10]]
+    print("per team: shots %.1f  on target %.1f (%.0f%%)  saves %.1f  xG %.2f  goals %.2f" %
+          (st.mean(shots), st.mean(on), 100.0 * sum(on) / max(1, sum(shots)), st.mean(saves),
+           st.mean(xg), st.mean(goals)))
+    print("           keeper saves %.0f%% of shots on target; %.0f%% of on-target became goals" %
+          (100.0 * sum(saves) / max(1, sum(on)), 100.0 * sum(goals) / max(1, sum(on))))
 if pas:
     attempts = [p for r in pas for p in r[0:2]]
     weighted = sum(p * a for r in pas for p, a in zip(r[0:2], r[2:4]))

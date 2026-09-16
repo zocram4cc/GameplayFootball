@@ -873,13 +873,32 @@ void Humanoid::Process() {
         // height h after t is (h - startZ)/t + g*t/2 - the inverse of the drop -
         // so the band is two of those, and the ball arrives between the posts.
         {
+          const Vector3 ballNow = match->GetBall()->Predict(0);
           const float goalLineX = pitchHalfW * -team->GetSide();
-          const float distanceToGoal =
-              std::fabs(goalLineX - match->GetBall()->Predict(0).coords[0]);
-          const float horizontalSpeed = std::max(8.0f, touchVec.Get2D().GetLength());
-          const float flightTime = distanceToGoal / horizontalSpeed;
-          if (flightTime > 0.05f && flightTime < 3.0f) {
-            const float startZ = match->GetBall()->Predict(0).coords[2];
+          // The PATH the ball actually travels, not the axis-aligned gap: from a
+          // wide position the goal-line plane is reached by a diagonal, and
+          // using |dx| alone understates the flight by up to 30%, which aims the
+          // band low. ballDirection is a unit vector, so travelling 1/fabs(dirX)
+          // along it advances exactly one metre in x.
+          // Below this share of the aim pointing at the goal, the ray is
+          // nearly parallel to the goal line and the extrapolation explodes
+          // (measured: a strike aimed almost square across the field gave a
+          // 1,522 m path and a 41 s flight). Fall back to the axis-aligned gap
+          // there - conservative, and it is what the code did before.
+          constexpr float kMinAimTowardGoalFraction = 0.3f;
+          float distanceToGoal = std::fabs(goalLineX - ballNow.coords[0]);
+          const Vector3 aim2D = ballDirection.Get2D().GetNormalized(Vector3(0));
+          if (fabs(aim2D.coords[0]) > kMinAimTowardGoalFraction)
+            distanceToGoal = std::fabs((goalLineX - ballNow.coords[0]) / aim2D.coords[0]);
+          // The horizontal speed the ball is actually struck at. The 8 m/s floor
+          // was a guess at "too slow to matter"; a strike below it never gets
+          // the band and dies on the turf, so the floor is logged rather than
+          // trusted.
+          const float horizontalSpeed = touchVec.Get2D().GetLength();
+          const float flightTime = distanceToGoal / std::max(1.0f, horizontalSpeed);
+          const bool bandApplies = flightTime > 0.05f && flightTime < 3.0f;
+          if (bandApplies) {
+            const float startZ = ballNow.coords[2];
             const float drop = 0.5f * 9.81f * flightTime;
             const float minVz =
                 (GameplayTuning::kShotArrivalMin_m - startZ) / flightTime + drop;

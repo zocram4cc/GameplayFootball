@@ -213,10 +213,16 @@ void GameOverPage::Process() {
            matchData->GetSupportWebWidthMean_m(0), matchData->GetSupportWebWidthMean_m(1));
 #endif
     printf(
-        "[balance] shots %i-%i | on target %i-%i | xg %.2f-%.2f | goals %i-%i | possession "
-        "%i%%-%i%%\n",
+        // Saves are in here because they are the lever between on-target and
+        // goals: on-target minus saves minus goals is what the keeper never
+        // touched, and a keeper stopping 85% of the target is a different
+        // problem from a side that cannot hit it (the stats card shows the same
+        // number, so this is telemetry, not instrumentation).
+        "[balance] shots %i-%i | on target %i-%i | saves %i-%i | xg %.2f-%.2f | goals %i-%i | "
+        "possession %i%%-%i%%\n",
         matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
-        matchData->GetShotsOnTarget(1), MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 0),
+        matchData->GetShotsOnTarget(1), matchData->GetSaves(0), matchData->GetSaves(1),
+        MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 0),
         MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 1), matchData->GetGoalCount(0),
         matchData->GetGoalCount(1), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
