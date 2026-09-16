@@ -38,11 +38,11 @@ void DefaultMidfieldStrategy::RequestInput(const MentalImage* mentalImage, Vecto
     float attackBias =
         NormalizedClamp((controller->GetFadingTeamPossessionAmount() - 0.5f) * 1.0f, 0.1f, 0.7f);
     bool makeRun = false;
-    if (attackBias > 0.9f) {
-      if (team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms() &&
-          team->GetController()->GetAttackingRunPlayer() == player) {
-        makeRun = true;
-      }
+    // Same dead gate as default_off had (> 0.9 against a 0.1..0.7 clamp):
+    // run whenever the flag names us.
+    if (team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms() &&
+        team->GetController()->GetAttackingRunPlayer() == player) {
+      makeRun = true;
     }
     Vector3 supportPosition =
         controller->GetSupportPosition_ForceField(mentalImage, desiredPosition, makeRun);

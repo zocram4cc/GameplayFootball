@@ -46,11 +46,14 @@ void DefaultOffenseStrategy::RequestInput(const MentalImage* mentalImage, Vector
     float attackBias =
         NormalizedClamp((controller->GetFadingTeamPossessionAmount() - 0.5f) * 1.0f, 0.1f, 0.6f);
     bool makeRun = false;
-    if (attackBias > 0.7f) {
-      if (team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms() &&
-          team->GetController()->GetAttackingRunPlayer() == player) {
-        makeRun = true;
-      }
+    // attackBias can never exceed 0.6: NormalizedClamp(..., 0.1, 0.6) above.
+    // The old "> 0.7" gate was therefore dead, and no designated runner ever
+    // ran - every sprint in the census came from the counterattack path, which
+    // stamps its own window over this check. Run whenever the team has the
+    // ball and the flag names us.
+    if (team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms() &&
+        team->GetController()->GetAttackingRunPlayer() == player) {
+      makeRun = true;
     }
     Vector3 supportPosition =
         controller->GetSupportPosition_ForceField(mentalImage, desiredPosition, makeRun);
