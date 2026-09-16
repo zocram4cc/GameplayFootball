@@ -1077,6 +1077,9 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   _mentalImage->GetTeamPlayerImages(abs(team->GetID() - 1), -1, opponentPlayerImages);
 
   // DECIDE WHAT TO DO
+  // One width a body actually blocks: the lane counter the shot trigger and
+  // the aim function both price per post. Shared by trigger and runner read.
+  constexpr float kShotLaneHalfWidth_m = 2.0f;
 
   float longPossessionFactor =
       std::pow(NormalizedClamp(CastPlayer()->GetPossessionDuration_ms(), 0, 5000), 2.0f);
@@ -1217,18 +1220,42 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         // nothing no matter how good the position it would reach.
         float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
                        mateRating.supportRating;
-        // The ball into the runner's path is the pass that makes a chance. The
-        // through-ball specialist looks for it first (passer's card and style),
-        // and the ball is worth what the runner makes of it: star finishers get
-        // found, ordinary ones keep the stock floor.
-        if (isActiveRunner)
+        // The ball into the runner's path is the pass that makes a chance, and
+        // it is worth the chance he shoots from: his position priced with the
+        // same xG model that scores the stats, bodies in his lane to goal,
+        // finished by what he is. The through-ball specialist looks for it
+        // first, and the ball goes to the man in the better shooting position,
+        // not merely the more advanced one.
+        if (isActiveRunner) {
+          const Vector3 runnerPos = mates.at(i)->GetPosition();
+          const Vector3 runnerLaneEnd((pitchHalfW + 1.0f) * -team->GetSide(), runnerPos.coords[1], 0);
+          const Vector3 runnerLane = runnerLaneEnd - runnerPos;
+          int runnerLaneBodies = 0;
+          if (runnerLane.GetLength() >= 0.1f) {
+            const Vector3 runnerLaneDir = runnerLane.GetNormalized(Vector3(0));
+            for (const PlayerImage& opp : opponentPlayerImages) {
+              const Vector3 toOpp = opp.position.Get2D() - runnerPos;
+              const float along = toOpp.GetDotProduct(runnerLaneDir);
+              if (along <= 0.0f || along > runnerLane.GetLength())
+                continue;
+              if ((toOpp - runnerLaneDir * along).GetLength() < kShotLaneHalfWidth_m)
+                runnerLaneBodies++;
+            }
+          }
+          const MatchAnalytics::ShotContext runnerCtx = MatchAnalytics::MakeShotContext(
+              runnerPos, team->GetSide(), runnerLaneBodies, false, 0.5f);
+          // A reference chance prices the stock floor: better shooting
+          // positions raise it, worse ones lower it, around the old level.
+          constexpr float kRunnerReferenceXg = 0.1f;
           upside += PlayerSkills::GetThroughBallBonus(skills, PlayerSkills::kThroughBallBaseUpside) *
+                    (MatchAnalytics::CalculateExpectedGoals(runnerCtx) / kRunnerReferenceXg) *
                     PlayingStyles::GetCreatorVision(style, comStyles) *
                     PlayerSkills::GetFinisherChanceMultiplier(
                         mates.at(i)->GetPlayerData()->GetSkills(),
                         mates.at(i)->GetStat("technical_shot")) *
                     PlayingStyles::GetFinisherDemand(mates.at(i)->GetPlayerData()->GetPlayingStyle(),
                                                      mates.at(i)->GetPlayerData()->GetComStyles());
+        }
 
         // The plain odds term survives alongside it so a safe ball with no
         // tactical gain is still worth playing.
@@ -1358,9 +1385,6 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       // he keeps the ball and the caller falls through to the pass - the
       // direction function then aims at the keeper's chest, the lowest-value
       // ball on the pitch.
-      // Same 2 m corridor the aim function prices per post: one width a
-      // body actually blocks, shared by trigger and aim.
-      constexpr float kShotLaneHalfWidth_m = 2.0f;
       int defendersInShotLane = 0;
       {
         const Vector3 laneOrigin =
