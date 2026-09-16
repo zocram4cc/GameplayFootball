@@ -281,3 +281,25 @@ is measuring the wrong thing. Say so, and re-aim.
 Report progress in what the owner can see. "Ten explanations dead" is not
 progress he can use; "the arm no longer tears, here is the frame" is. When there
 is no frame yet, say exactly that, and say what is being tried next.
+---
+
+## No magic numbers
+
+Whenever you encounter an undescribed constant, it is your immediate job to
+eliminate it and replace it with a `DESCRIPTIVE_CONSTANT_NAME` declared where
+best practices dictate.
+
+Rules:
+
+- Name every literal that carries meaning: thresholds, distances, durations,
+  scales, weights, probabilities. `0`, `1`, `-1`, and loop bounds are exempt;
+  everything else gets a name.
+- Declare at the narrowest scope that owns the meaning: `constexpr` at function
+  scope for a value used once, a `gameplaytuning.hpp`-style accessor when it is
+  a tuning knob, `gametypes.hpp` for geometry both sides must agree on.
+- Units in the name (`_m`, `_ms`, `_deg`, `_pct`) wherever a unit exists.
+- Comment the provenance: measured from what, PES value, or why this number.
+- If behaviour depends on it, a test pins it; if the value itself is
+  provisional, say so next to it.
+- Renaming keeps the value. Changing the value is a separate, measured
+  decision with its own evidence. Never smuggle a value change into a rename.

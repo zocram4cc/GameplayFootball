@@ -3,9 +3,9 @@
 #
 # Balance work needs a distribution, not an anecdote: six matches read as
 # anything you like (the same build produced 0,1,1,1,0,2 and 1,1,2,2,0,3 on
-# different seeds). A match takes about six minutes of wall time and the sim is
-# CPU bound, so this runs them in parallel and parses the engine's own
-# [balance] line rather than adding telemetry.
+# different seeds). A match takes about a minute of wall time at 6x time scale
+# and the sim is CPU bound, so this runs them in parallel and parses the
+# engine's own [balance] lines rather than adding telemetry.
 #
 #   tools/simbatch.sh --matches 12 --team1 16 --team2 13
 #
@@ -22,6 +22,7 @@ seed0=1000
 team1=16
 team2=13
 minutes=25
+timescale=6
 stadium="media/objects/stadiums/pes_st002/pes_st002.object"
 entrance="none"
 out="$(mktemp -d)"
@@ -33,6 +34,7 @@ while [ $# -gt 0 ]; do
     --seed0) seed0="$2"; shift 2 ;;
     --team1) team1="$2"; shift 2 ;;
     --team2) team2="$2"; shift 2 ;;
+    --timescale) timescale="$2"; shift 2 ;;
     --minutes) minutes="$2"; shift 2 ;;
     --stadium) stadium="$2"; shift 2 ;;
     --entrance) entrance="$2"; shift 2 ;;
@@ -60,6 +62,7 @@ run_one() {
 "menu_smoke_test_full_match" "true"
 "menu_smoke_gameover_hold_ms" "1000"
 "match_duration_minutes" "$minutes"
+"menu_smoke_match_time_scale" "$timescale"
 "showcase_team1" "$team1"
 "showcase_team2" "$team2"
 "stadium_object" "$stadium"
@@ -68,10 +71,10 @@ run_one() {
 EOF
   (cd "$repo/data" && timeout 1800 env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 \
       SDL_VIDEODRIVER=offscreen "$bin" "$cfg" 2>&1) |
-    grep -aE "Full match complete|^\[balance\]" > "$out/s$this_seed.txt"
+    grep -aE "Full match complete|^\[balance|^\[balance-passing\]" > "$out/s$this_seed.txt"
 }
 
-echo "running $matches matches, $concurrency at a time, team $team1 v team $team2, ${minutes}-minute duration"
+echo "running $matches matches, $concurrency at a time, team $team1 v team $team2, ${minutes}-minute duration, ${timescale}x time scale"
 live=0
 for i in $(seq 0 $((matches - 1))); do
   run_one $((seed0 + i)) &
@@ -81,7 +84,7 @@ done
 wait
 
 cat "$out"/s*.txt > "$out/all.txt"
-python3 - "$out/all.txt" <<'PY'
+python3 - "$out/all.txt" <<'PYEOF'
 import re, sys, collections, statistics as st
 text = open(sys.argv[1]).read()
 scores = [(int(a), int(b)) for a, b in
@@ -90,6 +93,9 @@ bal = [(int(s1), int(s2), int(t1), int(t2), float(x1), float(x2))
        for s1, s2, t1, t2, x1, x2 in
        re.findall(r"\[balance\] shots (\d+)-(\d+) \| on target (\d+)-(\d+) \| xg ([\d.]+)-([\d.]+)",
                   text)]
+pas = [(int(p1), int(p2), int(a1), int(a2))
+       for p1, p2, a1, a2 in
+       re.findall(r"\[balance-passing\] passes (\d+)-(\d+) \| accuracy (\d+)%-(\d+)%", text)]
 if not scores:
     print("no completed matches"); sys.exit(1)
 totals = [a + b for a, b in scores]
@@ -104,6 +110,11 @@ if bal:
     xg = [s for r in bal for s in r[4:6]]
     print("per team: shots %.1f  on target %.1f (%.0f%%)  xG %.2f" %
           (st.mean(shots), st.mean(on), 100.0 * sum(on) / max(1, sum(shots)), st.mean(xg)))
-    print("target:   xG 2.00-3.00 per team, goals 2-4 per match peaking at 3-4")
-PY
+if pas:
+    attempts = [p for r in pas for p in r[0:2]]
+    weighted = sum(p * a for r in pas for p, a in zip(r[0:2], r[2:4]))
+    print("per team: passes %.0f  accuracy %.0f%%" %
+          (st.mean(attempts), weighted / max(1, sum(attempts))))
+print("target:   xG 2.00-3.00 per team, goals 2-4 per match peaking at 3-4, pass accuracy ~80pct")
+PYEOF
 echo "logs in $out"
