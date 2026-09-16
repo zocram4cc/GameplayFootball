@@ -973,9 +973,9 @@ void Humanoid::Process() {
             if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
                 z_at_goal < goalHeight) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());
-              // On target and still travelling: if the other keeper ends up
-              // with it inside the window, that was a save (MatchData).
-              match->GetMatchData()->OpenSaveChance(team->GetID());
+              // The save window is opened by the shot itself (MatchData::
+              // AddShot), so that the keeper's save column is decided at the
+              // touch rather than by this projection.
               match->AddExcitementBoost(0.55f, 2500);
             }
           }

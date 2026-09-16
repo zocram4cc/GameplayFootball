@@ -40,6 +40,14 @@ public:
     // and which therefore cannot be used to check the band).
     lastShotTeamID = teamID;
     lastShotTime_ms = matchTime_ms;
+    // Every shot opens the save window, not only the ones the launch
+    // projection calls on target: the window used to be opened on that
+    // projection, so a "save" could only ever be recorded for a shot the
+    // projection had already judged on target, and the saving column could not
+    // corroborate the projection it was drawn from. Whether a keeper's touch
+    // was a save is decided at the touch, from where the ball was going
+    // (GameplayTuning::PredictGoalLineCrossing).
+    OpenSaveChance(teamID);
     // A shot ends the passing sequence: the previous pass cannot still be pending
     // when a new play starts from the goal kick or elsewhere.
     pendingPassTeamID = -1;
