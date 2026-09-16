@@ -434,3 +434,38 @@ TEST(GameplayTuningLeadTest, LeadIsShorterThanTheFlightItself) {
   EXPECT_LT(GameplayTuning::GetReceiverLeadTime_sec(d),
             GameplayTuning::GetPassFlightTime_sec(d));
 }
+
+TEST(GameplayTuningTest, AGoalLineCrossingIsFoundFromTwoPhysicsSteps) {
+  // 52.4 -> 52.6 straddles the line: the ball is half a metre wide of centre
+  // and 1.2 m up at the moment it meets the plane.
+  const GameplayTuning::GoalLineCrossing cross =
+      GameplayTuning::FindGoalLineCrossing({52.4f, 0.5f, 1.0f}, {52.6f, 0.7f, 1.4f}, 52.5f);
+  EXPECT_TRUE(cross.crossed);
+  EXPECT_NEAR(cross.lateral_m, 0.6f, 1e-4f);
+  EXPECT_NEAR(cross.height_m, 1.2f, 1e-4f);
+}
+
+TEST(GameplayTuningTest, ACrossingIsCountedOnceAndOnlyOnTheStepThrough) {
+  // Both steps outside: this is the ball settling in the net, not arriving.
+  EXPECT_FALSE(GameplayTuning::FindGoalLineCrossing({52.6f, 0.0f, 0.2f}, {52.9f, 0.0f, 0.2f}, 52.5f)
+                   .crossed);
+  // Both inside: still on its way.
+  EXPECT_FALSE(GameplayTuning::FindGoalLineCrossing({40.0f, 0.0f, 0.2f}, {45.0f, 0.0f, 0.2f}, 52.5f)
+                   .crossed);
+}
+
+TEST(GameplayTuningTest, TheFrameIsJudgedOnWhereTheBallGotToNotWhereItWasAimed) {
+  // Over the bar and wide of the post are the two ways a shot that reached the
+  // plane still is not on target. A ball that dies short never reaches it, so
+  // it appears as no crossing at all rather than as a low one.
+  const GameplayTuning::GoalLineCrossing over =
+      GameplayTuning::FindGoalLineCrossing({52.4f, 0.0f, 2.5f}, {52.6f, 0.0f, 2.7f}, 52.5f);
+  EXPECT_FALSE(GameplayTuning::CrossedInsideGoalFrame(over, 3.7f, 2.5f));
+  const GameplayTuning::GoalLineCrossing wide =
+      GameplayTuning::FindGoalLineCrossing({52.4f, 3.8f, 1.0f}, {52.6f, 4.0f, 1.0f}, 52.5f);
+  EXPECT_TRUE(wide.crossed);
+  EXPECT_FALSE(GameplayTuning::CrossedInsideGoalFrame(wide, 3.7f, 2.5f));
+  const GameplayTuning::GoalLineCrossing in =
+      GameplayTuning::FindGoalLineCrossing({52.4f, 3.0f, 1.0f}, {52.6f, 3.2f, 1.0f}, 52.5f);
+  EXPECT_TRUE(GameplayTuning::CrossedInsideGoalFrame(in, 3.7f, 2.5f));
+}

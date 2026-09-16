@@ -92,10 +92,13 @@ text = open(sys.argv[1]).read()
 scores = [(int(a), int(b)) for a, b in
           re.findall(r"Full match complete: \S+ (\d+) - (\d+) \S+", text)]
 bal = [(int(s1), int(s2), int(t1), int(t2), int(v1), int(v2), float(x1), float(x2),
-        int(g1), int(g2))
-       for s1, s2, t1, t2, v1, v2, x1, x2, g1, g2 in
+        int(g1), int(g2), int(c1), int(c2), int(f1), int(f2), int(u1), int(u2),
+        int(w1), int(w2))
+       for s1, s2, t1, t2, v1, v2, x1, x2, g1, g2, c1, c2, f1, f2, u1, u2, w1, w2 in
        re.findall(r"\[balance\] shots (\d+)-(\d+) \| on target (\d+)-(\d+) \| saves (\d+)-(\d+)"
-                  r" \| xg ([\d.]+)-([\d.]+) \| goals (\d+)-(\d+)", text)]
+                  r" \| xg ([\d.]+)-([\d.]+) \| goals (\d+)-(\d+)"
+                  r" \| crossings (\d+)-(\d+) \(in frame (\d+)-(\d+)\)"
+                  r" \| crossings-no-shot (\d+)-(\d+) \(in frame (\d+)-(\d+)\)", text)]
 pas = [(int(p1), int(p2), int(a1), int(a2))
        for p1, p2, a1, a2 in
        re.findall(r"\[balance-passing\] passes (\d+)-(\d+) \| accuracy (\d+)%-(\d+)%", text)]
@@ -116,8 +119,22 @@ if bal:
     print("per team: shots %.1f  on target %.1f (%.0f%%)  saves %.1f  xG %.2f  goals %.2f" %
           (st.mean(shots), st.mean(on), 100.0 * sum(on) / max(1, sum(shots)), st.mean(saves),
            st.mean(xg), st.mean(goals)))
-    print("           keeper saves %.0f%% of shots on target; %.0f%% of on-target became goals" %
+    print("           keeper saves %.0f%% of the projected on-target; %.0f%% of it became goals" %
           (100.0 * sum(saves) / max(1, sum(on)), 100.0 * sum(goals) / max(1, sum(on))))
+    # `on target` above is the projection: the strike is aimed at the frame and
+    # the projection uses the same formula the aiming band clamps, so it cannot
+    # disagree with it. This is where the ball actually met the plane.
+    cross = [s for r in bal for s in r[10:12]]
+    inframe = [s for r in bal for s in r[12:14]]
+    noshot = [s for r in bal for s in r[14:16]]
+    noshotframe = [s for r in bal for s in r[16:18]]
+    print("measured:  shots that reached the line %.1f (%.0f%%)  in frame %.1f (%.0f%% of shots, "
+          "%.0f%% of projected)" %
+          (st.mean(cross), 100.0 * sum(cross) / max(1, sum(shots)), st.mean(inframe),
+           100.0 * sum(inframe) / max(1, sum(shots)),
+           100.0 * sum(inframe) / max(1, sum(on))))
+    print("           plus %.1f reached it with no shot in flight (%.1f in frame)" %
+          (st.mean(noshot), st.mean(noshotframe)))
 if pas:
     attempts = [p for r in pas for p in r[0:2]]
     weighted = sum(p * a for r in pas for p, a in zip(r[0:2], r[2:4]))

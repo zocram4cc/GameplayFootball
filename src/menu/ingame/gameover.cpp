@@ -220,12 +220,26 @@ void GameOverPage::Process() {
         // problem from a side that cannot hit it (the stats card shows the same
         // number, so this is telemetry, not instrumentation).
         "[balance] shots %i-%i | on target %i-%i | saves %i-%i | xg %.2f-%.2f | goals %i-%i | "
+        // `crossings` is the same question asked of the ball's own positions
+        // instead of the launch sum: how many shots actually reached the
+        // goal-line plane, and how many of those inside the posts. The
+        // projection is clamped by the band it checks, so only this column can
+        // confirm the band.
+        "crossings %i-%i (in frame %i-%i) | "
+        // Crossings with no shot in the flight window (a pass or a deflection
+        // reaching the line): the audit that `goals <= in frame` holds.
+        "crossings-no-shot %i-%i (in frame %i-%i) | "
         "possession %i%%-%i%%\n",
         matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
         matchData->GetShotsOnTarget(1), matchData->GetSaves(0), matchData->GetSaves(1),
         MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 0),
         MatchAnalytics::GetExpectedGoals(match->GetShotTally(), 1), matchData->GetGoalCount(0),
-        matchData->GetGoalCount(1), PossessionPercent(matchData, 0),
+        matchData->GetGoalCount(1), matchData->GetGoalLineCrossings(0),
+        matchData->GetGoalLineCrossings(1), matchData->GetGoalLineCrossingsOnTarget(0),
+        matchData->GetGoalLineCrossingsOnTarget(1), matchData->GetGoalLineCrossingsUnattributed(0),
+        matchData->GetGoalLineCrossingsUnattributed(1),
+        matchData->GetGoalLineCrossingsUnattributedOnTarget(0),
+        matchData->GetGoalLineCrossingsUnattributedOnTarget(1), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The

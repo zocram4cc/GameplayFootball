@@ -34,6 +34,12 @@ public:
      // possession time instead of gametime? not sure yet, think about this)
   void AddShot(int teamID) {
     shots[teamID] += 1;
+    // A shot is a ball on its way to the line: stamped here so the crossing
+    // sampler can pair an arrival with the shot it came from, without going
+    // through the projected on-target counter (which the strike band clamps,
+    // and which therefore cannot be used to check the band).
+    lastShotTeamID = teamID;
+    lastShotTime_ms = matchTime_ms;
     // A shot ends the passing sequence: the previous pass cannot still be pending
     // when a new play starts from the goal kick or elsewhere.
     pendingPassTeamID = -1;
@@ -55,6 +61,42 @@ public:
   int GetShots(int teamID) { return shots[teamID]; }
   void AddShotOnTarget(int teamID) { shotsOnTarget[teamID] += 1; }
   int GetShotsOnTarget(int teamID) { return shotsOnTarget[teamID]; }
+
+  // Where the ball actually reached the goal-line plane, measured tick by tick
+  // (GameplayTuning::FindGoalLineCrossing). `onTarget` counts the crossings
+  // inside the posts and under the bar. Kept beside the projected on-target
+  // counter because the projection is clamped by the same band it would be
+  // checking: the two disagreeing is the interesting signal.
+  void AddGoalLineCrossing(int teamID, bool onTarget) {
+    goalLineCrossings[teamID] += 1;
+    if (onTarget) goalLineCrossingsOnTarget[teamID] += 1;
+  }
+  int GetGoalLineCrossings(int teamID) const { return goalLineCrossings[teamID]; }
+  int GetGoalLineCrossingsOnTarget(int teamID) const { return goalLineCrossingsOnTarget[teamID]; }
+
+  // Crossings that happened with no shot inside the flight window: a ball
+  // reaching the line off a pass, a deflection or a rebound. Counted separately
+  // so the shot-gated column stays a statement about shots, and so
+  // `goals <= crossings in frame` can be checked rather than assumed.
+  void AddGoalLineCrossingWithoutShot(int teamID, bool onTarget) {
+    goalLineCrossingsUnattributed[teamID] += 1;
+    if (onTarget) goalLineCrossingsUnattributedOnTarget[teamID] += 1;
+  }
+  int GetGoalLineCrossingsUnattributed(int teamID) const {
+    return goalLineCrossingsUnattributed[teamID];
+  }
+  int GetGoalLineCrossingsUnattributedOnTarget(int teamID) const {
+    return goalLineCrossingsUnattributedOnTarget[teamID];
+  }
+
+  // Is a struck ball still travelling? A shot's flight from 30 m at 30 m/s is
+  // about a second and a lofted one three, so five seconds covers the arrivals
+  // and excludes a throw-in or a goal kick trundling over the line.
+  static constexpr unsigned long shotFlightWindow_ms = 5000;
+  bool ShotInFlight() const {
+    return lastShotTeamID >= 0 && matchTime_ms - lastShotTime_ms <= shotFlightWindow_ms;
+  }
+  int GetShotTeamID() const { return lastShotTeamID; }
 
   // pass tracking
   void AddPassAttempt(int teamID) {
@@ -445,6 +487,12 @@ protected:
 
   int shots[2];
   int shotsOnTarget[2];
+  int goalLineCrossings[2];
+  int goalLineCrossingsOnTarget[2];
+  int goalLineCrossingsUnattributed[2];
+  int goalLineCrossingsUnattributedOnTarget[2];
+  int lastShotTeamID = -1;
+  unsigned long lastShotTime_ms = 0;
 
   int passAttempts[2];
   int clearances[2];

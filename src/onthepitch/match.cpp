@@ -50,6 +50,7 @@
 #include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "utils/splitgeometry.hpp"
+#include "gameplaytuning.hpp"
 #include "remotecontrolserver.hpp"
 #include "../remotecontrolmode.hpp"
 
@@ -5534,6 +5535,53 @@ void Match::Process() {
 
     if (IsInPlay() && !IsInSetPiece())
       GetMatchData()->AddPossessionTime_10ms(designatedPossessionPlayer->GetTeamID());
+
+    // Measure the arrival, not the launch: the ball's own two positions either
+    // side of the goal-line plane, tick by tick. `previousBallPos` is this
+    // tick's pre-physics sample and `ball->Predict(0)` the post-physics one, so
+    // the pair straddles the step no matter what the ball did in it - drag,
+    // spin, a deflection, the keeper's hand. The projected on-target counter
+    // above cannot see any of that, and it is clamped by the same band it
+    // would otherwise be checking, so this is the number that can confirm the
+    // band rather than restate it.
+    //
+    // Every crossing is counted, shot or not: a ball can reach the line off a
+    // pass or a deflection with no shot stamp in the window, and a goal is a
+    // crossing whatever put it there. A keeper catching a ball that never
+    // crossed shows up as a save with no crossing, which is the other half of
+    // the picture.
+    {
+      const Vector3 arrivedAt = ball->Predict(0);
+      const std::array<float, 3> fromBefore = {previousBallPos.coords[0], previousBallPos.coords[1],
+                                               previousBallPos.coords[2]};
+      const std::array<float, 3> fromNow = {arrivedAt.coords[0], arrivedAt.coords[1],
+                                            arrivedAt.coords[2]};
+      const GameplayTuning::GoalLineCrossing cross =
+          GameplayTuning::FindGoalLineCrossing(fromBefore, fromNow, pitchHalfW);
+      if (cross.crossed) {
+        // Once per episode: a ball in the net sits on the plane and the netting
+        // clamp nudges it back and forth across it every tick, which read as 31
+        // crossings from 9 shots in the first batch that used this counter. A
+        // new episode needs the ball back in play, two metres inside the line.
+        if (!goalLineCrossingOpen) {
+          goalLineCrossingOpen = true;
+          // The goal on `crossedSide` is attacked by whichever team is not on it.
+          const int crossedSide =
+              (std::fabs(arrivedAt.coords[0]) > std::fabs(previousBallPos.coords[0]))
+                  ? (arrivedAt.coords[0] > 0.0f ? 1 : -1)
+                  : (previousBallPos.coords[0] > 0.0f ? 1 : -1);
+          const int attacker = (teams[0]->GetSide() == crossedSide) ? 1 : 0;
+          const bool inFrame =
+              GameplayTuning::CrossedInsideGoalFrame(cross, goalHalfWidth, goalHeight);
+          if (matchData->ShotInFlight())
+            matchData->AddGoalLineCrossing(matchData->GetShotTeamID(), inFrame);
+          else
+            matchData->AddGoalLineCrossingWithoutShot(attacker, inFrame);
+        }
+      } else if (std::fabs(arrivedAt.coords[0]) < pitchHalfW - 2.0f) {
+        goalLineCrossingOpen = false;
+      }
+    }
 
     // check for goals
 

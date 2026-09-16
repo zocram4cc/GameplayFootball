@@ -5,6 +5,7 @@
 #define _HPP_GAMEPLAY_TUNING
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "base/math/bluntmath.hpp"
@@ -210,6 +211,46 @@ inline float ClampShotArrivalVelocityZ(float vz, float startZ_m, float flightTim
   const float bandMin = ShotArrivalVelocityZ(kShotArrivalMin_m, startZ_m, flightTime_s);
   const float bandMax = ShotArrivalVelocityZ(kShotArrivalMax_m, startZ_m, flightTime_s);
   return std::max(bandMin, std::min(vz, bandMax));
+}
+
+// Where the ball actually crossed the goal-line plane, found from two
+// consecutive physics positions rather than from the launch sum. The projection
+// above answers "was this aimed on target" - and since the band clamps the
+// vertical term against that same formula, the projection cannot disagree with
+// it. This one answers "did it get there", and it differs by everything the
+// projection leaves out: drag, spin, deflections, the keeper's hand. It is the
+// only on-target number that can confirm the band instead of restating it.
+struct GoalLineCrossing {
+  bool crossed = false;
+  float lateral_m = 0.0f;  // y where the ball met the plane
+  float height_m = 0.0f;   // z where the ball met the plane
+};
+
+// `prev` and `cur` are consecutive positions of the ball, 10 ms apart or less.
+// Crossing means the two straddle |x| = pitchHalfW: one inside, one outside.
+// A ball that is already outside on both steps (settling in the net, behind the
+// line after a goal) has not crossed in this step and is not counted again.
+inline GoalLineCrossing FindGoalLineCrossing(const std::array<float, 3>& prev,
+                                             const std::array<float, 3>& cur, float pitchHalfW) {
+  GoalLineCrossing out;
+  const float pa = std::fabs(prev[0]), ca = std::fabs(cur[0]);
+  if ((pa < pitchHalfW) == (ca < pitchHalfW)) return out;  // both same side
+  const float t = (pitchHalfW - pa) / (ca - pa);
+  if (t < 0.0f || t > 1.0f) return out;
+  out.crossed = true;
+  out.lateral_m = prev[1] + (cur[1] - prev[1]) * t;
+  out.height_m = prev[2] + (cur[2] - prev[2]) * t;
+  return out;
+}
+
+// Inside the posts and under the bar, as measured - not as aimed. The ball's
+// physics keeps its centre at or above ground level (`ballRadius`), so there is
+// no "crossed below ground" case to test for: a shot that dies on the turf
+// never reaches the plane at all, and that shows up as no crossing.
+inline bool CrossedInsideGoalFrame(const GoalLineCrossing& cross, float goalHalfWidth_m,
+                                   float goalHeight_m) {
+  return cross.crossed && std::fabs(cross.lateral_m) < goalHalfWidth_m &&
+         cross.height_m < goalHeight_m;
 }
 
 // A chance is worth shooting at when the same xG model that scores the stats

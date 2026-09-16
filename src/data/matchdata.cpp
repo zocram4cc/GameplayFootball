@@ -20,6 +20,14 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
 
   shotsOnTarget[0] = 0;
   shotsOnTarget[1] = 0;
+  goalLineCrossings[0] = 0;
+  goalLineCrossings[1] = 0;
+  goalLineCrossingsOnTarget[0] = 0;
+  goalLineCrossingsOnTarget[1] = 0;
+  goalLineCrossingsUnattributed[0] = 0;
+  goalLineCrossingsUnattributed[1] = 0;
+  goalLineCrossingsUnattributedOnTarget[0] = 0;
+  goalLineCrossingsUnattributedOnTarget[1] = 0;
   passAttempts[0] = 0;
   passAttempts[1] = 0;
   clearances[0] = 0;
