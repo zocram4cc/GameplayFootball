@@ -5555,7 +5555,13 @@ void Match::Process() {
     // crossing whatever put it there. A keeper catching a ball that never
     // crossed shows up as a save with no crossing, which is the other half of
     // the picture.
-    {
+    //
+    // Live play only: placements move the ball by hand, and the move straddles
+    // the plane as often as not - a corner is placed at x = pitchHalfW exactly,
+    // so the teleport from open play counts as an "arrival" every time, and
+    // goal-kick placements do the same (one batch read 16 crossings from 17
+    // shots on those teleports alone).
+    if (IsInPlay() && !IsInSetPiece()) {
       const Vector3 arrivedAt = ball->Predict(0);
       const std::array<float, 3> fromBefore = {previousBallPos.coords[0], previousBallPos.coords[1],
                                                previousBallPos.coords[2]};
