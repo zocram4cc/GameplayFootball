@@ -258,3 +258,23 @@ TEST(ComStylesEffectTest, LongRangerShootsFromFurtherOut) {
   EXPECT_LE(PlayingStyles::GetShootingRangeBonus(Style::None, AllCards()), 14.0f);
   EXPECT_GE(PlayingStyles::GetShotAppetite(Style::AnchorMan, 0), 0.55f);
 }
+
+TEST(PlayingStylesEffectTest, PoachersDemandServiceWhilePlaymakersThreadIt) {
+  EXPECT_GT(PlayingStyles::GetFinisherDemand(Style::GoalPoacher, 0), 1.0f);
+  EXPECT_GT(PlayingStyles::GetFinisherDemand(Style::FoxInTheBox, 0), 1.0f);
+  EXPECT_FLOAT_EQ(PlayingStyles::GetFinisherDemand(Style::None, 0), 1.0f);
+  EXPECT_GT(PlayingStyles::GetCreatorVision(Style::ClassicNo10, 0), 1.0f);
+  EXPECT_GT(PlayingStyles::GetCreatorVision(Style::CreativePlaymaker, 0), 1.0f);
+  EXPECT_FLOAT_EQ(PlayingStyles::GetCreatorVision(Style::None, 0), 1.0f);
+}
+TEST(PlayingStylesEffectTest, ChanceMakerCardsMoveFinisherDemandAndCreatorVision) {
+  const ComMask incisive = static_cast<ComMask>(Com::IncisiveRun);
+  const ComMask bullet = static_cast<ComMask>(Com::SpeedingBullet);
+  const ComMask expert = static_cast<ComMask>(Com::LongBallExpert);
+  EXPECT_GT(PlayingStyles::GetFinisherDemand(Style::None, incisive), 1.0f);
+  EXPECT_GT(PlayingStyles::GetFinisherDemand(Style::None, bullet), 1.0f);
+  EXPECT_GT(PlayingStyles::GetCreatorVision(Style::None, expert), 1.0f);
+  EXPECT_GT(PlayingStyles::GetCreatorVision(Style::None, incisive), 1.0f);
+  EXPECT_LE(PlayingStyles::GetFinisherDemand(Style::GoalPoacher, AllCards()), 1.8f);
+  EXPECT_LE(PlayingStyles::GetCreatorVision(Style::ClassicNo10, AllCards()), 1.7f);
+}

@@ -355,3 +355,18 @@ TEST(PlayerSkillsEffectTest, EngineSpecialtiesSurvive) {
   EXPECT_GT(PlayerSkills::GetShieldingRadiusBonus(Bits({Skill::TargetMan}), true), 0.0f);
   EXPECT_FLOAT_EQ(PlayerSkills::GetShieldingRadiusBonus(Bits({Skill::TargetMan}), false), 0.0f);
 }
+
+
+TEST(PlayerSkillsEffectTest, FinisherCardsPriceTheChance) {
+  const PlayerSkills::Mask fox = Bits({PlayerSkills::Skill::FirstTimeShot});
+  const PlayerSkills::Mask none = PlayerSkills::maskNone;
+  EXPECT_GT(PlayerSkills::GetFinisherChanceMultiplier(fox, 0.9f), 1.0f);
+  EXPECT_FLOAT_EQ(PlayerSkills::GetFinisherChanceMultiplier(none, 0.9f), 1.0f);
+  EXPECT_FLOAT_EQ(PlayerSkills::GetFinisherChanceMultiplier(fox, 0.3f), 1.0f);
+}
+
+TEST(PlayerSkillsEffectTest, ThroughPassingSpecialistThreadsIt) {
+  const PlayerSkills::Mask expert = Bits({PlayerSkills::Skill::ThroughPassing});
+  EXPECT_FLOAT_EQ(PlayerSkills::GetThroughBallBonus(expert, 0.3f), 0.65f);
+  EXPECT_FLOAT_EQ(PlayerSkills::GetThroughBallBonus(PlayerSkills::maskNone, 0.3f), 0.3f);
+}

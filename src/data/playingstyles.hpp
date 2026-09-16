@@ -100,6 +100,18 @@ float GetShootingRangeBonus(Player style, ComMask com);
 // Multiplier on the odds of a pass type, so the long-ball expert plays the
 // long ball and the cross specialist the cross even when the short option is
 // marginally safer.
+// Finisher and creator multipliers: base value per style, card nudge, hard cap.
+constexpr float kPoacherDemand = 1.4f;
+constexpr float kFoxDemand = 1.3f;
+constexpr float kFinisherDemandCap = 1.8f;
+constexpr float kNo10Vision = 1.3f;
+constexpr float kPlaymakerVision = 1.25f;
+constexpr float kCreatorVisionCap = 1.7f;
+constexpr float kFinisherCardRunnerBonus = 1.15f;
+constexpr float kCreatorCardVisionBonus = 1.15f;
+// Poachers demand service; classic playmakers thread the ball.
+float GetFinisherDemand(Player style, ComMask com);
+float GetCreatorVision(Player style, ComMask com);
 float GetPassTypeBias(Player style, ComMask com, e_FunctionType passType);
 // Creative Playmaker: how heavily "distance from opponent" counts when rating a
 // spot to move into.

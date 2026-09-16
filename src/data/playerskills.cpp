@@ -419,6 +419,19 @@ float GetShootingRangeBonus(Mask mask) {
     bonus += 1.0f;
   return bonus;
 }
+float GetFinisherChanceMultiplier(Mask mask, float shotStat) {
+  const bool finisher = Has(mask, Skill::FirstTimeShot) || Has(mask, Skill::AcrobaticFinishing) ||
+                        Has(mask, Skill::Heading);
+  if (finisher && Clamp01(shotStat) >= kFinisherStatFloor)
+    return kFinisherChanceMultiplier;
+  return 1.0f;
+}
+
+float GetThroughBallBonus(Mask mask, float baseBonus) {
+  if (!Has(mask, Skill::ThroughPassing))
+    return baseBonus;
+  return (baseBonus + kThroughBallBonusAdd) * kThroughBallBonusThread;
+}
 
 blunted::Vector3 ApplyShotSpin(Mask mask, const blunted::Vector3& rotVec,
                                const blunted::Vector3& shotDirection, float shotDistance,
@@ -482,9 +495,6 @@ float GetBodyDirectionPassPenalty(Mask mask, float basePenalty) {
   return std::min(1.0f, basePenalty + 0.5f * (1.0f - basePenalty));
 }
 
-float GetThroughBallBonus(Mask mask, float baseBonus) {
-  return Has(mask, Skill::ThroughPassing) ? baseBonus + 0.2f : baseBonus;
-}
 
 float GetPassDifficultyMultiplier(Mask mask, e_FunctionType passType, bool isCross) {
   if (passType == e_FunctionType_ShortPass || passType == e_FunctionType_LongPass)

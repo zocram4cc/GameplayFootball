@@ -161,12 +161,22 @@ float GetVolleyEase(Mask mask, float baseEase);
 float GetFirstTimeShotPowerMultiplier(Mask mask, bool isFirstTimeShot, float ballSpeed);
 // Heading and Target Man.
 float GetHeaderMultiplier(Mask mask);
+// A finisher's cards price the chance only when he can actually finish: below
+// this finishing stat his cards price nothing, since promise is not production.
+constexpr float kFinisherStatFloor = 0.8f;
+constexpr float kFinisherChanceMultiplier = 1.2f;
+// A finisher's cards price the chance only when he can actually finish.
+float GetFinisherChanceMultiplier(Mask mask, float shotStat);
 
 // --- Passing ---
 
 const unsigned long oneTouchWindow_ms = 200;
 float GetQuickReleaseAccuracyPenalty(Mask mask, unsigned long timeInPossession_ms,
                                      float basePenalty);
+// Through Passing: flat find into feet, plus the thread through the line.
+constexpr float kThroughBallBonusAdd = 0.2f;
+constexpr float kThroughBallBonusThread = 1.3f;
+constexpr float kThroughBallBaseUpside = 0.3f;
 // No Look Pass: the odds penalty for passing where he is not facing (0.3 .. 1).
 float GetBodyDirectionPassPenalty(Mask mask, float basePenalty);
 // Through Passing: the upside of the ball into a runner's path.

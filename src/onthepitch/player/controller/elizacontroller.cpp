@@ -1217,10 +1217,18 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         // nothing no matter how good the position it would reach.
         float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
                        mateRating.supportRating;
-        // The ball into the runner's path is the pass that makes a chance, and
-        // the through-ball specialist looks for it first.
+        // The ball into the runner's path is the pass that makes a chance. The
+        // through-ball specialist looks for it first (passer's card and style),
+        // and the ball is worth what the runner makes of it: star finishers get
+        // found, ordinary ones keep the stock floor.
         if (isActiveRunner)
-          upside += PlayerSkills::GetThroughBallBonus(skills, 0.3f);
+          upside += PlayerSkills::GetThroughBallBonus(skills, PlayerSkills::kThroughBallBaseUpside) *
+                    PlayingStyles::GetCreatorVision(style, comStyles) *
+                    PlayerSkills::GetFinisherChanceMultiplier(
+                        mates.at(i)->GetPlayerData()->GetSkills(),
+                        mates.at(i)->GetStat("technical_shot")) *
+                    PlayingStyles::GetFinisherDemand(mates.at(i)->GetPlayerData()->GetPlayingStyle(),
+                                                     mates.at(i)->GetPlayerData()->GetComStyles());
 
         // The plain odds term survives alongside it so a safe ball with no
         // tactical gain is still worth playing.

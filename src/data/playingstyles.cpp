@@ -465,6 +465,27 @@ float GetShootingRangeBonus(Player style, ComMask com) {
     bonus -= 2.0f;  // he wants it inside the six-yard box
   return std::max(0.0f, std::min(bonus, 14.0f));
 }
+float GetFinisherDemand(Player style, ComMask com) {
+  float demand = 1.0f;
+  if (style == Player::GoalPoacher)
+    demand *= kPoacherDemand;
+  if (style == Player::FoxInTheBox)
+    demand *= kFoxDemand;
+  if (Has(com, Com::IncisiveRun) || Has(com, Com::SpeedingBullet))
+    demand *= kFinisherCardRunnerBonus;
+  return std::min(demand, kFinisherDemandCap);
+}
+
+float GetCreatorVision(Player style, ComMask com) {
+  float vision = 1.0f;
+  if (style == Player::ClassicNo10)
+    vision *= kNo10Vision;
+  if (style == Player::CreativePlaymaker)
+    vision *= kPlaymakerVision;
+  if (Has(com, Com::LongBallExpert) || Has(com, Com::IncisiveRun))
+    vision *= kCreatorCardVisionBonus;
+  return std::min(vision, kCreatorVisionCap);
+}
 
 float GetPassTypeBias(Player style, ComMask com, e_FunctionType passType) {
   float bias = 1.0f;
