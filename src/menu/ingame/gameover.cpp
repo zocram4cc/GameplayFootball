@@ -229,6 +229,11 @@ void GameOverPage::Process() {
         // Crossings with no shot in the flight window (a pass or a deflection
         // reaching the line): the audit that `goals <= in frame` holds.
         "crossings-no-shot %i-%i (in frame %i-%i) | "
+        // Football's own definition: a shot is on target when it went in or the
+        // keeper had to stop it. The saves above are gated on the ball actually
+        // heading inside the frame, so this is not the projection restated - and
+        // it is the column to compare against the ~20-30% a real match sees.
+        "on target (goals+saves) %i-%i | "
         "possession %i%%-%i%%\n",
         matchData->GetShots(0), matchData->GetShots(1), matchData->GetShotsOnTarget(0),
         matchData->GetShotsOnTarget(1), matchData->GetSaves(0), matchData->GetSaves(1),
@@ -239,7 +244,11 @@ void GameOverPage::Process() {
         matchData->GetGoalLineCrossingsOnTarget(1), matchData->GetGoalLineCrossingsUnattributed(0),
         matchData->GetGoalLineCrossingsUnattributed(1),
         matchData->GetGoalLineCrossingsUnattributedOnTarget(0),
-        matchData->GetGoalLineCrossingsUnattributedOnTarget(1), PossessionPercent(matchData, 0),
+        matchData->GetGoalLineCrossingsUnattributedOnTarget(1),
+        // Crossed: `saves[i]` are the saves team i's keeper MADE, so team i's
+        // own shots on target are its goals plus the saves the OTHER keeper made.
+        matchData->GetGoalCount(0) + matchData->GetSaves(1),
+        matchData->GetGoalCount(1) + matchData->GetSaves(0), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The

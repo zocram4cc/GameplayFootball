@@ -281,6 +281,7 @@ public:
   // Drops every cached reference to a player who has just left the pitch.
   void ReplacePlayerReferences(Player* playerOut, Player* playerIn);
   int GetLastGoalTeamID() const { return lastGoalTeamID; }
+
   void SetLastTouchTeamID(int id, e_TouchType touchType = e_TouchType_Intentional_Kicked) {
     lastTouchTeamIDs[touchType] = id;
     lastTouchTeamID = id;
@@ -534,6 +535,10 @@ protected:
   MatchAnalytics::ShotTally shotTally;
   MatchAnalytics::Heatmap teamBallHeatmap[2];
 
+  // The ball's state entering this tick, kept so a keeper's touch can be judged
+  // on where the ball was going before the touch stopped it. See `Process`.
+  blunted::Vector3 previousBallMomentum;
+
   // True while the ball is behind the goal line, so one arrival is counted once
   // rather than once per tick the ball spends rattling in the net. The positions
   // it straddles come from the pre-existing `previousBallPos`, set just before
@@ -639,6 +644,13 @@ protected:
   // timing is invalid, this returns true on the first call, and the restart
   // happens exactly as it did before.
   bool CoverForRestart();
+
+  // The ball's position and velocity entering this tick, taken before
+  // `ball->Process()` and therefore before this tick's collisions. A keeper's
+  // touch is resolved inside that call, so by the time the touch is recorded the
+  // ball is already stopped - these are what say where it was going.
+  const Vector3& GetBallPositionBeforeTick() const { return previousBallPos; }
+  const Vector3& GetBallMomentumBeforeTick() const { return previousBallMomentum; }
 
  protected:
   bool restartWipeArmed = false;

@@ -253,6 +253,35 @@ inline bool CrossedInsideGoalFrame(const GoalLineCrossing& cross, float goalHalf
          cross.height_m < goalHeight_m;
 }
 
+// Where the ball *would* meet the plane, from its position and velocity now.
+// Used where the ball is stopped before it gets there - the keeper's hand, a
+// block - because "was this heading into the frame" is the only way to ask
+// about a shot that never arrived. It reads the ball's real state at the moment
+// of contact, so unlike the launch projection it carries the flight that
+// actually happened: drag, spin and any deflection up to that point.
+//
+// No drag in the extrapolation, so over the last few metres at the moment of a
+// touch the error is small; it is not a long-range predictor and must not be
+// used as one.
+inline GoalLineCrossing PredictGoalLineCrossing(const std::array<float, 3>& pos,
+                                                const std::array<float, 3>& vel,
+                                                float pitchHalfW) {
+  GoalLineCrossing out;
+  const float inside = std::fabs(pos[0]);
+  if (inside >= pitchHalfW) return out;  // already level with the line
+  // Which way it is travelling: toward -x or +x. Both components keep their
+  // sign, so a ball moving away from the line never crosses.
+  const int side = (pos[0] > 0.0f) ? 1 : -1;
+  const float toward = vel[0] * side;
+  if (toward <= 0.01f) return out;
+  const float t = (pitchHalfW - inside) / toward;
+  if (t > 3.0f) return out;  // slower than a pass at walking pace: not a shot
+  out.crossed = true;
+  out.lateral_m = pos[1] + vel[1] * t;
+  out.height_m = pos[2] + vel[2] * t - 0.5f * kGravity_mps2 * t * t;
+  return out;
+}
+
 // A chance is worth shooting at when the same xG model that scores the stats
 // says so: 0.04 is a speculative hit (roughly a 27 m strike through traffic),
 // not a prohibition on long shots. Below that the ball is better kept, so the

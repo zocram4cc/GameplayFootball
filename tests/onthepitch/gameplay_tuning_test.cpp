@@ -469,3 +469,48 @@ TEST(GameplayTuningTest, TheFrameIsJudgedOnWhereTheBallGotToNotWhereItWasAimed) 
       GameplayTuning::FindGoalLineCrossing({52.4f, 3.0f, 1.0f}, {52.6f, 3.2f, 1.0f}, 52.5f);
   EXPECT_TRUE(GameplayTuning::CrossedInsideGoalFrame(in, 3.7f, 2.5f));
 }
+
+TEST(GameplayTuningTest, AStoppedBallIsJudgedOnWhereItWasGoing) {
+  // The keeper's touch: the ball is at 40 m, moving toward the goal at 25 m/s,
+  // half a metre wide of centre and 1 m up. It would meet the plane in 0.5 s.
+  const GameplayTuning::GoalLineCrossing heading =
+      GameplayTuning::PredictGoalLineCrossing({-40.0f, 0.5f, 1.0f}, {-25.0f, 0.2f, 0.4f}, 52.5f);
+  EXPECT_TRUE(heading.crossed);
+  EXPECT_NEAR(heading.lateral_m, 0.6f, 0.01f);
+  EXPECT_NEAR(heading.height_m, 1.0f + 0.4f * 0.5f - 0.5f * 9.81f * 0.25f, 0.01f);
+  EXPECT_TRUE(GameplayTuning::CrossedInsideGoalFrame(heading, 3.7f, 2.5f));
+}
+
+TEST(GameplayTuningTest, ABallGoingNowhereIsNotASave) {
+  // Moving away from the goal, or barely moving: a keeper collecting either is
+  // not stopping a shot on target, and this is the gate that says so.
+  EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-40.0f, 0.0f, 0.2f}, {10.0f, 0.0f, 0.0f}, 52.5f)
+                   .crossed);
+  EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-40.0f, 0.0f, 0.2f}, {0.0f, 0.0f, 0.0f}, 52.5f)
+                   .crossed);
+  // A ball already level with the line has no crossing left to predict.
+  EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-52.5f, 0.0f, 0.2f}, {-10.0f, 0.0f, 0.0f}, 52.5f)
+                   .crossed);
+}
+
+TEST(GameplayTuningTest, ABallAimedOutsideTheFrameIsNotOnTarget) {
+  // Heading for the line, but well wide of the post: a save it is not.
+  const GameplayTuning::GoalLineCrossing wide =
+      GameplayTuning::PredictGoalLineCrossing({-30.0f, 8.0f, 1.0f}, {-20.0f, 2.0f, 0.0f}, 52.5f);
+  EXPECT_TRUE(wide.crossed);
+  EXPECT_GT(std::fabs(wide.lateral_m), 3.7f);
+  EXPECT_FALSE(GameplayTuning::CrossedInsideGoalFrame(wide, 3.7f, 2.5f));
+  // And one driven over the bar is not either. This case carries gravity: from
+  // 22.5 m at 20 m/s the ball is 1.1 s in the air, which costs it 6.2 m of
+  // height, so 6 m/s of lift actually arrives LOW (1.54 m) and 8 m/s is what
+  // clears the bar. Getting that backwards is how a "lob" test passes while
+  // asserting the opposite of what the function does.
+  const GameplayTuning::GoalLineCrossing driven =
+      GameplayTuning::PredictGoalLineCrossing({-30.0f, 0.0f, 1.0f}, {-20.0f, 0.0f, 6.0f}, 52.5f);
+  EXPECT_LT(driven.height_m, 2.5f);
+  EXPECT_TRUE(GameplayTuning::CrossedInsideGoalFrame(driven, 3.7f, 2.5f));
+  const GameplayTuning::GoalLineCrossing over =
+      GameplayTuning::PredictGoalLineCrossing({-30.0f, 0.0f, 1.0f}, {-20.0f, 0.0f, 8.0f}, 52.5f);
+  EXPECT_GT(over.height_m, 2.5f);
+  EXPECT_FALSE(GameplayTuning::CrossedInsideGoalFrame(over, 3.7f, 2.5f));
+}

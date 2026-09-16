@@ -1041,9 +1041,20 @@ void Humanoid::Process() {
           // since the catching model parries anything quicker than the keeper's
           // catch speed - which is most on-target shots - the stats card and
           // the balance line were counting catches while calling them saves.
-          // Any keeper touch inside the on-target window is one.
-          if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
-            match->GetMatchData()->RecordGoalkeeperTouch(team->GetID());
+          // A save needs the ball to have been on target, though: the state used
+          // is the ball's, taken before this tick's collisions, because the
+          // contact that brought this code here has already stopped it.
+          if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
+            const Vector3 ballPos = match->GetBallPositionBeforeTick();
+            const Vector3 ballVel = match->GetBallMomentumBeforeTick();
+            const GameplayTuning::GoalLineCrossing would =
+                GameplayTuning::PredictGoalLineCrossing(
+                    {ballPos.coords[0], ballPos.coords[1], ballPos.coords[2]},
+                    {ballVel.coords[0], ballVel.coords[1], ballVel.coords[2]}, pitchHalfW);
+            match->GetMatchData()->RecordGoalkeeperTouch(
+                team->GetID(),
+                GameplayTuning::CrossedInsideGoalFrame(would, goalHalfWidth, goalHeight));
+          }
           Vector3 currentBallMovement = match->GetBall()->GetMovement().Get2D();
           Vector3 playerMovement = spatialState.movement;
           Vector3 touchVec =
@@ -1105,7 +1116,18 @@ void Humanoid::Process() {
       match->GetMatchData()->AddGhostTouch(team->GetID(), 4);  // keeper holds the ball
       if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
         match->GetMatchData()->RecordPassGoalkeeperCatch();
-        match->GetMatchData()->RecordGoalkeeperTouch(team->GetID());
+        // Same gate as the parry path, same reason: this ball has already been
+        // neutralised and moved onto the body part above, so the state that
+        // says whether it was on target is the one from before the tick.
+        const Vector3 ballPos = match->GetBallPositionBeforeTick();
+        const Vector3 ballVel = match->GetBallMomentumBeforeTick();
+        const GameplayTuning::GoalLineCrossing would =
+            GameplayTuning::PredictGoalLineCrossing(
+                {ballPos.coords[0], ballPos.coords[1], ballPos.coords[2]},
+                {ballVel.coords[0], ballVel.coords[1], ballVel.coords[2]}, pitchHalfW);
+        match->GetMatchData()->RecordGoalkeeperTouch(
+            team->GetID(),
+            GameplayTuning::CrossedInsideGoalFrame(would, goalHalfWidth, goalHeight));
       }
     } else {
       // no longer retaining

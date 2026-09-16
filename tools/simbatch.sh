@@ -93,12 +93,13 @@ scores = [(int(a), int(b)) for a, b in
           re.findall(r"Full match complete: \S+ (\d+) - (\d+) \S+", text)]
 bal = [(int(s1), int(s2), int(t1), int(t2), int(v1), int(v2), float(x1), float(x2),
         int(g1), int(g2), int(c1), int(c2), int(f1), int(f2), int(u1), int(u2),
-        int(w1), int(w2))
-       for s1, s2, t1, t2, v1, v2, x1, x2, g1, g2, c1, c2, f1, f2, u1, u2, w1, w2 in
+        int(w1), int(w2), int(o1), int(o2))
+       for s1, s2, t1, t2, v1, v2, x1, x2, g1, g2, c1, c2, f1, f2, u1, u2, w1, w2, o1, o2 in
        re.findall(r"\[balance\] shots (\d+)-(\d+) \| on target (\d+)-(\d+) \| saves (\d+)-(\d+)"
                   r" \| xg ([\d.]+)-([\d.]+) \| goals (\d+)-(\d+)"
                   r" \| crossings (\d+)-(\d+) \(in frame (\d+)-(\d+)\)"
-                  r" \| crossings-no-shot (\d+)-(\d+) \(in frame (\d+)-(\d+)\)", text)]
+                  r" \| crossings-no-shot (\d+)-(\d+) \(in frame (\d+)-(\d+)\)"
+                  r" \| on target \(goals\+saves\) (\d+)-(\d+)", text)]
 pas = [(int(p1), int(p2), int(a1), int(a2))
        for p1, p2, a1, a2 in
        re.findall(r"\[balance-passing\] passes (\d+)-(\d+) \| accuracy (\d+)%-(\d+)%", text)]
@@ -119,6 +120,12 @@ if bal:
     print("per team: shots %.1f  on target %.1f (%.0f%%)  saves %.1f  xG %.2f  goals %.2f" %
           (st.mean(shots), st.mean(on), 100.0 * sum(on) / max(1, sum(shots)), st.mean(saves),
            st.mean(xg), st.mean(goals)))
+    # Football's own on-target: goals + saves, with the saves gated on the ball
+    # actually heading inside the frame. This is the column to hold against the
+    # 20-30% a real match sees.
+    ot = [s for r in bal for s in r[18:20]]
+    print("football:  on target (goals+saves) %.1f = %.0f%% of shots" %
+          (st.mean(ot), 100.0 * sum(ot) / max(1, sum(shots))))
     print("           keeper saves %.0f%% of the projected on-target; %.0f%% of it became goals" %
           (100.0 * sum(saves) / max(1, sum(on)), 100.0 * sum(goals) / max(1, sum(on))))
     # `on target` above is the projection: the strike is aimed at the frame and

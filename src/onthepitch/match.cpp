@@ -5444,6 +5444,11 @@ void Match::Process() {
       }
     }
     previousBallPos = ball->Predict(0);
+    // Momentum as well as position, both taken before the tick's physics and
+    // its collisions: a keeper's touch resolves inside `ball->Process()`, so by
+    // the time the touch is recorded the ball has already been stopped and its
+    // velocity says nothing about where it was going.
+    previousBallMomentum = ball->GetMovement();  // m/s
     ball->Process();
 
     // create mental images for the AI to use

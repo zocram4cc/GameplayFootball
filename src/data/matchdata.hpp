@@ -305,13 +305,24 @@ public:
     pendingShotTime_ms = matchTime_ms;
   }
   void CloseSaveChance() { pendingShotTeamID = -1; }
-  void RecordGoalkeeperTouch(int keeperTeamID) {
+  // `onTarget` is the caller's verdict on whether the ball it is stopping was
+  // heading inside the frame (GameplayTuning::PredictGoalLineCrossing, from the
+  // ball state at the moment of contact). Football counts a save only for a
+  // shot that was on target - a keeper collecting a ball going wide is a
+  // collection, not a save - and without the gate this counter read eight a
+  // team per match, three times a real one. The touches that are not saves are
+  // still counted, so nothing is lost.
+  void RecordGoalkeeperTouch(int keeperTeamID, bool onTarget) {
     if (pendingShotTeamID >= 0 && pendingShotTeamID != keeperTeamID &&
         matchTime_ms - pendingShotTime_ms <= saveWindow_ms) {
-      saves[keeperTeamID]++;
+      if (onTarget)
+        saves[keeperTeamID]++;
+      else
+        keeperCollections[keeperTeamID]++;
     }
     pendingShotTeamID = -1;
   }
+  int GetKeeperCollections(int teamID) const { return keeperCollections[teamID]; }
 
   // Questionable-play logging, debug-only (see the deny list in the match goal).
   // Passed to the log at the end of the match by GameOverPage so pass/play quality
@@ -441,6 +452,7 @@ protected:
   int interceptions[2] = {0, 0};
   int tackles[2] = {0, 0};
   int saves[2] = {0, 0};
+  int keeperCollections[2] = {0, 0};
   int pendingShotTeamID = -1;
   unsigned long pendingShotTime_ms = 0;
   int passFailTrap[2] = {0, 0};
