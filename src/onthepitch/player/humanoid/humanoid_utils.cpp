@@ -627,7 +627,12 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
 
   // add a little curve
 
-  float randomCurveFactor = 0.3f + worstCaseFactor * 0.7f;
+  // The strike's own scatter already carries the finishing error
+  // (worstCaseFactor above), so this is the ball's swerve in flight, and it
+  // must not re-punish what the scatter already priced in. The stock
+  // 0.3 + worstCaseFactor * 0.7 double-counts: a perfect strike still wobbles
+  // by a third of the maximum.
+  float randomCurveFactor = GameplayTuning::GetShotCurveNoise(player->GetStat("technical_shot"));
   float plannedCurveFactor = 0.7f;  // todo: use curve as actual planned thing, not random :p
 
   // forward/backward 'curve'

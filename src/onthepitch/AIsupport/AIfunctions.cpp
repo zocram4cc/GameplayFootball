@@ -1457,16 +1457,34 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
   Vector3 goalPos = Vector3(player->GetTeam()->GetSide() * -pitchHalfW, 0, 0);
   Vector3 toGoal =
       (goalPos - (player->GetPosition() + player->GetMovement() * 0.12f)).GetNormalized(0);
-  // if inputDirection ~== toGoal, it is considered as aiming 'through the middle'. so, get the
-  // deviation from inputDirection to toGoal, and make 90 degrees the maximum
-  radian relAngle = toGoal.GetAngle2D(inputDirection);
-  float sideFactor = clamp((relAngle / pi) / 0.5f, -1.0f, 1.0f);
-  // more attenuation towards the sides
-  sideFactor = std::pow(fabs(sideFactor), 0.7f) * signSide(sideFactor);
-
-  goalPos.coords[1] = sideFactor * goalHalfWidth * 0.9f * player->GetTeam()->GetSide();
-  // A shot with nobody steering it goes where the keeper is not. Left to the
-  // input direction alone an AI striker aims down the middle of the goal -
+  // (The stock code derived a sideFactor from the input direction here; the
+  // AI branch below overwrites the aim by corner value, and the human branch
+  // blends the manual direction in at the return, so it no longer feeds
+  // anything.)
+  // Bodies between ball and goal, counted the way the stats screen counts
+  // them: within the lane's half-width, past the ball, short of the line.
+  // (Same 2 m corridor the shot census in humanoid.cpp uses; that is the
+  // width a body actually blocks.)
+  constexpr float kShotLaneHalfWidth_m = 2.0f;
+  constexpr float kMinLaneLength_m = 0.1f;  // degenerate lane: not a lane
+  const Vector3 shotOrigin = player->GetPosition() + player->GetMovement() * 0.12f;
+  auto defendersInLane = [&](const Vector3& laneEnd) {
+    int count = 0;
+    std::vector<Player*> opponents;
+    player->GetTeam()->GetMatch()->GetActiveTeamPlayers(abs(player->GetTeam()->GetID() - 1),
+                                                        opponents);
+    const Vector3 lane = laneEnd - shotOrigin;
+    const float laneLen = lane.GetLength();
+    if (laneLen < kMinLaneLength_m) return 0;
+    const Vector3 laneDir = lane.GetNormalized(Vector3(0));
+    for (const Player* opponent : opponents) {
+      const Vector3 toOpponent = opponent->GetPosition().Get2D() - shotOrigin;
+      const float along = toOpponent.GetDotProduct(laneDir);
+      if (along <= 0.0f || along > laneLen) continue;
+      if ((toOpponent - laneDir * along).GetLength() < kShotLaneHalfWidth_m) count++;
+    }
+    return count;
+  };
   // straight at the keeper - because his desired direction IS "at the goal",
   // so sideFactor comes out near zero. That is why matches finished 0-0 and
   // why the answer is not a worse keeper (owner, 15-09): a gold medal player
@@ -1477,6 +1495,22 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
   // and how near he lands: Finishing places it, Kicking Power does not. The
   // aim is the far post inset by his own error, so 0.99 leaves 0.16 m of the
   // goal mouth unused and 0.60 leaves 1.6 m.
+  //
+  // But the corner is picked by VALUE, not by geometry alone. Each post's lane
+  // is scored with the same xG model that judges the shot afterwards - the
+  // lane with the bodies in it prices lower, so he picks the open side. And a
+  // chance below the bar is declined outright: returning straight at goal
+  // keeps the caller's trigger logic (it only fires on an opening) while no
+  // shot command is queued... except the caller shoots on the returned
+  // direction regardless, so a declined chance aims at the keeper's chest -
+  // the lowest-value ball he can play, which the keeper collects.
+  // Their error, in metres of goal mouth they refuse to use: a gold medal
+  // dares the paint (0.2 m off the post), the worst finisher in the game
+  // needs the middle three metres. PES's shooting attribute decides both ends;
+  // composure steadies it, which is why calmness rides along.
+  constexpr float kPostDareBest_m = 0.2f;
+  constexpr float kPostDareWorst_m = 3.5f;  // 0.2 + 3.5 = goalHalfWidth 3.7:
+                                           // the worst finisher aims middle
   if (autoDirectionBias > 0.5f) {
     const Player* keeper = player->GetTeam()->GetMatch()
                                ->GetTeam(abs(player->GetTeam()->GetID() - 1))
@@ -1485,13 +1519,33 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
       const float shooting =
           clamp(player->GetStat("technical_shot") * 0.7f + player->GetStat("mental_calmness") * 0.3f,
                 0.0f, 1.0f);
-      const float inset_m = 0.2f + (1.0f - shooting) * 3.5f;
+      const float inset_m = kPostDareBest_m + (1.0f - shooting) * kPostDareWorst_m;
       const float open = goalHalfWidth - inset_m;
       if (open > 0.0f) {
-        // Whichever post the keeper is further from, in HIS half of the goal.
         const float keeperY = keeper->GetPosition().coords[1];
-        const float corner = keeperY >= 0.0f ? -open : open;
-        goalPos.coords[1] = corner;
+        const Vector3 goalLine(player->GetTeam()->GetSide() * -pitchHalfW, 0, 0);
+        const MatchAnalytics::ShotContext leftCtx = MatchAnalytics::MakeShotContext(
+            shotOrigin, player->GetTeam()->GetSide(),
+            defendersInLane(Vector3(goalLine.coords[0], -open, 0)), false, 0.5f);
+        const MatchAnalytics::ShotContext rightCtx = MatchAnalytics::MakeShotContext(
+            shotOrigin, player->GetTeam()->GetSide(),
+            defendersInLane(Vector3(goalLine.coords[0], open, 0)), false, 0.5f);
+        const float leftXg = MatchAnalytics::CalculateExpectedGoals(leftCtx);
+        const float rightXg = MatchAnalytics::CalculateExpectedGoals(rightCtx);
+        constexpr float kMinShotXg = 0.04f;
+        if (std::max(leftXg, rightXg) < kMinShotXg) {
+          goalPos = Vector3(goalLine.coords[0], keeperY, 0);
+        } else {
+          // Of the posts worth shooting at, the one the keeper is further
+          // from - in HIS half of the goal.
+          const bool leftOpen = leftXg >= rightXg;
+          float corner = leftOpen ? -open : open;
+          if ((keeperY >= 0.0f) != leftOpen) {
+            const float otherXg = leftOpen ? rightXg : leftXg;
+            if (otherXg >= kMinShotXg) corner = -corner;
+          }
+          goalPos.coords[1] = corner;
+        }
       }
     }
   }

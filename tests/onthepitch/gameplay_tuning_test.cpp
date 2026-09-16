@@ -108,6 +108,19 @@ TEST(GameplayTuningKeeperTest, EvenTheBestKeeperCannotHoldEverything) {
   EXPECT_GT(GameplayTuning::GetKeeperCatchSpeed_ms(0.0f), 10.0f);
 }
 
+TEST(GameplayTuningShootingTest, MedalsFlyTruer) {
+  // The same technical_shot that places the strike also steadies the ball:
+  // gold barely wobbles, a journeyman bends it halfway across the maximum,
+  // and the ordering is strict between them.
+  EXPECT_LT(GameplayTuning::GetShotCurveNoise(0.99f), 0.1f);
+  EXPECT_GT(GameplayTuning::GetShotCurveNoise(0.0f), 0.9f);
+  EXPECT_LT(GameplayTuning::GetShotCurveNoise(0.99f),
+            GameplayTuning::GetShotCurveNoise(0.88f));
+  EXPECT_LT(GameplayTuning::GetShotCurveNoise(0.88f),
+            GameplayTuning::GetShotCurveNoise(0.50f));
+  EXPECT_FLOAT_EQ(GameplayTuning::GetShotCurveNoise(0.99f), 0.05f + 0.01f * 0.95f);
+}
+
 TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
   EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
   EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);

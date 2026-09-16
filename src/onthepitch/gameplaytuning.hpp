@@ -237,6 +237,17 @@ inline float GetShotWorstCaseWeight(float uniformRandom01, float shotStat) {
   return std::pow(blunted::clamp(uniformRandom01, 0.0f, 1.0f), exponent);
 }
 
+// How much random swerve a struck ball carries: the spin plan was never wired
+// (the code says so itself: "use curve as actual planned thing, not random"),
+// so every shot bends by up to +-20 spin units scaled by
+// randomCurveFactor = 0.3 + worstCaseFactor * 0.7 - a floor of 0.3 that applies
+// even to a perfect strike. A gold medal's shot should fly near-true and a
+// poor finisher's should wobble; the stat is the same technical_shot that
+// places the strike, so one attribute explains both.
+inline float GetShotCurveNoise(float shotStat) {
+  return 0.05f + (1.0f - Clamp01(shotStat)) * 0.95f;
+}
+
 // Does he get a hand to it? The geometry of the save, kept pure so it can be
 // tested: the gap he has to close, the time the ball gives him, the latency his
 // reflexes cost, his reach at full stretch and the speed he closes the rest at.

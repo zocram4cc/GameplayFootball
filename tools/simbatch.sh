@@ -47,7 +47,8 @@ done
 [ -f "$base" ] || { echo "no config at $base" >&2; exit 2; }
 
 run_one() {
-  local seed="$1" cfg="$out/s$seed.config"
+  local this_seed="$1"
+  local cfg="$out/s$this_seed.config"
   # Strip every key the harness owns and write our own, so a leftover in the
   # base config (recording path, teams, stadium, entrance, duration, seed, the
   # full-match flag, the game-over hold, the time scale) can never leak into a
@@ -63,11 +64,11 @@ run_one() {
 "showcase_team2" "$team2"
 "stadium_object" "$stadium"
 "entrance_id" "$entrance"
-"random_seed" "$seed"
+"random_seed" "$this_seed"
 EOF
   (cd "$repo/data" && timeout 1800 env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 \
       SDL_VIDEODRIVER=offscreen "$bin" "$cfg" 2>&1) |
-    grep -aE "Full match complete|^\[balance\]" > "$out/s$seed.txt"
+    grep -aE "Full match complete|^\[balance\]" > "$out/s$this_seed.txt"
 }
 
 echo "running $matches matches, $concurrency at a time, team $team1 v team $team2, ${minutes}-minute duration"
