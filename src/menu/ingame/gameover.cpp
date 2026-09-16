@@ -170,6 +170,12 @@ void GameOverPage::Process() {
     printf("[balance-passing] passes %i-%i | accuracy %i%%-%i%% | clean %i%%-%i%% | clearances %i-%i\n",
            passes1, passes2, passAccuracy1, passAccuracy2, cleanPct1, cleanPct2,
            matchData->GetClearances(0), matchData->GetClearances(1));
+    // Failure breakdown: where the incomplete passes actually went. Release-safe
+    // so the accuracy target can be worked on in the build the batches run.
+    printf("[pass-fail] intercept %i-%i out %i-%i trap %i-%i\n",
+           matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
+           matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
+           matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
 #ifndef NDEBUG
     // Questionable-play deny list, debug-only: no quality guarantee should depend on
     // somebody counting frames by hand.
@@ -178,11 +184,6 @@ void GameOverPage::Process() {
            matchData->GetGoalkeeperLost(0), matchData->GetGoalkeeperLost(1),
            matchData->GetOwnThirdGiveaway(0), matchData->GetOwnThirdGiveaway(1),
            matchData->GetBadPlayTotal());
-    // Failure breakdown: where the incomplete passes actually went.
-    printf("[pass-fail] intercept %i-%i out %i-%i trap %i-%i\n",
-           matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
-           matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
-           matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
     // Touches that never reached RecordBallTouch while a pass was pending:
     // the sink the [pass-fail] breakdown cannot see. hostile = an opponent's
     // body killed our pass in flight; kinds are interfere/deflect/slide/

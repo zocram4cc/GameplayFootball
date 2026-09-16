@@ -146,11 +146,15 @@ public:
       // met it, whichever build this is.
       interceptions[receivingTeamID]++;
       wonFromOpponent = false;
+      // The breakdown counter is release-safe: the tuning batches run a release
+      // build, and a quality signal that vanishes with the assertions cannot
+      // steer pass accuracy from 65% toward the 80% target. The signals below
+      // stay debug-only - they are quality data, not rules.
+      passFailIntercept[pendingPassTeamID]++;  // breakdown: intercepted in flight
       // A pending pass met by the OTHER team: the passer just played it straight to
       // an opponent. Debug-only - this is a quality signal, not a rule.
 #ifndef NDEBUG
       AddBadPassToOpponent(pendingPassTeamID);
-      passFailIntercept[pendingPassTeamID]++;  // breakdown: intercepted in flight
       if (lastWasGoalkeeper) AddGoalkeeperLost(pendingPassTeamID);
       if (lastWasOwnThird) {
         // Gave it away in the team's own third. Not counted yet: only a shot
@@ -195,11 +199,11 @@ public:
   int GetPendingCleanCheckCount() const { return static_cast<int>(pendingCleanChecks.size()); }
   // The ball left the pitch while a pass was still in flight: count it as an
   // out-of-bounds failure for the passer, then close the passing sequence.
-  // Debug-only: the breakdown exists to steer tuning, not to change it.
+  // The breakdown counter is release-safe (see the intercept one above).
   void FailPendingPassOutOfBounds() {
-#ifndef NDEBUG
     if (pendingPassTeamID >= 0)
       passFailOob[pendingPassTeamID]++;
+#ifndef NDEBUG
     // The sequence is over either way: a pending giveaway can no longer be
     // punished once the ball has gone out off the interception.
     pendingOwnThirdGiveawayTeam = -1;
@@ -295,11 +299,7 @@ public:
   int GetBadPassToOpponent(int teamID) const { return badPassToOpponent[teamID]; }
   int GetGoalkeeperLost(int teamID) const { return goalkeeperLost[teamID]; }
   int GetOwnThirdGiveaway(int teamID) const { return ownThirdGiveaway[teamID]; }
-  void AddPassFailBadTrap(int teamID) {
-#ifndef NDEBUG
-    passFailTrap[teamID]++;
-#endif
-  }
+  void AddPassFailBadTrap(int teamID) { passFailTrap[teamID]++; }
 
   // Debug-only instrumentation behind the [pass-dist] card line: how far the
   // AI actually plays its passes, binned, plus the running second moment so a
