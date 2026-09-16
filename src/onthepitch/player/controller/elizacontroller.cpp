@@ -1343,7 +1343,40 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         printf("ODDS: %f\n", odds);
 
       // A hungrier player needs less of an opening to pull the trigger.
-      if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f) {
+      // The opening is priced with the same xG model that scores the stats:
+      // bodies in the lane discount it the way the census counts them (2 m
+      // corridor, same geometry the aim function prices per post), and
+      // appetite lowers the bar instead of widening the range. Below the bar
+      // he keeps the ball and the caller falls through to the pass - the
+      // direction function then aims at the keeper's chest, the lowest-value
+      // ball on the pitch.
+      // Same 2 m corridor the aim function prices per post: one width a
+      // body actually blocks, shared by trigger and aim.
+      constexpr float kShotLaneHalfWidth_m = 2.0f;
+      int defendersInShotLane = 0;
+      {
+        const Vector3 laneOrigin =
+            CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.12f;
+        const Vector3 laneEnd((pitchHalfW + 1.0f) * -team->GetSide(), y, 0);
+        const Vector3 lane = laneEnd - laneOrigin;
+        const float laneLen = lane.GetLength();
+        if (laneLen >= 0.1f) {
+          const Vector3 laneDir = lane.GetNormalized(Vector3(0));
+          for (const PlayerImage& opp : opponentPlayerImages) {
+            const Vector3 toOpp = opp.position.Get2D() - laneOrigin;
+            const float along = toOpp.GetDotProduct(laneDir);
+            if (along <= 0.0f || along > laneLen) continue;
+            if ((toOpp - laneDir * along).GetLength() < kShotLaneHalfWidth_m)
+              defendersInShotLane++;
+          }
+        }
+      }
+      const MatchAnalytics::ShotContext triggerCtx = MatchAnalytics::MakeShotContext(
+          CastPlayer()->GetPosition(), team->GetSide(), defendersInShotLane, false, 0.5f);
+      const float triggerXg = MatchAnalytics::CalculateExpectedGoals(triggerCtx);
+      const float triggerBar =
+          GameplayTuning::kMinShotXg / std::max(0.5f, shotAppetite);
+      if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f && triggerXg >= triggerBar) {
         PlayerCommand command;
         command.desiredFunctionType = e_FunctionType_Shot;
         command.useDesiredMovement = false;
