@@ -1532,8 +1532,7 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
             defendersInLane(Vector3(goalLine.coords[0], open, 0)), false, 0.5f);
         const float leftXg = MatchAnalytics::CalculateExpectedGoals(leftCtx);
         const float rightXg = MatchAnalytics::CalculateExpectedGoals(rightCtx);
-        constexpr float kMinShotXg = 0.04f;
-        if (std::max(leftXg, rightXg) < kMinShotXg) {
+        if (!GameplayTuning::IsWorthShooting(std::max(leftXg, rightXg))) {
           goalPos = Vector3(goalLine.coords[0], keeperY, 0);
         } else {
           // Of the posts worth shooting at, the one the keeper is further
@@ -1542,7 +1541,7 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
           float corner = leftOpen ? -open : open;
           if ((keeperY >= 0.0f) != leftOpen) {
             const float otherXg = leftOpen ? rightXg : leftXg;
-            if (otherXg >= kMinShotXg) corner = -corner;
+            if (GameplayTuning::IsWorthShooting(otherXg)) corner = -corner;
           }
           goalPos.coords[1] = corner;
         }

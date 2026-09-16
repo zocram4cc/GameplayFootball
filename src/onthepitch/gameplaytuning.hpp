@@ -183,6 +183,13 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
+// A chance is worth shooting at when the same xG model that scores the stats
+// says so: 0.04 is a speculative hit (roughly a 27 m strike through traffic),
+// not a prohibition on long shots. Below that the ball is better kept, so the
+// trigger declines it and the caller falls through to the pass.
+constexpr float kMinShotXg = 0.04f;
+inline bool IsWorthShooting(float chanceXg) { return chanceXg >= kMinShotXg; }
+
 // How long a controller lags behind the world: 40 ms for a perfect stat, 80 ms
 // for none. Outfielders feed physical_reaction, a keeper his GK Reflexes.
 inline int GetReactionTime_ms(float reactionStat) {

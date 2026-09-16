@@ -121,6 +121,14 @@ TEST(GameplayTuningShootingTest, MedalsFlyTruer) {
   EXPECT_FLOAT_EQ(GameplayTuning::GetShotCurveNoise(0.99f), 0.05f + 0.01f * 0.95f);
 }
 
+TEST(GameplayTuningShootingTest, WorthShootingAdmitsSpeculationDeclinesHopelessness) {
+  // The bar the corner gate shares with the trigger: 0.04 is a speculative
+  // hit, not a ban on long shots. Boundary and both sides pinned.
+  EXPECT_FALSE(GameplayTuning::IsWorthShooting(0.039f));
+  EXPECT_TRUE(GameplayTuning::IsWorthShooting(GameplayTuning::kMinShotXg));
+  EXPECT_TRUE(GameplayTuning::IsWorthShooting(0.30f));
+}
+
 TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
   EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
   EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);
