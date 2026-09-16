@@ -98,6 +98,35 @@ checksum beside the batch:
 
     md5sum build/gameplayfootball tools/simbatch.sh > /tmp/batch_frozen.txt
 
+## Never `git add` a directory a subagent might be writing into
+
+A dispatched agent's file tools resolved against this repo rather than the
+worktree it was told to use, so its draft landed in the main working tree
+while its `bash` cwd was correct. A `git add src/ tools/ tests/` then swept
+that draft into a commit about the save gate, and the two works had to be
+separated by hand afterwards (their files out, their hunks out of four shared
+files, my own later fix re-applied on top - it had been reverted by a
+`git checkout` of the same files).
+
+The rules that come out of it:
+
+- **List files, never directories**, in `git add` while another agent is
+  running against the repo. `git add src/` is an assertion that everything
+  under `src/` is yours, and it is false for as long as a peer is alive.
+- **Read `git status` before every commit** and account for every path in it.
+  Four ambient `data/` files are expected here; a new `src/data/*.hpp` is not.
+- Every agent gets **absolute paths** in its brief and its own build directory,
+  and its acceptance includes `git status` in *both* trees showing only its own
+  files.
+- If it happens anyway: `git show --stat` the commit, keep the peer's work as a
+  patch (`git show <commit> -- <their files> > /tmp/peer.patch`), `git reset
+  --soft HEAD~1`, take their hunks out of the shared files, re-add **your files
+  by name**, and hand the patch back. Do not rewrite a peer's commits for them
+  and do not let them rewrite yours - both were rightly refused mid-incident.
+- Then **rebuild and re-measure**. A binary built from a tree that briefly
+  contained someone else's code is not evidence, and neither `nm` for their
+  symbols nor the source diff settles it when the code may be inlined.
+
 ## Reading a run without watching it
 
 - `debug_cutscene_report true` logs, for every cutscene, its anchoring and how far the
