@@ -183,6 +183,14 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
+// Where a struck ball should cross the line, in metres. The strike is aimed
+// ballistically at a band rather than left to the scatter: below the band the
+// ball dies on the turf short of goal (measured: 10 of 22 shots crossed the
+// line plane BELOW GROUND - flat strikes from the 27 m median distance, where
+// gravity alone drops the ball 8.9 m), above it goes over the bar.
+constexpr float kShotArrivalMin_m = 0.3f;
+constexpr float kShotArrivalMax_m = 2.1f;
+
 // A chance is worth shooting at when the same xG model that scores the stats
 // says so: 0.04 is a speculative hit (roughly a 27 m strike through traffic),
 // not a prohibition on long shots. Below that the ball is better kept, so the
@@ -244,13 +252,15 @@ inline float GetShotWorstCaseWeight(float uniformRandom01, float shotStat) {
   return std::pow(blunted::clamp(uniformRandom01, 0.0f, 1.0f), exponent);
 }
 
-// How much random swerve a struck ball carries: the spin plan was never wired
-// (the code says so itself: "use curve as actual planned thing, not random"),
-// so every shot bends by up to +-20 spin units scaled by
-// randomCurveFactor = 0.3 + worstCaseFactor * 0.7 - a floor of 0.3 that applies
-// even to a perfect strike. A gold medal's shot should fly near-true and a
-// poor finisher's should wobble; the stat is the same technical_shot that
-// places the strike, so one attribute explains both.
+// How much random swerve a struck ball carries, as a share of the spin the
+// animation carries. The stock factor was 0.3 + worstCaseFactor * 0.7, whose
+// 0.3 floor applied even to a perfect strike - and the spin plan was never
+// wired (the code says so itself: "use curve as actual planned thing, not
+// random"), so that swerve was never intention.
+//
+// One finishing stat prices both halves of the strike: GetShotWorstCaseWeight
+// places it, this steadies it in flight. A gold medal flies near-true, a poor
+// finisher wobbles.
 inline float GetShotCurveNoise(float shotStat) {
   return 0.05f + (1.0f - Clamp01(shotStat)) * 0.95f;
 }

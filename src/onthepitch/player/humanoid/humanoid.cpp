@@ -806,17 +806,29 @@ void Humanoid::Process() {
             AI_GetShotDirection(CastPlayer(), inputDirection,
                                 currentAnim->originatingCommand.touchInfo.autoDirectionBias);
 
-        float maxDeviationAngle = 0.1f * pi;
+        // The authored direction is the aim the caller chose - corner by value
+        // for the AI, the player's own stick for a human. At full auto bias it
+        // plays verbatim: the old +-18 degree clamp towards the animation's
+        // stored direction re-aimed every corner pick back at the keeper, which
+        // is why 20% went on target while the aim said corner (owner, 16-09).
+        const float kShotDirectionClamp_rad = 0.1f * pi;
         radian angleDiff = ballDirectionAltered.Get2D().GetAngle2D(ballDirection.Get2D());
-        if (fabs(angleDiff) > maxDeviationAngle) {
+        if (currentAnim->originatingCommand.touchInfo.autoDirectionBias < 1.0f &&
+            fabs(angleDiff) > kShotDirectionClamp_rad) {
           // get as close as possible
-          float clampedAngleDiff = clamp(angleDiff, -maxDeviationAngle, maxDeviationAngle);
+          float clampedAngleDiff =
+              clamp(angleDiff, -kShotDirectionClamp_rad, kShotDirectionClamp_rad);
           // SetYellowDebugPilon(GetTouchPos() + ballDirection * 3);
           ballDirection = ballDirection.GetRotated2D(clampedAngleDiff);
           // SetGreenDebugPilon(GetTouchPos() + ballDirection * 3);
         } else {
           ballDirection = ballDirectionAltered;
         }
+        // The aim decides where horizontally; the commanded loft still decides
+        // how high (a chip asks for its height through desiredDirection's z, and
+        // the aim is a ground target, so it arrives with z ~ 0).
+        ballDirection.coords[2] =
+            currentAnim->originatingCommand.touchInfo.desiredDirection.coords[2];
 
         radian xRot = 0;
         radian yRot = 0;
@@ -824,8 +836,8 @@ void Humanoid::Process() {
         Vector3 touchVec =
             GetShotVector(match, CastPlayer(), nextStartPos, nextStartAngle, nextBodyAngle,
                           CalculateOutgoingMovement(currentAnim->positions), currentAnim,
-                          currentAnim->frameNum, spatialState, decayingPositionOffset, xRot, yRot,
-                          zRot, currentAnim->originatingCommand.touchInfo.autoDirectionBias);
+                          currentAnim->frameNum, spatialState, decayingPositionOffset, ballDirection,
+                          xRot, yRot, zRot, currentAnim->originatingCommand.touchInfo.autoDirectionBias);
 
         touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
         if (player->GetDebug() && bumpyRideBias > 0.01f)
@@ -852,10 +864,14 @@ void Humanoid::Process() {
           zRot = spun.coords[2];
         }
 
-        // Keep the shot under the bar: the raw shot vector regularly arrived at
-        // the goal 3.5m up, which is why matches full of "on target" shots
-        // finished 0-0. Clamp the vertical component so the ball, under
-        // gravity, crosses the line no higher than just under the bar.
+        // Aim the strike ballistically at a band on the goal line, not merely
+        // under the bar. The old rule capped the vertical component and left
+        // the bottom open, so a flat strike from distance died on the turf
+        // before arriving: measured over one match, 10 of 22 shots crossed the
+        // goal-line plane BELOW GROUND, at a median shot distance of 27.7 m
+        // where gravity alone drops a flat ball 8.9 m. vz for a crossing at
+        // height h after t is (h - startZ)/t + g*t/2 - the inverse of the drop -
+        // so the band is two of those, and the ball arrives between the posts.
         {
           const float goalLineX = pitchHalfW * -team->GetSide();
           const float distanceToGoal =
@@ -864,11 +880,12 @@ void Humanoid::Process() {
           const float flightTime = distanceToGoal / horizontalSpeed;
           if (flightTime > 0.05f && flightTime < 3.0f) {
             const float startZ = match->GetBall()->Predict(0).coords[2];
-            const float maxArrivalHeight = 2.1f;
+            const float drop = 0.5f * 9.81f * flightTime;
+            const float minVz =
+                (GameplayTuning::kShotArrivalMin_m - startZ) / flightTime + drop;
             const float maxVz =
-                (maxArrivalHeight - startZ) / flightTime + 0.5f * 9.81f * flightTime;
-            if (touchVec.coords[2] > maxVz)
-              touchVec.coords[2] = maxVz;
+                (GameplayTuning::kShotArrivalMax_m - startZ) / flightTime + drop;
+            touchVec.coords[2] = clamp(touchVec.coords[2], minVz, maxVz);
           }
         }
 

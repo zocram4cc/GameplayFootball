@@ -43,7 +43,7 @@ Vector3 GetTrapVector(Match* match, Player* player, const Vector3& nextStartPos,
 Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
                       radian nextStartAngle, radian nextBodyAngle, const Vector3& outgoingMovement,
                       const Anim* currentAnim, int frameNum, const SpatialState& spatialState,
-                      const Vector3& positionOffset, radian& xRot, radian& yRot, radian& zRot,
-                      float autoDirectionBias = 0.0f);
+                      const Vector3& positionOffset, const Vector3& aimDirection, radian& xRot,
+                      radian& yRot, radian& zRot, float autoDirectionBias = 0.0f);
 
 #endif

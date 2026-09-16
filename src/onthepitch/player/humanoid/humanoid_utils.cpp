@@ -445,8 +445,8 @@ Vector3 GetTrapVector(Match* match, Player* player, const Vector3& nextStartPos,
 Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
                       radian nextStartAngle, radian nextBodyAngle, const Vector3& outgoingMovement,
                       const Anim* currentAnim, int frameNum, const SpatialState& spatialState,
-                      const Vector3& positionOffset, radian& xRot, radian& yRot, radian& zRot,
-                      float autoDirectionBias) {
+                      const Vector3& positionOffset, const Vector3& aimDirection, radian& xRot,
+                      radian& yRot, radian& zRot, float autoDirectionBias) {
   Ball* ball = match->GetBall();
 
   const std::vector<Vector3>& origPositionCache = match->GetAnimPositionCache(currentAnim->anim);
@@ -470,9 +470,9 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
   // + 0.5f; ideal angle is ~36 degrees == 0.2 * pi
   radian idealAngle = 0.2f * pi;
   radian angle1 = fabs(touchDirection.GetAngle2D(
-      currentAnim->originatingCommand.touchInfo.desiredDirection.GetRotated2D(-idealAngle)));
+      aimDirection.GetRotated2D(-idealAngle)));
   radian angle2 = fabs(touchDirection.GetAngle2D(
-      currentAnim->originatingCommand.touchInfo.desiredDirection.GetRotated2D(idealAngle)));
+      aimDirection.GetRotated2D(idealAngle)));
   radian angle = std::min(angle1, angle2);
   float directionFactor = clamp(angle / pi, 0.0f, 1.0f);
   directionFactor = curve(1.0f - directionFactor, 0.8f);
@@ -579,8 +579,8 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
   // A chip (ElizaController: Chip Shot Control over a keeper who has come out)
   // asks for its loft through the direction's z; a normal shot is kept down.
   const float desiredHeight =
-      std::max(0.05f, currentAnim->originatingCommand.touchInfo.desiredDirection.coords[2]);
-  Vector3 desiredShot = (currentAnim->originatingCommand.touchInfo.desiredDirection.Get2D() +
+      std::max(0.05f, aimDirection.coords[2]);
+  Vector3 desiredShot = (aimDirection.Get2D() +
                          Vector3(0, 0, desiredHeight))
                             .GetNormalized() *
                         power;
@@ -591,7 +591,7 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
 
   // worst case result
 
-  Vector3 worstCaseDirection = currentAnim->originatingCommand.touchInfo.desiredDirection.Get2D();
+  Vector3 worstCaseDirection = aimDirection.Get2D();
 
   // direction lag
   float laggyDirectionBias = difficultyFactor * 0.8f;
@@ -636,9 +636,9 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
   float plannedCurveFactor = 0.7f;  // todo: use curve as actual planned thing, not random :p
 
   // forward/backward 'curve'
-  xRot = -currentAnim->originatingCommand.touchInfo.desiredDirection.coords[1] * 20.0f +
+  xRot = -aimDirection.coords[1] * 20.0f +
          (random(-20, 20) * randomCurveFactor);
-  yRot = -currentAnim->originatingCommand.touchInfo.desiredDirection.coords[0] * 20.0f +
+  yRot = -aimDirection.coords[0] * 20.0f +
          (random(-20, 20) * randomCurveFactor);
 
   // lateral curve
