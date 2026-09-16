@@ -75,11 +75,13 @@ EOF
 }
 
 echo "running $matches matches, $concurrency at a time, team $team1 v team $team2, ${minutes}-minute duration, ${timescale}x time scale"
-live=0
+# Throttle on the number of children actually alive. `wait -n` returns
+# immediately once a job has already been reaped, so it never throttled: a
+# 12-match 6-way run launched 12 at once (measured: 9 configs spawned with 3
+# matches in flight, load average 18 on 16 cores, every match slower).
 for i in $(seq 0 $((matches - 1))); do
+  while [ "$(jobs -rp | wc -l)" -ge "$concurrency" ]; do sleep 1; done
   run_one $((seed0 + i)) &
-  live=$((live + 1))
-  if [ "$live" -ge "$concurrency" ]; then wait -n 2>/dev/null || wait; live=$((live - 1)); fi
 done
 wait
 
