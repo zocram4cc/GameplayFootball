@@ -5632,8 +5632,10 @@ void Match::Process() {
 
         if (!ownGoal) {
           lastGoalScorer = teams[GetLastGoalTeamID()]->GetLastTouchPlayer();
+          const bool isPenaltyGoal = IsPendingPenaltyGoal(GetLastGoalTeamID(), lastGoalScorer);
           matchData->AddEvent(MatchData::Event::Goal, GetLastGoalTeamID(), GetMatchMinute(),
-                              lastGoalScorer ? lastGoalScorer->GetPlayerData()->GetLastName() : "");
+                              lastGoalScorer ? lastGoalScorer->GetPlayerData()->GetLastName() : "",
+                              isPenaltyGoal);
           if (lastGoalScorer) {
             goalsToday[lastGoalScorer]++;
             SpamMessage("GOAL for " + matchData->GetTeamData(GetLastGoalTeamID())->GetName() +
@@ -5656,6 +5658,7 @@ void Match::Process() {
             SpamMessage("It's an OWN GOAL! oh noes!", 4000);
           }
         }
+        ClearPendingPenalty();
       }
     }
 

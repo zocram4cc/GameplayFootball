@@ -270,9 +270,15 @@ public:
     int teamID;
     int minute;
     std::string text;  // scorer, offender, or "out -> in"
+    // Only meaningful for Goal: a direct penalty conversion, sourced from the
+    // referee's own penalty award and the taker who struck it (see
+    // Match::SetPendingPenaltyTaken / IsPendingPenaltyGoal). Never true for
+    // OwnGoal - there is no such thing as an own penalty.
+    bool penalty = false;
   };
-  void AddEvent(Event::Kind kind, int teamID, int minute, const std::string& text) {
-    events.push_back({kind, teamID, minute, text});
+  void AddEvent(Event::Kind kind, int teamID, int minute, const std::string& text,
+               bool penalty = false) {
+    events.push_back({kind, teamID, minute, text, penalty});
   }
   const std::vector<Event>& GetEvents() const { return events; }
 

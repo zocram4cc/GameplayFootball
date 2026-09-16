@@ -11,9 +11,12 @@
 
 #include <cmath>
 #include <ctime>
+#include <filesystem>
 
 #include "../../data/matchanalytics.hpp"
 #include "../../data/matchhistory.hpp"
+#include "../../data/matchstatsexport.hpp"
+#include "../../onthepitch/entrancecast.hpp"
 #include "../career/career_database.hpp"
 #include "../pagefactory.hpp"
 #include "main.hpp"
@@ -29,6 +32,100 @@ constexpr unsigned long kMenuSmokeQuitDelay_ms = 1000;
 
 bool MenuSmokeFullMatchEnabled() {
   return GetConfiguration()->GetBool("menu_smoke_test_full_match", false);
+}
+
+int PossessionPercent(MatchData* matchData, int teamID);
+
+// The engine anchors its working directory on the tree that holds databases/
+// (<repo>/data - see AnchorWorkingDirectory in main.cpp), so a bare
+// "data/stats" config value resolves under the CURRENT directory - which
+// after that anchor already IS <repo>/data, producing <repo>/data/data/stats.
+// Anchor against the repo root instead, the same root every other
+// documented generated-file path (e.g. MatchHistory) is meant to sit under.
+std::filesystem::path ResolveStatsDir(const std::string& configured) {
+  namespace fs = std::filesystem;
+  fs::path root = fs::current_path();
+  if (fs::exists(root / "databases") && fs::exists(root.parent_path() / "data"))
+    root = root.parent_path();
+  return root / configured;
+}
+
+std::string TeamDisplayName(TeamData* team) {
+  const std::string shortName = team->GetShortName();
+  return shortName.empty() ? team->GetName() : shortName;
+}
+
+// Assembles the frozen match-stats document from MatchData/MatchAnalytics -
+// the source of truth already accumulated on the pitch. See
+// src/data/matchstatsexport.hpp for the schema and the wikitext this feeds.
+MatchStatsDocument BuildMatchStatsDocument(Match* match) {
+  MatchData* matchData = match->GetMatchData();
+
+  std::tm localTime = {};
+  char dateBuf[16] = "1970-01-01";
+  char timeBuf[8] = "000000";
+  if (blunted::GetLocalTime(time(nullptr), localTime)) {
+    strftime(dateBuf, sizeof(dateBuf), "%Y-%m-%d", &localTime);
+    strftime(timeBuf, sizeof(timeBuf), "%H%M%S", &localTime);
+  }
+
+  TeamData* homeData = match->GetTeam(0)->GetTeamData();
+  TeamData* awayData = match->GetTeam(1)->GetTeamData();
+
+  MatchStatsDocument document;
+  document.date = dateBuf;
+  document.matchId = std::string(dateBuf) + "-" + std::to_string(homeData->GetDatabaseID()) +
+                     "-" + std::to_string(awayData->GetDatabaseID()) + "-" + timeBuf;
+  document.competition = "Friendly";
+  document.stadium = EntranceCast::StadiumToken(GetConfiguration()->Get("stadium_object", ""));
+  document.durationMinutes =
+      static_cast<int>(std::round(GetConfiguration()->GetReal("match_duration_minutes", 0.0f)));
+
+  MatchStatsTeam teams[2];
+  for (int i = 0; i < 2; ++i) {
+    TeamData* teamData = i == 0 ? homeData : awayData;
+    teams[i].databaseID = teamData->GetDatabaseID();
+    teams[i].name = TeamDisplayName(teamData);
+    teams[i].score = matchData->GetGoalCount(i);
+    teams[i].shots = matchData->GetShots(i);
+    teams[i].shotsOnTarget = matchData->GetShotsOnTarget(i);
+    teams[i].saves = matchData->GetSaves(i);
+    teams[i].corners = matchData->GetCorners(i);
+    teams[i].fouls = matchData->GetFouls(i);
+    teams[i].offsides = matchData->GetOffsides(i);
+    teams[i].possessionPercent = PossessionPercent(matchData, i);
+    teams[i].passes = matchData->GetPassAttempts(i);
+    teams[i].passesCompleted = matchData->GetPassesCompleted(i);
+    if (teams[i].passes > 0)
+      teams[i].passAccuracyPercent = static_cast<int>(
+          std::round(teams[i].passesCompleted * 100.0f / teams[i].passes));
+    teams[i].expectedGoals = MatchAnalytics::GetExpectedGoals(match->GetShotTally(), i);
+  }
+
+  for (const MatchData::Event& event : matchData->GetEvents()) {
+    if (event.teamID != 0 && event.teamID != 1) continue;
+    switch (event.kind) {
+      case MatchData::Event::Goal:
+        teams[event.teamID].goals.push_back(
+            {event.minute, event.text, /*ownGoal=*/false, event.penalty});
+        break;
+      case MatchData::Event::OwnGoal:
+        teams[event.teamID].goals.push_back(
+            {event.minute, event.text, /*ownGoal=*/true, /*penalty=*/false});
+        break;
+      case MatchData::Event::YellowCard:
+        teams[event.teamID].cards.push_back({event.minute, event.text, MatchCardEvent::Yellow});
+        break;
+      case MatchData::Event::RedCard:
+        teams[event.teamID].cards.push_back({event.minute, event.text, MatchCardEvent::Red});
+        break;
+      default:
+        break;
+    }
+  }
+
+  document.teams = {teams[0], teams[1]};
+  return document;
 }
 
 }  // namespace
@@ -125,6 +222,13 @@ GameOverPage::GameOverPage(Gui2WindowManager* windowManager, const Gui2PageData&
 
     MatchHistory::EnsureTable();
     MatchHistory::SaveMatch(entry);
+
+    const MatchStatsDocument statsDocument = BuildMatchStatsDocument(match);
+    const std::string statsDir =
+        ResolveStatsDir(GetConfiguration()->Get("stats_dir", "data/stats/")).string();
+    std::string statsError;
+    if (!WriteMatchStatsFiles(statsDocument, statsDir, statsError))
+      printf("[match-stats] failed to write match stats: %s\n", statsError.c_str());
   }
 
   this->Show();

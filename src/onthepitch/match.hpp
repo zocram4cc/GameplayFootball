@@ -282,6 +282,26 @@ public:
   void ReplacePlayerReferences(Player* playerOut, Player* playerIn);
   int GetLastGoalTeamID() const { return lastGoalTeamID; }
 
+  // The dead-ball window a struck penalty leaves open: the taker's own
+  // conversion (direct, or an immediate follow-up on the rebound) still
+  // counts as a penalty goal, but a normal phase of play starting later must
+  // not. Referee::Process arms this the instant the penalty taker's kick
+  // releases (buffer.taker touches the ball); the goal-scoring check in
+  // Match::Process consumes it.
+  static constexpr unsigned long penaltyGoalWindow_ms = 6000;
+  void SetPendingPenaltyTaken(int teamID, Player* taker) {
+    pendingPenaltyTeamID = teamID;
+    pendingPenaltyTaker = taker;
+    pendingPenaltyDeadline_ms = actualTime_ms + penaltyGoalWindow_ms;
+  }
+  bool IsPendingPenaltyGoal(int scoringTeamID, Player* scorer) const {
+    return pendingPenaltyTeamID == scoringTeamID && pendingPenaltyTaker != nullptr &&
+           pendingPenaltyTaker == scorer && actualTime_ms <= pendingPenaltyDeadline_ms;
+  }
+  void ClearPendingPenalty() {
+    pendingPenaltyTeamID = -1;
+    pendingPenaltyTaker = nullptr;
+  }
   void SetLastTouchTeamID(int id, e_TouchType touchType = e_TouchType_Intentional_Kicked) {
     lastTouchTeamIDs[touchType] = id;
     lastTouchTeamID = id;
@@ -998,6 +1018,9 @@ protected:
   bool ballIsInGoal;
   int lastGoalTeamID;
   Player* lastGoalScorer;
+  int pendingPenaltyTeamID = -1;
+  Player* pendingPenaltyTaker = nullptr;
+  unsigned long pendingPenaltyDeadline_ms = 0;
   std::map<const Player*, int> goalsToday;
   // Which shot of the celebration montage is on air, so the camera cuts once
   // per shot rather than every frame (GoalSequence::Shot).

@@ -763,6 +763,7 @@ add_executable(gameplayfootball_simulation_tests
   onthepitch/penalty_shootout_test.cpp
   onthepitch/crowd_mood_test.cpp
   data/match_analytics_test.cpp
+  data/match_stats_format_test.cpp
   data/formations_test.cpp
   data/formation_fallback_test.cpp
   data/team_tactics_test.cpp
@@ -794,6 +795,7 @@ add_executable(gameplayfootball_simulation_tests
   ${PROJECT_SOURCE_DIR}/src/onthepitch/penaltyshootout.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/crowdmood.cpp
   ${PROJECT_SOURCE_DIR}/src/data/matchanalytics.cpp
+  ${PROJECT_SOURCE_DIR}/src/data/matchstatsexport.cpp
   ${PROJECT_SOURCE_DIR}/src/data/formations.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/coachmode.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/substitutions.cpp

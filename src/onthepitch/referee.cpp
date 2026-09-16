@@ -437,6 +437,8 @@ void Referee::Process() {
   if (match->IsInSetPiece()) {
     // check if set piece has been taken
     if (buffer.taker->TouchAnim() && !buffer.taker->TouchPending()) {
+      if (buffer.desiredSetPiece == e_SetPiece_Penalty)
+        match->SetPendingPenaltyTaken(buffer.teamID, buffer.taker);
       buffer.active = false;
       match->StopSetPiece();
       match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);

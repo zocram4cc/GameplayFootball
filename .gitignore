@@ -96,6 +96,9 @@ data/media/textures/lut/
 /mvshot/
 /showcase_run/
 /stadcheck/
+# Generated per-match stats documents (src/data/matchstatsexport.hpp): output,
+# rebuilt at every full time, never source.
+data/stats/
 /export-list.txt
 /CMakeFiles/
 data/menu_smoke_*.config
