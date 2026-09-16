@@ -78,6 +78,26 @@ interrupted run still plays, drains the encoder rather than killing it, refuses 
 report a run that never reached `destroying scenemanager`, and fits the result into
 a size limit in one pass.
 
+## Never edit a script that is running
+
+Bash reads a script file incrementally, by byte offset, as it executes - it does
+not load it. Rewriting `tools/simbatch.sh` while an instance of it was in its
+spawn loop shifted every offset after the edit: the running shell resumed
+mid-token (`line 84: red:: command not found`) and **re-ran seeds it had already
+finished**, truncating six good results to zero bytes on the way past.
+
+Cost when it happens: a whole 12-match batch of CPU, plus the results it
+overwrote. If a fix is needed mid-batch, write a copy, wait for the batch to
+drain, then swap it in.
+
+The same applies to `build/gameplayfootball`: `run_one` resolves `$bin` at exec
+time, so a match that *starts* after a relink runs the new code. A batch that
+spanned four relinks produced twelve matches on several different builds and
+could not be used as a before/after comparison at all. Record the binary's
+checksum beside the batch:
+
+    md5sum build/gameplayfootball tools/simbatch.sh > /tmp/batch_frozen.txt
+
 ## Reading a run without watching it
 
 - `debug_cutscene_report true` logs, for every cutscene, its anchoring and how far the
