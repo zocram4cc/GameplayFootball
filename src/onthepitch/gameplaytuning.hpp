@@ -293,7 +293,17 @@ inline GoalLineCrossing PredictGoalLineCrossing(const std::array<float, 3>& pos,
 // says so: 0.04 is a speculative hit (roughly a 27 m strike through traffic),
 // not a prohibition on long shots. Below that the ball is better kept, so the
 // trigger declines it and the caller falls through to the pass.
+//
+// Config-tunable beside the range and the appetite, because it is the knob
+// that decides WHERE chances are taken from and that is the whole balance
+// question: measured over a match, every single shot came from outside 18 m
+// (bands 0/0/4/3 and 0/0/4/6), because the trigger fires the moment a player
+// enters the shooting range and he never carries the ball closer. Raising the
+// bar declines the 25 m speculation and the caller falls through to the pass.
 constexpr float kMinShotXg = 0.04f;
+inline float GetMinShotXg(const blunted::Properties& config) {
+  return blunted::clamp(config.GetReal("gameplay_min_shot_xg", kMinShotXg), 0.01f, 0.30f);
+}
 inline bool IsWorthShooting(float chanceXg) { return chanceXg >= kMinShotXg; }
 
 // How long a controller lags behind the world: 40 ms for a perfect stat, 80 ms
@@ -361,6 +371,20 @@ inline float GetShotWorstCaseWeight(float uniformRandom01, float shotStat) {
 // finisher wobbles.
 inline float GetShotCurveNoise(float shotStat) {
   return 0.05f + (1.0f - Clamp01(shotStat)) * 0.95f;
+}
+
+// Striking across the body turns the ball off the outside of the boot, and the
+// spin that comes with it bends the flight further the same way. That is real,
+// and it is the largest DETERMINISTIC source of shots that miss the frame: the
+// swing reaches a quarter radian at a right angle, three metres wide of where
+// it was aimed from twenty. It is also the only error in the strike the stock
+// code never asked the finisher about - a 0.99 striker sliced a half-turned
+// volley exactly as far as a centre back did, while every other term here
+// already scales with technique. Keeping the boot face square IS the skill; it
+// is never squared completely, so the floor stays.
+constexpr float kShotBodySliceFloor = 0.15f;
+inline float GetShotBodySliceShare(float shotStat) {
+  return kShotBodySliceFloor + (1.0f - kShotBodySliceFloor) * (1.0f - Clamp01(shotStat));
 }
 
 // Does he get a hand to it? The geometry of the save, kept pure so it can be

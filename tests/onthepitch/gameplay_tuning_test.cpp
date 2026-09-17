@@ -147,6 +147,19 @@ TEST(GameplayTuningShootingTest, MedalsFlyTruer) {
   EXPECT_FLOAT_EQ(GameplayTuning::GetShotCurveNoise(0.99f), 0.05f + 0.01f * 0.95f);
 }
 
+TEST(GameplayTuningShootingTest, TechniqueKeepsTheBootFaceSquare) {
+  // A cross-body strike swings off the boot; how much of that swing survives
+  // is the finisher's. Gold keeps nearly none of it, a defender all of it,
+  // and nobody squares the face completely.
+  EXPECT_FLOAT_EQ(GameplayTuning::GetShotBodySliceShare(0.0f), 1.0f);
+  EXPECT_FLOAT_EQ(GameplayTuning::GetShotBodySliceShare(1.0f),
+                  GameplayTuning::kShotBodySliceFloor);
+  EXPECT_LT(GameplayTuning::GetShotBodySliceShare(0.99f), 0.2f);
+  EXPECT_GT(GameplayTuning::GetShotBodySliceShare(0.99f), 0.0f);
+  EXPECT_LT(GameplayTuning::GetShotBodySliceShare(0.88f),
+            GameplayTuning::GetShotBodySliceShare(0.50f));
+}
+
 TEST(GameplayTuningShootingTest, WorthShootingAdmitsSpeculationDeclinesHopelessness) {
   // The bar the corner gate shares with the trigger: 0.04 is a speculative
   // hit, not a ban on long shots. Boundary and both sides pinned.

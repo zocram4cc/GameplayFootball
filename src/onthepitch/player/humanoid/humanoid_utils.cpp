@@ -647,7 +647,12 @@ Vector3 GetShotVector(Match* match, Player* player, const Vector3& nextStartPos,
     bodyTouchAngle = (1.0f - fabs(bodyTouchAngle)) * signSide(bodyTouchAngle);
   bodyTouchAngle *= 2.0f;
   // printf("bodyTouchAngle: %f\n", bodyTouchAngle);
-  radian amount = bodyTouchAngle * 0.25f;
+  // The swing off the boot and the sidespin it imparts are one contact, so
+  // technique scales both through `amount` (GameplayTuning::
+  // GetShotBodySliceShare documents why it is stat-gated at all).
+  constexpr radian kShotBodySliceMax_rad = 0.25f;
+  radian amount = bodyTouchAngle * kShotBodySliceMax_rad *
+                  GameplayTuning::GetShotBodySliceShare(player->GetStat("technical_shot"));
   shot.Rotate2D(amount * (0.4f + 0.6f * NormalizedClamp(shot.GetLength(), 0.0f, 70.0f)));
   zRot = amount * -420 + (random(-20, 20) * plannedCurveFactor);
 

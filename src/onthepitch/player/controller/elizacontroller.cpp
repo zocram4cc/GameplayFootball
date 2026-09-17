@@ -1407,7 +1407,7 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
           CastPlayer()->GetPosition(), team->GetSide(), defendersInShotLane, false, 0.5f);
       const float triggerXg = MatchAnalytics::CalculateExpectedGoals(triggerCtx);
       const float triggerBar =
-          GameplayTuning::kMinShotXg / std::max(0.5f, shotAppetite);
+          GameplayTuning::GetMinShotXg(*GetConfiguration()) / std::max(0.5f, shotAppetite);
       if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f && triggerXg >= triggerBar) {
         PlayerCommand command;
         command.desiredFunctionType = e_FunctionType_Shot;
