@@ -523,7 +523,9 @@ protected:
   int GetCoachedTeamID(bool preferSecondTeam) const;
   void UpdateBallHeatmap();
   // Lets CPU-managed teams use their bench (AIManager); human-coached teams do
-  // this from the menu instead.
+  // this from the menu instead. Callers must be inside IsSubstitutionWindow -
+  // the decision is made during a stoppage (Match::Process is the only caller,
+  // and it gates on it).
   void ProcessAutoSubstitutions();
   void UpdateCrowdAudio();
   void CheckHumanoidCollisions();

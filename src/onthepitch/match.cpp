@@ -5711,7 +5711,12 @@ void Match::Process() {
 
   }  // end if !pause
 
-  ProcessAutoSubstitutions();
+  // A substitution is a stoppage event. The decision belongs to the window the
+  // rules allow it in (IsSubstitutionWindow), not to every tick of open play:
+  // asking mid-flight let a manager queue a change while the ball was live, and
+  // it is not how a bench is used.
+  if (IsSubstitutionWindow())
+    ProcessAutoSubstitutions();
   ProcessFoulReplay();
   ProcessCutsceneBench();
   UpdateBallHeatmap();
