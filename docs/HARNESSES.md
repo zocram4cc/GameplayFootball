@@ -98,6 +98,17 @@ checksum beside the batch:
 
     md5sum build/gameplayfootball tools/simbatch.sh > /tmp/batch_frozen.txt
 
+## A seed is only comparable at the same concurrency
+
+`simbatch.sh` fixes `random_seed` per match, and its header says a before/after
+pair over the same seeds is comparable. It is - but only if both runs were made
+with the same `--concurrency`. Seed 5000 on one binary and one config gave
+`shots 7-5 | xg 0.89-0.61` alone and `shots 6-5 | xg 0.87-0.58` inside a 3-way
+batch: the match paces some of its stages off real time, so CPU contention
+moves the tick at which things happen and the game diverges. Hold concurrency
+constant across the arms of any comparison, and say which it was when quoting
+a single seed.
+
 ## Never `git add` a directory a subagent might be writing into
 
 A dispatched agent's file tools resolved against this repo rather than the
