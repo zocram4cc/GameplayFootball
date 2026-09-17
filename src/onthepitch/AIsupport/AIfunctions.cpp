@@ -1536,13 +1536,20 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
             defendersInLane(Vector3(goalLine.coords[0], open, 0)), false, 0.5f);
         const float leftXg = MatchAnalytics::CalculateExpectedGoals(leftCtx);
         const float rightXg = MatchAnalytics::CalculateExpectedGoals(rightCtx);
-        // Of the two posts, the one the keeper is further from - in HIS half
-        // of the goal - unless the bodies in that lane price it below the
-        // other.
-        const bool leftOpen = leftXg >= rightXg;
-        float corner = leftOpen ? -open : open;
-        if ((keeperY >= 0.0f) != leftOpen) corner = -corner;
-        goalPos.coords[1] = corner;
+        // Away from the keeper is the default - the corner in the half of the
+        // goal he is NOT standing in - and the lane census is the veto: if the
+        // bodies in that lane price it materially below the other side, shoot
+        // across him instead. Without the veto the two xG values decide
+        // nothing and the census is dead work; with an unconditional flip
+        // towards the keeper's far side they decide nothing either, which is
+        // what the first cut of this simplification did.
+        constexpr float kCrossKeeperLanePenalty = 0.8f;
+        const float awayFromKeeper = (keeperY >= 0.0f) ? -open : open;
+        const float awayXg = (awayFromKeeper < 0.0f) ? leftXg : rightXg;
+        const float acrossXg = (awayFromKeeper < 0.0f) ? rightXg : leftXg;
+        goalPos.coords[1] = (awayXg >= acrossXg * kCrossKeeperLanePenalty)
+                                ? awayFromKeeper
+                                : -awayFromKeeper;
       }
     }
   }

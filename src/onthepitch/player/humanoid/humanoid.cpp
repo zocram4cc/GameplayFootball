@@ -528,8 +528,11 @@ void Humanoid::Process() {
 
     // Through the accessor, so the 0.2-1.0 m clamp and the reasoning behind
     // the default live in one place (GameplayTuning::GetTrapTouchableDistance)
-    // rather than the clamp existing only in a test.
-    static const float trapTouchableDistance =
+    // rather than the clamp existing only in a test. NOT `static`: rig mode
+    // (`remotecontrol.cpp` ApplySchedule) runs successive matches with
+    // different configs in one process, and a static would serve the first
+    // match's value for the life of the rig.
+    const float trapTouchableDistance =
         GameplayTuning::GetTrapTouchableDistance(*GetConfiguration());
     float touchableDistance = trapTouchableDistance;
 
@@ -600,12 +603,16 @@ void Humanoid::Process() {
         match->GetMatchData()->RecordBallTouch(team->GetID());
         CastPlayer()->UpdatePossessionStats(false);
         // The pass arrived but the receiver failed to kill it (breakdown:
-        // trap). Counted before RecordBallTouch, which closes the sequence.
+        // trap). Read after RecordBallTouch and UpdatePossessionStats, which
+        // is safe: the first only moves MatchData's sequence on and the second
+        // returns immediately when called with `false`, so neither touches the
+        // player's possession flag this reads.
         // NOT debug-gated: the [pass-fail] line prints this column in the
         // Release build the batches run, and with the increment behind
         // #ifndef NDEBUG that column read 0-0 in every measurement while
         // intercept and out counted - the pass-accuracy work was reading a
-        // breakdown with its largest bucket missing.
+        // breakdown with its largest bucket missing (measured once live: 59-42
+        // against intercept 11-22, by far the largest).
         if (!CastPlayer()->HasPossession())
           match->GetMatchData()->AddPassFailBadTrap(team->GetID());
       }

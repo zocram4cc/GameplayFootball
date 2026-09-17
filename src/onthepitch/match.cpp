@@ -5556,23 +5556,31 @@ void Match::Process() {
     // crossed shows up as a save with no crossing, which is the other half of
     // the picture.
     //
-    // Live play only: placements move the ball by hand, and the move straddles
-    // the plane as often as not - a corner is placed at x = pitchHalfW exactly,
-    // so the teleport from open play counts as an "arrival" every time, and
-    // goal-kick placements do the same (one batch read 16 crossings from 17
-    // shots on those teleports alone).
-    // A teleport is not an arrival either: the same guard `CheckForGoal` uses
-    // (Match::BallTeleportedThisTick), so the counter meant to confirm the
-    // band cannot disagree with the goal check on a keeper-retain placement
-    // during live play.
-    if (IsInPlay() && !IsInSetPiece() && !BallTeleportedThisTick()) {
+    // A teleport is not an arrival: placements move the ball by hand and the
+    // move straddles the plane as often as not - a corner is placed at
+    // x = pitchHalfW exactly, so the teleport from open play counted as an
+    // "arrival" every time, and goal-kick placements did the same (one batch
+    // read 16 crossings from 17 shots on those teleports alone). That is what
+    // the old `!IsInSetPiece()` test was for, and it was too broad: a goal
+    // scored FROM a free kick or a corner was awarded by `CheckForGoal`, which
+    // runs in every phase, while no crossing was ever sampled for it - so
+    // `goals <= crossings in frame` could not hold, and s5009 of `sim200c`
+    // (a real DBG goal, 0 in-frame crossings) reads as a phantom when it is
+    // only an unsampled phase. The teleport is now detected directly, by the
+    // same predicate `CheckForGoal` uses, so the phase no longer matters and
+    // the two counters answer for the same balls.
+    if (IsInPlay() && !BallTeleportedThisTick()) {
       const Vector3 arrivedAt = ball->Predict(0);
       const std::array<float, 3> fromBefore = {previousBallPos.coords[0], previousBallPos.coords[1],
                                                previousBallPos.coords[2]};
       const std::array<float, 3> fromNow = {arrivedAt.coords[0], arrivedAt.coords[1],
                                             arrivedAt.coords[2]};
-      const GameplayTuning::GoalLineCrossing cross =
-          GameplayTuning::FindGoalLineCrossing(fromBefore, fromNow, pitchHalfW);
+      // The SAME plane the goal test uses (`CheckForGoal`'s triangles sit at
+      // pitchHalfW + kGoalPlaneOffset_m): sampling 17 cm early classifies a
+      // ball angled in across the post as wide while the goal test calls it a
+      // goal.
+      const GameplayTuning::GoalLineCrossing cross = GameplayTuning::FindGoalLineCrossing(
+          fromBefore, fromNow, pitchHalfW + GameplayTuning::kGoalPlaneOffset_m);
       if (cross.crossed) {
         // Once per episode: a ball in the net sits on the plane and the netting
         // clamp nudges it back and forth across it every tick, which read as 31

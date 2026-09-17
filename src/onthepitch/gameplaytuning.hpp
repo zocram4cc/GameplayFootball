@@ -10,6 +10,7 @@
 
 #include "base/math/bluntmath.hpp"
 #include "base/properties.hpp"
+#include "gametypes.hpp"
 
 namespace GameplayTuning {
 
@@ -252,6 +253,15 @@ inline bool CrossedInsideGoalFrame(const GoalLineCrossing& cross, float goalHalf
   return cross.crossed && std::fabs(cross.lateral_m) < goalHalfWidth_m &&
          cross.height_m < goalHeight_m;
 }
+
+// The goal-line plane the goal test uses: the line's own half-width plus the
+// inset PES's goal frame sits at. `CheckForGoal`'s triangles are built on it,
+// so anything that asks "did the ball cross" has to ask at the same x or it
+// answers about a different plane 17 cm away - enough to call a ball angled in
+// across the post wide while the goal test calls it a goal.
+// (`const`, not `constexpr`: `lineHalfW` in gametypes.hpp is a plain
+// `const float`, so a constexpr initialiser would not compile.)
+const float kGoalPlaneOffset_m = lineHalfW + 0.11f;
 
 // A shot is struck from inside this range and no further. The engine's own
 // shooting range knob maxes out at 45 m, so extrapolating a keeper's touch from
