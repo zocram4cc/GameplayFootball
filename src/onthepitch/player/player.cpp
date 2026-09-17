@@ -179,7 +179,20 @@ bool Player::KeeperAttemptsSave() {
   const float lineX = pitchHalfW * team->GetSide();
   const float closingSpeed = ballMovement.coords[0] * (lineX > 0.0f ? 1.0f : -1.0f);
   if (closingSpeed <= 0.1f) return true;  // not coming at him: his to collect
-  const float timeToLine_s = std::fabs(lineX - ballPosition.coords[0]) / closingSpeed;
+  // The plane he can actually get a hand to is HIS OWN, not the goal line. A
+  // keeper stands metres off his line on the ball-goal bisector
+  // (goalie_default.cpp), and sampling the ball where it meets the LINE while
+  // comparing that to his position charges him for every metre the ball
+  // travels sideways over his own offset - 1.5 m for a 5 m offset on an
+  // angled shot, against a 2.25 m reach. Coming out to cut the angle is
+  // exactly what that offset is FOR, and measuring at the line threw it away.
+  const float keeperX = GetPosition().coords[0];
+  const float toBallX = ballPosition.coords[0];
+  const bool keeperIsInFront =
+      ((keeperX - toBallX) * (lineX - toBallX) > 0.0f) &&
+      (std::fabs(keeperX - toBallX) < std::fabs(lineX - toBallX));
+  const float planeX = keeperIsInFront ? keeperX : lineX;
+  const float timeToLine_s = std::fabs(planeX - ballPosition.coords[0]) / closingSpeed;
   const float crossingY = ballPosition.coords[1] + ballMovement.coords[1] * timeToLine_s;
   const float crossingZ =
       std::max(0.0f, ballPosition.coords[2] + ballMovement.coords[2] * timeToLine_s);
