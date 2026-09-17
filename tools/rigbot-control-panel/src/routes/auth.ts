@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { UserPayload } from '../types/fastify';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+import { JWT_SECRET } from '../jwtSecret';
 
 export async function authRoutes(fastify: FastifyInstance) {
   // This preHandler will run for all auth routes

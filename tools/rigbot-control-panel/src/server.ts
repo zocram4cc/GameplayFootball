@@ -25,7 +25,7 @@ import { Tactics } from './types/fastify';
 import { PrismaClient, UserRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret'; // Define JWT_SECRET
+import { JWT_SECRET } from './jwtSecret';
 
 async function startServer() {
   // 1. Create a Node.js HTTP server instance
@@ -89,7 +89,9 @@ async function startServer() {
     return reply.redirect('/login');
   });
 
-  fastify.setErrorHandler((error, request, reply) => {
+  // Fastify 5.6 types the error handler's first argument as `unknown`
+  // (npm audit fix pulled it in), so name the shape we actually read.
+  fastify.setErrorHandler((error: { statusCode?: number }, request, reply) => {
     if (error.statusCode === 401) {
       fastify.log.warn('Caught 401 Unauthorized, redirecting to login.');
       // Clear the token cookie to prevent redirect loops
@@ -332,6 +334,10 @@ async function startServer() {
       });
 
       socket.on('streamer:state', async (data) => {
+        // Only the streamer reports the match. Without this, any authenticated
+        // manager or commentator socket could broadcast a fake scoreline to
+        // both teams' rooms - `streamer:match_end` below always checked.
+        if (!socket.data.roles.includes('STREAMER')) return;
         fastify.log.info(`Streamer state update: ${JSON.stringify(data)}`);
         const activeMatch = await prisma.match.findFirst({ where: { status: 'ACTIVE' } });
 
@@ -344,6 +350,7 @@ async function startServer() {
       });
 
       socket.on('streamer:goal_scored', async (data) => {
+        if (!socket.data.roles.includes('STREAMER')) return;
         fastify.log.info(`Streamer goal scored: ${JSON.stringify(data)}`);
         const activeMatch = await prisma.match.findFirst({ where: { status: 'ACTIVE' } });
 
