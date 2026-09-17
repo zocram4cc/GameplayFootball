@@ -6130,6 +6130,18 @@ void Match::CaptureReplayFrame(unsigned long replayTime_ms) {
 }
 
 bool Match::CheckForGoal(signed int side) {
+  // A teleported ball is not a shot: keeper retain sticks it onto a body
+  // part, placements and stages move it by hand, all while play continues.
+  // The segment from the pre-tick sample to the placed position can sweep
+  // through the goal mouth and award a goal with the visible ball elsewhere,
+  // credited to whoever touched last (showcase t=742.4: banner fired on a
+  // ball at a dribbler's feet 10 m out). Physics moves at most speed x 10 ms
+  // a tick - under half a metre even at the hardest shot - so a segment past
+  // a metre is a placement, not flight.
+  const float segment_m = (ball->Predict(0) - previousBallPos).GetLength();
+  constexpr float kTeleportSegment_m = 1.0f;
+  if (segment_m > kTeleportSegment_m)
+    return false;
   if (fabs(ball->Predict(10).coords[0]) < pitchHalfW - 1.0)
     return false;
 
