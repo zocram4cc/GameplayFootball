@@ -160,12 +160,19 @@ TEST(GameplayTuningShootingTest, TechniqueKeepsTheBootFaceSquare) {
             GameplayTuning::GetShotBodySliceShare(0.50f));
 }
 
-TEST(GameplayTuningShootingTest, WorthShootingAdmitsSpeculationDeclinesHopelessness) {
-  // The bar the corner gate shares with the trigger: 0.04 is a speculative
-  // hit, not a ban on long shots. Boundary and both sides pinned.
-  EXPECT_FALSE(GameplayTuning::IsWorthShooting(0.039f));
-  EXPECT_TRUE(GameplayTuning::IsWorthShooting(GameplayTuning::kMinShotXg));
-  EXPECT_TRUE(GameplayTuning::IsWorthShooting(0.30f));
+TEST(GameplayTuningShootingTest, TheShotBarIsConfiguredAndClamped) {
+  // One bar, read from the config, clamped to something a match can survive:
+  // at 0 every hopeless ball is a shot, and above 0.30 only tap-ins qualify.
+  blunted::Properties stock;
+  EXPECT_FLOAT_EQ(GameplayTuning::GetMinShotXg(stock), GameplayTuning::kMinShotXg);
+  blunted::Properties raised;
+  raised.Set("gameplay_min_shot_xg", 0.20f);
+  EXPECT_FLOAT_EQ(GameplayTuning::GetMinShotXg(raised), 0.20f);
+  blunted::Properties silly;
+  silly.Set("gameplay_min_shot_xg", 9.0f);
+  EXPECT_LE(GameplayTuning::GetMinShotXg(silly), 0.30f);
+  silly.Set("gameplay_min_shot_xg", -1.0f);
+  EXPECT_GE(GameplayTuning::GetMinShotXg(silly), 0.01f);
 }
 
 TEST(GameplayTuningShootingTest, TheArrivalBandPutsTheBallBetweenThePosts) {

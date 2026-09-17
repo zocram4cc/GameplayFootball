@@ -526,8 +526,11 @@ void Humanoid::Process() {
         ->GetTouchPos(currentAnim->touchFrame, desiredBallPosition);
     float desiredBallHeight = desiredBallPosition.coords[2];
 
+    // Through the accessor, so the 0.2-1.0 m clamp and the reasoning behind
+    // the default live in one place (GameplayTuning::GetTrapTouchableDistance)
+    // rather than the clamp existing only in a test.
     static const float trapTouchableDistance =
-        GetConfiguration()->GetReal("gameplay_trap_touchable_distance", 0.95f);
+        GameplayTuning::GetTrapTouchableDistance(*GetConfiguration());
     float touchableDistance = trapTouchableDistance;
 
     float fullBallDistance =
@@ -596,12 +599,15 @@ void Humanoid::Process() {
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->RecordBallTouch(team->GetID());
         CastPlayer()->UpdatePossessionStats(false);
-#ifndef NDEBUG
         // The pass arrived but the receiver failed to kill it (breakdown:
         // trap). Counted before RecordBallTouch, which closes the sequence.
+        // NOT debug-gated: the [pass-fail] line prints this column in the
+        // Release build the batches run, and with the increment behind
+        // #ifndef NDEBUG that column read 0-0 in every measurement while
+        // intercept and out counted - the pass-accuracy work was reading a
+        // breakdown with its largest bucket missing.
         if (!CastPlayer()->HasPossession())
           match->GetMatchData()->AddPassFailBadTrap(team->GetID());
-#endif
       }
 
       else if (currentAnim->functionType == e_FunctionType_BallControl) {

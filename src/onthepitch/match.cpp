@@ -5561,7 +5561,11 @@ void Match::Process() {
     // so the teleport from open play counts as an "arrival" every time, and
     // goal-kick placements do the same (one batch read 16 crossings from 17
     // shots on those teleports alone).
-    if (IsInPlay() && !IsInSetPiece()) {
+    // A teleport is not an arrival either: the same guard `CheckForGoal` uses
+    // (Match::BallTeleportedThisTick), so the counter meant to confirm the
+    // band cannot disagree with the goal check on a keeper-retain placement
+    // during live play.
+    if (IsInPlay() && !IsInSetPiece() && !BallTeleportedThisTick()) {
       const Vector3 arrivedAt = ball->Predict(0);
       const std::array<float, 3> fromBefore = {previousBallPos.coords[0], previousBallPos.coords[1],
                                                previousBallPos.coords[2]};
@@ -6129,18 +6133,22 @@ void Match::CaptureReplayFrame(unsigned long replayTime_ms) {
   replayBallTouchesNetFrames.push_back(ballTouchesNetFrame);
 }
 
-bool Match::CheckForGoal(signed int side) {
-  // A teleported ball is not a shot: keeper retain sticks it onto a body
+bool Match::BallTeleportedThisTick() const {
+  // A teleported ball did not fly there: keeper retain sticks it onto a body
   // part, placements and stages move it by hand, all while play continues.
   // The segment from the pre-tick sample to the placed position can sweep
   // through the goal mouth and award a goal with the visible ball elsewhere,
   // credited to whoever touched last (showcase t=742.4: banner fired on a
   // ball at a dribbler's feet 10 m out). Physics moves at most speed x 10 ms
   // a tick - under half a metre even at the hardest shot - so a segment past
-  // a metre is a placement, not flight.
-  const float segment_m = (ball->Predict(0) - previousBallPos).GetLength();
+  // a metre is a placement, not flight. Shared by the goal check and the
+  // goal-line crossing census, which otherwise disagree on exactly this case.
   constexpr float kTeleportSegment_m = 1.0f;
-  if (segment_m > kTeleportSegment_m)
+  return (ball->Predict(0) - previousBallPos).GetLength() > kTeleportSegment_m;
+}
+
+bool Match::CheckForGoal(signed int side) {
+  if (BallTeleportedThisTick())
     return false;
   if (fabs(ball->Predict(10).coords[0]) < pitchHalfW - 1.0)
     return false;

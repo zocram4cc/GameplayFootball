@@ -1498,12 +1498,16 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
   //
   // But the corner is picked by VALUE, not by geometry alone. Each post's lane
   // is scored with the same xG model that judges the shot afterwards - the
-  // lane with the bodies in it prices lower, so he picks the open side. And a
-  // chance below the bar is declined outright: returning straight at goal
-  // keeps the caller's trigger logic (it only fires on an opening) while no
-  // shot command is queued... except the caller shoots on the returned
-  // direction regardless, so a declined chance aims at the keeper's chest -
-  // the lowest-value ball he can play, which the keeper collects.
+  // lane with the bodies in it prices lower, so he picks the open side.
+  //
+  // There is no "decline" here any more. This function used to aim a chance
+  // below the shot bar straight at the keeper, on the reasoning that the
+  // trigger would not fire - but the caller shoots on the returned direction
+  // regardless, so the only thing that branch ever did was hand the keeper
+  // the ball. Whether a chance is worth taking is the trigger's question
+  // (GameplayTuning::GetMinShotXg over the player's appetite), asked once;
+  // asking it again here with a different value manufactured saves out of
+  // every chance that fell between the two.
   // Their error, in metres of goal mouth they refuse to use: a gold medal
   // dares the paint (0.2 m off the post), the worst finisher in the game
   // needs the middle three metres. PES's shooting attribute decides both ends;
@@ -1532,19 +1536,13 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
             defendersInLane(Vector3(goalLine.coords[0], open, 0)), false, 0.5f);
         const float leftXg = MatchAnalytics::CalculateExpectedGoals(leftCtx);
         const float rightXg = MatchAnalytics::CalculateExpectedGoals(rightCtx);
-        if (!GameplayTuning::IsWorthShooting(std::max(leftXg, rightXg))) {
-          goalPos = Vector3(goalLine.coords[0], keeperY, 0);
-        } else {
-          // Of the posts worth shooting at, the one the keeper is further
-          // from - in HIS half of the goal.
-          const bool leftOpen = leftXg >= rightXg;
-          float corner = leftOpen ? -open : open;
-          if ((keeperY >= 0.0f) != leftOpen) {
-            const float otherXg = leftOpen ? rightXg : leftXg;
-            if (GameplayTuning::IsWorthShooting(otherXg)) corner = -corner;
-          }
-          goalPos.coords[1] = corner;
-        }
+        // Of the two posts, the one the keeper is further from - in HIS half
+        // of the goal - unless the bodies in that lane price it below the
+        // other.
+        const bool leftOpen = leftXg >= rightXg;
+        float corner = leftOpen ? -open : open;
+        if ((keeperY >= 0.0f) != leftOpen) corner = -corner;
+        goalPos.coords[1] = corner;
       }
     }
   }

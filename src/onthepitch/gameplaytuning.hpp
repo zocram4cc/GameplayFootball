@@ -304,7 +304,10 @@ constexpr float kMinShotXg = 0.04f;
 inline float GetMinShotXg(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_min_shot_xg", kMinShotXg), 0.01f, 0.30f);
 }
-inline bool IsWorthShooting(float chanceXg) { return chanceXg >= kMinShotXg; }
+// There is no second "is it worth shooting" predicate: the trigger asks once,
+// with this bar over the player's appetite (ElizaController), and the aim
+// function no longer asks at all. Two gates on the same question, at two
+// different values, is what aimed a shot at the keeper's chest.
 
 // How long a controller lags behind the world: 40 ms for a perfect stat, 80 ms
 // for none. Outfielders feed physical_reaction, a keeper his GK Reflexes.

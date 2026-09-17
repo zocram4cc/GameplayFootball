@@ -507,6 +507,10 @@ public:
 protected:
   void GetReplaySpatials(std::list<boost::intrusive_ptr<Spatial>>& spatials);
   void CaptureReplayFrame(unsigned long replayTime_ms);
+  // True when this tick's ball moved further than any flight could: a
+  // placement or a keeper retain, not football. Gates both the goal check and
+  // the goal-line crossing census.
+  bool BallTeleportedThisTick() const;
   bool CheckForGoal(signed int side);
 
   void CalculateBestPossessionTeamID();
