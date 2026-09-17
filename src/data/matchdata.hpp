@@ -70,6 +70,36 @@ public:
   void AddShotOnTarget(int teamID) { shotsOnTarget[teamID] += 1; }
   int GetShotsOnTarget(int teamID) { return shotsOnTarget[teamID]; }
 
+  // Where shots are struck from and, when they miss, which way. Shot quality
+  // is the whole balance question - 14 shots from the edge of the box and 14
+  // hopeful ones from 30 m score differently - and the projected on-target
+  // column alone cannot say whether a miss went wide, over, or died on the
+  // turf short of the line. Always on (the sim runs a Release build, where
+  // the #ifndef NDEBUG cards are compiled out) and costs one increment per
+  // shot.
+  static constexpr int shotDistanceBandCount = 4;
+  static int ShotDistanceBand(float distance_m) {
+    if (distance_m < 11.0f) return 0;  // six-yard box out to the penalty spot
+    if (distance_m < 18.0f) return 1;  // the rest of the penalty area
+    if (distance_m < 25.0f) return 2;  // just outside it
+    return 3;                          // long range
+  }
+  // `miss`: -1 on target, 0 wide of a post, 1 over the bar, 2 short (the ball
+  // meets the plane below ground, so it never arrives at all).
+  static constexpr int shotMissKindCount = 3;
+  void AddShotGeometry(int teamID, float distance_m, int miss) {
+    const int band = ShotDistanceBand(distance_m);
+    if (band >= 0 && band < shotDistanceBandCount) shotDistanceBands[teamID][band]++;
+    shotDistanceSum_m[teamID] += distance_m;
+    if (miss >= 0 && miss < shotMissKindCount) shotMisses[teamID][miss]++;
+  }
+  int GetShotDistanceBand(int teamID, int band) const { return shotDistanceBands[teamID][band]; }
+  int GetShotMiss(int teamID, int kind) const { return shotMisses[teamID][kind]; }
+  float GetShotDistanceMean_m(int teamID) const {
+    if (shots[teamID] == 0) return 0.0f;
+    return shotDistanceSum_m[teamID] / static_cast<float>(shots[teamID]);
+  }
+
   // Where the ball actually reached the goal-line plane, measured tick by tick
   // (GameplayTuning::FindGoalLineCrossing). `onTarget` counts the crossings
   // inside the posts and under the bar. Kept beside the projected on-target
@@ -513,6 +543,9 @@ protected:
 
   int shots[2];
   int shotsOnTarget[2];
+  int shotDistanceBands[2][shotDistanceBandCount] = {};
+  int shotMisses[2][shotMissKindCount] = {};
+  float shotDistanceSum_m[2] = {0.0f, 0.0f};
   int goalLineCrossings[2];
   int goalLineCrossingsOnTarget[2];
   int goalLineCrossingsUnattributed[2];

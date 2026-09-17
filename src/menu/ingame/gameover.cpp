@@ -359,6 +359,21 @@ void GameOverPage::Process() {
         matchData->GetGoalCount(1) + matchData->GetSaves(0), matchData->GetKeeperCollections(0),
         matchData->GetKeeperCollections(1), PossessionPercent(matchData, 0),
         PossessionPercent(matchData, 1));
+    // Shot quality, the other half of the balance question: where the shots
+    // came from (bands: inside 11 m, the rest of the box, just outside, long
+    // range) and, for the ones the projection calls off target, which way they
+    // missed. `^[balance` is what the batch runner greps, so this rides along
+    // with the line above.
+    printf("[balance-shots] bands %i/%i/%i/%i-%i/%i/%i/%i | mean %.1fm-%.1fm | "
+           "wide %i-%i | over %i-%i | short %i-%i\n",
+           matchData->GetShotDistanceBand(0, 0), matchData->GetShotDistanceBand(0, 1),
+           matchData->GetShotDistanceBand(0, 2), matchData->GetShotDistanceBand(0, 3),
+           matchData->GetShotDistanceBand(1, 0), matchData->GetShotDistanceBand(1, 1),
+           matchData->GetShotDistanceBand(1, 2), matchData->GetShotDistanceBand(1, 3),
+           matchData->GetShotDistanceMean_m(0), matchData->GetShotDistanceMean_m(1),
+           matchData->GetShotMiss(0, 0), matchData->GetShotMiss(1, 0),
+           matchData->GetShotMiss(0, 1), matchData->GetShotMiss(1, 1),
+           matchData->GetShotMiss(0, 2), matchData->GetShotMiss(1, 2));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not

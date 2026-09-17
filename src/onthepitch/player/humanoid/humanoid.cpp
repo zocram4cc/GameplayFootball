@@ -917,11 +917,23 @@ void Humanoid::Process() {
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         // Shootout kicks are scored by the shootout controller and must not
-        // pollute the match statistics.
+        // pollute the match statistics. Neither may a panic clearance:
+        // _AddPanicPass offers the hoof as three animations - high pass, long
+        // pass and SHOT - so whenever the picker took the shot variant, a ball
+        // launched out of a team's own half with no intention of scoring was
+        // counted as a shot at goal, scored for xG and projected for on target
+        // (measured: 7 "shots" for one side at a mean distance of 54 m, 5 of
+        // them "wide"). It is the same ball the pass branch already books as a
+        // clearance, and it is booked as one here.
         const bool inShootout = match->GetMatchPhase() == e_MatchPhase_Penalties;
-        if (!inShootout)
-          match->GetMatchData()->AddShot(team->GetID());
-        match->AddExcitementBoost(0.35f, 2000);
+        const bool isClearance = currentAnim->originatingCommand.touchInfo.isClearance;
+        const bool countAsShot = !inShootout && !isClearance;
+        if (isClearance) {
+          if (!inShootout) match->GetMatchData()->AddClearance(team->GetID());
+        } else {
+          if (!inShootout) match->GetMatchData()->AddShot(team->GetID());
+          match->AddExcitementBoost(0.35f, 2000);
+        }
 
         // Expected goals for the post-match analysis screen (roadmap 5B).
         {
@@ -953,7 +965,7 @@ void Humanoid::Process() {
           // used and the chance is judged on geometry and pressure alone.
           const MatchAnalytics::ShotContext shotContext = MatchAnalytics::MakeShotContext(
               shotPos, team->GetSide(), defendersInPath, isHeader, 0.5f);
-          if (!inShootout)
+          if (countAsShot)
             MatchAnalytics::AddShot(match->GetShotTally(), team->GetID(),
                                     MatchAnalytics::CalculateExpectedGoals(shotContext));
         }
@@ -964,20 +976,35 @@ void Humanoid::Process() {
           float goalX = pitchHalfW * -team->GetSide();
           float dx = goalX - ballPos.coords[0];
           float shotVelX = touchVec.coords[0];
+          // Wide of a post unless the projection says otherwise: a strike that
+          // is not even travelling towards the goal has missed it.
+          int missKind = 0;
           if (fabs(shotVelX) > 0.1f && (dx * shotVelX > 0.0f)) {
             float t = dx / shotVelX;
             float y_at_goal = ballPos.coords[1] + touchVec.coords[1] * t;
             // Same trajectory model the strike band aims with, same gravity.
             float z_at_goal = ballPos.coords[2] + touchVec.coords[2] * t -
                               0.5f * GameplayTuning::kGravity_mps2 * t * t;
-            if (!inShootout && fabs(y_at_goal) < goalHalfWidth && z_at_goal > 0.0f &&
-                z_at_goal < goalHeight) {
+            if (fabs(y_at_goal) >= goalHalfWidth)
+              missKind = 0;  // wide
+            else if (z_at_goal >= goalHeight)
+              missKind = 1;  // over
+            else if (z_at_goal <= 0.0f)
+              missKind = 2;  // dies on the turf short of the line
+            else
+              missKind = -1;  // on target
+            if (countAsShot && missKind < 0) {
               match->GetMatchData()->AddShotOnTarget(team->GetID());
               // The save window is opened by the shot itself (MatchData::
               // AddShot), so that the keeper's save column is decided at the
               // touch rather than by this projection.
               match->AddExcitementBoost(0.55f, 2500);
             }
+          }
+          if (countAsShot) {
+            const float shotDistance_m =
+                (Vector3(goalX, 0.0f, 0.0f) - ballPos.Get2D()).GetLength();
+            match->GetMatchData()->AddShotGeometry(team->GetID(), shotDistance_m, missKind);
           }
         }
       }
