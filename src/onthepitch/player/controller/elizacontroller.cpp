@@ -1220,41 +1220,53 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
         // nothing no matter how good the position it would reach.
         float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
                        mateRating.supportRating;
-        // The ball into the runner's path is the pass that makes a chance, and
-        // it is worth the chance he shoots from: his position priced with the
-        // same xG model that scores the stats, bodies in his lane to goal,
-        // finished by what he is. The through-ball specialist looks for it
-        // first, and the ball goes to the man in the better shooting position,
-        // not merely the more advanced one.
-        if (isActiveRunner) {
-          const Vector3 runnerPos = mates.at(i)->GetPosition();
-          const Vector3 runnerLaneEnd((pitchHalfW + 1.0f) * -team->GetSide(), runnerPos.coords[1], 0);
-          const Vector3 runnerLane = runnerLaneEnd - runnerPos;
-          int runnerLaneBodies = 0;
-          if (runnerLane.GetLength() >= 0.1f) {
-            const Vector3 runnerLaneDir = runnerLane.GetNormalized(Vector3(0));
-            for (const PlayerImage& opp : opponentPlayerImages) {
-              const Vector3 toOpp = opp.position.Get2D() - runnerPos;
-              const float along = toOpp.GetDotProduct(runnerLaneDir);
-              if (along <= 0.0f || along > runnerLane.GetLength())
-                continue;
-              if ((toOpp - runnerLaneDir * along).GetLength() < kShotLaneHalfWidth_m)
-                runnerLaneBodies++;
-            }
+        // What a pass is worth is the chance it creates, so EVERY candidate is
+        // priced by the shot he would have: his position through the same xG
+        // model that scores the stats, bodies in his lane to goal, finished by
+        // what he is. Pricing only the designated runner - which is what this
+        // did - left every other ball rated on tactical advance alone, so the
+        // ball went to the most advanced man rather than the best placed one,
+        // and the box was never the destination: measured over a full match,
+        // not one shot in it was taken from inside 18 m.
+        const Vector3 matePos = mates.at(i)->GetPosition();
+        const Vector3 mateLaneEnd((pitchHalfW + 1.0f) * -team->GetSide(), matePos.coords[1], 0);
+        const Vector3 mateLane = mateLaneEnd - matePos;
+        int mateLaneBodies = 0;
+        if (mateLane.GetLength() >= 0.1f) {
+          const Vector3 mateLaneDir = mateLane.GetNormalized(Vector3(0));
+          for (const PlayerImage& opp : opponentPlayerImages) {
+            const Vector3 toOpp = opp.position.Get2D() - matePos;
+            const float along = toOpp.GetDotProduct(mateLaneDir);
+            if (along <= 0.0f || along > mateLane.GetLength())
+              continue;
+            if ((toOpp - mateLaneDir * along).GetLength() < kShotLaneHalfWidth_m)
+              mateLaneBodies++;
           }
-          const MatchAnalytics::ShotContext runnerCtx = MatchAnalytics::MakeShotContext(
-              runnerPos, team->GetSide(), runnerLaneBodies, false, 0.5f);
-          // A reference chance prices the stock floor: better shooting
-          // positions raise it, worse ones lower it, around the old level.
-          constexpr float kRunnerReferenceXg = 0.1f;
+        }
+        const MatchAnalytics::ShotContext mateCtx =
+            MatchAnalytics::MakeShotContext(matePos, team->GetSide(), mateLaneBodies, false, 0.5f);
+        // A reference chance prices the stock floor: better shooting positions
+        // raise it, worse ones lower it, around the old level.
+        constexpr float kRunnerReferenceXg = 0.1f;
+        const float mateChanceShare =
+            MatchAnalytics::CalculateExpectedGoals(mateCtx) / kRunnerReferenceXg;
+        const float mateFinisher =
+            PlayerSkills::GetFinisherChanceMultiplier(mates.at(i)->GetPlayerData()->GetSkills(),
+                                                      mates.at(i)->GetStat("technical_shot")) *
+            PlayingStyles::GetFinisherDemand(mates.at(i)->GetPlayerData()->GetPlayingStyle(),
+                                             mates.at(i)->GetPlayerData()->GetComStyles());
+        // What the chance itself is worth to an ordinary ball, against the
+        // tactical advance it competes with (whose weight reaches eleven for a
+        // forward). Deliberately below the through-ball specialist's own bonus
+        // below: everyone looks for the man in the box, he finds him.
+        constexpr float kReceiverChanceWeight = 0.6f;
+        upside += kReceiverChanceWeight * mateChanceShare * mateFinisher;
+        // The ball into the runner's path is the pass that MAKES the chance,
+        // and the through-ball specialist looks for it first.
+        if (isActiveRunner) {
           upside += PlayerSkills::GetThroughBallBonus(skills, PlayerSkills::kThroughBallBaseUpside) *
-                    (MatchAnalytics::CalculateExpectedGoals(runnerCtx) / kRunnerReferenceXg) *
-                    PlayingStyles::GetCreatorVision(style, comStyles) *
-                    PlayerSkills::GetFinisherChanceMultiplier(
-                        mates.at(i)->GetPlayerData()->GetSkills(),
-                        mates.at(i)->GetStat("technical_shot")) *
-                    PlayingStyles::GetFinisherDemand(mates.at(i)->GetPlayerData()->GetPlayingStyle(),
-                                                     mates.at(i)->GetPlayerData()->GetComStyles());
+                    mateChanceShare * PlayingStyles::GetCreatorVision(style, comStyles) *
+                    mateFinisher;
         }
 
         // The plain odds term survives alongside it so a safe ball with no
