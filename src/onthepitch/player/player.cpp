@@ -179,35 +179,29 @@ bool Player::KeeperAttemptsSave() {
   const float lineX = pitchHalfW * team->GetSide();
   const float closingSpeed = ballMovement.coords[0] * (lineX > 0.0f ? 1.0f : -1.0f);
   if (closingSpeed <= 0.1f) return true;  // not coming at him: his to collect
-  // The plane he can actually get a hand to is HIS OWN, not the goal line. A
+  // The plane he can actually get a hand to is HIS OWN, not the goal line: a
   // keeper stands metres off his line on the ball-goal bisector
   // (goalie_default.cpp), and sampling the ball where it meets the LINE while
-  // comparing that to his position charges him for every metre the ball
-  // travels sideways over his own offset - 1.5 m for a 5 m offset on an
-  // angled shot, against a 2.25 m reach. Coming out to cut the angle is
-  // exactly what that offset is FOR, and measuring at the line threw it away.
-  const float keeperX = GetPosition().coords[0];
-  const float toBallX = ballPosition.coords[0];
-  const bool keeperIsInFront =
-      ((keeperX - toBallX) * (lineX - toBallX) > 0.0f) &&
-      (std::fabs(keeperX - toBallX) < std::fabs(lineX - toBallX));
-  const float planeX = keeperIsInFront ? keeperX : lineX;
-  const float timeToLine_s = std::fabs(planeX - ballPosition.coords[0]) / closingSpeed;
-  const float crossingY = ballPosition.coords[1] + ballMovement.coords[1] * timeToLine_s;
-  const float crossingZ =
-      std::max(0.0f, ballPosition.coords[2] + ballMovement.coords[2] * timeToLine_s);
+  // comparing that to his position charges him for every metre the ball travels
+  // sideways over his own offset. Coming out to cut the angle is what the
+  // offset is FOR. GameplayTuning::GetKeeperSaveChallenge owns that choice, so
+  // the sweep test measures the same geometry this does.
+  const GameplayTuning::KeeperSaveChallenge challenge = GameplayTuning::GetKeeperSaveChallenge(
+      {ballPosition.coords[0], ballPosition.coords[1], ballPosition.coords[2]},
+      {ballMovement.coords[0], ballMovement.coords[1], ballMovement.coords[2]},
+      {GetPosition().coords[0], GetPosition().coords[1], GetPosition().coords[2]}, lineX);
+  if (!challenge.shotAtGoal) return true;
 
-  const float gap_m =
-      std::sqrt(std::pow(crossingY - GetPosition().coords[1], 2.0f) +
-                std::pow(std::max(0.0f, crossingZ - 0.9f), 2.0f));  // hands rest at hip height
+  const float gap_m = challenge.gap_m;
+  const float timeToPlane_s = challenge.timeToPlane_s;
   const float latency_s = GameplayTuning::GetKeeperReactionTime_s(GetStat("gk_reflexes"));
   // Only the reach behind the ball counts: with almost no flight even the best
   // keeper has barely started to extend, which is why point blank beats an
   // ordinary keeper and still has to beat a good one reaching for it.
   const float reach_m = GameplayTuning::KeeperEffectiveReach_m(
-      GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage")), timeToLine_s, latency_s);
+      GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage")), timeToPlane_s, latency_s);
   return GameplayTuning::KeeperReachesShot(
-      gap_m, timeToLine_s, latency_s, reach_m,
+      gap_m, timeToPlane_s, latency_s, reach_m,
       GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage")));
 }
 

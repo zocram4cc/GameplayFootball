@@ -601,3 +601,84 @@ TEST(GameplayTuningTest, AStopIsAShotOnlyFromWithinRangeOfTheGoalItIsHeadingFor)
   EXPECT_FALSE(GameplayTuning::PredictGoalLineCrossing({-54.0f, 0.0f, 0.5f}, {-10.0f, 0.0f, 0.0f}, 52.5f)
                    .crossed);
 }
+
+namespace {
+
+// The keeper is geometry over (gap, time, latency, reach) and nothing else, so
+// his save rate is measured here by sweeping shots directly rather than by
+// reading it out of matches: at n=2 the attack's own variance (the same seed
+// and config produced 8-18 shots on one build and 4-27 on the next, with the
+// goals unchanged) is an order of magnitude larger than the effect.
+//
+// `cornerBias` is the whole question. 0 spreads the placement evenly across
+// the goal mouth; 1 puts every shot in the corner, which is what the engine
+// actually does - AI_GetShotDirection picks `goalHalfWidth - inset` whenever
+// autoDirectionBias >= 1.0, discarding the aim noise the controller computed.
+float PointBlankSaveShare(float coverage, float cornerBias, float distance_m = 6.0f,
+                          float keeperOffLine_m = 1.5f, float ballSpeed = 25.0f) {
+  const float lineX = pitchHalfW;
+  const float keeperX = lineX - keeperOffLine_m;
+  const float latency_s = GameplayTuning::GetKeeperReactionTime_s(coverage);
+  const float diveSpeed = GameplayTuning::GetKeeperDiveSpeed_ms(coverage);
+  const float diveReach = GameplayTuning::GetKeeperDiveReach_m(coverage);
+  constexpr int steps = 401;
+  int saved = 0;
+  for (int i = 0; i < steps; i++) {
+    const float uniform = -goalHalfWidth + 2.0f * goalHalfWidth * i / (steps - 1);
+    const float targetY =
+        (1.0f - cornerBias) * uniform + cornerBias * (uniform >= 0.0f ? goalHalfWidth : -goalHalfWidth);
+    const float ballX = lineX - distance_m;
+    const float ballZ = 0.5f;
+    const float dx = lineX - ballX, dy = targetY;
+    const float norm = std::sqrt(dx * dx + dy * dy);
+    const std::array<float, 3> ballPos = {ballX, 0.0f, ballZ};
+    const std::array<float, 3> ballVel = {ballSpeed * dx / norm, ballSpeed * dy / norm, 0.0f};
+    const std::array<float, 3> keeperPos = {keeperX, 0.0f, 0.0f};
+    const GameplayTuning::KeeperSaveChallenge c =
+        GameplayTuning::GetKeeperSaveChallenge(ballPos, ballVel, keeperPos, lineX);
+    if (!c.shotAtGoal) continue;
+    const float reach =
+        GameplayTuning::KeeperEffectiveReach_m(diveReach, c.timeToPlane_s, latency_s);
+    if (GameplayTuning::KeeperReachesShot(c.gap_m, c.timeToPlane_s, latency_s, reach, diveSpeed))
+      saved++;
+  }
+  return static_cast<float>(saved) / steps;
+}
+
+}  // namespace
+
+TEST(GameplayTuningKeeperTest, TheDiveReachSpreadIsWhatTheAnchorsNeed) {
+  // The owner's anchors for a POINT-BLANK shot: world class (0.9) saves 1 in 3,
+  // 0.8 saves 1 in 6, 0.7 saves 1 in 10. Those are rates over the placement
+  // distribution, so the sweep has to say which distribution it is standing on.
+  //
+  // Measured, current model (GetKeeperDiveReach_m = 0.9 + coverage*1.5):
+  //
+  //   coverage   uniform   bias .25   bias .5   corner
+  //     0.9        0.57      0.42      0.14     0.00
+  //     0.8        0.51      0.35      0.02     0.00
+  //     0.7        0.46      0.28      0.00     0.00
+  //
+  // Two things are wrong with it and neither is the reach magnitude:
+  //   - at the placement the engine actually produces (corner, bias 1) NO tier
+  //     saves anything, and
+  //   - where it does save, the tiers separate by 1.5x (0.42 vs 0.28) where the
+  //     anchors ask for 3.3x (1/3 vs 1/10).
+  // The reach the anchors need at bias 0.3 is 2.11 / 1.67 / 1.49 m for 0.9 /
+  // 0.8 / 0.7, against the current 2.25 / 2.10 / 1.95: the top tier is about
+  // right and the other two are far too generous.
+  const float uniform09 = PointBlankSaveShare(0.9f, 0.0f);
+  const float uniform07 = PointBlankSaveShare(0.7f, 0.0f);
+  const float corner09 = PointBlankSaveShare(0.9f, 1.0f);
+  // A better keeper saves more, whatever the placement.
+  EXPECT_GT(uniform09, uniform07);
+  EXPECT_GT(PointBlankSaveShare(0.9f, 0.3f), PointBlankSaveShare(0.7f, 0.3f));
+  EXPECT_GT(PointBlankSaveShare(0.9f, 0.5f), PointBlankSaveShare(0.7f, 0.5f));
+  // Pinned so the placement defect cannot be lost: with every shot in the
+  // corner, the best keeper in the game gets to none of them.
+  EXPECT_FLOAT_EQ(corner09, 0.0f);
+  // And a keeper on his line is beaten by more than one standing off it, which
+  // is the whole reason GetKeeperSaveChallenge samples his own plane.
+  EXPECT_GT(PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f),
+            PointBlankSaveShare(0.9f, 0.3f, 6.0f, 0.0f));
+}

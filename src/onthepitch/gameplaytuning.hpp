@@ -417,10 +417,10 @@ inline float GetShotBodySliceShare(float shotStat) {
 // frame with his arms in it, consistent with the 0.9 m "hands rest at hip
 // height" the gap is measured against in Player::KeeperAttemptsSave.
 constexpr float kKeeperStandingReach_m = 1.0f;
-inline float KeeperEffectiveReach_m(float reach_m, float timeToLine_s, float latency_s) {
+inline float KeeperEffectiveReach_m(float reach_m, float timeToPlane_s, float latency_s) {
   if (latency_s <= 0.0f)
     return reach_m;
-  const float extend = std::min(1.0f, std::max(0.0f, timeToLine_s / latency_s));
+  const float extend = std::min(1.0f, std::max(0.0f, timeToPlane_s / latency_s));
   // Only the part of a dive that exceeds his standing frame needs flight time;
   // the worst keeper's dive reach is below it, so he never extends at all
   // rather than reaching backwards. Full flight still leaves the reach
@@ -428,10 +428,53 @@ inline float KeeperEffectiveReach_m(float reach_m, float timeToLine_s, float lat
   return kKeeperStandingReach_m + std::max(0.0f, reach_m - kKeeperStandingReach_m) * extend;
 }
 
-inline bool KeeperReachesShot(float gap_m, float timeToLine_s, float latency_s, float reach_m,
+inline bool KeeperReachesShot(float gap_m, float timeToPlane_s, float latency_s, float reach_m,
                               float closingSpeed_ms) {
-  const float travel_m = std::max(0.0f, timeToLine_s - latency_s) * std::max(0.0f, closingSpeed_ms);
+  const float travel_m =
+      std::max(0.0f, timeToPlane_s - latency_s) * std::max(0.0f, closingSpeed_ms);
   return gap_m <= reach_m + travel_m;
+}
+
+// His hands, in metres, at rest. The gap is measured against this rather than
+// against his body's centre.
+constexpr float kKeeperHandsHeight_m = 0.9f;
+
+// What a shot asks of the keeper: how far he must get and how long he has.
+// PURE, and deliberately so - the keeper is geometry over (gap, time, latency,
+// reach) and nothing else, so his save rate can be swept directly instead of
+// being read out of 40-minute matches where the attack's own variance is an
+// order of magnitude larger than the effect being measured.
+//
+// The plane is the one he can actually get a hand to: HIS OWN when he is
+// between the ball and the goal line, the line otherwise. Sampling where the
+// ball meets the LINE and comparing that to a keeper standing metres off it
+// charges him for the ball's lateral travel over his own offset - which is
+// what `out.planeX` is here to make visible.
+struct KeeperSaveChallenge {
+  bool shotAtGoal = false;  // false: the ball is not coming at him at all
+  float gap_m = 0.0f;
+  float timeToPlane_s = 0.0f;
+  float planeX = 0.0f;
+};
+
+inline KeeperSaveChallenge GetKeeperSaveChallenge(const std::array<float, 3>& ballPos,
+                                                  const std::array<float, 3>& ballVel,
+                                                  const std::array<float, 3>& keeperPos,
+                                                  float lineX) {
+  KeeperSaveChallenge out;
+  const float closingSpeed = ballVel[0] * (lineX > 0.0f ? 1.0f : -1.0f);
+  if (closingSpeed <= 0.1f) return out;  // not coming at him: his to collect
+  const bool keeperIsInFront =
+      ((keeperPos[0] - ballPos[0]) * (lineX - ballPos[0]) > 0.0f) &&
+      (std::fabs(keeperPos[0] - ballPos[0]) < std::fabs(lineX - ballPos[0]));
+  out.planeX = keeperIsInFront ? keeperPos[0] : lineX;
+  out.timeToPlane_s = std::fabs(out.planeX - ballPos[0]) / closingSpeed;
+  const float crossingY = ballPos[1] + ballVel[1] * out.timeToPlane_s;
+  const float crossingZ = std::max(0.0f, ballPos[2] + ballVel[2] * out.timeToPlane_s);
+  out.shotAtGoal = true;
+  out.gap_m = std::sqrt(std::pow(crossingY - keeperPos[1], 2.0f) +
+                        std::pow(std::max(0.0f, crossingZ - kKeeperHandsHeight_m), 2.0f));
+  return out;
 }
 
 inline float GetKeeperDiveReach_m(float coverage) {
