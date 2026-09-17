@@ -95,11 +95,33 @@ TEST(GameplayTuningKeeperTest, TheAttributesDecideTheShotsInBetween) {
   EXPECT_FALSE(poor);
 }
 
+TEST(GameplayTuningKeeperTest, ZeroFlightLeavesTheStandingReachNotAnEmptyGoal) {
+  // The defect this pins: the reach behind the ball used to be the whole reach
+  // scaled by min(1, timeToLine/latency), so a point-blank strike left the
+  // keeper with almost nothing and every corner-placed shot from inside the box
+  // scored (measured at 1x: 12 of 16 on-target became goals). Zero flight means
+  // no DIVE, not no keeper: his standing frame is still behind the ball.
+  const float flight = 0.0f, latency = GameplayTuning::GetKeeperReactionTime_s(0.9f);
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperEffectiveReach_m(2.25f, flight, latency),
+                  GameplayTuning::kKeeperStandingReach_m);
+  // And it is a floor, not a starting point the dive can shrink below: the
+  // worst keeper's dive reach is smaller than his standing frame, so he simply
+  // never extends.
+  EXPECT_GE(GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.0f),
+                                                   flight, latency),
+            GameplayTuning::kKeeperStandingReach_m);
+  // Monotone in the flight, ending at the untouched reach (the old
+  // full-flight assertion, kept).
+  const float partial = GameplayTuning::KeeperEffectiveReach_m(2.25f, 0.1f, latency);
+  EXPECT_GT(partial, GameplayTuning::kKeeperStandingReach_m);
+  EXPECT_LT(partial, 2.25f);
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperEffectiveReach_m(2.25f, 1.0f, latency), 2.25f);
+}
+
 TEST(GameplayTuningKeeperTest, ShortFlightShrinksEffectiveReachByStat) {
-  // Arms need time to extend: at point blank only part of the reach is behind
-  // the ball, and the share follows the keeper's own reaction, so the 0.9
-  // keeper keeps a hand in it while the 0.6 keeper has barely started. No
-  // dice anywhere: same inputs, same answer, every time.
+  // The dive share still follows the keeper's own reaction, so a 0.9 keeper
+  // gets across to a 2 m gap and a 0.6 keeper does not. No dice anywhere: same
+  // inputs, same answer, every time.
   const float gap = 2.0f, flight = 0.27f;
   EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
       gap, flight, GameplayTuning::GetKeeperReactionTime_s(0.9f),
@@ -111,9 +133,7 @@ TEST(GameplayTuningKeeperTest, ShortFlightShrinksEffectiveReachByStat) {
       GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.6f), flight,
                                              GameplayTuning::GetKeeperReactionTime_s(0.6f)),
       GameplayTuning::GetKeeperDiveSpeed_ms(0.6f)));
-  // Full flight leaves the reach untouched, and a shot straight at him with
-  // time is saved by anyone.
-  EXPECT_FLOAT_EQ(GameplayTuning::KeeperEffectiveReach_m(2.25f, 1.0f, 0.215f), 2.25f);
+  // A shot straight at him with time is saved by anyone.
   EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
       0.2f, 0.6f, GameplayTuning::GetKeeperReactionTime_s(0.0f),
       GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.0f), 0.6f,

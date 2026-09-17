@@ -403,17 +403,29 @@ inline float GetShotBodySliceShare(float shotStat) {
 // Does he get a hand to it? The geometry of the save, kept pure so it can be
 // tested: the gap he has to close, the time the ball gives him, the latency his
 // reflexes cost, his reach at full stretch and the speed he closes the rest at.
-// Arms need time to extend: with less flight than his own reaction the keeper
-// gets only part of his reach behind the ball, and the share follows his own
-// reaction time - so a 0.9 keeper keeps a hand in it at point blank while a
-// 0.6 keeper barely starts, with no dice anywhere. Never more than the reach
-// and never less than nothing; full flight leaves it untouched.
-constexpr float kKeeperReachExtensionShare = 1.0f;
+//
+// A keeper at zero flight time still has a body. The reach behind the ball is
+// what he can stop WITHOUT MOVING plus what the dive adds, and only the dive
+// needs time. The old form scaled the whole reach by min(1, timeToLine/latency)
+// and carried a `kKeeperReachExtensionShare` multiplier that was already 1.0 -
+// so at point blank it left him with almost nothing, and every corner-placed
+// shot from inside the box was a goal. Measured at 1x, bar 0.18: 12 of 16
+// on-target became goals on one seed and 8 of 13 on the next, the keeper
+// saving ~30% of what reached him where a real one saves ~70%.
+//
+// Zero flight means no dive, not an empty goal. The standing reach is his
+// frame with his arms in it, consistent with the 0.9 m "hands rest at hip
+// height" the gap is measured against in Player::KeeperAttemptsSave.
+constexpr float kKeeperStandingReach_m = 1.0f;
 inline float KeeperEffectiveReach_m(float reach_m, float timeToLine_s, float latency_s) {
   if (latency_s <= 0.0f)
     return reach_m;
-  return reach_m * kKeeperReachExtensionShare *
-         std::min(1.0f, std::max(0.0f, timeToLine_s / latency_s));
+  const float extend = std::min(1.0f, std::max(0.0f, timeToLine_s / latency_s));
+  // Only the part of a dive that exceeds his standing frame needs flight time;
+  // the worst keeper's dive reach is below it, so he never extends at all
+  // rather than reaching backwards. Full flight still leaves the reach
+  // untouched.
+  return kKeeperStandingReach_m + std::max(0.0f, reach_m - kKeeperStandingReach_m) * extend;
 }
 
 inline bool KeeperReachesShot(float gap_m, float timeToLine_s, float latency_s, float reach_m,
