@@ -614,11 +614,19 @@ namespace {
 // the goal mouth; 1 puts every shot in the corner, which is what the engine
 // actually does - AI_GetShotDirection picks `goalHalfWidth - inset` whenever
 // autoDirectionBias >= 1.0, discarding the aim noise the controller computed.
+// `reflexes` is a SEPARATE stat from `coverage`, not a synonym: the engine
+// takes latency from gk_reflexes and reach/dive speed from gk_coverage
+// (Player::KeeperAttemptsSave), and PlayerData defaults the two independently
+// from outfield analogues, so a sweep that ties them only reproduces the
+// engine for keepers whose two gk_ stats happen to agree. Defaulted to
+// `coverage` for the anchor table, which quotes them per tier.
 float PointBlankSaveShare(float coverage, float cornerBias, float distance_m = 6.0f,
-                          float keeperOffLine_m = 1.5f, float ballSpeed = 25.0f) {
+                          float keeperOffLine_m = 1.5f, float ballSpeed = 25.0f,
+                          float reflexes = -1.0f) {
+  const float gkReflexes = (reflexes < 0.0f) ? coverage : reflexes;
   const float lineX = pitchHalfW;
   const float keeperX = lineX - keeperOffLine_m;
-  const float latency_s = GameplayTuning::GetKeeperReactionTime_s(coverage);
+  const float latency_s = GameplayTuning::GetKeeperReactionTime_s(gkReflexes);
   const float diveSpeed = GameplayTuning::GetKeeperDiveSpeed_ms(coverage);
   const float diveReach = GameplayTuning::GetKeeperDiveReach_m(coverage);
   constexpr int steps = 401;
@@ -681,4 +689,10 @@ TEST(GameplayTuningKeeperTest, TheDiveReachSpreadIsWhatTheAnchorsNeed) {
   // is the whole reason GetKeeperSaveChallenge samples his own plane.
   EXPECT_GT(PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f),
             PointBlankSaveShare(0.9f, 0.3f, 6.0f, 0.0f));
+  // The two gk_ stats move the save independently: a slow keeper with great
+  // reach is not the same keeper as a quick one with the same reach, and the
+  // instrument has to be able to say so or the calibration is only valid on
+  // the diagonal reflexes == coverage.
+  EXPECT_NE(PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f, 25.0f, 0.9f),
+            PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f, 25.0f, 0.3f));
 }
