@@ -91,13 +91,14 @@ public:
     const int band = ShotDistanceBand(distance_m);
     if (band >= 0 && band < shotDistanceBandCount) shotDistanceBands[teamID][band]++;
     shotDistanceSum_m[teamID] += distance_m;
+    shotGeometryCount[teamID]++;
     if (miss >= 0 && miss < shotMissKindCount) shotMisses[teamID][miss]++;
   }
   int GetShotDistanceBand(int teamID, int band) const { return shotDistanceBands[teamID][band]; }
   int GetShotMiss(int teamID, int kind) const { return shotMisses[teamID][kind]; }
   float GetShotDistanceMean_m(int teamID) const {
-    if (shots[teamID] == 0) return 0.0f;
-    return shotDistanceSum_m[teamID] / static_cast<float>(shots[teamID]);
+    if (shotGeometryCount[teamID] == 0) return 0.0f;
+    return shotDistanceSum_m[teamID] / static_cast<float>(shotGeometryCount[teamID]);
   }
 
   // Where the ball actually reached the goal-line plane, measured tick by tick
@@ -546,6 +547,7 @@ protected:
   int shotDistanceBands[2][shotDistanceBandCount] = {};
   int shotMisses[2][shotMissKindCount] = {};
   float shotDistanceSum_m[2] = {0.0f, 0.0f};
+  int shotGeometryCount[2] = {0, 0};
   int goalLineCrossings[2];
   int goalLineCrossingsOnTarget[2];
   int goalLineCrossingsUnattributed[2];

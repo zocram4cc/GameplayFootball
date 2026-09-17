@@ -872,7 +872,11 @@ void Humanoid::Process() {
         // where gravity alone drops a flat ball 8.9 m. vz for a crossing at
         // height h after t is (h - startZ)/t + g*t/2 - the inverse of the drop -
         // so the band is two of those, and the ball arrives between the posts.
-        {
+        // A panic clearance that took the shot animation is not aimed at goal
+        // (it is booked as a clearance below); re-aiming a hoof from 80 m to
+        // arrive at the far goal line would be the band inventing a shot.
+        const bool isClearance = currentAnim->originatingCommand.touchInfo.isClearance;
+        if (!isClearance) {
           const Vector3 ballNow = match->GetBall()->Predict(0);
           const float goalLineX = pitchHalfW * -team->GetSide();
           // The PATH the ball actually travels, not the axis-aligned gap: from a
@@ -926,7 +930,6 @@ void Humanoid::Process() {
         // them "wide"). It is the same ball the pass branch already books as a
         // clearance, and it is booked as one here.
         const bool inShootout = match->GetMatchPhase() == e_MatchPhase_Penalties;
-        const bool isClearance = currentAnim->originatingCommand.touchInfo.isClearance;
         const bool countAsShot = !inShootout && !isClearance;
         if (isClearance) {
           if (!inShootout) match->GetMatchData()->AddClearance(team->GetID());

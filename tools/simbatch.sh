@@ -10,7 +10,14 @@
 #   tools/simbatch.sh --matches 12 --team1 16 --team2 13
 #
 # Every match is a fixed "random_seed", so a before/after pair over the same
-# seed range is comparable.
+# seed range is comparable - at the same --concurrency (docs/HARNESSES.md).
+#
+# Defaults are the regime the owner WATCHES: 20-minute duration at time scale
+# 1, the same as tools/showcase.sh. The time scale multiplies only the clock
+# (MatchDurationGameTimeFromRealMilliseconds); nothing in gameplay scales with
+# it, so a 6x run contains a sixth of the football and its counts describe a
+# different game. Measured, same build: 8.5 shots/team at 25 min/6x, 32-39 at
+# 20 min/1x. Every balance number before 17-09-26 was read at 6x.
 set -uo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,8 +28,8 @@ concurrency=6
 seed0=1000
 team1=16
 team2=13
-minutes=25
-timescale=6
+minutes=20
+timescale=1
 stadium="media/objects/stadiums/pes_st002/pes_st002.object"
 entrance="none"
 out="$(mktemp -d)"
@@ -69,9 +76,18 @@ run_one() {
 "entrance_id" "$entrance"
 "random_seed" "$this_seed"
 EOF
-  (cd "$repo/data" && timeout 1800 env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 \
+  # Wall budget scales with the football in the match: a 20-minute match at
+  # 1x took 31 minutes of wall time and the old fixed 1800 s killed two of
+  # three (empty result files, no error). Same shape as tools/showcase.sh.
+  local budget=$(( minutes * 60 * 3 / timescale + 900 ))
+  (cd "$repo/data" && timeout "$budget" env -u WAYLAND_DISPLAY -u DISPLAY GF_NO_GAMEPADS=1 \
       SDL_VIDEODRIVER=offscreen "$bin" "$cfg" 2>&1) |
     grep -aE "Full match complete|^\[balance|^\[balance-passing\]" > "$out/s$this_seed.txt"
+  # `timeout` exits 124 when it killed the match; say so in the result file
+  # rather than leaving an empty one that reads as "still running".
+  if [ "${PIPESTATUS[0]}" -eq 124 ]; then
+    echo "[simbatch] seed $this_seed KILLED after ${budget}s wall budget" | tee -a "$out/s$this_seed.txt" >&2
+  fi
 }
 
 echo "running $matches matches, $concurrency at a time, team $team1 v team $team2, ${minutes}-minute duration, ${timescale}x time scale"
@@ -142,11 +158,20 @@ if bal:
            100.0 * sum(inframe) / max(1, sum(on))))
     print("           plus %.1f reached it with no shot in flight (%.1f in frame)" %
           (st.mean(noshot), st.mean(noshotframe)))
+geo = [(int(a),int(b),int(c),int(d),int(e),int(f),int(g),int(h),float(m1),float(m2)) for
+       a,b,c,d,e,f,g,h,m1,m2 in
+       re.findall(r"\[balance-shots\] bands (\d+)/(\d+)/(\d+)/(\d+)-(\d+)/(\d+)/(\d+)/(\d+) \| mean ([\d.]+)m-([\d.]+)m", text)]
+if geo:
+    bands = [sum(r[i] for r in geo) + sum(r[i + 4] for r in geo) for i in range(4)]
+    total = max(1, sum(bands))
+    means = [m for r in geo for m in r[8:10] if m > 0]
+    print("where:     inside 11 m %.0f%%  rest of box %.0f%%  18-25 m %.0f%%  25 m+ %.0f%%  mean distance %.1f m" %
+          (tuple(100.0 * b / total for b in bands) + (st.mean(means) if means else 0.0,)))
 if pas:
     attempts = [p for r in pas for p in r[0:2]]
     weighted = sum(p * a for r in pas for p, a in zip(r[0:2], r[2:4]))
     print("per team: passes %.0f  accuracy %.0f%%" %
           (st.mean(attempts), weighted / max(1, sum(attempts))))
-print("target:   xG 2.00-3.00 per team, goals 2-4 per match peaking at 3-4, pass accuracy ~80pct")
+print("target:   shots ~14 per team, ~80pct on target, goals 2-4 per match peaking at 3-4, pass accuracy ~80pct")
 PYEOF
 echo "logs in $out"
