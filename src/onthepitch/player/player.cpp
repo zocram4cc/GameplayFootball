@@ -190,7 +190,10 @@ bool Player::KeeperAttemptsSave() {
       {ballPosition.coords[0], ballPosition.coords[1], ballPosition.coords[2]},
       {ballMovement.coords[0], ballMovement.coords[1], ballMovement.coords[2]},
       {GetPosition().coords[0], GetPosition().coords[1], GetPosition().coords[2]}, lineX);
-  if (!challenge.shotAtGoal) return true;
+  if (!challenge.shotAtGoal) {
+    keeperBeatenRecorded = false;  // nothing coming: re-arm the census
+    return true;
+  }
 
   const float gap_m = challenge.gap_m;
   const float timeToPlane_s = challenge.timeToPlane_s;
@@ -200,9 +203,15 @@ bool Player::KeeperAttemptsSave() {
   // ordinary keeper and still has to beat a good one reaching for it.
   const float reach_m = GameplayTuning::KeeperEffectiveReach_m(
       GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage")), timeToPlane_s, latency_s);
-  return GameplayTuning::KeeperReachesShot(
+  const bool reaches = GameplayTuning::KeeperReachesShot(
       gap_m, timeToPlane_s, latency_s, reach_m,
       GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage")));
+  // Census: was he out of reach or out of time? Once per ball approach.
+  if (!reaches && !keeperBeatenRecorded) {
+    keeperBeatenRecorded = true;
+    match->GetMatchData()->AddKeeperBeaten(team->GetID(), gap_m, timeToPlane_s);
+  }
+  return reaches;
 }
 
 float Player::GetSlipVelocityMultiplier() const {

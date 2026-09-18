@@ -185,6 +185,31 @@ inline float GetShotAppetite(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_shot_appetite", 1.9f), 0.5f, 2.5f);
 }
 
+// How aggressive the side is set up to be, 0 containing to 1 all-out, from the
+// three live sliders a manager actually moves: how high it plays
+// (position_offense_depth_factor), how hard it drives with the ball
+// (dribble_offensiveness), and whether it breaks early or waits
+// (counter_attack). Equal thirds - no single slider IS the tactic, and a pack
+// that sets only one of them still reads as leaning that way.
+inline float GetTacticalOffensiveness(float offenseDepth, float dribbleOffensiveness,
+                                      float counterAttack) {
+  return (Clamp01(offenseDepth) + Clamp01(dribbleOffensiveness) + Clamp01(counterAttack)) / 3.0f;
+}
+
+// What that aggression is worth to the shot trigger. Team tactics reached shot
+// volume nowhere before this: appetite was player skills x player style x one
+// global knob, so a side set up to contain took its chances exactly as readily
+// as one chasing the game, and a 4cc pack's tactical export said nothing about
+// how often it shot. Measured at 7.96 shots a team with the tactic absent; the
+// owner wants 8-14 "depending on the aggressiveness of the tactic", so the
+// spread is +-30% around a neutral 0.5 that leaves the measured balance alone.
+// Bounded by construction: no tactic can silence a side or let it shoot from
+// anywhere.
+constexpr float kTacticalShotAppetiteSpread = 0.6f;
+inline float GetTacticalShotAppetite(float offensiveness) {
+  return 1.0f + (Clamp01(offensiveness) - 0.5f) * kTacticalShotAppetiteSpread;
+}
+
 // Where a struck ball should cross the line, in metres. The strike is aimed
 // ballistically at a band rather than left to the scatter: below the band the
 // ball dies on the turf short of goal (measured: 10 of 22 shots crossed the

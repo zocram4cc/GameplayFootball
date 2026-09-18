@@ -101,6 +101,34 @@ public:
     return shotDistanceSum_m[teamID] / static_cast<float>(shotGeometryCount[teamID]);
   }
 
+  // Why the keeper was beaten, not merely how often. Two keeper packages were
+  // fitted against a point-blank sweep that turned out to describe neither the
+  // match nor (as it later emerged) a real keeper's stats; the sweep says a
+  // real 4cc keeper saves ~92% of the measured shot mix and matches say ~56%.
+  // The sweep varies REACH with the keeper central and on his line, so it
+  // cannot see a keeper who is simply in the wrong place. These two counters
+  // separate the causes at the decision itself:
+  //   - out of time: the ball met his plane inside his own reaction, so
+  //     KeeperEffectiveReach_m gave him no dive at all - reach cannot fix it,
+  //   - out of reach: he had the flight time and the gap was still too big -
+  //     reach, dive speed or POSITIONING, and the mean gap says which.
+  // Always on, like the shot bands above: one increment per beaten keeper.
+  static constexpr float keeperOutOfTime_s = 0.25f;  // ~a keeper's own reaction
+  void AddKeeperBeaten(int teamID, float gap_m, float timeToPlane_s) {
+    if (timeToPlane_s < keeperOutOfTime_s)
+      keeperBeatenOutOfTime[teamID]++;
+    else
+      keeperBeatenOutOfReach[teamID]++;
+    keeperBeatenGapSum_m[teamID] += gap_m;
+    keeperBeatenCount[teamID]++;
+  }
+  int GetKeeperBeatenOutOfTime(int teamID) const { return keeperBeatenOutOfTime[teamID]; }
+  int GetKeeperBeatenOutOfReach(int teamID) const { return keeperBeatenOutOfReach[teamID]; }
+  float GetKeeperBeatenMeanGap_m(int teamID) const {
+    if (keeperBeatenCount[teamID] == 0) return 0.0f;
+    return keeperBeatenGapSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);
+  }
+
   // Where the ball actually reached the goal-line plane, measured tick by tick
   // (GameplayTuning::FindGoalLineCrossing). `onTarget` counts the crossings
   // inside the posts and under the bar. Kept beside the projected on-target
@@ -547,6 +575,10 @@ protected:
   int shotDistanceBands[2][shotDistanceBandCount] = {};
   int shotMisses[2][shotMissKindCount] = {};
   float shotDistanceSum_m[2] = {0.0f, 0.0f};
+  int keeperBeatenOutOfTime[2] = {0, 0};
+  int keeperBeatenOutOfReach[2] = {0, 0};
+  float keeperBeatenGapSum_m[2] = {0.0f, 0.0f};
+  int keeperBeatenCount[2] = {0, 0};
   int shotGeometryCount[2] = {0, 0};
   int goalLineCrossings[2];
   int goalLineCrossingsOnTarget[2];

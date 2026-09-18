@@ -29,6 +29,47 @@ TEST(GameplayTuningTest, TheKnobsAreConfigurableAndClamped) {
   EXPECT_GE(GameplayTuning::GetShotAppetite(silly), 0.5f);
 }
 
+TEST(GameplayTuningTest, AnAggressiveTacticShootsMoreThanAContainingOne) {
+  // Team tactics reached shot volume nowhere: appetite was player skills x
+  // player style x one global knob, so a side set up to contain took the same
+  // chances as one chasing the game. The owner wants 8-14 shots a team
+  // "depending on the aggressiveness of the tactic", which needs the tactic in
+  // the product. Offensiveness is the live slider set (depth, dribble drive,
+  // counter), 0 = containing, 1 = all-out.
+  const float containing = GameplayTuning::GetTacticalShotAppetite(0.0f);
+  const float neutral = GameplayTuning::GetTacticalShotAppetite(0.5f);
+  const float allOut = GameplayTuning::GetTacticalShotAppetite(1.0f);
+  EXPECT_LT(containing, neutral);
+  EXPECT_LT(neutral, allOut);
+  // A neutral tactic must not move the balance that is already measured.
+  EXPECT_FLOAT_EQ(neutral, 1.0f);
+  // The spread is the owner's 8-14 band: about +-30% either side of neutral,
+  // bounded so no tactic silences a side or lets it shoot from anywhere.
+  EXPECT_NEAR(containing, 0.7f, 0.01f);
+  EXPECT_NEAR(allOut, 1.3f, 0.01f);
+  // Out-of-range sliders clamp rather than extrapolate.
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTacticalShotAppetite(-1.0f), containing);
+  EXPECT_FLOAT_EQ(GameplayTuning::GetTacticalShotAppetite(2.0f), allOut);
+}
+
+TEST(GameplayTuningTest, OffensivenessReadsTheSlidersAManagerActuallySets) {
+  // The three sliders the 4cc packs carry and the touchline instructions move:
+  // how high the side plays, how hard it drives with the ball, and whether it
+  // breaks or waits. Equal weight - no one slider is the tactic.
+  const float containing = GameplayTuning::GetTacticalOffensiveness(0.0f, 0.0f, 0.0f);
+  const float allOut = GameplayTuning::GetTacticalOffensiveness(1.0f, 1.0f, 1.0f);
+  EXPECT_FLOAT_EQ(containing, 0.0f);
+  EXPECT_FLOAT_EQ(allOut, 1.0f);
+  // /dbg/ (counter 0.5, engine defaults elsewhere) against /smbg/ (depth 0.5,
+  // dribble 0.32, counter 0.11): the measured pair, smbg the more contained.
+  EXPECT_GT(GameplayTuning::GetTacticalOffensiveness(0.9f, 0.5f, 0.5f),
+            GameplayTuning::GetTacticalOffensiveness(0.5f, 0.32f, 0.105f));
+  // Each slider carries its own third.
+  EXPECT_GT(GameplayTuning::GetTacticalOffensiveness(1.0f, 0.0f, 0.0f), containing);
+  EXPECT_GT(GameplayTuning::GetTacticalOffensiveness(0.0f, 1.0f, 0.0f), containing);
+  EXPECT_GT(GameplayTuning::GetTacticalOffensiveness(0.0f, 0.0f, 1.0f), containing);
+}
+
 // A keeper's save is geometry, not a coin flip. The probability model that used
 // to live here (GetKeeperSaveChance, one random() per shot against 0.53-0.66)
 // left a third to a half of all shots unattempted whatever his quality, which

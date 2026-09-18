@@ -1355,8 +1355,22 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     // tight that whole matches passed with three or four shots. Poachers, long
     // rangers and the team's appetite for a shot widen it further (proposal: an
     // offensive, flowing game).
+    // Appetite is the player (his skills and his style) TIMES how the side is
+    // set up: a team told to contain takes fewer of the same chances than one
+    // chasing the game. Read through GetLiveTacticReal so philosophy, the
+    // user's own modifiers, touchline instructions and reactive mentality all
+    // reach the trigger - a manager chasing a goal shoots more by the same
+    // path a pack's tactical export does.
+    const TeamAIController* teamAI = team->GetController();
+    const float offensiveness =
+        teamAI ? GameplayTuning::GetTacticalOffensiveness(
+                     teamAI->GetLiveTacticReal("position_offense_depth_factor", 0.5f),
+                     teamAI->GetLiveTacticReal("dribble_offensiveness", 0.5f),
+                     teamAI->GetLiveTacticReal("counter_attack", 0.5f))
+               : 0.5f;
     const float shotAppetite = PlayerSkills::GetShotAppetite(skills) *
                                PlayingStyles::GetShotAppetite(style, comStyles) *
+                               GameplayTuning::GetTacticalShotAppetite(offensiveness) *
                                GameplayTuning::GetShotAppetite(*GetConfiguration());
     const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
                                 PlayerSkills::GetShootingRangeBonus(skills) +

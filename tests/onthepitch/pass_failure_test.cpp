@@ -381,3 +381,37 @@ TEST_F(PassFailure, CleanCompletionCountersResetPerMatch) {
   EXPECT_EQ(fresh.GetPendingCleanCheckCount(), 0);
 }
 
+// Why the keeper is beaten, not merely how often. The sweep in
+// gameplay_tuning_test says a real 4cc keeper (coverage 0.709, reflexes
+// 0.686) saves 92% of the measured shot mix; matches say 56%. A 36-point gap
+// means the sweep measures REACH while matches are decided by something else,
+// and tuning reach against that gap is how two keeper packages were fitted to
+// a stat that turned out to be a placeholder. This census answers it with
+// what the engine actually saw at each save decision: was the ball out of
+// REACH (a big gap) or out of TIME (no flight to move in)?
+TEST_F(PassFailure, ABeatenKeeperIsRecordedAsOutOfReachOrOutOfTime) {
+  // Out of time: the ball arrives before he can move, whatever his reach -
+  // point blank. Gap is small, flight is under his own reaction.
+  matchData->AddKeeperBeaten(0, 0.8f, 0.10f);
+  // Out of reach: he had a second to move and still could not cover it.
+  matchData->AddKeeperBeaten(0, 5.2f, 1.00f);
+  matchData->AddKeeperBeaten(0, 4.4f, 0.90f);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(0), 1);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(0), 2);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 0);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(1), 0);
+  // The mean gap is what says how far short he was: tune reach on it, or do
+  // not tune reach at all.
+  EXPECT_NEAR(matchData->GetKeeperBeatenMeanGap_m(0), (0.8f + 5.2f + 4.4f) / 3.0f, 0.001f);
+  EXPECT_FLOAT_EQ(matchData->GetKeeperBeatenMeanGap_m(1), 0.0f);
+}
+
+TEST_F(PassFailure, TheBeatenSplitIsTheKeepersOwnReactionTime) {
+  // The boundary is not a constant pulled from the air: a keeper is "out of
+  // time" when the ball reaches his plane inside his own reaction, since
+  // GameplayTuning::KeeperEffectiveReach_m gives him no dive at all there.
+  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 0.5f);
+  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 2.0f);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 1);
+  EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(1), 1);
+}

@@ -153,6 +153,11 @@ protected:
   // (Removed: the old per-shot save roll latched here. KeeperAttemptsSave is
   // now the geometry of the save, evaluated per call, so there is no roll to
   // latch.)
+  // The beaten-keeper census DOES latch, for a different reason: the save
+  // geometry is consulted several times a tick (the dive decision and the
+  // body-collision pass both ask), so counting every call would count ticks,
+  // not shots. Cleared the moment nothing is coming at him.
+  bool keeperBeatenRecorded = false;
   Vector3 previousDirectionVec;
   unsigned int timeNeededToGetToBall_ms;
   unsigned int timeNeededToGetToBall_optimistic_ms;

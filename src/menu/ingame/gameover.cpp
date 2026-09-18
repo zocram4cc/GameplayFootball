@@ -374,6 +374,17 @@ void GameOverPage::Process() {
            matchData->GetShotMiss(0, 0), matchData->GetShotMiss(1, 0),
            matchData->GetShotMiss(0, 1), matchData->GetShotMiss(1, 1),
            matchData->GetShotMiss(0, 2), matchData->GetShotMiss(1, 2));
+    // Why the keeper was beaten. The point-blank sweep says a real 4cc keeper
+    // saves ~92% of the measured shot mix and matches say ~56%: the sweep
+    // varies REACH with him central and on his line, so it cannot see a keeper
+    // in the wrong place. "time" is beaten inside his own reaction (no dive
+    // was available - reach cannot fix it); "reach" is beaten with the flight
+    // time to move, and the mean gap says how far short he actually was.
+    printf("[balance-keeper] beaten out of time %i-%i | out of reach %i-%i | "
+           "mean gap %.2fm-%.2fm\n",
+           matchData->GetKeeperBeatenOutOfTime(0), matchData->GetKeeperBeatenOutOfTime(1),
+           matchData->GetKeeperBeatenOutOfReach(0), matchData->GetKeeperBeatenOutOfReach(1),
+           matchData->GetKeeperBeatenMeanGap_m(0), matchData->GetKeeperBeatenMeanGap_m(1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not
