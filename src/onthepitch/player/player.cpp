@@ -206,8 +206,19 @@ bool Player::KeeperAttemptsSave() {
   const bool reaches = GameplayTuning::KeeperReachesShot(
       gap_m, timeToPlane_s, latency_s, reach_m,
       GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage")));
-  // Census: was he out of reach or out of time? Once per ball approach.
-  if (!reaches && !keeperBeatenRecorded) {
+  // Census: was he out of reach or out of time? Once per ball approach, and
+  // only for a ball actually heading INSIDE the frame - `shotAtGoal` above is
+  // true for anything closing on his plane, so without this gate the sample
+  // is clearances and passes upfield (measured, first match: mean "gap" 22 m
+  // and 46 m, i.e. balls half a pitch wide of the post).
+  const GameplayTuning::GoalLineCrossing heading = GameplayTuning::PredictGoalLineCrossing(
+      {ballPosition.coords[0], ballPosition.coords[1], ballPosition.coords[2]},
+      {ballMovement.coords[0], ballMovement.coords[1], ballMovement.coords[2]}, pitchHalfW);
+  const bool atTheFrame =
+      GameplayTuning::CrossedInsideGoalFrame(heading, goalHalfWidth, goalHeight);
+  if (!atTheFrame)
+    keeperBeatenRecorded = false;  // not a shot: re-arm rather than latch on it
+  else if (!reaches && !keeperBeatenRecorded) {
     keeperBeatenRecorded = true;
     match->GetMatchData()->AddKeeperBeaten(team->GetID(), gap_m, timeToPlane_s);
   }
