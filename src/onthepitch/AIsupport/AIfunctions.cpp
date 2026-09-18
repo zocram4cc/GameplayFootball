@@ -1557,10 +1557,12 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
         // deliberately does not call random(): this function runs off every
         // animation pick, so a draw taken here would consume the shared RNG
         // stream that the shot trigger's own random(0, 0.5) odds check reads
-        // from. Match clock and player id give a value that varies shot to
-        // shot and player to player, and replays identically for a seed.
+        // from. Engine time (GetActualTime_ms, every tick - the match clock
+        // freezes through a stoppage, so a set piece and its rebound would
+        // share a draw) and player id give a value that varies shot to shot
+        // and player to player, and replays identically for a seed.
         const unsigned int drawHash =
-            static_cast<unsigned int>(player->GetTeam()->GetMatch()->GetMatchTime_ms()) *
+            static_cast<unsigned int>(player->GetTeam()->GetMatch()->GetActualTime_ms()) *
                 2654435761u +
             static_cast<unsigned int>(player->GetID()) * 2246822519u;
         const float draw = static_cast<float>((drawHash >> 8) & 0xFFFFFFu) / 16777216.0f;
