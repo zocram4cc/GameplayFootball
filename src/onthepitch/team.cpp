@@ -135,8 +135,13 @@ void Team::InitPlayers(boost::intrusive_ptr<Node> fullbodyNode,
   // The condition arrows for the coming match, one side at a time: the
   // pre-match "Condition: Home / Away" rows (match_condition_home/away) say
   // whether every player on the side is dealt the same arrow or draws his own
-  // from his Form. Seeded off the team and the wall clock so a random side
-  // differs from match to match but not from player to player within one.
+  // from his Form. Seeded off `match_condition_seed` and the player's own
+  // index (FormState::ArrowForPlayer is a pure hash of the two plus the team),
+  // so a side differs from match to match but not from player to player
+  // within one, and a config that pins the seed deals the same arrows every
+  // run. The wall clock only supplies the seed's DEFAULT, once, when the
+  // pre-match sheet writes it (matchoptions.cpp) - it is not read here, and
+  // saying it was sent a determinism hunt after the wrong suspect.
   const FormState::Policy conditionPolicy = FormState::ParsePolicy(GetConfiguration()->Get(
       id == 0 ? "match_condition_home" : "match_condition_away", "random"));
   const unsigned int conditionSeed =
