@@ -98,16 +98,33 @@ checksum beside the batch:
 
     md5sum build/gameplayfootball tools/simbatch.sh > /tmp/batch_frozen.txt
 
-## A seed is only comparable at the same concurrency
+## A seed does NOT reproduce a match - compare distributions, never seeds
 
-`simbatch.sh` fixes `random_seed` per match, and its header says a before/after
-pair over the same seeds is comparable. It is - but only if both runs were made
-with the same `--concurrency`. Seed 5000 on one binary and one config gave
-`shots 7-5 | xg 0.89-0.61` alone and `shots 6-5 | xg 0.87-0.58` inside a 3-way
-batch: the match paces some of its stages off real time, so CPU contention
-moves the tick at which things happen and the game diverges. Hold concurrency
-constant across the arms of any comparison, and say which it was when quoting
-a single seed.
+`simbatch.sh` fixes `random_seed` per match and its header says a before/after
+pair over the same seeds is comparable. **It is not.** Seed 5000, run twice
+sequentially at concurrency 1 on one binary, one database and a byte-identical
+config, finished `1-5` and `0-2` - shots 2-16 against 3-15, passes 157-237
+against 145-246. The match paces some of its stages off real time, so ordinary
+wall-clock jitter moves the tick things happen on and the game diverges from
+there; CPU contention (seed 5000: `shots 7-5` alone, `6-5` in a 3-way batch)
+is the same effect, louder.
+
+What follows, and it is not optional:
+
+- **Never read a per-seed delta.** "Seed 5000 went 2-5 before and 0-5 after"
+  is noise wearing a number, whatever changed in between. A whole afternoon
+  was spent auditing a side that "collapsed from 13 shots to 0" on matched
+  seeds; nothing was wrong with it.
+- **A one-match smoke proves only that the build runs.** It cannot support a
+  claim about balance, in either direction.
+- **Compare AGGREGATES over a batch**, 12 matches an arm and both arms at the
+  same concurrency - 24 team-matches against 24 is enough to see a real move
+  (9.50 -> 4.50 goals/match survived it comfortably) and small enough to
+  finish in an evening. Equal concurrency buys comparable distributions, never
+  comparable seeds.
+- Seeds still earn their place: they keep an arm's twelve matches spread over
+  the same twelve starting conditions, so the two distributions are sampling
+  the same space. That is all they do.
 
 ## Never `git add` a directory a subagent might be writing into
 

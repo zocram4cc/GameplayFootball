@@ -9,8 +9,11 @@
 #
 #   tools/simbatch.sh --matches 12 --team1 16 --team2 13
 #
-# Every match is a fixed "random_seed", so a before/after pair over the same
-# seed range is comparable - at the same --concurrency (docs/HARNESSES.md).
+# A fixed "random_seed" does NOT reproduce a match: the same seed, binary and
+# config run twice at concurrency 1 finished 1-5 and 0-2 (docs/HARNESSES.md).
+# Seeds only keep both arms sampling the same twelve starting conditions.
+# Compare the AGGREGATE over a batch, never a per-seed delta, and hold
+# --concurrency equal across the arms.
 #
 # Defaults are the regime the owner WATCHES: 20-minute duration at time scale
 # 1, the same as tools/showcase.sh. The time scale multiplies only the clock
