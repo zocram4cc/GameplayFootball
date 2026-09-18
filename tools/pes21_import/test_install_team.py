@@ -991,3 +991,69 @@ class ALeglessCharacterIsStillWholeplayer(unittest.TestCase):
         body = [0.90 + 0.001 * i for i in range(800)]
         strand = [1.75, 1.76, 1.77]
         self.assertFalse(import_team.is_continuous_body(body + strand + [1.95] * 30))
+
+
+class RefreshingStatsInPlace(unittest.TestCase):
+    """refresh_stats rewrites what a player IS - base_stat and profile_xml -
+    without touching which row he is. install() deletes and re-inserts the
+    roster, so every row id churns and every playermodels.cfg line (keyed by
+    row id) silently unbinds; the seven 4cc keepers sat on outfield fallbacks
+    for four days because a stats fix could only be had at that price.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        conn = sqlite3.connect(self.path)
+        conn.executescript(SCHEMA)
+        conn.commit()
+        conn.close()
+        # A roster installed the OLD way: no gk_* keys, stale base.
+        stale = dict(TEAM)
+        stale["players"] = [dict(p, stats=None) for p in TEAM["players"]]
+        install_team.install(self.path, stale, TACTICS)
+        conn = sqlite3.connect(self.path)
+        conn.execute("update players set profile_xml = replace(profile_xml, "
+                     "'<gk_coverage>', '<zz_gone>') where team_id = "
+                     "(select id from teams where name = '/hdg/')")
+        conn.commit()
+        conn.close()
+        self.fresh = dict(TEAM)
+        self.fresh["players"] = [dict(p, stats=full_stats(72)) for p in TEAM["players"]]
+
+    def tearDown(self):
+        os.unlink(self.path)
+
+    def rows(self, sql, *args):
+        conn = sqlite3.connect(self.path)
+        out = conn.execute(sql, args).fetchall()
+        conn.close()
+        return out
+
+    def test_row_ids_are_untouched(self):
+        before = self.rows("select id, formationorder from players order by formationorder")
+        import refresh_stats
+        refresh_stats.refresh(self.path, self.fresh)
+        after = self.rows("select id, formationorder from players order by formationorder")
+        self.assertEqual(before, after)
+
+    def test_the_keeper_gets_his_gk_stats(self):
+        import refresh_stats
+        refresh_stats.refresh(self.path, self.fresh)
+        xml = self.rows("select profile_xml from players where formationorder = 0")[0][0]
+        for key in install_team.GK_KEYS:
+            self.assertIn("<%s>" % key, xml)
+
+    def test_a_roster_that_does_not_match_by_name_is_refused(self):
+        import refresh_stats
+        wrong = dict(self.fresh)
+        wrong["players"] = [dict(p, name="Stranger %d" % i)
+                            for i, p in enumerate(self.fresh["players"])]
+        with self.assertRaises(ValueError):
+            refresh_stats.refresh(self.path, wrong)
+
+    def test_a_team_not_in_the_database_is_refused(self):
+        import refresh_stats
+        absent = dict(self.fresh, team="/nobody/")
+        with self.assertRaises(ValueError):
+            refresh_stats.refresh(self.path, absent)
