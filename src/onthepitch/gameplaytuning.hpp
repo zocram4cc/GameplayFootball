@@ -372,6 +372,17 @@ inline float GetShotWorstCaseWeight(float uniformRandom01, float shotStat) {
   const float exponent = 1.0f / std::max(0.06f, 1.0f - Clamp01(shotStat) * 0.95f);
   return std::pow(blunted::clamp(uniformRandom01, 0.0f, 1.0f), exponent);
 }
+// How far off the paint the chosen corner lands, in metres of open half-mouth
+// pulled back toward the middle: 0 is the paint, `openHalfMouth_m` is the
+// middle. A gold medal dares the paint whatever the draw; a poor finisher
+// sprays toward the middle, draw by draw. Pure, so the sweep and the corner
+// pick share it: the veto picks the SIDE, this sets the DEPTH, and the offset
+// never exceeds the open half-mouth, so the aim stays inside the frame.
+inline float GetShotPlacementOffset_m(float uniformDraw01, float shotStat, float openHalfMouth_m) {
+  const float draw = blunted::clamp(uniformDraw01, 0.0f, 1.0f);
+  const float skill = Clamp01(shotStat);
+  return draw * (1.0f - skill) * openHalfMouth_m;
+}
 
 // How much random swerve a struck ball carries, as a share of the spin the
 // animation carries. The stock factor was 0.3 + worstCaseFactor * 0.7, whose

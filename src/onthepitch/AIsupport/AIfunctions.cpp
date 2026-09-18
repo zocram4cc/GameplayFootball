@@ -1547,9 +1547,27 @@ Vector3 AI_GetShotDirection(Player* player, const Vector3& inputDirection,
         const float awayFromKeeper = (keeperY >= 0.0f) ? -open : open;
         const float awayXg = (awayFromKeeper < 0.0f) ? leftXg : rightXg;
         const float acrossXg = (awayFromKeeper < 0.0f) ? rightXg : leftXg;
-        goalPos.coords[1] = (awayXg >= acrossXg * kCrossKeeperLanePenalty)
-                                ? awayFromKeeper
-                                : -awayFromKeeper;
+        // Placement varies DEPTH per shot, never side: the veto above picks the
+        // corner, and the finisher's own error pulls it off the paint toward
+        // the middle - gold dares the post, a poor finisher sprays central.
+        // The offset never exceeds the open half-mouth, so the aim stays inside
+        // the frame and the 80% aimed contract holds.
+        //
+        // The draw is DETERMINISTIC (no dice - owner's standing rule), and it
+        // deliberately does not call random(): this function runs off every
+        // animation pick, so a draw taken here would consume the shared RNG
+        // stream that the shot trigger's own random(0, 0.5) odds check reads
+        // from. Match clock and player id give a value that varies shot to
+        // shot and player to player, and replays identically for a seed.
+        const unsigned int drawHash =
+            static_cast<unsigned int>(player->GetTeam()->GetMatch()->GetMatchTime_ms()) *
+                2654435761u +
+            static_cast<unsigned int>(player->GetID()) * 2246822519u;
+        const float draw = static_cast<float>((drawHash >> 8) & 0xFFFFFFu) / 16777216.0f;
+        const float placementOffset_m =
+            GameplayTuning::GetShotPlacementOffset_m(draw, shooting, open);
+        const float placed = std::copysign(std::max(0.0f, open - placementOffset_m), awayFromKeeper);
+        goalPos.coords[1] = (awayXg >= acrossXg * kCrossKeeperLanePenalty) ? placed : -placed;
       }
     }
   }

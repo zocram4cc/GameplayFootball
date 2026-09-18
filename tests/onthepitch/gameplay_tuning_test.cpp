@@ -179,6 +179,20 @@ TEST(GameplayTuningShootingTest, TechniqueKeepsTheBootFaceSquare) {
   EXPECT_LT(GameplayTuning::GetShotBodySliceShare(0.88f),
             GameplayTuning::GetShotBodySliceShare(0.50f));
 }
+TEST(GameplayTuningShootingTest, PlacementVariesDepthBySkillAndDraw) {
+  // The corner pick varies DEPTH per shot, not side: gold dares the paint
+  // whatever the draw, the worst finisher sprays toward the middle, and the
+  // offset never exceeds the open half-mouth so the aim stays inside the
+  // frame and the 80% aimed contract holds. The lane-xG side veto is
+  // untouched; this only moves how far off the paint the chosen side lands.
+  const float open = 3.5f;
+  EXPECT_LT(GameplayTuning::GetShotPlacementOffset_m(0.0f, 0.99f, open), 0.1f);
+  EXPECT_LT(GameplayTuning::GetShotPlacementOffset_m(1.0f, 0.99f, open), 0.1f);
+  EXPECT_GT(GameplayTuning::GetShotPlacementOffset_m(1.0f, 0.0f, open), 1.0f);
+  EXPECT_LE(GameplayTuning::GetShotPlacementOffset_m(1.0f, 0.0f, open), open);
+  EXPECT_LT(GameplayTuning::GetShotPlacementOffset_m(0.0f, 0.5f, open),
+            GameplayTuning::GetShotPlacementOffset_m(1.0f, 0.5f, open));
+}
 
 TEST(GameplayTuningShootingTest, TheShotBarIsConfiguredAndClamped) {
   // One bar, read from the config, clamped to something a match can survive:
