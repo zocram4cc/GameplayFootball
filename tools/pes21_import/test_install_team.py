@@ -29,6 +29,7 @@ import unittest
 
 import import_team
 import install_team
+import refresh_stats
 import ted
 
 SCHEMA = """
@@ -1057,3 +1058,127 @@ class RefreshingStatsInPlace(unittest.TestCase):
         absent = dict(self.fresh, team="/nobody/")
         with self.assertRaises(ValueError):
             refresh_stats.refresh(self.path, absent)
+
+
+class TheTeamSheetIsPesOwn(unittest.TestCase):
+    """Who actually starts. The importer used to hand formationorder out by the
+    export's LIST order, so a pack whose player table is not in team-sheet
+    order fielded whoever happened to be listed first - /dbg/ played a side
+    averaging 0.671 while three of its best sat out, and took one shot a match
+    for it.
+
+    PES puts the sheet in `squad_order`, one entry per player: his slot, 1-11
+    for the eleven who start and higher for the bench. Settled against all
+    seven VGL26 exports - it is the only reading that yields exactly eleven
+    starters with distinct slots on every one of them.
+    """
+
+    def test_the_eleven_with_slots_are_the_starting_eleven(self):
+        # Three players, sheet order reversed against list order.
+        order = [3, 1, 2] + [20] * 20
+        self.assertEqual(install_team.starting_slots(order, 3), {1: 1, 2: 2, 0: 3})
+
+    def test_a_benched_player_gets_no_slot(self):
+        order = [12, 1, 2] + [20] * 20
+        slots = install_team.starting_slots(order, 3)
+        self.assertNotIn(0, slots)
+        self.assertEqual(slots, {1: 1, 2: 2})
+
+    def test_formation_order_follows_the_sheet_not_the_list(self):
+        sheet = dict(TEAM)
+        # Reverse the sheet: the last listed player starts first.
+        sheet["squad_order"] = list(range(23, 0, -1))
+        handle, path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        try:
+            conn = sqlite3.connect(path)
+            conn.executescript(SCHEMA)
+            conn.commit()
+            conn.close()
+            install_team.install(path, sheet, TACTICS)
+            conn = sqlite3.connect(path)
+            seats = dict(conn.execute(
+                "select formationorder, lastname from players where team_id="
+                "(select id from teams where name='/hdg/') and formationorder <= 1"))
+            conn.close()
+            # Seat 0 is the keeper's, always. squad_order[22] = 1, so the LAST
+            # listed player is the sheet's first outfielder and takes seat 1.
+            self.assertEqual(seats[0], "Player 1")
+            self.assertEqual(seats[1], "Player 23")
+        finally:
+            os.unlink(path)
+
+    def test_an_export_with_no_sheet_keeps_the_list_order(self):
+        # Older exports and hand-written fixtures: fall back rather than refuse.
+        self.assertEqual(install_team.starting_slots([], 3), {})
+        self.assertEqual(install_team.starting_slots([99, 99, 99], 3), {})
+
+
+class ReseatingAnInstalledSquad(unittest.TestCase):
+    """Applying PES's team sheet to a squad that is already installed.
+
+    The seven 4cc teams went in under the old list-order rule, so every one of
+    them is seated wrong. Re-importing would fix the order and move every row
+    id, unbinding playermodels.cfg; this moves the SEATS and leaves the rows
+    where they are, matching players by name.
+    """
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        conn = sqlite3.connect(self.path)
+        conn.executescript(SCHEMA)
+        conn.commit()
+        conn.close()
+        # Installed the old way: list order, no sheet.
+        listed = dict(TEAM)
+        listed["squad_order"] = []
+        install_team.install(self.path, listed, TACTICS)
+        # The sheet says the last listed player starts first.
+        self.sheet = dict(TEAM, squad_order=list(range(23, 0, -1)))
+
+    def tearDown(self):
+        os.unlink(self.path)
+
+    def rows(self, sql):
+        conn = sqlite3.connect(self.path)
+        out = conn.execute(sql).fetchall()
+        conn.close()
+        return out
+
+    def test_the_sheet_decides_who_starts(self):
+        refresh_stats.reseat(self.path, self.sheet)
+        # Seat 0 is the keeper's, always; the sheet fills the outfield ten, so
+        # the player the sheet puts first takes seat 1.
+        outfield = self.rows("select lastname from players "
+                             "where formationorder = 1")
+        self.assertEqual(outfield[0][0], "Player 23")
+
+    def test_the_keeper_keeps_his_seat_whatever_the_sheet_says(self):
+        # PES's slot is sheet ORDER, not position: the keeper sits at slot 1 on
+        # /lcg/, /hdg/ and /vn/, at 9 on /2hug/ and /smbg/, at 10 on /dbg/. The
+        # engine needs exactly one keeper in seat 0, so he is pinned there and
+        # the sheet fills the outfield.
+        refresh_stats.reseat(self.path, self.sheet)
+        keeper = self.rows("select lastname from players where formationorder = 0")
+        self.assertEqual(keeper[0][0], "Player 1")
+
+    def test_row_ids_never_move(self):
+        before = self.rows("select id, lastname from players order by id")
+        refresh_stats.reseat(self.path, self.sheet)
+        after = self.rows("select id, lastname from players order by id")
+        self.assertEqual(before, after)
+
+    def test_the_keeper_seat_carries_the_keeper_role(self):
+        refresh_stats.reseat(self.path, self.sheet)
+        roles = [r[0] for r in self.rows(
+            "select role from players order by formationorder")]
+        self.assertEqual(roles[0], "GK")
+        self.assertNotIn("GK", roles[1:])
+
+    def test_a_squad_that_does_not_match_by_name_is_refused(self):
+        wrong = dict(self.sheet)
+        wrong["players"] = [dict(p, name="Stranger %d" % i)
+                            for i, p in enumerate(self.sheet["players"])]
+        with self.assertRaises(ValueError):
+            refresh_stats.reseat(self.path, wrong)

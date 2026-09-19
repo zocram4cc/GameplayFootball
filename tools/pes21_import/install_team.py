@@ -45,6 +45,40 @@ BASE_STAT = 0.62
 FIELD_ROLES = ("CB", "CB", "LB", "RB", "DM", "CM", "CM", "LM", "RM", "CF", "CF",
                "CB", "LB", "RB", "CM", "CM", "LM", "RM", "CF", "CF", "CM", "CF")
 
+# Who actually starts. PES keeps the team sheet in `squad_order`: one entry
+# per player, his slot on the sheet - 1 to 11 for the eleven who start, higher
+# for the bench. Slot is the sheet's own order, NOT a position (the keeper
+# sits at slot 1 on /lcg/, /hdg/ and /vn/, at 9 on /2hug/ and /smbg/, at 10 on
+# /dbg/).
+#
+# Settled against all seven VGL26 exports: this is the only reading that gives
+# exactly eleven starters with distinct slots on every one of them. Reading
+# `squad_order` as the sheet in slot order instead - the obvious first guess -
+# leaves the keeper out of the eleven on four of the seven, under either
+# 0-based or 1-based indexing, and its first 23 entries are not even a
+# permutation on five of them.
+#
+# Before this, formationorder came from the export's LIST order, so a pack
+# whose player table is not in sheet order fielded whoever happened to be
+# listed first. That is why /dbg/ took one shot a match: it played a side
+# averaging 0.671 while better players sat out.
+STARTING_SLOTS = 11
+
+
+def starting_slots(squad_order, player_count):
+    """-> {player index: sheet slot} for the players who start.
+
+    Empty when the export carries no usable sheet (older exports, fixtures) or
+    when two players claim one slot, so the caller falls back to list order
+    rather than refusing the import or fielding a corrupt eleven. A real
+    export yields exactly STARTING_SLOTS entries; a small fixture yields what
+    it has.
+    """
+    slots = {i: slot for i, slot in enumerate(squad_order[:player_count])
+             if 1 <= slot <= STARTING_SLOTS}
+    if len(set(slots.values())) != len(slots):
+        return {}
+    return slots
 
 # The stats PlayerData parses out of profile_xml. GetStat asserts the stat it is
 # asked for exists, so a player with an empty profile kills the match at the first
@@ -431,15 +465,31 @@ def install(database, team, tactics, dry_run=False):
                          colour1, colour2))
             team_row = cur.lastrowid
 
-        # The squad in order. The number is the shirt; formationorder is the slot, and
-        # the keeper takes the first of them. The row id each player lands on is
-        # kept against that shirt number, because a 4cc pack names its model
-        # exports by shirt (<k2411 - Name> is number 11) and playermodels.cfg has
-        # to bind the model to the row the player actually got. Renumbering the
-        # database and re-keying the models by hand is what broke them before.
+        # The squad in TEAM-SHEET order. The number is the shirt; formationorder
+        # is the slot the engine fields him in, and 0-10 is the starting eleven.
+        # PES's own sheet lives in squad_order (see starting_slots); before it
+        # was read, this walked the export's list order and a pack listed out of
+        # sheet order fielded the wrong eleven. The row id each player lands on
+        # is still kept against his shirt number, because a 4cc pack names its
+        # model exports by shirt (<k2411 - Name> is number 11) and
+        # playermodels.cfg has to bind the model to the row the player actually
+        # got. Renumbering the database and re-keying the models by hand is what
+        # broke them before.
+        # Seat 0 belongs to the keeper, always: PES's slot is the sheet's own
+        # ORDER, not a position, and the engine needs exactly one keeper in the
+        # first seat. He is the export's first player (shirt 1); the sheet fills
+        # the outfield ten in its own order, and everyone else benches.
+        sheet = starting_slots(team.get("squad_order") or [], len(team["squad"]))
+        listed = list(range(len(team["squad"])))
+        keeper = 0
+        outfield = sorted((i for i in listed if i in sheet and i != keeper),
+                          key=lambda i: sheet[i])
+        seated = ([keeper] + outfield[:STARTING_SLOTS - 1]) if sheet else []
+        order = seated + [i for i in listed if i not in seated]
         by_shirt = {}
-        for slot, entry in enumerate(team["squad"]):
-            player = (team["players"][slot] if slot < len(team["players"])
+        for slot, source in enumerate(order):
+            entry = team["squad"][source]
+            player = (team["players"][source] if source < len(team["players"])
                       else {"name": "Player %d" % entry["number"]})
             role = KEEPER_ROLE if slot == 0 else FIELD_ROLES[(slot - 1) % len(FIELD_ROLES)]
             stats = player.get("stats")
