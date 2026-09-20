@@ -783,6 +783,56 @@ def find_texture_file(source_dir, name):
 HIDER_MAX_ALPHA = 8
 
 
+def mesh_faces_sample_opaque(mesh, path):
+    """Whether any of mesh's faces samples an opaque texel of the texture at
+    path. Face-centroid UVs decide, the same rule the renderer lives by: a
+    mesh whose faces all sample transparency is the swap stand-in; one
+    opaque face makes it authored geometry (Bowser k2593's torso, 875 of
+    1,907 faces opaque). Unreadable texture or missing UVs read as opaque —
+    the hider rule's own direction (texture_is_hider says it out loud)."""
+    try:
+        from PIL import Image
+        image = Image.open(path).convert("RGBA")
+        pixels = image.load()
+        width, height = image.size
+        for face in mesh.faces:
+            uvs = [v.uv[0] for v in face.vertices if v.uv]
+            if not uvs:
+                return True
+            u = sum(v.u for v in uvs) / len(uvs)
+            v = sum(v.v for v in uvs) / len(uvs)
+            if pixels[min(width - 1, int(u * (width - 1))),
+                      min(height - 1, int(v * (height - 1)))][3] != 0:
+                return True
+        return False
+    except Exception as error:
+        print("  cannot read %s (%s: %s); treating its mesh as visible art"
+              % (os.path.basename(path), type(error).__name__, error))
+        return True
+
+
+def is_unresolved_swap_mesh(mesh, name, source_dir=None):
+    """Whether a kit-swap/emblem mesh (dummy_kit, dummy_emb*) is hidden.
+
+    Hidden only where its texels say so: the texture file must resolve AND
+    no face may sample an opaque texel (mesh_faces_sample_opaque). Bowser
+    k2593's torso samples 875 opaque faces — authored geometry, kept. A
+    fully transparent shell (WAHluigi k2588) stays dropped. No texture file
+    at all (smbg ships no dummy* file) reads as visible: dropping geometry
+    for a file that was never there is the name-based drop by another door.
+    `source_dir` is the fmdl's folder (select_meshes threads it); without
+    one there is nothing to resolve against, so the mesh is kept."""
+    if not (is_placeholder_texture(name) or is_effect_texture(name)):
+        return False
+    if is_effect_texture(name):
+        return True
+    if not source_dir:
+        return False
+    path = find_texture_file(source_dir, name)
+    if path is None:
+        return False
+    return not mesh_faces_sample_opaque(mesh, path)
+
 def texture_is_hider(path):
     """Whether this texture exists to hide its mesh: fully transparent.
 
@@ -1015,19 +1065,14 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # becomes its own ASE material and its own GEOMOBJECT instead.
     groups = []          # [(texture_name, vertices, faces, index)]
     group_of = {}
-    # Whether PES draws each group unlit, in step with `groups`.
-    #
-    # Grouped by texture *and* shading, not texture alone. Shading is per mesh and a
-    # texture routinely carries both kinds: over 2HUG's 23 exports, 65 of 68 texture
-    # groups mix lit and unlit meshes and not one is wholly unlit. Folding them
-    # together loses the distinction whichever way it is resolved - every group unlit,
-    # or none - so a texture whose meshes disagree becomes two materials.
+    source_dir = os.path.dirname(os.path.abspath(fmdl_path))
     group_shadeless = []
     placeholders = 0
     for mesh in meshes:
         name = mesh_base_texture(mesh) or ""
-        # A blank stand-in, not the character (is_placeholder_texture).
-        if is_placeholder_texture(name) or is_effect_texture(name):
+        # A blank stand-in, not the character (is_unresolved_swap_mesh):
+        # hidden only where its own texels say swap, never by name.
+        if is_unresolved_swap_mesh(mesh, name, source_dir=source_dir):
             placeholders += 1
             continue
         shadeless = is_shadeless(mesh)
