@@ -40,15 +40,31 @@ owner cleared after re-render).
 keeps, per source mesh: dedupe of byte-identical copies, kit-form select
 (transparent-hider rule stays — it selects which form, never reshapes one),
 texture resolve, basis `(x,y,z)→(x,−z,y)`, authored weights carried through
-`build_bone_map` untouched. Deleted stages: `whole_body` gate +
-`fullbody_pes.ase` composite, `seams.smooth_field` / `seams.weld` /
-`seams.reconcile`, `stretched_cut` limit + `max_edge` cut (flag stays as
-`--max-edge 0` default; nonzero is an explicit operator override, never the
-default path). Kept as-is: `MAX_MESH_SPAN_M` + `STRAY_DROP_RADIUS` drops
-(provably non-render: 11 m rays, 60 m backdrops — a mesh that cannot be
-worn, not a mesh the engine dislikes), placeholder/effect-texture skips,
-`NON_RENDER_PASSES` (antiblur/outline copies). That is the strictly-necessary
-C slice; everything else goes.
+`build_bone_map` untouched. Deleted stages: `whole_body` gate driving a
+`fullbody_pes.ase` composite *as a gate consequence*, `seams.smooth_field` /
+`seams.weld` / `seams.reconcile`, `stretched_cut` limit + `max_edge` cut.
+`--max-edge` flag stays as an explicit operator override (default 0,
+verbatim); nonzero is never the default path.
+**Assembly vs reshape (binding constraint).**
+Head-only face-slot models (HDG's 22 XXX heads, SMBG's 5) are partial BY
+AUTHORSHIP — their body is PES's own. Merging two intact parts (imported
+head meshes + stock skinned body, each unreshaped, `--base` assembly with
+`--drop-base-parts` for the replaced head) is allowed verbatim assembly,
+not reshaping: neither part's verts, weights, or faces are altered to fit
+the other. The Bowser-class composite (stock torso UNDER an authored shell
+because a gate failed) is forbidden — that hides authored geometry behind
+judgement, exactly the defect. `whole_body`/`body_coverage` survive only as
+reporters (log what is partial), never as gates that trigger reshaping.
+
+**Bowser diagnosis (prescribed, trunk-rigid not assumed).**
+Stage isolated (unskinned whole / skinned collapsed) but mechanism open:
+smoothing (`smooth_field` 8 passes) vs `rebind_stray` (fingertip /
+`STRAY_RATIO` proximity reweight) vs the authoring→bind bake. Diagnose by
+bisection on Bowser: reconvert with each stage independently disabled, diff
+the skinned shin-band frame each time. The fix follows the guilty stage;
+trunk-rigid is one candidate, not the prescription. `rebind_stray`'s
+Wario-fingers guard stays green throughout — whatever moves must not move
+Wario's 419 belly verts back onto fingertips.
 
 **Engine learns to carry PES geometry.**
 `src/onthepitch/player/humanoid/` (`skinning.*`, `humanoidbase.cpp`
