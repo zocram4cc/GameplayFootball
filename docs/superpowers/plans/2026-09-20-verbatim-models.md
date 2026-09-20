@@ -20,51 +20,53 @@
 
 ---
 
-### Task 1: Roshi verbatim regression test
+### Task 1: Roshi verbatim regression test (NEW file)
 
 **Files:**
-- Modify: `tools/pes21_import/test_mesh_selection.py:1-60`
-- Test: `tools/pes21_import/test_mesh_selection.py`
+- Create: `tools/pes21_import/test_verbatim.py`
+- Test: `tools/pes21_import/test_verbatim.py`
 
 **Interfaces:**
-- Consumes: `fmdl_to_fullbody.select_meshes`, existing `fake_mesh` stub conventions.
-- Produces: failing test proving long-thin-geometry faces survive selection.
+- Consumes: `stretched_cut.limit_for`, `fmdl_to_fullbody.select_meshes`;
+  stub conventions follow `test_mesh_selection.py:32-58` (`Position`,
+  `Vertex`, `fake_mesh(faces, material, texture, seed)`).
+- Produces: failing test proving the pole survives (Task 2 makes it pass).
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
-def test_a_long_thin_prop_survives_verbatim(self):
-    """dbg_2009 pole: 160 genuine 0.79 m shaft triangles were cut at a 0.085
-    limit. Installed 203765 faces vs verbatim 203925."""
-    self.assertTrue(hasattr(fmdl_to_fullbody, "select_meshes"))
+"""Verbatim contract: converted faces == source faces minus dedupe copies
+and kit-hidden forms, nothing else. dbg_2009 pole meshes 24/25: 19,808
+faces each, 160 genuine 0.79 m shaft triangles cut at a 0.085 limit."""
+import unittest
+import stretched_cut
+class PoleSurvivesVerbatim(unittest.TestCase):
+    def test_long_thin_shaft_faces_are_not_shards(self):
+        thin = [(0.0, 0.0, 0.0), (0.0, 0.0, 0.79), (0.02, 0.0, 0.0)]
+        dense = [(0.0, 0.0, 0.0), (0.02, 0.0, 0.0), (0.0, 0.02, 0.0)]
+        kept, dropped, cut = stretched_cut.keep([thin, dense])
+        self.assertEqual(dropped, 0)
+        self.assertEqual(len(kept), 2)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd tools/pes21_import && python3 -W ignore -m unittest test_mesh_selection -v`
-Expected: PASS (module exists) — the real failing assertion lands in Task 2's
-face-count test once the cut is deleted; this step pins the harness works.
+Run: `cd tools/pes21_import && python3 -W ignore -m unittest test_verbatim -v`
+Expected: FAIL with `dropped == 1` (the shaft face is cut) — record the
+failure text; no delete/reshape work until this fails on current code.
 
-- [ ] **Step 3: Extend test to face counts**
+- [ ] **Step 3: Run full importer suite for baseline**
 
-```python
-def test_face_counts_match_source_minus_dedupe_and_hiders(self):
-    """Verbatim contract: converted faces == source faces minus dedupe
-    copies and kit-hidden forms, nothing else."""
-    self.assertTrue(True)
-```
+Run: `cd tools/pes21_import && python3 -W ignore -m unittest discover 2>&1 | tail -3`
+Expected: all green except the new test_verbatim failure
 
-- [ ] **Step 4: Run tests**
-
-Run: `cd tools/pes21_import && python3 -W ignore -m unittest test_mesh_selection 2>&1 | tail -3`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add tools/pes21_import/test_mesh_selection.py
-git commit -q -m "test: verbatim face-count contract scaffold"
+git add tools/pes21_import/test_verbatim.py
+git commit -q -m "test: pole shaft faces are not shards (fails)"
 ```
+
 
 ### Task 2: Delete reshape stages, keep assembly verbatim
 
@@ -99,17 +101,32 @@ git commit -q -m "test: verbatim face-count contract scaffold"
 ```python
 # import_team.py whole_body call sites: log the verdict, never composite on
 # gate failure. --base assembly stays for face-slot heads (two intact parts).
-```
-
-- [ ] **Step 4: Run importer suites**
-
-Run: `cd tools/pes21_import && python3 -W ignore -m unittest test_mesh_selection test_import_team test_seams test_hand_weights 2>&1 | tail -3`
-Expected: PASS (update tests that assert smoothing/cut behavior — list each changed assertion in the commit message)
-
 - [ ] **Step 5: Reconvert Roshi verbatim to /tmp, shoot back frame**
 
-Run: `python3 fmdl_to_fullbody.py /tmp/aet/dbg/Boots/"k2009 - Master Roshi"/boots.fmdl /tmp/verbatim/dbg_2009 --fmdl-lib <lib> --texture x --max-edge 0 --extra <gloves>` then gfviewer back frame; compare against `/tmp/verb_roshi_09.png`
-Expected: full staff == reference frame
+Run (stub each reshape stage — naked `seams.*` refs break at import):
+
+```bash
+cd <repo> && export PES_FMDL_LIB="$PWD/4cc Blender Starter Pack/scripts/addons/pes-fmdl" && python3 - <<'PY'
+import sys; sys.path.insert(0, 'tools/pes21_import')
+import seams, stretched_cut
+seams.smooth_field = lambda inf, faces, **k: inf
+seams.weld = lambda parts, **k: parts
+seams.reconcile = lambda parts, **k: parts
+seams.reconciled_count = lambda a, b: (0, 0)
+stretched_cut.limit_for = lambda faces: 0.0
+import fmdl_to_fullbody as C
+lib = '4cc Blender Starter Pack/scripts/addons/pes-fmdl'
+C.convert('/tmp/aet/dbg/Boots/k2009 - Master Roshi/boots.fmdl', '/tmp/verbatim/dbg_2009',
+          lib, 'media/players/custom/dbg_2009/fullbody_dbg_2009',
+          max_edge=0.0, base_ase=None, extra_fmdls=[
+            '/tmp/aet/dbg/Gloves/g2009 - Master Roshi/glove_l.fmdl',
+            '/tmp/aet/dbg/Gloves/g2009 - Master Roshi/glove_r.fmdl'])
+PY
+```
+
+then gfviewer back frame; compare against `/tmp/verb_roshi_09.png`
+Expected: full staff == reference frame (this exact recipe produced it)
+
 
 - [ ] **Step 6: Commit**
 
@@ -143,12 +160,10 @@ Expected: unskinned legs whole (reference `/tmp/bowser_all.png`); skinned state 
 Run: three reconverts with (a) smooth stubbed, (b) rebind_stray disabled, (c) bake identity; count verts in converted z-band 0.35..0.75 per run
 Expected: one run restores the band — that stage is guilty; record counts in commit message
 
-- [ ] **Step 4: Commit diagnosis**
+- [ ] **Step 4: Record diagnosis in day file (no code changes, no commit)**
 
-```bash
-git add tools/pes21_import/test_skin_probe.py 2>/dev/null || true
-git commit -q -m "diagnose: bowser collapse is <stage> (<counts>)" --allow-empty
-```
+Append the guilty stage + shin-band counts per run to tasks/20-09-26.md
+under the Bowser entry. Task 4's fix commit carries the code.
 
 ### Task 4: Rigid/prop tolerance fix per diagnosis
 
@@ -163,17 +178,27 @@ git commit -q -m "diagnose: bowser collapse is <stage> (<counts>)" --allow-empty
 - [ ] **Step 1: Write the failing C++ test**
 
 ```cpp
-TEST(SkinningTransform, AVertexOutsideEveryEnvelopeRidesTheTrunkRigidly) {
-  // Bowser shin-band verts collapsed under proximity reweight; trunk-rigid
-  // (or guilty-stage fix) must leave them authored.
-  EXPECT_TRUE(true);
+TEST(SkinningTransform, ShinBandVertsStayAuthored) {
+  // Bowser: converted shin-band z 0.35..0.75 verts collapsed under skin.
+  // Engine entry: HumanoidBase::UpdateFullbodyModel
+  // (src/onthepitch/player/humanoid/humanoidbase.cpp:625) via
+  // Skinning::MakeJointTransform (src/onthepitch/player/humanoid/skinning.cpp).
+  // Wario guard (must stay green): tools/pes21_import/test_skin_weights.py:113
+  // test_a_big_belly_keeps_its_hip_when_a_fingertip_is_merely_as_close.
+  // No delete/reshape work until this fails on current code.
+  const Vector3 shin(0.0f, 0.0f, 0.5f);
+  const JointTransform t = Skinning::MakeJointTransform(
+      Quaternion(), Vector3(0, 0, 0), Vector3(0, 0, 0), 1.0f);
+  ExpectClose(Apply(t, shin, true), shin);
 }
 ```
 
 - [ ] **Step 2: Build and watch fail**
 
-Run: `cmake --build build --target gameplayfootball_skinning_tests -j8 && ./build/tests/gameplayfootball_skinning_tests --gtest_filter='*Rigidly*'`
-Expected: FAIL (placeholder asserts nothing yet — replace with real tolerance assertion from diagnosis)
+Run: `cmake --build build --target gameplayfootball_skinning_tests -j8 && ./build/tests/gameplayfootball_skinning_tests --gtest_filter='*Authored*'`
+Expected: FAIL (identity must hold trivially — so replace the identity
+joints above with the Task 3 guilty-stage input: authored shin pos +
+diagnosed misbinding; that is the assertion that fails).
 
 - [ ] **Step 3: Implement fix per Task 3 verdict**
 
