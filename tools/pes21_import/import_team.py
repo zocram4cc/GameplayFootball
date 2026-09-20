@@ -771,7 +771,7 @@ def install_kit_texture(pack_dir, dest):
         return False
 
 
-def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_edge=0.15,
+def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False,
                   base_ase=None, extra_fmdls=None, drop_stray=False):
     ase = os.path.join(dest, "fullbody_%s.ase" % os.path.basename(dest))
     if os.path.exists(ase) and not force:
@@ -781,8 +781,7 @@ def import_player(fmdl, dest, fmdl_lib, max_tris, texture_rel, force=False, max_
                os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "fmdl_to_fullbody.py"),
                fmdl, dest, "--fmdl-lib", fmdl_lib,
-               "--texture", texture_rel, "--max-tris", str(max_tris),
-               "--max-edge", str(max_edge)]
+               "--texture", texture_rel, "--max-tris", str(max_tris)]
     if base_ase:
         # A face-slot model is a head and hair, nothing else. Imported on its
         # own it is a head floating where the body should be; it has to be
@@ -1158,9 +1157,6 @@ def main():
     # over-budget model now fails the import loudly - so raising this is a
     # deliberate decision with the cost in view, not a silent default.
     parser.add_argument("--max-tris", type=int, default=250000)
-    parser.add_argument("--max-edge", type=float, default=0.15,
-                        help="drop triangles with an edge longer than this "
-                             "(metres); see fmdl_to_fullbody")
     parser.add_argument("--base", default="",
                         help="stock fullbody .ase to composite the import over; "
                              "required for face-slot models, which carry no body")
@@ -1267,16 +1263,15 @@ def main():
             # known after a first import, so this is a second pass over the same
             # output: force=True, strays dropped, stock body composited.
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/" + kit_texture_name(dest), args.force, args.max_edge,
+                                   rel + "/" + kit_texture_name(dest), args.force,
                                    args.base or None, extra_fmdls=rest_of_him)
             verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
             if verdict == "carries scenery" and os.path.isfile(
                     stock_body(args.game_dir)):
                 status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                       rel + "/" + kit_texture_name(dest), True, args.max_edge,
+                                       rel + "/" + kit_texture_name(dest), True,
                                        stock_body(args.game_dir),
                                        extra_fmdls=rest_of_him, drop_stray=True)
-                verdict = describe_import(dest, args.prefix, export_id)
                 composited = True
                 print("       %s carries scenery; strays dropped, body composited"
                       % export_id)
@@ -1299,33 +1294,15 @@ def main():
         # LCG's k2701 has a head and no legs, so a head-only gate wrongly skips
         # the composite it also needs. What decides it is whether the character
         # dresses the whole rig once every slot is on.
-        if (not args.dry_run and not composited and os.path.isfile(base_body)
-                and not whole_body([fmdl] + rest_of_him, args.fmdl_lib)):
-            status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/" + kit_texture_name(dest), True, args.max_edge,
-                                   base_body, extra_fmdls=rest_of_him)
+        # Verbatim: gates report, never reshape. whole_body/body_coverage say
+        # what is partial; --base assembly of two intact parts (face-slot
+        # heads + stock body) stays, a gate-triggered composite does not.
+        base_body = stock_body(args.game_dir)
+        if not args.dry_run and os.path.isfile(base_body):
             verdict = describe_import(dest, args.prefix, export_id)
-            composited = True
-            print("       %s ships no body of its own; composited over %s"
-                  % (export_id, os.path.basename(base_body)))
-
-        # And the coverage verdict itself, which is the measurement rather than
-        # the geometric shortcut above: `whole_body` asks whether the slots
-        # together dress the rig, but a character can pass that and still land
-        # with a bare chest or bare legs once converted - body_coverage says so
-        # in as many words. #83: that verdict was computed, printed as "NOT
-        # BOUND: needs base", and never acted on, so the model the user got was
-        # the broken one.
-        if (not args.dry_run and os.path.isfile(base_body)
-                and needs_stock_body(verdict, True, composited)):
-            status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
-                                   rel + "/" + kit_texture_name(dest), True, args.max_edge,
-                                   base_body, extra_fmdls=rest_of_him)
-            verdict = describe_import(dest, args.prefix, export_id)
-            composited = True
-            print("       %s needs a base body; composited over %s"
-                  % (export_id, os.path.basename(base_body)))
-
+            if verdict != "whole":
+                print("       %s partial: %s (verbatim: carried as authored)"
+                      % (export_id, verdict))
         bindable = may_bind_as_body(verdict, composited=composited)
         print("%-6s %-28s %-34s %s%s" % (export_id, name[:28], rel, status,
                                          "" if bindable else "  NOT BOUND: " + verdict))

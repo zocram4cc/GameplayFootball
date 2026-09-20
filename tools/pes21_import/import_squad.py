@@ -65,7 +65,7 @@ def main():
                         help="the stock fullbody .ase to composite face-slot bodies over")
     parser.add_argument("--game-dir", default="data")
     parser.add_argument("--max-tris", type=int, default=100000)
-    parser.add_argument("--max-edge", type=float, default=0.15)
+    parser.add_argument("--max-edge", type=float, default=0.0)
     parser.add_argument("--db-ids", default="")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--dry-run", action="store_true")

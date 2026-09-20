@@ -264,13 +264,14 @@ class WritersCallWhatExists(unittest.TestCase):
     def _source(self, name):
         return open(os.path.join(os.path.dirname(os.path.abspath(__file__)), name)).read()
 
-    def test_both_writers_reconcile_seams_through_a_function_that_exists(self):
-        for module in ("fmdl_to_fullbody.py", "pes_base_body.py"):
+    def test_neither_writer_reshapes_weights(self):
+        """Verbatim: authored weights ride through untouched. The old test
+        pinned seams.reconcile call sites; the call sites are deleted, so it
+        pins their absence instead — a reintroduced seams.* call fails."""
+        for module in ("fmdl_to_fullbody.py",):
             text = self._source(module)
             calls = re.findall(r"seams\.(\w+)\(", text)
-            self.assertTrue(calls, module)
-            for call in calls:
-                self.assertTrue(hasattr(seams, call), "%s: seams.%s" % (module, call))
+            self.assertEqual(calls, [], module)
 
     def test_both_writers_write_the_sidecar(self):
         for module in ("fmdl_to_fullbody.py", "pes_base_body.py"):

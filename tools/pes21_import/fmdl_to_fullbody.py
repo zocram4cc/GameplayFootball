@@ -28,8 +28,6 @@ geometry and vertex colors are carried over verbatim.
 
 import argparse
 import math
-
-import stretched_cut
 import os
 import re
 import sys
@@ -48,9 +46,6 @@ MAX_MESH_SPAN_M = 4.5
 
 import ase_util
 import retarget
-import seams
-
-GF_JOINT_ORDER = list(retarget.GF_JOINT_ORDER)
 JOINT_ID = dict(retarget.JOINT_ID)
 
 
@@ -925,7 +920,7 @@ def base_material_plan(base_material_count, group_textures, fallback_texture):
 
 
 def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
-            max_tris=None, only_meshes=None, force_joint=None, max_edge=0.0,
+            max_tris=None, only_meshes=None, force_joint=None,
             drop_base_parts=None, extra_fmdls=None, drop_stray=False):
     sys.path.insert(0, fmdl_lib)
     import FmdlFile
@@ -1074,65 +1069,10 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     if placeholders:
         print("  dropped %d placeholder mesh(es) (PES swaps these for the kit)" % placeholders)
 
-    # Smoothed along each group's own surface first. The guess names one bone
-    # per vertex, so the weight field steps from bone to bone across a single
-    # edge, and the authoring->bind bake turns that step into a tear - 1,438
-    # edges at 23.7x on smbg_2582, a sphere whose surface sits half a metre
-    # from every bone, drawn as a black blade out of its shoulder. Only the
-    # pack's own meshes: PES's base body arrives with its authored weights and
-    # keeps them (write_sidecar merges that file verbatim).
+    # Verbatim: authored weights ride through untouched. No smoothing, no
+    # weld, no reconcile, no stretched cut — PES's bytes, basis-mapped.
     for group in groups:
-        blended = seams.smooth_field([v[3] for v in group[1]], group[2])
-        group[1] = [tuple(v[:3]) + (blend,) for v, blend in zip(group[1], blended)]
-
-    before = [[(v[0], v[3]) for v in group[1]] for group in groups]
-    # With the faces: a duplicate is a vertex the seam CUT into two triangle
-    # runs, and only those may agree. Without them the pass reached the next
-    # authored vertex on any dense mesh and flattened whole limbs (seams.weld).
-    agreed = seams.weld(before, faces=[group[2] for group in groups])
-    welded, _ = seams.reconciled_count(before, agreed)
-    if welded:
-        print("  seams: %d coincident vertex weight(s) welded" % welded)
-    if len(groups) > 1:
-        reconciled = seams.reconcile(agreed)
-        changed, migrated = seams.reconciled_count(agreed, reconciled)
-        agreed = reconciled
-        if changed:
-            print("  seams: %d vertex weight(s) reconciled between groups, %d changed bone"
-                  % (changed, migrated))
-    for group, blended in zip(groups, agreed):
-        group[1] = [v[:2] + (encode_color(joints), joints)
-                    for v, (_, joints) in zip(group[1], blended)]
-
-    if max_edge != 0.0:
-        # The cut follows the mesh rather than a fixed metre value. An absolute 0.15 m
-        # works on a fine mesh and destroys a coarse one: over the 90 models already
-        # imported, 44 have their longest surviving edge sitting exactly on that cut,
-        # and nine are coarse meshes where 0.15 m is only 1.6x to 3.6x their median
-        # edge. The shards this is for were 1.25 m against a 1.9 cm median.
-        # A negative --max-edge asks for the old absolute behaviour.
-        dropped = 0
-        for group in groups:
-            vertices, faces = group[1], group[2]
-            if max_edge < 0.0:
-                limit = -max_edge
-                kept = [tri for tri in faces
-                        if max(math.dist(vertices[tri[0]][0], vertices[tri[1]][0]),
-                               math.dist(vertices[tri[1]][0], vertices[tri[2]][0]),
-                               math.dist(vertices[tri[2]][0], vertices[tri[0]][0])) <= limit]
-            else:
-                triangles = [tuple(vertices[i][0] for i in tri) for tri in faces]
-                limit = stretched_cut.limit_for(triangles)
-                kept = faces if limit <= 0.0 else [
-                    tri for tri, points in zip(faces, triangles)
-                    if max(math.dist(points[0], points[1]),
-                           math.dist(points[1], points[2]),
-                           math.dist(points[2], points[0])) <= limit]
-            dropped += len(faces) - len(kept)
-            group[2] = kept
-        if dropped:
-            print("dropped %d stretched triangle(s), threshold from each mesh's own "
-                  "geometry" % dropped)
+        group[1] = [(v[0], v[1], encode_color(v[3]), v[3]) for v in group[1]]
 
     # what the rest of the writer used to work on
     vertices = groups[0][1] if groups else []
@@ -1344,13 +1284,6 @@ if __name__ == "__main__":
                         help="comma-separated NODE_NAMEs to omit from --base; "
                              "a face-slot import wants eyes,face,scalp,hair "
                              "gone or the stock head fights the imported one")
-    parser.add_argument("--max-edge", type=float, default=0.15,
-                        help="drop triangles with an edge longer than this "
-                             "(metres, 0 disables). On by default: a source "
-                             "mesh routinely carries a few triangles joining "
-                             "far-apart vertices, and on a 1.8 m body they "
-                             "render as metre-long shards. A real body "
-                             "triangle is centimetres; the median is under 2 cm.")
     parser.add_argument("--drop-stray", action="store_true",
                         help="drop meshes whose farthest vertex is more than "
                              "60 m out. lcg_2718's backdrop reaches 362 m and "
@@ -1369,7 +1302,6 @@ if __name__ == "__main__":
                            only_meshes=({int(x) for x in args.only_meshes.split(",") if x.strip()}
                                         if args.only_meshes else None),
                            force_joint=args.force_joint,
-                           max_edge=args.max_edge,
                            drop_base_parts=set(
                                x.strip() for x in args.drop_base_parts.split(",") if x.strip()),
                            extra_fmdls=[x.strip() for x in args.extra.split(",") if x.strip()],
