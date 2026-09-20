@@ -104,7 +104,10 @@ def find_face_players(pack_dir, taken_shirts):
     character in the face slot, with his gloves under Gloves/g3117), Miyamoto,
     Yoshit, BUP Toad and Fawful - and HDG keeps 22 heads there for players whose
     body is PES's own. Only the folders whose shirt no boots export claims: a
-    head that belongs to a body was merged into it by find_face. The export id
+    head that belongs to a body was merged into it by find_face. A folder named
+    BLANK is PES's own edit-face placeholder, not a head-only player - VN names
+    every Faces folder that way, and claiming them steals shirts 1..23 from the
+    boots that actually dress those players. The export id
     is the folder's own token (XXX08), so the model lands in <prefix>_XXX08.
     """
     root = os.path.join(pack_dir, "Faces")
@@ -116,11 +119,36 @@ def find_face_players(pack_dir, taken_shirts):
         digits = "".join(c for c in head if c.isdigit())
         if not digits or int(digits) in taken_shirts:
             continue
+        if rest.strip().upper() == "BLANK":
+            continue
         models = [os.path.join(root, entry, model) for model in FACE_MODELS
                   if os.path.isfile(os.path.join(root, entry, model))]
         if models:
             found.append((head.strip(), rest.strip(), models[0]))
     return found
+
+
+def positional_shirts(pack_dir, players):
+    """-> {export id: shirt} where boots ids run sequentially over shirts 1..N.
+
+    VN numbers its boots k2951..k2973 against shirts 1..23 and names every
+    Faces folder BLANK, so neither the digits (51..73, nobody's shirt) nor any
+    name ties either end. What is left is position: the boots' own directory
+    order against the squad's shirt order. Only a full squad's worth of
+    sequential ids counts - a two-man fixture must never shift-match.
+    """
+    if len(players) < 11:
+        return {}
+    ids = []
+    for export_id, _name, _fmdl in players:
+        try:
+            ids.append(int(export_id))
+        except (TypeError, ValueError):
+            return {}
+    if len(ids) != len(players) or any(
+            later - earlier != 1 for earlier, later in zip(ids, ids[1:])):
+        return {}
+    return {export_id: shirt for shirt, (export_id, _n, _f) in enumerate(players, 1)}
 
 
 def find_gloves(pack_dir, export_id, name=None):
@@ -188,6 +216,13 @@ def face_folder(pack_dir, export_id, name=None):
         named = [f for f in folders if f[2] == wanted]
         if len(named) == 1:
             return os.path.join(root, named[0][0]), named[0][1]
+        # A pack folder may shorten the name ("THE SCROTE" for "The Scrote Fred
+        # Crumbs", "Capt Agent 3" for "Agent 3", "6Head Frye" for "6Head"): one
+        # folder containing the other's whole word set still names him, as long
+        # as exactly one folder does.
+        contained = [f for f in folders if f[2] < wanted or wanted < f[2]]
+        if len(contained) == 1:
+            return os.path.join(root, contained[0][0]), contained[0][1]
     shirt = shirt_number(export_id)
     for entry, digits, _ in folders:
         if digits == shirt:
@@ -210,23 +245,35 @@ def export_shirts(pack_dir, players):
     the digits of Gregor's shirt (XXX13, k2712 by name): letting the digits win
     would put two bodies on one player and leave Gregor's own man in PES's kit.
     An export whose digits are already spoken for is left unbound rather than
-    guessed.
+    guessed - unless the whole pack numbers sequentially over shirts 1..N (VN's
+    k2951..k2973), where position is the only link left.
     """
     shirts = {}
     named = set()
     for export_id, name, _ in players:
-        _folder, shirt = face_folder(pack_dir, export_id, name)
+        folder, shirt = face_folder(pack_dir, export_id, name)
+        # Only a folder that names THIS export counts: face_folder falls back
+        # to the digits, so k2713 "KYS" also reports Gregor's XXX13 - but the
+        # folder names Gregor, not KYS, and k2712 already claims it by name.
         if shirt is not None and set(_words(name)):
-            folder_name = os.path.basename(_folder).partition("-")[2]
-            if set(_words(folder_name)) == set(_words(name)):
-                shirts[export_id] = shirt
-                named.add(shirt)
+            folder_name = os.path.basename(folder).partition("-")[2]
+            folder_words, wanted = set(_words(folder_name)), set(_words(name))
+            if folder_words == wanted or folder_words < wanted or wanted < folder_words:
+                if shirt not in named:
+                    shirts[export_id] = shirt
+                    named.add(shirt)
     for export_id, name, _ in players:
         if export_id in shirts:
             continue
         shirt = shirt_number(export_id)
-        if shirt not in named:
+        # Digits past any squad's shirts (VN's 51..73) are pack numbering, not
+        # shirts - the positional fallback below owns those.
+        if shirt not in named and 1 <= shirt <= len(players):
             shirts[export_id] = shirt
+    if len(shirts) < len(players):
+        positional = positional_shirts(pack_dir, players)
+        if positional and len(positional) == len(players):
+            return positional
     return shirts
 
 

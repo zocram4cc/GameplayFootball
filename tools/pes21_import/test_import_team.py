@@ -196,8 +196,26 @@ class TheFacesFolderNamesTheShirt(unittest.TestCase):
     def test_the_digits_decide_when_no_name_matches(self):
         self.assertEqual(import_team.export_shirt(self.pack, "2402", "Helldiver Headless"), 2)
 
-    def test_a_shirt_the_pack_has_no_face_for_falls_back_to_the_digits(self):
-        self.assertEqual(import_team.export_shirt(self.pack, "2411", "Helldiver"), 11)
+    def test_a_head_only_face_does_not_claim_a_boots_shirt(self):
+        # SMBG's XXX07 Shiddy is head-only, and the boots k2580 Shiddy owns a
+        # shirt the digits cannot see (2580 % 100 = 80, nobody's shirt): the
+        # face folder must still not steal the name match, or the body goes
+        # unbound and the head stands in for the whole player.
+        pack = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(pack))
+        os.makedirs(os.path.join(pack, "Boots"))
+        for folder in ("XXX07 - Shiddy", "XXX08 - K Rool Filthy Monkeys"):
+            path = os.path.join(pack, "Faces", folder)
+            os.makedirs(path)
+            open(os.path.join(path, "face_high.fmdl"), "wb").close()
+        players = [("2580", "Shiddy", "f"), ("2581", "Expand Dong", "f")]
+        shirts = import_team.export_shirts(pack, players)
+        self.assertEqual(shirts.get("2580"), 7)
+        taken = set(shirts.values())
+        # Shirt 7 is taken by the boots, so its head-only face is merged, not
+        # claimed; shirt 8's face finds no body and stays head-only.
+        self.assertEqual(
+            [e for e, n, f in import_team.find_face_players(pack, taken)], ["XXX08"])
 
     def test_the_face_comes_from_the_folder_that_names_him(self):
         [face] = import_team.find_face(self.pack, "2708", "Dante")
@@ -208,6 +226,18 @@ class TheFacesFolderNamesTheShirt(unittest.TestCase):
         self.assertEqual([(export_id, name) for export_id, name, _ in players],
                          [("XXX06", "Miyamoto"), ("XXX17", "Yoshit")])
         self.assertTrue(players[1][2].endswith("XXX17 - Yoshit/face_high.fmdl"))
+
+    def test_a_blank_edit_face_is_not_a_head_only_player(self):
+        # VN names every Faces folder "XXXnn - BLANK": PES edit-face
+        # placeholders, not head-only players. Claiming them steals shirts
+        # 1..23 from the boots that actually dress those players.
+        pack = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(pack))
+        for folder in ("XXX01 - BLANK", "XXX02 - BLANK"):
+            path = os.path.join(pack, "Faces", folder)
+            os.makedirs(path)
+            open(os.path.join(path, "face_high.fmdl"), "wb").close()
+        self.assertEqual(import_team.find_face_players(pack, taken_shirts=set()), [])
 
     def test_a_face_token_is_a_shirt_too(self):
         self.assertEqual(import_team.shirt_number("XXX08"), 8)
