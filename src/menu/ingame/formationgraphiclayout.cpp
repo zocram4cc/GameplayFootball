@@ -265,7 +265,9 @@ PanelPoint MapPosition(const Vector3& databasePosition) {
 
 RoleZone ZoneForRole(e_PlayerRole role) {
   if (role == e_PlayerRole_GK) return RoleZone::Goalkeeper;
-  if (role == e_PlayerRole_CF) return RoleZone::Forward;
+  if (role == e_PlayerRole_CF || role == e_PlayerRole_LW || role == e_PlayerRole_RW ||
+      role == e_PlayerRole_SS)
+    return RoleZone::Forward;
   return RoleZone::Outfield;
 }
 

@@ -45,40 +45,51 @@ BASE_STAT = 0.62
 FIELD_ROLES = ("CB", "CB", "LB", "RB", "DM", "CM", "CM", "LM", "RM", "CF", "CF",
                "CB", "LB", "RB", "CM", "CM", "LM", "RM", "CF", "CF", "CM", "CF")
 
-# Who actually starts. PES keeps the team sheet in `squad_order`: one entry
-# per player, his slot on the sheet - 1 to 11 for the eleven who start, higher
-# for the bench. Slot is the sheet's own order, NOT a position (the keeper
-# sits at slot 1 on /lcg/, /hdg/ and /vn/, at 9 on /2hug/ and /smbg/, at 10 on
-# /dbg/).
-#
-# Settled against all seven VGL26 exports: this is the only reading that gives
-# exactly eleven starters with distinct slots on every one of them. Reading
-# `squad_order` as the sheet in slot order instead - the obvious first guess -
-# leaves the keeper out of the eleven on four of the seven, under either
-# 0-based or 1-based indexing, and its first 23 entries are not even a
-# permutation on five of them.
-#
-# Before this, formationorder came from the export's LIST order, so a pack
-# whose player table is not in sheet order fielded whoever happened to be
-# listed first. That is why /dbg/ took one shot a match: it played a side
-# averaging 0.671 while better players sat out.
+# Who actually starts, and where: PES's own Team Game Plan (ted.read_game_plan).
+# Its lineup is the keeper, the ten outfield starters and the bench, in the
+# order PES fields them, and Preset 1 names each starter's position and grid
+# point. Before it was read, formationorder came from the export's LIST order,
+# then from a misread of the byte after the lineup that fielded the wrong
+# eleven on five of the seven VGL26 exports; /dbg/ took one shot a match with
+# seven of its starters on the bench.
 STARTING_SLOTS = 11
 
 
-def starting_slots(squad_order, player_count):
-    """-> {player index: sheet slot} for the players who start.
+def seat_role(position, slot):
+    """The role a player on `slot` plays: the position named for him, or the
+    seat pattern where none is (fixtures, older exports), with the keeper's
+    seat still the keeper's."""
+    if position:
+        return position
+    return KEEPER_ROLE if slot == 0 else FIELD_ROLES[(slot - 1) % len(FIELD_ROLES)]
 
-    Empty when the export carries no usable sheet (older exports, fixtures) or
-    when two players claim one slot, so the caller falls back to list order
-    rather than refusing the import or fielding a corrupt eleven. A real
-    export yields exactly STARTING_SLOTS entries; a small fixture yields what
-    it has.
+
+def seating(team):
+    """-> (order, roles, coordinates): the seats PES's game plan hands out.
+
+    `order` is every player index in formationorder - the lineup's keeper, ten
+    outfield starters and bench, then anyone it leaves out. `roles` is one
+    token per seat: the game plan's position for the eleven, the registered
+    position for the rest, the seat pattern only where a record names none.
+    `coordinates` is the eleven's PES grid points, or None when the export
+    carries no usable game plan (older exports, fixtures) - then list order
+    seats the squad and the engine's own default formation stands in.
     """
-    slots = {i: slot for i, slot in enumerate(squad_order[:player_count])
-             if 1 <= slot <= STARTING_SLOTS}
-    if len(set(slots.values())) != len(slots):
-        return {}
-    return slots
+    squad = team.get("squad") or []
+    players = team.get("players") or []
+    plan = team.get("game_plan") or {}
+    lineup = []
+    for i in plan.get("lineup", []):
+        if i < len(squad) and i not in lineup:
+            lineup.append(i)
+    usable = len(lineup) >= STARTING_SLOTS
+    order = (lineup if usable else []) + [i for i in range(len(squad)) if i not in lineup]
+    roles = []
+    for slot, source in enumerate(order):
+        planned = plan["positions"][slot] if usable and slot < STARTING_SLOTS else None
+        registered = players[source].get("position") if source < len(players) else None
+        roles.append(seat_role(planned or registered, slot))
+    return order, roles, (plan["coordinates"] if usable else None)
 
 # The stats PlayerData parses out of profile_xml. GetStat asserts the stat it is
 # asked for exists, so a player with an empty profile kills the match at the first
@@ -137,6 +148,19 @@ ROLE_BIAS = {
            "mental_offensivepositioning": +0.12, "technical_standingtackle": -0.10,
            "mental_defensivepositioning": -0.08, "physical_jump": +0.06,
            "technical_ballwinning": -0.10, "technical_interceptions": -0.10},
+    # PES's wingers: a wing-back's pace and crossing, a striker's touch. Its
+    # second striker: the striker's eye minus his defensive load, a full step
+    # off the front.
+    "LW": {"physical_acceleration": +0.10, "technical_dribble": +0.08,
+           "technical_tightpossession": +0.06, "technical_curl": +0.08,
+           "technical_shot": +0.08, "technical_ballwinning": -0.10},
+    "RW": {"physical_acceleration": +0.10, "technical_dribble": +0.08,
+           "technical_tightpossession": +0.06, "technical_curl": +0.08,
+           "technical_shot": +0.08, "technical_ballwinning": -0.10},
+    "SS": {"technical_shot": +0.14, "technical_volley": +0.10,
+           "mental_offensivepositioning": +0.12, "technical_standingtackle": -0.08,
+           "mental_defensivepositioning": -0.08, "technical_ballwinning": -0.08,
+           "technical_interceptions": -0.08},
 }
 for _role, _bias in ROLE_BIAS.items():
     if _role != KEEPER_ROLE:
@@ -199,10 +223,9 @@ ABILITY_KEYS = (("technical_weakfootusage", "weak_foot_usage"),
                 ("physical_injuryresistance", "injury_resistance"))
 ABILITY_MAX = {name: shown_max for name, _, _, _, shown_max in ted.ABILITY_FIELDS}
 
-# The Playing Styles PES allows a position (the engine's ten roles; PES's
-# wingers and second strikers fold into LM/RM and CF), for a player whose
-# record names none. PlayingStyles::InferPlayer in the engine makes the same
-# call at load; this is the importer's copy so the database carries the answer.
+# The Playing Styles PES allows a position, for a player whose record names
+# none. PlayingStyles::InferPlayer in the engine makes the same call at load;
+# this is the importer's copy so the database carries the answer.
 ROLE_STYLES = {
     "GK": ("offensive_goalkeeper", "defensive_goalkeeper"),
     "CB": ("build_up", "the_destroyer", "extra_frontman", "none"),
@@ -213,9 +236,29 @@ ROLE_STYLES = {
     "LM": ("roaming_flank", "cross_specialist", "prolific_winger", "creative_playmaker"),
     "RM": ("roaming_flank", "cross_specialist", "prolific_winger", "creative_playmaker"),
     "AM": ("creative_playmaker", "classic_no_10", "hole_player", "dummy_runner"),
+    "LW": ("prolific_winger", "roaming_flank", "cross_specialist", "dummy_runner"),
+    "RW": ("prolific_winger", "roaming_flank", "cross_specialist", "dummy_runner"),
+    "SS": ("goal_poacher", "dummy_runner", "fox_in_the_box", "hole_player"),
     "CF": ("goal_poacher", "fox_in_the_box", "target_man", "dummy_runner"),
 }
-WIDE_ROLES = ("LB", "RB", "LM", "RM")
+WIDE_ROLES = ("LB", "RB", "LM", "RM", "LW", "RW")
+
+# The engine's slot order for position_familiarity (FormState::Slot): GK, CB,
+# LB, RB, DM, CM, LM, RM, AM, LW, RW, SS, CF - one letter each, in that order.
+FAMILIARITY_SLOTS = ("GK", "CB", "LB", "RB", "DM", "CM", "LM", "RM", "AM",
+                     "LW", "RW", "SS", "CF")
+FAMILIARITY_LETTERS = {0: "C", 1: "B", 2: "A"}
+
+
+def familiarity_string(positions):
+    """-> the engine's position_familiarity string from a record's playable
+    list, or None when the record graded nothing: an explicit all-C tag would
+    pin Unfamiliar everywhere, but an absent tag lets the engine infer from
+    the player's role instead."""
+    if not positions or not any(positions.values()):
+        return None
+    return "".join(FAMILIARITY_LETTERS[positions.get(slot, 0)]
+                   for slot in FAMILIARITY_SLOTS)
 
 
 def pes_to_base(value):
@@ -245,7 +288,7 @@ def infer_playing_style(values, role, seed):
     than he is accurate a Goal Poacher; otherwise a settled pick from the
     position's own list."""
     options = ROLE_STYLES.get(role, ("none",))
-    if role == "CF":
+    if role in ("CF", "SS"):
         if values["technical_header"] > values["technical_shot"] + 0.05:
             return "target_man"
         if values["physical_velocity"] > values["technical_shot"] + 0.05:
@@ -317,6 +360,9 @@ ROLE_SKILLS = {
 }
 ROLE_SKILLS["RB"] = ROLE_SKILLS["LB"]
 ROLE_SKILLS["RM"] = ROLE_SKILLS["LM"]
+ROLE_SKILLS["LW"] = ROLE_SKILLS["LM"]
+ROLE_SKILLS["RW"] = ROLE_SKILLS["RM"]
+ROLE_SKILLS["SS"] = ROLE_SKILLS["CF"]
 
 
 def infer_skills(values, role, seed):
@@ -335,10 +381,13 @@ def infer_skills(values, role, seed):
     return sorted(name for name, _ in ranked[:count])
 
 
-def render_profile(starts, role, seed, playing_style=None, com_styles=None, skills=None):
+def render_profile(starts, role, seed, playing_style=None, com_styles=None, skills=None,
+                   familiarity=None):
     """-> profile_xml from a per-key 0..1 starting value each: the role's bias
     and the settled wobble go on top, then the styles and skills - the given
-    ones, or the ones the finished values earn."""
+    ones, or the ones the finished values earn. `familiarity` is the engine's
+    thirteen-letter position_familiarity string; None omits the tag so the
+    engine infers from the role instead of being pinned Unfamiliar."""
     bias = ROLE_BIAS.get(role, {})
     values = {key: min(1.0, max(0.0, starts[key] + bias.get(key, 0.0) + wobble(key, seed)))
               for key in STAT_KEYS}
@@ -352,11 +401,13 @@ def render_profile(starts, role, seed, playing_style=None, com_styles=None, skil
     lines.append("<playing_style>%s</playing_style>" % playing_style)
     lines.append("<com_styles>%s</com_styles>" % (",".join(com_styles) or "none"))
     lines.append("<skills>%s</skills>" % (",".join(skills) or "none"))
+    if familiarity:
+        lines.append("<position_familiarity>%s</position_familiarity>" % familiarity)
     return "\n".join(lines) + "\n"
 
 
 def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
-                     com_styles=None, skills=None):
+                     com_styles=None, skills=None, positions=None):
     """One player's stats, as the engine's profile_xml, converted straight from
     his own decoded PES ratings.
 
@@ -380,24 +431,70 @@ def stat_profile_xml(stats, role, seed, abilities=None, playing_style=None,
     for engine_key, ability in ABILITY_KEYS:
         if abilities and ability in abilities:
             starts[engine_key] = (abilities[ability] - 1) / float(ABILITY_MAX[ability] - 1)
-    return render_profile(starts, role, seed, playing_style, com_styles, skills)
+    return render_profile(starts, role, seed, playing_style, com_styles, skills,
+                          familiarity_string(positions))
 
 
-def profile_xml(base_stat, role, seed):
+def profile_xml(base_stat, role, seed, positions=None):
     """One player's stats, as the engine's profile_xml.
 
-    Deterministic in (base_stat, role, seed): an importer that reshuffles stats on
-    every run makes a team unrepeatable, and this gets re-run whenever a pack is
-    updated. The spread is a fixed hash of the stat name and the seed, so two players
-    of the same role differ without either being random.
+    `positions` is the record's playable list, graded 0/1/2 - or None where the
+    record graded nothing, which omits the familiarity tag so the engine
+    infers from the role instead of being pinned Unfamiliar. The flat baseline
+    carries no PES stat of its own but still carries the player's own list.
     """
-    return render_profile({key: base_stat for key in STAT_KEYS}, role, seed)
+    return render_profile({key: base_stat for key in STAT_KEYS}, role, seed,
+                          familiarity=familiarity_string(positions))
 
 
 def stat_values(xml):
     """-> {stat: value} out of a profile_xml, for checking one."""
     return {m.group(1): float(m.group(2))
             for m in re.finditer(r"<([a-z_]+)>([\d.]+)</\1>", xml)}
+
+
+# PES's game-plan grid onto the engine's -1..1 pitch (TeamData reads x as depth,
+# own goal -1 to attack +1, and y as width, the team's own left positive).
+# Vertical: the keeper's fixed line, 3, is the engine's keeper line (-1.0,
+# formations.cpp keeperX); the line the seven VGL26 exports stand their centre
+# forwards on, 47, is its attack line (0.7, attackX). That puts the exports'
+# back lines (8-11) at -0.8..-0.69 against the engine's own defenceX of -0.7.
+# Horizontal: 0x34 is the centre and the exports' full backs stand at 16 and
+# 88, the editor's touchline, which the engine's stock formations draw at ±0.9.
+# The engine then blends this 60/40 toward each role's default and clamps.
+PES_GOAL_LINE = ted.GK_COORDINATE[0]
+PES_FORWARD_LINE = 47
+PES_CENTRE = ted.GK_COORDINATE[1]
+PES_TOUCHLINE_OFFSET = 36
+ENGINE_KEEPER_X = -1.0
+ENGINE_ATTACK_X = 0.7
+ENGINE_TOUCHLINE_Y = 0.9
+
+
+def pitch_position(coordinate):
+    """One PES (vertical, horizontal) grid point -> the engine's (x, y)."""
+    vertical, horizontal = coordinate
+    x = ENGINE_KEEPER_X + ((vertical - PES_GOAL_LINE) * (ENGINE_ATTACK_X - ENGINE_KEEPER_X)
+                           / (PES_FORWARD_LINE - PES_GOAL_LINE))
+    y = (PES_CENTRE - horizontal) * ENGINE_TOUCHLINE_Y / PES_TOUCHLINE_OFFSET
+    return max(-1.0, min(1.0, x)), max(-1.0, min(1.0, y))
+
+
+def formation_xml_for(eleven_roles, coordinates):
+    """-> the engine's formation_xml for one seated eleven (keeper first), or
+    "" without coordinates, which the engine reads as "use my own default".
+
+    TeamData reads p1..p11 against the players ordered by formationorder, so
+    seat N is pN+1.
+    """
+    if not coordinates:
+        return ""
+    out = []
+    for i, (role, coordinate) in enumerate(zip(eleven_roles, coordinates)):
+        x, y = pitch_position(coordinate)
+        out.append("<p%d><position>%.2f,%.2f</position><role>%s</role></p%d>"
+                   % (i + 1, x, y, role, i + 1))
+    return "".join(out)
 
 
 def art_tag(name):
@@ -444,63 +541,58 @@ def install(database, team, tactics, dry_run=False):
         # and TeamData falls back to black on white for a team without them.
         colour1 = team.get("colour1")
         colour2 = team.get("colour2")
+        # formationorder is the slot the engine fields him in, and 0-10 is the
+        # starting eleven. PES's own game plan hands out the seats: the row id
+        # each player lands on is still kept against his shirt number, because
+        # a 4cc pack names its model exports by shirt (<k2411 - Name> is number
+        # 11) and playermodels.cfg has to bind the model to the row the player
+        # actually got. Renumbering the database and re-keying the models by
+        # hand is what broke them before.
+        order, roles, coordinates = seating(team)
+        # The formation the engine draws, PES's own grid points on the engine's
+        # pitch; empty where the export carries no game plan, where the
+        # engine's own default stands in.
+        formation = formation_xml_for(roles[:STARTING_SLOTS], coordinates)
+
         row = cur.execute("select id from teams where name = ?", (name,)).fetchone()
         if row:
             team_row = row[0]
             cur.execute("update teams set shortname = ?, tactics_xml = ?, "
-                        "tactics_factory_xml = ?, logo_url = ?, kit_url = ?, "
+                        "tactics_factory_xml = ?, formation_xml = ?, logo_url = ?, "
+                        "kit_url = ?, "
                         "color1 = coalesce(?, color1), color2 = coalesce(?, color2) "
                         "where id = ?",
-                        (team["abbreviation"][:3], xml, xml, logo, kit,
+                        (team["abbreviation"][:3], xml, xml, formation, logo, kit,
                          colour1, colour2, team_row))
             cur.execute("delete from players where team_id = ?", (team_row,))
         else:
             league = cur.execute("select league_id from teams where league_id is not null "
                                  "limit 1").fetchone()
             cur.execute("insert into teams(league_id, name, shortname, tactics_xml, "
-                        "tactics_factory_xml, logo_url, kit_url, color1, color2) "
-                        "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "tactics_factory_xml, formation_xml, logo_url, kit_url, "
+                        "color1, color2) "
+                        "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (league[0] if league else 1, name,
-                         team["abbreviation"][:3], xml, xml, logo, kit,
+                         team["abbreviation"][:3], xml, xml, formation, logo, kit,
                          colour1, colour2))
             team_row = cur.lastrowid
 
-        # The squad in TEAM-SHEET order. The number is the shirt; formationorder
-        # is the slot the engine fields him in, and 0-10 is the starting eleven.
-        # PES's own sheet lives in squad_order (see starting_slots); before it
-        # was read, this walked the export's list order and a pack listed out of
-        # sheet order fielded the wrong eleven. The row id each player lands on
-        # is still kept against his shirt number, because a 4cc pack names its
-        # model exports by shirt (<k2411 - Name> is number 11) and
-        # playermodels.cfg has to bind the model to the row the player actually
-        # got. Renumbering the database and re-keying the models by hand is what
-        # broke them before.
-        # Seat 0 belongs to the keeper, always: PES's slot is the sheet's own
-        # ORDER, not a position, and the engine needs exactly one keeper in the
-        # first seat. He is the export's first player (shirt 1); the sheet fills
-        # the outfield ten in its own order, and everyone else benches.
-        sheet = starting_slots(team.get("squad_order") or [], len(team["squad"]))
-        listed = list(range(len(team["squad"])))
-        keeper = 0
-        outfield = sorted((i for i in listed if i in sheet and i != keeper),
-                          key=lambda i: sheet[i])
-        seated = ([keeper] + outfield[:STARTING_SLOTS - 1]) if sheet else []
-        order = seated + [i for i in listed if i not in seated]
         by_shirt = {}
         for slot, source in enumerate(order):
             entry = team["squad"][source]
             player = (team["players"][source] if source < len(team["players"])
                       else {"name": "Player %d" % entry["number"]})
-            role = KEEPER_ROLE if slot == 0 else FIELD_ROLES[(slot - 1) % len(FIELD_ROLES)]
+            role = roles[slot]
             stats = player.get("stats")
             if stats:
                 base_stat = pes_to_base(sum(stats.values()) / len(stats))
                 profile = stat_profile_xml(stats, role, slot, player.get("abilities"),
                                            player.get("playing_style"),
-                                           player.get("com_styles"), player.get("skills"))
+                                           player.get("com_styles"), player.get("skills"),
+                                           player.get("positions"))
             else:
                 base_stat = BASE_STAT
-                profile = profile_xml(BASE_STAT, role, slot)
+                profile = profile_xml(BASE_STAT, role, slot, player.get("positions"))
             cur.execute(
                 "insert into players(team_id, nationalteam_id, firstname, lastname, role, "
                 "age, base_stat, profile_xml, skincolor, hairstyle, haircolor, height, "

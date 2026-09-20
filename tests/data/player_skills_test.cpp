@@ -21,8 +21,9 @@ using blunted::Vector3;
 const float kPi = 3.14159265f;
 
 const e_PlayerRole allRoles[] = {e_PlayerRole_GK, e_PlayerRole_CB, e_PlayerRole_LB, e_PlayerRole_RB,
-                                 e_PlayerRole_DM, e_PlayerRole_CM, e_PlayerRole_LM, e_PlayerRole_RM,
-                                 e_PlayerRole_AM, e_PlayerRole_CF};
+                                  e_PlayerRole_DM, e_PlayerRole_CM, e_PlayerRole_LM, e_PlayerRole_RM,
+                                  e_PlayerRole_AM, e_PlayerRole_CF, e_PlayerRole_LW, e_PlayerRole_RW,
+                                  e_PlayerRole_SS};
 
 Mask Bits(std::initializer_list<Skill> skills) {
   Mask mask = PlayerSkills::maskNone;

@@ -107,6 +107,9 @@ TEST(FormationGraphicLayoutTest, OutOfRangeCoordinatesAreClamped) {
 TEST(FormationGraphicLayoutTest, RoleZonesPickOutGoalkeeperAndForward) {
   EXPECT_EQ(ZoneForRole(e_PlayerRole_GK), RoleZone::Goalkeeper);
   EXPECT_EQ(ZoneForRole(e_PlayerRole_CF), RoleZone::Forward);
+  EXPECT_EQ(ZoneForRole(e_PlayerRole_LW), RoleZone::Forward);
+  EXPECT_EQ(ZoneForRole(e_PlayerRole_RW), RoleZone::Forward);
+  EXPECT_EQ(ZoneForRole(e_PlayerRole_SS), RoleZone::Forward);
   EXPECT_EQ(ZoneForRole(e_PlayerRole_CB), RoleZone::Outfield);
   EXPECT_EQ(ZoneForRole(e_PlayerRole_CM), RoleZone::Outfield);
 }

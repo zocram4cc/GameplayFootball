@@ -109,11 +109,12 @@ bool IsBack(e_PlayerRole role) {
 }
 bool IsWide(e_PlayerRole role) {
   return role == e_PlayerRole_LB || role == e_PlayerRole_RB || role == e_PlayerRole_LM ||
-         role == e_PlayerRole_RM;
+         role == e_PlayerRole_RM || role == e_PlayerRole_LW || role == e_PlayerRole_RW;
 }
 bool IsAttacker(e_PlayerRole role) {
   return role == e_PlayerRole_AM || role == e_PlayerRole_CF || role == e_PlayerRole_LM ||
-         role == e_PlayerRole_RM;
+         role == e_PlayerRole_RM || role == e_PlayerRole_LW || role == e_PlayerRole_RW ||
+         role == e_PlayerRole_SS;
 }
 
 const float speedMerchantAccelerationBonus = 0.08f;

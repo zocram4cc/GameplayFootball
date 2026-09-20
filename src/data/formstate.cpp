@@ -176,6 +176,9 @@ Slot SlotFor(e_PlayerRole role, int side) {
     case e_PlayerRole_LM: return Slot::LMF;
     case e_PlayerRole_RM: return Slot::RMF;
     case e_PlayerRole_AM: return Slot::AMF;
+    case e_PlayerRole_LW: return Slot::LWF;
+    case e_PlayerRole_RW: return Slot::RWF;
+    case e_PlayerRole_SS: return Slot::SS;
     case e_PlayerRole_CF:
       // GF has one forward role; PES has three. A forward on a flank is a wing
       // forward on that side, one in the middle a centre forward.
@@ -220,6 +223,9 @@ std::string InferRatings(const std::vector<e_PlayerRole>& roles) {
       case e_PlayerRole_LM: set(Slot::LMF, 'A'); set(Slot::LWF, 'B'); set(Slot::RMF, 'B'); break;
       case e_PlayerRole_RM: set(Slot::RMF, 'A'); set(Slot::RWF, 'B'); set(Slot::LMF, 'B'); break;
       case e_PlayerRole_AM: set(Slot::AMF, 'A'); set(Slot::SS, 'B'); set(Slot::CMF, 'B'); break;
+      case e_PlayerRole_LW: set(Slot::LWF, 'A'); set(Slot::LMF, 'B'); set(Slot::CF, 'B'); break;
+      case e_PlayerRole_RW: set(Slot::RWF, 'A'); set(Slot::RMF, 'B'); set(Slot::CF, 'B'); break;
+      case e_PlayerRole_SS: set(Slot::SS, 'A'); set(Slot::AMF, 'B'); set(Slot::CF, 'B'); break;
       case e_PlayerRole_CF:
         set(Slot::CF, 'A'); set(Slot::SS, 'A'); set(Slot::LWF, 'B'); set(Slot::RWF, 'B');
         break;

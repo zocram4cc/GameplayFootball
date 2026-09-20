@@ -15,18 +15,30 @@ recoverable from the file itself, because roughly three quarters of the payload
 is zero padding. Taking the most common byte at each position modulo 32 gives
 the key straight back, which is what `recover_key` does.
 
-Inside the plaintext:
+Inside the plaintext, which sits 0x30 before the wiki's Texport offsets (its
+team-player table at 0x02c4 is the wiki's 0x2F4, its game plan at 0x03e0 the
+wiki's 0x410):
 
   0x0088  team name, NUL-terminated ("/gbfg/")
   0x0275  manager name
-  0x05c5  squad order: a permutation of 1..39, the starting XI first and the
-          bench after it - the same idea as the engine's formationorder
+  0x02c8  the team-player table's 40 player ids; a player's INDEX in it is
+          what the game plan calls him by
+  0x03e0  the Team Game Plan (wiki 0x410): after the team id, Preset 1 opens
+          with eleven position codes and eleven (vertical, horizontal)
+          coordinates in lineup order; at +0x1e4 the lineup itself, 40 index
+          ids - the keeper, the ten outfield starters, then the bench
   0x08e8  player records, 312 bytes each - byte-for-byte the PES EDIT format's
           own "Player entry" (240 bytes) followed immediately by its "Player
           appearance entry" (72 bytes), documented in full at
           implyingrigged.info/wiki/Pro_Evolution_Soccer_2021/Edit_file. Not a
           bespoke 4cc format: whoever built the exporter copied the real
           record straight out of PES's own save structure, id and all.
+
+Two readings of the lineup preceded the documented one and were wrong: the
+byte after it (0x05c5) read as "each player's slot" fielded the wrong eleven
+on five of the seven VGL26 exports and only looked right on the two whose
+lineup is the identity, and the game plan's position codes read as "slot
+indices" with the coordinates as "marks" decoded to nothing usable.
 
 Each player record's stats are read here field by field, from the same
 byte:bit offsets the wiki gives for the Player entry - not classified into
@@ -65,13 +77,18 @@ MANAGER_OFFSET = 0x0275
 SQUAD_IDS_OFFSET = 0x02c8
 SQUAD_NUMBERS_OFFSET = 0x0368
 SQUAD_MAX = 23
-SQUAD_ORDER_OFFSET = 0x05c5
-SQUAD_SIZE = 39
-# The presets start with the team id repeated, then 12 slot indices and ten marks.
-FORMATIONS_OFFSET = 0x03e0
-FORMATION_SLOTS = 12
-FORMATION_MARKS = 10
-FORMATION_STRIDE = FORMATION_SLOTS + 2 * FORMATION_MARKS + 1
+# The Team Game Plan, the wiki's Texport 0x410 entry (0x30 earlier here). The
+# team id opens it; Preset 1 (Main) follows, and the lineup sits at +0x1e4.
+GAME_PLAN_OFFSET = 0x03e0
+GAME_PLAN_PRESET = 0x04           # Preset 1: Main (Offensive)
+GAME_PLAN_POSITIONS = 0x00        # 11 x u8 position code, lineup order
+GAME_PLAN_COORDINATES = 0x0b      # 11 x (vertical u8, horizontal u8)
+GAME_PLAN_LINEUP = 0x1e4          # 40 x u8 index into the team-player table
+LINEUP_SIZE = 40
+STARTING_XI = 11
+# The wiki's "GK is always 03 34": the keeper's own coordinate, which anchors
+# the vertical scale (3 is the goal line) and the horizontal centre (0x34).
+GK_COORDINATE = (3, 0x34)
 
 # The roster is a plain array of 312-byte records, each one the real PES
 # "Player entry" + "Player appearance entry" pair (see the module docstring).
@@ -134,8 +151,28 @@ COM_STYLE_FIELDS = (
     ("trickster", 0x2F, 7), ("mazing_run", 0x30, 0), ("speeding_bullet", 0x30, 1),
     ("incisive_run", 0x30, 2), ("long_ball_expert", 0x30, 3), ("early_cross", 0x30, 4),
     ("long_ranger", 0x30, 5),
-)
+ )
 
+
+# The player's positions, per the wiki's player entry: a 4-bit registered
+# position at 0x21:5 (0 GK .. 12 CF, POSITION_NAMES order), plus the graded
+# playable list, 2 bits per position (0 = "C", 1 = "B", 2 = "A") laid out as
+#
+#   0x29:5, 18 bits: GK, CB, LB, RB, DM, CM, LM, RM, AM   (nine 2-bit entries)
+#   0x2C:0,  6 bits: RW, SS, CF
+#   0x2E:4,  2 bits: LW
+#
+# Checked against all seven VGL26 exports: every player's registered position
+# is graded "A" in his own list, as PES enforces. (A CB entry misplaced at CM's
+# 0x2A:7 broke that for 43 of 161 before this was checked.)
+
+POSITION_NAMES = ("GK", "CB", "LB", "RB", "DM", "CM", "LM", "RM", "AM",
+                  "LW", "RW", "SS", "CF")
+PLAYABLE_POSITION_FIELDS = ((0, 0x29, 5), (1, 0x29, 7), (2, 0x2A, 1), (3, 0x2A, 3),
+                            (4, 0x2A, 5), (5, 0x2A, 7), (6, 0x2B, 1), (7, 0x2B, 3),
+                            (8, 0x2B, 5), (9, 0x2E, 4), (10, 0x2C, 0), (11, 0x2C, 2),
+                            (12, 0x2C, 4))
+REGISTERED_POSITION_FIELD = (0x21, 5, 4)
 # The Player Skills: a 41-bit bitmask at 0x30:6 (right after the COM cards),
 # in PES's own order - the wiki's "Bit 0 - Scissors Feint ... Bit 40 - Fighting
 # Spirit". The engine's PlayerSkills::Skill enum uses the same order and the
@@ -268,9 +305,20 @@ def read_player_skills(plain, offset):
     return [name for i, name in enumerate(SKILLS) if bits >> i & 1]
 
 
-def read_squad_order(plain):
-    raw = plain[SQUAD_ORDER_OFFSET:SQUAD_ORDER_OFFSET + SQUAD_SIZE]
-    return [b for b in raw]
+def read_player_positions(plain, offset):
+    """-> (registered position token, {position: grade}) for one record.
+
+    The registered position is the one PES prints on the card; the playable
+    list is what its edit screen grades, 0/1/2 per position. A registered
+    position past the table (a corrupt record) reads as "CB", the table's
+    second entry, rather than an index crash."""
+    byte_off, bit_off, width = REGISTERED_POSITION_FIELD
+    reg = get_bits(plain, offset + byte_off, bit_off, width)
+    if reg >= len(POSITION_NAMES):
+        reg = 1
+    grades = {POSITION_NAMES[i]: get_bits(plain, offset + b, bit, 2)
+              for i, b, bit in PLAYABLE_POSITION_FIELDS}
+    return POSITION_NAMES[reg], grades
 
 
 def parse_name(field):
@@ -326,6 +374,7 @@ def read_players(plain):
         if not name:
             break
         style, com = read_player_styles(plain, offset)
+        position, positions = read_player_positions(plain, offset)
         players.append({
             "id": read_player_id(plain, offset + REC_ID),
             "name": name,
@@ -338,6 +387,8 @@ def read_players(plain):
             "playing_style": style,
             "com_styles": com,
             "skills": read_player_skills(plain, offset),
+            "position": position,
+            "positions": positions,
         })
         offset += PLAYER_RECORD_SIZE
     return players
@@ -366,7 +417,7 @@ def read_chants(plain):
 def read_squad(plain):
     """-> [{id, number}] in team order, stopping at the first empty slot.
 
-    This is the squad itself, as against read_squad_order's permutation: HDG's is
+    This is the squad itself, as against the game plan's lineup over it: HDG's is
     ids 80301..80323 wearing 1..23.
     """
     out = []
@@ -383,26 +434,33 @@ def read_squad(plain):
     return out
 
 
-def read_formations(plain):
-    """-> the formation presets: 12 slot indices and ten (x, y) marks apiece.
+def read_game_plan(plain):
+    """-> {"lineup", "positions", "coordinates"}: who PES fields, where.
 
-    The marks are kept in the units they were authored in - x about a centre of 52,
-    y from 8 to 43 on HDG's export - and deliberately not rescaled. What those units
-    are worth has to be calibrated against the engine's own formation coordinates,
-    and guessing it would bake a wrong pitch into the import.
+    `lineup` is the 40 index ids into the team-player table, the keeper first,
+    the ten outfield starters, then the bench in order. `positions` are Preset
+    1's eleven position tokens and `coordinates` its eleven (vertical,
+    horizontal) grid points, both in lineup order; a position code past the
+    table is None so the caller can fall back to the registered position. The
+    coordinates are PES's own units, unscaled: vertical 3 is the goal line
+    (the keeper's fixed 3), horizontal 0x34 the centre; what they are worth in
+    the engine's pitch is the importer's decision, not this reader's.
+
+    Checked against all seven VGL26 exports: lineup[0] is the keeper on every
+    one, his coordinate is the wiki's (3, 0x34) on every one, and the eleven
+    codes agree with the eleven players' registered positions 77 times of 77.
     """
-    out = []
-    at = FORMATIONS_OFFSET + 4  # the team id repeats at the head of the block
-    while at + FORMATION_STRIDE <= len(plain):
-        slots = list(plain[at:at + FORMATION_SLOTS])
-        marks_at = at + FORMATION_SLOTS
-        marks = [(plain[marks_at + 2 * m], plain[marks_at + 2 * m + 1])
-                 for m in range(FORMATION_MARKS)]
-        if not any(x or y for x, y in marks):
-            break
-        out.append({"slots": slots, "marks": marks})
-        at += FORMATION_STRIDE
-    return out
+    preset = GAME_PLAN_OFFSET + GAME_PLAN_PRESET
+    codes = plain[preset + GAME_PLAN_POSITIONS:preset + GAME_PLAN_POSITIONS + STARTING_XI]
+    at = preset + GAME_PLAN_COORDINATES
+    coordinates = [(plain[at + 2 * i], plain[at + 2 * i + 1]) for i in range(STARTING_XI)]
+    lineup_at = GAME_PLAN_OFFSET + GAME_PLAN_LINEUP
+    return {
+        "lineup": list(plain[lineup_at:lineup_at + LINEUP_SIZE]),
+        "positions": [POSITION_NAMES[c] if c < len(POSITION_NAMES) else None
+                      for c in codes],
+        "coordinates": coordinates,
+    }
 
 
 def read_export(path):
@@ -414,9 +472,8 @@ def read_export(path):
         "manager": read_string(plain, MANAGER_OFFSET),
         "chants": read_chants(plain),
         "squad": read_squad(plain),
-        "squad_order": read_squad_order(plain),
         "players": read_players(plain),
-        "formations": read_formations(plain),
+        "game_plan": read_game_plan(plain),
         "key": key.hex(),
         "key_is_sample": key == SAMPLE_KEY,
     }, plain
@@ -444,15 +501,16 @@ def main():
     print("key      %s%s" % (export["key"], "" if export["key_is_sample"] else "  (per-file)"))
     for chant in export["chants"]:
         print("chant    %s" % chant)
-    print("order    %s" % " ".join("%d" % n for n in export["squad_order"][:11]))
+    plan = export["game_plan"]
+    print("lineup   %s" % " ".join("%d" % n for n in plan["lineup"][:STARTING_XI]))
+    print("plan     %s" % " ".join("%s@%d,%d" % (p, v, h) for p, (v, h)
+                                   in zip(plan["positions"], plan["coordinates"])))
     print("squad    %d" % len(export["squad"]))
     print("players  %d" % len(export["players"]))
     for i, player in enumerate(export["players"]):
         number = export["squad"][i]["number"] if i < len(export["squad"]) else 0
         print("   %2d  %-34s %s" % (number or i + 1, player["name"],
                                     player["shirt_name"]))
-    for i, preset in enumerate(export["formations"]):
-        print("form %d   %s" % (i, " ".join("%d,%d" % m for m in preset["marks"])))
     return 0
 
 

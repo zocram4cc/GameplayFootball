@@ -90,6 +90,28 @@ TEST(PositionFamiliarity, LeftAndRightAreSeparateSlots) {
   EXPECT_EQ(SlotFor(e_PlayerRole_CF, +1), Slot::RWF);
 }
 
+TEST(PositionFamiliarity, PesWingersAndSecondStrikerHaveOwnSlots) {
+  // PES's forward line has five positions: the engine's ten roles plus the
+  // left winger, the right winger and the second striker. Each is its own
+  // familiarity slot, the way the sides already are apart.
+  EXPECT_EQ(SlotFor(e_PlayerRole_LW, 0), Slot::LWF);
+  EXPECT_EQ(SlotFor(e_PlayerRole_LW, 1), Slot::LWF);
+  EXPECT_EQ(SlotFor(e_PlayerRole_RW, -1), Slot::RWF);
+  EXPECT_EQ(SlotFor(e_PlayerRole_RW, 0), Slot::RWF);
+  EXPECT_EQ(SlotFor(e_PlayerRole_SS, 0), Slot::SS);
+  EXPECT_EQ(SlotFor(e_PlayerRole_SS, 1), Slot::SS);
+
+  const std::string lw = InferRatings({e_PlayerRole_LW});
+  EXPECT_EQ(Rating(lw, Slot::LWF), Familiarity::Natural);
+  EXPECT_EQ(Rating(lw, Slot::LMF), Familiarity::Partial);
+  EXPECT_EQ(Rating(lw, Slot::CF), Familiarity::Partial);
+
+  const std::string ss = InferRatings({e_PlayerRole_SS});
+  EXPECT_EQ(Rating(ss, Slot::SS), Familiarity::Natural);
+  EXPECT_EQ(Rating(ss, Slot::AMF), Familiarity::Partial);
+  EXPECT_EQ(Rating(ss, Slot::CF), Familiarity::Partial);
+}
+
 TEST(PositionFamiliarity, MissingRatingsReadAsUnfamiliar) {
   EXPECT_EQ(Rating("", Slot::GK), Familiarity::Unfamiliar);
   EXPECT_EQ(Rating("A", Slot::CB), Familiarity::Unfamiliar);  // too short

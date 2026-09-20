@@ -27,6 +27,9 @@ e_Line LineOf(e_PlayerRole role) {
     case e_PlayerRole_AM:
       return e_Line_Midfield;
     case e_PlayerRole_CF:
+    case e_PlayerRole_LW:
+    case e_PlayerRole_RW:
+    case e_PlayerRole_SS:
       return e_Line_Attack;
   }
   return e_Line_Midfield;

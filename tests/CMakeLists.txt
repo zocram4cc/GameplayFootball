@@ -664,6 +664,7 @@ add_executable(gameplayfootball_pass_failure_tests
   ${PROJECT_SOURCE_DIR}/src/data/playingstyles.cpp
   ${PROJECT_SOURCE_DIR}/src/data/formstate.cpp
   ${PROJECT_SOURCE_DIR}/src/gamedefines.cpp
+  ${PROJECT_SOURCE_DIR}/src/menu/widgets/planmapcard.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/player/humanoid/skinweights.cpp
   ${PROJECT_SOURCE_DIR}/src/onthepitch/matchpressure.cpp
   ${PROJECT_SOURCE_DIR}/src/utils/database.cpp

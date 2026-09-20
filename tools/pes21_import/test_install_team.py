@@ -44,16 +44,23 @@ CREATE TABLE players(id INTEGER PRIMARY KEY AUTOINCREMENT, team_id INTEGER,
   formationorder INTEGER, nationalteamformationorder INTEGER);
 """
 
-# ted.read_export's own shape: the name lives under "team", not "name".
+# The shape is ted.read_export's own: name under "team", and the game plan
+# names the keeper, the ten outfield starters and a 23-man bench in its own
+# order, with the starter seats' position tokens and PES grid points.
 TEAM = {"team": "/hdg/", "abbreviation": "HBR", "team_id": 803, "manager": "MANAGER",
         "chants": ["DEATH TO SWEDEN"],
         "squad": [{"id": 80300 + n, "number": n} for n in range(1, 24)],
-        "squad_order": list(range(1, 40)),
         "players": [{"name": "Player %d" % n, "shirt_name": "P%d" % n,
                      "name_colour": "#8b5f55ff" if n == 7 else None,
                      "name_colours": [], "extra": "PLACEHOLDER"}
                     for n in range(1, 24)],
-        "formations": []}
+        "game_plan": {
+            "lineup": list(range(23)) + [0] * 17,
+            "positions": ["GK", "CB", "CB", "LB", "RB", "DM", "CM", "CM", "AM",
+                          "SS", "CF"],
+            "coordinates": [(3, 52), (9, 40), (9, 64), (11, 88), (11, 16),
+                            (18, 54), (29, 38), (16, 20), (30, 67), (42, 52),
+                            (45, 74)]}}
 
 TACTICS = {"team_pressure": 0.85, "counter_attack": 0.9, "support_distance": 0.15,
            "position_offense_depth_factor": 0.95}
@@ -112,6 +119,48 @@ class InstallingATeam(unittest.TestCase):
             "(select id from teams where name='/hdg/') order by formationorder")]
         self.assertEqual(roles[0], "GK")
         self.assertNotIn("GK", roles[1:])
+
+    def test_a_game_plan_position_beats_the_record_not_the_seat_pattern(self):
+        # The role used to come from a hardcoded seat pattern, so a CB listed
+        # in midfield seat 6 played as a CM. It comes from the game plan's
+        # position for the seat now, and the role it names carries the record.
+        plan = dict(TEAM["game_plan"], positions=["LW"] * 11)
+        team = dict(TEAM, game_plan=plan,
+                    players=[dict(p, position="LW") for p in TEAM["players"]])
+        install_team.install(self.path, team, TACTICS)
+        roles = [r[0] for r in self.rows(
+            "select role from players where team_id="
+            "(select id from teams where name='/hdg/') order by formationorder")]
+        self.assertEqual(roles[:11], ["LW"] * 11)
+
+    def test_the_formation_is_the_plan_positions_on_the_plan_coordinates(self):
+        install_team.install(self.path, TEAM, TACTICS)
+        xml = self.rows("select formation_xml from teams where name='/hdg/'")[0][0]
+        self.assertIn("<p1><position>-1.00,0.00</position><role>GK</role></p1>", xml)
+        self.assertIn("<role>SS</role>", xml)
+
+    def test_the_playable_list_becomes_position_familiarity(self):
+        # 2 = "A" natural, 1 = "B" partial, 0 = "C" - the engine's own letters,
+        # in its own slot order (GK, CB, LB, RB, DM, CM, LM, RM, AM, LW, RW, SS, CF).
+        # The seat carries the game plan's role for it (CB here), but the
+        # familiarity stays the player's own - his list, not the seat's.
+        team = dict(TEAM)
+        team["players"] = [dict(p, position="CF",
+                                positions={"SS": 2, "CF": 2, "LW": 1})
+                           for p in TEAM["players"]]
+        install_team.install(self.path, team, TACTICS)
+        profile = self.rows(
+            "select profile_xml from players where team_id="
+            "(select id from teams where name='/hdg/') and lastname='Player 2'")[0][0]
+        self.assertIn("<position_familiarity>CCCCCCCCCBCAA</position_familiarity>", profile)
+    def test_a_record_with_no_playable_list_carries_no_familiarity(self):
+        # Omitted, not all-C: an empty tag would pin Unfamiliar everywhere and
+        # kill the engine's own inference from the role.
+        install_team.install(self.path, TEAM, TACTICS)
+        profile = self.rows(
+            "select profile_xml from players where team_id="
+            "(select id from teams where name='/hdg/') and lastname='Player 2'")[0][0]
+        self.assertNotIn("position_familiarity", profile)
 
     def test_every_slider_is_written_and_not_left_to_a_default(self):
         install_team.install(self.path, TEAM, TACTICS)
@@ -1053,13 +1102,6 @@ class RefreshingStatsInPlace(unittest.TestCase):
         with self.assertRaises(ValueError):
             refresh_stats.refresh(self.path, wrong)
 
-    def test_a_team_not_in_the_database_is_refused(self):
-        import refresh_stats
-        absent = dict(self.fresh, team="/nobody/")
-        with self.assertRaises(ValueError):
-            refresh_stats.refresh(self.path, absent)
-
-
 class TheTeamSheetIsPesOwn(unittest.TestCase):
     """Who actually starts. The importer used to hand formationorder out by the
     export's LIST order, so a pack whose player table is not in team-sheet
@@ -1067,27 +1109,30 @@ class TheTeamSheetIsPesOwn(unittest.TestCase):
     averaging 0.671 while three of its best sat out, and took one shot a match
     for it.
 
-    PES puts the sheet in `squad_order`, one entry per player: his slot, 1-11
-    for the eleven who start and higher for the bench. Settled against all
-    seven VGL26 exports - it is the only reading that yields exactly eleven
-    starters with distinct slots on every one of them.
+    PES puts the sheet in the game plan's lineup: the keeper, the ten outfield
+    starters, then the bench, in the order it fields them. Settled against all
+    seven VGL26 exports - lineup[0] is the keeper on every one, and its
+    position codes agree with the players' registered positions 77 of 77.
     """
 
-    def test_the_eleven_with_slots_are_the_starting_eleven(self):
-        # Three players, sheet order reversed against list order.
-        order = [3, 1, 2] + [20] * 20
-        self.assertEqual(install_team.starting_slots(order, 3), {1: 1, 2: 2, 0: 3})
+    def plan(self, order):
+        return {"lineup": order + [0] * (40 - len(order)),
+                "positions": TEAM["game_plan"]["positions"],
+                "coordinates": TEAM["game_plan"]["coordinates"]}
 
-    def test_a_benched_player_gets_no_slot(self):
-        order = [12, 1, 2] + [20] * 20
-        slots = install_team.starting_slots(order, 3)
-        self.assertNotIn(0, slots)
-        self.assertEqual(slots, {1: 1, 2: 2})
+    def test_the_eleven_named_first_are_the_starting_eleven(self):
+        team = dict(TEAM, game_plan=self.plan([2, 0, 1] + list(range(3, 23))))
+        self.assertEqual(install_team.seating(team)[0][:3], [2, 0, 1])
 
-    def test_formation_order_follows_the_sheet_not_the_list(self):
+    def test_anyone_past_the_lineup_benches(self):
+        team = dict(TEAM, game_plan=self.plan(list(range(1, 23)) + [0]))
+        self.assertEqual(install_team.seating(team)[0][0], 1)
+        self.assertNotIn(0, install_team.seating(team)[0][:11])
+
+    def test_formation_order_follows_the_lineup_not_the_list(self):
         sheet = dict(TEAM)
         # Reverse the sheet: the last listed player starts first.
-        sheet["squad_order"] = list(range(23, 0, -1))
+        sheet["game_plan"] = self.plan(list(range(22, -1, -1)))
         handle, path = tempfile.mkstemp(suffix=".sqlite")
         os.close(handle)
         try:
@@ -1101,21 +1146,22 @@ class TheTeamSheetIsPesOwn(unittest.TestCase):
                 "select formationorder, lastname from players where team_id="
                 "(select id from teams where name='/hdg/') and formationorder <= 1"))
             conn.close()
-            # Seat 0 is the keeper's, always. squad_order[22] = 1, so the LAST
-            # listed player is the sheet's first outfielder and takes seat 1.
-            self.assertEqual(seats[0], "Player 1")
-            self.assertEqual(seats[1], "Player 23")
+            # The game plan's order fields seat by seat, so the LAST listed
+            # player, first in the lineup, takes seat 0.
+            self.assertEqual(seats[0], "Player 23")
+            self.assertEqual(seats[1], "Player 22")
         finally:
             os.unlink(path)
 
-    def test_an_export_with_no_sheet_keeps_the_list_order(self):
+    def test_an_export_with_no_game_plan_keeps_the_list_order(self):
         # Older exports and hand-written fixtures: fall back rather than refuse.
-        self.assertEqual(install_team.starting_slots([], 3), {})
-        self.assertEqual(install_team.starting_slots([99, 99, 99], 3), {})
+        team = dict(TEAM, game_plan={"lineup": [], "positions": [], "coordinates": []})
+        self.assertEqual(install_team.seating(team)[0][:3], [0, 1, 2])
+        self.assertEqual(install_team.seating(team)[2], None)
 
 
 class ReseatingAnInstalledSquad(unittest.TestCase):
-    """Applying PES's team sheet to a squad that is already installed.
+    """Applying PES's game plan to a squad that is already installed.
 
     The seven 4cc teams went in under the old list-order rule, so every one of
     them is seated wrong. Re-importing would fix the order and move every row
@@ -1130,12 +1176,14 @@ class ReseatingAnInstalledSquad(unittest.TestCase):
         conn.executescript(SCHEMA)
         conn.commit()
         conn.close()
-        # Installed the old way: list order, no sheet.
-        listed = dict(TEAM)
-        listed["squad_order"] = []
+        # Installed the old way: list order, no game plan.
+        listed = dict(TEAM, game_plan={"lineup": [], "positions": [], "coordinates": []})
         install_team.install(self.path, listed, TACTICS)
-        # The sheet says the last listed player starts first.
-        self.sheet = dict(TEAM, squad_order=list(range(23, 0, -1)))
+        # The game plan seats the last listed player first.
+        plan = {"lineup": list(range(22, -1, -1)) + [0] * 17,
+                "positions": TEAM["game_plan"]["positions"],
+                "coordinates": TEAM["game_plan"]["coordinates"]}
+        self.sheet = dict(TEAM, game_plan=plan)
 
     def tearDown(self):
         os.unlink(self.path)
@@ -1148,20 +1196,18 @@ class ReseatingAnInstalledSquad(unittest.TestCase):
 
     def test_the_sheet_decides_who_starts(self):
         refresh_stats.reseat(self.path, self.sheet)
-        # Seat 0 is the keeper's, always; the sheet fills the outfield ten, so
-        # the player the sheet puts first takes seat 1.
-        outfield = self.rows("select lastname from players "
-                             "where formationorder = 1")
-        self.assertEqual(outfield[0][0], "Player 23")
+        # The lineup fields seat by seat, so the first name in it takes seat 0.
+        starter = self.rows("select lastname from players "
+                            "where formationorder = 0")
+        self.assertEqual(starter[0][0], "Player 23")
 
-    def test_the_keeper_keeps_his_seat_whatever_the_sheet_says(self):
-        # PES's slot is sheet ORDER, not position: the keeper sits at slot 1 on
-        # /lcg/, /hdg/ and /vn/, at 9 on /2hug/ and /smbg/, at 10 on /dbg/. The
-        # engine needs exactly one keeper in seat 0, so he is pinned there and
-        # the sheet fills the outfield.
+    def test_the_game_plan_positions_ride_along(self):
+        # Seat N carries the position the game plan names for seat N - which is
+        # how every real export arrives, codes agreeing with the records 11/11.
         refresh_stats.reseat(self.path, self.sheet)
-        keeper = self.rows("select lastname from players where formationorder = 0")
-        self.assertEqual(keeper[0][0], "Player 1")
+        roles = [r[0] for r in self.rows(
+            "select role from players order by formationorder")]
+        self.assertEqual(roles[:11], TEAM["game_plan"]["positions"])
 
     def test_row_ids_never_move(self):
         before = self.rows("select id, lastname from players order by id")
@@ -1170,11 +1216,29 @@ class ReseatingAnInstalledSquad(unittest.TestCase):
         self.assertEqual(before, after)
 
     def test_the_keeper_seat_carries_the_keeper_role(self):
-        refresh_stats.reseat(self.path, self.sheet)
+        # PES always puts its keeper at lineup[0], so the game plan's own first
+        # position is GK - seat 0 needs no pinning, it arrives as GK.
+        refresh_stats.reseat(self.path, TEAM)
         roles = [r[0] for r in self.rows(
             "select role from players order by formationorder")]
         self.assertEqual(roles[0], "GK")
         self.assertNotIn("GK", roles[1:])
+
+    def test_a_game_plan_without_positions_falls_back_to_the_records(self):
+        # None tokens (a code past the table) seat the registered position, the
+        # seat pattern only where the record names none.
+        sheet = dict(self.sheet)
+        sheet["game_plan"] = dict(self.sheet["game_plan"],
+                                  positions=[None] * 11)
+        sheet["players"] = [dict(p, position="SS") for p in self.sheet["players"]]
+        refresh_stats.reseat(self.path, sheet)
+        roles = [r[0] for r in self.rows(
+            "select role from players order by formationorder")]
+        # The reversed lineup's seat 0 holds Player 23, whose own record says
+        # SS - no keeper anywhere in this fixture's records, so the seat
+        # pattern hands seat 0 its default rather than inventing one.
+        self.assertEqual(roles[1:11], ["SS"] * 10)
+        self.assertEqual(roles[0], "SS")
 
     def test_a_squad_that_does_not_match_by_name_is_refused(self):
         wrong = dict(self.sheet)

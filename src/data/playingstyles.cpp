@@ -91,7 +91,8 @@ float Unit(int seed, int salt) {
 }
 
 bool IsWide(e_PlayerRole role) {
-  return role == e_PlayerRole_LM || role == e_PlayerRole_RM;
+  return role == e_PlayerRole_LM || role == e_PlayerRole_RM || role == e_PlayerRole_LW ||
+         role == e_PlayerRole_RW;
 }
 bool IsFullBack(e_PlayerRole role) {
   return role == e_PlayerRole_LB || role == e_PlayerRole_RB;
@@ -195,9 +196,9 @@ bool SuitsRole(Player style, e_PlayerRole role) {
     case Player::GoalPoacher:
     case Player::FoxInTheBox:
     case Player::TargetMan:
-      return role == e_PlayerRole_CF;
+      return role == e_PlayerRole_CF || role == e_PlayerRole_SS;
     case Player::DummyRunner:
-      return role == e_PlayerRole_CF || role == e_PlayerRole_AM;
+      return role == e_PlayerRole_CF || role == e_PlayerRole_AM || role == e_PlayerRole_SS;
     case Player::CreativePlaymaker:
       return role == e_PlayerRole_AM || IsWide(role);
     case Player::ProlificWinger:

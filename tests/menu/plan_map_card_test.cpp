@@ -31,6 +31,9 @@ TEST(PlanMapCardLines, EveryRoleFallsInALine) {
   EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_RM), PlanMapCard::e_Line_Midfield);
   EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_AM), PlanMapCard::e_Line_Midfield);
   EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_CF), PlanMapCard::e_Line_Attack);
+  EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_LW), PlanMapCard::e_Line_Attack);
+  EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_RW), PlanMapCard::e_Line_Attack);
+  EXPECT_EQ(PlanMapCard::LineOf(e_PlayerRole_SS), PlanMapCard::e_Line_Attack);
 }
 
 TEST(PlanMapCardLines, TheColoursAreTheOnesTheBroadcastShows) {

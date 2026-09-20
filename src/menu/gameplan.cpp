@@ -795,9 +795,9 @@ void GamePlanPage::GoPlayerMenu(int slotIndex) {
                   row++, 0, Vector3(40, 40, 40))
       ->SetActive(false);
 
-  // Ten roles, current one highlighted; picking one keeps the player on the
+  // Thirteen roles, current one highlighted; picking one keeps the player on the
   // same tactical spot and just changes what he is asked to do there.
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 13; i++) {
     const e_PlayerRole role = static_cast<e_PlayerRole>(i);
     const bool isCurrent = role == currentEntry.role;
     Gui2Button* button =

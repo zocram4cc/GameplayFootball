@@ -55,8 +55,9 @@ using Style = PlayingStyles::Player;  // the engine's class Player is also in sc
 const int styleCount = static_cast<int>(Style::Count);
 
 const e_PlayerRole allRoles[] = {e_PlayerRole_GK, e_PlayerRole_CB, e_PlayerRole_LB, e_PlayerRole_RB,
-                                 e_PlayerRole_DM, e_PlayerRole_CM, e_PlayerRole_LM, e_PlayerRole_RM,
-                                 e_PlayerRole_AM, e_PlayerRole_CF};
+                                  e_PlayerRole_DM, e_PlayerRole_CM, e_PlayerRole_LM, e_PlayerRole_RM,
+                                  e_PlayerRole_AM, e_PlayerRole_CF, e_PlayerRole_LW, e_PlayerRole_RW,
+                                  e_PlayerRole_SS};
 
 // Every card, so a COM effector can be checked against the empty hand.
 ComMask AllCards() {

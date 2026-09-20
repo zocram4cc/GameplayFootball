@@ -77,10 +77,11 @@ def refresh(database, team, dry_run=False):
                 base_stat = install_team.pes_to_base(sum(stats.values()) / len(stats))
                 profile = install_team.stat_profile_xml(
                     stats, role, slot, player.get("abilities"), player.get("playing_style"),
-                    player.get("com_styles"), player.get("skills"))
+                    player.get("com_styles"), player.get("skills"), player.get("positions"))
             else:
                 base_stat = install_team.BASE_STAT
-                profile = install_team.profile_xml(install_team.BASE_STAT, role, slot)
+                profile = install_team.profile_xml(
+                    install_team.BASE_STAT, role, slot, player.get("positions"))
             cur.execute("update players set base_stat = ?, profile_xml = ? where id = ?",
                         (base_stat, profile, row_id))
             written += 1
@@ -94,17 +95,19 @@ def refresh(database, team, dry_run=False):
 
 
 def reseat(database, team, dry_run=False):
-    """Seats an installed squad on PES's own team sheet, without moving a row.
+    """Seats an installed squad on PES's own game plan, without moving a row.
 
     `refresh` rewrites what a player IS; this rewrites WHERE HE PLAYS -
     formationorder, the role that seat carries, and the profile that role
-    generates. The seven 4cc teams were installed under the old list-order
-    rule and are all seated wrong; re-importing would fix the order and move
-    every row id, unbinding playermodels.cfg. Players are matched by name, so
-    the rows stay exactly where the model bindings expect them.
+    generates, plus the formation PES authors for the eleven. The seven 4cc
+    teams were installed under list order and seated wrong; re-importing
+    would fix the order and move every row id, unbinding playermodels.cfg.
+    Players are matched by name, so the rows stay exactly where the model
+    bindings expect them.
 
     -> the number of rows reseated. Raises ValueError when the team is absent,
-    the export carries no usable sheet, or the rosters do not match by name.
+    the export carries no usable game plan, or the rosters do not match by
+    name.
     """
     name = team.get("team") or team.get("name")
     if not name:
@@ -113,21 +116,9 @@ def reseat(database, team, dry_run=False):
     squad = team.get("squad") or []
     if not players or not squad:
         raise ValueError("%s has no squad to reseat" % name)
-    sheet = install_team.starting_slots(team.get("squad_order") or [], len(squad))
-    if not sheet:
-        raise ValueError("%s carries no usable team sheet (squad_order)" % name)
-    # Seat 0 belongs to the keeper, always. PES's slot is the sheet's own
-    # ORDER, not a position - the keeper sits at slot 1 on /lcg/, /hdg/ and
-    # /vn/, at 9 on /2hug/ and /smbg/, at 10 on /dbg/ - and the engine needs
-    # exactly one keeper in the first seat, so he is pinned there (the export's
-    # first player, shirt 1, as the importer has always taken him) and the
-    # sheet fills the outfield ten in its own order.
-    keeper = 0
-    listed = list(range(len(squad)))
-    outfield = sorted((i for i in listed if i in sheet and i != keeper),
-                      key=lambda i: sheet[i])
-    seated = [keeper] + outfield[:install_team.STARTING_SLOTS - 1]
-    order = seated + [i for i in listed if i not in seated]
+    order, roles, coordinates = install_team.seating(team)
+    if not coordinates:
+        raise ValueError("%s carries no usable game plan (lineup)" % name)
 
     conn = sqlite3.connect(database)
     try:
@@ -152,21 +143,24 @@ def reseat(database, team, dry_run=False):
                 continue
             player = players[source]
             row_id = by_name[player["name"][:64]].pop(0)
-            role = (install_team.KEEPER_ROLE if slot == 0
-                    else install_team.FIELD_ROLES[(slot - 1) % len(install_team.FIELD_ROLES)])
+            role = roles[slot]
             stats = player.get("stats")
             if stats:
                 base_stat = install_team.pes_to_base(sum(stats.values()) / len(stats))
                 profile = install_team.stat_profile_xml(
                     stats, role, slot, player.get("abilities"), player.get("playing_style"),
-                    player.get("com_styles"), player.get("skills"))
+                    player.get("com_styles"), player.get("skills"), player.get("positions"))
             else:
                 base_stat = install_team.BASE_STAT
-                profile = install_team.profile_xml(install_team.BASE_STAT, role, slot)
+                profile = install_team.profile_xml(
+                    install_team.BASE_STAT, role, slot, player.get("positions"))
             cur.execute("update players set formationorder = ?, role = ?, base_stat = ?, "
                         "profile_xml = ? where id = ?",
                         (slot, role, base_stat, profile, row_id))
             written += 1
+        cur.execute("update teams set formation_xml = ? where id = ?",
+                    (install_team.formation_xml_for(
+                        roles[:install_team.STARTING_SLOTS], coordinates), tid))
         if dry_run:
             conn.rollback()
         else:

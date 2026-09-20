@@ -19,8 +19,13 @@
 
 #include "base/properties.hpp"
 #include "data/matchdata.hpp"
+#include "data/teamdata.hpp"
+#include "gamedefines.hpp"
+#include "menu/widgets/planmapcard.hpp"
 #include "sqlite3.h"
 #include "utils/database.hpp"
+
+#include <set>
 
 using blunted::Database;
 using blunted::Properties;
@@ -414,4 +419,72 @@ TEST_F(PassFailure, TheBeatenSplitIsTheKeepersOwnReactionTime) {
   matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 2.0f);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 1);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(1), 1);
+}
+
+// --- The thirteen PES positions, end to end ---
+//
+// PES rates a player at up to five of its thirteen positions; the engine's ten
+// roles predate the wingers and the second striker. The data layer must carry
+// all thirteen: the names round-trip, a role list in the database comes out as
+// a role list, and a formation_xml that names a winger's position and the
+// wingers themselves reaches the formation entries.
+
+TEST(RoleThirteen, NamesRoundTrip) {
+  const char* names[13] = {"GK", "CB", "LB", "RB", "DM", "CM", "LM", "RM", "AM", "LW", "RW",
+                           "SS", "CF"};
+  for (int i = 0; i < 13; i++) {
+    EXPECT_EQ(GetRoleName(GetRoleFromString(names[i])), names[i]) << names[i];
+  }
+  // An unknown name still lands somewhere legal rather than past the end.
+  EXPECT_EQ(GetRoleFromString("??"), e_PlayerRole_CM);
+}
+
+TEST(RoleThirteen, AListInTheDatabaseIsAListOfRoles) {
+  // The importer writes "LW RW": his own positions, the registered one first.
+  // The engine reads a list, not a string: both stay registered for the
+  // aptitude reading, primary first.
+  EnsureTestDatabase();
+  GetDB()->Query(
+      "INSERT INTO players(id, team_id, nationalteam_id, firstname, lastname, role, age, "
+      "base_stat, profile_xml, skincolor, hairstyle, haircolor, height, weight, "
+      "formationorder, nationalteamformationorder) VALUES "
+      "(901, 1, NULL, 'Test', 'Winger', 'LW RW', 25, 55, "
+      "'<physical_balance>0.66</physical_balance>', 1, 'short01', 'darkblonde', 1.82, 76.0, 12, 12);");
+  PlayerData player(901);
+  const std::vector<e_PlayerRole> roles = player.GetRoles();
+  ASSERT_EQ(roles.size(), 2u);
+  EXPECT_EQ(roles.at(0), e_PlayerRole_LW);
+  EXPECT_EQ(roles.at(1), e_PlayerRole_RW);
+  // The plan card's "out of position" check reads this list.
+  EXPECT_EQ(PlanMapCard::AptitudeFor(e_PlayerRole_LW, roles), PlanMapCard::e_Aptitude_Natural);
+  EXPECT_EQ(PlanMapCard::AptitudeFor(e_PlayerRole_RW, roles), PlanMapCard::e_Aptitude_Natural);
+  EXPECT_EQ(PlanMapCard::AptitudeFor(e_PlayerRole_CM, roles), PlanMapCard::e_Aptitude_OutOfPosition);
+}
+
+TEST(RoleThirteen, FormationXmlCarriesTheWingersAndSecondStriker) {
+  EnsureTestDatabase();
+  const char* xml =
+      "<p1><position>-1.00,0.00</position><role>GK</role></p1>"
+      "<p2><position>-0.60,0.30</position><role>CB</role></p2>"
+      "<p3><position>-0.60,-0.30</position><role>CB</role></p3>"
+      "<p4><position>-0.40,0.70</position><role>LB</role></p4>"
+      "<p5><position>-0.40,-0.70</position><role>RB</role></p5>"
+      "<p6><position>-0.25,0.00</position><role>DM</role></p6>"
+      "<p7><position>0.05,0.25</position><role>CM</role></p7>"
+      "<p8><position>0.05,-0.25</position><role>CM</role></p8>"
+      "<p9><position>0.25,0.80</position><role>LW</role></p9>"
+      "<p10><position>0.25,-0.80</position><role>RW</role></p10>"
+      "<p11><position>0.75,0.00</position><role>SS</role></p11>";
+  GetDB()->Query(
+      "UPDATE teams SET formation_xml = '" + std::string(xml) + "' WHERE id = 1;");
+  TeamData team(1);
+  const e_PlayerRole want[11] = {
+      e_PlayerRole_GK,  e_PlayerRole_CB,  e_PlayerRole_CB,  e_PlayerRole_LB,  e_PlayerRole_RB,
+      e_PlayerRole_DM,  e_PlayerRole_CM,  e_PlayerRole_CM,  e_PlayerRole_LW,  e_PlayerRole_RW,
+      e_PlayerRole_SS};
+  for (int slot = 0; slot < 11; slot++)
+    EXPECT_EQ(team.GetFormationEntry(slot).role, want[slot]) << "p" << slot + 1;
+  // 4 defenders, DM + 2 CM in midfield, LW/RW/SS forward via default branch.
+  const std::vector<e_PlayerRole> wantVec(want, want + 11);
+  EXPECT_EQ(Formations::ShapeName(Formations::ShapeFromRoles(wantVec)), "4-3-3");
 }

@@ -63,6 +63,19 @@ Vector3 GetDefaultRolePosition(e_PlayerRole role) {  // declared in teamdata.hpp
       return Vector3(1.0, 0.0, 0);
       break;
 
+    case e_PlayerRole_LW:
+      // Half a step inside and ahead of the left midfielder: PES's winger
+      // stands forward of the wide midfielder, not on him.
+      return Vector3(0.25, 0.8, 0);
+      break;
+    case e_PlayerRole_RW:
+      return Vector3(0.25, -0.8, 0);
+      break;
+    case e_PlayerRole_SS:
+      // Between the attacking midfielder and the centre forward.
+      return Vector3(0.75, 0.0, 0);
+      break;
+
     default:
       return Vector3(0.0, 0.0, 0);
       break;

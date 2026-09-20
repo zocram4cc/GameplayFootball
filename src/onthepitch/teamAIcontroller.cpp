@@ -429,7 +429,8 @@ float mixup(float base, const std::string& varname, e_PlayerRole role, float cou
       value = -0.1f;  // go forward
   }
 
-  if (role == e_PlayerRole_LM || role == e_PlayerRole_RM) {
+  if (role == e_PlayerRole_LM || role == e_PlayerRole_RM || role == e_PlayerRole_LW ||
+      role == e_PlayerRole_RW) {
     // wingers stay high up to offer counter-attack support
     if (varname == "position_defense_ownhalf_factor")
       value = -(0.02f + 0.06f * counterAttack);
@@ -443,7 +444,7 @@ float mixup(float base, const std::string& varname, e_PlayerRole role, float cou
       value = 0.05f + 0.15f * counterAttack;
   }
 
-  if (role == e_PlayerRole_CF) {
+  if (role == e_PlayerRole_CF || role == e_PlayerRole_SS) {
     // strikers stay high up to offer counter-attack support
     if (varname == "position_defense_depth_factor")
       value = 0.05f + 0.15f * counterAttack;

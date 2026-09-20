@@ -111,6 +111,12 @@ std::string RoleString(e_PlayerRole role) {
       return "AM";
     case e_PlayerRole_CF:
       return "CF";
+    case e_PlayerRole_LW:
+      return "LW";
+    case e_PlayerRole_RW:
+      return "RW";
+    case e_PlayerRole_SS:
+      return "SS";
     default:
       return "CM";
   }

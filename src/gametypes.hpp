@@ -9,6 +9,10 @@
 #ifndef _HPP_GAMETYPES
 #define _HPP_GAMETYPES
 
+// PES's thirteen positions: the original ten plus the wingers and the second
+// striker. Appended, not interleaved, because the index is used as an array
+// offset in a few switches; nothing persists a role as a number (career and
+// match state both round-trip through GetRoleName/GetRoleFromString text).
 enum e_PlayerRole {
   e_PlayerRole_GK,
   e_PlayerRole_CB,
@@ -20,6 +24,9 @@ enum e_PlayerRole {
   e_PlayerRole_RM,
   e_PlayerRole_AM,
   e_PlayerRole_CF,
+  e_PlayerRole_LW,
+  e_PlayerRole_RW,
+  e_PlayerRole_SS,
 };
 
 enum e_SetPiece {

@@ -73,7 +73,8 @@ def set_bits(rec, byte_offset, bit_offset, nbits, value):
 
 
 def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=None,
-           abilities=None, playing_style=None, com_styles=(), skills=()):
+           abilities=None, playing_style=None, com_styles=(), skills=(),
+           position=None, positions=None):
     rec = bytearray(ted.PLAYER_RECORD_SIZE)
     if magic:
         rec[0:4] = magic
@@ -94,6 +95,12 @@ def record(name, shirt, extra="PLACEHOLDER", magic=b"", player_id=None, stats=No
     byte_off, bit_off = ted.SKILL_FIELD
     set_bits(rec, byte_off, bit_off, len(ted.SKILLS),
              sum(1 << ted.SKILLS.index(skill) for skill in skills))
+    if position is not None:
+        set_bits(rec, 0x21, 5, 4, ted.POSITION_NAMES.index(position))
+    for pos, grade in (positions or {}).items():
+        for i, b, bit in ted.PLAYABLE_POSITION_FIELDS:
+            if ted.POSITION_NAMES[i] == pos:
+                set_bits(rec, b, bit, 2, grade)
     rec[ted.REC_NAME:ted.REC_NAME + len(name)] = name.encode()
     rec[ted.REC_SHIRT_NAME:ted.REC_SHIRT_NAME + len(shirt)] = shirt.encode()
     rec[ted.REC_EXTRA:ted.REC_EXTRA + len(extra)] = extra.encode()
@@ -154,6 +161,18 @@ class ThePlayerRecords(unittest.TestCase):
         players = self.roster(record("A", "AA"), bytes(ted.PLAYER_RECORD_SIZE))
         self.assertEqual(len(players), 1)
 
+    def test_the_registered_position_is_read_from_its_field(self):
+        players = self.roster(record("A", "AA", position="LW"))
+        self.assertEqual(players[0]["position"], "LW")
+
+    def test_the_playable_list_is_read_with_its_grades(self):
+        players = self.roster(record("A", "AA", position="CF",
+                                     positions={"SS": 2, "CF": 2, "LW": 1}))
+        self.assertEqual(players[0]["positions"]["SS"], 2)
+        self.assertEqual(players[0]["positions"]["CF"], 2)
+        self.assertEqual(players[0]["positions"]["LW"], 1)
+        self.assertEqual(players[0]["positions"]["GK"], 0)
+        self.assertEqual(sum(players[0]["positions"].values()), 5)
 
 class ThePlayerStats(unittest.TestCase):
     """Every stat is read from its own byte:bit - the same offsets the wiki
@@ -261,8 +280,19 @@ class ThePlayerStats(unittest.TestCase):
         self.assertEqual(len(ted.SKILLS), 41)
 
 
+# /hdg/'s own Preset 1 and lineup, as the wiki's Texport layout lays them out:
+# eleven position codes, eleven (vertical, horizontal) coordinates with the
+# keeper's fixed (3, 0x34), then at +0x1e4 the 40 index ids of the lineup -
+# keeper, ten outfield, bench. hdg's lineup swaps its two centre midfielders
+# (7 before 6), which is what tells lineup order from list order.
+HDG_POSITION_CODES = bytes([0, 1, 1, 2, 3, 4, 5, 5, 8, 0x0b, 0x0c])
+HDG_COORDINATES = bytes([3, 0x34, 8, 0x40, 8, 0x28, 0x0b, 0x10, 0x0b, 0x58, 0x10, 0x34,
+                         0x15, 0x20, 0x15, 0x48, 0x1d, 0x34, 0x2a, 0x25, 0x2a, 0x43])
+HDG_LINEUP = bytes([0, 1, 2, 3, 4, 5, 7, 6, 8, 9, 10] + list(range(11, 40)))
+
+
 def team_payload():
-    plain = payload(0x0500)
+    plain = payload(0x0700)
     plain[0x0088:0x0088 + 6] = b"/hdg/\x00"
     plain[0x00ce:0x00ce + 4] = b"HBR\x00"
     for i, chant in enumerate((b"DEATH TO SWEDEN", b"TOTAL BUG DEATH",
@@ -273,10 +303,9 @@ def team_payload():
         struct.pack_into("<I", plain, 0x02c8 + 4 * k, 80301 + k)
         struct.pack_into("<H", plain, 0x0368 + 2 * k, k + 1)
     struct.pack_into("<I", plain, 0x03e0, 803)
-    plain[0x03e4:0x03e4 + 12] = bytes([0, 1, 1, 2, 3, 4, 5, 5, 8, 0x0b, 0x0c, 3])
-    plain[0x03f0:0x03f0 + 20] = bytes([0x34, 0x08, 0x40, 0x08, 0x28, 0x0b, 0x10, 0x0b,
-                                       0x58, 0x10, 0x34, 0x15, 0x20, 0x15, 0x48, 0x1d,
-                                       0x34, 0x2a, 0x25, 0x2a])
+    plain[0x03e4:0x03e4 + 11] = HDG_POSITION_CODES
+    plain[0x03ef:0x03ef + 22] = HDG_COORDINATES
+    plain[0x05c4:0x05c4 + 40] = HDG_LINEUP
     return bytes(plain)
 
 
@@ -309,22 +338,44 @@ class TheSquad(unittest.TestCase):
         self.assertEqual(len(ted.read_squad(bytes(plain))), 11)
 
 
-class TheFormations(unittest.TestCase):
-    """The marks are kept in the units they were authored in - x about a centre of
-    52, y from 8 to 43 on this file - and deliberately not rescaled. What they are
-    worth has to be calibrated against the engine's own formation coordinates;
-    guessing would bake a wrong pitch into the import.
+class TheGamePlan(unittest.TestCase):
+    """The wiki's Team Game Plan, read at the documented offsets. The coordinates
+    stay in PES's own units - the keeper's fixed (3, 0x34) anchors them - and are
+    not rescaled here; the importer decides what they are worth on the engine's
+    pitch.
     """
 
-    def test_a_preset_gives_up_its_slots_and_its_marks(self):
-        preset = ted.read_formations(team_payload())[0]
-        self.assertEqual(preset["slots"][:4], [0, 1, 1, 2])
-        self.assertEqual(len(preset["marks"]), 10)
-        self.assertEqual(preset["marks"][0], (52, 8))
-        self.assertEqual(preset["marks"][9], (37, 42))
+    def test_the_lineup_is_keeper_ten_outfield_then_bench_in_its_own_order(self):
+        plan = ted.read_game_plan(team_payload())
+        self.assertEqual(plan["lineup"][:11], [0, 1, 2, 3, 4, 5, 7, 6, 8, 9, 10])
+        self.assertEqual(len(plan["lineup"]), 40)
 
-    def test_nothing_there_is_no_presets(self):
-        self.assertEqual(ted.read_formations(bytes(0x0100)), [])
+    def test_the_eleven_positions_and_coordinates_come_in_lineup_order(self):
+        plan = ted.read_game_plan(team_payload())
+        self.assertEqual(plan["positions"],
+                         ["GK", "CB", "CB", "LB", "RB", "DM", "CM", "CM", "AM", "SS", "CF"])
+        self.assertEqual(plan["coordinates"][0], ted.GK_COORDINATE)
+        self.assertEqual(plan["coordinates"][3], (11, 16))   # the left back, own left
+        self.assertEqual(plan["coordinates"][4], (11, 88))   # the right back
+        self.assertEqual(plan["coordinates"][10], (42, 67))
+
+    def test_a_position_code_past_the_table_is_none_not_a_crash(self):
+        plain = bytearray(team_payload())
+        plain[0x03e4 + 10] = 0x0f
+        self.assertIsNone(ted.read_game_plan(bytes(plain))["positions"][10])
+
+    def test_the_registered_position_and_playable_grades_sit_at_the_wiki_offsets(self):
+        # Pinned raw rather than through the table, since the table is what a
+        # wrong offset lives in: a CB entry read from CM's 0x2a:7 mis-graded 43
+        # of the seven exports' 161 players before this was checked.
+        rec = bytearray(ted.PLAYER_RECORD_SIZE)
+        set_bits(rec, 0x21, 5, 4, 1)      # registered: CB
+        set_bits(rec, 0x29, 7, 2, 2)      # playable CB: A
+        set_bits(rec, 0x2a, 7, 2, 1)      # playable CM: B
+        set_bits(rec, 0x2e, 4, 2, 2)      # playable LW: A
+        position, grades = ted.read_player_positions(bytes(rec), 0)
+        self.assertEqual(position, "CB")
+        self.assertEqual({k: v for k, v in grades.items() if v}, {"CB": 2, "CM": 1, "LW": 2})
 
 
 class ColouredNames(unittest.TestCase):
