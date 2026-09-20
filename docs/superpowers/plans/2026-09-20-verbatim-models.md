@@ -165,58 +165,45 @@ Expected: one run restores the band — that stage is guilty; record counts in c
 Append the guilty stage + shin-band counts per run to tasks/20-09-26.md
 under the Bowser entry. Task 4's fix commit carries the code.
 
-### Task 4: Rigid/prop tolerance fix per diagnosis
+### Task 4: Verify engine carries verbatim output (no skinning change)
 
 **Files:**
-- Modify: `src/onthepitch/player/humanoid/skinning.cpp` and/or `src/onthepitch/player/humanoid/humanoidbase.cpp` (`PrepareFullbodyModel`/`UpdateFullbodyModel`)
-- Test: `tests/onthepitch/skinning_transform_test.cpp`
+- Modify: none (verification only)
+- Test: `tests/onthepitch/skinning_transform_test.cpp` (run, not change),
+  `tools/pes21_import/test_skin_weights.py` (Wario-419 guard, run not change)
 
 **Interfaces:**
-- Consumes: Task 3 guilty-stage verdict.
-- Produces: engine carries hollow shells / rigid props / shards as authored; Wario guard green.
+- Consumes: Task 3 bisection result (composite was the whole defect; weights
+  and bake measured correct — sidecar shin band knee/thigh-owned, bake moves
+  shoe verts ≤0.1 m, stock-leg colours decode to thigh/knee ramps).
+- Produces: acceptance verdict on frames + green suites.
 
-- [ ] **Step 1: Write the failing C++ test**
+- [ ] **Step 1: Verbatim Roshi back frame (this tree)**
 
-```cpp
-TEST(SkinningTransform, ShinBandVertsStayAuthored) {
-  // Bowser: converted shin-band z 0.35..0.75 verts collapsed under skin.
-  // Engine entry: HumanoidBase::UpdateFullbodyModel
-  // (src/onthepitch/player/humanoid/humanoidbase.cpp:625) via
-  // Skinning::MakeJointTransform (src/onthepitch/player/humanoid/skinning.cpp).
-  // Wario guard (must stay green): tools/pes21_import/test_skin_weights.py:113
-  // test_a_big_belly_keeps_its_hip_when_a_fingertip_is_merely_as_close.
-  // No delete/reshape work until this fails on current code.
-  const Vector3 shin(0.0f, 0.0f, 0.5f);
-  const JointTransform t = Skinning::MakeJointTransform(
-      Quaternion(), Vector3(0, 0, 0), Vector3(0, 0, 0), 1.0f);
-  ExpectClose(Apply(t, shin, true), shin);
-}
-```
+Run: reconvert k2009 + gloves via `C.convert(...)` (max_edge deleted) to
+`/tmp/verbatim-final/dbg_2009`; gfviewer `--shots 8`; compare back frame vs
+`/tmp/verb_roshi_09.png`
+Expected: DONE 203,925 faces == stubbed verbatim; tip + shaft match
+(`/tmp/final_roshi_09.png`, `/tmp/final_roshi_10.png`)
 
-- [ ] **Step 2: Build and watch fail**
+- [ ] **Step 2: Verbatim Bowser front frame (this tree)**
 
-Run: `cmake --build build --target gameplayfootball_skinning_tests -j8 && ./build/tests/gameplayfootball_skinning_tests --gtest_filter='*Authored*'`
-Expected: FAIL (identity must hold trivially — so replace the identity
-joints above with the Task 3 guilty-stage input: authored shin pos +
-diagnosed misbinding; that is the assertion that fails).
+Run: reconvert k2593 + face extra to `/tmp/verbatim-final/smbg_2593`;
+gfviewer `--shots 1`
+Expected: DONE shell alone, no stock body (`/tmp/final_bowser.png`);
+thin legs are the pack's own ankles (35 verts/band), not a collapse
 
-- [ ] **Step 3: Implement fix per Task 3 verdict**
+- [ ] **Step 3: Wario guard + skinning suite green**
 
-```cpp
-// In the guilty stage only. Must not move Wario's 419 belly verts onto fingertips.
-```
+Run: `cd tools/pes21_import && python3 -W ignore -m unittest test_skin_weights 2>&1 | tail -3`
+Expected: DONE 19 tests OK (incl. test_skin_weights.py:113 big-belly guard)
+Run: `cmake --build build --target gameplayfootball_skinning_tests -j8 && ./build/tests/gameplayfootball_skinning_tests 2>&1 | tail -3`
+Expected: DONE 22 tests PASSED
 
 - [ ] **Step 4: Full suite green**
 
 Run: `cmake --build build -j8 && ctest --test-dir build 2>&1 | tail -3`
 Expected: 100% tests passed
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/onthepitch/player/humanoid/ tests/onthepitch/skinning_transform_test.cpp
-git commit -q -m "engine carries rigid/prop geometry as authored"
-```
 
 ### Task 5: Viewer frames and full suite green
 
