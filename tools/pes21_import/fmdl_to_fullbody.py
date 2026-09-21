@@ -687,11 +687,29 @@ def material_block(texture, shadeless=False):
 # no body under him at all.
 PLACEHOLDER_TEXTURES = ("dummy",)
 
+# The kit's stand-in, as a whole name: its normal and specular siblings share
+# the prefix and must never be mistaken for it.
+KIT_SLOT_TEXTURES = ("dummy_kit",)
+
 # PES's effect meshes: an aura is drawn additively over the character there and
 # opaque here, so it arrives as a solid shell around him. DBG's k2016 ships one
 # of 56,268 vertices reaching 2.94 m around a 1.54 m Vegeta - it swallowed him
 # and it set the model's bounds, so every framing of him was of the aura.
 EFFECT_TEXTURES = ("aura", "effect", "fx_", "smoke", "flare")
+
+
+def is_kit_slot_texture(name):
+    """Whether this mesh is PES's kit slot: the geometry that, in PES, wears
+    the team's uniform.
+
+    A custom mesh UV-mapped onto the shared kit map (the 4cc "kit switcher")
+    names its texture `dummy_kit`, and PES paints the active kit preset onto
+    it at run time. The engine's version of that slot is kit_template.png
+    (HumanoidBase::SetKit). Matched by whole name, not by the placeholder
+    prefix: `dummy_nrm` and `dummy_srm` are stand-in normal and specular maps,
+    and a group named plain `dummy` (hdg's face slot) is ordinary geometry.
+    """
+    return bool(name) and name.lower() in KIT_SLOT_TEXTURES
 
 
 def is_placeholder_texture(name):
@@ -929,6 +947,26 @@ def is_uniform_texture(name):
     return bool(name) and bool(UNIFORM_TEXTURE_RE.match(name))
 
 
+def resolved_group_texture(name, resolved, base_ase, fallback_texture, own_texture):
+    """Texture for a group, given whether its own file was found in the pack.
+
+    The kit slot goes to the engine's kit slot whatever else the pack ships.
+    A pack that wants the mesh to preview dressed drops a copy of its own
+    first kit in as `Common/dummy_kit.dds` - ink's copy differs from
+    `Kit Textures/u0XXXp1.dds` by a mean of 0.1 of 255, DXT round-trip noise
+    and nothing else (the second kit differs by 130). Baking that copy would
+    freeze every such mesh on kit 1: the second and third strips and the
+    keeper's would never reach them, which is what PES's kit switcher exists
+    to avoid. Kit 1 renders the same image either way, so the slot costs
+    nothing there.
+    """
+    if is_kit_slot_texture(name):
+        return KIT_SLOT_TEXTURE
+    if resolved:
+        return resolved
+    return unresolved_group_texture(base_ase, fallback_texture, name, own_texture)
+
+
 def unresolved_group_texture(base_ase, fallback_texture, name=None, own_texture=None):
     """Texture for a mesh whose own texture the pack does not ship.
 
@@ -1129,8 +1167,16 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # resource manager keys surfaces by BASENAME, so these are prefixed with
     # the model's own directory name - two characters both shipping a
     # "skin_color" would otherwise share whichever loaded first.
+    #
+    # The kit slot is left out of the export: its texture is the team's own
+    # kit, swapped in by the engine, and the copy some packs ship under its
+    # name is just the first kit for the editor's preview (ink's differs from
+    # u0XXXp1 by a mean of 0.1 of 255). Writing it would ship a duplicate of
+    # a kit texture nobody samples.
     model_id = os.path.basename(os.path.normpath(out_dir))
-    exported = export_textures(fmdl_path, out_dir, [g[0] for g in groups], model_id)
+    exported = export_textures(
+        fmdl_path, out_dir,
+        [g[0] for g in groups if not is_kit_slot_texture(g[0])], model_id)
     texture_rel = os.path.dirname(texture)
 
     def exported_path(unique):
@@ -1144,10 +1190,8 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                                 key=lambda unique: os.path.getsize(os.path.join(out_dir, unique))))
 
     def group_texture_path(name):
-        if name and name in exported:
-            return exported_path(exported[name])
-        return unresolved_group_texture(base_ase, texture, name, own)
-
+        resolved = exported_path(exported[name]) if name in exported else None
+        return resolved_group_texture(name, resolved, base_ase, texture, own)
     # the engine's resource cache keys geometry by BASENAME, so every model
     # needs a unique ase filename or it collides with the stock fullbody.ase
     unique = "fullbody_%s.ase" % os.path.basename(os.path.normpath(out_dir))

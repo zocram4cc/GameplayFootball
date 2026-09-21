@@ -75,6 +75,75 @@ class UnresolvedGroupTextureTest(unittest.TestCase):
             fmdl_to_fullbody.unresolved_group_texture(None, "pack/body.png"),
             "pack/body.png")
 
+    def test_kit_switcher_mesh_goes_to_the_kit_slot(self):
+        """A mesh UV-mapped onto PES's kit map wears the kit, not the body.
+
+        The 4cc "kit switcher": a custom mesh whose UVs are laid out on the
+        shared kit texture, so the team's own uniform paints it and the model
+        changes with the kit preset. PES names that slot `dummy_kit` and swaps
+        the team's uniform in at run time; the engine does the same through
+        kit_template.png (HumanoidBase::SetKit).
+
+        Bowser (smbg k2593) is the whole of the case: his shins and shorts are
+        that mesh and nothing else, his pack ships no dummy_kit.dds, and the
+        character's own atlas has no leg art at those UVs - so handing him the
+        fallback painted his legs with a blank corner of the body map and he
+        walked out with nothing below the belt.
+        """
+        for base in (None, "base.ase"):
+            self.assertEqual(
+                fmdl_to_fullbody.resolved_group_texture(
+                    "dummy_kit", None, base, "pack/kit.png", "pack/body.png"),
+                fmdl_to_fullbody.KIT_SLOT_TEXTURE)
+
+    def test_a_missing_character_texture_still_falls_back(self):
+        """Only the kit slot is the kit: the 05-09 face-painting stays fixed."""
+        self.assertEqual(
+            fmdl_to_fullbody.unresolved_group_texture(
+                None, "pack/kit.png", "face_bsm_alp", "pack/body.png"),
+            "pack/body.png")
+
+
+class KitSlotGroupTest(unittest.TestCase):
+    """The kit slot beats any copy of the kit the pack happens to ship.
+
+    ink drops its own `Common/dummy_kit.dds` beside the models so the mesh
+    previews dressed in the editor - and that file is its first kit: measured
+    against `Kit Textures/u0XXXp1.dds` the mean absolute difference is 0.1 of
+    255, DXT round-trip noise and nothing else (u0XXXp2 differs by 130).
+    Baking it would freeze all 103 such meshes on kit 1, so the second and
+    third strips and the keeper's would never reach them. The slot costs
+    nothing on kit 1 - same image - and is what PES does.
+    """
+
+    def test_a_shipped_kit_copy_does_not_beat_the_slot(self):
+        self.assertEqual(
+            fmdl_to_fullbody.resolved_group_texture(
+                "dummy_kit", "pack/smbg_2593_dummy_kit.png", None,
+                "pack/kit.png", "pack/body.png"),
+            fmdl_to_fullbody.KIT_SLOT_TEXTURE)
+
+    def test_an_ordinary_group_still_wears_its_own_texture(self):
+        self.assertEqual(
+            fmdl_to_fullbody.resolved_group_texture(
+                "body", "pack/body.png", None, "pack/kit.png", "pack/body.png"),
+            "pack/body.png")
+
+    def test_an_ordinary_group_without_a_file_falls_back(self):
+        self.assertEqual(
+            fmdl_to_fullbody.resolved_group_texture(
+                "face_bsm_alp", None, None, "pack/kit.png", "pack/body.png"),
+            "pack/body.png")
+
+    def test_only_the_kit_placeholder_is_the_kit_slot(self):
+        self.assertTrue(fmdl_to_fullbody.is_kit_slot_texture("dummy_kit"))
+        self.assertTrue(fmdl_to_fullbody.is_kit_slot_texture("DUMMY_KIT"))
+        # the normal/specular stand-ins share the prefix and are not kit
+        self.assertFalse(fmdl_to_fullbody.is_kit_slot_texture("dummy_nrm"))
+        self.assertFalse(fmdl_to_fullbody.is_kit_slot_texture("dummy_srm"))
+        self.assertFalse(fmdl_to_fullbody.is_kit_slot_texture("body"))
+        self.assertFalse(fmdl_to_fullbody.is_kit_slot_texture(None))
+
 
 class NonRenderPassTest(unittest.TestCase):
     """PES ships passes this engine does not render, as extra copies of the

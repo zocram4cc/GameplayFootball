@@ -62,6 +62,7 @@
 #include "scene/objects/camera.hpp"
 #include "scene/objects/geometry.hpp"
 #include "scene/objects/light.hpp"
+#include "scene/resources/surface.hpp"
 #include "scene/scene2d/scene2d.hpp"
 #include "scene/scene3d/scene3d.hpp"
 #include "systems/audio/audio_system.hpp"
@@ -170,6 +171,11 @@ struct Options {
   // and where it does that art wins - this is for a squad whose pack does not
   // (or is no longer on disk), so the card has a face instead of a blank.
   bool portrait = false;
+  // Swap the team's own kit into the engine's kit slot (kit_template.png), the
+  // way Team::SetKitNumber does it in a match. The viewer has no team, but a
+  // kit-switcher model (PES's dummy_kit mesh) is the team's kit and nothing
+  // else, so this is the only way to see what it will actually wear.
+  std::string kit;
 };
 
 Options Parse(int argc, const char** argv) {
@@ -192,6 +198,7 @@ Options Parse(int argc, const char** argv) {
     else if (arg == "--anim" && hasNext) options.anim = argv[++i];
     else if (arg == "--no-bake") options.noBake = true;
     else if (arg == "--portrait") options.portrait = true;
+    else if (arg == "--kit" && hasNext) options.kit = argv[++i];
     else if (!arg.empty() && arg[0] != '-') options.model = arg;
   }
   return options;
@@ -221,6 +228,45 @@ std::vector<ModelInventory::Mesh> ReadMeshes(boost::intrusive_ptr<Node> node) {
     }
   }
   return out;
+}
+
+// The engine's kit slot, swapped the way Team::SetKitNumber does it in a
+// match: every submesh whose diffuse is the kit template becomes the team's
+// own kit, and the geometry is told to pick the material change up.
+// HumanoidBase::SetKit does the same through the humanoid's fullbody node;
+// the viewer's node is the model itself, so it walks the same way the
+// inventory does.
+void SetKitOnNode(boost::intrusive_ptr<Node> node, const std::string& kitFile) {
+  boost::intrusive_ptr<Resource<Surface>> kit =
+      ResourceManagerPool::GetInstance()
+          .GetManager<Surface>(e_ResourceType_Surface)
+          ->Fetch(kitFile);
+  if (!kit) {
+    std::cout << "could not load kit " << kitFile << "\n";
+    return;
+  }
+  std::list<boost::intrusive_ptr<Geometry>> geoms;
+  node->GetObjects<Geometry>(e_ObjectType_Geometry, geoms, true);
+  int swapped = 0;
+  for (auto& geom : geoms) {
+    boost::intrusive_ptr<Resource<GeometryData>> data = geom->GetGeometryData();
+    if (!data) continue;
+    data->resourceMutex.lock();
+    std::vector<MaterializedTriangleMesh>& parts =
+        data->GetResource()->GetTriangleMeshesRef();
+    for (size_t p = 0; p < parts.size(); p++) {
+      if (!parts[p].material.diffuseTexture) continue;
+      if (parts[p].material.diffuseTexture->GetIdentString() != "kit_template.png")
+        continue;
+      parts[p].material.diffuseTexture = kit;
+      parts[p].material.specular_amount = 0.01f;
+      parts[p].material.shininess = 0.01f;
+      swapped++;
+    }
+    data->resourceMutex.unlock();
+    geom->OnUpdateGeometryData();
+  }
+  std::cout << "kit: " << swapped << " mesh(es) wearing the team kit\n";
 }
 
 // ObjectLoader reads the little XML wrapper an imported model ships beside its
@@ -964,6 +1010,8 @@ int main(int argc, const char** argv) {
   // caller to put in the scene. Without this the model is loaded, framed, measured -
   // and never in the render set, which is a turntable of empty frames.
   scene3D->AddNode(node);
+
+  if (!options.kit.empty()) SetKitOnNode(node, options.kit);
 
   const std::vector<ModelInventory::Mesh> meshes = ReadMeshes(node);
   const ModelInventory::Report report = ModelInventory::Describe(meshes, 0.15f);
