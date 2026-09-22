@@ -190,6 +190,9 @@ void LoadMaterials(Renderer3D* renderer3D, const Material* material,
   if (timingTexture)
     r3dMaterial.timingTexture = timingTexture;
   r3dMaterial.uvanim = material->uvanim;
+  r3dMaterial.shininess = material->shininess;
+  r3dMaterial.specular_amount = material->specular_amount;
+  r3dMaterial.self_illumination = material->self_illumination;
 }
 
 void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry> geometry) {
