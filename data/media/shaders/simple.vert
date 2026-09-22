@@ -77,6 +77,7 @@ void main(void) {
 	frag_tangent = normalMatrix * localTangent;
 	frag_bitangent = normalMatrix * localBitangent;
   frag_texcoord.st = texcoord.st;
+  frag_texcoord.p = texcoord.p;
 
   gl_Position = projectionMatrix * frag_position;
 }

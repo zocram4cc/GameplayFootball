@@ -22,7 +22,8 @@ namespace {
 const char kMagic[4] = {'G', 'F', 'G', 'C'};
 std::atomic<unsigned int> kTempCounter{0};
 // v2 fixed the vertex-buffer size below; a v1 cache is wrong and is rejected.
-const unsigned int kVersion = 2;
+// v3 carries the UV animation: the timing map path and the UvAnimParams POD.
+const unsigned int kVersion = 3;
 
 struct SourceStamp {
   unsigned long long size = 0;
@@ -140,14 +141,14 @@ bool LoadGeometryCache(const std::string& aseFilename,
     bool failed = false;
     for (unsigned int m = 0; m < meshCount && !failed; m++) {
       Material material;
-      std::string diffuse, normal, specular, illumination;
+      std::string diffuse, normal, specular, illumination, timing;
       if (!ReadString(file, diffuse) || !ReadString(file, normal) || !ReadString(file, specular) ||
-          !ReadString(file, illumination)) {
+          !ReadString(file, illumination) || !ReadString(file, timing)) {
         failed = true;
         break;
       }
       if (!TextureIsOnDisk(diffuse) || !TextureIsOnDisk(normal) || !TextureIsOnDisk(specular) ||
-          !TextureIsOnDisk(illumination)) {
+          !TextureIsOnDisk(illumination) || (!timing.empty() && !TextureIsOnDisk(timing))) {
         failed = true;
         break;
       }
@@ -155,15 +156,20 @@ bool LoadGeometryCache(const std::string& aseFilename,
       material.normalTexture = FetchTexture(normal);
       material.specularTexture = FetchTexture(specular);
       material.illuminationTexture = FetchTexture(illumination);
+      if (!timing.empty())
+        material.timingTexture = FetchTexture(timing);
 
+      UvAnimParams uvanim;
       float selfIllumination[3] = {0, 0, 0};
       if (fread(&material.shininess, sizeof(float), 1, file) != 1 ||
           fread(&material.specular_amount, sizeof(float), 1, file) != 1 ||
-          fread(selfIllumination, sizeof(float), 3, file) != 3) {
+          fread(selfIllumination, sizeof(float), 3, file) != 3 ||
+          fread(&uvanim, sizeof(UvAnimParams), 1, file) != 1) {
         failed = true;
         break;
       }
       material.self_illumination.Set(selfIllumination[0], selfIllumination[1], selfIllumination[2]);
+      material.uvanim = uvanim;
 
       int verticesDataSize = 0;
       unsigned int indexCount = 0;
@@ -216,7 +222,8 @@ bool LoadGeometryCache(const std::string& aseFilename,
 
 void SaveGeometryCache(const std::string& aseFilename,
                        boost::intrusive_ptr<Resource<GeometryData>> resource,
-                       const std::vector<std::array<std::string, 4>>& texturePaths) {
+                       const std::vector<std::array<std::string, 4>>& texturePaths,
+                       const std::vector<std::string>& timingPaths) {
   SourceStamp source;
   if (!StatSource(aseFilename, source))
     return;
@@ -240,8 +247,10 @@ void SaveGeometryCache(const std::string& aseFilename,
   // Only geometry whose textures all came off disk can be rebuilt from a
   // cache. A mesh the parse did not report paths for, or whose paths do not
   // resolve, would come back textureless - so the whole file is skipped
-  // rather than cached wrong.
-  bool cacheable = meshes.size() == texturePaths.size();
+  // rather than cached wrong. The timing map rides the same rule: a model
+  // whose animation texture is missing is re-parsed, not cached blind.
+  bool cacheable = meshes.size() == texturePaths.size() &&
+                   meshes.size() == timingPaths.size();
   for (size_t m = 0; cacheable && m < meshes.size(); m++) {
     for (int i = 0; i < 4; i++) {
       if (!TextureIsOnDisk(texturePaths[m][i])) {
@@ -250,6 +259,11 @@ void SaveGeometryCache(const std::string& aseFilename,
         cacheable = false;
         break;
       }
+    }
+    if (cacheable && !timingPaths[m].empty() && !TextureIsOnDisk(timingPaths[m])) {
+      Log(e_Notice, "asecache", "SaveGeometryCache",
+          "no cache for " + aseFilename + ": timing texture not on disk: '" + timingPaths[m] + "'");
+      cacheable = false;
     }
   }
   if (!cacheable) {
@@ -269,9 +283,11 @@ void SaveGeometryCache(const std::string& aseFilename,
     MaterializedTriangleMesh& mesh = meshes[m];
     for (int i = 0; i < 4; i++)
       WriteString(file, texturePaths[m][i]);
+    WriteString(file, timingPaths[m]);
     fwrite(&mesh.material.shininess, sizeof(float), 1, file);
     fwrite(&mesh.material.specular_amount, sizeof(float), 1, file);
     fwrite(mesh.material.self_illumination.coords, sizeof(float), 3, file);
+    fwrite(&mesh.material.uvanim, sizeof(UvAnimParams), 1, file);
 
     fwrite(&mesh.verticesDataSize, sizeof(mesh.verticesDataSize), 1, file);
     fwrite(mesh.vertices, sizeof(float), (size_t)mesh.verticesDataSize, file);

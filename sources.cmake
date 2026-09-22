@@ -324,6 +324,7 @@ set(UTILS_HEADERS
         src/utils/threadhud.hpp
         src/utils/console.hpp
         src/utils/localization.hpp
+        src/utils/uvanim.hpp
         )
 
 set(UTILS_EXT_HEADERS
@@ -346,6 +347,7 @@ set(UTILS_SOURCES
         src/utils/animationextensions/footballanimationextension.cpp
         src/utils/console.cpp
         src/utils/localization.cpp
+        src/utils/uvanim.cpp
         )
 
 set(UTILS_GUI2_HEADERS

@@ -54,6 +54,7 @@
 #include "systems/graphics/scenegrade.hpp"
 #include "managers/usereventmanager.hpp"
 #include "types/command.hpp"
+#include "utils/uvanim.hpp"
 
 #ifdef WIN32
 #include <wingdi.h>
@@ -1581,6 +1582,7 @@ void OpenGLRenderer3D::RenderVertexBuffer(
   signed int currentNormalTextureID = -1;
   signed int currentSpecularTextureID = -1;
   signed int currentIlluminationTextureID = -1;
+  signed int currentTimingTextureID = -1;
   signed int currentBoundBuffer = -1;
 
   // int bufferSize = vertexBufferQueue.size();
@@ -1705,6 +1707,7 @@ void OpenGLRenderer3D::RenderVertexBuffer(
         int normalTextureID = 0;
         int specularTextureID = 0;
         int illuminationTextureID = 0;
+        int timingTextureID = 0;
         if (vbIndex->material.diffuseTexture) {
           diffuseTextureID = vbIndex->material.diffuseTexture->GetResource()->GetID();
         }
@@ -1719,12 +1722,16 @@ void OpenGLRenderer3D::RenderVertexBuffer(
           if (vbIndex->material.illuminationTexture) {
             illuminationTextureID = vbIndex->material.illuminationTexture->GetResource()->GetID();
           }
+          if (vbIndex->material.timingTexture) {
+            timingTextureID = vbIndex->material.timingTexture->GetResource()->GetID();
+          }
         }
 
         if (diffuseTextureID != currentDiffuseTextureID ||
             normalTextureID != currentNormalTextureID ||
             specularTextureID != currentSpecularTextureID ||
-            illuminationTextureID != currentIlluminationTextureID) {
+            illuminationTextureID != currentIlluminationTextureID ||
+            timingTextureID != currentTimingTextureID) {
           if (sequential) {
             DrawBufferChunk(bufferChunk.startIndex, bufferChunk.count, instancesThisBatch);
             sequential = false;
@@ -1753,34 +1760,57 @@ void OpenGLRenderer3D::RenderVertexBuffer(
               SetTextureUnit(3);
               mapping.glBindTexture(GL_TEXTURE_2D, illuminationTextureID);
             }
+            if (timingTextureID != currentTimingTextureID) {
+              // Unit 4 is the overlay pass's noise (and the ambient pass's
+              // map_noise): the timing sampler sits on 5. The timing map is
+              // a binary mask the sweep walks across, so point sampling keeps
+              // tiles crisp and wrap keeps the sweep seamless (the reference
+              // sampler is g_samplerPoint_Wrap).
+              SetTextureUnit(5);
+              mapping.glBindTexture(GL_TEXTURE_2D, timingTextureID);
+              mapping.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+              mapping.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+              mapping.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+              mapping.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            }
           }
 
           SetTextureUnit(0);
           mapping.glBindTexture(GL_TEXTURE_2D, diffuseTextureID);
 
           if (renderMode == e_RenderMode_Full) {
-            // SetUniformFloat("simple", "shininess", vbIndex->material.shininess * 60 + 1);
-            // SetUniformFloat("simple", "specular", vbIndex->material.specular_amount);
-            // SetUniformFloat("simple", "self_illumination",
-            // vbIndex->material.self_illumination.coords[0]); SetUniformFloat3("simple",
-            // "materialparams", vbIndex->material.shininess * 60 + 1,
-            // vbIndex->material.specular_amount, vbIndex->material.self_illumination.coords[0]);
             SetUniformFloat3("simple", "materialparams", vbIndex->material.shininess,
                              vbIndex->material.specular_amount,
                              vbIndex->material.self_illumination.coords[0]);
 
-            // SetUniformInt("simple", "has_normal", (int)has_normal);
-            // SetUniformInt("simple", "has_specular", (int)has_specular);
-            // SetUniformInt("simple", "has_illumination", (int)has_illumination);
             SetUniformFloat3("simple", "materialbools", static_cast<float>(has_normal),
                              static_cast<float>(has_specular),
                              static_cast<float>(has_illumination));
+
+            // PES's per-material UV animation, evaluated fresh every material
+            // change: uvanim_dTime is in UV cycles (the sweep position), not
+            // seconds, so the fragment shader only adds and wraps.
+            const UvAnimParams& uvanim = vbIndex->material.uvanim;
+            const float animTimeS = UvAnimTimeS();
+            float scrollDu, scrollDv, stepDu, stepDv, sweepDu, sweepDv, baseSu, baseSv;
+            UvAnimScrollShift(uvanim, animTimeS, scrollDu, scrollDv);
+            UvAnimStepShift(uvanim, animTimeS, stepDu, stepDv);
+            UvAnimStepTimingSweep(uvanim, animTimeS, sweepDu, sweepDv);
+            UvAnimBaseScale(uvanim, baseSu, baseSv);
+            SetUniformFloat("simple", "uvanim_dTime", sweepDu);
+            SetUniformFloat("simple", "uvanim_dTimeV", sweepDv);
+            SetUniformFloat2("simple", "uvanim_scroll", scrollDu, scrollDv);
+            SetUniformFloat2("simple", "uvanim_step", stepDu, stepDv);
+            SetUniformFloat2("simple", "uvanim_scale", baseSu, baseSv);
+            SetUniformInt("simple", "uvanim_family",
+                          static_cast<int>(uvanim.family));
           }
 
           currentDiffuseTextureID = diffuseTextureID;
           currentNormalTextureID = normalTextureID;
           currentSpecularTextureID = specularTextureID;
           currentIlluminationTextureID = illuminationTextureID;
+          currentTimingTextureID = timingTextureID;
         }
       }  // if !GeometryOnly
 
@@ -1833,6 +1863,10 @@ void OpenGLRenderer3D::RenderVertexBuffer(
       SetTextureUnit(2);
       mapping.glBindTexture(GL_TEXTURE_2D, 0);
       SetTextureUnit(3);
+      mapping.glBindTexture(GL_TEXTURE_2D, 0);
+      SetTextureUnit(5);
+      mapping.glBindTexture(GL_TEXTURE_2D, 0);
+      SetTextureUnit(4);
       mapping.glBindTexture(GL_TEXTURE_2D, 0);
     }
     SetTextureUnit(0);
@@ -2657,6 +2691,7 @@ void OpenGLRenderer3D::LoadShader(const std::string& name, const std::string& fi
     SetUniformInt("simple", "map_normal", 1);
     SetUniformInt("simple", "map_specular", 2);
     SetUniformInt("simple", "map_illumination", 3);
+    SetUniformInt("simple", "map_timing", 5);
   }
   if (name == "ambient") {
     SetUniformInt("ambient", "map_albedo", 0);

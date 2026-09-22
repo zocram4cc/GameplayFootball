@@ -20,6 +20,8 @@ namespace blunted {
 
 struct s_Material {
   std::string maps[4];
+  std::string timingMap;   // uvanim timing texture path (empty = none)
+  std::string uvanim;      // uvanim param line (empty = family 0)
   std::string shininess;
   std::string specular_amount;
   Vector3 self_illumination;
@@ -47,13 +49,18 @@ public:
   // ResourceManager::Fetch), so a stadium's 'ass.png' is all that survives of
   // 'media/objects/stadiums/pes_st060/textures/ass.png'. The geometry cache
   // has to be able to fetch the same file again on a cold start, so the paths
-  // the parse saw are kept here for it.
+  // the parse saw are kept here for it. The timing map rides a parallel list
+  // (GetTimingPaths): same story, one path each.
   const std::vector<std::array<std::string, 4>>& GetTexturePaths() const {
     return texturePaths;
   }
+  const std::vector<std::string>& GetTimingPaths() const {
+    return timingPaths;
+  }
 
-protected:
+ protected:
   std::vector<std::array<std::string, 4>> texturePaths;
+  std::vector<std::string> timingPaths;
   int triangleCount;
 };
 

@@ -15,6 +15,7 @@
 #include "types/material.hpp"
 #include "types/resource.hpp"
 #include "types/thread.hpp"
+#include "utils/uvanim.hpp"
 
 namespace blunted {
 
@@ -32,6 +33,8 @@ struct Renderer3DMaterial {
   boost::intrusive_ptr<Resource<Texture>> normalTexture;
   boost::intrusive_ptr<Resource<Texture>> specularTexture;
   boost::intrusive_ptr<Resource<Texture>> illuminationTexture;
+  boost::intrusive_ptr<Resource<Texture>> timingTexture;
+  UvAnimParams uvanim;
   float shininess;
   float specular_amount;
   Vector3 self_illumination;

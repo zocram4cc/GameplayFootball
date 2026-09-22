@@ -19,6 +19,7 @@
 #include "base/math/bluntmath.hpp"
 #include "base/math/matrix3.hpp"
 #include "managers/resourcemanagerpool.hpp"
+#include "utils/uvanim.hpp"
 
 namespace blunted {
 
@@ -33,6 +34,7 @@ void ASELoader::Load(const std::string& filename,
                      boost::intrusive_ptr<Resource<GeometryData>> resource) {
   triangleCount = 0;
   texturePaths.clear();
+  timingPaths.clear();
 
   // Prefer the prebuilt binary cache: an imported stadium is tens of megabytes
   // of text, and parsing it is by far the most expensive thing a scene load
@@ -57,7 +59,7 @@ void ASELoader::Load(const std::string& filename,
   delete data;
   Log(e_Notice, "ASELoader", "Load",
       filename + ": parsed in " + int_to_str(elapsedMs()) + " ms");
-  SaveGeometryCache(filename, resource, texturePaths);
+  SaveGeometryCache(filename, resource, texturePaths, timingPaths);
   // printf("%s: %i total triangles\n", filename.c_str(), triangleCount);
 }
 
@@ -92,6 +94,11 @@ void ASELoader::Build(const s_tree* data, boost::intrusive_ptr<Resource<Geometry
     maps[1] = tree_find(material_tree, "MAP_BUMP");
     maps[2] = tree_find(material_tree, "MAP_SHINE");
     maps[3] = tree_find(material_tree, "MAP_SELFILLUM");
+    const s_tree* map_timing = tree_find(material_tree, "MAP_TIMING");
+    // The importer's *MATERIAL_UVANIM line: "uvstep <8 floats>" or
+    // "uvscroll <3 floats>". Stored verbatim; parsed when the material for a
+    // geometry that carries it is built below.
+    const s_treeentry* uvanim = treeentry_find(material_tree, "MATERIAL_UVANIM");
     s_Material mat;
 
     for (int i = 0; i < 4; i++) {
@@ -117,6 +124,19 @@ void ASELoader::Build(const s_tree* data, boost::intrusive_ptr<Resource<Geometry
     mat.self_illumination.Set(
         (self_illumination && !self_illumination->values.empty())
             ? atof(self_illumination->values.at(0).c_str()) : 0.0f);
+    if (uvanim && !uvanim->values.empty()) {
+      mat.uvanim.assign(uvanim->values.at(0));
+      for (size_t i = 1; i < uvanim->values.size(); i++) {
+        mat.uvanim.append(" ");
+        mat.uvanim.append(uvanim->values.at(i));
+      }
+    }
+    if (map_timing) {
+      const s_treeentry* bitmap = treeentry_find(map_timing, "BITMAP");
+      assert(bitmap);
+      mat.timingMap.assign(bitmap->values.at(0));
+      mat.timingMap = mat.timingMap.substr(1, mat.timingMap.length() - 2);
+    }
 
     materialList.push_back(mat);
   }
@@ -483,6 +503,17 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
                                          .GetManager<Surface>(e_ResourceType_Surface)
                                          ->Fetch(matname, true, true);
     }
+    // The importer's animation, if there is one: the parameter line parses
+    // to UvAnimParams ("" parses to a static material), and the timing map
+    // is an ordinary texture fetch like the other four.
+    material.uvanim =
+        UvAnimParseAseLine(materialList.at(material_reference).uvanim);
+    matname.assign(materialList.at(material_reference).timingMap);
+    if (matname.length() > 0) {
+      material.timingTexture = ResourceManagerPool::GetInstance()
+                                   .GetManager<Surface>(e_ResourceType_Surface)
+                                   ->Fetch(matname, true, true);
+    }
 
     material.shininess = atof(materialList.at(material_reference).shininess.c_str());
     material.specular_amount = atof(materialList.at(material_reference).specular_amount.c_str());
@@ -493,10 +524,14 @@ void ASELoader::BuildTriangleMesh(const s_tree* data,
   // mesh with the files its textures actually came from - the material's own
   // resources only remember their basenames (see GetTexturePaths).
   std::array<std::string, 4> meshTexturePaths;
-  if (material_reference != -1)
+  std::string meshTimingPath;
+  if (material_reference != -1) {
     for (int i = 0; i < 4; i++)
       meshTexturePaths[i] = materialList.at(material_reference).maps[i];
+    meshTimingPath = materialList.at(material_reference).timingMap;
+  }
   texturePaths.push_back(meshTexturePaths);
+  timingPaths.push_back(meshTimingPath);
 
   resource->resourceMutex.lock();
   std::vector<unsigned int> indices;

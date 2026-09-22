@@ -666,17 +666,98 @@ def is_shadeless(mesh):
     return False
 
 
-def material_block(texture, shadeless=False):
+# The UV-animated materials. The k2017 LED boots and the k2021/k2022 eyes are
+# not animated by the engine's animation system at all: the Fox shader is one
+# of the two families below and the parameters say how the UVs move. A timing
+# map adds per-fragment visibility on top of the UV motion.
+UVSTEP_SHADER = "uvstep"
+UVSCROLL_SHADER = "uvscroll"
+TIMING_TEX_ROLE = "Timing_Tex_LIN"
+# The parameter names and their order, straight from the FMDL. Every value is
+# a (r, g, b, a) tuple and the shader reads only the first.
+UVSTEP_PARAMS = ("Tile_Count_U", "Tile_Count_V", "Tiles_Used",
+                 "Scale_UVs_To_Tiles", "Seconds_Per_Animation_Cycle",
+                 "Use_Timing_Texture", "Seconds_Per_Timing_U_Cycle",
+                 "Seconds_Per_Timing_V_Cycle")
+UVSCROLL_PARAMS = ("UV0_Speed_U", "UV0_Speed_V", "Offset")
+
+
+def uvanim_params(mesh):
+    """The UV-animation parameters for this mesh, or None when the material is
+    static.
+
+    Returns a dict with:
+      family: "uvstep" or "uvscroll"
+      values: the floats in the order the ASE line carries them
+      timing: the timing map's source name, or None
+
+    Both the shader and the technique are checked: FmdlFile.py fills one from
+    the other and either can be missing, and the family word is in the name,
+    not in a separate field.
+    """
+    material = getattr(mesh, "materialInstance", None)
+    if material is None:
+        return None
+    names = [getattr(material, "shader", "") or "",
+             getattr(material, "technique", "") or ""]
+    lowered = [n.lower() for n in names]
+    if any(UVSTEP_SHADER in n for n in lowered):
+        family, param_names = "uvstep", UVSTEP_PARAMS
+    elif any(UVSCROLL_SHADER in n for n in lowered):
+        family, param_names = "uvscroll", UVSCROLL_PARAMS
+    else:
+        return None
+    params = dict(material.parameters or ())
+    values = [params.get(name, (0.0,))[0] for name in param_names]
+    timing = None
+    for role, tex in (material.textures or ()):
+        if role == TIMING_TEX_ROLE:
+            timing = getattr(tex, "filename", None)
+            break
+    return {"family": family, "values": values, "timing": timing}
+
+
+def material_block(texture, shadeless=False, uvanim=None):
     """The ASE material for one mesh.
 
     An unlit mesh asks for full self-illumination, which is how this engine says the
     same thing: aseloader.cpp reads MATERIAL_SELFILLUM into materialparams.z,
     simple.frag writes it to the aux buffer, and the lighting pass takes it as the
     self-illumination factor.
+
+    A UV-animated mesh gets a *MATERIAL_UVANIM line (family + floats) and, when it
+    carries a timing map, a *MAP_TIMING block: aseloader.cpp parses both and
+    simple.frag applies the animation.
     """
-    return (MATERIAL_BLOCK % {"texture": texture}).replace(
-        "*MATERIAL_SELFILLUM 0.0", "*MATERIAL_SELFILLUM 1.0" if shadeless else
-        "*MATERIAL_SELFILLUM 0.0")
+    block = (MATERIAL_BLOCK % {"texture": texture}).replace(
+        "*MATERIAL_SELFILLUM 0.0",
+        "*MATERIAL_SELFILLUM 1.0" if shadeless else "*MATERIAL_SELFILLUM 0.0")
+    if uvanim:
+        values = " ".join("%.6f" % v for v in uvanim["values"])
+        block = block.replace(
+            "*MATERIAL_SHINE 0.100",
+            "*MATERIAL_UVANIM %s %s\n        *MATERIAL_SHINE 0.100" % (
+                uvanim["family"], values))
+        if uvanim.get("timing"):
+            block += ('        *MAP_TIMING {\n'
+                      '            *MAP_NAME "fullbody"\n'
+                      '            *MAP_CLASS "Bitmap"\n'
+                      '            *BITMAP "%s"\n'
+                      '            *MAP_TYPE Screen\n'
+                      '        }\n' % uvanim["timing"])
+    return block
+
+
+def _uvanim_for_path(anim, exported, exported_path):
+    """The uvanim dict for a material block, with the timing texture's name
+    swapped to its exported path (or dropped when the export could not find
+    the file - the material then animates its UVs without the timing map, and
+    the missing texture is reported like every other)."""
+    if not anim or not anim.get("timing"):
+        return anim
+    if anim["timing"] not in exported:
+        return dict(anim, timing=None)
+    return dict(anim, timing=exported_path(exported[anim["timing"]]))
 
 
 # PES's placeholder textures: a mesh on one of these carries no art at all,
@@ -751,12 +832,17 @@ def texture_name_candidates(name):
     texture (<char>_u0XXXp0); the pack ships the actual art per kit as
     <char>_u0XXXp1/2/3. The import is a single static model, so it wears
     kit 1. The bare kit slot itself stays with the engine (see above).
+
+    The stem drops any extension the name ships with: the mesh says
+    "timing.dds" and the file is timing.dds, but comparing the bare stem
+    against the file's stem is what makes that match.
     """
     if BARE_KIT_SLOT_RE.match(name):
         return []
-    names = [name]
-    if name.lower().endswith("p0"):
-        names.append(name[:-1] + "1")
+    stem = os.path.splitext(name)[0]
+    names = [stem]
+    if stem.lower().endswith("p0"):
+        names.append(stem[:-1] + "1")
     return names
 
 
@@ -1105,6 +1191,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     group_of = {}
     source_dir = os.path.dirname(os.path.abspath(fmdl_path))
     group_shadeless = []
+    group_uvanim = []
     placeholders = 0
     for mesh in meshes:
         name = mesh_base_texture(mesh) or ""
@@ -1114,11 +1201,18 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             placeholders += 1
             continue
         shadeless = is_shadeless(mesh)
-        key = (name, shadeless)
+        anim = uvanim_params(mesh)
+        # The animation is part of the material, not a property of the texture:
+        # two meshes on the same diffuse map that animate differently must not
+        # share an ASE material. The key carries the full value set: a 1-tile
+        # LED and a 2x2 grid on the same map are different materials too.
+        key = (name, shadeless, None if not anim else (
+            anim["family"], tuple(anim["values"]), anim.get("timing")))
         if key not in group_of:
             group_of[key] = len(groups)
             groups.append([name, [], [], {}])
             group_shadeless.append(shadeless)
+            group_uvanim.append(anim)
         _, vertices, faces, index = groups[group_of[key]]
         for face in mesh.faces:
             tri = []
@@ -1127,13 +1221,19 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
                 if key not in index:
                     index[key] = len(vertices)
                     uv = vertex.uv[0] if vertex.uv else None
+                    # The timing map's V is per-vertex: the eyes swap states
+                    # between rows of the texture. The FMDL stores it as the
+                    # second UV channel.
+                    timing_v = None
+                    if anim and len(vertex.uv or []) > 1 and vertex.uv[1] is not None:
+                        timing_v = vertex.uv[1].v
                     skin = ([(force_joint, 1.0)] if force_joint is not None
                             else vertex_joints(vertex, bone_to_joint,
                                                joint_positions,
                                                model_scale=model_scale))
                     pos = fox_to_gf(vertex.position)
                     color = encode_color(skin)
-                    vertices.append((pos, uv, color, skin))
+                    vertices.append((pos, uv, color, skin, timing_v))
                 tri.append(index[key])
             # Fox winds clockwise-front (D3D); GF culls GL-style, so reverse.
             # (4cc exports double every mesh so they hid this; Konami's
@@ -1155,7 +1255,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     # Verbatim: authored weights ride through untouched. No smoothing, no
     # weld, no reconcile, no stretched cut — PES's bytes, basis-mapped.
     for group in groups:
-        group[1] = [(v[0], v[1], encode_color(v[3]), v[3]) for v in group[1]]
+        group[1] = [(v[0], v[1], encode_color(v[3]), v[3], v[4]) for v in group[1]]
 
     # what the rest of the writer used to work on
     vertices = groups[0][1] if groups else []
@@ -1176,7 +1276,9 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
     model_id = os.path.basename(os.path.normpath(out_dir))
     exported = export_textures(
         fmdl_path, out_dir,
-        [g[0] for g in groups if not is_kit_slot_texture(g[0])], model_id)
+        [g[0] for g in groups if not is_kit_slot_texture(g[0])]
+        + [anim["timing"] for anim in group_uvanim
+           if anim and anim.get("timing")], model_id)
     texture_rel = os.path.dirname(texture)
 
     def exported_path(unique):
@@ -1241,12 +1343,20 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
         # shading differs, so the first occurrence decides. It costs nothing on the
         # composite path this branch serves: HDG's armour has no unlit mesh in it.
         shadeless_by_path = {}
+        uvanim_by_path = {}
         for index, group in enumerate(groups):
-            shadeless_by_path.setdefault(group_texture_path(group[0]), group_shadeless[index])
+            tex = group_texture_path(group[0])
+            shadeless_by_path.setdefault(tex, group_shadeless[index])
+            uvanim_by_path.setdefault(tex, group_uvanim[index])
         appended_shadeless = [shadeless_by_path.get(tex, False) for tex in appended]
+        appended_uvanim = [uvanim_by_path.get(tex) for tex in appended]
         plate_materials = "".join(
             "\t*MATERIAL %d {\n%s\t}\n" % (base_material_count + i,
-                                           material_block(tex, appended_shadeless[i]))
+                                           material_block(
+                                               tex, appended_shadeless[i],
+                                               uvanim=_uvanim_for_path(
+                                                   appended_uvanim[i],
+                                                   exported, exported_path)))
             for i, tex in enumerate(appended))
         base_head = base_head[:close_at] + plate_materials + base_head[close_at:]
 
@@ -1267,8 +1377,11 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("*MATERIAL_LIST {\n\t*MATERIAL_COUNT %d\n" % max(1, len(groups)))
             for slot, group in enumerate(groups):
                 out.write("\t*MATERIAL %d {\n" % slot)
-                out.write(material_block(group_texture_path(group[0]),
-                                         group_shadeless[slot]))
+                out.write(material_block(
+                    group_texture_path(group[0]), group_shadeless[slot],
+                    uvanim=_uvanim_for_path(group_uvanim[slot],
+                                            exported,
+                                            exported_path)))
                 out.write("\t}\n")
             if not groups:
                 out.write("\t*MATERIAL 0 {\n")
@@ -1291,7 +1404,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t*MESH_NUMVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_NUMFACES %d\n" % len(faces))
             out.write("\t\t*MESH_VERTEX_LIST {\n")
-            for i, (pos, _, _, _) in enumerate(vertices):
+            for i, (pos, _, _, _, _) in enumerate(vertices):
                 out.write("\t\t\t*MESH_VERTEX %d\t%.6f\t%.6f\t%.6f\n"
                       % (i, pos[0], pos[1], pos[2]))
             out.write("\t\t}\n\t\t*MESH_FACE_LIST {\n")
@@ -1301,9 +1414,11 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t}\n")
             out.write("\t\t*MESH_NUMTVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_TVERTLIST {\n")
-            for i, (_, uv, _, _) in enumerate(vertices):
+            for i, (_, uv, _, _, timing_v) in enumerate(vertices):
                 u, v = (uv.u, 1.0 - uv.v) if uv is not None else (0.0, 0.0)
-                out.write("\t\t\t*MESH_TVERT %d\t%.6f\t%.6f\t0.0\n" % (i, u, v))
+                tv = timing_v if timing_v is not None else 0.0
+                out.write("\t\t\t*MESH_TVERT %d\t%.6f\t%.6f\t%.6f\n"
+                          % (i, u, v, tv))
             out.write("\t\t}\n")
             out.write("\t\t*MESH_NUMTVFACES %d\n" % len(faces))
             out.write("\t\t*MESH_TFACELIST {\n")
@@ -1312,7 +1427,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             out.write("\t\t}\n")
             out.write("\t\t*MESH_NUMCVERTEX %d\n" % len(vertices))
             out.write("\t\t*MESH_CVERTLIST {\n")
-            for i, (_, _, color, _) in enumerate(vertices):
+            for i, (_, _, color, _, _) in enumerate(vertices):
                 out.write("\t\t\t*MESH_VERTCOL %d\t%.3f\t%.3f\t%.3f\n"
                       % (i, color[0], color[1], color[2]))
             out.write("\t\t}\n")
@@ -1321,7 +1436,7 @@ def convert(fmdl_path, out_dir, fmdl_lib, texture, base_ase=None,
             for i, (a, b, c) in enumerate(faces):
                 out.write("\t\t\t*MESH_CFACE %d\t%d\t%d\t%d\n" % (i, a, b, c))
             out.write("\t\t}\n")
-            gf_verts = [pos for (pos, _, _, _) in vertices]
+            gf_verts = [pos for (pos, _, _, _, _) in vertices]
             ase_util.write_mesh_normals(out, gf_verts, faces, smooth=True)
             out.write("\t}\n")
             out.write("\t*PROP_MOTIONBLUR 0\n\t*PROP_CASTSHADOW 1\n")

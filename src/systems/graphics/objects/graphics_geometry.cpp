@@ -68,7 +68,8 @@ void LoadMaterials(Renderer3D* renderer3D, const Material* material,
                    boost::intrusive_ptr<Resource<Texture>> diffuseTexture,
                    boost::intrusive_ptr<Resource<Texture>> normalTexture,
                    boost::intrusive_ptr<Resource<Texture>> specularTexture,
-                   boost::intrusive_ptr<Resource<Texture>> illuminationTexture) {
+                   boost::intrusive_ptr<Resource<Texture>> illuminationTexture,
+                   boost::intrusive_ptr<Resource<Texture>> timingTexture) {
   if (material->diffuseTexture) {
     boost::intrusive_ptr<Resource<Surface>> surface = material->diffuseTexture;
 
@@ -157,6 +158,27 @@ void LoadMaterials(Renderer3D* renderer3D, const Material* material,
     }
   }
 
+  if (material->timingTexture) {
+    boost::intrusive_ptr<Resource<Surface>> surface = material->timingTexture;
+
+    bool texAlreadyThere = false;
+    timingTexture = ResourceManagerPool::GetInstance()
+                        .GetManager<Texture>(e_ResourceType_Texture)
+                        ->Fetch(surface->GetIdentString(), false, texAlreadyThere,
+                                true);  // false == don't try to use loader
+
+    if (!texAlreadyThere) {
+      surface->resourceMutex.lock();
+      SDL_Surface* image = surface->GetResource()->GetData();
+      timingTexture->GetResource()->SetRenderer3D(renderer3D);
+      timingTexture->GetResource()->CreateTexture(e_InternalPixelFormat_RGB8,
+                                                  e_PixelFormat_RGBA, image->w, image->h,
+                                                  false, true, true, true);
+      timingTexture->GetResource()->UpdateTexture(image, false, true);
+      surface->resourceMutex.unlock();
+    }
+  }
+
   if (diffuseTexture)
     r3dMaterial.diffuseTexture = diffuseTexture;
   if (normalTexture)
@@ -165,9 +187,9 @@ void LoadMaterials(Renderer3D* renderer3D, const Material* material,
     r3dMaterial.specularTexture = specularTexture;
   if (illuminationTexture)
     r3dMaterial.illuminationTexture = illuminationTexture;
-  r3dMaterial.shininess = material->shininess;
-  r3dMaterial.specular_amount = material->specular_amount;
-  r3dMaterial.self_illumination = material->self_illumination;
+  if (timingTexture)
+    r3dMaterial.timingTexture = timingTexture;
+  r3dMaterial.uvanim = material->uvanim;
 }
 
 void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry> geometry) {
@@ -221,10 +243,11 @@ void GraphicsGeometry_GeometryInterpreter::OnLoad(boost::intrusive_ptr<Geometry>
     boost::intrusive_ptr<Resource<Texture>> normalTexture;
     boost::intrusive_ptr<Resource<Texture>> specularTexture;
     boost::intrusive_ptr<Resource<Texture>> illuminationTexture;
+    boost::intrusive_ptr<Resource<Texture>> timingTexture;
 
     Renderer3DMaterial r3dMaterial;
     LoadMaterials(renderer3D, material, r3dMaterial, diffuseTexture, normalTexture, specularTexture,
-                  illuminationTexture);
+                  illuminationTexture, timingTexture);
 
     // mesh
 
@@ -412,10 +435,11 @@ void GraphicsGeometry_GeometryInterpreter::OnUpdateGeometry(boost::intrusive_ptr
       boost::intrusive_ptr<Resource<Texture>> normalTexture;
       boost::intrusive_ptr<Resource<Texture>> specularTexture;
       boost::intrusive_ptr<Resource<Texture>> illuminationTexture;
+      boost::intrusive_ptr<Resource<Texture>> timingTexture;
 
       Renderer3DMaterial r3dMaterial;
       LoadMaterials(renderer3D, material, r3dMaterial, diffuseTexture, normalTexture,
-                    specularTexture, illuminationTexture);
+                    specularTexture, illuminationTexture, timingTexture);
 
       // indices
 

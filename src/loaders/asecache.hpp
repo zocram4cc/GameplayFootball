@@ -46,12 +46,13 @@ bool LoadGeometryCache(const std::string& aseFilename,
 // the geometry itself: the resource manager registers surfaces under their
 // basename, so a material only remembers 'ass.png', never the directory it
 // came out of - and a cold start has to be able to open the file again.
-//
-// Failures are not fatal: a cache that cannot be written just means parsing
-// again later.
+// `timingPaths` rides beside it: the uvanim timing map of each mesh ("" when
+// the mesh has none). The material's UvAnimParams are plain data and travel
+// inside the cache itself.
 void SaveGeometryCache(const std::string& aseFilename,
                        boost::intrusive_ptr<Resource<GeometryData>> resource,
-                       const std::vector<std::array<std::string, 4>>& texturePaths);
+                       const std::vector<std::array<std::string, 4>>& texturePaths,
+                       const std::vector<std::string>& timingPaths);
 
 }  // namespace blunted
 

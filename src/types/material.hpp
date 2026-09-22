@@ -7,14 +7,21 @@
 #define _HPP_MATERIAL
 
 #include "scene/resources/surface.hpp"
-
+#include "utils/uvanim.hpp"
 namespace blunted {
+
+// Per-material PES UV animation (uvscroll / uvstep, e.g. the k2017 LED
+// boots). The importer bakes it into the .object's MATERIAL block; the
+// renderer replays it against a per-frame clock so PES's animated boots
+// stay animated. family None (0) means no animation.
 
 struct Material {
   boost::intrusive_ptr<Resource<Surface>> diffuseTexture;
   boost::intrusive_ptr<Resource<Surface>> normalTexture;
   boost::intrusive_ptr<Resource<Surface>> specularTexture;
   boost::intrusive_ptr<Resource<Surface>> illuminationTexture;
+  boost::intrusive_ptr<Resource<Surface>> timingTexture;  // uvanim: tile-select grid
+  UvAnimParams uvanim;
   float shininess;
   float specular_amount;
   Vector3 self_illumination;

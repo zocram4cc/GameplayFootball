@@ -481,6 +481,20 @@ target_link_libraries(gameplayfootball_camtrack_tests PRIVATE
 )
 gtest_discover_tests(gameplayfootball_camtrack_tests DISCOVERY_MODE PRE_TEST)
 
+# UV animation: the CPU side of the PES vertex-shader uvscroll/uvstep math
+# (LED boots, animated kits). Pure float32, no GL - testable headless.
+add_executable(gameplayfootball_uvanim_tests
+  base/uvanim_test.cpp
+  ${PROJECT_SOURCE_DIR}/src/utils/uvanim.cpp
+)
+target_include_directories(gameplayfootball_uvanim_tests PRIVATE
+  ${PROJECT_SOURCE_DIR}/src
+)
+target_link_libraries(gameplayfootball_uvanim_tests PRIVATE
+  GTest::gtest_main
+)
+gtest_discover_tests(gameplayfootball_uvanim_tests DISCOVERY_MODE PRE_TEST)
+
 # The standalone viewer's orbit camera.
 add_executable(gameplayfootball_viewercamera_tests
   base/viewer_camera_test.cpp

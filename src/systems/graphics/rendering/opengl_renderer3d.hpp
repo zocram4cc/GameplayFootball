@@ -196,6 +196,13 @@ protected:
 
   std::atomic<unsigned long> presentedFrames{0};
   std::atomic<unsigned long> drawnBatches{0};
+  // The animation clock: PES's UV animation runs on wall seconds, counted
+  // here off presented frames so gfviewer shots (no match loop) animate too.
+  // 60 fps nominal; the exact rate only bends long cycles.
+  static constexpr float kAnimSecondsPerFrame = 1.0f / 60.0f;
+  float UvAnimTimeS() const {
+    return static_cast<float>(presentedFrames.load()) * kAnimSecondsPerFrame;
+  }
 
   // members and functions for rendering overlay with shaders instead of deprecated methods
   VertexBufferID
