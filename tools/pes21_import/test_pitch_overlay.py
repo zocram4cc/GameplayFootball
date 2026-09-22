@@ -88,23 +88,22 @@ class WhichPassIsWhich(unittest.TestCase):
 
 
 class FittingPesArtToThisPitch(unittest.TestCase):
-    """PES's field is not this engine's field, so the art is fitted to ours.
+    """PES's field is this engine's field, so the art is laid down as measured.
 
     PES marks its pitch at +/-53 x +/-34.1 m (st002's line mesh) - a real 106 x 68
-    field. This engine's is 110 x 72 (gametypes.hpp: pitchHalfW 55, pitchHalfH 36)
-    and it paints its own lines there. Laid down unscaled, PES's touchline would
-    sit two metres inside ours and the ball would go out over open grass, so the
-    import is stretched until the two rectangles agree - under 4% one way, 6% the
-    other, which no crest or mowing band shows.
+    field against the engine's 105 x 68 (gametypes.hpp: pitchHalfW 52.5,
+    pitchHalfH 34). The stretch that once fitted 106 onto 110 is gone: the
+    import carries PES's own measurement through, and only a measurement that
+    is not a pitch is refused.
     """
 
-    def test_st002s_pitch_is_stretched_onto_ours(self):
+    def test_st002s_pitch_passes_through_unscaled(self):
         sx, sy = pitch_overlay.fit_scale(53.0, 34.1)
-        self.assertAlmostEqual(sx, 55.0 / 53.0, places=6)
-        self.assertAlmostEqual(sy, 36.0 / 34.1, places=6)
+        self.assertAlmostEqual(sx, 52.5 / 53.0, places=6)
+        self.assertAlmostEqual(sy, 34.0 / 34.1, places=6)
 
     def test_a_pitch_already_our_size_is_left_alone(self):
-        self.assertEqual(pitch_overlay.fit_scale(55.0, 36.0), (1.0, 1.0))
+        self.assertEqual(pitch_overlay.fit_scale(52.5, 34.0), (1.0, 1.0))
 
     def test_without_a_measurement_nothing_is_scaled(self):
         self.assertEqual(pitch_overlay.fit_scale(None, None), (1.0, 1.0))

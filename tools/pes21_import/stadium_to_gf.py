@@ -267,13 +267,14 @@ def is_outline_pass(texture_name):
     return OUTLINE_TEXTURE in words
 
 
-# The two pitches. PES's is 105 x 68 m; this engine's is 110 x 72 (gametypes.hpp:
-# pitchHalfW 55, pitchHalfH 36). Geometry authored around PES's pitch therefore
-# lands two and a half metres too far in at each goal, which is how the advertising
-# ring came to run through the goal netting: its boards stand 4.17 m behind PES's
-# goal line, that became 1.67 m behind ours, and the engine's own net is 2.55 m deep.
+# The two pitches. PES's is 105 x 68 m, and since 8163845 so is this engine's
+# (gametypes.hpp: pitchHalfW 52.5, pitchHalfH 34): the goal director's
+# choreography marks, the camera tracks and the entrance staging are all
+# authored for that field, and an engine two metres longer at each end put
+# the goals 2.5 m inside its own lines. There is nothing to scale anymore -
+# the ratio is 1 and the pass-through stays so every call site keeps working.
 PES_PITCH_HALF = (52.5, 34.0)
-ENGINE_PITCH_HALF = (55.0, 36.0)
+ENGINE_PITCH_HALF = (52.5, 34.0)
 
 
 # How upright a mesh has to be before "which way does it look" is a question about

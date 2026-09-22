@@ -34,8 +34,8 @@ import stadium_to_gf
 
 
 # gametypes.hpp: x runs goal to goal, y touchline to touchline
-PITCH_HALF_X = 55.0
-PITCH_HALF_Y = 36.0
+PITCH_HALF_X = 52.5
+PITCH_HALF_Y = 34.0
 # How far outside the touchline the technical areas sit.
 OUTSIDE = 1.8
 # How far along the pitch they spread from the halfway line.

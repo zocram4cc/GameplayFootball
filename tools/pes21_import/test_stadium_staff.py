@@ -22,8 +22,8 @@ import unittest
 import stadium_staff
 
 
-HALF_X = 55.0  # gametypes.hpp: x runs goal to goal
-HALF_Y = 36.0  # y touchline to touchline
+HALF_X = 52.5  # gametypes.hpp: x runs goal to goal
+HALF_Y = 34.0  # y touchline to touchline
 
 
 class DressedFirst(unittest.TestCase):

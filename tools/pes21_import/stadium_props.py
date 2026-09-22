@@ -42,8 +42,8 @@ import stadium_crowd  # noqa: E402
 import stadium_to_gf
 
 # gametypes.hpp
-PITCH_HALF_X = 55.0
-PITCH_HALF_Y = 36.0
+PITCH_HALF_X = 52.5
+PITCH_HALF_Y = 34.0
 # How far outside the lines the furniture stands.
 OUTSIDE = 2.5
 # Behind a goal line, where a camera and its operator have room.

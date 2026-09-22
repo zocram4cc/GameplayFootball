@@ -30,8 +30,8 @@ import stadium_staff
 import stadium_props
 
 
-HALF_X = 55.0  # gametypes.hpp
-HALF_Y = 36.0
+HALF_X = 52.5  # gametypes.hpp
+HALF_Y = 34.0
 
 
 def _faces(mark, target=(0.0, 0.0)):

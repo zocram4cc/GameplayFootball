@@ -108,8 +108,8 @@ def rasterise_triangle(pixels, width, height, positions, uvs, sampler):
 
 
 # gametypes.hpp again: where this engine paints its own touchlines and goal lines
-PITCH_HALF_W = 55.0
-PITCH_HALF_H = 36.0
+PITCH_HALF_W = 52.5
+PITCH_HALF_H = 34.0
 # A measurement outside this is not a set of pitch markings
 PITCH_PLAUSIBLE = (30.0, 80.0)
 
@@ -117,11 +117,9 @@ PITCH_PLAUSIBLE = (30.0, 80.0)
 def fit_scale(line_half_x, line_half_y):
     """-> (sx, sy) stretching PES's marked field onto this engine's.
 
-    PES marks a real 106 x 68 m pitch; this engine's is 110 x 72 and it paints its
-    lines at pitchHalfW/H. Unscaled, PES's touchline would fall two metres inside
-    ours - the ball would leave the field over open grass, and two sets of lines
-    would sit side by side. Under 4% one way and 6% the other fixes that, and no
-    crest or mowing band shows the stretch.
+    Both are 105 x 68 m since 8163845, so a real measurement returns 1 and the
+    pass-through stays for the call site. Anything outside PITCH_PLAUSIBLE is
+    still refused: a stray mesh half a kilometre across is not the markings.
     """
     scale = []
     for measured, ours in ((line_half_x, PITCH_HALF_W), (line_half_y, PITCH_HALF_H)):

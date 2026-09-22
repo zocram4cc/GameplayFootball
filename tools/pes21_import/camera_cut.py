@@ -679,8 +679,9 @@ FOX_TO_GF_QUAT = (_SQRT_HALF, 0.0, 0.0, _SQRT_HALF)
 def to_gf_position(p, pitch_half_w=None, pitch_half_h=None):
     """Fox (x, y_up, z) metres -> GF (x, y, z_up) metres.
 
-    Pass GF's ``pitchHalfW`` (55) and ``pitchHalfH`` (36) from src/gametypes.hpp
-    to stretch PES's 105 x 68 m pitch onto GF's slightly larger one.
+    Pass GF's ``pitchHalfW`` (52.5) and ``pitchHalfH`` (34) from src/gametypes.hpp
+    to stretch PES's 105 x 68 m pitch onto GF's - the same size since 8163845,
+    so the stretch is 1 and the pass-through stays for the call site.
     """
     x, y, z = p[0], p[1], p[2]
     sx = 1.0 if pitch_half_w is None else pitch_half_w / FOX_PITCH_HALF_LENGTH
@@ -776,9 +777,9 @@ def _dump(path, args):
             print("      %-6d (%8.3f,%8.3f,%8.3f)  (%6.3f,%6.3f,%6.3f,%6.3f) %6.2f  %s"
                   % (f, p[0], p[1], p[2], q[0], q[1], q[2], q[3], canm.fov(f), where))
         if args.gf:
-            print("      -- same frames converted to GameplayFootball (Z-up, pitchHalfW=55, pitchHalfH=36) --")
+            print("      -- same frames converted to GameplayFootball (Z-up, pitchHalfW=52.5, pitchHalfH=34) --")
             for f in picks:
-                g = to_gf(canm, f, 55.0, 36.0)
+                g = to_gf(canm, f, 52.5, 34.0)
                 p, q = g["position"], g["rotation"]
                 print("      %-6d pos (%8.3f,%8.3f,%8.3f)  quat (%6.3f,%6.3f,%6.3f,%6.3f)"
                       "  fov %6.2f near %g far %g"

@@ -47,9 +47,11 @@ import retarget
 
 FAMILY_RE = re.compile(r"^(ent_\d{3})_")
 
-# GF pitch half sizes (src/gametypes.hpp) over the Fox 105 x 68 m pitch
-SCALE_X = 55.0 / camera_cut.FOX_PITCH_HALF_LENGTH
-SCALE_Y = 36.0 / camera_cut.FOX_PITCH_HALF_WIDTH
+# GF pitch half sizes (src/gametypes.hpp) over the Fox 105 x 68 m pitch.
+# Both are 52.5 x 34 since 8163845, so both scales are 1 and stay as the
+# documented pass-through.
+SCALE_X = 52.5 / camera_cut.FOX_PITCH_HALF_LENGTH
+SCALE_Y = 34.0 / camera_cut.FOX_PITCH_HALF_WIDTH
 
 GF_FRAME_MS = gani_to_anim.GF_FRAME_MS
 PES_FRAME_MS = gani_to_anim.PES_FRAME_MS
