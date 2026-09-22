@@ -171,9 +171,9 @@ void LoadMaterials(Renderer3D* renderer3D, const Material* material,
       surface->resourceMutex.lock();
       SDL_Surface* image = surface->GetResource()->GetData();
       timingTexture->GetResource()->SetRenderer3D(renderer3D);
-      timingTexture->GetResource()->CreateTexture(e_InternalPixelFormat_RGB8,
+      timingTexture->GetResource()->CreateTexture(e_InternalPixelFormat_RGBA8,
                                                   e_PixelFormat_RGBA, image->w, image->h,
-                                                  false, true, true, true);
+                                                  true, true, true, true);
       timingTexture->GetResource()->UpdateTexture(image, false, true);
       surface->resourceMutex.unlock();
     }
