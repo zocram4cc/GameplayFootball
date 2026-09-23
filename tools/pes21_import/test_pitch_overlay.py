@@ -87,33 +87,6 @@ class WhichPassIsWhich(unittest.TestCase):
         self.assertFalse(pitch_overlay.is_line_pass(None))
 
 
-class FittingPesArtToThisPitch(unittest.TestCase):
-    """PES's field is this engine's field, so the art is laid down as measured.
-
-    PES marks its pitch at +/-53 x +/-34.1 m (st002's line mesh) - a real 106 x 68
-    field against the engine's 105 x 68 (gametypes.hpp: pitchHalfW 52.5,
-    pitchHalfH 34). The stretch that once fitted 106 onto 110 is gone: the
-    import carries PES's own measurement through, and only a measurement that
-    is not a pitch is refused.
-    """
-
-    def test_st002s_pitch_passes_through_unscaled(self):
-        sx, sy = pitch_overlay.fit_scale(53.0, 34.1)
-        self.assertAlmostEqual(sx, 52.5 / 53.0, places=6)
-        self.assertAlmostEqual(sy, 34.0 / 34.1, places=6)
-
-    def test_a_pitch_already_our_size_is_left_alone(self):
-        self.assertEqual(pitch_overlay.fit_scale(52.5, 34.0), (1.0, 1.0))
-
-    def test_without_a_measurement_nothing_is_scaled(self):
-        self.assertEqual(pitch_overlay.fit_scale(None, None), (1.0, 1.0))
-        self.assertEqual(pitch_overlay.fit_scale(0.0, 0.0), (1.0, 1.0))
-
-    def test_a_measurement_that_is_not_a_pitch_is_refused(self):
-        # a stray mesh half a kilometre across is not the markings
-        self.assertEqual(pitch_overlay.fit_scale(500.0, 400.0), (1.0, 1.0))
-
-
 class DecalResolution(unittest.TestCase):
     """A 2048 x 4096 decal squeezed into a 2048 x 1024 overlay has to be averaged.
 

@@ -107,29 +107,6 @@ def rasterise_triangle(pixels, width, height, positions, uvs, sampler):
             pixels[py][px] = _over(tuple(int(c) for c in pixels[py][px]), sample)
 
 
-# gametypes.hpp again: where this engine paints its own touchlines and goal lines
-PITCH_HALF_W = 52.5
-PITCH_HALF_H = 34.0
-# A measurement outside this is not a set of pitch markings
-PITCH_PLAUSIBLE = (30.0, 80.0)
-
-
-def fit_scale(line_half_x, line_half_y):
-    """-> (sx, sy) stretching PES's marked field onto this engine's.
-
-    Both are 105 x 68 m since 8163845, so a real measurement returns 1 and the
-    pass-through stays for the call site. Anything outside PITCH_PLAUSIBLE is
-    still refused: a stray mesh half a kilometre across is not the markings.
-    """
-    scale = []
-    for measured, ours in ((line_half_x, PITCH_HALF_W), (line_half_y, PITCH_HALF_H)):
-        if not measured or not (PITCH_PLAUSIBLE[0] <= measured <= PITCH_PLAUSIBLE[1]):
-            scale.append(1.0)
-        else:
-            scale.append(ours / measured)
-    return (scale[0], scale[1])
-
-
 def is_line_pass(texture_name):
     """Whether a pitch mesh carries PES's line markings rather than its grass art."""
     if not texture_name:
@@ -269,20 +246,11 @@ def main():
     ftex_index = stadium_to_gf.build_ftex_index(
         stadium_to_gf.find_texture_dirs(args.pack, *args.textures))
 
-    # The markings say how big PES thinks this pitch is, so the art can be fitted
-    # to the field the engine actually plays on.
-    line_half_x = line_half_y = None
-    for mesh in fmdl.meshes:
-        texture = stadium_to_gf._mesh_base_texture(mesh)
-        if not is_line_pass(getattr(texture, "filename", None)):
-            continue
-        line_half_x = max(abs(v.position.x) for v in mesh.vertices)
-        line_half_y = max(abs(v.position.z) for v in mesh.vertices)
-        break
-    scale_x, scale_y = fit_scale(line_half_x, line_half_y)
-    if (scale_x, scale_y) != (1.0, 1.0):
-        print("  markings at %.1f x %.1f m -> stretched by %.3f, %.3f onto %.0f x %.0f"
-              % (line_half_x, line_half_y, scale_x, scale_y, PITCH_HALF_W, PITCH_HALF_H))
+    # PES's field is this engine's field (105 x 68, gametypes.hpp), so the art
+    # is laid down exactly where PES authored it. It used to be "fitted" to the
+    # line mesh's own extent, which is not the pitch: it carries the technical
+    # areas past the touchline (z to 42.86 on st043/st056) and the lines' outer
+    # edge, so the fit squashed the field to 104 x 54 m.
 
     pixels = blank(args.width, args.height)
     cache = {}
@@ -324,8 +292,7 @@ def main():
                 continue
             sampler = _sampler_for(image)
             for face in mesh.faces:
-                corners = [(v.position.x * scale_x, -v.position.z * scale_y)
-                           for v in face.vertices]
+                corners = [(v.position.x, -v.position.z) for v in face.vertices]
                 # V flipped, the same way every other converter here reads an
                 # fmdl UV (stadium_to_gf, fmdl_to_fullbody): PES's texture origin
                 # is the top-left, the image's is too, but the mesh's V runs the
