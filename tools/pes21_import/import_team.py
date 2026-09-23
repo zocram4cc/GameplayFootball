@@ -995,14 +995,18 @@ def portrait_shirt(filename):
 
 
 def squad_by_shirt(database, team_id):
-    """-> {shirt: database id} for one team, shirts counted in formation order -
-    the same order install_team writes a .ted's squad in."""
+    """-> {slot: database id} for one team, slots counted in the export's record
+    order - the numbering a pack's files carry (XXX05, player_78305, k2405).
+
+    Row ids are the export's own ids, which ascend in record order. Counting
+    in formationorder instead meant counting seats: correct only until the game
+    plan reseated the XI, after which 64 of 92 portraits sat on a teammate."""
     import sqlite3
 
     conn = sqlite3.connect(database)
     try:
         return {order + 1: row[0] for order, row in enumerate(conn.execute(
-            "select id from players where team_id = ? order by formationorder", (team_id,)))}
+            "select id from players where team_id = ? order by id", (team_id,)))}
     finally:
         conn.close()
 
@@ -1010,12 +1014,9 @@ def squad_by_shirt(database, team_id):
 def relink_portraits(game_dir, database):
     """Rewrites playerportraits.cfg from the portraits on disk. -> lines written.
 
-    The config binds a portrait to a database id, and those ids move: every
-    re-import deletes and re-inserts the squad. All 75 entries in this repo's
-    config had come adrift that way - the files were all there and every path
-    resolved, but not one id still belonged to the player it was written for.
-    They had landed on the stock teams, so the first thing to actually draw a
-    portrait would have put 2HUG's faces on Masterdam.
+    The config binds a portrait to a database id. Those ids used to move on
+    every re-import - all 75 entries in this repo's config came adrift and
+    landed on the stock teams. They are the export's own ids now and stay put.
 
     Rebuilt rather than appended: an entry that cannot be regenerated from a
     file on disk and a player in the database is stale by definition.

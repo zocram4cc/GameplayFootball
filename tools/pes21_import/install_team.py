@@ -594,11 +594,12 @@ def install(database, team, tactics, dry_run=False):
                 base_stat = BASE_STAT
                 profile = profile_xml(BASE_STAT, role, slot, player.get("positions"))
             cur.execute(
-                "insert into players(team_id, nationalteam_id, firstname, lastname, role, "
+                "insert into players(id, team_id, nationalteam_id, firstname, lastname, role, "
                 "age, base_stat, profile_xml, skincolor, hairstyle, haircolor, height, "
                 "weight, formationorder, nationalteamformationorder) "
-                "values (?, 0, '', ?, ?, 25, ?, ?, 1, 'short01', 'black', 1.8, 75.0, ?, 0)",
-                (team_row, player["name"][:64], role, base_stat, profile, slot))
+                "values (?, ?, 0, '', ?, ?, 25, ?, ?, 1, 'short01', 'black', 1.8, 75.0, ?, 0)",
+                (player.get("id"), team_row, player["name"][:64], role, base_stat,
+                 profile, slot))
             by_shirt[entry["number"]] = cur.lastrowid
         if dry_run:
             conn.rollback()

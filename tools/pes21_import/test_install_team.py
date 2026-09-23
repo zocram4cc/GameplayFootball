@@ -50,7 +50,7 @@ CREATE TABLE players(id INTEGER PRIMARY KEY AUTOINCREMENT, team_id INTEGER,
 TEAM = {"team": "/hdg/", "abbreviation": "HBR", "team_id": 803, "manager": "MANAGER",
         "chants": ["DEATH TO SWEDEN"],
         "squad": [{"id": 80300 + n, "number": n} for n in range(1, 24)],
-        "players": [{"name": "Player %d" % n, "shirt_name": "P%d" % n,
+        "players": [{"id": 80300 + n, "name": "Player %d" % n, "shirt_name": "P%d" % n,
                      "name_colour": "#8b5f55ff" if n == 7 else None,
                      "name_colours": [], "extra": "PLACEHOLDER"}
                     for n in range(1, 24)],
@@ -103,6 +103,28 @@ class InstallingATeam(unittest.TestCase):
                             "order by formationorder")
         self.assertEqual(len(players), 23)
         self.assertEqual(players[0][0], "Player 1")
+
+    def test_players_carry_the_export_ids(self):
+        # The row id IS the export's player id (ted record id, 80301..). It is
+        # the one stable key: names change mid championship, and every
+        # generated binding - playermodels.cfg, portraits, celebrations -
+        # keys on it. An import that lets SQLite number the rows renumbers
+        # them on every re-import and silently strands those bindings.
+        install_team.install(self.path, TEAM, TACTICS)
+        self.assertEqual(
+            [r[0] for r in self.rows(
+                "select id from players where team_id="
+                "(select id from teams where name='/hdg/') order by id")],
+            [80300 + n for n in range(1, 24)])
+
+    def test_reimport_reuses_the_same_ids(self):
+        install_team.install(self.path, TEAM, TACTICS)
+        install_team.install(self.path, TEAM, TACTICS)
+        self.assertEqual(
+            [r[0] for r in self.rows(
+                "select id from players where team_id="
+                "(select id from teams where name='/hdg/') order by id")],
+            [80300 + n for n in range(1, 24)])
 
     def test_running_it_again_does_not_double_the_roster(self):
         install_team.install(self.path, TEAM, TACTICS)
@@ -484,50 +506,12 @@ class TheInstalledRosterCarriesRealStats(InstallingATeam):
 
 
 class ModelsBindToTheRowsPlayersActuallyGot(unittest.TestCase):
-    """A 4cc pack names its exports by shirt number, and the database assigns
-    row ids on insert. Binding a model to a number guessed before the write is
-    what silently unbound both squads: the ids moved and playermodels.cfg did
-    not."""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.path = os.path.join(self.dir, "db.sqlite")
-        make_database(self.path)
-
-    def test_install_reports_the_row_id_for_every_shirt(self):
-        _, by_shirt = install_team.install(self.path, TEAM, TACTICS)
-        self.assertEqual(sorted(by_shirt), sorted(s["number"] for s in TEAM["squad"]))
-
-    def test_the_reported_rows_are_the_rows_in_the_database(self):
-        _, by_shirt = install_team.install(self.path, TEAM, TACTICS)
-        conn = sqlite3.connect(self.path)
-        try:
-            for shirt, row in by_shirt.items():
-                found = conn.execute(
-                    "select formationorder from players where id = ?", (row,)).fetchone()
-                self.assertIsNotNone(found, "shirt %d points at no row" % shirt)
-        finally:
-            conn.close()
-
-    def test_a_reinstall_reports_the_new_rows(self):
-        """Re-importing deletes and re-inserts the squad, so every row id moves.
-        The mapping has to come back from the write that just happened."""
-        _, first = install_team.install(self.path, TEAM, TACTICS)
-        _, second = install_team.install(self.path, TEAM, TACTICS)
-        self.assertEqual(sorted(first), sorted(second))
-        self.assertNotEqual(sorted(first.values()), sorted(second.values()))
-
-    def test_the_export_id_of_a_pack_directory_is_its_shirt(self):
-        self.assertEqual(import_team.shirt_number(2402), 2)
-        self.assertEqual(import_team.shirt_number(2411), 11)
-        self.assertEqual(import_team.shirt_number(2421), 21)
-
-
-class ModelsBindToTheRowsPlayersActuallyGot(unittest.TestCase):
-    """A 4cc pack names its model exports by shirt number and the database
-    assigns row ids on insert. Binding a model to a number guessed before that
-    write is what silently unbound both squads: the ids moved when the roster
-    was reinstalled and playermodels.cfg went on pointing at the old ones."""
+    """A 4cc pack names its model exports by shirt number and the row id is
+    the export's own player id. Binding a model to a number guessed before the
+    roster write is what silently unbound both squads: the ids moved when the
+    roster was reinstalled and playermodels.cfg went on pointing at the old
+    ones. The export id now rides with the player, so a reinstall rewrites
+    the same rows."""
 
     def setUp(self):
         handle, self.path = tempfile.mkstemp(suffix=".sqlite")
@@ -557,12 +541,12 @@ class ModelsBindToTheRowsPlayersActuallyGot(unittest.TestCase):
             conn.close()
 
     def test_a_reinstall_reports_the_rows_it_just_wrote(self):
-        """Re-importing deletes and re-inserts the squad, so every id moves.
-        A mapping computed before the write would be stale here."""
+        """Re-importing deletes and re-inserts the squad on the export's own
+        ids, so the mapping is stable: same shirts, same rows, every time."""
         _, first = install_team.install(self.path, TEAM, TACTICS)
         _, second = install_team.install(self.path, TEAM, TACTICS)
         self.assertEqual(sorted(first), sorted(second))
-        self.assertNotEqual(sorted(first.values()), sorted(second.values()))
+        self.assertEqual(sorted(first.values()), sorted(second.values()))
         conn = sqlite3.connect(self.path)
         try:
             live = {row[0] for row in conn.execute("select id from players")}
@@ -812,12 +796,13 @@ class TheTeamPlaysInItsOwnColours(unittest.TestCase):
 
 
 class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
-    """playerportraits.cfg binds a portrait to a database id, and those ids
-    move: every re-import deletes and re-inserts the squad. All 75 entries in
-    this repo had come adrift that way - every file present, every path
-    resolving, not one id still belonging to the player it was written for.
-    They had drifted onto the stock teams, so the first thing to actually draw
-    a portrait would have put 2HUG's faces on Masterdam."""
+    """playerportraits.cfg binds a portrait to a database id. Those ids used to
+    move on every re-import - all 75 entries in this repo came adrift that way
+    and landed on the stock teams - and the binding then paired a portrait with
+    the player in that *seat*, which is the export's record only until the
+    game plan reseats the XI: 64 of 92 checked lines had a teammate's face.
+    The file's digits are the export's record, and the row id is the export's
+    own id, so a portrait binds record -> id with no seat in between."""
 
     def setUp(self):
         self.game = tempfile.mkdtemp()
@@ -840,14 +825,9 @@ class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
         for name in names:
             Image.new("RGBA", (4, 4), (0, 0, 0, 255)).save(os.path.join(out, name))
 
-    def shirt_of(self, db_id):
-        conn = sqlite3.connect(self.db)
-        try:
-            row = conn.execute("select formationorder from players where id = ?",
-                               (db_id,)).fetchone()
-        finally:
-            conn.close()
-        return row[0] + 1
+    def record_of(self, db_id):
+        """The export record a row belongs to: its id is the record's own."""
+        return [p["id"] for p in TEAM["players"]].index(db_id) + 1
 
     def test_the_shirt_is_found_in_all_three_naming_styles(self):
         self.assertEqual(import_team.portrait_shirt("player_78301.png"), 1)
@@ -865,16 +845,27 @@ class PortraitsStayBoundWhenIdsMove(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         for line in lines:
             db_id, path = line.split(" ", 1)
-            self.assertEqual(self.shirt_of(int(db_id)),
+            self.assertEqual(self.record_of(int(db_id)),
                              import_team.portrait_shirt(path))
 
-    def test_a_reinstall_moves_every_id_and_the_binding_follows(self):
+    def test_a_portrait_binds_to_its_record_not_its_seat(self):
+        # The sheet starts record 23, so seat 0 is no longer record 1: a
+        # binding by seat would hand record 1's face to record 23.
+        plan = dict(TEAM["game_plan"], lineup=list(range(22, -1, -1)) + [0] * 17)
+        install_team.install(self.db, dict(TEAM, game_plan=plan), TACTICS)
+        self.add_portraits(["XXX01 - Keeper.png"])
+        self.assertEqual(import_team.relink_portraits(self.game, self.db),
+                         ["80301 imports/%s/portraits/XXX01 - Keeper.png" % self.tag])
+
+    def test_a_reinstall_leaves_the_binding_on_the_same_player(self):
         self.add_portraits(["XXX05 - Someone.png"])
         before = import_team.relink_portraits(self.game, self.db)
         install_team.install(self.db, TEAM, TACTICS)
         after = import_team.relink_portraits(self.game, self.db)
-        self.assertNotEqual(before, after)
-        self.assertEqual(self.shirt_of(int(after[0].split(" ", 1)[0])), 5)
+        # The ids are the export's own, so a reinstall rewrites the same
+        # binding - the portrait stays on the shirt-5 player by construction.
+        self.assertEqual(before, after)
+        self.assertEqual(self.record_of(int(after[0].split(" ", 1)[0])), 5)
 
     def test_the_config_is_rebuilt_not_appended(self):
         """A stale entry must not survive a rebuild."""

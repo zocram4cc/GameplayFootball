@@ -442,9 +442,18 @@ if(GAMEPLAYFOOTBALL_BUILD_GAME)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       ${PROJECT_SOURCE_DIR}/data/football.config
       $<TARGET_FILE_DIR:gameplayfootball>/data/football.config
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-      ${PROJECT_SOURCE_DIR}/data/databases
-      $<TARGET_FILE_DIR:gameplayfootball>/databases
+    # databases/ is linked, not copied, for the same reason media/ is and one
+    # worse: media/ holds playermodels.cfg and its siblings, keyed by players.id.
+    # A copied database froze the ids at build time while the cfgs stayed live,
+    # so every refresh, reseat or re-import after a build left the binary in
+    # build/ binding models to rows its own copy did not have - every custom
+    # player on the shared body, silently (owner, 23-09: "still no custom models
+    # even in your tests").
+    COMMAND ${CMAKE_COMMAND}
+      -DSOURCE=${PROJECT_SOURCE_DIR}/data/databases
+      -DDEST=$<TARGET_FILE_DIR:gameplayfootball>/databases
+      -DFALLBACK_COPY=$<IF:$<BOOL:${WIN32}>,ON,OFF>
+      -P ${PROJECT_SOURCE_DIR}/cmake/link_media.cmake
     COMMAND ${CMAKE_COMMAND} -E copy_directory
       ${PROJECT_SOURCE_DIR}/data/locale
       $<TARGET_FILE_DIR:gameplayfootball>/locale

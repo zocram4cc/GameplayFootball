@@ -31,7 +31,7 @@ if(IS_SYMLINK "${DEST}")
   file(REMOVE "${DEST}")
 elseif(EXISTS "${DEST}")
   # An earlier build's copy. Reclaiming it is the point.
-  message(STATUS "link_media: removing the copied media tree at ${DEST}")
+  message(STATUS "link_media: removing the copied tree at ${DEST}")
   file(REMOVE_RECURSE "${DEST}")
 endif()
 
