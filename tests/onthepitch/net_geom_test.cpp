@@ -24,6 +24,20 @@ GoalNettingConfig DefaultConfig() {
   return GoalNettingConfig();
 }
 
+// Positions come from the config, not from the pitch they were written on: the
+// literals these tests carried (57.5, 57.0) were the old 55 m pitch's goal and
+// sat behind the rear net once the pitch became PES's 52.5 m.
+
+// Half-way into the goal: inside the side and top panels' reach, clear of the
+// rear net.
+float MidGoalX(const GoalNettingConfig& config) {
+  return config.pitchHalfW + config.goalDepth / 2.0f;
+}
+
+// How far short of the rear net a slow finish sits: inside the rear panel's
+// band (backX - ballRadius .. backX + ballRadius), short of the mesh itself.
+constexpr float kShortOfTheRearNet_m = 0.05f;
+
 }  // namespace
 
 TEST(GoalNettingCollision, DoesNothingWhenTheBallIsNotInGoal) {
@@ -50,16 +64,17 @@ TEST(GoalNettingCollision, ItLeavesTheBallAloneInFrontOfTheGoalLine) {
 
 TEST(GoalNettingCollision, ASlowShotIsCaughtByTheRearNetWithoutBeingClamped) {
   const GoalNettingConfig config = DefaultConfig();
-  // Just into the rear panel's band (backX - 0.11 = 57.44), well short of the
-  // physical mesh (backX + ballRadius = 57.66): a normal finish's speed, which
-  // the spring alone is expected to handle.
-  BallPhysicsState state{Vector3(57.5f, 0.0f, 0.2f), Vector3(18.0f, 0.0f, 0.0f)};
+  // Just into the rear panel's band, well short of the physical mesh
+  // (backX + ballRadius): a normal finish's speed, which the spring alone is
+  // expected to handle.
+  const float x = config.pitchHalfW + config.goalDepth - kShortOfTheRearNet_m;
+  BallPhysicsState state{Vector3(x, 0.0f, 0.2f), Vector3(18.0f, 0.0f, 0.0f)};
   const GoalNettingResult result = ApplyGoalNettingCollision(state, true, config, kTimeStep_s);
 
   EXPECT_TRUE(result.touchedNet);
   EXPECT_LT(state.momentum.coords[0], 18.0f);
   // No overshoot to correct at this position, so the clamp leaves it be.
-  EXPECT_FLOAT_EQ(state.position.coords[0], 57.5f);
+  EXPECT_FLOAT_EQ(state.position.coords[0], x);
 }
 
 TEST(GoalNettingCollision, AFullPowerPenaltyCannotTunnelPastTheRearNet) {
@@ -79,7 +94,7 @@ TEST(GoalNettingCollision, AFullPowerPenaltyCannotTunnelPastTheRearNet) {
 TEST(GoalNettingCollision, ASideNettingOvershootIsClampedAtThePost) {
   const GoalNettingConfig config = DefaultConfig();
   const float limit = config.goalHalfWidth + config.ballRadius;
-  BallPhysicsState state{Vector3(57.0f, limit + 1.0f, 0.2f), Vector3(5.0f, 30.0f, 0.0f)};
+  BallPhysicsState state{Vector3(MidGoalX(config), limit + 1.0f, 0.2f), Vector3(5.0f, 30.0f, 0.0f)};
   const GoalNettingResult result = ApplyGoalNettingCollision(state, true, config, kTimeStep_s);
 
   EXPECT_TRUE(result.touchedNet);
@@ -89,7 +104,8 @@ TEST(GoalNettingCollision, ASideNettingOvershootIsClampedAtThePost) {
 TEST(GoalNettingCollision, ANegativeSideNettingOvershootIsClampedAtThePost) {
   const GoalNettingConfig config = DefaultConfig();
   const float limit = config.goalHalfWidth + config.ballRadius;
-  BallPhysicsState state{Vector3(57.0f, -(limit + 1.0f), 0.2f), Vector3(5.0f, -30.0f, 0.0f)};
+  BallPhysicsState state{Vector3(MidGoalX(config), -(limit + 1.0f), 0.2f),
+                         Vector3(5.0f, -30.0f, 0.0f)};
   const GoalNettingResult result = ApplyGoalNettingCollision(state, true, config, kTimeStep_s);
 
   EXPECT_TRUE(result.touchedNet);
@@ -99,7 +115,7 @@ TEST(GoalNettingCollision, ANegativeSideNettingOvershootIsClampedAtThePost) {
 TEST(GoalNettingCollision, ATopNettingOvershootIsClampedAtTheHeight) {
   const GoalNettingConfig config = DefaultConfig();
   const float limit = config.goalHeight + config.ballRadius;
-  BallPhysicsState state{Vector3(57.0f, 0.0f, limit + 1.0f), Vector3(5.0f, 0.0f, 30.0f)};
+  BallPhysicsState state{Vector3(MidGoalX(config), 0.0f, limit + 1.0f), Vector3(5.0f, 0.0f, 30.0f)};
   const GoalNettingResult result = ApplyGoalNettingCollision(state, true, config, kTimeStep_s);
 
   EXPECT_TRUE(result.touchedNet);
