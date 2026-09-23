@@ -226,9 +226,12 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
         aimGoalX = shootout->GetGoalX();
       }
 
-      actionCommand.touchInfo.desiredDirection =
+      actionCommand.touchInfo.inputDirection =
           (Vector3(aimGoalX, aimY, 0) - CastPlayer()->GetPosition())
               .GetNormalized(Vector3(-team->GetSide(), 0, 0));
+      actionCommand.touchInfo.inputPower = aimPower;
+      actionCommand.touchInfo.autoDirectionBias = 0.0f;
+      actionCommand.touchInfo.desiredDirection = actionCommand.touchInfo.inputDirection;
       actionCommand.touchInfo.desiredPower = aimPower;
       commandQueue.push_back(actionCommand);
 
