@@ -41,9 +41,10 @@ TEST(ClusterDecimate, KeepsATriangleThatSpansThreeCells) {
 }
 
 TEST(ClusterDecimate, DropsATriangleInsideOneCell) {
-  // Three vertices a millimetre apart collapse into one cell: no triangle, and
-  // therefore no vertex either.
+  // Three vertices a millimetre apart, on one part of the texture, collapse
+  // into one cell: no triangle, and therefore no vertex either.
   std::vector<float> v = Row(3, 0.001f);
+  for (int i = 0; i < 3; i++) v[2 * 3 * 3 + i * 3] = v[2 * 3 * 3];  // one texel
   std::vector<unsigned int> tri = {0, 1, 2};
   Skinning::ClusteredMesh out = Skinning::ClusterDecimate(v.data(), 3, 5, tri, 0.02f);
   EXPECT_EQ(out.vertexCount(), 0);
@@ -82,6 +83,31 @@ TEST(ClusterDecimate, NegativeCoordinatesGetTheirOwnCells) {
   std::vector<unsigned int> tri = {0, 1, 2};
   Skinning::ClusteredMesh out = Skinning::ClusterDecimate(v.data(), 3, 5, tri, 0.02f);
   EXPECT_EQ(out.vertexCount(), 3);
+}
+
+TEST(ClusterDecimate, AUvSeamIsNotMergedAcross) {
+  // Two triangles on the same three points, each mapped into its own island of
+  // the texture atlas - what a UV seam is. Clustered on position alone, the
+  // second island's triangle took the first's texture coordinates and drew the
+  // wrong part of the atlas: Caulifla's hair came out streaked with her skin at
+  // match distance, while the cutscenes (inside the LOD distance) were clean.
+  constexpr int kVertices = 6;
+  constexpr float kIslandA = 0.1f;
+  constexpr float kIslandB = 0.9f;
+  std::vector<float> v(kVertices * 3 * 5, 0.0f);
+  const int uv = 2 * kVertices * 3;  // element 2: the texture vertex
+  for (int i = 0; i < kVertices; i++) {
+    v[i * 3] = (float)(i % 3);  // 0, 1, 2 m, twice
+    v[uv + i * 3] = i < 3 ? kIslandA : kIslandB;
+  }
+  std::vector<unsigned int> tris = {0, 1, 2, 3, 4, 5};
+  Skinning::ClusteredMesh out = Skinning::ClusterDecimate(v.data(), kVertices, 5, tris, 0.02f);
+  ASSERT_EQ(out.indices.size(), 6u);
+  const int outUv = 2 * out.vertexCount() * 3;
+  for (int corner = 0; corner < 6; corner++) {
+    const float want = corner < 3 ? kIslandA : kIslandB;
+    EXPECT_FLOAT_EQ(out.vertices[outUv + out.indices[corner] * 3], want) << "corner " << corner;
+  }
 }
 
 TEST(UseBodyLod, ThresholdWithHysteresis) {

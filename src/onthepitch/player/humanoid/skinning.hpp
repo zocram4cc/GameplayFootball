@@ -131,11 +131,14 @@ bool BodyNeedsSkinning(bool distantFromAction, bool halveDistantRate, int phase,
 // body is a few hundred pixels tall, so most of that is skinned for nothing.
 //
 // Vertex clustering: every vertex snaps to the grid cell of `cell` metres it sits
-// in, the first vertex seen in a cell stands for the cell (its position, normal,
-// texture vertex - and, through `sourceVertex`, its skin weights), and a triangle
-// survives only if its three corners land in three different cells. O(n), no
-// topology, and at distance the error is bounded by the cell: at 25 m and 1280 px
-// wide a 2 cm cell is about one pixel.
+// in, and the first vertex seen in a cell *on the same part of the texture*
+// stands for it (its position, normal, texture vertex - and, through
+// `sourceVertex`, its skin weights). A triangle survives only if its three
+// corners land on three different representatives. O(n), no topology, and at
+// distance the position error is bounded by the cell: at 25 m and 1280 px wide a
+// 2 cm cell is about one pixel. The texture error is not bounded by the cell -
+// across a UV seam one point samples two islands of the atlas - which is why a
+// cell keeps one representative per island rather than one in all.
 //
 // `vertices` is element-major over `vertexCount` vertices, like a
 // MaterializedTriangleMesh; the result has the same layout and element count.

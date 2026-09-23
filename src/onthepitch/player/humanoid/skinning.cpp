@@ -41,16 +41,36 @@ JointTransform MakeJointTransform(const blunted::Quaternion& orientation,
   return transform;
 }
 
+// Where the texture vertex sits among a mesh's elements: position, normal,
+// texture, tangent, bitangent - the order ASELoader writes them in.
+constexpr int kTextureElement = 2;
+
+// How far apart two vertices' texture coordinates may be and still merge. A
+// 2 cm cell on a 1.8 m body mapped over a 1024 px atlas spans about 12 px
+// (0.012) within one UV island; neighbouring islands are further apart than
+// that. 1/64 of the texture (16 px at 1024) merges within an island and never
+// across a seam. Provisional: measured on dbg_2023's atlas, not a sweep.
+constexpr float kSeamUvTolerance = 1.0f / 64.0f;
+
 ClusteredMesh ClusterDecimate(const float* vertices, int vertexCount, int elementCount,
                               const std::vector<unsigned int>& indices, float cell) {
   ClusteredMesh out;
   if (vertexCount <= 0 || cell <= 0.0f) return out;
   const int elementStride = vertexCount * 3;
   const float inverseCell = 1.0f / cell;
+  const float* uv = elementCount > kTextureElement ? &vertices[kTextureElement * elementStride]
+                                                    : nullptr;
+  auto sameTexel = [uv](int a, int b) {
+    return !uv || (std::fabs(uv[a * 3] - uv[b * 3]) <= kSeamUvTolerance &&
+                   std::fabs(uv[a * 3 + 1] - uv[b * 3 + 1]) <= kSeamUvTolerance);
+  };
 
-  // cell -> the vertex standing for it
-  std::unordered_map<uint64_t, int> representativeOfCell;
-  representativeOfCell.reserve(vertexCount);
+  // cell -> the vertices standing for it, one per part of the texture it holds.
+  // Position alone is not enough: at a UV seam the same point belongs to two
+  // islands of the atlas, and merging them handed one island's triangles the
+  // other's texture coordinates - Caulifla's hair drew her skin past 30 m.
+  std::unordered_map<uint64_t, std::vector<int>> representativesOfCell;
+  representativesOfCell.reserve(vertexCount);
   std::vector<int> representative(vertexCount);
   for (int v = 0; v < vertexCount; v++) {
     const float* p = &vertices[v * 3];
@@ -59,8 +79,18 @@ ClusteredMesh ClusterDecimate(const float* vertices, int vertexCount, int elemen
     const uint64_t cy = (uint64_t)((int64_t)std::floor(p[1] * inverseCell) + (1 << 20)) & 0x1FFFFF;
     const uint64_t cz = (uint64_t)((int64_t)std::floor(p[2] * inverseCell) + (1 << 20)) & 0x1FFFFF;
     const uint64_t key = (cx << 42) | (cy << 21) | cz;
-    auto found = representativeOfCell.emplace(key, v);
-    representative[v] = found.first->second;
+    std::vector<int>& standing = representativesOfCell[key];
+    int chosen = -1;
+    for (int r : standing)
+      if (sameTexel(r, v)) {
+        chosen = r;
+        break;
+      }
+    if (chosen < 0) {
+      standing.push_back(v);
+      chosen = v;
+    }
+    representative[v] = chosen;
   }
 
   // Triangles whose corners spread over three cells, on compacted vertex ids.
