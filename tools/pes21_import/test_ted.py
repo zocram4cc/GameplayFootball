@@ -174,6 +174,47 @@ class ThePlayerRecords(unittest.TestCase):
         self.assertEqual(players[0]["positions"]["GK"], 0)
         self.assertEqual(sum(players[0]["positions"].values()), 5)
 
+
+class TheAppearanceEntry(unittest.TestCase):
+    """The FPC hide combo lives in the appearance entry, not the stat block.
+
+    A 4cc pack hides PES's body under its custom character with long sleeves
+    + tucked shirt + short socks (wiki: Full Player Customization). smbg's
+    export carries that combo on all 23 players; the reader reports it per
+    player as hides_body so the importer knows whose kit meshes PES paints
+    onto a hidden body and whose stand on their own geometry.
+    """
+
+    def hide_record(self, sleeves=2, socks=2, shirttail=0):
+        rec = bytearray(record("A", "AA"))
+        base = 240
+        set_bits(rec, base + 0x14, 6, 2, sleeves)
+        set_bits(rec, base + 0x15, 2, 2, socks)
+        set_bits(rec, base + 0x15, 6, 1, shirttail)
+        return bytes(rec)
+
+    def roster(self, *records):
+        plain = payload(ted.PLAYER_TABLE_OFFSET)
+        for rec in records:
+            plain += rec
+        return ted.read_players(bytes(plain))
+
+    def test_the_hide_combo_reads_true(self):
+        players = self.roster(self.hide_record(2, 2, 0))
+        app = players[0]["appearance"]
+        self.assertEqual((app["sleeves"], app["socks"], app["shirttail"]),
+                         (2, 2, 0))
+        self.assertTrue(app["hides_body"])
+
+    def test_an_untucked_shirt_does_not_hide(self):
+        players = self.roster(self.hide_record(2, 2, 1))
+        self.assertFalse(players[0]["appearance"]["hides_body"])
+
+    def test_short_sleeves_do_not_hide(self):
+        players = self.roster(self.hide_record(1, 2, 0))
+        self.assertFalse(players[0]["appearance"]["hides_body"])
+
+
 class ThePlayerStats(unittest.TestCase):
     """Every stat is read from its own byte:bit - the same offsets the wiki
     gives for the PES EDIT format's Player entry, because that is exactly what

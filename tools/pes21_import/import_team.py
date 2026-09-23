@@ -1184,6 +1184,7 @@ def main():
     # The database first, so each model can be bound to the row its player
     # actually landed on rather than to a number guessed ahead of time.
     by_shirt = {}
+    hides_by_shirt = {}
     database = args.database or os.path.join(
         args.game_dir, "databases", "default", "database.sqlite")
     tag = None
@@ -1197,6 +1198,15 @@ def main():
             "team_pressure": 0.5, "counter_attack": 0.5, "support_distance": 0.5}
         team_row, by_shirt = install_team.install(database, export, tactics,
                                                   args.dry_run)
+        # appearance entry says per player whether PES hides its body under
+        # the custom character (FPC long-sleeves/tucked/short-socks combo).
+        # Keyed by shirt, the pack's own unit for naming exports.
+        squad_numbers = {entry["id"]: entry["number"] for entry in export["squad"]}
+        for player in export["players"]:
+            number = squad_numbers.get(player["id"])
+            if number is not None:
+                hides_by_shirt[number] = bool(
+                    (player.get("appearance") or {}).get("hides_body"))
         print("%s -> team row %d, %d player(s), %d slider(s)%s"
               % (export["team"], team_row, len(export["squad"]), len(tactics),
                  "  (dry run, rolled back)" if args.dry_run else ""))
@@ -1258,13 +1268,25 @@ def main():
                            find_gloves(args.pack_dir, export_id, name)
                            + find_face(args.pack_dir, export_id, name)
                            if path != fmdl]
+            # Whose body PES hides is answered by the .ted, not the geometry:
+            # the appearance entry's FPC combo (long sleeves + tucked shirt +
+            # short socks) says per shirt whether PES draws this export over
+            # its own hidden base body. Those exports convert verbatim - the
+            # pack's kit meshes are the character - and every other export
+            # composites over the stock body, whose kit slot it then wears.
+            # Geometry gates cannot answer this: a kit prop and a thin whole
+            # body measure the same (3a3d77a proved it on Bowser).
+            hides = hides_by_shirt.get(shirts.get(export_id), False)
+            base = args.base or (None if hides else stock_body(args.game_dir))
+            if base and not os.path.isfile(base):
+                base = None
             # A scenery export needs its backdrop gone and a body under it, or
             # every view frames the pair down to a dot. The verdict is only
             # known after a first import, so this is a second pass over the same
             # output: force=True, strays dropped, stock body composited.
             status = import_player(fmdl, dest, args.fmdl_lib, args.max_tris,
                                    rel + "/" + kit_texture_name(dest), args.force,
-                                   args.base or None, extra_fmdls=rest_of_him)
+                                   base, extra_fmdls=rest_of_him)
             verdict = "whole" if args.dry_run else describe_import(dest, args.prefix, export_id)
             if verdict == "carries scenery" and os.path.isfile(
                     stock_body(args.game_dir)):

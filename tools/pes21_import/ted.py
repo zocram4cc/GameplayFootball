@@ -191,6 +191,36 @@ SKILLS = (
     "fighting_spirit")
 
 
+# The appearance entry's strip-style fields, at the wiki's byte:bit offsets.
+# A 4cc pack hides PES's body under its custom character with the FPC combo:
+# long sleeves + tucked shirt + short socks + boots/gloves ids that do not
+# exist (wiki: Full Player Customization). The body is hidden if and only if
+# all three cloth bits match; boots/gloves only decide which nonexistent ids
+# the pack picked, so they are read but not gated on.
+APP_SLEEVES_FIELD = (0x14, 6, 2)    # 2 = long
+APP_SOCKS_FIELD = (0x15, 2, 2)      # 2 = short
+APP_SHIRTTAIL_FIELD = (0x15, 6, 1)  # 0 = tucked in
+APP_BOOTS_FIELD = (0x04, 4, 14)
+APP_GLOVES_FIELD = (0x06, 2, 10)
+
+
+def read_player_appearance(plain, offset):
+    """-> {sleeves, socks, shirttail, boots, gloves, hides_body} from the
+    72-byte appearance entry following the player entry at `offset`."""
+    base = offset + 240
+    get = lambda field: get_bits(plain, base + field[0], field[1], field[2])
+    sleeves = get(APP_SLEEVES_FIELD)
+    socks = get(APP_SOCKS_FIELD)
+    shirttail = get(APP_SHIRTTAIL_FIELD)
+    return {
+        "sleeves": sleeves,
+        "socks": socks,
+        "shirttail": shirttail,
+        "boots": get(APP_BOOTS_FIELD),
+        "gloves": get(APP_GLOVES_FIELD),
+        "hides_body": sleeves == 2 and socks == 2 and shirttail == 0,
+    }
+
 # PES colours a name from markup inside the string, and 4cc packs use it:
 #
 #     0x11  escape
@@ -389,6 +419,7 @@ def read_players(plain):
             "skills": read_player_skills(plain, offset),
             "position": position,
             "positions": positions,
+            "appearance": read_player_appearance(plain, offset),
         })
         offset += PLAYER_RECORD_SIZE
     return players
