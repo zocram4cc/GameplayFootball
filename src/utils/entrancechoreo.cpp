@@ -75,7 +75,10 @@ void EntranceChoreo::Sample(const ChoreoSlot& slot, float elapsedFrame,
   // The clip is a different length from the path and loops on its own; the
   // caller wraps this against it (see Match::UpdateEntranceChoreo), so it keeps
   // counting and an actor who has arrived marks time instead of freezing.
-  animFrame = slot.phaseFrames + (int)std::max(0.0f, elapsedFrame);
+  // A negative phase is a delayed start (PES: the teammate who arrives after
+  // the scorer): he waits on the clip's first frame until his cue. Left
+  // negative, the caller's wrap started him near the end of his clip.
+  animFrame = std::max(0, slot.phaseFrames + (int)std::max(0.0f, elapsedFrame));
 
   const auto& keys = slot.keys;
   if (keys.size() == 1) {
@@ -98,7 +101,10 @@ void EntranceChoreo::Sample(const ChoreoSlot& slot, float elapsedFrame,
 
 int EntranceChoreo::GetLastFrame() const {
   int last = 0;
-  for (const ChoreoSlot& slot : slots) last = std::max(last, slot.phaseFrames + slot.cycleFrames);
+  // A delayed slot (negative phase) has its wait baked into its path, so the
+  // path's own length is where it ends; phase + path dropped the wait.
+  for (const ChoreoSlot& slot : slots)
+    last = std::max(last, std::max(slot.cycleFrames, slot.phaseFrames + slot.cycleFrames));
   return last;
 }
 

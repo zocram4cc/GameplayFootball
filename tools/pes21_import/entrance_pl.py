@@ -183,7 +183,7 @@ def clip_is_cycle(g):
     return abs(turn) < math.radians(CYCLE_TURN_DEG)
 
 
-def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
+def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS, play_once=False):
     """[(gf_frame, x, y, yaw)] world root track, GF space.
 
     Whole clip cycles are baked until they cover `seconds`, root unwrapped so
@@ -203,19 +203,29 @@ def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
     theta = math.radians(actor.yaw_deg)
     spawn_x, _, spawn_z = actor.position
 
-    base_x, base_z, base_yaw = unwrapped_root(sample, g.frame_count, actor.phase_ticks)
+    # A negative phase is a delayed start: PES holds the actor on his mark,
+    # on the clip's first frame, until his cue (goal_A_flag_golf01_LM's joiner
+    # waits 150 ticks; 159 goal actors in 83 packs do, up to 13.3 s). Taken
+    # modulo the clip it started him mid-clip on a path wrapped back onto
+    # itself - legs running, no ground covered.
+    start = max(0.0, actor.phase_ticks)
+    delay_frames = int(round(max(0.0, -actor.phase_ticks) * PES_FRAME_MS / GF_FRAME_MS))
+    base_x, base_z, base_yaw = unwrapped_root(sample, g.frame_count, start)
     cos_b, sin_b = math.cos(base_yaw), math.sin(base_yaw)
     cos_t, sin_t = math.cos(theta), math.sin(theta)
 
     cycle = max(2, int(round(g.frame_count * PES_FRAME_MS / GF_FRAME_MS)))
     cycles = max(1, int(math.ceil(seconds * 1000.0 / (cycle * GF_FRAME_MS))))
-    if not clip_is_cycle(g):
+    # A performance played once (play_once) walks its path once too: baking
+    # further cycles is what had every goal performer repeat his clip four
+    # times over the beat.
+    if play_once or not clip_is_cycle(g):
         cycles = 1
-    cycle = cycle * cycles
+    cycle = cycle * cycles + delay_frames
     keys = []
     prev_yaw = None
     for f in range(0, cycle + 1, key_step):
-        t = actor.phase_ticks + f * GF_FRAME_MS / PES_FRAME_MS
+        t = max(0.0, actor.phase_ticks + f * GF_FRAME_MS / PES_FRAME_MS)
         rx, rz, ryaw = unwrapped_root(sample, g.frame_count, t)
         # relative to the pose at the phase: translate back, undo its heading
         dx, dz = rx - base_x, rz - base_z
@@ -234,7 +244,9 @@ def bake_track(actor, g, key_step=2, seconds=BAKE_SECONDS):
     return keys, cycle
 
 
-def export_pack(fdc_path, anims_dir, out_dir, clip_cache):
+def export_pack(fdc_path, anims_dir, out_dir, clip_cache, play_once=False):
+    """play_once: every actor performs his clip once and is released, whatever
+    the clip's shape (export_actors.PLAY_ONCE_CATEGORIES)."""
     fdc = camera_cut.load(fdc_path)
     if not fdc.actors:
         raise ValueError("no actor records")
@@ -255,9 +267,13 @@ def export_pack(fdc_path, anims_dir, out_dir, clip_cache):
         cycle, g = clip_cache[stem]
 
         phase_frames = int(round(actor.phase_ticks * PES_FRAME_MS / GF_FRAME_MS))
-        phase_frames %= cycle
-        keys, cycle = bake_track(actor, g)
-        loops = clip_is_cycle(g)
+        # A cue into the clip wraps (107 of 109 entrance offsets are inside the
+        # clip, the rest wrap); a delayed start stays negative - the engine
+        # holds him on frame 0 until it (EntranceChoreo::Sample).
+        if phase_frames > 0:
+            phase_frames %= cycle
+        keys, cycle = bake_track(actor, g, play_once=play_once)
+        loops = not play_once and clip_is_cycle(g)
         lines.append("slot %d anims/%s.anim role %s phase %d loop %d"
                      % (actor.slot, stem, actor_role(actor.slot, stem), phase_frames,
                         1 if loops else 0))

@@ -102,4 +102,29 @@ TEST(EntranceChoreo, EmptyFails) {
   EXPECT_FALSE(choreo.Load(in));
 }
 
+TEST(EntranceChoreo, ADelayedActorHoldsHisFirstFrameUntilHisCue) {
+  // A negative phase is PES's delayed start: the teammate who arrives 2.5 s
+  // after the scorer (goal_A_flag_golf01_LM, phase -150 ticks). Wrapping it
+  // into the clip started him 55% into his run on a path that went nowhere -
+  // running on the spot.
+  constexpr int kDelayFrames = 250;
+  std::istringstream in(
+      "chor 1\n"
+      "slot 2 anims/run.anim phase -250 loop 0\n"
+      "k 0 0.0 0.0 0.0\n"
+      "k 250 0.0 0.0 0.0\n"
+      "k 800 0.0 -12.6 0.0\n");
+  blunted::EntranceChoreo choreo;
+  ASSERT_TRUE(choreo.Load(in));
+  const blunted::ChoreoSlot* slot = choreo.GetSlot(2);
+  ASSERT_NE(slot, nullptr);
+  blunted::Vector3 position;
+  blunted::radian yaw = 0;
+  int animFrame = -1;
+  choreo.Sample(*slot, 100.0f, position, yaw, animFrame);
+  EXPECT_EQ(animFrame, 0) << "waiting for his cue on the clip's first frame";
+  choreo.Sample(*slot, kDelayFrames + 50.0f, position, yaw, animFrame);
+  EXPECT_EQ(animFrame, 50) << "then the clip from its start";
+}
+
 }  // namespace

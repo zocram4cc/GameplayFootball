@@ -852,7 +852,6 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
 
   // The cast. Each slot is its own body so no two actors share a vertex buffer.
   std::vector<CutsceneActor> cast;
-  float castEnd_ms = 0.0f;
   for (const ChoreoSlot& slot : choreo.GetSlots()) {
     CutsceneActor actor;
     actor.slot = &slot;
@@ -868,8 +867,6 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
       std::cout << "slot " << slot.slot << ": could not cast a body from " << options.body << "\n";
       return 2;
     }
-    // One cycle at the match's 10 ms grid, after the slot's own entrance.
-    castEnd_ms = std::max(castEnd_ms, (slot.phaseFrames + slot.cycleFrames) * 10.0f);
     std::cout << "slot " << slot.slot << "  " << slot.animFile << "  " << actor.clip->GetFrameCount()
               << " frames, phase " << slot.phaseFrames << ", cycle " << slot.cycleFrames
               << (slot.loop ? ", loops" : "") << "\n";
@@ -879,6 +876,8 @@ int PlayCutscene(const Options& options, std::shared_ptr<Scene3D> scene3D) {
     std::cout << "nobody to cast: " << options.cutscene << " names no clip that exists\n";
     return 2;
   }
+  // Where the choreography ends, the one definition the match uses too.
+  const float castEnd_ms = choreo.GetLastFrame() * 10.0f;
   const float cameraEnd_ms = haveTrack ? track.GetTimelineFrameCount() / 30.0f * 1000.0f : 0.0f;
   const float duration_ms = std::max(castEnd_ms, cameraEnd_ms);
   std::cout << options.cutscene << ": " << cast.size() << " actor(s), camera "

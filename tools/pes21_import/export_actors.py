@@ -30,6 +30,14 @@ import export_cutscenes
 
 DEFAULT_CATEGORIES = ["goal", "foul", "change", "timeup", "pk", "result", "end"]
 
+# Categories whose actors perform once and are done. clip_is_cycle (a clip
+# that ends facing the way it began loops) is the entrance walk-on's rule: the
+# walks must keep walking. A goal celebration ends facing roughly where it
+# started too, so every one of the 1789 goal slots came out a cycle and the
+# background players repeated their celebrations over and over - which PES
+# does not do (owner, 23-09).
+PLAY_ONCE_CATEGORIES = ("goal",)
+
 
 def is_actor_pack(path):
     """True when the pack stages actors rather than (or besides) a camera."""
@@ -58,7 +66,8 @@ def export_category(cut_dir, anims_dir, dest_dir, max_per_category=0, category="
             subdirectory = export_cutscenes.classify(category, name)
             target_dir = os.path.join(dest_dir, subdirectory) if subdirectory else dest_dir
             os.makedirs(target_dir, exist_ok=True)
-            entrance_pl.export_pack(path, anims_dir, target_dir, clip_cache)
+            entrance_pl.export_pack(path, anims_dir, target_dir, clip_cache,
+                                    play_once=category in PLAY_ONCE_CATEGORIES)
             written += 1
         except Exception as exc:
             # camera-only packs and packs whose clips are not installed

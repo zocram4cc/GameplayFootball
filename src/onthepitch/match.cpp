@@ -2886,11 +2886,15 @@ bool Match::StartGoalCast(const std::string& celebration) {
   // past the kickoff that clears the goal state. Measured over the 252 goal
   // choreographies: performances run 0.2 s to 9.0 s, median 3.2 s, against
   // cycles of up to 16 s.
+  // A slot is released once its clip frame (phase + elapsed) passes the clip's
+  // end, so it performs for frames - phase: the whole clip plus the wait for a
+  // delayed actor (negative phase), the remainder for one cued in mid-clip. The
+  // sum it used to be cut a delayed teammate's run short and padded the rest.
   goalCastLength_ms = 0;
   for (const auto& cast : cutsceneCast)
     goalCastLength_ms = std::max(
         goalCastLength_ms,
-        (unsigned long)(cast.slot->phaseFrames + cast.clip->GetFrameCount()) * 10);
+        (unsigned long)std::max(0, cast.clip->GetFrameCount() - cast.slot->phaseFrames) * 10);
   Log(e_Notice, "Match", "StartGoalCast",
       choreo->GetName() + ": " + int_to_str((int)cutsceneCast.size()) + " of " +
           int_to_str((int)choreo->GetSlots().size()) + " marks cast, performance runs " +
@@ -3270,16 +3274,15 @@ void Match::UpdateCutsceneChoreo() {
       const Vector3 world(
           goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
           goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
-      // What happens to an actor whose clip has run out is the clip's own
-      // business, and PES's exporter already measured it: a clip that ends
-      // facing the way it began is a cycle and repeats, one that ends turned
-      // plays once (entrance_pl.clip_is_cycle -> the slot's loop flag). All
-      // 1789 goal slots are flagged cycles, so a finished performer simply
-      // performs again on his mark - SetChoreoPose's frame wrap IS that
-      // repeat - which matters because 251 of the 406 multi-slot goal packs
-      // have a slot running out more than half a second before the last one
-      // (median 2.0 s, worst 15.5 s), all of it on air.
-      // A non-cycle slot is released INDIVIDUALLY: skipping only the
+      // What happens to an actor whose clip has run out is the slot's loop
+      // flag. Goal packs are exported play-once (export_actors.py
+      // PLAY_ONCE_CATEGORIES): a goal performer does his clip once and is
+      // released, as in PES. They used to come out flagged cycles by the
+      // entrance walk-on's rule - a clip that ends facing the way it began -
+      // which every celebration satisfies, so the background players repeated
+      // their performances until the cut (owner, 23-09). Entrance slots still
+      // loop: the feed there wraps whatever the flag says.
+      // A finished slot is released INDIVIDUALLY: skipping only the
       // SetChoreoPose call left his last pose latched (choreoPending stays set
       // in HumanoidBase) - often horizontal in mid-air on a celebration clip -
       // until the whole cast was torn down together.
