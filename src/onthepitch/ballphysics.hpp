@@ -34,7 +34,7 @@ struct BallGroundInteraction {
 };
 
 struct GoalNettingConfig {
-  float pitchHalfW = 55.0f;
+  float pitchHalfW = 52.5f;  // gametypes.hpp pitchHalfW: 105x68 pitch since 8163845
   float goalDepth = 2.55f;
   float goalHeight = 2.5f;
   float goalHalfWidth = 3.7f;
