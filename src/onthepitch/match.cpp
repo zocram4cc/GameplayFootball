@@ -2835,9 +2835,11 @@ bool Match::StartGoalCast(const std::string& celebration) {
 
   // The scorer takes the primary mark. The rest are his own teammates, nearest
   // to where each mark will be once the staging is put down - PES casts the men
-  // who ran to join him, and nobody from the side that conceded.
+  // who ran to join him. His own side, not the side credited with the goal: on
+  // an own goal he belongs to the side that conceded, and filling his scene from
+  // the credited team had the unlucky man celebrating with the opposition.
   std::vector<Player*> available;
-  teams[lastGoalTeamID]->GetActivePlayers(available);
+  teams[lastGoalScorer->GetTeamID()]->GetActivePlayers(available);
   available.erase(std::remove(available.begin(), available.end(), lastGoalScorer), available.end());
   const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
   auto staged = [&](const Vector3& local) {
@@ -2915,10 +2917,14 @@ void Match::PlanGoalBeats() {
   goalBeatTrack = -1;
   if (goalDirector.empty() || !lastGoalScorer || lastGoalTeamID < 0) return;
   GoalDirector::Situation situation;
+  // Never set before: every own goal planned as a goal for the man who put
+  // it in his own net, his own celebration and all. The director's own-goal
+  // scene (GOAL_S_OWNGOAL_*) is the whole plan when it is one.
+  situation.ownGoal = LastGoalIsOwnGoal();
   // Who came to join him: teammates within twenty metres of where he will
   // celebrate decide whether it is a hug or a mob.
   std::vector<Player*> mates;
-  teams[lastGoalTeamID]->GetActivePlayers(mates);
+  teams[lastGoalScorer->GetTeamID()]->GetActivePlayers(mates);
   for (Player* mate : mates)
     if (mate != lastGoalScorer &&
         mate->GetPosition().GetDistance(goalCelebrationSubject) < 20.0f)
@@ -2998,10 +3004,15 @@ void Match::PlanGoalBeats() {
   std::string names;
   for (const auto& beat : goalBeats) names += beat.state->name + " ";
   Log(e_Notice, "Match", "PlanGoalBeats",
-      int_to_str((int)goalBeats.size()) + " beats (mates " + int_to_str(situation.teammatesNear) +
+      int_to_str((int)goalBeats.size()) + " beats (" + (situation.ownGoal ? "own goal, " : "") +
+          "mates " + int_to_str(situation.teammatesNear) +
           ", run " + int_to_str((int)situation.runDistance) + " m, quadrant " +
           int_to_str(situation.quadrant) + "): " + names);
   if (!goalBeats.empty()) StartGoalBeat(0);
+}
+
+bool Match::LastGoalIsOwnGoal() const {
+  return lastGoalScorer && lastGoalTeamID >= 0 && lastGoalScorer->GetTeamID() != lastGoalTeamID;
 }
 
 bool Match::StartGoalBeat(int index) {
@@ -4910,7 +4921,9 @@ void Match::UpdateIngameCamera() {
           // goal track comes round again in a match and used to open with the
           // push left over from the last goal it filmed.
           ResetStandoff();
-          if (StartGoalCast(chosen.name)) {
+          // Nobody performs his own celebration after scoring in his own net:
+          // an own goal is the director's own-goal scene (PlanGoalBeats below).
+          if (!LastGoalIsOwnGoal() && StartGoalCast(chosen.name)) {
             goalCelebrationLength_ms =
                 GoalSequence::CelebrationLength_ms(goalCastLength_ms);
             goalCelebrationIntroHold_ms = goalCelebrationLength_ms;
@@ -5425,15 +5438,19 @@ void Match::Process() {
     // side in possession attacks, N seconds of match time in. A forced ball
     // can be saved or cleared, so it retries every 25 s until one goes in. A
     // goal is otherwise a coin flip in a short capture, and the presentation
-    // after it is what the capture is for.
+    // after it is what the capture is for. "debug_force_own_goal" true sends
+    // it into the goal that side defends instead, so the own-goal presentation
+    // can be captured the same way.
     {
       static const int forceAt_s = GetConfiguration()->GetInt("debug_force_goal_at_s", 0);
+      static const bool forceOwn = GetConfiguration()->GetBool("debug_force_own_goal", false);
       static int forceCount = 0;
       if (forceAt_s > 0 && IsInPlay() && !IsGoalScored() &&
           matchTime_ms >= (unsigned long)(forceAt_s + forceCount * 25) * 1000 &&
           lastTouchTeamID >= 0) {
         forceCount++;
-        const int attacked = -teams[lastTouchTeamID]->GetSide();
+        const int side = teams[lastTouchTeamID]->GetSide();
+        const int attacked = forceOwn ? side : -side;
         // From 25 m, aimed inside the far post, at a height nobody reaches in
         // the two ticks it takes to cross: real goals happen in the box, and
         // PES authors every celebration camera for one. A goal from midfield

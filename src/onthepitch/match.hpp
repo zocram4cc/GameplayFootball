@@ -913,6 +913,9 @@ protected:
   void PlanGoalBeats();
   bool StartGoalBeat(int index);
   void UpdateGoalBeats();
+  // The last goal went in off the conceding side: lastGoalScorer is then that
+  // side's last toucher while lastGoalTeamID is the side credited with it.
+  bool LastGoalIsOwnGoal() const;
   // Chosen when the goal goes in and held for the celebration: which performance the
   // scorer is giving, and the camera that belongs to it.
   int goalCelebrationIndex = -1;
