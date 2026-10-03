@@ -220,7 +220,8 @@ bool Player::KeeperAttemptsSave() {
     keeperBeatenRecorded = false;  // not a shot: re-arm rather than latch on it
   else if (!reaches && !keeperBeatenRecorded) {
     keeperBeatenRecorded = true;
-    match->GetMatchData()->AddKeeperBeaten(team->GetID(), gap_m, timeToPlane_s);
+    match->GetMatchData()->AddKeeperBeaten(team->GetID(), gap_m, timeToPlane_s,
+                                           challenge.lateral_m, challenge.overhead_m);
   }
   return reaches;
 }

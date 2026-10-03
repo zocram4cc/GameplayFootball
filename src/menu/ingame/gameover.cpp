@@ -381,10 +381,13 @@ void GameOverPage::Process() {
     // was available - reach cannot fix it); "reach" is beaten with the flight
     // time to move, and the mean gap says how far short he actually was.
     printf("[balance-keeper] beaten out of time %i-%i | out of reach %i-%i | "
-           "mean gap %.2fm-%.2fm\n",
+           "mean gap %.2fm-%.2fm (lateral %.2fm-%.2fm, overhead %.2fm-%.2fm)\n",
            matchData->GetKeeperBeatenOutOfTime(0), matchData->GetKeeperBeatenOutOfTime(1),
            matchData->GetKeeperBeatenOutOfReach(0), matchData->GetKeeperBeatenOutOfReach(1),
-           matchData->GetKeeperBeatenMeanGap_m(0), matchData->GetKeeperBeatenMeanGap_m(1));
+           matchData->GetKeeperBeatenMeanGap_m(0), matchData->GetKeeperBeatenMeanGap_m(1),
+           matchData->GetKeeperBeatenMeanLateral_m(0), matchData->GetKeeperBeatenMeanLateral_m(1),
+           matchData->GetKeeperBeatenMeanOverhead_m(0),
+           matchData->GetKeeperBeatenMeanOverhead_m(1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not

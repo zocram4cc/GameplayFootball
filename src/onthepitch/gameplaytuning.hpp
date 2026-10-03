@@ -490,6 +490,11 @@ struct KeeperSaveChallenge {
   bool shotAtGoal = false;  // false: the ball is not coming at him at all
   float gap_m = 0.0f;
   float timeToPlane_s = 0.0f;
+  // The two halves of gap_m. They are different defects: lateral_m is where
+  // he was standing, overhead_m is how high the strike was. `gap_m` alone
+  // cannot say which one to fix, so the census records both.
+  float lateral_m = 0.0f;
+  float overhead_m = 0.0f;
   float planeX = 0.0f;
 };
 
@@ -508,8 +513,9 @@ inline KeeperSaveChallenge GetKeeperSaveChallenge(const std::array<float, 3>& ba
   const float crossingY = ballPos[1] + ballVel[1] * out.timeToPlane_s;
   const float crossingZ = std::max(0.0f, ballPos[2] + ballVel[2] * out.timeToPlane_s);
   out.shotAtGoal = true;
-  out.gap_m = std::sqrt(std::pow(crossingY - keeperPos[1], 2.0f) +
-                        std::pow(std::max(0.0f, crossingZ - kKeeperHandsHeight_m), 2.0f));
+  out.lateral_m = std::fabs(crossingY - keeperPos[1]);
+  out.overhead_m = std::max(0.0f, crossingZ - kKeeperHandsHeight_m);
+  out.gap_m = std::sqrt(std::pow(out.lateral_m, 2.0f) + std::pow(out.overhead_m, 2.0f));
   return out;
 }
 

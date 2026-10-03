@@ -114,13 +114,29 @@ public:
   //     reach, dive speed or POSITIONING, and the mean gap says which.
   // Always on, like the shot bands above: one increment per beaten keeper.
   static constexpr float keeperOutOfTime_s = 0.25f;  // ~a keeper's own reaction
-  void AddKeeperBeaten(int teamID, float gap_m, float timeToPlane_s) {
+  // `lateral_m` and `overhead_m` are the two halves of `gap_m`: how far the
+  // ball crossed his plane sideways of his hands, and how far above his
+  // hands. Kept apart because they are different defects - lateral is where
+  // he was standing (positioning), overhead is how high the shot was - and
+  // the blended mean cannot say which one to fix.
+  void AddKeeperBeaten(int teamID, float gap_m, float timeToPlane_s, float lateral_m,
+                       float overhead_m) {
     if (timeToPlane_s < keeperOutOfTime_s)
       keeperBeatenOutOfTime[teamID]++;
     else
       keeperBeatenOutOfReach[teamID]++;
     keeperBeatenGapSum_m[teamID] += gap_m;
+    keeperBeatenLateralSum_m[teamID] += lateral_m;
+    keeperBeatenOverheadSum_m[teamID] += overhead_m;
     keeperBeatenCount[teamID]++;
+  }
+  float GetKeeperBeatenMeanLateral_m(int teamID) const {
+    if (keeperBeatenCount[teamID] == 0) return 0.0f;
+    return keeperBeatenLateralSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);
+  }
+  float GetKeeperBeatenMeanOverhead_m(int teamID) const {
+    if (keeperBeatenCount[teamID] == 0) return 0.0f;
+    return keeperBeatenOverheadSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);
   }
   int GetKeeperBeatenOutOfTime(int teamID) const { return keeperBeatenOutOfTime[teamID]; }
   int GetKeeperBeatenOutOfReach(int teamID) const { return keeperBeatenOutOfReach[teamID]; }
@@ -578,6 +594,8 @@ protected:
   int keeperBeatenOutOfTime[2] = {0, 0};
   int keeperBeatenOutOfReach[2] = {0, 0};
   float keeperBeatenGapSum_m[2] = {0.0f, 0.0f};
+  float keeperBeatenLateralSum_m[2] = {0.0f, 0.0f};
+  float keeperBeatenOverheadSum_m[2] = {0.0f, 0.0f};
   int keeperBeatenCount[2] = {0, 0};
   int shotGeometryCount[2] = {0, 0};
   int goalLineCrossings[2];

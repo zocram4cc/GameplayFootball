@@ -397,10 +397,10 @@ TEST_F(PassFailure, CleanCompletionCountersResetPerMatch) {
 TEST_F(PassFailure, ABeatenKeeperIsRecordedAsOutOfReachOrOutOfTime) {
   // Out of time: the ball arrives before he can move, whatever his reach -
   // point blank. Gap is small, flight is under his own reaction.
-  matchData->AddKeeperBeaten(0, 0.8f, 0.10f);
+  matchData->AddKeeperBeaten(0, 0.8f, 0.10f, 0.8f, 0.0f);
   // Out of reach: he had a second to move and still could not cover it.
-  matchData->AddKeeperBeaten(0, 5.2f, 1.00f);
-  matchData->AddKeeperBeaten(0, 4.4f, 0.90f);
+  matchData->AddKeeperBeaten(0, 5.2f, 1.00f, 5.0f, 1.5f);
+  matchData->AddKeeperBeaten(0, 4.4f, 0.90f, 4.4f, 0.0f);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(0), 1);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(0), 2);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 0);
@@ -409,14 +409,18 @@ TEST_F(PassFailure, ABeatenKeeperIsRecordedAsOutOfReachOrOutOfTime) {
   // not tune reach at all.
   EXPECT_NEAR(matchData->GetKeeperBeatenMeanGap_m(0), (0.8f + 5.2f + 4.4f) / 3.0f, 0.001f);
   EXPECT_FLOAT_EQ(matchData->GetKeeperBeatenMeanGap_m(1), 0.0f);
+  // The split says WHICH defect: this sample was beaten sideways (where he
+  // stood), not overhead, so reach is not the lever - positioning is.
+  EXPECT_NEAR(matchData->GetKeeperBeatenMeanLateral_m(0), (0.8f + 5.0f + 4.4f) / 3.0f, 0.001f);
+  EXPECT_NEAR(matchData->GetKeeperBeatenMeanOverhead_m(0), (0.0f + 1.5f + 0.0f) / 3.0f, 0.001f);
 }
 
 TEST_F(PassFailure, TheBeatenSplitIsTheKeepersOwnReactionTime) {
   // The boundary is not a constant pulled from the air: a keeper is "out of
   // time" when the ball reaches his plane inside his own reaction, since
   // GameplayTuning::KeeperEffectiveReach_m gives him no dive at all there.
-  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 0.5f);
-  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 2.0f);
+  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 0.5f, 3.0f, 0.0f);
+  matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 2.0f, 3.0f, 0.0f);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 1);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(1), 1);
 }
