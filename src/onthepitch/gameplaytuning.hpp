@@ -358,30 +358,6 @@ inline unsigned int GetKeeperAnticipation_ms(float awareness) {
   return static_cast<unsigned int>(300.0f + Clamp01(awareness) * 500.0f);
 }
 
-// The reading, bounded so the predicted ball stops short of the goal line it
-// has to cross. A base position taken from a ball already past the line has
-// no meaning - the angle to the posts has collapsed and the keeper stands
-// central regardless of where the shot goes. Measured cost of not bounding
-// it: a consistent 1.99 m lateral miss (12 team-samples, range 0.00-2.81)
-// while the overhead gap swung 0.00-11.13 m, i.e. a repeatable positioning
-// bias rather than shot variety.
-//
-// `distanceToLine_m` is how far the ball still is from that plane, so a slow
-// ball in a build-up keeps the whole reading (awareness is the point of it)
-// and only a strike that would overrun the line is cut short.
-inline unsigned int GetKeeperAnticipationTime_ms(float awareness, float ballSpeed_mps,
-                                                float distanceToLine_m) {
-  const unsigned int reading = GetKeeperAnticipation_ms(awareness);
-  if (distanceToLine_m <= 0.0f) return 0u;
-  if (ballSpeed_mps <= 0.1f) return reading;
-  const float flightToLine_ms = distanceToLine_m / ballSpeed_mps * 1000.0f;
-  // Stop a little short rather than exactly on the line: the prediction is a
-  // position to stand at, and standing ON the line is its own hazard.
-  constexpr float kStopShortOf = 0.9f;
-  const unsigned int cap = static_cast<unsigned int>(flightToLine_ms * kStopShortOf);
-  return cap < reading ? cap : reading;
-}
-
 // GK Awareness: how much wider than the goal he treats an incoming ball as a
 // threat (1.0 = the real goal mouth). Poor awareness overreacts to balls going
 // wide; the stock formula blended defensive positioning and vision to 1.22.

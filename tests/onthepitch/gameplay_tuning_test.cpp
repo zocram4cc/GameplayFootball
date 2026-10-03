@@ -320,36 +320,6 @@ TEST(GameplayTuningKeeperTest, AwarenessReadsTheBallEarlierAndPanicsLess) {
       << "he never treats the goal as smaller than it is";
 }
 
-// The keeper was beaten sideways by a consistent 2.0 m (12 team-samples,
-// range 0.00-2.81) while the overhead gap swung 0.00-11.13 m - a repeatable
-// bias, not shot variety. Mechanism: at gk_awareness 0.734 the reading is
-// 667 ms, and the base position is built from the ball at that lookahead.
-// At 25 m/s from 16 m the predicted ball is 0.7 m PAST the goal line, where
-// the angle to the posts has collapsed and the keeper pins himself central
-// while the ball goes to the corner. A prediction beyond the line the ball
-// must cross is never a position worth standing at.
-TEST(GameplayTuningKeeperTest, HeNeverReadsTheBallPastTheLineItMustCross) {
-  constexpr float kAwareness = 0.734f;
-  const unsigned int reading = GameplayTuning::GetKeeperAnticipation_ms(kAwareness);
-  ASSERT_GT(reading, 600u) << "a sharp keeper reads well over half a second";
-
-  // A slow ball out in midfield: the full reading is inside the flight to the
-  // line, so awareness is untouched and build-up play behaves as before.
-  EXPECT_EQ(GameplayTuning::GetKeeperAnticipationTime_ms(kAwareness, 5.0f, 40.0f), reading);
-  // A ball lying still has no flight to overrun.
-  EXPECT_EQ(GameplayTuning::GetKeeperAnticipationTime_ms(kAwareness, 0.0f, 16.0f), reading);
-
-  // A drive from 16 m at 25 m/s: the reading would put him beyond the line.
-  const unsigned int capped =
-      GameplayTuning::GetKeeperAnticipationTime_ms(kAwareness, 25.0f, 16.0f);
-  EXPECT_LT(capped, reading);
-  EXPECT_LE(capped * 25.0f * 0.001f, 16.0f) << "the predicted ball stays short of the line";
-  // And it never grows as the strike gets harder.
-  EXPECT_LE(GameplayTuning::GetKeeperAnticipationTime_ms(kAwareness, 30.0f, 16.0f), capped);
-  // A ball already on the line cannot be read forward at all.
-  EXPECT_EQ(GameplayTuning::GetKeeperAnticipationTime_ms(kAwareness, 20.0f, 0.0f), 0u);
-}
-
 TEST(GameplayTuningKeeperTest, CoverageBringsHimOffHisLine) {
   EXPECT_GT(GameplayTuning::GetKeeperComeOutBias(1.0f), GameplayTuning::GetKeeperComeOutBias(0.0f));
   EXPECT_NEAR(GameplayTuning::GetKeeperComeOutBias(0.6f), 0.3f, 1e-5f);
