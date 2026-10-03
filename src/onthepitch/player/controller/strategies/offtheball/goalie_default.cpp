@@ -48,12 +48,22 @@ void GoalieDefaultStrategy::RequestInput(const MentalImage* mentalImage, Vector3
   // PlayerData defaults gk_awareness from mental_defensivepositioning for
   // profiles written before the GK attributes existed.
   float lineDistance = 10.0f;  // default distance keeper stays in front of goal line
-  Vector3 ballPos =
-      mentalImage
-          ->GetBallPrediction(GameplayTuning::GetKeeperAnticipation_ms(
-                                  CastPlayer()->GetStat("gk_awareness")) +
-                              CastPlayer()->GetTimeNeededToGetToBall_ms() * 0.2f)
-          .Get2D();
+  // The reading, bounded so it cannot project the ball past the goal line it
+  // has to cross: from there the angle to the posts has collapsed and the
+  // base position stops responding to where the shot goes. Measured as a
+  // repeatable 1.99 m lateral miss (12 team-samples) against an overhead gap
+  // that swung 0.00-11.13 m. A slow ball in a build-up keeps the full
+  // reading, which is what gk_awareness is for.
+  const Vector3 ballNow = mentalImage->GetBallPrediction(0).Get2D();
+  const Vector3 ballVelocity = match->GetBall()->GetMovement();
+  const float lineX = pitchHalfW * team->GetSide();
+  const unsigned int readAhead_ms =
+      GameplayTuning::GetKeeperAnticipationTime_ms(
+          CastPlayer()->GetStat("gk_awareness"),
+          std::fabs(ballVelocity.coords[0]),
+          std::fabs(lineX - ballNow.coords[0])) +
+      CastPlayer()->GetTimeNeededToGetToBall_ms() * 0.2f;
+  Vector3 ballPos = mentalImage->GetBallPrediction(readAhead_ms).Get2D();
   Vector3 targetPos = Vector3((pitchHalfW - lineDistance) * team->GetSide(), 0, 0);
   Vector3 goalPos = Vector3(pitchHalfW * team->GetSide(), 0, 0);
 
