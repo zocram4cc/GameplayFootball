@@ -128,6 +128,23 @@ const unsigned long kMinimumPerformance_ms = 1500;
 // dropped out of his pose mid-shot.
 bool IsPerforming(unsigned long sinceGoal_ms, unsigned long celebrationLength_ms);
 
+// Who performs which mark of a goal scene. PES numbers the actors 0-10 for the
+// side the goal counts for and 11-21 for the side that conceded - the lost
+// keeper and defenders (goal_2019_ins_lostGK_*: gk_lost on slot 12), and on an
+// own goal the man who put it in his own net (goal_S_owngoal_01_crouching:
+// ownGoal_0001 on 12, the credited side turning away on 1-5).
+constexpr int kConcedingSideFirstSlot = 11;
+bool OnConcedingSide(int slot);
+
+struct CastSlot {
+  int slot = 0;
+  bool primary = false;
+};
+// -> index into `slots` (file order) the scorer performs: the primary mark when
+// it is on his side, else his side's first mark; -1 when his side has none. His
+// side is the conceding one on an own goal.
+int ScorerSlot(const std::vector<CastSlot>& slots, bool ownGoal);
+
 }  // namespace GoalCelebration
 
 #endif

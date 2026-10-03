@@ -145,4 +145,16 @@ bool IsPerforming(unsigned long sinceGoal_ms, unsigned long celebrationLength_ms
   return sinceGoal_ms < until;
 }
 
+bool OnConcedingSide(int slot) { return slot >= kConcedingSideFirstSlot; }
+
+int ScorerSlot(const std::vector<CastSlot>& slots, bool ownGoal) {
+  int first = -1;
+  for (int i = 0; i < (int)slots.size(); i++) {
+    if (OnConcedingSide(slots[i].slot) != ownGoal) continue;
+    if (slots[i].primary) return i;
+    if (first < 0) first = i;
+  }
+  return first;
+}
+
 }  // namespace GoalCelebration

@@ -2833,27 +2833,42 @@ bool Match::StartGoalCast(const std::string& celebration) {
   cutscenePrimary = lastGoalScorer;
   cutsceneOpponent = nullptr;
 
-  // The scorer takes the primary mark. The rest are his own teammates, nearest
-  // to where each mark will be once the staging is put down - PES casts the men
-  // who ran to join him. His own side, not the side credited with the goal: on
-  // an own goal he belongs to the side that conceded, and filling his scene from
-  // the credited team had the unlucky man celebrating with the opposition.
-  std::vector<Player*> available;
-  teams[lastGoalScorer->GetTeamID()]->GetActivePlayers(available);
-  available.erase(std::remove(available.begin(), available.end(), lastGoalScorer), available.end());
+  // Each mark is cast from the side PES put it on: slots 0-10 from the team the
+  // goal counts for, 11-21 from the team that conceded (GoalCelebration::
+  // OnConcedingSide) - the lost keeper and defenders, and on an own goal the
+  // man who put it in his own net, who takes his own side's first mark. Every
+  // slot past 10 used to be skipped as a foul cutscene's "opponent", so the
+  // own-goal croucher was never posed and the unlucky man played the credited
+  // side's reaction. The rest go to whoever on that side stands nearest the
+  // mark once the staging is put down - PES casts the men who ran to join him.
+  std::vector<const ChoreoSlot*> marks;
+  std::vector<GoalCelebration::CastSlot> sides;
+  for (const auto& slot : choreo->GetSlots()) {
+    if (slot.role == e_ChoreoRole_Official) continue;
+    marks.push_back(&slot);
+    sides.push_back({slot.slot, slot.role == e_ChoreoRole_Primary});
+  }
+  const int scorerMark = GoalCelebration::ScorerSlot(sides, LastGoalIsOwnGoal());
+  const int concedingTeamID = abs(lastGoalTeamID - 1);
+  std::vector<Player*> squads[2];
+  teams[lastGoalTeamID]->GetActivePlayers(squads[0]);
+  teams[concedingTeamID]->GetActivePlayers(squads[1]);
+  for (auto& squad : squads)
+    squad.erase(std::remove(squad.begin(), squad.end(), lastGoalScorer), squad.end());
   const float c = std::cos(goalCelebrationYaw), s = std::sin(goalCelebrationYaw);
   auto staged = [&](const Vector3& local) {
     return Vector3(goalCelebrationSubject.coords[0] + local.coords[0] * c - local.coords[1] * s,
                    goalCelebrationSubject.coords[1] + local.coords[0] * s + local.coords[1] * c, 0.0f);
   };
-  for (const auto& slot : choreo->GetSlots()) {
-    if (slot.role == e_ChoreoRole_Official || slot.role == e_ChoreoRole_Opponent) continue;
+  for (int m = 0; m < (int)marks.size(); m++) {
+    const ChoreoSlot& slot = *marks[m];
     Animation* clip = CutsceneClip(slot.animFile);
     if (!clip) continue;
     Player* cast = nullptr;
-    if (slot.role == e_ChoreoRole_Primary) {
+    if (m == scorerMark) {
       cast = lastGoalScorer;
     } else {
+      std::vector<Player*>& available = squads[GoalCelebration::OnConcedingSide(slot.slot) ? 1 : 0];
       if (available.empty()) continue;
       Vector3 mark;
       radian yaw = 0;
@@ -3288,12 +3303,17 @@ void Match::UpdateCutsceneChoreo() {
       // until the whole cast was torn down together.
       if (!cast.slot->loop && animFrame > cast.clip->GetEffectiveFrameCount()) {
         // Feed stopped: ProcessChoreo flips his choreo state off and hands him
-        // back to the anim machinery; ResetSituation puts his spatial state on
-        // the spot he is standing with the ball as focus, instead of whatever
-        // the last authored frame had (often horizontal, mid-air).
-        HumanoidBase* humanoid = cast.player->CastHumanoid();
-        humanoid->ProcessChoreo();
-        humanoid->ResetSituation(Vector3(0, -1, 0));
+        // back to the anim machinery; ResetSituation stands him on his spot
+        // facing the pitch centre instead of whatever the last authored frame
+        // had (often horizontal, mid-air). Once: repeated every tick it reset
+        // him onto a random idle frame each tick for the rest of the beat, and
+        // since every goal slot plays once that was every performer.
+        if (!cast.released) {
+          cast.released = true;
+          HumanoidBase* humanoid = cast.player->CastHumanoid();
+          humanoid->ProcessChoreo();
+          humanoid->ResetSituation(Vector3(0, -1, 0));
+        }
         continue;
       }
       performing = true;

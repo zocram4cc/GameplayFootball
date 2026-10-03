@@ -359,3 +359,33 @@ TEST(CelebrationArrival, HePerformsWhenHeGetsThere) {
 TEST(CelebrationArrival, ABlockedScorerStillCelebrates) {
   EXPECT_TRUE(GoalCelebration::HasArrived(30.0f, GoalCelebration::kApproachCap_ms));
 }
+
+// PES numbers a goal scene's actors 0-10 for the side the goal counts for and
+// 11-21 for the side that conceded: goal_2019_ins_lostGK_* puts gk_lost on 12,
+// goal_S_owngoal_01_crouching puts ownGoal_0001 (the man who put it in his own
+// net) on 12 and the watchers turning away on 1-5. The goal cast skipped every
+// slot past 10, so the croucher was never posed and the own-goal scorer played
+// the credited side's reaction.
+TEST(GoalCastSides, SlotsPastTheTenthAreTheConcedingSide) {
+  EXPECT_FALSE(GoalCelebration::OnConcedingSide(0));
+  EXPECT_FALSE(GoalCelebration::OnConcedingSide(10));
+  EXPECT_TRUE(GoalCelebration::OnConcedingSide(11));
+  EXPECT_TRUE(GoalCelebration::OnConcedingSide(21));
+}
+
+TEST(GoalCastSides, AScorerTakesThePrimaryMark) {
+  const std::vector<GoalCelebration::CastSlot> slots = {{2, false}, {0, true}, {12, false}};
+  EXPECT_EQ(GoalCelebration::ScorerSlot(slots, /*ownGoal=*/false), 1);
+}
+
+TEST(GoalCastSides, AnOwnGoalScorerTakesHisOwnSidesFirstMark) {
+  // goal_S_owngoal_01_crouching, in file order
+  const std::vector<GoalCelebration::CastSlot> slots = {
+      {1, true}, {2, false}, {3, false}, {4, false}, {5, false}, {12, false}, {21, false}};
+  EXPECT_EQ(GoalCelebration::ScorerSlot(slots, /*ownGoal=*/true), 5);
+}
+
+TEST(GoalCastSides, NoMarkOnHisSideLeavesHimUncast) {
+  const std::vector<GoalCelebration::CastSlot> slots = {{1, true}, {2, false}};
+  EXPECT_EQ(GoalCelebration::ScorerSlot(slots, /*ownGoal=*/true), -1);
+}

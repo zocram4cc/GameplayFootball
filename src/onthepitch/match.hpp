@@ -784,6 +784,8 @@ protected:
     Player* player;
     const ChoreoSlot* slot;
     Animation* clip;
+    // A play-once performer handed back to the anim machinery (goal casts).
+    bool released = false;
   };
   std::vector<EntranceCastMember> entranceCast;
   // Where the choreography last put the cast. A posed player's own position is
