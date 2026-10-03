@@ -23,6 +23,7 @@
 #include "../../../main.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../match.hpp"
+#include "../../penaltyshootoutcontroller.hpp"
 #include "../../team.hpp"
 #include "../player.hpp"
 #include "data/matchanalytics.hpp"
@@ -891,7 +892,18 @@ void Humanoid::Process() {
         const bool isClearance = currentAnim->originatingCommand.touchInfo.isClearance;
         if (!isClearance) {
           const Vector3 ballNow = match->GetBall()->Predict(0);
-          const float goalLineX = pitchHalfW * -team->GetSide();
+          // Which goal this strike is at. In a shootout BOTH teams take at one
+          // end - GetGoalX is the shootout's, not the taker's - so a team's
+          // normal attacking side names the wrong goal for half of them: the
+          // flight was measured to the far end, 94 m instead of 11 m, and
+          // ShotArrivalVelocityZ grows with time, so the "stay under the bar"
+          // cap became 11-12.5 m/s and the strike was lobbed over the crossbar
+          // (measured: 3 of 7 kicks crossed at z 3.5-5.4 over a 2.44 m bar).
+          const PenaltyShootoutController* shootout = match->GetPenaltyShootout();
+          const float goalLineX =
+              (shootout && shootout->IsStarted() && !shootout->IsFinished())
+                  ? shootout->GetGoalX()
+                  : pitchHalfW * -team->GetSide();
           // The PATH the ball actually travels, not the axis-aligned gap: from a
           // wide position the goal-line plane is reached by a diagonal, and
           // using |dx| alone understates the flight by up to 30%, which aims the

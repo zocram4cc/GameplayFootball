@@ -280,6 +280,31 @@ TEST(GameplayTuningShootingTest, TheBandIsOrderedAndHasNoFlightForNoShot) {
   EXPECT_FLOAT_EQ(GameplayTuning::ClampShotArrivalVelocityZ(3.0f, 0.11f, 0.0f), 3.0f);
 }
 
+// A shootout strike 11 m out was measured against the far goal, 94 m away, and
+// the band handed it 11-12.5 m/s of vertical - a lob over the 2.44 m bar. The
+// band grows with flight time (gravity must be paid back over a longer flight),
+// so the distance the caller passes decides whether a strike is capped or
+// launched. This pins that the far-end distance yields a lob the near-end one
+// forbids: the bug was the distance, and the distance is arithmetic, so the
+// arithmetic is what a test can hold.
+TEST(GameplayTuningShootingTest, AMeasuredFlightTimeFromTheFarGoalPermitsALob) {
+  const float z0 = 0.109f;
+  const float nearFlight = 11.0f / 43.0f;   // the real penalty spot
+  const float farFlight = 94.0f / 43.0f;    // the far goal, by mistake
+  const float nearCap =
+      GameplayTuning::ShotArrivalVelocityZ(GameplayTuning::kShotArrivalMax_m, z0, nearFlight);
+  const float farCap =
+      GameplayTuning::ShotArrivalVelocityZ(GameplayTuning::kShotArrivalMax_m, z0, farFlight);
+  EXPECT_LT(nearCap, 9.5f) << "a real penalty's cap stays a shot (measured 9.04)";
+  EXPECT_GT(farCap, 10.0f) << "the far-end cap is a lob, which is the defect";
+  // Both caps aim at kShotArrivalMax_m, so the height is not the bug - the
+  // time is. ShotArrivalVelocityZ already solves h = z0 + vz*t - g*t^2/2, so
+  // each cap does reach 2.1 m at ITS OWN crossing; they simply cross at very
+  // different places, and the far-end one puts it over the bar.
+  const float nearArrival = 0.109f + nearCap * nearFlight - 0.5f * 9.81f * nearFlight * nearFlight;
+  EXPECT_NEAR(nearArrival, GameplayTuning::kShotArrivalMax_m, 0.01f);
+}
+
 TEST(GameplayTuningKeeperTest, ReflexesShortenTheLatency) {
   EXPECT_LT(GameplayTuning::GetReactionTime_ms(1.0f), GameplayTuning::GetReactionTime_ms(0.0f));
   EXPECT_EQ(GameplayTuning::GetReactionTime_ms(0.5f), 60);
