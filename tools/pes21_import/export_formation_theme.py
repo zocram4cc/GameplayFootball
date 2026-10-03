@@ -30,7 +30,11 @@ from PIL import Image, ImageDraw
 sys.path.insert(0, os.path.dirname(__file__))
 from export_scoreboard_theme import bake_panel, load_region, widen  # noqa: E402
 
-DEFAULT_EXTRACTED = "path/to/PES21/extracted/ui"
+# Where the extracted dt11 ui tree is. Deliberately NOT a machine path: it
+# lives on whoever's PES install, so it is an argument or $PES21_UI_DIR and
+# nothing more. A default naming one person's drive made every other user's
+# checkout fail confusingly.
+DEFAULT_EXTRACTED = os.environ.get("PES21_UI_DIR", "")
 DEFAULT_OUT = os.path.join(os.path.dirname(__file__), "..", "..",
                            "data", "media", "ui", "pes")
 

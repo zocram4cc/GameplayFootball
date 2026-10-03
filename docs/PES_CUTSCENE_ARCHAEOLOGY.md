@@ -1,6 +1,6 @@
 # PES cutscene camerawork across generations: PES16, PES17, PES19, PES21
 
-Measured from the user's own installs (`path/to/PES{16,17,19}/Data/`)
+Measured from the user's own installs (`/path/to/PES{16,17,19}/Data/`)
 against `docs/PES21_CAMERA_TRACE.md`'s PES21 numbers. Nothing from these installs is
 committed; the numbers below are the record.
 
@@ -183,7 +183,7 @@ succeeding and the recorded match (§6).
 ## 6. Recorded verification (headless, own worktree data)
 
 Run: `gamescope --backend headless -W 1280x720 -- ./gameplayfootball
-<config>` from `Code/gpf-cutscenes/data` (own worktree, own `log.txt`,
+<config>` from `gpf-cutscenes/data` (own worktree, own `log.txt`,
 own build - PES-derived assets reached read-only via per-file symlinks into the
 main tree, never committed), `debug_cutscene_report true`,
 `frame_recording_path` a fifo read continuously by `ffmpeg`, per

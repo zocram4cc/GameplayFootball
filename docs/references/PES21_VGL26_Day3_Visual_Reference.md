@@ -11,7 +11,7 @@ explicitly marked as gaps.**
 
 - Source: https://implying.fun/videos/VGL%2026/VGL%2026%20Day%203.mp4
   9.86 GB, 1920x1080 @ 60 fps h264, AAC stereo. Duration **21007.61 s = 05:50:07**.
-- Working copy: `vgl26_day3.mp4`; stills: `/tmp/pes21_ref_frames/`.
+- Working copy: `pes21_work/vgl26_day3.mp4`; stills: `/tmp/pes21_ref_frames/`.
 - All timestamps are video-relative `H:MM:SS`.
 
 ## Contents
@@ -40,7 +40,7 @@ Seven matches (team abbreviations read from scorebars; tags are VGL roster names
 
 Between matches: team-select + extended dual "Game Plan" editing (~8 min each).
 Crowd-noise spikes (ebur128 momentary loudness > median+12 LU, ≥1.5 s) logged for all
-matches — candidate goal/foul moments list saved at `spike_times.npy`
+matches — candidate goal/foul moments list saved at `pes21_work/spike_times.npy`
 (367 spikes; e.g. M1 goals cluster at 0:19:24 (+20.5 s roar), 0:22:57).
 
 ## 2. Introduction / title & menu sequence [00:00:00–00:13:22]
@@ -132,10 +132,10 @@ A **vision-capable model** must inspect: (a) goal windows from §1 spikes for
 celebration cam cuts/wipes/replay trims; (b) 00:16:00±90 s for walk-on/tunnel/coin
 shots; (c) match-end long shots for end/greet/photo choreography; (d) foul windows
 (1:46:54 peak −1.9 LU; 5:26:49 −3.1 LU candidates) for card/offside presentation.
-Frame extraction one-liners are already scripted in .
+Frame extraction one-liners are already scripted in pes21_work/.
 # PES21 VGL26 Day 3 — Visual Reference Supplement (Vision-Verified)
 
-Source: same as-partial — `vgl26_day3.mp4` (1920x1080@60, 05:50:07). This supplement fills §5-6 that the OCR-only pass marked NOT DONE, by direct inspection of the stills in `/tmp/pes21_ref_frames/` (12 base + 7 extra at precise spikes).
+Source: same as-partial — `pes21_work/vgl26_day3.mp4` (1920x1080@60, 05:50:07). This supplement fills §5-6 that the OCR-only pass marked NOT DONE, by direct inspection of the stills in `/tmp/pes21_ref_frames/` (12 base + 7 extra at precise spikes).
 
 Method: every still below was opened in this session (Read → WebP inline) and measured at 1080p coords. Timestamps are video-relative; scene-cut count 1286 (1 per ~16s overall, 1 per ~2s inside celebration/foul chains).
 

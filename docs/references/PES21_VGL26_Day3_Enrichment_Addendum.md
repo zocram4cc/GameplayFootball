@@ -1,5 +1,5 @@
 # Enrichment Addendum to PES21 VGL26 Day 3 Visual Reports — Game Plan / Pause / Offside Deep Dive
-Source same as before: `vgl26_day3.mp4` @1080p. This addendum enriches §4 Game Plan & §3 Pause and adds offside micro-timings that the 167-line cuts doc summarized. All measurements are from direct 1920×1080 still inspection (PIL sampled) this session.
+Source same as before: `pes21_work/vgl26_day3.mp4` @1080p. This addendum enriches §4 Game Plan & §3 Pause and adds offside micro-timings that the 167-line cuts doc summarized. All measurements are from direct 1920×1080 still inspection (PIL sampled) this session.
 
 ## Game Plan layout — pixel-accurate reconstruction (still `game_plan_dual.png` 00:11:40)
 

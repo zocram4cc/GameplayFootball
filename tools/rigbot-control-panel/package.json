@@ -7,7 +7,7 @@
     "test": "npm run build && node --test \"dist/rig/*.test.js\"",
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "nodemon --watch src --exec \"node/bin/npm run build && node dist/server.js\""
+    "dev": "nodemon --watch src --exec \"npm run build && node dist/server.js\""
   },
   "keywords": [],
   "author": "",

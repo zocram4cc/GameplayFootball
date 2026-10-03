@@ -7,7 +7,7 @@
 # docs/VGL26_REFERENCE.md, but every pixel here is drawn from scratch, so the
 # repository ships no PES artwork.
 set -e
-OUT=<repo>/data/media/menu
+OUT=${1:-$(cd "$(dirname "$0")/../.." && pwd)/data/media/menu}
 mkdir -p "$OUT"
 
 # The plate: dark navy, translucent, rounded, with a lighter top edge the way a

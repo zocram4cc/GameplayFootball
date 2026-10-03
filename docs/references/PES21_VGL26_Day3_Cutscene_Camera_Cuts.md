@@ -1,6 +1,6 @@
 # PES21 VGL26 Day 3 — Cutscene & Celebration Camera Cuts (Vision-Re-Researched)
 
-**Re-research date:** 2026-08-24. **Source:** `vgl26_day3.mp4` (1920x1080@60, 21007.61s = 05:50:07). **Scope:** Every celebration and cutscene type — re-found from scratch via loudness spikes (367) + OCR scoreboard sweep + 1286 scene cuts (`scene_times.txt`) + vision inspection of 19 tiles (2 fps, 30 s windows, 6×10 layout = 60 frames/window). Tiles inspected in this session (Read inline): base 12 (`/tmp/pes21_ref_frames/*.png`) + detail 8 (`/tmp/pes21_cuts/detail/*_tile_2fps.png`) at 00:19:24, 00:22:57, 02:16:36, 04:33:13, 05:20:31, 01:46:54, 00:16:00, 00:39:40.
+**Re-research date:** 2026-08-24. **Source:** `pes21_work/vgl26_day3.mp4` (1920x1080@60, 21007.61s = 05:50:07). **Scope:** Every celebration and cutscene type — re-found from scratch via loudness spikes (367) + OCR scoreboard sweep + 1286 scene cuts (`scene_times.txt`) + vision inspection of 19 tiles (2 fps, 30 s windows, 6×10 layout = 60 frames/window). Tiles inspected in this session (Read inline): base 12 (`/tmp/pes21_ref_frames/*.png`) + detail 8 (`/tmp/pes21_cuts/detail/*_tile_2fps.png`) at 00:19:24, 00:22:57, 02:16:36, 04:33:13, 05:20:31, 01:46:54, 00:16:00, 00:39:40.
 
 **Method — how each cut was found (replicable):**
 
@@ -166,7 +166,7 @@ Tile `M5_G_043313` rows10-11 at +26–30s actually contain a **foul-then-card** 
 All timestamps above are re-found from the 8-tile re-research; stills saved at `/tmp/pes21_cuts/detail/*`. Re-run command for any new goal: `ffmpeg -ss $((spike-5)) -t 30 -i mp4 -vf fps=2,scale=320:180,tile=6x10 …` + grep `scene_times.txt` in `[spike-5,spike+25]`.
 
 # Enrichment Addendum to PES21 VGL26 Day 3 Visual Reports — Game Plan / Pause / Offside Deep Dive
-Source same as before: `vgl26_day3.mp4` @1080p. This addendum enriches §4 Game Plan & §3 Pause and adds offside micro-timings that the 167-line cuts doc summarized. All measurements are from direct 1920×1080 still inspection (PIL sampled) this session.
+Source same as before: `pes21_work/vgl26_day3.mp4` @1080p. This addendum enriches §4 Game Plan & §3 Pause and adds offside micro-timings that the 167-line cuts doc summarized. All measurements are from direct 1920×1080 still inspection (PIL sampled) this session.
 
 ## Game Plan layout — pixel-accurate reconstruction (still `game_plan_dual.png` 00:11:40)
 
@@ -209,7 +209,7 @@ Re-extracted window `05:42:11 (20531s)` where scorebar shows `1 2 FT` and crowd 
 
 # New Contact Sheets Analysis — 8 windows re-extracted 2026-08-24
 
-Generated at 2 fps 320:180 tile 6×10 =60 frames /30s, 1920×1800 master. Source same `vgl26_day3.mp4`. All inspected vision-inline this session.
+Generated at 2 fps 320:180 tile 6×10 =60 frames /30s, 1920×1800 master. Source same `pes21_work/vgl26_day3.mp4`. All inspected vision-inline this session.
 
 ## 1. M2_G_010611 @3911.4s (01:05:11, /ink/ vs 4cc) — gameplay only, no celebration
 

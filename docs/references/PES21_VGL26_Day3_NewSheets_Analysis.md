@@ -1,6 +1,6 @@
 # New Contact Sheets Analysis — 8 windows re-extracted 2026-08-24
 
-Generated at 2 fps 320:180 tile 6×10 =60 frames /30s, 1920×1800 master. Source same `vgl26_day3.mp4`. All inspected vision-inline this session.
+Generated at 2 fps 320:180 tile 6×10 =60 frames /30s, 1920×1800 master. Source same `pes21_work/vgl26_day3.mp4`. All inspected vision-inline this session.
 
 ## 1. M2_G_010611 @3911.4s (01:05:11, /ink/ vs 4cc) — gameplay only, no celebration
 

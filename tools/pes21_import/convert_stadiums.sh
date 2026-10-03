@@ -34,9 +34,9 @@
 #   convert_stadiums.sh <packs dir> [<fmdl-lib>] [<out root>]
 set -u
 PACKS=${1:?usage: convert_stadiums.sh <packs dir> [fmdl-lib] [out root]}
-FMDL_LIB=${2:-<repo>/4cc Blender Starter Pack/scripts/addons/pes-fmdl}
-OUT_ROOT=${3:-<repo>/data/media/objects/stadiums}
 HERE=$(cd "$(dirname "$0")" && pwd)
+FMDL_LIB=${2:-$HERE/../../4cc Blender Starter Pack/scripts/addons/pes-fmdl}
+OUT_ROOT=${3:-$HERE/../../data/media/objects/stadiums}
 # Large by default. A mesh over the limit is dropped, and on a pack whose
 # surroundings are the view that throws the view away: benuldys lost seventeen
 # meshes at 1300 m, every one of which is recognised as a backdrop dome at 6000
