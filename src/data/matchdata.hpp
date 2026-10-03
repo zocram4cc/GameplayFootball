@@ -130,6 +130,20 @@ public:
     keeperBeatenOverheadSum_m[teamID] += overhead_m;
     keeperBeatenCount[teamID]++;
   }
+  // Would he have got there with a slightly different keeper? Both answers
+  // are counters, not means, because the mean gap cannot say which lever has
+  // headroom. `standing_m` is the pure short-flight case (no dive to extend);
+  // `fasterReaction_m` is the opposite, the shots with flight on the clock
+  // where a quicker read buys coverage a longer frame cannot. One batch
+  // prints both, so the keeper is settled without guessing a constant.
+  void AddKeeperBeatenWhatIf(int teamID, bool savedWithLongerStand, bool savedWithFasterRead) {
+    if (savedWithLongerStand) keeperBeatenSavedByStanding[teamID]++;
+    if (savedWithFasterRead) keeperBeatenSavedByReaction[teamID]++;
+    keeperBeatenWhatIfCount[teamID]++;
+  }
+  int GetKeeperBeatenSavedByStanding(int teamID) const { return keeperBeatenSavedByStanding[teamID]; }
+  int GetKeeperBeatenSavedByReaction(int teamID) const { return keeperBeatenSavedByReaction[teamID]; }
+  int GetKeeperBeatenWhatIfCount(int teamID) const { return keeperBeatenWhatIfCount[teamID]; }
   float GetKeeperBeatenMeanLateral_m(int teamID) const {
     if (keeperBeatenCount[teamID] == 0) return 0.0f;
     return keeperBeatenLateralSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);
@@ -594,6 +608,9 @@ protected:
   int keeperBeatenOutOfTime[2] = {0, 0};
   int keeperBeatenOutOfReach[2] = {0, 0};
   float keeperBeatenGapSum_m[2] = {0.0f, 0.0f};
+  int keeperBeatenSavedByStanding[2] = {0, 0};
+  int keeperBeatenSavedByReaction[2] = {0, 0};
+  int keeperBeatenWhatIfCount[2] = {0, 0};
   float keeperBeatenLateralSum_m[2] = {0.0f, 0.0f};
   float keeperBeatenOverheadSum_m[2] = {0.0f, 0.0f};
   int keeperBeatenCount[2] = {0, 0};

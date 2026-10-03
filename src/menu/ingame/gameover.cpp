@@ -388,6 +388,16 @@ void GameOverPage::Process() {
            matchData->GetKeeperBeatenMeanLateral_m(0), matchData->GetKeeperBeatenMeanLateral_m(1),
            matchData->GetKeeperBeatenMeanOverhead_m(0),
            matchData->GetKeeperBeatenMeanOverhead_m(1));
+    // Which lever would have saved them. Census only - nothing is applied - and
+    // it is what settles the keeper on one batch instead of one batch per
+    // guess: if a slightly longer standing frame takes several of the
+    // short-flight ones and a quicker read takes none, the keeper is a
+    // framing problem; the reverse means it is a reaction problem.
+    printf("[balance-keeper-whatif] of %i-%i beaten, longer standing frame saves %i-%i, "
+           "quicker read saves %i-%i\n",
+           matchData->GetKeeperBeatenWhatIfCount(0), matchData->GetKeeperBeatenWhatIfCount(1),
+           matchData->GetKeeperBeatenSavedByStanding(0), matchData->GetKeeperBeatenSavedByStanding(1),
+           matchData->GetKeeperBeatenSavedByReaction(0), matchData->GetKeeperBeatenSavedByReaction(1));
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not

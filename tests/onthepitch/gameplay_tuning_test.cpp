@@ -159,6 +159,57 @@ TEST(GameplayTuningKeeperTest, ZeroFlightLeavesTheStandingReachNotAnEmptyGoal) {
   EXPECT_FLOAT_EQ(GameplayTuning::KeeperEffectiveReach_m(2.25f, 1.0f, latency), 2.25f);
 }
 
+// 43% of beaten keepers were out of TIME: the ball reached his plane inside
+// his own reaction, so no dive existed and only the standing reach applied.
+// Whether that is fixable is not a matter of taste - it is answerable from the
+// (flight, gap) pairs, by asking which lever would have reached them. These
+// are the questions the census now asks per beaten keeper, so one batch
+// settles the keeper without a speculative constant change.
+TEST(GameplayTuningKeeperTest, AWhatIfReachAnswersWhichLeverWouldHaveSavedIt) {
+  constexpr float kDiveReach = 1.4f;   // gk_coverage ~0.33
+  constexpr float kDiveSpeed = 3.8f;
+  const float latency = GameplayTuning::GetKeeperReactionTime_s(0.734f);
+
+  // At ZERO flight the dive contributes nothing - extend is 0 - so this is the
+  // pure standing-reach case, and a longer frame is the only thing that could
+  // have saved him. Most of the out-of-time bucket is this shape.
+  EXPECT_FALSE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      1.15f, 0.0f, latency, kDiveReach, kDiveSpeed, 1.0f));
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      1.15f, 0.0f, latency, kDiveReach, kDiveSpeed, 1.25f));
+
+  // Before his reaction has fully elapsed he is already PARTLY extended -
+  // extend is t/latency, not 0 - so a short-flight shot is not purely a
+  // standing-frame question. Worth knowing before tuning: at 0.20 s of flight
+  // against a 0.24 s reaction his effective reach is already 1.33 m.
+  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.20f, latency), 1.333f, 0.01f);
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      1.15f, 0.20f, latency, kDiveReach, kDiveSpeed, 1.0f));
+
+  // A gap needing the whole dive is the flight-time case, and there a shorter
+  // reaction buys coverage the standing frame cannot.
+  const float gap = 2.5f, flight = 0.45f;
+  EXPECT_FALSE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      gap, flight, latency, kDiveReach, kDiveSpeed, 1.0f));
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      gap, flight, latency, kDiveReach, kDiveSpeed, 1.0f, latency * 0.5f));
+
+  // And the standing reach is monotone: more of it never costs a save.
+  EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      1.15f, 0.0f, latency, kDiveReach, kDiveSpeed, 3.0f));
+  // With the default standing reach the what-if agrees with the LIVE decision.
+  // Note the two take different things: KeeperReachesShot is handed an
+  // already-effective reach (Player::KeeperAttemptsSave derives it), while the
+  // what-if takes the raw dive reach and derives its own - which is the whole
+  // point, since the standing reach is the term being varied.
+  const float noFlight = 0.0f;
+  EXPECT_EQ(GameplayTuning::KeeperReachesShotWithStandingReach(
+                1.15f, flight, latency, kDiveReach, kDiveSpeed, 1.0f),
+            GameplayTuning::KeeperReachesShot(
+                1.15f, flight, latency,
+                GameplayTuning::KeeperEffectiveReach_m(kDiveReach, flight, latency), kDiveSpeed));
+}
+
 TEST(GameplayTuningKeeperTest, ShortFlightShrinksEffectiveReachByStat) {
   // The dive share still follows the keeper's own reaction, so a 0.9 keeper
   // gets across to a 2 m gap and a 0.6 keeper does not. No dice anywhere: same

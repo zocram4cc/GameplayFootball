@@ -453,15 +453,36 @@ inline float GetShotBodySliceShare(float shotStat) {
 // frame with his arms in it, consistent with the 0.9 m "hands rest at hip
 // height" the gap is measured against in Player::KeeperAttemptsSave.
 constexpr float kKeeperStandingReach_m = 1.0f;
-inline float KeeperEffectiveReach_m(float reach_m, float timeToPlane_s, float latency_s) {
+inline float KeeperEffectiveReach_m(float reach_m, float timeToPlane_s, float latency_s,
+                                    float standingReach_m = kKeeperStandingReach_m) {
   if (latency_s <= 0.0f)
-    return reach_m;
+    return std::max(reach_m, standingReach_m);
   const float extend = std::min(1.0f, std::max(0.0f, timeToPlane_s / latency_s));
   // Only the part of a dive that exceeds his standing frame needs flight time;
   // the worst keeper's dive reach is below it, so he never extends at all
   // rather than reaching backwards. Full flight still leaves the reach
   // untouched.
-  return kKeeperStandingReach_m + std::max(0.0f, reach_m - kKeeperStandingReach_m) * extend;
+  return standingReach_m + std::max(0.0f, reach_m - standingReach_m) * extend;
+}
+
+// Would he have got there under a different standing reach or reaction?
+// Pure, and asked only by the census - never by the live decision, which uses
+// KeeperReachesShot unchanged - because the keeper's save rate moves +-2
+// goals per match on run-to-run noise alone, so a tuning constant cannot be
+// justified by argument. This asks the question instead: of the shots he was
+// beaten by, how many WOULD he have reached with a slightly longer standing
+// frame, and how many with a slightly quicker reaction? That separates the
+// out-of-time bucket (where only standing reach can help - there is no flight
+// left to spend) from the ones a faster reaction would take, and the answer
+// arrives with the next batch instead of costing a batch per guess.
+inline bool KeeperReachesShotWithStandingReach(float gap_m, float timeToPlane_s, float latency_s,
+                                              float reach_m, float closingSpeed_ms,
+                                              float standingReach_m,
+                                              float latencyOverride_s = -1.0f) {
+  const float latency = latencyOverride_s >= 0.0f ? latencyOverride_s : latency_s;
+  const float travel_m = std::max(0.0f, timeToPlane_s - latency) * std::max(0.0f, closingSpeed_ms);
+  return gap_m <= KeeperEffectiveReach_m(reach_m, timeToPlane_s, latency, standingReach_m) +
+                      travel_m;
 }
 
 inline bool KeeperReachesShot(float gap_m, float timeToPlane_s, float latency_s, float reach_m,

@@ -153,6 +153,15 @@ bool Player::IsBeatenKeeper() {
   return !KeeperAttemptsSave();
 }
 
+// The two what-if keeper tweaks the census asks about, both deliberately
+// slight: a longer standing frame and a quicker read. Neither is applied -
+// they only count how many of the shots he was beaten by each would have
+// taken, which is what decides whether either has headroom worth spending.
+namespace {
+constexpr float kWhatIfStandingReach_m = 1.25f;  // 1.0 m now, +25 cm
+constexpr float kWhatIfReactionScale = 0.75f;    // 25% quicker read
+}  // namespace
+
 bool Player::KeeperAttemptsSave() {
   if (GetFormationEntry().role != e_PlayerRole_GK)
     return true;
@@ -222,6 +231,21 @@ bool Player::KeeperAttemptsSave() {
     keeperBeatenRecorded = true;
     match->GetMatchData()->AddKeeperBeaten(team->GetID(), gap_m, timeToPlane_s,
                                            challenge.lateral_m, challenge.overhead_m);
+    // Which lever, if any, would have got there: a slightly longer standing
+    // frame (the short-flight case, where there is no dive to extend) or a
+    // slightly quicker read (the shots with flight on the clock). Census only -
+    // the decision above is untouched - and the answer arrives with the next
+    // batch instead of costing one batch per guess.
+    const float diveReach_m = GameplayTuning::GetKeeperDiveReach_m(GetStat("gk_coverage"));
+    const float diveSpeed_ms = GameplayTuning::GetKeeperDiveSpeed_ms(GetStat("gk_coverage"));
+    match->GetMatchData()->AddKeeperBeatenWhatIf(
+        team->GetID(),
+        GameplayTuning::KeeperReachesShotWithStandingReach(gap_m, timeToPlane_s, latency_s,
+                                                           diveReach_m, diveSpeed_ms,
+                                                           kWhatIfStandingReach_m),
+        GameplayTuning::KeeperReachesShotWithStandingReach(
+            gap_m, timeToPlane_s, latency_s, diveReach_m, diveSpeed_ms,
+            GameplayTuning::kKeeperStandingReach_m, latency_s * kWhatIfReactionScale));
   }
   return reaches;
 }
