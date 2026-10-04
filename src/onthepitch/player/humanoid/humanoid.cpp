@@ -628,8 +628,10 @@ void Humanoid::Process() {
           // (MatchData::AddPassFailTrapSpeed): above ~28 m/s no trap can yield
           // possession at all. Whether the failures live up there is what this
           // number answers.
-          match->GetMatchData()->AddPassFailTrapSpeed(
-              currentBallVec.GetLength() * 100.0f);
+          // m/s, not cm/s: GetTrapKillStrength is handed this same
+          // currentBallVec.GetLength() unscaled against a 6-20 m/s ramp, so the
+          // momentum vector is already in m/s.
+          match->GetMatchData()->AddPassFailTrapSpeed(currentBallVec.GetLength());
         }
       }
 
