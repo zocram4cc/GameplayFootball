@@ -632,6 +632,12 @@ void Humanoid::Process() {
           // currentBallVec.GetLength() unscaled against a 6-20 m/s ramp, so the
           // momentum vector is already in m/s.
           match->GetMatchData()->AddPassFailTrapSpeed(currentBallVec.GetLength());
+          // The reception's context: how fast the receiver was himself, and
+          // how much of the ball's pace bumpyRideBias let survive the touch.
+          // These are what decide whether a failed reception is the pass's
+          // fault or the approach's.
+          match->GetMatchData()->AddPassFailReceptionContext(
+              spatialState.movement.GetLength(), bumpyRideBias);
         }
       }
 

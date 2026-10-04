@@ -162,6 +162,30 @@ public:
   float passFailTrapSpeedSum_mps = 0.0f;
   int passFailTrapSpeedCount = 0;
   int GetPassFailTrapSpeedCount() const { return passFailTrapSpeedCount; }
+  // What the failed receptions looked like. Measured pace of the pass is not
+  // enough: possession needs the ball within 6 m/s of the receiver, and at
+  // the ~10 m/s these actually arrive at, a receiver standing still cannot
+  // satisfy that however well the pass was weighted. So record the receiver's
+  // own speed at the touch and the `bumpyRideBias` that decides how much of
+  // the ball's pace survives it. Low speed and high bias together mean the
+  // approach, not the pass.
+  void AddPassFailReceptionContext(float receiverSpeed_mps, float bumpyRideBias) {
+    passFailReceiverSpeedSum_mps += receiverSpeed_mps;
+    passFailBumpyRideBiasSum += bumpyRideBias;
+    passFailReceptionCount++;
+  }
+  int GetPassFailReceptionCount() const { return passFailReceptionCount; }
+  float GetPassFailMeanReceiverSpeed_mps() const {
+    if (passFailReceptionCount == 0) return 0.0f;
+    return passFailReceiverSpeedSum_mps / static_cast<float>(passFailReceptionCount);
+  }
+  float GetPassFailMeanBumpyRideBias() const {
+    if (passFailReceptionCount == 0) return 0.0f;
+    return passFailBumpyRideBiasSum / static_cast<float>(passFailReceptionCount);
+  }
+  float passFailReceiverSpeedSum_mps = 0.0f;
+  float passFailBumpyRideBiasSum = 0.0f;
+  int passFailReceptionCount = 0;
   float GetKeeperBeatenMeanLateral_m(int teamID) const {
     if (keeperBeatenCount[teamID] == 0) return 0.0f;
     return keeperBeatenLateralSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);

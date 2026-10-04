@@ -405,6 +405,15 @@ void GameOverPage::Process() {
     printf("[balance-passfail] failed traps: mean incoming %.1f m/s over %i\n",
            matchData->GetPassFailTrapMeanSpeed_mps(),
            matchData->GetPassFailTrapSpeedCount());
+    // Whether the failed receptions are the pass's fault or the approach's:
+    // possession needs the ball within 6 m/s of the receiver, so a receiver
+    // standing still cannot take an ordinary ~10 m/s pass however well it was
+    // weighted. Slow receiver + high bumpyRideBias = the approach.
+    printf("[balance-passfail] failed receptions n=%i: receiver %.1f m/s, "
+           "bumpyRideBias %.2f\n",
+           matchData->GetPassFailReceptionCount(),
+           matchData->GetPassFailMeanReceiverSpeed_mps(),
+           matchData->GetPassFailMeanBumpyRideBias());
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not
