@@ -15,6 +15,29 @@ Player* FakePlayer(uintptr_t id) {
 
 }  // namespace
 
+
+// A man who already has a card does not get an advantage played for his next
+// one: the game stops, because he is going off anyway and waving play on would
+// be nonsense. Plain fouls still get one whatever his card count - the rule is
+// about the SECOND booking, not about severity in general.
+TEST(CardBookTest, ASecondCautionStopsPlayRatherThanPlayingAdvantage) {
+  EXPECT_TRUE(CardBook::ShouldPlayAdvantage(/*cards=*/0, /*foulType=*/1));
+  EXPECT_TRUE(CardBook::ShouldPlayAdvantage(/*cards=*/0, /*foulType=*/2))
+      << "a first caution still plays advantage, the card is deferred";
+  EXPECT_FALSE(CardBook::ShouldPlayAdvantage(/*cards=*/1, /*foulType=*/2));
+  EXPECT_TRUE(CardBook::ShouldPlayAdvantage(/*cards=*/1, /*foulType=*/1))
+      << "a plain foul is not a booking, so his card count is beside the point";
+}
+
+TEST(CardBookTest, ARedAlwaysStopsPlay) {
+  EXPECT_FALSE(CardBook::ShouldPlayAdvantage(/*cards=*/0, /*foulType=*/3));
+  EXPECT_FALSE(CardBook::ShouldPlayAdvantage(/*cards=*/3, /*foulType=*/3));
+}
+
+TEST(CardBookTest, NoFoulIsNoAdvantage) {
+  EXPECT_FALSE(CardBook::ShouldPlayAdvantage(/*cards=*/0, /*foulType=*/0));
+}
+
 TEST(CardBookTest, OnlyCardWorthyFoulsSurviveAdvantageExpiry) {
   EXPECT_FALSE(CardBook::ShouldDefer(0));
   EXPECT_FALSE(CardBook::ShouldDefer(1));  // plain foul: free kick waived, done

@@ -369,15 +369,21 @@ void TeamAIController::Process() {
         // from a certain distance, running is not very useful (can't pass that far)
         Player* runner = SelectAttackingRunPlayer(team);
         if (runner) {
-          float distance =
-              (runner->GetPosition() - team->GetDesignatedTeamPossessionPlayer()->GetPosition())
-                  .GetLength();
+          // -team->GetSide() is the direction this team attacks (see
+          // SelectAttackingRunPlayer's own -side * 26 m target). The probe was
+          // sampling ten metres toward the team's OWN goal, so the defenders it
+          // counted were the ones behind the runner and the ones he was about
+          // to run into were invisible: the density term rewarded running at a
+          // crowded area and punished an open one, exactly backwards.
+          Player* carrier = team->GetDesignatedTeamPossessionPlayer();
+          const float distance =
+              carrier ? (runner->GetPosition() - carrier->GetPosition()).GetLength() : 40.0f;
           float distanceRating = std::pow(1.0f - NormalizedClamp(distance, 0, 40), 0.5f);
 
           // more likely to run when there's less defenders in front
           std::vector<Player*> opponents;
           Vector3 spot = runner->GetPosition() * Vector3(1.0f, 0.8f, 0.0f) +
-                         Vector3(team->GetSide() * 10.0f, 0, 0);
+                         Vector3(-team->GetSide() * 10.0f, 0, 0);
           AI_GetClosestPlayers(team->GetMatch()->GetTeam(abs(team->GetID() - 1)), spot, false,
                                opponents, 4);
           float oppDensityRating = 1.0f;

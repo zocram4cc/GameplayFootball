@@ -680,7 +680,7 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
       if (foulType > 0) {
         // uooooga uooooga foul!
         foul.foulType = foulType;
-        foul.advantage = (foulType != 3);
+        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
         foul.foulPlayer = tripper;
         foul.foulVictim = tripee;
         foul.foulTime = match->GetActualTime_ms();
@@ -730,15 +730,13 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
         // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -
         // tripper->GetLastTouchTime_ms());
         foul.foulType = foulType;
-        foul.advantage = true;
+        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
         foul.foulPlayer = tripper;
         foul.foulVictim = tripee;
         foul.foulTime = match->GetActualTime_ms();
         foul.foulPosition = tripee->GetPosition();
         foul.hasBeenProcessed = false;
-        if (foulType == 3) {
-          foul.advantage = false;
-        } else {
+        if (foul.advantage) {
           if (!IsReleaseVersion())
             match->SpamMessage("advantage", 3000);
         }

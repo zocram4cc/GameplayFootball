@@ -42,10 +42,14 @@ T BilinearSample(T* tex, float x, float y, int w, int h) {
   // return tex[int(y) * w + int(x)];
 
   // actual bilinear version
-  int intX1 = int(floor(x));
-  int intY1 = int(floor(y));
-  int intX2 = (int(floor(x)) + 1) % w;
-  int intY2 = (int(floor(y)) + 1) % h;
+  // Every index is wrapped, not just the +1 ones. intX1/intY1 were used raw,
+  // so any coordinate at or past the texture's edge indexed off the end of
+  // the array - the sampler repeated correctly on one side of a tile and read
+  // out of bounds on the other.
+  const int intX1 = ((int)floor(x) % w + w) % w;
+  const int intY1 = ((int)floor(y) % h + h) % h;
+  const int intX2 = (intX1 + 1) % w;
+  const int intY2 = (intY1 + 1) % h;
   T x1y1 = tex[intY1 * w + intX1];
   T x2y1 = tex[intY1 * w + intX2];
   T x1y2 = tex[intY2 * w + intX1];
@@ -518,7 +522,7 @@ void GeneratePitch(int resX, int resY, int resSpecularX, int resSpecularY, int r
       Uint8 r, g, b, a;
       SDL_GetRGBA(pixel, &overlayFormat, &r, &g, &b, &a);
       overlayTex[y * overlay->w + x] = Vector3(r, g, b);
-      overlay_alphaTex[y * overlay->w + x] = a / 256.0f;
+      overlay_alphaTex[y * overlay->w + x] = a / 255.0f;  // a is 0-255; /256 never reaches 1
       // printf("alpha: %f\n", overlay_alphaTex[y * overlay->w + x]);
     }
   }

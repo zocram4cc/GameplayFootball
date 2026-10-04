@@ -1473,7 +1473,9 @@ void Match::RandomizeAdboards(boost::intrusive_ptr<Node> stadiumNode) {
         // printf("%s\n", identString.c_str());
         if (identString.find("ad_placeholder") == 0) {
           tmesh.at(i).material.diffuseTexture =
-              adboardSurfaces.at(int(floor(random(0, adboardSurfaces.size() - 1.001f))));
+              // random(min,max) is [min,max), so the old size-1.001 floored to at
+              // most size-2: the last adboard texture could never be chosen.
+              adboardSurfaces.at(int(floor(random(0, adboardSurfaces.size()))));
           tmesh.at(i).material.specular_amount = 0.2f;
           tmesh.at(i).material.shininess = 0.1f;
           replacedAny = true;
