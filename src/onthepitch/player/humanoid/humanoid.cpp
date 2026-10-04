@@ -603,18 +603,26 @@ void Humanoid::Process() {
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
         match->GetMatchData()->RecordBallTouch(team->GetID());
         CastPlayer()->UpdatePossessionStats(false);
-        // The pass arrived but the receiver failed to kill it (breakdown:
-        // trap). Read after RecordBallTouch and UpdatePossessionStats, which
-        // is safe: the first only moves MatchData's sequence on and the second
-        // returns immediately when called with `false`, so neither touches the
-        // player's possession flag this reads.
-        // NOT debug-gated: the [pass-fail] line prints this column in the
-        // Release build the batches run, and with the increment behind
-        // #ifndef NDEBUG that column read 0-0 in every measurement while
-        // intercept and out counted - the pass-accuracy work was reading a
-        // breakdown with its largest bucket missing (measured once live: 59-42
-        // against intercept 11-22, by far the largest).
-        if (!CastPlayer()->HasPossession())
+        // Did the trap actually kill the ball (breakdown: trap)?
+        //
+        // It used to ask `HasPossession()`, and the comment above claimed
+        // that was safe. It is not: `UpdatePossessionStats(false)` returns
+        // immediately (player.cpp:324), so the flag still holds whatever the
+        // previous tick decided - BEFORE this touch moved the ball. The bucket
+        // therefore counted "the receiver did not already have the ball at his
+        // feet", which is not the same question, and nothing since has told
+        // the two apart.
+        //
+        // AI_HasPossession is the same predicate the per-tick path uses to set
+        // that flag (Player::UpdatePossessionStats), so asking it directly
+        // here evaluates the POST-touch ball: Touch() has already rebuilt the
+        // prediction buffers, so Predict(0) and Predict(10) are the struck
+        // state. Same definition, asked at the moment it can answer.
+        //
+        // NOT debug-gated: [pass-fail] prints this column in the Release build
+        // the batches run, and with the increment behind #ifndef NDEBUG it read
+        // 0-0 in every measurement while intercept and out counted.
+        if (!AI_HasPossession(match->GetBall(), CastPlayer()))
           match->GetMatchData()->AddPassFailBadTrap(team->GetID());
       }
 
