@@ -31,9 +31,16 @@ limit_mb=200
 # no engine-side capture needed. Default on because a silent showcase is not a
 # showcase.
 audio=auto
-# catbox.moe account userhash. Anonymous uploads are closed, so an upload needs
-# this; without it the run stops at a local file and says so.
+# Where the finished match goes. catbox.moe closed anonymous uploads, but its
+# own temporary host takes them with no account at all: litterbox, same
+# operator, 1 GB, files die after the chosen window. "auto" = the account
+# endpoint when CATBOX_USERHASH is set, litterbox otherwise, which is the
+# anonymous case the owner asked for.
+upload=auto
 catbox_hash="${CATBOX_USERHASH:-}"
+# litterbox's longest window. Its shortest is 1h, which is shorter than most
+# matches take to produce.
+litter_hours=72
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,14 +54,32 @@ while [ $# -gt 0 ]; do
     --bin) bin="$2"; shift 2 ;;
     --limit-mb) limit_mb="$2"; shift 2 ;;
     --seconds) seconds="$2"; shift 2 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
     --audio) audio="$2"; shift 2 ;;
+    --upload) upload="$2"; shift 2 ;;
+    --litter-hours) litter_hours="$2"; shift 2 ;;
     --catbox-hash) catbox_hash="$2"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
 [ -x "$bin" ] || { echo "no engine at $bin - build it first" >&2; exit 1; }
 [ -f "$base" ] || { echo "no base config at $base" >&2; exit 1; }
+
+# Validate every argument here, before the recorder or the engine starts. A
+# check that lives at the end of the script lets a bad flag start a forty-minute
+# match and only then refuses to upload it - which is exactly what "unknown
+# --upload mode" did.
+case "$upload" in
+  auto) [ -n "$catbox_hash" ] && upload=account || upload=litterbox ;;
+  account|litterbox|none) ;;
+  *) echo "unknown --upload mode: $upload" >&2; exit 2 ;;
+esac
+[ "$upload" = "account" ] && [ -z "$catbox_hash" ] && {
+  echo "--upload account needs a userhash (--catbox-hash or CATBOX_USERHASH)" >&2; exit 2; }
+case "$audio" in
+  auto|0|1) ;;
+  *) echo "unknown --audio mode: $audio" >&2; exit 2 ;;
+esac
 
 work="$(mktemp -d)"
 fifo="$work/frames"
@@ -250,18 +275,24 @@ else
     -c:v copy -movflags +faststart "$out"
 fi
 
-# Upload. catbox closed anonymous uploads, so this is the account endpoint and
-# it needs the userhash; without one the file stays local and the run says so
-# rather than exiting as though the upload had happened.
-if [ -n "$catbox_hash" ]; then
-  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" \
-          -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
-  case "$url" in
-    http*) echo "uploaded: $url" ;;
-    *) echo "upload FAILED for $out" >&2; exit 1 ;;
-  esac
+# Upload. catbox.moe itself needs an account, so "auto" uses the account
+# endpoint when a hash is configured and litterbox - catbox's own anonymous,
+# temporary host - when it is not. Anything that is not an http URL is treated
+# as a failure: litterbox answers with a plain error string on a rejected
+# upload, and a run that printed that as a success would be worse than useless.
+if [ "$upload" = "none" ]; then
+  echo "upload disabled: $out is local only"
+fi
+if [ "$upload" = "account" ]; then
+  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
 else
-  echo "no catbox userhash (--catbox-hash or CATBOX_USERHASH): $out is local only"
+  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "time=${litter_hours}h" -F "fileToUpload=@$out" https://litterbox.catbox.moe/resources/internals/api.php) || url=""
+fi
+if [ "$upload" != "none" ]; then
+  case "$url" in
+    http*) echo "uploaded ($upload): $url" ;;
+    *) echo "upload FAILED for $out: ${url:-no response}" >&2; exit 1 ;;
+  esac
 fi
 
 echo "$(stat -c %s "$out" | awk '{printf "%.1f MB", $1/1048576}') / ${seconds}s -> $out"
