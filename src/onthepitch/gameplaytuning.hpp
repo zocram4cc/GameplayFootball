@@ -553,12 +553,21 @@ inline float GetKeeperDiveSpeed_ms(float coverage) {
   return 3.5f + Clamp01(coverage) * 2.0f;
 }
 
-// His own reaction, not the controller's tick: 350 ms for a keeper with no
-// reflexes, 200 ms for the best, which is where human goalkeepers actually
-// sit. GetReactionTime_ms is the input lag of the controller and is far too
-// short to stand in for this.
+// His own reaction, not the controller's tick. GetReactionTime_ms is the input
+// lag of the controller and is far too short to stand in for this.
+//
+// The range is the census's own what-if, now applied rather than merely
+// counted: over 88 beaten keepers in a 12-match batch a 25% quicker read
+// converts 32% of them, against 19% for a longer standing frame
+// (kWhatIfReactionScale in player.cpp, which measures exactly this 0.75).
+//
+// It is a correction as much as a knob. The old 200-350 ms put even the best
+// keeper in the game no quicker than an average outfield player reacts, and
+// the worst slower than any human goalkeeper; 150-262 ms is the human range,
+// with elite keepers at 150-200 and the average around 200-250.
+constexpr float kKeeperReactionScale = 0.75f;
 inline float GetKeeperReactionTime_s(float reflexes) {
-  return 0.35f - Clamp01(reflexes) * 0.15f;
+  return (0.35f - Clamp01(reflexes) * 0.15f) * kKeeperReactionScale;
 }
 
 // GK Catching, as the fastest ball he can HOLD rather than parry, in m/s

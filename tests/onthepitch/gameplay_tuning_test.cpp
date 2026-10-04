@@ -180,9 +180,16 @@ TEST(GameplayTuningKeeperTest, AWhatIfReachAnswersWhichLeverWouldHaveSavedIt) {
 
   // Before his reaction has fully elapsed he is already PARTLY extended -
   // extend is t/latency, not 0 - so a short-flight shot is not purely a
-  // standing-frame question. Worth knowing before tuning: at 0.20 s of flight
-  // against a 0.24 s reaction his effective reach is already 1.33 m.
-  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.20f, latency), 1.333f, 0.01f);
+  // standing-frame question. Worth knowing before tuning: half way through his
+  // reaction (0.09 s of flight against a 0.18 s one) his effective reach is
+  // 1.20 m, half way between his standing frame and his full dive.
+  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.09f, latency), 1.200f, 0.01f);
+  EXPECT_FALSE(GameplayTuning::KeeperReachesShotWithStandingReach(
+      1.25f, 0.09f, latency, kDiveReach, kDiveSpeed, 1.0f));
+  // By 0.20 s he has spent the whole 0.18 s reaction and saturates at his full
+  // dive, so the partly-extended regime is shorter than it was when his
+  // reaction ran to 0.24 s.
+  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.20f, latency), 1.400f, 0.01f);
   EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
       1.15f, 0.20f, latency, kDiveReach, kDiveSpeed, 1.0f));
 
@@ -211,10 +218,12 @@ TEST(GameplayTuningKeeperTest, AWhatIfReachAnswersWhichLeverWouldHaveSavedIt) {
 }
 
 TEST(GameplayTuningKeeperTest, ShortFlightShrinksEffectiveReachByStat) {
-  // The dive share still follows the keeper's own reaction, so a 0.9 keeper
-  // gets across to a 2 m gap and a 0.6 keeper does not. No dice anywhere: same
-  // inputs, same answer, every time.
-  const float gap = 2.0f, flight = 0.27f;
+  // The dive share still follows the keeper's own reaction, so the two tiers
+  // still separate - just further out now his reaction is 25% quicker. At
+  // 0.27 s of flight a 0.9 keeper covers 2.83 m and a 0.6 keeper 2.15 m, so
+  // 2.5 m is where the tiers part. (At the old 0.35 s reaction the same split
+  // sat at 2.0 m.) No dice anywhere: same inputs, same answer, every time.
+  const float gap = 2.5f, flight = 0.27f;
   EXPECT_TRUE(GameplayTuning::KeeperReachesShot(
       gap, flight, GameplayTuning::GetKeeperReactionTime_s(0.9f),
       GameplayTuning::KeeperEffectiveReach_m(GameplayTuning::GetKeeperDiveReach_m(0.9f), flight,
@@ -826,4 +835,23 @@ TEST(GameplayTuningKeeperTest, TheDiveReachSpreadIsWhatTheAnchorsNeed) {
   // the diagonal reflexes == coverage.
   EXPECT_NE(PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f, 25.0f, 0.9f),
             PointBlankSaveShare(0.9f, 0.3f, 6.0f, 1.5f, 25.0f, 0.3f));
+}
+
+TEST(GameplayTuningKeeperTest, TheKeeperReactsInsideTheHumanRange) {
+  // The reaction is the lever the census named: over 88 beaten keepers in a
+  // 12-match batch, a 25% quicker read converts 32% of them against 19% for a
+  // longer standing frame. That 25% is now applied rather than merely counted.
+  //
+  // It is also a correction rather than a fudge. The old range was 200-350 ms,
+  // so even the best keeper in the game was no quicker than an average
+  // outfield player reacts and the worst was slower than any human goalkeeper.
+  // 150-262 ms is the human range: elite keepers sit at 150-200, the average
+  // around 200-250.
+  const float worst = GameplayTuning::GetKeeperReactionTime_s(0.0f);
+  const float best = GameplayTuning::GetKeeperReactionTime_s(1.0f);
+  EXPECT_NEAR(worst, 0.2625f, 0.0001f);
+  EXPECT_NEAR(best, 0.1500f, 0.0001f);
+  // Reflexes still buy something, and the spread is still 0.1125 s.
+  EXPECT_LT(best, worst);
+  EXPECT_NEAR(worst - best, 0.1125f, 0.0001f);
 }
