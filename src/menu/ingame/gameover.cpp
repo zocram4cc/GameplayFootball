@@ -424,6 +424,13 @@ void GameOverPage::Process() {
            matchData->GetPassFailGateDistanceCount(),
            matchData->GetPassFailGateMeanBallZ_m(),
            matchData->GetPassFailGateMeanDistance_m());
+    // Passes that arrived and were then lost inside the clean window: how long
+    // the receiver held them. Under 400 ms is a first touch; longer is
+    // pressure winning it back, which is a different problem.
+    printf("[balance-passloss] completions lost n=%i, mean %.0f ms after arrival, "
+           "%i under 400 ms\n",
+           matchData->GetCompletionLossCount(), matchData->GetCompletionLossMean_ms(),
+           matchData->GetCompletionLossFastCount());
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not

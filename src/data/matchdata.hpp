@@ -338,6 +338,15 @@ public:
     // that is a tackle. Decided before lastTouchTeamID is moved on.
     bool wonFromOpponent = lastTouchTeamID >= 0 && lastTouchTeamID != receivingTeamID &&
                            pendingPassTeamID < 0;
+    // A completion inside its window losing the ball to another team: note
+    // when. Lost within a moment is a first touch; lost seconds later is
+    // pressure, and they are different problems.
+    if (pendingPassTeamID < 0)
+      for (PendingCleanCheck& check : pendingCleanChecks)
+        if (check.teamID != receivingTeamID && !check.lostTimeRecorded) {
+          check.lostTime_ms = matchTime_ms - check.arrivalTime_ms;
+          check.lostTimeRecorded = true;
+        }
     lastTouchTeamID = receivingTeamID;
     ResolveExpiredCleanChecks();
     const bool lastWasGoalkeeper = pendingPassIsGoalkeeper;
@@ -348,7 +357,8 @@ public:
       // the last team to touch the ball cleanCompletionWindow_ms later; see
       // ResolveExpiredCleanChecks. This runs in release too, since it feeds
       // the [balance-passing] accuracy line rather than debug instrumentation.
-      pendingCleanChecks.push_back({receivingTeamID, matchTime_ms + cleanCompletionWindow_ms});
+      pendingCleanChecks.push_back(
+          {receivingTeamID, matchTime_ms + cleanCompletionWindow_ms, matchTime_ms});
       wonFromOpponent = false;
     } else if (pendingPassTeamID >= 0) {
       // The ball was cut out of a pass in flight: an interception for whoever
@@ -398,13 +408,28 @@ public:
       const int completingTeam = pendingCleanChecks.front().teamID;
       if (lastTouchTeamID == completingTeam)
         cleanCompletions[completingTeam]++;
-      else
+      else {
         scrappyCompletions[completingTeam]++;
+        // Only meaningful when a touch actually displaced it. A window that
+        // simply expired with the ball still theirs is the clean case.
+        if (pendingCleanChecks.front().lostTimeRecorded) {
+          completionLossTimeSum_ms += pendingCleanChecks.front().lostTime_ms;
+          completionLossCount++;
+          if (pendingCleanChecks.front().lostTime_ms < 400) completionLossFastCount++;
+        }
+      }
       pendingCleanChecks.erase(pendingCleanChecks.begin());
     }
   }
   int GetCleanCompletions(int teamID) const { return cleanCompletions[teamID]; }
   int GetScrappyCompletions(int teamID) const { return scrappyCompletions[teamID]; }
+  int GetCompletionLossCount() const { return completionLossCount; }
+  int GetCompletionLossFastCount() const { return completionLossFastCount; }
+  float GetCompletionLossMean_ms() const {
+    if (completionLossCount == 0) return 0.0f;
+    return static_cast<float>(completionLossTimeSum_ms) /
+           static_cast<float>(completionLossCount);
+  }
   int GetPendingCleanCheckCount() const { return static_cast<int>(pendingCleanChecks.size()); }
   // The ball left the pitch while a pass was still in flight: count it as an
   // out-of-bounds failure for the passer, then close the passing sequence.
@@ -636,9 +661,17 @@ protected:
   struct PendingCleanCheck {
     int teamID;
     unsigned long deadline_ms;
+    unsigned long arrivalTime_ms;
+    unsigned long lostTime_ms = 0;
+    bool lostTimeRecorded = false;
   };
   int cleanCompletions[2] = {0, 0};
   int scrappyCompletions[2] = {0, 0};
+  // When a completion lost the ball, and how fast: a reception gone in a
+  // fraction of a second is a first-touch problem, one lost later is pressure.
+  unsigned long completionLossTimeSum_ms = 0;
+  int completionLossCount = 0;
+  int completionLossFastCount = 0;
   // Which team touched the ball last, updated on every RecordBallTouch call.
   int lastTouchTeamID = -1;
   static constexpr unsigned long cleanCompletionWindow_ms = 1500;
