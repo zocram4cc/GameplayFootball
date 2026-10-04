@@ -23,8 +23,14 @@ minutes=10
 out=/tmp/showcase.mp4
 width=1280
 height=720
-# catbox.moe rejects anything larger; 0 disables the second pass entirely.
+# The default is catbox.moe's own 200 MB account limit. Litterbox takes 1 GB,
+# and squeezing a match down to 200 MB for it costs both encoding time and
+# quality for nothing - the first litterbox run spent ten minutes re-encoding
+# 564 MB down to a 214 MB file that the host would have taken as it stood. So
+# the limit follows the endpoint unless the caller sets one explicitly.
 limit_mb=200
+limit_explicit=0
+litterbox_limit_mb=1000
 # Audio capture: "auto" records the default sink's monitor when a Pulse/PipeWire
 # recorder is present, 0 disables. The engine mixes through OpenAL Soft into
 # whatever the desktop sink is, so recording that monitor is the whole job -
@@ -52,7 +58,7 @@ while [ $# -gt 0 ]; do
     --out) out="$2"; shift 2 ;;
     --base) base="$2"; shift 2 ;;
     --bin) bin="$2"; shift 2 ;;
-    --limit-mb) limit_mb="$2"; shift 2 ;;
+    --limit-mb) limit_mb="$2"; limit_explicit=1; shift 2 ;;
     --seconds) seconds="$2"; shift 2 ;;
     --audio) audio="$2"; shift 2 ;;
     --upload) upload="$2"; shift 2 ;;
@@ -80,6 +86,13 @@ case "$audio" in
   auto|0|1) ;;
   *) echo "unknown --audio mode: $audio" >&2; exit 2 ;;
 esac
+
+# With the endpoint settled, the size limit can follow it: litterbox's 1 GB
+# rather than catbox's 200 MB, unless the caller asked for a specific limit.
+if [ "$limit_explicit" = "0" ] && [ "$upload" = "litterbox" ]; then
+  limit_mb="$litterbox_limit_mb"
+  echo "uploading to litterbox: keeping the recording up to ${limit_mb} MB"
+fi
 
 work="$(mktemp -d)"
 fifo="$work/frames"
