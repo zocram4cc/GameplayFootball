@@ -144,6 +144,24 @@ public:
   int GetKeeperBeatenSavedByStanding(int teamID) const { return keeperBeatenSavedByStanding[teamID]; }
   int GetKeeperBeatenSavedByReaction(int teamID) const { return keeperBeatenSavedByReaction[teamID]; }
   int GetKeeperBeatenWhatIfCount(int teamID) const { return keeperBeatenWhatIfCount[teamID]; }
+  // The pace of the ball into each failed trap. GetTrapKillStrength scrubs at
+  // most half of it, and possession then needs the ball within the receiver's
+  // 8 m/s sprint plus a 6 m/s tolerance - so above ~28 m/s incoming a trap
+  // CANNOT yield possession however well timed it is (worked out, not
+  // measured). Whether that cliff matters is the question these two numbers
+  // answer: if the failed traps cluster above it, the kill cap is the lever;
+  // if they sit below it, trapping fails for some other reason entirely.
+  void AddPassFailTrapSpeed(float incomingSpeed_mps) {
+    passFailTrapSpeedSum_mps += incomingSpeed_mps;
+    passFailTrapSpeedCount++;
+  }
+  float GetPassFailTrapMeanSpeed_mps() const {
+    if (passFailTrapSpeedCount == 0) return 0.0f;
+    return passFailTrapSpeedSum_mps / static_cast<float>(passFailTrapSpeedCount);
+  }
+  float passFailTrapSpeedSum_mps = 0.0f;
+  int passFailTrapSpeedCount = 0;
+  int GetPassFailTrapSpeedCount() const { return passFailTrapSpeedCount; }
   float GetKeeperBeatenMeanLateral_m(int teamID) const {
     if (keeperBeatenCount[teamID] == 0) return 0.0f;
     return keeperBeatenLateralSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);

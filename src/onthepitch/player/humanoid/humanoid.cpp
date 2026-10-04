@@ -622,8 +622,15 @@ void Humanoid::Process() {
         // NOT debug-gated: [pass-fail] prints this column in the Release build
         // the batches run, and with the increment behind #ifndef NDEBUG it read
         // 0-0 in every measurement while intercept and out counted.
-        if (!AI_HasPossession(match->GetBall(), CastPlayer()))
+        if (!AI_HasPossession(match->GetBall(), CastPlayer())) {
           match->GetMatchData()->AddPassFailBadTrap(team->GetID());
+          // The pace it arrived at, because the model has a cliff in it
+          // (MatchData::AddPassFailTrapSpeed): above ~28 m/s no trap can yield
+          // possession at all. Whether the failures live up there is what this
+          // number answers.
+          match->GetMatchData()->AddPassFailTrapSpeed(
+              currentBallVec.GetLength() * 100.0f);
+        }
       }
 
       else if (currentAnim->functionType == e_FunctionType_BallControl) {

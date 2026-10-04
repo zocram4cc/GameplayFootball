@@ -398,6 +398,13 @@ void GameOverPage::Process() {
            matchData->GetKeeperBeatenWhatIfCount(0), matchData->GetKeeperBeatenWhatIfCount(1),
            matchData->GetKeeperBeatenSavedByStanding(0), matchData->GetKeeperBeatenSavedByStanding(1),
            matchData->GetKeeperBeatenSavedByReaction(0), matchData->GetKeeperBeatenSavedByReaction(1));
+    // The model has a cliff in it: GetTrapKillStrength scrubs at most half the
+    // incoming pace, and possession then needs the ball within the receiver's
+    // 8 m/s plus a 6 m/s tolerance, so above ~28 m/s (101 km/h) a trap cannot
+    // succeed at all. This says whether the failures actually live up there.
+    printf("[balance-passfail] failed traps: mean incoming %.1f m/s over %i\n",
+           matchData->GetPassFailTrapMeanSpeed_mps(),
+           matchData->GetPassFailTrapSpeedCount());
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not
