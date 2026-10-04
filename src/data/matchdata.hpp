@@ -49,7 +49,10 @@ public:
     // (GameplayTuning::PredictGoalLineCrossing).
     OpenSaveChance(teamID);
     // A shot ends the passing sequence: the previous pass cannot still be pending
-    // when a new play starts from the goal kick or elsewhere.
+    // when a new play starts from the goal kick or elsewhere. One still pending
+    // here was struck before any recorded touch ended it; counted, so the
+    // pass accounting closes (see GetPassShotPending).
+    if (pendingPassTeamID >= 0) passShotPending[pendingPassTeamID]++;
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
     pendingPassOwnThird = false;
@@ -267,6 +270,7 @@ public:
 
   // pass tracking
   void AddPassAttempt(int teamID) {
+    RecordPassOverwritten();
     passAttempts[teamID]++;
     pendingPassTeamID = teamID;
     pendingPassIsGoalkeeper = false;  // set by the GK-lost detector in humanoid.cpp
@@ -278,6 +282,7 @@ public:
   // No pending pass is opened, so whoever picks the ball up next is not credited
   // with completing anything.
   void AddClearance(int teamID) {
+    RecordPassOverwritten();
     clearances[teamID]++;
     ResetPendingPass();
   }
@@ -291,33 +296,24 @@ public:
 #endif
   }
   void RecordPassGoalkeeperCatch() {
-#ifndef NDEBUG
     if (pendingPassTeamID >= 0) passGoalkeeperCatch[pendingPassTeamID]++;
-#endif
     ResetPendingPass();
   }
   void RecordPassRestart() {
-#ifndef NDEBUG
     if (pendingPassTeamID >= 0) passRestart[pendingPassTeamID]++;
-#endif
     ResetPendingPass();
   }
-  int GetPassGoalkeeperCatch(int teamID) const {
-#ifndef NDEBUG
-    return passGoalkeeperCatch[teamID];
-#else
-    (void)teamID;
-    return 0;
-#endif
+  int GetPassGoalkeeperCatch(int teamID) const { return passGoalkeeperCatch[teamID]; }
+  int GetPassRestart(int teamID) const { return passRestart[teamID]; }
+  // A new pass or clearance opened while the last pass was still pending:
+  // that pass ended without any recorded outcome. The last of the sinks, so
+  // completed + intercept + out + gk + restart + overwritten must equal the
+  // attempts, and any shortfall is a path nothing here has found.
+  void RecordPassOverwritten() {
+    if (pendingPassTeamID >= 0) passOverwritten[pendingPassTeamID]++;
   }
-  int GetPassRestart(int teamID) const {
-#ifndef NDEBUG
-    return passRestart[teamID];
-#else
-    (void)teamID;
-    return 0;
-#endif
-  }
+  int GetPassOverwritten(int teamID) const { return passOverwritten[teamID]; }
+  int GetPassShotPending(int teamID) const { return passShotPending[teamID]; }
 
   void SetPendingPassGoalkeeper() { pendingPassIsGoalkeeper = true; }
   bool PendingPassIsGoalkeeper() const { return pendingPassIsGoalkeeper; }
@@ -572,26 +568,22 @@ public:
 #endif
   }
 
-  // Debug-only: touches that never reach RecordBallTouch (interfere, failed
-  // deflect, slide, body collision, keeper retention) while a pass is still
-  // pending. These are the leaks the [pass-fail] breakdown cannot see;
-  // attributed to the team whose pass was in flight, split by whether the
-  // toucher was an opponent. Kinds: 0 interfere, 1 deflect-fail, 2 slide,
-  // 3 body collision, 4 keeper-retain.
+  // Touches that never reach RecordBallTouch (interfere, failed deflect,
+  // slide, body collision, keeper retention) while a pass is still pending.
+  // These are the leaks the [pass-fail] breakdown cannot see; attributed to
+  // the team whose pass was in flight, split by whether the toucher was an
+  // opponent. Kinds: 0 interfere, 1 deflect-fail, 2 slide, 3 body collision,
+  // 4 keeper-retain. NOT debug-gated: accuracy minus (intercept + out) left
+  // ~21 points of passes with no recorded end in the Release batches, and
+  // this is the census that says where they went.
   void AddGhostTouch(int touchingTeamID, int kind) {
-#ifndef NDEBUG
     if (pendingPassTeamID < 0 || kind < 0 || kind >= ghostKindCount) return;
     const bool hostile = touchingTeamID != pendingPassTeamID;
     ghostTouches[hostile ? 1 : 0][pendingPassTeamID][kind]++;
-#endif
   }
   static constexpr int ghostKindCount = 5;
   int GetGhostTouch(int hostile, int teamID, int kind) const {
-#ifndef NDEBUG
     return ghostTouches[hostile][teamID][kind];
-#else
-    (void)hostile; (void)teamID; (void)kind; return 0;
-#endif
   }
 
   static int PassDistanceBand(float distance_m) {
@@ -677,10 +669,10 @@ protected:
   static constexpr unsigned long cleanCompletionWindow_ms = 1500;
   std::vector<PendingCleanCheck> pendingCleanChecks;
   std::vector<Event> events;
-#ifndef NDEBUG
   int passGoalkeeperCatch[2] = {0, 0};
   int passRestart[2] = {0, 0};
-#endif
+  int passOverwritten[2] = {0, 0};
+  int passShotPending[2] = {0, 0};
   int passDistanceBands[2][passDistanceBandCount] = {};
   unsigned long long passDistanceSum2[2] = {0, 0};
   int passDistanceCount[2] = {0, 0};

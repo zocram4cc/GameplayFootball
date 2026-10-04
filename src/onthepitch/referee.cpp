@@ -506,7 +506,7 @@ void Referee::PrepareSetPiece(e_SetPiece setPiece) {
   // position players for set piece situation
 
   match->ResetSituation(buffer.restartPos);
-  match->GetMatchData()->ResetPendingPass();
+  match->GetMatchData()->RecordPassRestart();
 
   match->GetTeam(0)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);
   match->GetTeam(1)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);

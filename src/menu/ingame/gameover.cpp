@@ -280,18 +280,12 @@ void GameOverPage::Process() {
            matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
            matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
            matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
-#ifndef NDEBUG
-    // Questionable-play deny list, debug-only: no quality guarantee should depend on
-    // somebody counting frames by hand.
-    printf("[deny-list] pass-to-opponent %i-%i | gk-lost %i-%i | own-third-giveaway %i-%i | bad-plays %i\n",
-           matchData->GetBadPassToOpponent(0), matchData->GetBadPassToOpponent(1),
-           matchData->GetGoalkeeperLost(0), matchData->GetGoalkeeperLost(1),
-           matchData->GetOwnThirdGiveaway(0), matchData->GetOwnThirdGiveaway(1),
-           matchData->GetBadPlayTotal());
     // Touches that never reached RecordBallTouch while a pass was pending:
     // the sink the [pass-fail] breakdown cannot see. hostile = an opponent's
     // body killed our pass in flight; kinds are interfere/deflect/slide/
-    // collision/keeper.
+    // collision/keeper. Release-safe with [pass-gk] and [pass-restart]: with
+    // intercept and out these are every end a pass can have, so together
+    // they account for the gap between attempts and completions.
     printf("[pass-ghost] friendly %i/%i/%i/%i/%i-%i/%i/%i/%i/%i | hostile %i/%i/%i/%i/%i-%i/%i/%i/%i/%i\n",
            matchData->GetGhostTouch(0, 0, 0), matchData->GetGhostTouch(0, 0, 1),
            matchData->GetGhostTouch(0, 0, 2), matchData->GetGhostTouch(0, 0, 3),
@@ -307,6 +301,17 @@ void GameOverPage::Process() {
            matchData->GetPassGoalkeeperCatch(1));
     printf("[pass-restart] %i-%i\n", matchData->GetPassRestart(0),
            matchData->GetPassRestart(1));
+    printf("[pass-overwritten] %i-%i | shot-pending %i-%i\n", matchData->GetPassOverwritten(0),
+           matchData->GetPassOverwritten(1), matchData->GetPassShotPending(0),
+           matchData->GetPassShotPending(1));
+#ifndef NDEBUG
+    // Questionable-play deny list, debug-only: no quality guarantee should depend on
+    // somebody counting frames by hand.
+    printf("[deny-list] pass-to-opponent %i-%i | gk-lost %i-%i | own-third-giveaway %i-%i | bad-plays %i\n",
+           matchData->GetBadPassToOpponent(0), matchData->GetBadPassToOpponent(1),
+           matchData->GetGoalkeeperLost(0), matchData->GetGoalkeeperLost(1),
+           matchData->GetOwnThirdGiveaway(0), matchData->GetOwnThirdGiveaway(1),
+           matchData->GetBadPlayTotal());
     // Chosen pass-length distribution and support-web width for the whole
     // match, next to the failure breakdown: selection and execution on one
     // card.

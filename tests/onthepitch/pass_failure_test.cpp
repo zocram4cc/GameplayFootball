@@ -172,7 +172,7 @@ TEST_F(PassFailure, PendingPassClearedOnShotAndSetPiece) {
   EXPECT_EQ(matchData->GetBadPassToOpponent(0), 0);
 
   // Same for a restart: PrepareSetPiece resets the pending pass (the referee
-  // calls ResetPendingPass there), so a touch after it counts nothing either.
+  // calls RecordPassRestart, which resets it), so a touch after it counts nothing either.
   matchData->AddPassAttempt(0);
   matchData->ResetPendingPass();
   matchData->RecordBallTouch(1);
@@ -423,6 +423,39 @@ TEST_F(PassFailure, TheBeatenSplitIsTheKeepersOwnReactionTime) {
   matchData->AddKeeperBeaten(1, 3.0f, MatchData::keeperOutOfTime_s * 2.0f, 3.0f, 0.0f);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfTime(1), 1);
   EXPECT_EQ(matchData->GetKeeperBeatenOutOfReach(1), 1);
+}
+
+// Every pass attempt ends in exactly one bucket. Release batches read
+// accuracy 65-69% with intercept + out only 10% of attempts, so ~21 points of
+// passes ended with no recorded outcome; a path that drops a pending pass
+// without counting it is the bug this pins.
+TEST_F(PassFailure, EveryPassAttemptEndsInExactlyOneBucket) {
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(0);  // completed
+  matchData->AddPassAttempt(0);
+  matchData->RecordBallTouch(1);  // intercepted
+  matchData->AddPassAttempt(0);
+  matchData->FailPendingPassOutOfBounds();  // out
+  matchData->AddPassAttempt(0);
+  matchData->RecordPassGoalkeeperCatch();  // their keeper holds it
+  matchData->AddPassAttempt(0);
+  matchData->RecordPassRestart();  // play stopped under it
+  matchData->AddPassAttempt(0);
+  matchData->AddShot(0);  // struck first time before any recorded touch
+  matchData->AddPassAttempt(0);
+  matchData->AddClearance(0);  // replaced while still pending...
+  matchData->AddPassAttempt(0);
+  matchData->AddPassAttempt(0);  // ...by a clearance, then by another pass
+  matchData->RecordBallTouch(0);
+
+  const int ended = matchData->GetPassesCompleted(0) + matchData->GetPassFailIntercept(0) +
+                    matchData->GetPassFailOutOfBounds(0) +
+                    matchData->GetPassGoalkeeperCatch(0) + matchData->GetPassRestart(0) +
+                    matchData->GetPassShotPending(0) + matchData->GetPassOverwritten(0);
+  EXPECT_EQ(matchData->GetPassAttempts(0), 9);
+  EXPECT_EQ(ended, 9);
+  EXPECT_EQ(matchData->GetPassShotPending(0), 1);
+  EXPECT_EQ(matchData->GetPassOverwritten(0), 2);
 }
 
 // --- The thirteen PES positions, end to end ---
