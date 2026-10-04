@@ -186,6 +186,34 @@ public:
   float passFailReceiverSpeedSum_mps = 0.0f;
   float passFailBumpyRideBiasSum = 0.0f;
   int passFailReceptionCount = 0;
+  // Which of AI_HasPossession's four checks rejected the reception. Sampled at
+  // the touch the ball is still in the air on a lofted pass, so a 0.8 m contact
+  // reads as a failed trap before it has had a tick to settle - which would
+  // make this bucket count receptions that were about to succeed. Recording
+  // the height and the distance at the touch says which gate actually closed.
+  void AddPassFailGate(float ballZ_m, float ballDistance_m) {
+    passFailGateBallZSum_m += ballZ_m;
+    passFailGateDistanceSum_m += ballDistance_m;
+    if (ballZ_m > 0.5f) passFailGateHeightCount++;
+    if (ballDistance_m > 1.0f) passFailGateDistanceCount++;
+    passFailGateCount++;
+  }
+  int GetPassFailGateCount() const { return passFailGateCount; }
+  int GetPassFailGateHeightCount() const { return passFailGateHeightCount; }
+  int GetPassFailGateDistanceCount() const { return passFailGateDistanceCount; }
+  float GetPassFailGateMeanBallZ_m() const {
+    if (passFailGateCount == 0) return 0.0f;
+    return passFailGateBallZSum_m / static_cast<float>(passFailGateCount);
+  }
+  float GetPassFailGateMeanDistance_m() const {
+    if (passFailGateCount == 0) return 0.0f;
+    return passFailGateDistanceSum_m / static_cast<float>(passFailGateCount);
+  }
+  float passFailGateBallZSum_m = 0.0f;
+  float passFailGateDistanceSum_m = 0.0f;
+  int passFailGateHeightCount = 0;
+  int passFailGateDistanceCount = 0;
+  int passFailGateCount = 0;
   float GetKeeperBeatenMeanLateral_m(int teamID) const {
     if (keeperBeatenCount[teamID] == 0) return 0.0f;
     return keeperBeatenLateralSum_m[teamID] / static_cast<float>(keeperBeatenCount[teamID]);

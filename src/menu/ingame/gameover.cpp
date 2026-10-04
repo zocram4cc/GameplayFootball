@@ -414,6 +414,16 @@ void GameOverPage::Process() {
            matchData->GetPassFailReceptionCount(),
            matchData->GetPassFailMeanReceiverSpeed_mps(),
            matchData->GetPassFailMeanBumpyRideBias());
+    // Which of AI_HasPossession's gates rejected the reception. A lofted pass
+    // touched while still above 0.5 m fails on height before it has had a tick
+    // to settle, which would make this bucket count receptions that were about
+    // to succeed.
+    printf("[balance-passfail] gates over %i: height >0.5m %i | distance >1m %i | "
+           "ball z %.2f m, distance %.2f m\n",
+           matchData->GetPassFailGateCount(), matchData->GetPassFailGateHeightCount(),
+           matchData->GetPassFailGateDistanceCount(),
+           matchData->GetPassFailGateMeanBallZ_m(),
+           matchData->GetPassFailGateMeanDistance_m());
     if (RemoteControlMode::IsActive()) {
       // The rig lives on: back to the waiting page for the next schedule. The
       // launch keys the schedule wrote are cleared so the main menu does not

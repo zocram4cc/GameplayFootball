@@ -638,6 +638,15 @@ void Humanoid::Process() {
           // fault or the approach's.
           match->GetMatchData()->AddPassFailReceptionContext(
               spatialState.movement.GetLength(), bumpyRideBias);
+          // Which gate actually rejected it, and where the ball was when the
+          // question was asked - a lofted pass touched at 0.8 m is still in
+          // the air, and would have been gathered a tick later.
+          const Vector3 ballAtTouch = match->GetBall()->Predict(0);
+          const Vector3 receiverCentre =
+              spatialState.position + spatialState.movement * 0.05f +
+              spatialState.directionVec * 0.1f;
+          match->GetMatchData()->AddPassFailGate(
+              ballAtTouch.coords[2], (ballAtTouch.Get2D() - receiverCentre.Get2D()).GetLength());
         }
       }
 
