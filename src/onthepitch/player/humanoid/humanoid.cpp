@@ -785,6 +785,13 @@ void Humanoid::Process() {
         team->SetLastTouchPlayer(
             CastPlayer(),
             GetTouchTypeForBodyPart(currentAnim->anim->GetVariable("touch_bodypart")));
+        // The kick is a touch: a first-time pass by the man a pass was played
+        // to is that pass completed, and by an opponent it is an interception.
+        // Opening the new attempt without recording it overwrote the pending
+        // pass with no outcome at all - measured as 20-40 per side per match,
+        // the whole gap between the passes that reached a team and the
+        // reported accuracy. Same hole the body-collision path closed above.
+        match->GetMatchData()->RecordBallTouch(team->GetID());
         // A panic clearance is hoofed into a lane with no intended recipient, so it
         // is recorded as a clearance rather than a pass nobody could complete.
         if (currentAnim->originatingCommand.touchInfo.isClearance)
@@ -988,6 +995,9 @@ void Humanoid::Process() {
         // clearance, and it is booked as one here.
         const bool inShootout = match->GetMatchPhase() == e_MatchPhase_Penalties;
         const bool countAsShot = !inShootout && !isClearance;
+        // A first-time finish off a pass completed it; record the touch before
+        // AddShot ends the sequence (see the pass branch's identical call).
+        if (!inShootout) match->GetMatchData()->RecordBallTouch(team->GetID());
         if (isClearance) {
           if (!inShootout) match->GetMatchData()->AddClearance(team->GetID());
         } else {
