@@ -139,25 +139,45 @@ ffmpeg -y -loglevel error \
 
 encoder=$!
 
-# Start recording before the engine starts, so the walk-out and any cue played
-# on the way in are on the track. Nothing else in this script touches audio:
-# OpenAL Soft writes to the desktop sink and this records that sink's monitor.
+# Record the machine's audio through a PipeWire loopback node.
+#
+# The obvious way - parecord on the default sink's monitor - was tried first and
+# records pure silence here: a 440 Hz tone played to that sink came back at
+# ffmpeg's -91 dB floor. A loopback adapter with an explicit capture side does
+# work (verified: tone captured at -27.3 dB mean), so that is what is used, and
+# the parecord path is gone rather than left to fail silently.
+#
+# Started before the engine so the walk-out is on the track, and torn down by
+# the trap below so an interrupted run leaves no recorder or node behind.
 wav="${out%.*}.wav"
 rec_pid=""
-if [ "$audio" != "0" ] && command -v parecord >/dev/null && command -v pactl >/dev/null; then
-  sink=$(pactl get-default-sink 2>/dev/null || true)
-  if [ -n "$sink" ]; then
+lw_node=""
+if [ "$audio" != "0" ] && command -v pw-record >/dev/null && command -v pw-cli >/dev/null; then
+  lw_node="gfshowcase$$"
+  if pw-cli create-node adapter \
+      "{ factory.name=support.null-audio-sink node.name=$lw_node media.class=Stream/Output/Audio object.linger=true audio.position=[FL,FR] capture.props={ media.class=Stream/Input/Audio node.name=$lw_node-in object.linger=true } }" \
+      >/dev/null 2>&1; then
     rm -f "$wav"
-    parecord --device="$sink.monitor" --file-format=wav --rate=48000 --channels=2 \
-      --format=s16le "$wav" >/dev/null 2>&1 &
+    pw-record --target="$lw_node-in" --rate=48000 --channels=2 --format=s16 "$wav" \
+      >/dev/null 2>&1 &
     rec_pid=$!
-    echo "recording audio from ${sink}.monitor"
+    echo "recording audio through the ${lw_node} loopback"
   else
-    echo "no default audio sink; the showcase will be silent" >&2
+    echo "could not create a PipeWire loopback; the showcase will be silent" >&2
+    lw_node=""
   fi
 else
-  echo "no parecord/pactl; the showcase will be silent" >&2
+  echo "no pw-record/pw-cli; the showcase will be silent" >&2
 fi
+
+# Leaving a live recorder or a loopback node behind would survive the run and
+# keep writing into the wav that the mux is about to read.
+cleanup_audio() {
+  [ -n "$rec_pid" ] && { kill "$rec_pid" 2>/dev/null; wait "$rec_pid" 2>/dev/null; }
+  [ -n "$lw_node" ] && pw-cli destroy "$lw_node" >/dev/null 2>&1
+  return 0
+}
+trap cleanup_audio EXIT INT TERM
 
 # Two halves, the walkout, and the hold on the result, with room to spare - and
 # the clock only runs while the ball is in play. A 10-minute-half match with
@@ -194,11 +214,11 @@ wait "$encoder"
 
 # The engine is the only thing making sound and it has stopped, so stop the
 # recorder here rather than at the end: the mux below runs ffmpeg, and a live
-# recorder writing the same wav would race it.
-if [ -n "$rec_pid" ]; then
-  kill "$rec_pid" 2>/dev/null
-  wait "$rec_pid" 2>/dev/null
-fi
+# recorder writing the same wav would race it. The trap covers the paths that
+# exit before this point.
+cleanup_audio
+rec_pid=""
+lw_node=""
 
 # docs/HARNESSES.md says this harness "refuses to report a run that never
 # reached destroying scenemanager". It printed a warning and then reported it
@@ -249,13 +269,20 @@ fi
 audio_args=()
 audio_mean="-91.0dB"
 if [ -s "$wav" ]; then
+  # ffmpeg prints "mean_volume: -91.0 dB" with a space before the unit, so
+  # comparing the whole string against "-91.0dB" never matched and the silence
+  # warning below did not fire on a completely silent track. Compare the
+  # number, not the formatted string.
   audio_mean=$(ffmpeg -hide_banner -i "$wav" -af volumedetect -f null - 2>&1 |
-              sed -n 's/.*mean_volume: \(.*\)dB/\1dB/p' | tail -1)
+              sed -n 's/.*mean_volume: \(.*\) dB/\1dB/p' | tail -1)
   audio_mean="${audio_mean:--91.0dB}"
-  if [ "$audio_mean" = "-91.0dB" ]; then
+  # -90 dB is ffmpeg's measurement floor; anything at or under it is digital
+  # silence, whatever the track says about itself.
+  if [ "$(awk -v v="$audio_mean" 'BEGIN{print (v+0 <= -90) ? 1 : 0}')" = "1" ]; then
     echo "WARNING: the audio track is silent ($audio_mean) - the engine produced no sound" >&2
+  else
+    audio_args=(-i "$wav" -map 0:v:0 -map 1:a:0 -c:a aac -b:a 160k -ac 2 -shortest)
   fi
-  audio_args=(-i "$wav" -map 0:v:0 -map 1:a:0 -c:a aac -b:a 160k -ac 2 -shortest)
   echo "audio track: $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$wav" | cut -d. -f1)s, mean volume $audio_mean"
 else
   echo "WARNING: no audio was recorded; the mp4 will be silent" >&2
@@ -282,13 +309,15 @@ fi
 # upload, and a run that printed that as a success would be worse than useless.
 if [ "$upload" = "none" ]; then
   echo "upload disabled: $out is local only"
-fi
-if [ "$upload" = "account" ]; then
-  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
 else
-  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "time=${litter_hours}h" -F "fileToUpload=@$out" https://litterbox.catbox.moe/resources/internals/api.php) || url=""
-fi
-if [ "$upload" != "none" ]; then
+  # Only now is an endpoint chosen: "none" used to fall through to litterbox
+  # and upload the file anyway, three curl errors and all, which is the
+  # opposite of what --upload none asks for.
+  if [ "$upload" = "account" ]; then
+    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
+  else
+    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "time=${litter_hours}h" -F "fileToUpload=@$out" https://litterbox.catbox.moe/resources/internals/api.php) || url=""
+  fi
   case "$url" in
     http*) echo "uploaded ($upload): $url" ;;
     *) echo "upload FAILED for $out: ${url:-no response}" >&2; exit 1 ;;
