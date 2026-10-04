@@ -25,6 +25,15 @@ width=1280
 height=720
 # catbox.moe rejects anything larger; 0 disables the second pass entirely.
 limit_mb=200
+# Audio capture: "auto" records the default sink's monitor when a Pulse/PipeWire
+# recorder is present, 0 disables. The engine mixes through OpenAL Soft into
+# whatever the desktop sink is, so recording that monitor is the whole job -
+# no engine-side capture needed. Default on because a silent showcase is not a
+# showcase.
+audio=auto
+# catbox.moe account userhash. Anonymous uploads are closed, so an upload needs
+# this; without it the run stops at a local file and says so.
+catbox_hash="${CATBOX_USERHASH:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,6 +48,8 @@ while [ $# -gt 0 ]; do
     --limit-mb) limit_mb="$2"; shift 2 ;;
     --seconds) seconds="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
+    --audio) audio="$2"; shift 2 ;;
+    --catbox-hash) catbox_hash="$2"; shift 2 ;;
   esac
 done
 
@@ -100,7 +111,28 @@ ffmpeg -y -loglevel error \
   -c:v libx264 -preset fast -crf 26 -pix_fmt yuv420p \
   -movflags +frag_keyframe+empty_moov+default_base_moof \
   "$raw" &
+
 encoder=$!
+
+# Start recording before the engine starts, so the walk-out and any cue played
+# on the way in are on the track. Nothing else in this script touches audio:
+# OpenAL Soft writes to the desktop sink and this records that sink's monitor.
+wav="${out%.*}.wav"
+rec_pid=""
+if [ "$audio" != "0" ] && command -v parecord >/dev/null && command -v pactl >/dev/null; then
+  sink=$(pactl get-default-sink 2>/dev/null || true)
+  if [ -n "$sink" ]; then
+    rm -f "$wav"
+    parecord --device="$sink.monitor" --file-format=wav --rate=48000 --channels=2 \
+      --format=s16le "$wav" >/dev/null 2>&1 &
+    rec_pid=$!
+    echo "recording audio from ${sink}.monitor"
+  else
+    echo "no default audio sink; the showcase will be silent" >&2
+  fi
+else
+  echo "no parecord/pactl; the showcase will be silent" >&2
+fi
 
 # Two halves, the walkout, and the hold on the result, with room to spare - and
 # the clock only runs while the ball is in play. A 10-minute-half match with
@@ -134,6 +166,14 @@ status=$?
 # The engine has stopped writing, so the encoder sees end of file and finishes
 # on its own. Killing it here is what truncated the last fragment.
 wait "$encoder"
+
+# The engine is the only thing making sound and it has stopped, so stop the
+# recorder here rather than at the end: the mux below runs ffmpeg, and a live
+# recorder writing the same wav would race it.
+if [ -n "$rec_pid" ]; then
+  kill "$rec_pid" 2>/dev/null
+  wait "$rec_pid" 2>/dev/null
+fi
 
 # docs/HARNESSES.md says this harness "refuses to report a run that never
 # reached destroying scenemanager". It printed a warning and then reported it
@@ -177,17 +217,51 @@ if [ -z "${seconds:-}" ] || [ "$seconds" -le 0 ] 2>/dev/null; then
   echo "no duration in the container; counted ${frames:-0} frames -> ${seconds}s" >&2
 fi
 
+# Is there actually sound on the track? An audio stream of pure silence is
+# not "it has audio", and the only way to know is to measure the track: -91 dB
+# is ffmpeg's floor for digital silence. Reported either way, because the
+# difference is invisible in a file listing.
+audio_args=()
+audio_mean="-91.0dB"
+if [ -s "$wav" ]; then
+  audio_mean=$(ffmpeg -hide_banner -i "$wav" -af volumedetect -f null - 2>&1 |
+              sed -n 's/.*mean_volume: \(.*\)dB/\1dB/p' | tail -1)
+  audio_mean="${audio_mean:--91.0dB}"
+  if [ "$audio_mean" = "-91.0dB" ]; then
+    echo "WARNING: the audio track is silent ($audio_mean) - the engine produced no sound" >&2
+  fi
+  audio_args=(-i "$wav" -map 0:v:0 -map 1:a:0 -c:a aac -b:a 160k -ac 2 -shortest)
+  echo "audio track: $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$wav" | cut -d. -f1)s, mean volume $audio_mean"
+else
+  echo "WARNING: no audio was recorded; the mp4 will be silent" >&2
+fi
+
 if [ "$limit_mb" -gt 0 ] && [ "$raw_mb" -gt "$limit_mb" ] && [ "${seconds:-0}" -gt 0 ]; then
   # Fit the duration into the limit, holding back a tenth for container
   # overhead and the encoder overshooting its target on busy scenes.
   rate=$(( limit_mb * 8 * 1024 * 9 / 10 / seconds ))
   echo "re-encoding ${raw_mb} MB / ${seconds}s to fit ${limit_mb} MB (${rate}k)"
-  ffmpeg -y -loglevel error -i "$raw" \
+  ffmpeg -y -loglevel error -i "$raw" "${audio_args[@]}" \
     -c:v libx264 -preset slow -b:v "${rate}k" -maxrate "$(( rate * 3 / 2 ))k" \
     -bufsize "$(( rate * 3 ))k" -pix_fmt yuv420p \
     -movflags +faststart "$out"
 else
-  ffmpeg -y -loglevel error -i "$raw" -c copy -movflags +faststart "$out"
+  ffmpeg -y -loglevel error -i "$raw" "${audio_args[@]}" \
+    -c:v copy -movflags +faststart "$out"
+fi
+
+# Upload. catbox closed anonymous uploads, so this is the account endpoint and
+# it needs the userhash; without one the file stays local and the run says so
+# rather than exiting as though the upload had happened.
+if [ -n "$catbox_hash" ]; then
+  url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" \
+          -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
+  case "$url" in
+    http*) echo "uploaded: $url" ;;
+    *) echo "upload FAILED for $out" >&2; exit 1 ;;
+  esac
+else
+  echo "no catbox userhash (--catbox-hash or CATBOX_USERHASH): $out is local only"
 fi
 
 echo "$(stat -c %s "$out" | awk '{printf "%.1f MB", $1/1048576}') / ${seconds}s -> $out"
