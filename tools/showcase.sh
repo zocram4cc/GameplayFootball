@@ -340,7 +340,10 @@ fi
 echo "$(stat -c %s "$out" | awk '{printf "%.1f MB", $1/1048576}') / ${seconds}s -> $out"
 
 # The engine's log is the only record of what the match actually did - which
-# celebration was cast, when the replay fired - and the work directory goes on
-# exit. Keep it beside the video it explains.
+# celebration was cast, when the replay fired, whether the stalemate recovery
+# ever fired - and the work directory goes on exit. Keep it beside the video it
+# explains, BEFORE the upload: litterbox returned 500 on a 725 MB file, the
+# upload exited 1, and a full fifty-minute match lost its only log because the
+# copy sat behind it.
 cp "$log" "${out%.*}.log"
 echo "${out%.*}.log"
