@@ -1023,6 +1023,11 @@ protected:
   // nearest man because nobody was playing it, and when that was last printed,
   // so a long freeze reports once every five seconds rather than every tick.
   unsigned long stalemateCount = 0;
+  // Real-time stalemate watchdog: the clock above is only advanced while play
+  // is live, so a stall that begins when play is dead never accumulates idle
+  // time. These are on the wall clock instead.
+  unsigned long stalemateLastRealAction_ms = 0;
+  Vector3 stalemateLastBallPosition;
   // What the stalemate policy decided this tick. The controllers read it: the
   // holder is told to give the ball up, and the chasers are told to go and get
   // it. Own go's a stale match, so every action reads one value.

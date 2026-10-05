@@ -5528,13 +5528,21 @@ void Match::Process() {
     teams[1]->UpdatePossessionStats();
     CalculateBestPossessionTeamID();
 
-    // Is the match standing still? Asked every tick, decided by one pure
-    // function on two measured numbers (GameplayTuning::GetStalemateRecovery).
-    stalemateRecovery =
-        IsInPlay() && !IsInSetPiece()
-            ? GameplayTuning::GetStalemateRecovery(matchData->GetSecondsSinceBallAction(),
-                                                   ball->GetMovement().GetLength())
-            : GameplayTuning::StalemateRecovery::none;
+    // Real seconds since the ball last moved. The first version of this ran off
+    // MatchData's match clock, which is only advanced while play is live - so a
+    // stall that began when the match already thought play was not on never
+    // accumulated idle time and the recovery never fired. That is precisely
+    // what the owner kept seeing: four stalls, all of them after the ball had
+    // gone dead, while the fix that was meant to prevent it was reporting that
+    // the freeze was gone.
+    const Vector3 ballNow = ball->GetPositionBuffer();
+    if ((ballNow - stalemateLastBallPosition).GetLength() > 0.02f) {
+      stalemateLastBallPosition = ballNow;
+      stalemateLastRealAction_ms = actualTime_ms;
+    }
+    stalemateRecovery = GameplayTuning::GetStalemateRecovery(
+        static_cast<float>(actualTime_ms - stalemateLastRealAction_ms) / 1000.0f,
+        ball->GetMovement().GetLength());
 
     if (GetBallRetainer() == 0) {
       signed int bestTeamID = GetBestPossessionTeamID();
@@ -5566,8 +5574,7 @@ void Match::Process() {
     // whoever can actually reach it, across BOTH teams - which is the forcing
     // tackle the owner asked for, and is what football does anyway: the
     // nearest man goes to the ball.
-    if (IsInPlay() && !IsInSetPiece() && GetBallRetainer() == 0 &&
-        GetBallRetainer() == 0 &&
+    if (GetBallRetainer() == 0 &&
         stalemateRecovery != GameplayTuning::StalemateRecovery::none) {
       Player* closest = nullptr;
       int closestTime_ms = 0;
@@ -5584,13 +5591,15 @@ void Match::Process() {
       if (closest) {
         designatedPossessionPlayer = closest;
         stalemateCount++;
-        if (stalemateLastReport_ms + 5000 < matchTime_ms) {
-          stalemateLastReport_ms = matchTime_ms;
-          printf("[stalemate] %.1fs with the ball at rest at %.2f m/s: forcing %s (%d) "
-                 "to it from %.1f m\n",
-                 matchData->GetSecondsSinceBallAction(), ball->GetMovement().GetLength(),
+        if (stalemateLastReport_ms + 3000 < actualTime_ms) {
+          stalemateLastReport_ms = actualTime_ms;
+          printf("[stalemate] %.1fs idle: inPlay %d setPiece %d | ball %.2f m/s at "
+                 "%.1f,%.1f,%.1f | forcing %s (%d) from %.1f m\n",
+                 static_cast<float>(actualTime_ms - stalemateLastRealAction_ms) / 1000.0f,
+                 (int)inPlay, (int)inSetPiece, ball->GetMovement().GetLength(),
+                 ballNow.coords[0], ballNow.coords[1], ballNow.coords[2],
                  closest->GetPlayerData()->GetLastName().c_str(), closest->GetID(),
-                 (closest->GetPosition() - ball->GetPositionBuffer()).GetLength());
+                 (closest->GetPosition() - ballNow).GetLength());
         }
       }
     }

@@ -108,6 +108,9 @@ protected:
 
   // Which period's added time has been announced already.
   e_MatchPhase addedTimeAnnouncedPhase;
+  // When the match was first found with play off, nothing armed and the ball
+  // out of play. Zero means "not dead"; otherwise it is the real time that was.
+  unsigned long deadBallSince_ms = 0;
 
   boost::intrusive_ptr<Sound> whistle[4];  // 0: short, 1: long, 2: half time, 3: full time
 };

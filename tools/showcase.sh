@@ -43,6 +43,13 @@ audio=auto
 # endpoint when CATBOX_USERHASH is set, litterbox otherwise, which is the
 # anonymous case the owner asked for.
 upload=auto
+# Whether the AUDIO goes to the host with the video. The only capture that works
+# here is a whole-system loopback (a sink's own monitor records digital silence
+# on this machine), so the recorded track is whatever the machine plays - a call,
+# a notification, a microphone routed to a sink. The first showcase uploaded
+# that way and the owner's microphone ended up on a public link. Local file
+# keeps its audio either way; this only decides what leaves the machine.
+upload_audio=0
 catbox_hash="${CATBOX_USERHASH:-}"
 # litterbox's longest window. Its shortest is 1h, which is shorter than most
 # matches take to produce.
@@ -62,6 +69,7 @@ while [ $# -gt 0 ]; do
     --seconds) seconds="$2"; shift 2 ;;
     --audio) audio="$2"; shift 2 ;;
     --upload) upload="$2"; shift 2 ;;
+    --upload-audio) upload_audio="$2"; shift 2 ;;
     --litter-hours) litter_hours="$2"; shift 2 ;;
     --catbox-hash) catbox_hash="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -175,6 +183,10 @@ if [ "$audio" != "0" ] && command -v pw-record >/dev/null && command -v pw-cli >
       >/dev/null 2>&1 &
     rec_pid=$!
     echo "recording audio through the ${lw_node} loopback"
+    echo "WARNING: this tap records EVERYTHING the machine plays, not just the match -" >&2
+    echo "         a sink's own monitor records silence on this box, which is why the" >&2
+    echo "         loopback is used. The local file gets that track; whether it is" >&2
+    echo "         uploaded is --upload-audio 1." >&2
   else
     echo "could not create a PipeWire loopback; the showcase will be silent" >&2
     lw_node=""
@@ -326,11 +338,19 @@ else
   # Only now is an endpoint chosen: "none" used to fall through to litterbox
   # and upload the file anyway, three curl errors and all, which is the
   # opposite of what --upload none asks for.
-  if [ "$upload" = "account" ]; then
-    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" -F "fileToUpload=@$out" https://files.catbox.moe/user/api.php) || url=""
-  else
-    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "time=${litter_hours}h" -F "fileToUpload=@$out" https://litterbox.catbox.moe/resources/internals/api.php) || url=""
+  # What leaves the machine. The local $out always keeps its audio track.
+  send="$out"
+  if [ "$upload_audio" != "1" ] && [ -n "${audio_args[*]:-}" ]; then
+    send="${out%.mp4}.upload.mp4"
+    ffmpeg -y -loglevel error -i "$out" -map 0:v:0 -c:v copy -an -movflags +faststart "$send"
+    echo "uploading without audio (--upload-audio 1 to include it)"
   fi
+  if [ "$upload" = "account" ]; then
+    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "userhash=$catbox_hash" -F "fileToUpload=@$send" https://files.catbox.moe/user/api.php) || url=""
+  else
+    url=$(curl -fsS --retry 3 -F "reqtype=fileupload" -F "time=${litter_hours}h" -F "fileToUpload=@$send" https://litterbox.catbox.moe/resources/internals/api.php) || url=""
+  fi
+  [ "$send" != "$out" ] && rm -f "$send"
   case "$url" in
     http*) echo "uploaded ($upload): $url" ;;
     *) echo "upload FAILED for $out: ${url:-no response}" >&2; exit 1 ;;

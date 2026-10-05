@@ -19,6 +19,14 @@
 #include "refereeprofile.hpp"
 #include "scene/objectfactory.hpp"
 
+// How long a match may sit with play off, nothing armed and the ball out of
+// play before the referee takes the ball's own position and restarts it. Long
+// enough that a normal stoppage - a goal, a foul, a substitution - has armed
+// its own restart well inside it; short enough that nobody watching thinks the
+// game has hung. It exists for measured stalls: four in one showcase, each
+// running until the period ended.
+static constexpr unsigned long kDeadBallRestart_ms = 4000;
+
 Referee::Referee(Match* match) : match(match) {
   buffer.desiredSetPiece = e_SetPiece_KickOff;
   buffer.teamID = 0;
@@ -47,6 +55,7 @@ Referee::Referee(Match* match) : match(match) {
   afterSetPieceRelaxTime_ms = 0;
 
   addedTimeAnnouncedPhase = e_MatchPhase_PreMatch;
+  deadBallSince_ms = 0;
 
   // whistle
 
@@ -256,6 +265,86 @@ void Referee::Process() {
     CheckFoul();
 
   } else {  // not in play, maybe something needs to happen?
+
+    // Play is not on and nothing is being prepared. Every out-of-play test in
+    // this file lives inside `if (IsInPlay() && !IsInSetPiece())` above, so once
+    // anything stops play without arming a restart - and several things do -
+    // the ball is never looked at again. It sits beyond the goal line, every
+    // controller is gated on IsInPlay and queues nothing, and the match stands
+    // there until the period ends. Measured: four such stalls in one showcase,
+    // all with inPlay 0 and the ball at x 55.1, and the chaser "forced" to it
+    // three metres away that never moved because designating a chaser does
+    // nothing while play is not live.
+    //
+    // So: play off, nothing armed, nothing moving - arm the restart the ball's
+    // own position calls for. buffer.active is the guard that keeps this out of
+    // the windows where waiting is correct: the entrance, half-time and the end
+    // of the match all hold play with a restart already armed.
+    if (!match->IsInPlay() && !match->IsInSetPiece() && !buffer.active) {
+      const Vector3 ballPos = match->GetBall()->Predict(0);
+      const bool outOverGoalLine = std::fabs(ballPos.coords[0]) > pitchHalfW;
+      const bool outOverTouchline = std::fabs(ballPos.coords[1]) > pitchHalfH;
+      // Not gated on the ball being out of play. The first version was, and it
+      // fired zero times in four matches: the commonest stall by far is the ball
+      // sitting ON THE CENTRE SPOT with play off and nothing armed - a kick-off
+      // never prepared. Measured: "[stalemate] inPlay 0 ... at 0.0,0.0" with the
+      // forced-chaser count to 17007 ticks in a match.
+      if (deadBallSince_ms == 0) {
+          deadBallSince_ms = match->GetActualTime_ms();
+        } else if (match->GetActualTime_ms() - deadBallSince_ms >= kDeadBallRestart_ms) {
+          Team* lastTouchTeam = match->GetLastTouchTeam();
+          if (lastTouchTeam == nullptr)
+            lastTouchTeam = match->GetTeam(0);
+          buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          buffer.stopTime = match->GetActualTime_ms();
+          buffer.prepareTime = match->GetActualTime_ms() + 500;
+          buffer.startTime = buffer.prepareTime + 1000;
+          const bool ballInsidePitch = !outOverGoalLine && !outOverTouchline;
+          if (ballInsidePitch) {
+            // On the centre spot with play off and nothing armed: a kick-off
+            // never prepared. Restart it.
+            buffer.desiredSetPiece = e_SetPiece_KickOff;
+            buffer.restartPos = Vector3(0, 0, 0);
+            buffer.teamID = abs(match->GetLastGoalTeamID() >= 0
+                                    ? match->GetLastGoalTeamID() - 1
+                                    : lastTouchTeam->GetID() - 1);
+          } else if (outOverTouchline) {
+            buffer.desiredSetPiece = e_SetPiece_ThrowIn;
+            buffer.restartPos.coords[0] =
+                clamp(ballPos.coords[0], -pitchHalfW + 0.6f, pitchHalfW - 0.6f);
+            buffer.restartPos.coords[1] =
+                ballPos.coords[1] > 0 ? pitchHalfH : -pitchHalfH;
+          } else if ((ballPos.coords[0] > 0) == (lastTouchTeam->GetSide() > 0)) {
+            // Last touch by the side defending that end: it is their corner.
+            buffer.desiredSetPiece = e_SetPiece_Corner;
+            buffer.restartPos.coords[0] = pitchHalfW * lastTouchTeam->GetSide();
+            buffer.restartPos.coords[1] =
+                ballPos.coords[1] > 0 ? pitchHalfH : -pitchHalfH;
+          } else {
+            buffer.desiredSetPiece = e_SetPiece_GoalKick;
+            buffer.restartPos = Vector3(pitchHalfW * 0.92 * -lastTouchTeam->GetSide(), 0, 0);
+          }
+          buffer.restartPos.coords[2] = 0;
+          buffer.active = true;
+          buffer.prepared = false;
+          buffer.started = false;
+          deadBallSince_ms = 0;
+          printf("[dead-ball] %.0f m from play with nothing armed: restarting with a %s "
+                 "for team %d\n",
+                 std::fabs(ballPos.coords[0]) > pitchHalfW
+                     ? (ballPos.coords[0] > 0 ? pitchHalfW - ballPos.coords[0]
+                                              : -pitchHalfW - ballPos.coords[0])
+                     : (ballPos.coords[1] > 0 ? pitchHalfH - ballPos.coords[1]
+                                              : -pitchHalfH - ballPos.coords[1]),
+                 buffer.desiredSetPiece == e_SetPiece_ThrowIn   ? "throw-in"
+                 : buffer.desiredSetPiece == e_SetPiece_Corner  ? "corner"
+                 : buffer.desiredSetPiece == e_SetPiece_KickOff ? "kick-off"
+                                                                : "goal kick",
+                 buffer.teamID);
+        }
+    } else {
+      deadBallSince_ms = 0;
+    }
 
     if (!match->IsInPlay() && !match->IsInSetPiece() && buffer.active == true) {
       if (buffer.stopTime + 300 <= match->GetActualTime_ms() && buffer.endPhase == false &&
