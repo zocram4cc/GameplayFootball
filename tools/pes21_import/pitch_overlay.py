@@ -38,6 +38,29 @@ PITCH_FULL_HALF_H = 40.0
 LINE_TEXTURES = ("line",)
 
 
+# PES's pitch model is 104.06 m between its goal lines; the engine's pitch is
+# 105.0 m (gametypes.hpp) and the goal object stands on the engine's line. Laid
+# down 1:1, the drawn goal line lands 0.47 m inside where the goal is, which is
+# what the owner sees: the goal not sitting on the pitch lines. Measured on both
+# installed overlays (st002's and the shared one): outermost line 52.03 m.
+#
+# The width needs nothing - the touchline already lands at 34.0 - so this is a
+# length correction on its own.
+PITCH_LENGTH_M = 105.0
+PES_PITCH_LENGTH_M = 104.06
+PITCH_LENGTH_CALIBRATION_X = PITCH_LENGTH_M / PES_PITCH_LENGTH_M
+
+
+def art_to_pitch(x, y):
+    """A vertex of PES's pitch model -> metres on the engine's pitch.
+
+    Only the length is corrected: PES's model draws its goal lines 104.06 m
+    apart and the engine's pitch is 105.0 m, so without this the drawn goal
+    line lands 0.47 m inside the goal, which stands on the engine's line.
+    """
+    return (x * PITCH_LENGTH_CALIBRATION_X, y)
+
+
 def pitch_to_pixel(x, y, width, height):
     """Metres on the pitch -> pixels in the overlay, the way the engine samples it."""
     return (((x / PITCH_FULL_HALF_W) * 0.5 + 0.5) * width,
@@ -292,7 +315,8 @@ def main():
                 continue
             sampler = _sampler_for(image)
             for face in mesh.faces:
-                corners = [(v.position.x, -v.position.z) for v in face.vertices]
+                # PES's own metres -> the engine's metres (length calibrated).
+                corners = [art_to_pitch(v.position.x, -v.position.z) for v in face.vertices]
                 # V flipped, the same way every other converter here reads an
                 # fmdl UV (stadium_to_gf, fmdl_to_fullbody): PES's texture origin
                 # is the top-left, the image's is too, but the mesh's V runs the

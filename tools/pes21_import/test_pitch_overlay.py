@@ -32,6 +32,23 @@ class PitchToPixel(unittest.TestCase):
         self.assertEqual(pitch_overlay.pitch_to_pixel(-60.0, -40.0, 4096, 2048), (0.0, 0.0))
         self.assertEqual(pitch_overlay.pitch_to_pixel(60.0, 40.0, 4096, 2048), (4096.0, 2048.0))
 
+    def test_the_goal_line_lands_on_the_goals_own_line(self):
+        # PES's art draws its goal line 52.03 m out; the engine's is 52.5 m and
+        # the goal object stands on it. The calibration has to put one on the
+        # other exactly.
+        art_x, _art_y = pitch_overlay.art_to_pitch(pitch_overlay.PES_PITCH_LENGTH_M / 2.0, 0.0)
+        self.assertAlmostEqual(art_x, pitch_overlay.PITCH_LENGTH_M / 2.0, places=9)
+        art_px, _ = pitch_overlay.pitch_to_pixel(art_x, 0.0, 4096, 2048)
+        goal_px, _ = pitch_overlay.pitch_to_pixel(pitch_overlay.PITCH_LENGTH_M / 2.0, 0.0, 4096, 2048)
+        self.assertAlmostEqual(art_px, goal_px, places=6)
+
+    def test_the_width_is_not_calibrated(self):
+        # The touchline already lands on 34.0; if the calibration reached Y the
+        # width would be wrong too.
+        art_x, art_y = pitch_overlay.art_to_pitch(0.0, 34.0)
+        self.assertEqual(art_x, 0.0)
+        self.assertEqual(art_y, 34.0)
+
     def test_a_goal_line_sits_where_the_engine_samples_it(self):
         # x 55 of 60 is 11/12 of the way from the middle to the edge
         x, _y = pitch_overlay.pitch_to_pixel(55.0, 0.0, 4096, 2048)
