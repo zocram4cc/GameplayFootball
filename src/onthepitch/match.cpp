@@ -5528,6 +5528,14 @@ void Match::Process() {
     teams[1]->UpdatePossessionStats();
     CalculateBestPossessionTeamID();
 
+    // Is the match standing still? Asked every tick, decided by one pure
+    // function on two measured numbers (GameplayTuning::GetStalemateRecovery).
+    const GameplayTuning::StalemateRecovery stalemate =
+        IsInPlay() && !IsInSetPiece() && GetBallRetainer() == 0
+            ? GameplayTuning::GetStalemateRecovery(matchData->GetSecondsSinceBallAction(),
+                                                   ball->GetMovement().GetLength())
+            : GameplayTuning::StalemateRecovery::none;
+
     if (GetBallRetainer() == 0) {
       signed int bestTeamID = GetBestPossessionTeamID();
       if (bestTeamID != -1) {
@@ -5547,6 +5555,43 @@ void Match::Process() {
       }
     } else {
       designatedPossessionPlayer = GetBallRetainer();
+    }
+
+    // Nobody has touched the ball for seconds and it is lying there, and the
+    // designation above picks the quickest player of ONE team: if that man is
+    // still out of reach he queues no command at all (elizacontroller.cpp's
+    // one-second gate), every other player holds his shape, and the pitch
+    // stands still while the half runs out. That is the 32:19-to-45:00 freeze
+    // in the last showcase. Under a stalemate the ball therefore goes to
+    // whoever can actually reach it, across BOTH teams - which is the forcing
+    // tackle the owner asked for, and is what football does anyway: the
+    // nearest man goes to the ball.
+    if (IsInPlay() && !IsInSetPiece() && GetBallRetainer() == 0 &&
+        stalemate != GameplayTuning::StalemateRecovery::none) {
+      Player* closest = nullptr;
+      int closestTime_ms = 0;
+      for (int side = 0; side < 2; side++) {
+        for (const std::unique_ptr<Player>& candidate : teams[side]->GetAllPlayers()) {
+          if (!candidate->IsActive()) continue;
+          const int time_ms = candidate->GetTimeNeededToGetToBall_ms();
+          if (!closest || time_ms < closestTime_ms) {
+            closest = candidate.get();
+            closestTime_ms = time_ms;
+          }
+        }
+      }
+      if (closest) {
+        designatedPossessionPlayer = closest;
+        stalemateCount++;
+        if (stalemateLastReport_ms + 5000 < matchTime_ms) {
+          stalemateLastReport_ms = matchTime_ms;
+          printf("[stalemate] %.1fs with the ball at rest at %.2f m/s: forcing %s (%d) "
+                 "to it from %.1f m\n",
+                 matchData->GetSecondsSinceBallAction(), ball->GetMovement().GetLength(),
+                 closest->GetPlayerData()->GetLastName().c_str(), closest->GetID(),
+                 (closest->GetPosition() - ball->GetPositionBuffer()).GetLength());
+        }
+      }
     }
 
     // if (GetDebugMode() == e_DebugMode_Tactical)

@@ -280,6 +280,10 @@ void GameOverPage::Process() {
            matchData->GetPassFailIntercept(0), matchData->GetPassFailIntercept(1),
            matchData->GetPassFailOutOfBounds(0), matchData->GetPassFailOutOfBounds(1),
            matchData->GetPassFailBadTrap(0), matchData->GetPassFailBadTrap(1));
+    // Stalemate recovery: ticks on which the ball was forced to the nearest man
+    // because it had lain untouched and nobody was playing it. Zero is the only
+    // good answer; a non-zero count says a match stood still and says how often.
+    printf("[stalemate] forced %lu\n", match->GetStalemateCount());
     // Touches that never reached RecordBallTouch while a pass was pending:
     // the sink the [pass-fail] breakdown cannot see. hostile = an opponent's
     // body killed our pass in flight; kinds are interfere/deflect/slide/

@@ -270,6 +270,7 @@ public:
 
   // pass tracking
   void AddPassAttempt(int teamID) {
+    RecordBallAction();
     RecordPassOverwritten();
     passAttempts[teamID]++;
     pendingPassTeamID = teamID;
@@ -282,6 +283,7 @@ public:
   // No pending pass is opened, so whoever picks the ball up next is not credited
   // with completing anything.
   void AddClearance(int teamID) {
+    RecordBallAction();
     RecordPassOverwritten();
     clearances[teamID]++;
     ResetPendingPass();
@@ -295,6 +297,15 @@ public:
     pendingOwnThirdGiveawayTeam = -1;
 #endif
   }
+  // Anything that is a deliberate act on the ball: a touch, a pass, a clearance.
+  // What the stalemate clock measures - the owner watched a first half stand
+  // from 32:19 to 45:00 and it must never happen again.
+  void RecordBallAction() { lastBallActionTime_ms = matchTime_ms; }
+  // Seconds the ball has gone untouched, on the in-play clock.
+  float GetSecondsSinceBallAction() const {
+    return static_cast<float>(matchTime_ms - lastBallActionTime_ms) / 1000.0f;
+  }
+
   void RecordPassGoalkeeperCatch() {
     if (pendingPassTeamID >= 0) passGoalkeeperCatch[pendingPassTeamID]++;
     ResetPendingPass();
@@ -330,6 +341,7 @@ public:
 #endif
   }
   void RecordBallTouch(int receivingTeamID) {
+    RecordBallAction();
     // Taken off an opponent in open play, with nothing in flight to intercept:
     // that is a tackle. Decided before lastTouchTeamID is moved on.
     bool wonFromOpponent = lastTouchTeamID >= 0 && lastTouchTeamID != receivingTeamID &&
@@ -692,6 +704,9 @@ protected:
   // Monotonic stand-in for the match clock, advanced by AddPossessionTime_10ms:
   // keeps this data layer engine-independent so tests need no Match object.
   unsigned long matchTime_ms = 0;
+  // Match clock at the last deliberate act on the ball. Equal to matchTime_ms at
+  // kickoff, so a match that never gets going reads as idle immediately.
+  unsigned long lastBallActionTime_ms = 0;
   unsigned long possessionTime_ms[2];
   float possession60seconds;  // -600 to 600 for possession of team 1 / 2 respectively
 

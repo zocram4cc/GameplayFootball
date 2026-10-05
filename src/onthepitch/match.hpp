@@ -343,6 +343,10 @@ public:
 
   signed int GetBestPossessionTeamID();
   Player* GetDesignatedPossessionPlayer() { return designatedPossessionPlayer; }
+
+  // Read by the game-over census, so a match that stood still shows up in the
+  // batch output and not only in the video. Zero is the only good answer.
+  unsigned long GetStalemateCount() const { return stalemateCount; }
   Player* GetBallRetainer() { return ballRetainer; }
   void SetBallRetainer(Player* retainer) { ballRetainer = retainer; }
 
@@ -1008,6 +1012,11 @@ protected:
   mutable Lockable<unsigned long> iterations;
   TaskSequenceInfo gameSequenceInfo;
   unsigned long matchTime_ms;
+  // Stalemate recovery: how many ticks have forced the ball to go to the
+  // nearest man because nobody was playing it, and when that was last printed,
+  // so a long freeze reports once every five seconds rather than every tick.
+  unsigned long stalemateCount = 0;
+  unsigned long stalemateLastReport_ms = 0;
   double matchTimeExact_ms;
   unsigned long actualTime_ms;
   unsigned long buf_matchTime_ms;

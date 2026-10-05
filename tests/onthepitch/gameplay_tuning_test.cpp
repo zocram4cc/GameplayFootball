@@ -855,3 +855,37 @@ TEST(GameplayTuningKeeperTest, TheKeeperReactsInsideTheHumanRange) {
   EXPECT_LT(best, worst);
   EXPECT_NEAR(worst - best, 0.1125f, 0.0001f);
 }
+
+// A match must never stand still. The designated ball-goer queues NO command
+// at all once he is more than a second from the ball (elizacontroller.cpp), and
+// everyone else holds formation - so a ball at rest where nobody is close
+// leaves the whole pitch standing until the half ends. That is what happened:
+// a 13-minute stretch of the first half, players frozen from 32:19 to 45:00.
+TEST(GameplayTuningStalemate, ABallInFlightIsNotAStalemate) {
+  // A clearance takes seconds to arrive and nobody may touch it in between.
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(1.0f, 25.0f),
+            GameplayTuning::StalemateRecovery::none);
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(9.0f, 12.0f),
+            GameplayTuning::StalemateRecovery::none);
+}
+
+TEST(GameplayTuningStalemate, ABallNobodyIsReachingIsForcedAfterAFewSeconds) {
+  // A ball at rest, untouched: a few seconds is ordinary dithering, and then
+  // it is a stalemate and someone is told to go and get it.
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(1.0f, 0.0f),
+            GameplayTuning::StalemateRecovery::none);
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(4.9f, 0.0f),
+            GameplayTuning::StalemateRecovery::none);
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(5.0f, 0.0f),
+            GameplayTuning::StalemateRecovery::pressBall);
+}
+
+TEST(GameplayTuningStalemate, AStalemateThatPersistsAlsoForcesTheHolderToRelease) {
+  // Pressing is the first answer; if that does not break it, the man on the
+  // ball is told to give it up. Both are football; standing is not.
+  const float longer = GameplayTuning::kStalemateForceAction_s * 3.0f;
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(longer, 0.0f),
+            GameplayTuning::StalemateRecovery::releaseBall);
+  EXPECT_EQ(GameplayTuning::GetStalemateRecovery(longer, 30.0f),
+            GameplayTuning::StalemateRecovery::none);
+}

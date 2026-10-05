@@ -432,6 +432,25 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
       } else {
         GetOnTheBallCommands(commandQueue, rawInputDirection, rawInputVelocityFloat);
       }
+    } else {
+      // Out of reach of the ball, so he cannot pass or dribble it - but he can
+      // still run at it, and he must. This branch used to queue NOTHING: the
+      // designated ball-goer stood still while every other player held his
+      // shape, and a ball at rest more than a second from everyone froze the
+      // whole pitch for the rest of the half (measured: 32:19 to 45:00).
+      const Vector3 toBall = match->GetBall()->GetPositionBuffer() - CastPlayer()->GetPosition();
+      if (toBall.GetLength() > 0.5f) {
+        PlayerCommand run;
+        run.desiredFunctionType = e_FunctionType_Movement;
+        run.useDesiredMovement = false;
+        run.useDesiredLookAt = true;
+        run.desiredDirection = toBall.GetNormalized(CastPlayer()->GetDirectionVec());
+        // Sprint: he is chasing a ball nobody else is going for.
+        run.desiredVelocityFloat = sprintVelocity;
+        run.desiredLookAt = match->GetBall()->GetPositionBuffer();
+        commandQueue.push_back(run);
+        extraHaste = true;
+      }
     }
     extraHaste = false;  // todo: extra haste when touch anim is queued?
   }

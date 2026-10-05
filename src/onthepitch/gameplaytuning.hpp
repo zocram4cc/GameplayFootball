@@ -355,8 +355,36 @@ inline GoalLineCrossing PredictGoalLineCrossing(const std::array<float, 3>& pos,
 // spread is wider than the effect being measured. The batch harness sets its
 // own value (0.18) and so is unaffected by this default.
 constexpr float kMinShotXg = 0.14f;
+
 inline float GetMinShotXg(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_min_shot_xg", kMinShotXg), 0.01f, 0.30f);
+}
+
+// A match must never stand still. The designated ball-goer queues no command at
+// all once he is more than a second from the ball (elizacontroller.cpp), and
+// every other player holds his shape, so a ball at rest where nobody is close
+// freezes the whole pitch. Measured, one showcase: 32:19 to 45:00 of the first
+// half, twenty-two players motionless while the clock ran on.
+enum class StalemateRecovery {
+  none,          // play as it is
+  pressBall,     // the closest players are told to go and get it
+  releaseBall,   // and if that has not worked, the man on it gives it up
+};
+
+// How long a ball may sit at rest untouched before it counts. "A few seconds",
+// as the owner put it: long enough for a player to turn and set himself, short
+// enough that nobody ever thinks the game has hung.
+constexpr float kStalemateForceAction_s = 5.0f;
+// What counts as "at rest". A clearance in flight is not a stalemate, and this
+// is the speed below which the ball is lying there.
+constexpr float kStalemateBallSpeed_ms = 0.5f;
+
+// Pure: how long the ball has been untouched, and how fast it is moving.
+inline StalemateRecovery GetStalemateRecovery(float idleSeconds_s, float ballSpeed_ms) {
+  if (ballSpeed_ms > kStalemateBallSpeed_ms) return StalemateRecovery::none;
+  if (idleSeconds_s < kStalemateForceAction_s) return StalemateRecovery::none;
+  if (idleSeconds_s >= kStalemateForceAction_s * 3.0f) return StalemateRecovery::releaseBall;
+  return StalemateRecovery::pressBall;
 }
 // There is no second "is it worth shooting" predicate: the trigger asks once,
 // with this bar over the player's appetite (ElizaController), and the aim
