@@ -970,6 +970,50 @@ void Humanoid::Process() {
           if (flightTime < kMaxShotFlightTime_s)
             touchVec.coords[2] = GameplayTuning::ClampShotArrivalVelocityZ(
                 touchVec.coords[2], ballNow.coords[2], flightTime);
+
+          // Aim scatter. There was none: the strike went exactly where the
+          // strike animation pointed, so over twelve matches every single miss
+          // went wide and not one went over or short - 85% of shots on target,
+          // and 15.8 of 18.5 shots reaching the frame, where real football sees
+          // about a third on target. That is also why the goal rate would not
+          // move for a better keeper: the chances were never bad ones.
+          //
+          // The scatter is in metres at the goal line, not in the strike angle,
+          // because that is where the shooter is actually trying to put it. The
+          // existing projection is exactly invertible: a crossing at height h
+          // after t needs vz = (h - startZ)/t + g*t/2, which is the same line the
+          // comment above the band already derives.
+          //
+          // Provenance for the magnitudes: the owner's target is 60-70% of shots
+          // on target, against 85% measured with no error at all and roughly 35%
+          // in real football; the mean shot distance in those twelve matches was
+          // 20.4 m. GameplayTuning::kShotAimScatter_m is calibrated to land the
+          // measured rate in the middle of that band and is re-measured, not
+          // argued.
+          constexpr float kShotAimScatterRangeGrowth_m = 0.03f;
+          constexpr float kShotAimVerticalShare = 0.55f;
+          // A worse shooter misses by more: the best lands at the nominal
+          // spread, the worst at 1.6x it.
+          constexpr float kShotAimWorstSkillScale = 1.6f;
+          if (flightTime > 0.01f) {
+            const float shooting =
+                GameplayTuning::Clamp01(player->GetStat("technical_shot"));
+            const float rangeScale =
+                1.0f + kShotAimScatterRangeGrowth_m *
+                           std::max(0.0f, distanceToGoal - GameplayTuning::kShotAimScatterNearRange_m);
+            const float sigma_m = GameplayTuning::kShotAimScatter_m * rangeScale *
+                                  (kShotAimWorstSkillScale - (kShotAimWorstSkillScale - 1.0f) *
+                                                                 shooting);
+            const float aimedY = touchVec.coords[1] * flightTime + ballNow.coords[1];
+            const float aimedZ = ballNow.coords[2] + touchVec.coords[2] * flightTime -
+                                 0.5f * GameplayTuning::kGravity_mps2 * flightTime * flightTime;
+            const float targetY = aimedY + random(-1.0f, 1.0f) * sigma_m;
+            const float targetZ = aimedZ +
+                                  random(-1.0f, 1.0f) * sigma_m * kShotAimVerticalShare;
+            touchVec.coords[1] = (targetY - ballNow.coords[1]) / flightTime;
+            touchVec.coords[2] = (targetZ - ballNow.coords[2]) / flightTime +
+                                 0.5f * GameplayTuning::kGravity_mps2 * flightTime;
+          }
         }
 
         match->GetBall()->Touch(touchVec);

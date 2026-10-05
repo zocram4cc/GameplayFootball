@@ -239,6 +239,18 @@ inline float ClampShotArrivalVelocityZ(float vz, float startZ_m, float flightTim
   return std::max(bandMin, std::min(vz, bandMax));
 }
 
+// Aim error, in metres at the goal line, one standard deviation, for a shooter
+// with average technical_shot inside kShotAimScatterNearRange_m. The band
+// above places every strike between the posts and under the bar by
+// construction, which is why twelve consecutive matches read 85% of shots on
+// target with every miss wide and none over or short. The owner's target is
+// 60-70% on target and real football is nearer 35%; this is set to land the
+// measured rate in the middle of that band, and re-measured rather than
+// argued. The scatter grows with range and shrinks with shooting skill - see
+// humanoid.cpp, which is the only caller.
+constexpr float kShotAimScatter_m = 1.0f;
+constexpr float kShotAimScatterNearRange_m = 10.0f;
+
 // Where the ball actually crossed the goal-line plane, found from two
 // consecutive physics positions rather than from the launch sum. The projection
 // above answers "was this aimed on target" - and since the band clamps the
