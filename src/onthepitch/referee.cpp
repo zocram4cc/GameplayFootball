@@ -299,32 +299,32 @@ void Referee::Process() {
           buffer.stopTime = match->GetActualTime_ms();
           buffer.prepareTime = match->GetActualTime_ms() + 500;
           buffer.startTime = buffer.prepareTime + 1000;
-          const bool ballInsidePitch = !outOverGoalLine && !outOverTouchline;
-          if (ballInsidePitch) {
-            // On the centre spot with play off and nothing armed: a kick-off
-            // never prepared. Restart it.
-            buffer.desiredSetPiece = e_SetPiece_KickOff;
-            buffer.restartPos = Vector3(0, 0, 0);
-            buffer.teamID = abs(match->GetLastGoalTeamID() >= 0
-                                    ? match->GetLastGoalTeamID() - 1
-                                    : lastTouchTeam->GetID() - 1);
-          } else if (outOverTouchline) {
-            buffer.desiredSetPiece = e_SetPiece_ThrowIn;
-            buffer.restartPos.coords[0] =
-                clamp(ballPos.coords[0], -pitchHalfW + 0.6f, pitchHalfW - 0.6f);
-            buffer.restartPos.coords[1] =
-                ballPos.coords[1] > 0 ? pitchHalfH : -pitchHalfH;
-          } else if ((ballPos.coords[0] > 0) == (lastTouchTeam->GetSide() > 0)) {
-            // Last touch by the side defending that end: it is their corner.
-            buffer.desiredSetPiece = e_SetPiece_Corner;
-            buffer.restartPos.coords[0] = pitchHalfW * lastTouchTeam->GetSide();
-            buffer.restartPos.coords[1] =
-                ballPos.coords[1] > 0 ? pitchHalfH : -pitchHalfH;
-          } else {
-            buffer.desiredSetPiece = e_SetPiece_GoalKick;
-            buffer.restartPos = Vector3(pitchHalfW * 0.92 * -lastTouchTeam->GetSide(), 0, 0);
+          // One decision, in one tested place. It used to be spelled out inline
+          // here, which is precisely why nothing could check it: this is the
+          // branch only a live match reaches, so the arm that ends the freeze
+          // was the one part with no test behind it.
+          const SetPieceLaws::DeadBallDecision dead =
+              SetPieceLaws::GetDeadBallRestart(ballPos.coords[0], ballPos.coords[1], pitchHalfW,
+                                               pitchHalfH, lastTouchTeam->GetID(),
+                                               lastTouchTeam->GetSide(),
+                                               match->GetLastGoalTeamID());
+          switch (dead.kind) {
+            case SetPieceLaws::e_DeadBallRestart::ThrowIn:
+              buffer.desiredSetPiece = e_SetPiece_ThrowIn;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::Corner:
+              buffer.desiredSetPiece = e_SetPiece_Corner;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::GoalKick:
+              buffer.desiredSetPiece = e_SetPiece_GoalKick;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::KickOff:
+              buffer.desiredSetPiece = e_SetPiece_KickOff;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::None:
+              break;
           }
-          buffer.restartPos.coords[2] = 0;
+          buffer.restartPos = Vector3(dead.posX, dead.posY, dead.posZ);
           buffer.active = true;
           buffer.prepared = false;
           buffer.started = false;

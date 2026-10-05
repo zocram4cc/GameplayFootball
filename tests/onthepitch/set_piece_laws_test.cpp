@@ -13,6 +13,8 @@
 
 namespace {
 
+struct Vector3d { float x, y, z; };
+
 // The pitch the engine plays on.
 constexpr float kHalfW = 55.0f;
 
@@ -296,4 +298,64 @@ TEST(SetPieceLaws, TheSecondHalfWaitsForTheWalkOff) {
             whistle + SetPieceLaws::kHalfTimeCutscene_ms)
       << "the players are reset before the walk-off has finished";
   EXPECT_GT(SetPieceLaws::HalfTimeTakeAt_ms(whistle), SetPieceLaws::HalfTimePrepareAt_ms(whistle));
+}
+
+// Which restart a dead ball is owed, and from where.
+//
+// The case this exists for is the one that froze four matches: play off, nothing
+// armed, the ball sitting on the centre spot because the kick-off that should
+// have followed it never came. Every out-of-play test in referee.cpp lives inside
+// `if (IsInPlay())`, so once anything stopped play without arming a restart, the
+// ball was never looked at again.
+TEST(SetPieceLawsDeadBall, ABallOverTheTouchlineIsAThrowInToTheOtherSide) {
+  const auto d = SetPieceLaws::GetDeadBallRestart(20.0f, 36.0f, 52.5f,
+                                                  34.0f, /*lastTouchTeamID=*/0, 1, -1);
+  EXPECT_EQ(d.kind, SetPieceLaws::e_DeadBallRestart::ThrowIn);
+  EXPECT_FLOAT_EQ(d.posY, 34.0f);
+  EXPECT_EQ(d.teamID, 1);
+}
+
+TEST(SetPieceLawsDeadBall, AThrowInCannotBePlacedOutsideThePitch) {
+  // The ball went out over the corner flag, so its x is past the post; the spot
+  // has to come back inside the lines or the taker stands off the pitch.
+  const auto d = SetPieceLaws::GetDeadBallRestart(70.0f, -40.0f, 52.5f,
+                                                  34.0f, 1, 1, -1);
+  EXPECT_EQ(d.kind, SetPieceLaws::e_DeadBallRestart::ThrowIn);
+  EXPECT_LE(d.posX, 52.5f - 0.6f);
+  EXPECT_FLOAT_EQ(d.posY, -34.0f);
+}
+
+TEST(SetPieceLawsDeadBall, BehindAGoalLineItIsACornerOrAGoalKickByWhoseTouchItWas) {
+  // Last touch by the side DEFENDING that end (side +1 defends +x): corner.
+  const auto corner = SetPieceLaws::GetDeadBallRestart(55.1f, 3.7f,
+                                                      52.5f, 34.0f, 0, 1, -1);
+  EXPECT_EQ(corner.kind, SetPieceLaws::e_DeadBallRestart::Corner);
+  EXPECT_FLOAT_EQ(corner.posX, 52.5f);
+
+  // Last touch by the side ATTACKING that end: it was their miss, so the other
+  // side takes the goal kick from its own goal area - which is the +x end, so
+  // the spot is positive. Same form as the live path (pitchHalfW * 0.92 *
+  // -lastSide with lastSide -1).
+  const auto goalKick = SetPieceLaws::GetDeadBallRestart(55.1f, 3.7f,
+                                                          52.5f, 34.0f, 0, -1, -1);
+  EXPECT_EQ(goalKick.kind, SetPieceLaws::e_DeadBallRestart::GoalKick);
+  EXPECT_FLOAT_EQ(goalKick.posX, 52.5f * 0.92f);
+}
+
+TEST(SetPieceLawsDeadBall, ABallInsideThePitchWithNothingArmedIsTheKickOffThatNeverCame) {
+  // The measured stall: inPlay 0, nothing armed, ball 0.0,0.0 at rest.
+  const auto d = SetPieceLaws::GetDeadBallRestart(0.0f, 0.0f, 52.5f, 34.0f,
+                                                  0, 1, /*lastGoalTeamID=*/-1);
+  EXPECT_EQ(d.kind, SetPieceLaws::e_DeadBallRestart::KickOff);
+  EXPECT_FLOAT_EQ(d.posX, 0.0f);
+  EXPECT_FLOAT_EQ(d.posY, 0.0f);
+}
+
+TEST(SetPieceLawsDeadBall, AConcedingSideTakesTheKickOffAfterAGoal) {
+  // A goal went in for team 1, so team 0 restarts: the "other side" rule that
+  // decides a throw-in is not the rule for a kick-off.
+  const auto afterGoal =
+      SetPieceLaws::GetDeadBallRestart(0.0f, 0.0f, 52.5f, 34.0f, 1, 1, 1);
+  EXPECT_EQ(afterGoal.kind, SetPieceLaws::e_DeadBallRestart::KickOff);
+  EXPECT_EQ(afterGoal.teamID, 0);
 }

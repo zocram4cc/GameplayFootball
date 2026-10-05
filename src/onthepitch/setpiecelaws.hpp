@@ -1,6 +1,9 @@
 #ifndef _HPP_ONTHEPITCH_SETPIECELAWS
 #define _HPP_ONTHEPITCH_SETPIECELAWS
 
+#include <cmath>
+#include <cstdlib>
+
 #include "gametypes.hpp"
 
 // The parts of the laws that say where players may stand at a restart.
@@ -119,6 +122,65 @@ inline unsigned long HalfTimePrepareAt_ms(unsigned long whistleTime_ms) {
 
 inline unsigned long HalfTimeTakeAt_ms(unsigned long whistleTime_ms) {
   return HalfTimePrepareAt_ms(whistleTime_ms) + kHalfTimeTakeAfterPrepare_ms;
+}
+
+// Which restart a dead ball is owed, and from where.
+//
+// Pure, because it is a decision about the pitch and not about the match around
+// it, and because the case that made this worth having cannot be reached any
+// other way: a match that stops play without arming anything used to stand
+// there until the period ended, four times in one showcase, and nothing in a
+// test could have shown it because the decision was buried in a branch that
+// only a live match reaches.
+enum class e_DeadBallRestart { None, ThrowIn, Corner, GoalKick, KickOff };
+
+struct DeadBallDecision {
+  e_DeadBallRestart kind = e_DeadBallRestart::None;
+  // Plain floats rather than a Vector3: this header is used by test targets that
+  // do not link the vector maths, and a decision about the pitch should not drag
+  // a vector library in behind it.
+  float posX = 0.0f, posY = 0.0f, posZ = 0.0f;
+  // The team that takes it. Kick-offs are given by the team that conceded, so
+  // the "other side" rule that decides a throw-in is not the rule there.
+  int teamID = 0;
+};
+
+// `lastTouchSide` is the defending sign of the side that last touched the ball
+// (+1 defends +x). `lastGoalTeamID` is -1 when no goal is outstanding. Teams are
+// 0 and 1, so "the other side" is `abs(id - 1)`.
+inline DeadBallDecision GetDeadBallRestart(float ballX, float ballY, float pitchHalfW,
+                                           float pitchHalfH, int lastTouchTeamID,
+                                           int lastTouchSide, int lastGoalTeamID) {
+  DeadBallDecision out;
+  const float x = ballX, y = ballY;
+  if (std::fabs(y) > pitchHalfH) {
+    out.kind = e_DeadBallRestart::ThrowIn;
+    out.posX = x < -pitchHalfW + 0.6f ? -pitchHalfW + 0.6f
+                                      : (x > pitchHalfW - 0.6f ? pitchHalfW - 0.6f : x);
+    out.posY = y > 0 ? pitchHalfH : -pitchHalfH;
+    out.teamID = abs(lastTouchTeamID - 1);
+    return out;
+  }
+  if (std::fabs(x) > pitchHalfW) {
+    // Last touch by the side defending that end gives them the corner.
+    if ((x > 0) == (lastTouchSide > 0)) {
+      out.kind = e_DeadBallRestart::Corner;
+      out.posX = pitchHalfW * (lastTouchSide > 0 ? 1 : -1);
+      out.posY = y > 0 ? pitchHalfH : -pitchHalfH;
+      out.teamID = abs(lastTouchTeamID - 1);
+    } else {
+      out.kind = e_DeadBallRestart::GoalKick;
+      out.posX = pitchHalfW * 0.92f * (lastTouchSide > 0 ? -1 : 1);
+      out.teamID = abs(lastTouchTeamID - 1);
+    }
+    return out;
+  }
+  // Inside the pitch and nothing armed: the ball was reset to the centre spot
+  // and the kick-off that should have followed it never did.
+  out.kind = e_DeadBallRestart::KickOff;
+  // the centre spot, already the zero the struct starts with
+  out.teamID = lastGoalTeamID >= 0 ? abs(lastGoalTeamID - 1) : abs(lastTouchTeamID - 1);
+  return out;
 }
 
 }  // namespace SetPieceLaws

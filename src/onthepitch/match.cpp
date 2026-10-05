@@ -5593,11 +5593,23 @@ void Match::Process() {
         stalemateCount++;
         if (stalemateLastReport_ms + 3000 < actualTime_ms) {
           stalemateLastReport_ms = actualTime_ms;
+          // The referee's buffer is the whole question when play is off: an
+          // armed restart nobody is taking, and an unarmed one my recovery in
+          // referee.cpp is supposed to catch. Which of the two is it is the
+          // difference between two fixes, so it is in the line.
+          const RefereeBuffer& buf = GetReferee()->GetBuffer();
           printf("[stalemate] %.1fs idle: inPlay %d setPiece %d | ball %.2f m/s at "
-                 "%.1f,%.1f,%.1f | forcing %s (%d) from %.1f m\n",
+                 "%.1f,%.1f,%.1f | buf active %d prepared %d started %d piece %d "
+                 "taker %s start-in %.1fs | forcing %s (%d) from %.1f m\n",
                  static_cast<float>(actualTime_ms - stalemateLastRealAction_ms) / 1000.0f,
                  (int)inPlay, (int)inSetPiece, ball->GetMovement().GetLength(),
                  ballNow.coords[0], ballNow.coords[1], ballNow.coords[2],
+                 (int)buf.active, (int)buf.prepared, (int)buf.started,
+                 (int)buf.desiredSetPiece,
+                 buf.taker ? buf.taker->GetPlayerData()->GetLastName().c_str() : "none",
+                 buf.startTime > actualTime_ms
+                     ? (buf.startTime - actualTime_ms) / 1000.0f
+                     : -1.0,
                  closest->GetPlayerData()->GetLastName().c_str(), closest->GetID(),
                  (closest->GetPosition() - ballNow).GetLength());
         }
