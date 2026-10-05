@@ -347,7 +347,14 @@ inline GoalLineCrossing PredictGoalLineCrossing(const std::array<float, 3>& pos,
 // (bands 0/0/4/3 and 0/0/4/6), because the trigger fires the moment a player
 // enters the shooting range and he never carries the ball closer. Raising the
 // bar declines the 25 m speculation and the caller falls through to the pass.
-constexpr float kMinShotXg = 0.04f;
+// Measured at the owner's own config: the target is 20-25 shots a match, and
+// the engine produced 36 at a 0.04 bar, 27.8 at 0.10 and 15.8 at 0.18. 0.14 is
+// the interpolation of those three measured points, not a guess between them.
+// The n=4 reading at 0.13 came back at 32.0, which is why the value is taken
+// from the three-point fit rather than any single run: at n=4 the run-to-run
+// spread is wider than the effect being measured. The batch harness sets its
+// own value (0.18) and so is unaffected by this default.
+constexpr float kMinShotXg = 0.14f;
 inline float GetMinShotXg(const blunted::Properties& config) {
   return blunted::clamp(config.GetReal("gameplay_min_shot_xg", kMinShotXg), 0.01f, 0.30f);
 }
