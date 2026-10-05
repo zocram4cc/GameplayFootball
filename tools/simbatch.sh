@@ -88,7 +88,7 @@ EOF
     # [pass-fail] is the breakdown the pass-accuracy target is worked from -
     # intercept / out / trap - and this filter used to drop it, so every batch
     # run reported an accuracy with no explanation of where it went. Keep it.
-    grep -aE "Full match complete|^\[balance|^\[pass-fail\]|^\[pass-ghost\]|^\[pass-gk\]|^\[pass-restart\]|^\[pass-overwritten\]" \
+    grep -aE "Full match complete|^\[balance|^\[pass-fail\]|^\[pass-ghost\]|^\[pass-gk\]|^\[pass-restart\]|^\[pass-overwritten\]|^\[stalemate\]" \
       > "$out/s$this_seed.txt"
   # `timeout` exits 124 when it killed the match; say so in the result file
   # rather than leaving an empty one that reads as "still running".

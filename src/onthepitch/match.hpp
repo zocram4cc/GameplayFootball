@@ -10,6 +10,7 @@
 #include <mutex>
 #include "utils/cloth.hpp"
 #include "utils/camtrack.hpp"
+#include "gameplaytuning.hpp"
 #include "prematchtimeline.hpp"
 #include "prematchshotpair.hpp"
 #include "goalcelebration.hpp"
@@ -347,6 +348,12 @@ public:
   // Read by the game-over census, so a match that stood still shows up in the
   // batch output and not only in the video. Zero is the only good answer.
   unsigned long GetStalemateCount() const { return stalemateCount; }
+
+  // Whether the man on the ball must give it up: nothing has happened for long
+  // enough that keeping it is no longer an option.
+  bool ShouldReleaseBall() const {
+    return stalemateRecovery == GameplayTuning::StalemateRecovery::releaseBall;
+  }
   Player* GetBallRetainer() { return ballRetainer; }
   void SetBallRetainer(Player* retainer) { ballRetainer = retainer; }
 
@@ -1016,6 +1023,11 @@ protected:
   // nearest man because nobody was playing it, and when that was last printed,
   // so a long freeze reports once every five seconds rather than every tick.
   unsigned long stalemateCount = 0;
+  // What the stalemate policy decided this tick. The controllers read it: the
+  // holder is told to give the ball up, and the chasers are told to go and get
+  // it. Own go's a stale match, so every action reads one value.
+  GameplayTuning::StalemateRecovery stalemateRecovery =
+      GameplayTuning::StalemateRecovery::none;
   unsigned long stalemateLastReport_ms = 0;
   double matchTimeExact_ms;
   unsigned long actualTime_ms;

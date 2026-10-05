@@ -1149,6 +1149,16 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
 
   // name says it all
   float passThreshold = 0.1f - longPossessionFactor * 0.05f;
+  // The match has decided nothing is happening: the ball has lain at rest,
+  // untouched, long past the point where holding it is football. Take it off
+  // him. Both bars go, and the fallback below guarantees a target is chosen even
+  // when every candidate rates poorly - a bad pass is a football match moving,
+  // standing still is not.
+  const bool mustRelease = match->ShouldReleaseBall();
+  if (mustRelease) {
+    passThreshold = 0.0f;
+    passMinimum = 0.0f;
+  }
 
   // self rating
   const TacticalPlayerSituation& sit = CastPlayer()->GetTacticalSituation();
@@ -1313,6 +1323,22 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       }
 
     }  // !self
+
+    // Forced off the ball and nothing rated above the bar: play it to the best
+    // man available rather than keep holding it.
+    if (mustRelease && bestMateRating.player == 0 && !mates.empty()) {
+      float bestOdds = -1.0f;
+      for (unsigned int i = 0; i < mates.size(); i++) {
+        if (mates.at(i) == CastPlayer()) continue;
+        const float odds =
+            _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages);
+        if (odds > bestOdds) {
+          bestOdds = odds;
+          bestMateRating.player = mates.at(i);
+          bestMateRating.passType = e_FunctionType_ShortPass;
+        }
+      }
+    }
   }
 
   // Panic under pressure: count opponents closing in and let temperament decide

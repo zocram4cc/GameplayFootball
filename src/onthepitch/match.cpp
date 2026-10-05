@@ -5530,8 +5530,8 @@ void Match::Process() {
 
     // Is the match standing still? Asked every tick, decided by one pure
     // function on two measured numbers (GameplayTuning::GetStalemateRecovery).
-    const GameplayTuning::StalemateRecovery stalemate =
-        IsInPlay() && !IsInSetPiece() && GetBallRetainer() == 0
+    stalemateRecovery =
+        IsInPlay() && !IsInSetPiece()
             ? GameplayTuning::GetStalemateRecovery(matchData->GetSecondsSinceBallAction(),
                                                    ball->GetMovement().GetLength())
             : GameplayTuning::StalemateRecovery::none;
@@ -5567,7 +5567,8 @@ void Match::Process() {
     // tackle the owner asked for, and is what football does anyway: the
     // nearest man goes to the ball.
     if (IsInPlay() && !IsInSetPiece() && GetBallRetainer() == 0 &&
-        stalemate != GameplayTuning::StalemateRecovery::none) {
+        GetBallRetainer() == 0 &&
+        stalemateRecovery != GameplayTuning::StalemateRecovery::none) {
       Player* closest = nullptr;
       int closestTime_ms = 0;
       for (int side = 0; side < 2; side++) {
