@@ -1206,6 +1206,8 @@ void Humanoid::Process() {
                   .GetNormalized(0) *
               (currentBallMovement.GetLength() * 0.3f + playerMovement.GetLength() * 2.5f);
           touchVec.coords[2] += 1.2f;
+          touchVec.coords[0] = GameplayTuning::KeeperTouchAwayFromOwnGoal(
+              touchVec.coords[0], team->GetSide());
 
           touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
           if (Verbose() && bumpyRideBias > 0.01f)
@@ -1222,6 +1224,10 @@ void Humanoid::Process() {
                                .GetRotated2D(spatialState.angle);
         touchVec = touchVec * 6.0f + match->GetBall()->GetMovement() * -0.28f;
         touchVec += Vector3(0, 0, 6);
+        // A slide sends the ball back along the path it arrived on, which is
+        // straight over the keeper's own line when he is standing on it.
+        touchVec.coords[0] =
+            GameplayTuning::KeeperTouchAwayFromOwnGoal(touchVec.coords[0], team->GetSide());
 
         touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
         if (player->GetDebug() && bumpyRideBias > 0.01f)

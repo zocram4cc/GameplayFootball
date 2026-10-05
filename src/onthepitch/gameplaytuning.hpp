@@ -386,6 +386,22 @@ inline StalemateRecovery GetStalemateRecovery(float idleSeconds_s, float ballSpe
   if (idleSeconds_s >= kStalemateForceAction_s * 3.0f) return StalemateRecovery::releaseBall;
   return StalemateRecovery::pressBall;
 }
+
+// A keeper's own touch may not carry the ball back over his line. Every keeper
+// contact - the parry, the failed deflect and the slide - mixes the ball's
+// incoming direction with the keeper's own movement, and either can point
+// goalwards: a keeper backpedalling pushes the ball the wrong way, and the
+// slide's `ballMovement * -0.28` sends it back along the ball's own path,
+// which is over the line when he is standing on it. That is the easy save that
+// became the goal the owner reported.
+//
+// Pure: the touch's x component, and the side he defends (+1 = the +x goal, so
+// -x points away from it). A goalward component becomes zero, leaving the ball
+// to be pushed wide or up instead of in.
+inline float KeeperTouchAwayFromOwnGoal(float touchVelocityX_ms, float teamSide) {
+  const float awayFromGoal = -teamSide;
+  return touchVelocityX_ms * awayFromGoal < 0.0f ? 0.0f : touchVelocityX_ms;
+}
 // There is no second "is it worth shooting" predicate: the trigger asks once,
 // with this bar over the player's appetite (ElizaController), and the aim
 // function no longer asks at all. Two gates on the same question, at two

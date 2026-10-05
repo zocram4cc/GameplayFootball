@@ -889,3 +889,25 @@ TEST(GameplayTuningStalemate, AStalemateThatPersistsAlsoForcesTheHolderToRelease
   EXPECT_EQ(GameplayTuning::GetStalemateRecovery(longer, 30.0f),
             GameplayTuning::StalemateRecovery::none);
 }
+
+// A keeper's own touch must never carry the ball back over his line. The
+// reported goal was exactly that: a keeper who had come off his line and
+// ended on the ground, whose contact sent an easy ball into his own net. All
+// three keeper-contact paths mix the ball's incoming direction and the keeper's
+// own movement into the touch, and either can point goalwards.
+TEST(GameplayTuningKeeperTest, AParryIsNeverPushedBackOverHisOwnLine) {
+  // The convention, pinned because getting it backwards silently inverts the
+  // rule: a side attacks pitchHalfW * -side, so side +1 defends the +x goal and
+  // -x points away from it. That is the same direction the parry push already
+  // uses (Vector3(-team->GetSide(), 0, 0) * GetKeeperParryPush).
+  //
+  // side +1, defends +x: a touch towards +x is goalwards and is cancelled, one
+  // towards -x is away and survives.
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperTouchAwayFromOwnGoal(3.0f, 1), 0.0f);
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperTouchAwayFromOwnGoal(-3.0f, 1), -3.0f);
+  // side -1, defends -x: mirrored.
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperTouchAwayFromOwnGoal(-3.0f, -1), 0.0f);
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperTouchAwayFromOwnGoal(3.0f, -1), 3.0f);
+  // A touch of exactly zero is left alone rather than nudged.
+  EXPECT_FLOAT_EQ(GameplayTuning::KeeperTouchAwayFromOwnGoal(0.0f, 1), 0.0f);
+}
