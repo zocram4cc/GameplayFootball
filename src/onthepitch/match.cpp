@@ -3693,6 +3693,17 @@ void Match::ProcessCutsceneBench() {
                                     1500);
 }
 
+void Match::ReleaseRestartAfterCutscene() {
+  // Only a restart that is still waiting, and still waiting FURTHER OUT than the
+  // whistle plus a moment, is ours to pull in. One already prepared or already
+  // started belongs to the referee's own schedule.
+  const RefereeBuffer& buf = referee->GetBuffer();
+  if (!buf.active || buf.prepared || buf.started) return;
+  const unsigned long now = GetActualTime_ms();
+  if (buf.prepareTime <= now) return;
+  referee->AlterSetPiecePrepareTime(now + 1500);
+}
+
 void Match::StartNextQueuedCutscene() {
   // One shot at a time, each played as any other cutscene is - so pause holds it and
   // space skips it, and skipping one moves on to the next rather than the match.
@@ -4427,6 +4438,7 @@ void Match::UpdateIngameCamera() {
       return;
     }
     activeCutscene = nullptr;
+    ReleaseRestartAfterCutscene();
   }
 
   // A director shot with a procedural camera and no installed track. The same
@@ -5387,6 +5399,7 @@ void Match::Process() {
       UserEventManager::GetInstance().GetKeyboardState(SDLK_SPACE)) {
     UserEventManager::GetInstance().SetKeyboardState(SDLK_SPACE, false);
     CutscenePlayback::Skip(cutscenePlayback);
+    ReleaseRestartAfterCutscene();
     Log(e_Notice, "Match", "Process", "cutscene skipped");
   }
 

@@ -986,6 +986,16 @@ protected:
   // Plays the next shot of a queued sequence - the closing ceremony is several.
   void StartNextQueuedCutscene();
 
+  // A restart deferred for a cutscene comes back when that cutscene ends.
+  //
+  // The deferral is set once, optimistically, for the cutscene's whole length -
+  // a goal celebration asks for its full performance plus 1.5 s. Nothing ever
+  // pulled it in again, so a celebration that ended early, or that was skipped,
+  // left the match waiting out the remainder with the ball dead and twenty-two
+  // players standing still. Measured: the restart deferred past 30 s and the
+  // pitch static from 26:05.
+  void ReleaseRestartAfterCutscene();
+
  protected:
   // per-team chant loops (config "team1_chant"/"team2_chant"), gained up on goals
   boost::intrusive_ptr<Sound> teamChant[2];
