@@ -1154,8 +1154,6 @@ void Humanoid::Process() {
         // pushed to safety by his GK Clearing (PlayerData defaults the gk_*
         // keys from the outfield analogues for profiles that predate them).
         bool canRetain = true;  // can we grab hold of the ball?
-        if (currentAnim->anim->GetVariable("outgoing_retain_state").compare("") == 0)
-          canRetain = false;  // not the right anim, hopeless!
         if (match->GetBallRetainer() != 0)
           canRetain = false;  // somebody is already holding the ball :( (dafuq, this should not
                               // happen, right?)
@@ -1167,6 +1165,17 @@ void Humanoid::Process() {
         // every shot was parried and the keeper looked like he could not hold a
         // ball (owner, 15-09). Now: within his catching speed he holds it,
         // beyond it he parries, and GK Clearing decides how far.
+        // Whether the DEFLECT ANIMATION declares itself able to retain the ball
+        // used to veto the catch outright, before pace was looked at: an anim
+        // with no outgoing_retain_state meant "hopeless", so the keeper pushed
+        // away balls he could easily have held. Measured over two matches: 8 of
+        // 20 touches, and most of those parries were on balls slower than his own
+        // catch speed. That is the "he misses REALLY easy catches" the owner
+        // reported, and it was animation data deciding, not the keeper.
+        //
+        // The catch is now decided by what the comment below already says the
+        // model is - his catching pace - and nothing else but somebody already
+        // holding the ball.
         const float relativeSpeed =
             (match->GetBall()->GetMovement() - player->GetMovement()).GetLength();
         if (relativeSpeed > GameplayTuning::GetKeeperCatchSpeed_ms(player->GetStat("gk_catching")))

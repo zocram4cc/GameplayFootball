@@ -402,11 +402,12 @@ void GameOverPage::Process() {
     // he missed" actually happens. `slow` is the sharp number: a parry inside
     // his own catch speed is not a judgement about pace, it is him letting go of
     // a ball he could hold.
-    printf("[balance-keeper-touch] holds %i-%i | parries %i-%i (slow %i-%i) | "
-           "parry pace %.1f-%.1f m/s\n",
+    printf("[balance-keeper-touch] holds %i-%i | parries %i-%i (slow %i-%i, anim veto "
+           "was %i-%i) | parry pace %.1f-%.1f m/s\n",
            matchData->GetKeeperHolds(0), matchData->GetKeeperHolds(1),
            matchData->GetKeeperParries(0), matchData->GetKeeperParries(1),
            matchData->GetKeeperSlowParries(0), matchData->GetKeeperSlowParries(1),
+           matchData->GetKeeperAnimVeto(0), matchData->GetKeeperAnimVeto(1),
            matchData->GetKeeperParryMeanSpeed_ms(0),
            matchData->GetKeeperParryMeanSpeed_ms(1));
     // Which lever would have saved them. Census only - nothing is applied - and
