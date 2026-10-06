@@ -397,6 +397,18 @@ void GameOverPage::Process() {
            matchData->GetKeeperBeatenMeanLateral_m(0), matchData->GetKeeperBeatenMeanLateral_m(1),
            matchData->GetKeeperBeatenMeanOverhead_m(0),
            matchData->GetKeeperBeatenMeanOverhead_m(1));
+    // What he did with the balls he actually reached. The save count cannot tell
+    // a catch from a parry, and a parry put back into play is how "an easy catch
+    // he missed" actually happens. `slow` is the sharp number: a parry inside
+    // his own catch speed is not a judgement about pace, it is him letting go of
+    // a ball he could hold.
+    printf("[balance-keeper-touch] holds %i-%i | parries %i-%i (slow %i-%i) | "
+           "parry pace %.1f-%.1f m/s\n",
+           matchData->GetKeeperHolds(0), matchData->GetKeeperHolds(1),
+           matchData->GetKeeperParries(0), matchData->GetKeeperParries(1),
+           matchData->GetKeeperSlowParries(0), matchData->GetKeeperSlowParries(1),
+           matchData->GetKeeperParryMeanSpeed_ms(0),
+           matchData->GetKeeperParryMeanSpeed_ms(1));
     // Which lever would have saved them. Census only - nothing is applied - and
     // it is what settles the keeper on one batch instead of one batch per
     // guess: if a slightly longer standing frame takes several of the

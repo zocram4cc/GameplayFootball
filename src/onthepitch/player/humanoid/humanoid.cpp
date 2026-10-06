@@ -1177,7 +1177,14 @@ void Humanoid::Process() {
 
         if (canRetain) {
           match->SetBallRetainer(CastPlayer());
+          if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
+            match->GetMatchData()->RecordKeeperHold(team->GetID());
         } else {
+          if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK)
+            match->GetMatchData()->RecordKeeperParry(
+                team->GetID(), relativeSpeed,
+                relativeSpeed <= GameplayTuning::GetKeeperCatchSpeed_ms(
+                                    player->GetStat("gk_catching")));
           // A parry is a save too. Only the catch path used to record one, and
           // since the catching model parries anything quicker than the keeper's
           // catch speed - which is most on-target shots - the stats card and

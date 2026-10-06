@@ -530,6 +530,33 @@ public:
   }
   int GetKeeperCollections(int teamID) const { return keeperCollections[teamID]; }
 
+  // What the keeper DID with the ball he reached, which the save count cannot
+  // say: a hold and a parry are both recorded as saves, and a parry put back
+  // into play is how an easy catch becomes a goal. The owner reports him
+  // "missing REALLY easy catches" and nothing here could tell a parry from a
+  // catch, or say how hard the ball was when he let it go.
+  void RecordKeeperHold(int keeperTeamID) { keeperHolds[keeperTeamID]++; }
+  // `withinCatchSpeed` is judged by the caller, not here: this layer stays
+  // engine-independent and knows nothing of the catching model.
+  void RecordKeeperParry(int keeperTeamID, float relativeSpeed_ms, bool withinCatchSpeed) {
+    keeperParries[keeperTeamID]++;
+    keeperParrySpeedSum_ms[keeperTeamID] += relativeSpeed_ms;
+    keeperParrySpeedCount[keeperTeamID]++;
+    // Inside his own catch speed a parry is not a judgement about pace at all -
+    // it is him letting the ball go when he could have held it. Counted
+    // separately, because that is the case the complaint is about.
+    if (withinCatchSpeed)
+      keeperSlowParries[keeperTeamID]++;
+  }
+  int GetKeeperHolds(int teamID) const { return keeperHolds[teamID]; }
+  int GetKeeperParries(int teamID) const { return keeperParries[teamID]; }
+  int GetKeeperSlowParries(int teamID) const { return keeperSlowParries[teamID]; }
+  float GetKeeperParryMeanSpeed_ms(int teamID) const {
+    return keeperParrySpeedCount[teamID] > 0
+               ? keeperParrySpeedSum_ms[teamID] / keeperParrySpeedCount[teamID]
+               : 0.0f;
+  }
+
   // Questionable-play logging, debug-only (see the deny list in the match goal).
   // Passed to the log at the end of the match by GameOverPage so pass/play quality
   // is measured rather than guessed at.
@@ -655,6 +682,11 @@ protected:
   int tackles[2] = {0, 0};
   int saves[2] = {0, 0};
   int keeperCollections[2] = {0, 0};
+  int keeperHolds[2] = {0, 0};
+  int keeperParries[2] = {0, 0};
+  int keeperSlowParries[2] = {0, 0};
+  float keeperParrySpeedSum_ms[2] = {0.0f, 0.0f};
+  int keeperParrySpeedCount[2] = {0, 0};
   int pendingShotTeamID = -1;
   unsigned long pendingShotTime_ms = 0;
   int passFailTrap[2] = {0, 0};
