@@ -426,11 +426,39 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
             UsesFullyManualPlayerSwitching(*GetConfiguration())) &&
            CastPlayer()->GetFormationEntry().role != e_PlayerRole_GK) {
     if (CastPlayer()->GetTimeNeededToGetToBall_ms() < 1000) {
-      Player* passRequest = team->GetController()->ConsumePassRequest(CastPlayer());
-      if (passRequest) {
-        _AddPass(commandQueue, passRequest, e_FunctionType_ShortPass);
+      // Movement first, decision second. A designated chaser standing next to
+      // a still ball he does not have is the shape the 14-second stalls take:
+      // inPlay 1, ball at rest, forced man 0.4 m off it, nothing queued that
+      // closes the gap. Pass selection runs and the step onto the ball never
+      // does. So step onto it first - once he has it, the branch below is
+      // business as usual.
+      const float ballSpeed_ms = match->GetBall()->GetMovement().GetLength();
+      const bool hasIt = match->GetBallRetainer() == player || CastPlayer()->HasPossession();
+      // Not gated on the stalemate clock. The inPlay-1 stalls this exists for
+      // idle at 5-14 s, well under ShouldReleaseBall's 15, so gating on it would
+      // leave the measured case untouched. Close, designated, and without it:
+      // step onto it.
+      if (!hasIt && ballSpeed_ms <= GameplayTuning::kStalemateBallSpeed_ms) {
+        const Vector3 toBall =
+            match->GetBall()->GetPositionBuffer() - CastPlayer()->GetPosition();
+        if (toBall.GetLength() > 0.1f) {
+          PlayerCommand step;
+          step.desiredFunctionType = e_FunctionType_Movement;
+          step.useDesiredMovement = false;
+          step.useDesiredLookAt = true;
+          step.desiredDirection = toBall.GetNormalized(CastPlayer()->GetDirectionVec());
+          step.desiredVelocityFloat = sprintVelocity;
+          step.desiredLookAt = match->GetBall()->GetPositionBuffer();
+          commandQueue.push_back(step);
+          extraHaste = true;
+        }
       } else {
-        GetOnTheBallCommands(commandQueue, rawInputDirection, rawInputVelocityFloat);
+        Player* passRequest = team->GetController()->ConsumePassRequest(CastPlayer());
+        if (passRequest) {
+          _AddPass(commandQueue, passRequest, e_FunctionType_ShortPass);
+        } else {
+          GetOnTheBallCommands(commandQueue, rawInputDirection, rawInputVelocityFloat);
+        }
       }
     } else {
       // Out of reach of the ball, so he cannot pass or dribble it - but he can
