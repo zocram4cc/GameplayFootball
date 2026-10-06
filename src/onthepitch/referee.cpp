@@ -27,6 +27,12 @@
 // running until the period ended.
 static constexpr unsigned long kDeadBallRestart_ms = 4000;
 
+// How far a restart may be pushed back from the moment play stopped. Celebrations
+// and replays run for seconds, so this is well clear of any of them; it exists
+// so that whatever is holding a restart stops holding it. Without it a per-tick
+// deferral from the referee's special animation held a goal kick for 107 s.
+static constexpr unsigned long kMaxRestartDeferral_ms = 30000;
+
 Referee::Referee(Match* match) : match(match) {
   buffer.desiredSetPiece = e_SetPiece_KickOff;
   buffer.teamID = 0;
@@ -605,6 +611,35 @@ void Referee::PrepareSetPiece(e_SetPiece setPiece) {
 
 void Referee::AlterSetPiecePrepareTime(unsigned long newTime_ms) {
   if (buffer.active) {
+    // Bounded. This is called once per tick by several things - a goal
+    // celebration's beats, a cutscene, and the referee playing his special
+    // animation (match.cpp) - each pushing the restart further out so it does
+    // not fire underneath them. Nothing stopped any of them going on for ever:
+    // the referee's special animation pushed it one second at a time for as
+    // long as it lasted, and the restart simply never arrived. Measured: a goal
+    // kick armed and prepared, `started 0`, `start-in` pinned at exactly 3.0 s
+    // on every sample for 107 s - the longest stall in the set, and the whole
+    // match standing still from 26:05 while the clock ran on.
+    //
+    // So the deferral is capped from the moment play stopped. The cap is well
+    // beyond any real celebration or replay, which run for seconds, so this
+    // never truncates one; it exists so that whatever is holding the restart
+    // stops holding it.
+    const unsigned long deferDeadline_ms = buffer.stopTime + kMaxRestartDeferral_ms;
+    if (newTime_ms > deferDeadline_ms) {
+      if (!deferralRefusedLogged) {
+        deferralRefusedLogged = true;
+        printf("[dead-ball] restart deferred past %u ms by %u; taking it anyway\n",
+               kMaxRestartDeferral_ms, newTime_ms - buffer.stopTime);
+      }
+      newTime_ms = deferDeadline_ms;
+    }
+    if (newTime_ms < buffer.stopTime + 500) {
+      // And never pulled earlier than the stop itself, which is what a caller
+      // asking for "now" means when the whistle has only just gone.
+      newTime_ms = buffer.stopTime + 500;
+    }
+    deferralRefusedLogged = false;
     buffer.prepareTime = newTime_ms;
     buffer.startTime = buffer.prepareTime + 2000;
     buffer.prepared = false;
