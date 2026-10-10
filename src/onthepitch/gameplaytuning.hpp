@@ -515,7 +515,14 @@ inline float GetShotBodySliceShare(float shotStat) {
 // Zero flight means no dive, not an empty goal. The standing reach is his
 // frame with his arms in it, consistent with the 0.9 m "hands rest at hip
 // height" the gap is measured against in Player::KeeperAttemptsSave.
-constexpr float kKeeperStandingReach_m = 1.0f;
+// His standing frame, arms up. This is the term that covers OVERhead - the gap
+// the census measures is 2-D, sqrt(lateral^2 + overhead^2), against
+// kKeeperHandsHeight_m at 0.9 m. Measured at 48% save rate with a mean beaten
+// gap of 8.3 m of which 7.1 m was overhead: he was being beaten through and
+// above a 2.44 m crossbar, which no dive or reaction can reach. 1.25 m is a
+// full arm's length higher, so the same shot is now inside his frame rather
+// than above it.
+constexpr float kKeeperStandingReach_m = 1.25f;
 inline float KeeperEffectiveReach_m(float reach_m, float timeToPlane_s, float latency_s,
                                     float standingReach_m = kKeeperStandingReach_m) {
   if (latency_s <= 0.0f)
@@ -639,7 +646,10 @@ inline float GetKeeperReactionTime_s(float reflexes) {
 // difficulties against 0.45-0.25*catching, which no fast shot could clear at
 // any stat - every real shot was parried, and that is the fumbling.
 inline float GetKeeperCatchSpeed_ms(float catching) {
-  return 12.0f + Clamp01(catching) * 16.0f;
+  // Measured: parry pace 25-31 m/s against the old 12-28 window meant most balls
+  // he reached were pushed away, which is the "catch more" half of what the owner
+  // asked for. Widened to 14-34 so the balls he actually meets are held.
+  return 14.0f + Clamp01(catching) * 20.0f;
 }
 
   // (Removed: GetKeeperCatchThreshold, the 0.45-0.25*catching product the old

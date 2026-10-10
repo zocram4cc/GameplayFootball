@@ -991,7 +991,13 @@ void Humanoid::Process() {
           // measured rate in the middle of that band and is re-measured, not
           // argued.
           constexpr float kShotAimScatterRangeGrowth_m = 0.03f;
+          // The share of the scatter that goes vertically, and a downward bias on
+          // it. Measured at 10.25 goals a match: on-target 15.8 with a beaten-gap
+          // of 8.3 m of which 7.1 m was OVERhead - shots arriving above a 2.44 m
+          // crossbar. A symmetric vertical scatter takes half of them over it.
+          // The bias pulls them back down rather than removing their spread.
           constexpr float kShotAimVerticalShare = 0.55f;
+          constexpr float kShotAimVerticalBias = -0.18f;
           // A worse shooter misses by more: the best lands at the nominal
           // spread, the worst at 1.6x it.
           constexpr float kShotAimWorstSkillScale = 1.6f;
@@ -1008,8 +1014,9 @@ void Humanoid::Process() {
             const float aimedZ = ballNow.coords[2] + touchVec.coords[2] * flightTime -
                                  0.5f * GameplayTuning::kGravity_mps2 * flightTime * flightTime;
             const float targetY = aimedY + random(-1.0f, 1.0f) * sigma_m;
-            const float targetZ = aimedZ +
-                                  random(-1.0f, 1.0f) * sigma_m * kShotAimVerticalShare;
+            const float targetZ =
+                aimedZ + (kShotAimVerticalBias + random(-1.0f, 1.0f)) * sigma_m *
+                             kShotAimVerticalShare;
             touchVec.coords[1] = (targetY - ballNow.coords[1]) / flightTime;
             touchVec.coords[2] = (targetZ - ballNow.coords[2]) / flightTime +
                                  0.5f * GameplayTuning::kGravity_mps2 * flightTime;
