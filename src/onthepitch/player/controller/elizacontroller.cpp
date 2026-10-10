@@ -500,8 +500,16 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     // if (boundForGoal && hasUniquePossession) printf("has unique possession, so no deflect anims
     // (poss: %f)\n", possessionAmount);
     if (!hasUniquePossession || possessionAmount < 3.4f) {
+      // A ball bound for goal is exactly when he must be able to HOLD it.
+      // `boundForGoal` used to switch the pickup anims off, so the harder the
+      // shot to stop, the less he was allowed to catch it - and a ball he meets
+      // but does not hold is a rebound. Measured: save rate 25%, beaten gaps of
+      // 1-2 m, holds rising while saves fell, 14.25 goals a match against the
+      // 3.88 the owner's target asks for. Whether he can make the save at all
+      // is KeeperAttemptsSave's business, one call down; this decides only
+      // whether the catch he makes can stick.
       bool onlyPickupAnims = false;
-      if (!boundForGoal && possessionAmount > 1.3f)
+      if (possessionAmount > 1.3f)
         onlyPickupAnims = true;
       _KeeperDeflectCommand(commandQueue, onlyPickupAnims);
     }
