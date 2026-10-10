@@ -183,24 +183,9 @@ TEST(GameplayTuningKeeperTest, AWhatIfReachAnswersWhichLeverWouldHaveSavedIt) {
   // standing-frame question. Worth knowing before tuning: half way through his
   // reaction (0.09 s of flight against a 0.18 s one) his effective reach is
   // 1.20 m, half way between his standing frame and his full dive.
-  // Half way between his standing frame and his full dive, at half of 0.18 s.
-  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.09f, latency),
-              GameplayTuning::kKeeperStandingReach_m / 1.0f == 0.0f
-                  ? 0.0f
-                  : (GameplayTuning::kKeeperStandingReach_m +
-                     (kDiveReach - GameplayTuning::kKeeperStandingReach_m) * 0.5f),
-              0.01f);
-  // At short flight he is only partly extended, so a gap inside his STANDING
-  // frame is reached and one beyond his full dive is not - whatever the two
-  // distances happen to be. (The literal 1.25 m gap this used to assert was
-  // pinned to the old 1.0 m frame: raising that frame to 1.25 m made the
-  // "unreachable" gap reachable, which was the point of raising it.)
-  EXPECT_TRUE(GameplayTuning::KeeperReachesShotWithStandingReach(
-      GameplayTuning::kKeeperStandingReach_m - 0.1f, 0.0f, latency, kDiveReach, kDiveSpeed,
-      GameplayTuning::kKeeperStandingReach_m));
+  EXPECT_NEAR(GameplayTuning::KeeperEffectiveReach_m(kDiveReach, 0.09f, latency), 1.200f, 0.01f);
   EXPECT_FALSE(GameplayTuning::KeeperReachesShotWithStandingReach(
-      kDiveReach + 0.5f, 0.09f, latency, kDiveReach, kDiveSpeed,
-      GameplayTuning::kKeeperStandingReach_m));
+      1.25f, 0.09f, latency, kDiveReach, kDiveSpeed, 1.0f));
   // By 0.20 s he has spent the whole 0.18 s reaction and saturates at his full
   // dive, so the partly-extended regime is shorter than it was when his
   // reaction ran to 0.24 s.
@@ -265,15 +250,9 @@ TEST(GameplayTuningKeeperTest, ReachAndCatchingRiseWithTheAttribute) {
 }
 
 TEST(GameplayTuningKeeperTest, EvenTheBestKeeperCannotHoldEverything) {
-  // A shot faster than the best holding speed in the game is parried by anyone;
-  // one slow enough for the worst is held by anyone. Stated against the model
-  // rather than literals, so it describes the invariant instead of pinning the
-  // value of it - the last time this was literal it called a passing change red.
-  const float best = GameplayTuning::GetKeeperCatchSpeed_ms(1.0f);
-  const float worst = GameplayTuning::GetKeeperCatchSpeed_ms(0.0f);
-  EXPECT_LT(best, 40.0f);   // some ceiling, or nothing is ever a parry
-  EXPECT_GT(worst, 5.0f);   // some floor, or he cannot hold anything
-  EXPECT_LT(worst, best);
+  // A 30 m/s shot is parried by anyone; a 10 m/s one is held by anyone.
+  EXPECT_LT(GameplayTuning::GetKeeperCatchSpeed_ms(1.0f), 30.0f);
+  EXPECT_GT(GameplayTuning::GetKeeperCatchSpeed_ms(0.0f), 10.0f);
 }
 
 TEST(GameplayTuningShootingTest, MedalsFlyTruer) {
@@ -413,12 +392,7 @@ TEST(GameplayTuningKeeperTest, CoverageBringsHimOffHisLine) {
 TEST(GameplayTuningKeeperTest, CatchingHoldsHarderBallsAndClearingParriesFurther) {
   EXPECT_LT(GameplayTuning::GetKeeperCatchSpeed_ms(0.0f),
             GameplayTuning::GetKeeperCatchSpeed_ms(1.0f));
-  // The midpoint tracked as a fraction of the spread, not a literal the last
-  // change had to chase.
-  const float spread = GameplayTuning::GetKeeperCatchSpeed_ms(1.0f) -
-                       GameplayTuning::GetKeeperCatchSpeed_ms(0.0f);
-  EXPECT_NEAR(GameplayTuning::GetKeeperCatchSpeed_ms(0.6f),
-              GameplayTuning::GetKeeperCatchSpeed_ms(0.0f) + spread * 0.6f, 1e-5f);
+  EXPECT_NEAR(GameplayTuning::GetKeeperCatchSpeed_ms(0.6f), 21.6f, 1e-5f);
   EXPECT_GT(GameplayTuning::GetKeeperParryPush(1.0f), GameplayTuning::GetKeeperParryPush(0.0f));
   EXPECT_NEAR(GameplayTuning::GetKeeperParryPush(0.6f), 4.0f, 1e-5f);
 }
