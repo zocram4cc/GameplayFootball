@@ -20,6 +20,7 @@ class PeImage {
   static std::optional<PeImage> Open(const std::string& path, std::string* error);
   std::optional<uint64_t> ReadU64(uint64_t va) const;
   std::string ReadCString(uint64_t va) const;  // empty when unmapped
+  bool ReadVa(uint64_t va, size_t n, uint8_t* out) const;
 
  private:
   struct Section { uint64_t va, size, raw; };
@@ -27,7 +28,6 @@ class PeImage {
   // (the exe is ~460 MB; a table needs a few KB of it).
   using Reader = std::function<bool(uint64_t offset, size_t n, uint8_t* out)>;
   static std::optional<PeImage> FromReader(Reader read, std::string* error);
-  bool ReadVa(uint64_t va, size_t n, uint8_t* out) const;
   Reader read_;
   std::vector<Section> sections_;
 };

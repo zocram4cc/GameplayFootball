@@ -100,7 +100,7 @@ TEST(HandSequenceInstall, FlagGripOnlyOnLinesmanFlagClips) {
   ASSERT_TRUE(pe) << err;
   auto motions = pes::MotionNames(*pe, vfs, &err);
   ASSERT_TRUE(motions) << err;
-  auto hands = pes::LoadHandSequences(vfs, &err);
+  auto hands = pes::LoadHandSequences(vfs, &*pe, &err);
   ASSERT_TRUE(hands) << err;
   ASSERT_EQ(hands->poses.size(), 162u);
   const int grip = int(std::find(hands->poses.begin(), hands->poses.end(), "hatanigiri") - hands->poses.begin());
@@ -116,4 +116,48 @@ TEST(HandSequenceInstall, FlagGripOnlyOnLinesmanFlagClips) {
           EXPECT_NE(name.find("assistant"), std::string::npos) << name;  // incl. layer_assistant_*
         }
   EXPECT_GT(gripped, 0);
+}
+
+// docs/re/pes-re-animselect.md 11.3.1: 17 {key, category} fallback entries in
+// the exe; each key resolves through Sequenceinfo.bin to a raw id below 216,
+// whose own hand records are that fallback's timelines. The game's live
+// durations equal each timeline's last end frame / 30.
+TEST(HandSequenceInstall, FallbacksResolveThroughSequenceinfo) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  pes::PesVfs vfs;
+  std::string err;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto pe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err);
+  ASSERT_TRUE(pe) << err;
+  auto hands = pes::LoadHandSequences(vfs, &*pe, &err);
+  ASSERT_TRUE(hands) << err;
+  constexpr size_t FALLBACK_ENTRIES = 17;
+  ASSERT_EQ(hands->fallbacks.size(), FALLBACK_ENTRIES);
+  const auto& first = hands->fallbacks[0];
+  EXPECT_EQ(first.key, 2564);
+  EXPECT_EQ(first.category, 0);
+  // Live readout: entry 0 lasts 1.4 s (both hands).
+  EXPECT_NEAR(first.durationSeconds, 1.4f, 1e-4f);
+  const auto& linesman = hands->fallbacks[9];  // key 6, category 2: the flag grip
+  EXPECT_EQ(linesman.category, 2);
+  const int grip = int(std::find(hands->poses.begin(), hands->poses.end(), "hatanigiri") - hands->poses.begin());
+  bool gripped = false;
+  for (const auto* side : {&linesman.left, &linesman.right})
+    for (const auto& e : *side) gripped |= e.clip == grip;
+  EXPECT_TRUE(gripped) << "the linesman fallback holds the flag grip";
+}
+
+// Idle hands cycle through the variants of their category: after one entry's
+// duration the next entry of the same category plays.
+TEST(HandSequence, FallbackCyclesThroughItsCategory) {
+  pes::HandSequences hs;
+  hs.fallbacks = {{100, 0, 0, {{1, 0, 3}}, {{1, 0, 3}}, 0.1f},
+                  {101, 1, 0, {{9, 0, 3}}, {{9, 0, 3}}, 0.1f},
+                  {102, 0, 0, {{2, 0, 3}}, {{2, 0, 3}}, 0.1f}};
+  constexpr float INSIDE_FIRST = 0.05f, INSIDE_SECOND = 0.15f, WRAPPED = 0.25f;
+  auto clipAt = [&](float t) { return pes::EvaluateFallback(hs, 0, t, false)[0].clip; };
+  EXPECT_EQ(clipAt(INSIDE_FIRST), 1);
+  EXPECT_EQ(clipAt(INSIDE_SECOND), 2);
+  EXPECT_EQ(clipAt(WRAPPED), 1);
 }

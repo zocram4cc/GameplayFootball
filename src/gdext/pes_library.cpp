@@ -36,8 +36,9 @@ Error PesLibrary::open(const String& root) {
   if (table) appearances_ = std::move(*table);
   else UtilityFunctions::push_warning("PES21 PlayerAppearance.bin unreadable: ", ToGd(err));
   // Hand rig. The motion name table lives in the game's executable.
-  if (auto exe = pes::PeImage::Open(FromGd(root) + "/" + EXE_NAME, &err)) motionNames_ = pes::MotionNames(*exe, vfs_, &err);
-  if (motionNames_) handSequences_ = pes::LoadHandSequences(vfs_, &err);
+  auto exe = pes::PeImage::Open(FromGd(root) + "/" + EXE_NAME, &err);
+  if (exe) motionNames_ = pes::MotionNames(*exe, vfs_, &err);
+  if (motionNames_) handSequences_ = pes::LoadHandSequences(vfs_, &*exe, &err);
   if (handSequences_) handPoses_ = pesrig::LoadHandPoses(vfs_, handSequences_->poses, &err);
   if (!handPoses_) UtilityFunctions::push_warning("PES21 hand rig unavailable, hands stay at rest: ", ToGd(err));
   return OK;

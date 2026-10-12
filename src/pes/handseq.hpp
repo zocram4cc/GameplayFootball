@@ -35,11 +35,27 @@ std::vector<HandWeight> EvaluateHand(const std::vector<HandEvent>& events, float
 // The game's hand pose order: the clip stems sorted by upper case.
 std::vector<std::string> HandPoseOrder(std::vector<std::string> stems);
 
+// An idle hand sequence: used when a clip has no hand timeline, or its
+// Sequenceinfo bit hands the hand to the fallback (pes-re-animselect.md 11.3).
+struct HandFallback {
+  int key = 0, category = 0;  // from the exe table at 0x142b67ef0
+  int rawId = 0;              // Sequenceinfo id for the key (< 216)
+  std::vector<HandEvent> left, right;
+  float durationSeconds = 0;  // last end frame / 30
+};
+
 struct HandSequences {
   std::vector<std::string> poses;  // index -> hand gani stem
-  HandEvents left, right;
+  HandEvents left, right;          // by motionNo
+  std::vector<HandFallback> fallbacks;
+  std::unordered_map<int, uint8_t> useFallback;  // motionNo -> bit 0 left, bit 1 right
 };
 inline constexpr const char* kHandPoseDir = "common/anime/FoxAnim/Hand/Animations/";
-std::optional<HandSequences> LoadHandSequences(const PesVfs& vfs, std::string* error);
+// The exe supplies the fallback table; without it there are no fallbacks.
+std::optional<HandSequences> LoadHandSequences(const PesVfs& vfs, const class PeImage* exe, std::string* error);
+
+// Idle hands of `category` at `t` seconds: the category's entries play in
+// table order, each for its duration, then repeat.
+std::vector<HandWeight> EvaluateFallback(const HandSequences& hs, int category, float t, bool right);
 
 }  // namespace pes

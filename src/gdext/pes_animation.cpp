@@ -63,20 +63,27 @@ Error PesAnimation::apply(Skeleton3D* skeleton, double time_seconds, bool in_pla
   return OK;
 }
 
-// Each hand blends up to four static poses from the clip's own timeline; a clip
-// without one keeps the engine's default track pose, normal3 (FUN_141eb6840).
+// Each hand blends up to four static poses from the clip's own timeline. A clip
+// without one, or whose Sequenceinfo bit hands that hand over, plays the idle
+// fallback cycle (category 0: free play) at the clip time (pes-re-animselect.md
+// 11.3). ponytail: player-state categories (keeper ready/holding, linesman)
+// need the match; the viewer is always category 0.
 void PesAnimation::ApplyHands(Skeleton3D* skeleton, double time_seconds) const {
   const auto* seq = library_.is_valid() ? library_->hand_sequences() : nullptr;
   const auto* lib = library_.is_valid() ? library_->hand_poses() : nullptr;
   if (!seq || !lib) return;
-  static constexpr const char* DEFAULT_HAND_POSE = "normal3";
-  const int fallback = int(std::find(seq->poses.begin(), seq->poses.end(), DEFAULT_HAND_POSE) - seq->poses.begin());
+  constexpr int FREE_PLAY_CATEGORY = 0;
+  static constexpr const char* DEFAULT_HAND_POSE = "normal3";  // the engine's track default (FUN_141eb6840)
+  const int fallbackPose = int(std::find(seq->poses.begin(), seq->poses.end(), DEFAULT_HAND_POSE) - seq->poses.begin());
+  auto bits = motionNo_ >= 0 ? seq->useFallback.find(motionNo_) : seq->useFallback.end();
   std::vector<pesrig::Quat> local(library_->rig()->bones.size());
   for (const bool right : {false, true}) {
     const auto& table = right ? seq->right : seq->left;
     auto it = motionNo_ >= 0 ? table.find(motionNo_) : table.end();
-    auto weights = it != table.end() ? pes::EvaluateHand(it->second, float(time_seconds)) : std::vector<pes::HandWeight>{};
-    if (weights.empty()) weights = {{fallback, 1.0f}};
+    const bool handedOver = bits != seq->useFallback.end() && (bits->second >> (right ? 1 : 0)) & 1;
+    auto weights = it != table.end() && !handedOver ? pes::EvaluateHand(it->second, float(time_seconds))
+                                                    : pes::EvaluateFallback(*seq, FREE_PLAY_CATEGORY, float(time_seconds), right);
+    if (weights.empty()) weights = {{fallbackPose, 1.0f}};
     pesrig::ApplyHandPose(*library_->rig(), *lib, weights, right, local);
   }
   const auto& bones = library_->rig()->bones;

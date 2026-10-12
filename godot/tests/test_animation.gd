@@ -13,6 +13,11 @@ const BODY_HEIGHT_RANGE_M := Vector2(0.05, 2.0)
 # The linesman's flag-hand layer: one hand grips the flag (hatanigiri), the other
 # keeps another pose (pes-re-animselect.md 11.5).
 const LINESMAN_FLAG_CLIP := "layer_assistant_flag_hand_R"
+const IDLE_CLIP_WITHOUT_HANDS := "idle"   # no Handl/Handrbase records
+const IDLE_EARLY_S := 0.1
+# Entry 0 (key 2564) holds normal_yubimage for its whole 1.4 s; at 1.5 s the
+# cycle is in key 3318, halfway from normal_yubimage to amanigiri.
+const IDLE_LATE_S := 1.5
 
 var failures := 0
 
@@ -77,5 +82,15 @@ func _ready() -> void:
 	var r := skeleton.get_bone_pose_rotation(skeleton.find_bone("right_index_pip"))
 	var r_mirrored := Quaternion(r.x, -r.y, -r.z, r.w)
 	check(absf(l.dot(r_mirrored)) < MOVED_DOT, "linesman hands hold different poses")
+
+	# A clip without its own hand timeline plays the idle fallback cycle
+	# (pes-re-animselect.md 11.3.1), so its fingers move over time.
+	var idle := PesAnimation.new()
+	check(idle.load(library, IDLE_CLIP_WITHOUT_HANDS) == OK, "idle clip loads")
+	idle.apply(skeleton, IDLE_EARLY_S, true)
+	var early := skeleton.get_bone_pose_rotation(skeleton.find_bone("left_index_mcp"))
+	idle.apply(skeleton, IDLE_LATE_S, true)
+	var late := skeleton.get_bone_pose_rotation(skeleton.find_bone("left_index_mcp"))
+	check(absf(early.dot(late)) < MOVED_DOT, "idle fingers change over time (fallback cycle)")
 
 	get_tree().quit(1 if failures > 0 else 0)

@@ -163,7 +163,7 @@ HandFixture* Hands() {
     std::string err;
     if (!f.vfs.Mount(root, &err)) return ADD_FAILURE() << err, nullptr;
     f.rig = pesrig::BuildRig(f.vfs, &err);
-    f.seq = pes::LoadHandSequences(f.vfs, &err);
+    f.seq = pes::LoadHandSequences(f.vfs, nullptr, &err);
     if (f.seq) f.poses = pesrig::LoadHandPoses(f.vfs, f.seq->poses, &err);
     if (!f.rig || !f.poses) return ADD_FAILURE() << err, nullptr;
   }
