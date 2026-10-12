@@ -5,13 +5,17 @@
 //   pesfmt_dump ask <path> --pes21-root DIR
 //   pesfmt_dump skl <fpk path> <inner suffix> --pes21-root DIR
 //   pesfmt_dump rig --pes21-root DIR
+//   pesfmt_dump fmdl <fpk path> --pes21-root DIR   (every .fmdl inside; summary)
+//   pesfmt_dump ftex <path> --pes21-root DIR
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "pes/ask.hpp"
+#include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
+#include "pes/ftex.hpp"
 #include "pes/skl.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
@@ -150,6 +154,67 @@ int main(int argc, char** argv) {
                   i ? "," : "", Json(b.gfName).c_str(), Json(b.pesBone).c_str(), b.parent,
                   V3(b.animLocalPos).c_str(), V3(b.animGlobalPos).c_str(), V3(b.renderGlobalPos).c_str(),
                   Q4(b.align).c_str());
+    }
+    std::printf("\n]\n");
+    return 0;
+  }
+  if (cmd == "ftex" && pos.size() == 2) {
+    auto bytes = vfs.Read(pos[1], &err);
+    if (!bytes) return fail();
+    auto img = pes::ParseFtex(*bytes, &err);
+    if (!img) return fail();
+    std::printf("{\"pixelFormat\": %d, \"width\": %d, \"height\": %d, \"mips\": %d, \"cube\": %s, \"mip0Bytes\": %zu}\n",
+                img->pixelFormat, img->width, img->height, img->mipCount, img->cube ? "true" : "false",
+                img->mips.empty() ? size_t(0) : img->mips[0].size());
+    return 0;
+  }
+  if (cmd == "fmdl" && pos.size() == 2) {
+    auto bytes = vfs.Read(pos[1], &err);
+    if (!bytes) return fail();
+    auto fpk = pes::FpkArchive::Parse(*bytes, &err);
+    if (!fpk) return fail();
+    std::printf("[");
+    bool firstModel = true;
+    for (const auto& e : fpk->entries) {
+      if (e.path.size() < 5 || e.path.compare(e.path.size() - 5, 5, ".fmdl") != 0) continue;
+      auto m = pes::ParseFmdl(std::span(*bytes).subspan(e.offset, e.size), &err);
+      std::printf("%s\n {\"file\": %s", firstModel ? "" : ",", Json(e.path).c_str());
+      firstModel = false;
+      if (!m) {
+        std::printf(", \"error\": %s}", Json(err).c_str());
+        continue;
+      }
+      std::printf(",\n  \"bones\": [");
+      for (size_t i = 0; i < m->bones.size(); ++i)
+        std::printf("%s%s", i ? ", " : "", Json(m->bones[i].name).c_str());
+      std::printf("],\n  \"textures\": [");
+      for (size_t i = 0; i < m->textures.size(); ++i)
+        std::printf("%s\n    [%s, %s]", i ? "," : "", Json(m->textures[i].directory).c_str(),
+                    Json(m->textures[i].filename).c_str());
+      std::printf("],\n  \"materials\": [");
+      for (size_t i = 0; i < m->materials.size(); ++i) {
+        const auto& mat = m->materials[i];
+        std::printf("%s\n    {\"name\": %s, \"shader\": %s, \"technique\": %s, \"textures\": {", i ? "," : "",
+                    Json(mat.name).c_str(), Json(mat.shader).c_str(), Json(mat.technique).c_str());
+        for (size_t t = 0; t < mat.textures.size(); ++t)
+          std::printf("%s%s: %d", t ? ", " : "", Json(mat.textures[t].first).c_str(), mat.textures[t].second);
+        std::printf("}}");
+      }
+      std::printf("],\n  \"meshes\": [");
+      for (size_t i = 0; i < m->meshes.size(); ++i) {
+        const auto& mesh = m->meshes[i];
+        pes::Vec3 lo{1e9f, 1e9f, 1e9f}, hi{-1e9f, -1e9f, -1e9f};
+        for (const auto& p : mesh.pos) {
+          lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+          hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        }
+        std::printf("%s\n    {\"material\": %d, \"vertices\": %zu, \"indices\": %zu, \"boneGroup\": %zu, "
+                    "\"normals\": %zu, \"tangents\": %zu, \"uv0\": %zu, \"weights\": %zu, \"min\": %s, \"max\": %s}",
+                    i ? "," : "", mesh.materialIndex, mesh.pos.size(), mesh.indices.size(), mesh.boneGroup.size(),
+                    mesh.nrm.size(), mesh.tan.size(), mesh.uv0.size(), mesh.weights.size(), V3(lo).c_str(),
+                    V3(hi).c_str());
+      }
+      std::printf("]}");
     }
     std::printf("\n]\n");
     return 0;

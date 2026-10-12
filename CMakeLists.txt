@@ -20,9 +20,13 @@ FetchContent_Declare(googletest
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+find_package(ZLIB REQUIRED)
+
 add_library(pesfmt STATIC
-  src/pes/strcode.cpp src/pes/cpk.cpp src/pes/fpk.cpp src/pes/vfs.cpp src/pes/ask.cpp src/pes/skl.cpp)
+  src/pes/strcode.cpp src/pes/cpk.cpp src/pes/fpk.cpp src/pes/vfs.cpp src/pes/ask.cpp src/pes/skl.cpp
+  src/pes/ftex.cpp src/pes/fmdl.cpp src/pes/pack_rules.cpp)
 target_include_directories(pesfmt PUBLIC src)
+target_link_libraries(pesfmt PUBLIC ZLIB::ZLIB)
 
 add_library(pesrig STATIC src/rig/rig.cpp)
 target_link_libraries(pesrig PUBLIC pesfmt)
@@ -31,8 +35,9 @@ add_executable(pesfmt_dump apps/pesfmt_dump.cpp)
 target_link_libraries(pesfmt_dump PRIVATE pesrig)
 set_target_properties(pesfmt_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps)
 
-add_library(godotfootball SHARED src/gdext/register_types.cpp)
-target_link_libraries(godotfootball PRIVATE godot-cpp)
+add_library(godotfootball SHARED
+  src/gdext/register_types.cpp src/gdext/pes_library.cpp src/gdext/pes_texture.cpp src/gdext/pes_character.cpp)
+target_link_libraries(godotfootball PRIVATE pesrig godot-cpp)
 set_target_properties(godotfootball PROPERTIES
   PREFIX lib
   OUTPUT_NAME godotfootball

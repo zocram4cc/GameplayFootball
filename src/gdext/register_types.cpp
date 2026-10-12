@@ -4,6 +4,9 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/godot.hpp>
 
+#include "gdext/pes_character.hpp"
+#include "gdext/pes_library.hpp"
+
 using namespace godot;
 
 class GFInfo : public Object {
@@ -19,6 +22,8 @@ class GFInfo : public Object {
 static void initialize_module(ModuleInitializationLevel level) {
   if (level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
   GDREGISTER_CLASS(GFInfo);
+  GDREGISTER_CLASS(PesLibrary);
+  GDREGISTER_CLASS(PesCharacterBuilder);
 }
 
 static void uninitialize_module(ModuleInitializationLevel) {}
