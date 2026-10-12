@@ -79,8 +79,15 @@ def main():
         rt._extend_bind_with_fingers()
         return {k: v[0] for k, v in rt.PES_BIND.items()}, dict(rt.PES_ALIGN)
 
+    # The hand chain departs from GF on purpose: fingers sit on PES's
+    # hand_anim_skel.ask and W(hand) maps hand_*.skl onto it exactly; GF's palm
+    # convention sat 112 degrees off (src/rig/rig.cpp). Forearms inherit the twist.
+    def hand_chain(pes):
+        return pes.startswith(("skh_", "sk_hand", "sk_forearm"))
+
     fails = 0
     worst_pos = worst_w = 0.0
+    hand_pos = hand_w = 0.0
     for side in ("_l", "_r"):
         pos, align = oracle(side)
         for b in rig:
@@ -92,12 +99,16 @@ def main():
             key = gf_key(pes)
             w = align["sk_hand" + pes[-2:]] if pes.startswith("skh_") else align[key]
             dp, dw = vdist(pos[key], b["animGlobal"]), qdist(w, b["align"])
+            if hand_chain(pes):
+                hand_pos, hand_w = max(hand_pos, dp), max(hand_w, dw)
+                continue
             worst_pos, worst_w = max(worst_pos, dp), max(worst_w, dw)
             if dp > TOLERANCE or dw > TOLERANCE:
                 fails += 1
                 print("PARITY FAIL %-20s pos %.2e  W %.2e" % (b["gf"], dp, dw))
-    print("algorithm parity: %d bones, worst position %.2e m, worst W %.2e, %d failures"
-          % (len(rig), worst_pos, worst_w, fails))
+    print("algorithm parity (outside the hand chain): worst position %.2e m, worst W %.2e, %d failures"
+          % (worst_pos, worst_w, fails))
+    print("hand chain vs GF (expected to differ): worst position %.2e m, worst W %.2e" % (hand_pos, hand_w))
 
     print("\nGF transcribed tables vs file values (informational):")
     tp = max(vdist(gf_bind[gf_key(b["pes"])], b["animGlobal"]) for b in rig)

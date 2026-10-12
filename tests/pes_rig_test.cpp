@@ -5,6 +5,10 @@
 #include <cstdlib>
 #include <string>
 
+#include <cstring>
+#include <unordered_map>
+
+#include "pes/ask.hpp"
 #include "pes/fpk.hpp"
 #include "pes/skl.hpp"
 #include "pes/vfs.hpp"
@@ -173,4 +177,100 @@ TEST(PesRig, PartSkeletonOnNeitherPoseIsUnknown) {
   foot.name = "sk_foot_l";
   foot.matrix = {1, 0, 0, 0.5f, 0, 1, 0, 0.5f, 0, 0, 1, 0.5f};  // nowhere near either ankle
   EXPECT_EQ(pesrig::ClassifyPartPose(*rig, {foot}), pesrig::PartPose::Unknown);
+}
+
+// hand_anim_skel.ask is version 2: a 0x14-byte header (u32 2, u32 count, 12
+// zero bytes), 28-byte records {i32 nameOffset (self-relative), i32 parent,
+// f32 tx,ty,tz, 0, 0}: positions only, world-aligned frames.
+TEST(Ask, ReadsVersionTwoPositionsOnly) {
+  std::vector<uint8_t> b(0x14 + 2 * 28, 0);
+  auto put = [&](size_t at, auto v) { std::memcpy(&b[at], &v, sizeof v); };
+  put(0, uint32_t(2));
+  put(4, uint32_t(2));
+  const size_t names = b.size();
+  const std::string n0 = "skh_hand_l", n1 = "skh_index_mata_l";
+  b.insert(b.end(), n0.begin(), n0.end()), b.push_back(0);
+  b.insert(b.end(), n1.begin(), n1.end()), b.push_back(0);
+  put(0x14, int32_t(names - 0x14));
+  put(0x14 + 4, int32_t(-1));
+  put(0x14 + 28, int32_t(names + n0.size() + 1 - (0x14 + 28)));
+  put(0x14 + 28 + 4, int32_t(0));
+  put(0x14 + 28 + 8, 0.0519f);
+  put(0x14 + 28 + 12, 0.0096f);
+  put(0x14 + 28 + 16, -0.0096f);
+  std::string err;
+  auto bones = pes::ParseAsk(b, &err);
+  ASSERT_TRUE(bones) << err;
+  ASSERT_EQ(bones->size(), 2u);
+  EXPECT_EQ((*bones)[1].name, "skh_index_mata_l");
+  EXPECT_EQ((*bones)[1].parent, 0);
+  EXPECT_FLOAT_EQ((*bones)[1].local.x, 0.0519f);
+  EXPECT_FLOAT_EQ((*bones)[1].local.z, -0.0096f);
+  EXPECT_FLOAT_EQ((*bones)[1].rotation.w, 1.0f);
+}
+
+namespace {
+// Hand-local globals of Hand/CharacterAssets/hand_anim_skel.ask (left hand).
+std::unordered_map<std::string, pes::Vec3> HandAnimOffsets() {
+  std::string err;
+  auto blob = SharedVfs().Read("common/anime/FoxAnim/Hand/CharacterAssets/hand_anim_skel.ask", &err);
+  EXPECT_TRUE(blob) << err;
+  auto bones = pes::ParseAsk(*blob, &err);
+  EXPECT_TRUE(bones) << err;
+  std::unordered_map<std::string, pes::Vec3> global;
+  for (const auto& b : *bones) {
+    pes::Vec3 g = b.local;
+    if (b.parent >= 0) {
+      const auto& p = global.at((*bones)[b.parent].name);
+      g = {g.x + p.x, g.y + p.y, g.z + p.z};
+    }
+    global[b.name] = g;
+  }
+  return global;
+}
+}  // namespace
+
+// The fingers' anim pose is PES's own hand animation skeleton, the one the 162
+// hand ganis are authored on (mirrored in x for the right hand), not a
+// derivation: hand_l.skl's render fingers map onto it by one rotation with
+// 0.004 mm residual.
+TEST(PesRig, FingersSitOnTheHandAnimationSkeleton) {
+  REQUIRE_RIG();
+  constexpr float HAND_SKELETON_TOLERANCE_M = 1e-4f;
+  const auto offsets = HandAnimOffsets();
+  for (const char* side : {"left", "right"}) {
+    const auto& hand = Bone(*rig, std::string(side) + "_hand");
+    for (const auto& b : rig->bones) {
+      if (b.pesBone.rfind("skh_", 0) != 0 || b.pesBone.back() != side[0]) continue;
+      pes::Vec3 want = offsets.at(b.pesBone.substr(0, b.pesBone.size() - 1) + "l");
+      if (side[0] == 'r') want.x = -want.x;
+      EXPECT_NEAR(b.animGlobalPos.x - hand.animGlobalPos.x, want.x, HAND_SKELETON_TOLERANCE_M) << b.pesBone;
+      EXPECT_NEAR(b.animGlobalPos.y - hand.animGlobalPos.y, want.y, HAND_SKELETON_TOLERANCE_M) << b.pesBone;
+      EXPECT_NEAR(b.animGlobalPos.z - hand.animGlobalPos.z, want.z, HAND_SKELETON_TOLERANCE_M) << b.pesBone;
+    }
+  }
+}
+
+// The skin carries each render-pose finger by W(hand); it must land on the
+// finger's anim joint, or the hand mesh tears from its bones.
+TEST(PesRig, HandAlignmentCarriesRenderFingersOntoTheirJoints) {
+  REQUIRE_RIG();
+  constexpr float FINGER_LANDING_TOLERANCE_M = 1e-4f;
+  for (const char* side : {"left", "right"}) {
+    const auto& hand = Bone(*rig, std::string(side) + "_hand");
+    const auto& q = hand.align;
+    auto rot = [&](float x, float y, float z) {  // q * v * q^-1
+      const float tx = 2 * (q.y * z - q.z * y), ty = 2 * (q.z * x - q.x * z), tz = 2 * (q.x * y - q.y * x);
+      return pes::Vec3{x + q.w * tx + (q.y * tz - q.z * ty), y + q.w * ty + (q.z * tx - q.x * tz),
+                       z + q.w * tz + (q.x * ty - q.y * tx)};
+    };
+    for (const auto& b : rig->bones) {
+      if (b.pesBone.rfind("skh_", 0) != 0 || b.pesBone.back() != side[0]) continue;
+      const pes::Vec3 r = rot(b.renderGlobalPos.x - hand.renderGlobalPos.x, b.renderGlobalPos.y - hand.renderGlobalPos.y,
+                              b.renderGlobalPos.z - hand.renderGlobalPos.z);
+      EXPECT_NEAR(r.x, b.animGlobalPos.x - hand.animGlobalPos.x, FINGER_LANDING_TOLERANCE_M) << b.pesBone;
+      EXPECT_NEAR(r.y, b.animGlobalPos.y - hand.animGlobalPos.y, FINGER_LANDING_TOLERANCE_M) << b.pesBone;
+      EXPECT_NEAR(r.z, b.animGlobalPos.z - hand.animGlobalPos.z, FINGER_LANDING_TOLERANCE_M) << b.pesBone;
+    }
+  }
 }

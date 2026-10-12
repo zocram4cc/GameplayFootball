@@ -19,6 +19,8 @@ namespace {
 
 constexpr const char* ANIM_SKEL = "common/anime/FoxAnim/Body/CharacterAssets/body_anim_skel.ask";
 constexpr const char* HIGH_SKEL = "common/anime/FoxAnim/Body/CharacterAssets/body_high_skel.ask";
+// The left-hand skeleton the 162 hand ganis are authored on (ask version 2).
+constexpr const char* HAND_ANIM_SKEL = "common/anime/FoxAnim/Hand/CharacterAssets/hand_anim_skel.ask";
 constexpr const char* COMMON_PACKAGE = "Asset/model/character/#Win/common_package.fpk";
 
 // Below this a direction is degenerate (GF retarget.py uses the same 1e-9).
@@ -109,6 +111,21 @@ std::optional<Rig> BuildRig(pes::PesVfs& vfs, std::string* error) {
   std::unordered_map<std::string, D3> highLocal;
   for (const auto& b : *high) highLocal[b.name] = ToD(b.local);
 
+  // Hand anim pose: hand-local globals of hand_anim_skel.ask (left hand).
+  auto handBytes = vfs.Read(HAND_ANIM_SKEL, error);
+  if (!handBytes) return std::nullopt;
+  auto handSkel = pes::ParseAsk(*handBytes, error);
+  if (!handSkel) return std::nullopt;
+  std::unordered_map<std::string, D3> handAnimLeft;
+  for (const auto& b : *handSkel)
+    handAnimLeft[b.name] = ToD(b.local) + (b.parent >= 0 ? handAnimLeft[(*handSkel)[b.parent].name] : D3{});
+  // The right hand is the left mirrored across x = 0 (hand_r.skl fits it to 0.03 mm).
+  auto handAnimOffset = [&](const std::string& finger) {
+    D3 o = handAnimLeft.at(finger.substr(0, finger.size() - 1) + "l");
+    if (finger.back() == 'r') o.x = -o.x;
+    return o;
+  };
+
   // Render bind: body.skl, hand_l.skl, hand_r.skl inside common_package.fpk.
   auto pkgBytes = vfs.Read(COMMON_PACKAGE, error);
   if (!pkgBytes) return std::nullopt;
@@ -169,15 +186,15 @@ std::optional<Rig> BuildRig(pes::PesVfs& vfs, std::string* error) {
       align[bone] = MinArc({0, 1, 0}, highLocal["tip_sk_head"]);
     }
   }
-  // Hands: the palm pins the twist. Anim pose: fingers along the tip, back of
-  // the hand +Y. Render pose: back-of-hand normal from the finger cluster.
-  for (const char* side : {"_l", "_r"}) {
-    const std::string hand = std::string("sk_hand") + side;
-    const D3 fingers = handRender["skh_middle_dip" + std::string(side)] - renderOf(hand);
-    const D3 spread = handRender["skh_index_mata" + std::string(side)] - handRender["skh_pinky_mata" + std::string(side)];
-    D3 back = Norm(Cross(spread, fingers));
-    if (std::string(side) == "_r") back = back * -1.0;  // mirrored winding flips the normal
-    align[hand] = FrameAlign(fingers, highLocal["tip_sk_hand" + std::string(side)], back, {0, 1, 0});
+  // Hands: the rotation that carries the render-pose fingers (hand_*.skl) onto
+  // PES's hand animation skeleton. The two are rigidly related (0.004 mm
+  // residual), so two direction pairs give it exactly. GF's palm convention
+  // (back of the hand +Y) sat 112 degrees from it.
+  for (const std::string side : {"_l", "_r"}) {
+    const std::string hand = "sk_hand" + side, tip = "skh_middle_dip" + side;
+    const std::string index = "skh_index_mata" + side, pinky = "skh_pinky_mata" + side;
+    align[hand] = FrameAlign(handRender[tip] - renderOf(hand), handAnimOffset(tip),
+                             handRender[index] - handRender[pinky], handAnimOffset(index) - handAnimOffset(pinky));
   }
   // Forearms inherit the hand's twist, corrected by the minimal arc that keeps
   // their own position constraint exact.
@@ -187,12 +204,12 @@ std::optional<Rig> BuildRig(pes::PesVfs& vfs, std::string* error) {
     align[forearm] = Mul(MinArc(Rot(align[hand], a), t), align[hand]);
   }
 
-  // Fingers ride the hand: anim = hand_anim + W(hand) * (render - hand_render).
+  // Fingers sit on the hand animation skeleton and turn with the hand.
   for (const auto& n : names) {
     if (n.pesBone.rfind("skh_", 0) != 0) continue;
     const std::string hand = n.pesBone.back() == 'l' ? "sk_hand_l" : "sk_hand_r";
     align[n.pesBone] = align[hand];
-    animPos[n.pesBone] = animPos[hand] + Rot(align[hand], handRender[n.pesBone] - renderOf(hand));
+    animPos[n.pesBone] = animPos[hand] + handAnimOffset(n.pesBone);
   }
 
   Rig rig;

@@ -11,16 +11,24 @@ enough for our rig" is the wrong direction.
 
 - **Anim skeleton**: `body_anim_skel.ask` (dt13). A strict T-pose with identity
   bind rotations. Every body gani is authored on it. Ganis apply verbatim.
+- **Hand anim skeleton**: `Hand/CharacterAssets/hand_anim_skel.ask` (ask v2,
+  left hand, positions only). The 162 hand ganis are authored on it; the right
+  hand is its mirror in x. The fingers' anim pose is this file, not a
+  derivation.
 - **Render skeleton**: `body.skl`, `hand_l.skl`, `hand_r.skl` (common_package).
-  A relaxed pose with full bind matrices. Every mesh and skin weight is authored
-  in it.
+  A relaxed pose with full bind matrices. Most meshes and skin weights are
+  authored in it. A pack that ships its own `.skl` says which pose it was
+  authored on: some boots packs are on the anim pose.
 
 Meshes cross from render pose to anim pose exactly once, through the per-bone
 world rotation `W` built in `src/rig/rig.cpp`. Never "calibrate" a bind offset
 to fix a pose: a wrong pose means a wrong rest pose or mixed bind tables.
+`W(hand)` is the exact rotation from `hand_*.skl` onto the hand anim skeleton
+(0.004 mm residual). GF's "palm down" convention sat 112 degrees off it.
 
-Health check: the viewer with no clip must show a perfect T-pose (arms dead
-horizontal, palms down). Any droop or twist is a rig defect.
+Health check: the viewer with no clip must show a perfect T-pose: arms dead
+horizontal, hands in the hand skeleton's rest (palm forward, fingers spread),
+wrists continuous with the forearms. Any droop, tear or twist is a rig defect.
 
 ## Visual claims need an examined frame
 
