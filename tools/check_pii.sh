@@ -11,7 +11,7 @@ fail=0
 hit() { echo "PII: $1"; fail=1; }
 
 path_patterns=(
-  '/hom[e]/' '/mn[t]/' '/run/medi[a]/' '/User[s]/' '[A-Za-z]:\\\\'
+  '/hom[e]/' '/mn[t]/' '/run/medi[a]/' '/User[s]/' '[A-Za-z]:\\'
   '\.claud[e]' 'claude-[0-9]'
 )
 user_patterns=()

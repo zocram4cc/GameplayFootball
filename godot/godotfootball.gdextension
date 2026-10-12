@@ -1,0 +1,8 @@
+[configuration]
+
+entry_symbol = "godotfootball_library_init"
+compatibility_minimum = "4.7"
+
+[libraries]
+
+linux.debug.x86_64 = "res://bin/libgodotfootball.so"

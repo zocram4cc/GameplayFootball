@@ -3,6 +3,7 @@ build*/
 godot/.godot/
 godot/bin/
 *.so
+compile_commands.json
 *.import
 
 # PES files: never committed, always read from the user's install

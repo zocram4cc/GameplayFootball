@@ -1,0 +1,16 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="GodotFootball"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[physics]
+
+; GameplayFootball's fixed 10 ms simulation tick.
+common/physics_ticks_per_second=100
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
