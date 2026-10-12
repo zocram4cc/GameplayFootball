@@ -37,6 +37,17 @@ The file system mounts PES's own archives in the order the game uses: `Data/`,
 then `download/` in `DpFileList.bin` order, then sider live-cpk roots from
 `sider.ini`. Later sources override earlier ones.
 
+Players wear the appearance your own game shows them in (sleeves, socks,
+shirt tail, skin, boots, gloves) when you also give it your EDIT save,
+`EDIT00000000` in PES's `save` folder. It is read, never written:
+
+```bash
+tools/capture_viewer.sh --face <player id> -- --team <team id> --kit 0 --edit-save /path/to/EDIT00000000
+```
+
+Without the save, players fall back to `PlayerAppearance.bin`, as in the game.
+Tests read it from `PES21_EDIT_SAVE` and skip those checks when it is unset.
+
 ## Licence
 
 Apache-2.0. See `NOTICE` for attributions.

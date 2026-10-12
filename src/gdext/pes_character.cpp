@@ -68,8 +68,8 @@ enum class Mode { FaceOnly, Player };
 
 class Build {
  public:
-  Build(const pes::PesVfs& vfs, const pesrig::Rig& rig, int faceId, Mode mode)
-      : vfs_(vfs), rig_(rig), faceId_(faceId), mode_(mode), resolver_(vfs, faceId) {}
+  Build(const pes::PesVfs& vfs, const pesrig::Rig& rig, const pes::AppearanceTable& appearances, int faceId, Mode mode)
+      : vfs_(vfs), rig_(rig), appearances_(appearances), faceId_(faceId), mode_(mode), resolver_(vfs, faceId) {}
 
   Node3D* RunFace();
   Node3D* RunPlayer(int teamId, int kitIndex);
@@ -88,6 +88,7 @@ class Build {
 
   const pes::PesVfs& vfs_;
   const pesrig::Rig& rig_;
+  const pes::AppearanceTable& appearances_;
   int faceId_;
   Mode mode_;
   pes::TextureResolver resolver_;
@@ -435,15 +436,15 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
     return nullptr;
   }
   kitAtlasPath_ = std::string(KIT_TEXTURE_DIR) + kit->kitFile + TEXTURE_EXT;
-  // ponytail: the 4cc placeholder appearance for everyone until the EDIT save
-  // is read (pes-kit-assembly.md 8.1).
-  const pes::PlayerLook look;
+  // The look the game shows: the EDIT save, else PlayerAppearance.bin. 4cc
+  // players' ids equal their face ids (pes-kit-assembly.md 7.1).
+  auto appearance = appearances_.find(uint32_t(faceId_));
+  const pes::PlayerLook look = appearance != appearances_.end() ? pes::DecodeLook(appearance->second) : pes::PlayerLook{};
   const std::string faceArm = pes::FaceTextureDir(faceId_) + FACE_ARM_SKIN;
   armSkinPath_ = vfs_.Exists(faceArm) ? faceArm : pes::ArmSkinPath(look.skin);
   thighSkinPath_ = pes::ThighSkinPath(look.skin);
   auto bootsBlob = vfs_.Read(pes::kBootsListPath, &err);
   auto bootsList = bootsBlob ? pes::ParseBootsList(*bootsBlob, &err) : std::nullopt;
-  // 4cc players' ids equal their face ids (pes-kit-assembly.md 7.1).
   const int bootsId = pes::ResolveBootsId(look.bootsId, faceId_, bootsList ? *bootsList : pes::BootsList{});
 
   auto common = vfs_.Read(pes::kCommonPackagePath, &err);
@@ -495,7 +496,7 @@ Node3D* PesCharacterBuilder::build_face_model(const Ref<PesLibrary>& library, in
     UtilityFunctions::push_error("PesCharacterBuilder: library is not open");
     return nullptr;
   }
-  return Build(library->vfs(), *library->rig(), face_id, Mode::FaceOnly).RunFace();
+  return Build(library->vfs(), *library->rig(), library->appearances(), face_id, Mode::FaceOnly).RunFace();
 }
 
 Node3D* PesCharacterBuilder::build_player(const Ref<PesLibrary>& library, int team_id, int kit_index, int face_id) {
@@ -503,7 +504,7 @@ Node3D* PesCharacterBuilder::build_player(const Ref<PesLibrary>& library, int te
     UtilityFunctions::push_error("PesCharacterBuilder: library is not open");
     return nullptr;
   }
-  return Build(library->vfs(), *library->rig(), face_id, Mode::Player).RunPlayer(team_id, kit_index);
+  return Build(library->vfs(), *library->rig(), library->appearances(), face_id, Mode::Player).RunPlayer(team_id, kit_index);
 }
 
 }  // namespace godot

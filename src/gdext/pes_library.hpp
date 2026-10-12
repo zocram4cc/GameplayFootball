@@ -4,6 +4,7 @@
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <optional>
 
+#include "pes/editsave.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 
@@ -17,9 +18,14 @@ class PesLibrary : public RefCounted {
   Error open(const String& root);
   String mount_report() const;
   PackedStringArray list(const String& prefix) const;
+  // The user's EDIT00000000: each player's appearance as the game shows it.
+  // Without it, players fall back to PlayerAppearance.bin, as in the game.
+  Error load_edit_save(const String& path);
 
   const pes::PesVfs& vfs() const { return vfs_; }
   const pesrig::Rig* rig() const { return rig_ ? &*rig_ : nullptr; }
+  // Save over PlayerAppearance.bin, by player id.
+  const pes::AppearanceTable& appearances() const { return appearances_; }
 
  protected:
   static void _bind_methods();
@@ -27,6 +33,7 @@ class PesLibrary : public RefCounted {
  private:
   pes::PesVfs vfs_;
   std::optional<pesrig::Rig> rig_;
+  pes::AppearanceTable appearances_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

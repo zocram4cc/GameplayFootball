@@ -1,7 +1,7 @@
 extends Node3D
 ## Shows one PES 2021 character from the user's install, optionally animated.
 ## Args after `--`: --pes21-root DIR --face ID [--team ID [--kit N]] [--clip NAME|0xHASH] [--in-place]
-##   [--hide PART,...]
+##   [--hide PART,...] [--edit-save EDIT00000000]  (each player's look from the user's save)
 ## With --team the player is assembled as PES does (kit N, 0 = 1st); without it,
 ## the face pack alone.
 
@@ -28,6 +28,9 @@ func _ready() -> void:
 	_build_environment()
 	var library := PesLibrary.new()
 	if library.open(args["pes21-root"]) != OK:
+		get_tree().quit(1)
+		return
+	if args.has("edit-save") and library.load_edit_save(args["edit-save"]) != OK:
 		get_tree().quit(1)
 		return
 	var builder := PesCharacterBuilder.new()

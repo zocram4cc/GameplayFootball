@@ -93,4 +93,22 @@ func _init() -> void:
 					"%s boot under %s: centroid x %.3f, ankle x %.3f" % [m.name, skeleton.get_bone_name(j), centroid.x, ankle.x])
 
 	character.free()
+
+	# With the user's EDIT save, each player wears his own look. 75403 played in
+	# long sleeves for team 754's 2nd kit in a live match: a long sleeve, no
+	# bare arm (pes-kit-assembly.md 8.4).
+	var save := OS.get_environment("PES21_EDIT_SAVE")
+	if not save.is_empty():
+		check(library.load_edit_save(save) == OK, "EDIT save loads")
+		var long_sleeved: Node3D = PesCharacterBuilder.new().build_player(library, 754, 1, 75403)
+		var parts75403 := {}
+		for m in long_sleeved.get_node("Skeleton").get_children():
+			if m is MeshInstance3D:
+				parts75403[str(m.get_meta("part"))] = true
+		check(parts75403.keys().any(func(p): return p.begins_with("sleeve_long") or p == "sleeve_glove"),
+				"75403 wears a long sleeve: %s" % [parts75403.keys()])
+		check(not parts75403.has("arm"), "75403 shows no bare arm")
+		long_sleeved.free()
+	else:
+		print("EDIT save checks skipped: PES21_EDIT_SAVE not set")
 	quit(1 if failures > 0 else 0)

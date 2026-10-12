@@ -39,3 +39,7 @@ add_subdirectory(sim)
 add_executable(pes_uniform_test pes_uniform_test.cpp)
 target_link_libraries(pes_uniform_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_uniform_test)
+
+add_executable(pes_editsave_test pes_editsave_test.cpp)
+target_link_libraries(pes_editsave_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_editsave_test)
