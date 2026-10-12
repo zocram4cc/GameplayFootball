@@ -49,7 +49,15 @@ Error PesAnimation::apply(Skeleton3D* skeleton, double time_seconds, bool in_pla
     UtilityFunctions::push_error("PesAnimation.apply: skeleton is not inside the scene tree");
     return ERR_UNCONFIGURED;
   }
-  const auto pose = sampler_->Sample(time_seconds / pesrig::PES_FRAME_S);
+  Write(skeleton, Pose(time_seconds), in_place, time_seconds);
+  return OK;
+}
+
+pesrig::ClipPose PesAnimation::Pose(double time_seconds) const {
+  return sampler_ ? sampler_->Sample(time_seconds / pesrig::PES_FRAME_S) : pesrig::ClipPose{};
+}
+
+void PesAnimation::Write(Skeleton3D* skeleton, const pesrig::ClipPose& pose, bool in_place, double hand_time) const {
   const int n = std::min<int>(skeleton->get_bone_count(), int(pose.local.size()));
   for (int j = 1; j < n; ++j) {
     const auto& q = pose.local[j];
@@ -59,8 +67,7 @@ Error PesAnimation::apply(Skeleton3D* skeleton, double time_seconds, bool in_pla
   const auto& bp = pose.bodyPosition;
   skeleton->set_bone_pose_rotation(0, Quaternion(bq.x, bq.y, bq.z, bq.w));
   skeleton->set_bone_pose_position(0, in_place ? Vector3(0, bp.y, 0) : Vector3(bp.x, bp.y, bp.z));
-  ApplyHands(skeleton, time_seconds);
-  return OK;
+  ApplyHands(skeleton, hand_time);
 }
 
 // Each hand blends up to four static poses from the clip's own timeline. A clip

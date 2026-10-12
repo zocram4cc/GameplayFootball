@@ -3,6 +3,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/texture.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
+#include <array>
 #include <optional>
 
 #include "pes/editsave.hpp"
@@ -40,6 +41,8 @@ class PesLibrary : public RefCounted {
   const pesrig::HandPoseLibrary* hand_poses() const { return handPoses_ ? &*handPoses_ : nullptr; }
   // Name glyphs (from PES2021.exe) and name folding; null without the exe.
   const MarkingFonts* marking_fonts() const { return markingFonts_ ? &*markingFonts_ : nullptr; }
+  // Speed-class bounds, km/h (from PES2021.exe); null without the exe.
+  const std::array<float, 4>* speed_classes() const { return speedClasses_ ? &*speedClasses_ : nullptr; }
 
  protected:
   static void _bind_methods();
@@ -52,6 +55,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::HandSequences> handSequences_;
   std::optional<pesrig::HandPoseLibrary> handPoses_;
   std::optional<MarkingFonts> markingFonts_;
+  std::optional<std::array<float, 4>> speedClasses_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

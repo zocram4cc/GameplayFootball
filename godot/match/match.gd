@@ -2,7 +2,8 @@ extends Node3D
 ## A visible AI-vs-AI match: the GF engine (GfMatch) plays, and every frame
 ## the PES players and the ball are placed where the simulation has them.
 ## Args (after `--`): --pes21-root DIR --home-team PES_ID --away-team PES_ID
-## [--home-kit N --away-kit N] [--edit-save FILE] [--seed N] [--minutes N].
+## [--home-kit N --away-kit N] [--edit-save FILE] [--seed N] [--minutes N]
+## [--follow PLAYER_INDEX] (inspection: a close camera on one player).
 
 const GF_HOME_TEAM := 1        # teams in assets/fixtures/teams.sql
 const GF_AWAY_TEAM := 2
@@ -18,14 +19,19 @@ const SUN_ROTATION_DEG := Vector3(-55.0, 35.0, 0.0)
 const CAMERA_POSITION := Vector3(0.0, 28.0, 62.0)  # placeholder overview until M4's broadcast camera
 const CAMERA_FOV_DEG := 50.0
 const FACE_DIR := "Asset/model/character/face/real/"
-const PLAYERS_PER_TEAM := 11
+const FOLLOW_OFFSET := Vector3(4.0, 2.2, 6.0)  # inspection camera, metres from the followed player
+const FOLLOW_TARGET_HEIGHT_M := 1.0
 
 var args := {}
 var library: PesLibrary
 var sim: GfMatch
 var players: Array[Node3D] = []
 var ball: MeshInstance3D
+var locomotion: PesLocomotion
+var _skeletons: Array[Skeleton3D] = []
+var _phases: PackedFloat64Array = []
 var _accumulator := 0.0
+var _camera: Camera3D
 
 
 func configure(a: Dictionary) -> void:
@@ -54,6 +60,10 @@ func _ready() -> void:
 			int(args.get("minutes", DEFAULT_MINUTES))) != OK:
 		get_tree().quit(1)
 		return
+	locomotion = PesLocomotion.new()
+	if locomotion.load(library) != OK:
+		locomotion = null  # bodies keep the bind pose; the match still plays
+		push_warning("PES locomotion unavailable")
 	_build_players()
 	ball = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
@@ -64,7 +74,7 @@ func _ready() -> void:
 	sphere.material = ball_material
 	ball.mesh = sphere  # ponytail: plain sphere; the PES ball.fmdl comes with the stadium props (M5)
 	add_child(ball)
-	_place()
+	_place(0.0)
 
 
 func _process(delta: float) -> void:
@@ -76,17 +86,27 @@ func _process(delta: float) -> void:
 		sim.step()
 		_accumulator -= TICK_S
 		ticks += 1
-	_place()
+	_place(delta)
 
 
-func _place() -> void:
+# ponytail: every player plays steady locomotion; kicks, turns, tackles and
+# keeper actions (PES Animetable/Freemove selection) are not chosen yet.
+func _place(delta: float) -> void:
 	for i in players.size():
 		var p: Vector3 = sim.player_position(i)
 		players[i].global_position = Vector3(p.x, 0.0, p.z)
 		var f: Vector3 = sim.player_facing(i)
 		if f.length_squared() > 0.0:
 			players[i].rotation.y = atan2(f.x, f.z)  # PES characters face +Z
+		if locomotion != null and _skeletons[i] != null:
+			var v: Vector3 = sim.player_velocity(i)
+			var speed := Vector2(v.x, v.z).length()
+			_phases[i] = fmod(_phases[i] + delta * locomotion.phase_rate(speed), 1.0)
+			locomotion.apply(_skeletons[i], speed, _phases[i])
 	ball.global_position = sim.ball_position()
+	if args.has("follow"):
+		var p: Vector3 = players[int(args["follow"])].global_position
+		_camera.look_at_from_position(p + FOLLOW_OFFSET, p + Vector3.UP * FOLLOW_TARGET_HEIGHT_M)
 
 
 # One PES face per GF slot, in folder order: real/<team><NN>.
@@ -119,6 +139,8 @@ func _build_players() -> void:
 			body = Node3D.new()
 		add_child(body)
 		players.append(body)
+		_skeletons.append(body.get_node_or_null("Skeleton"))
+		_phases.append(0.0)
 
 
 func _parse_args(raw: PackedStringArray) -> Dictionary:
@@ -158,8 +180,8 @@ func _build_environment() -> void:
 	var ground := MeshInstance3D.new()
 	ground.mesh = plane
 	add_child(ground)
-	var camera := Camera3D.new()
-	camera.fov = CAMERA_FOV_DEG
-	add_child(camera)
-	camera.look_at_from_position(CAMERA_POSITION, Vector3.ZERO)
-	camera.current = true
+	_camera = Camera3D.new()
+	_camera.fov = CAMERA_FOV_DEG
+	add_child(_camera)
+	_camera.look_at_from_position(CAMERA_POSITION, Vector3.ZERO)
+	_camera.current = true

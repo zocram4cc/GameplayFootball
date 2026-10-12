@@ -8,6 +8,7 @@ const AWAY_PES_TEAM := 754
 const PLAYERS := 22
 const FRAMES := 30
 const POSITION_TOLERANCE_M := 1e-3
+const POSED_ANGLE_RAD := 0.05  # a thigh this far off its rest is being animated
 
 var failures := 0
 
@@ -37,5 +38,12 @@ func _ready() -> void:
 		var want: Vector3 = scene.sim.player_position(i)
 		check(body.global_position.distance_to(Vector3(want.x, 0.0, want.z)) < POSITION_TOLERANCE_M,
 				"player %d stands where the simulation puts him" % i)
+	var posed := 0
+	for body: Node3D in players:
+		var sk: Skeleton3D = body.get_node("Skeleton")
+		var thigh := sk.find_bone("left_thigh")
+		if sk.get_bone_pose_rotation(thigh).angle_to(sk.get_bone_rest(thigh).basis.get_rotation_quaternion()) > POSED_ANGLE_RAD:
+			posed += 1
+	check(posed == players.size(), "every player is posed by PES locomotion (%d)" % posed)
 	check(scene.ball.global_position.distance_to(scene.sim.ball_position()) < POSITION_TOLERANCE_M, "ball follows the simulation")
 	get_tree().quit(1 if failures > 0 else 0)

@@ -23,6 +23,12 @@ class PesAnimation : public RefCounted {
   // an out-of-tree skeleton would silently show the old pose (ERR_UNCONFIGURED).
   Error apply(Skeleton3D* skeleton, double time_seconds, bool in_place) const;
 
+  // C++ side, for blends: the body pose at a time, and writing a (possibly
+  // blended) body pose plus this clip's hands at `hand_time` to a skeleton.
+  pesrig::ClipPose Pose(double time_seconds) const;
+  void Write(Skeleton3D* skeleton, const pesrig::ClipPose& pose, bool in_place, double hand_time) const;
+  int motion_no() const { return motionNo_; }
+
  protected:
   static void _bind_methods();
 

@@ -8,6 +8,7 @@
 #include "gdext/pes_animation.hpp"
 #include "gdext/pes_character.hpp"
 #include "gdext/pes_library.hpp"
+#include "gdext/pes_locomotion.hpp"
 
 using namespace godot;
 
@@ -28,6 +29,7 @@ static void initialize_module(ModuleInitializationLevel level) {
   GDREGISTER_CLASS(PesCharacterBuilder);
   GDREGISTER_CLASS(PesAnimation);
   GDREGISTER_CLASS(GfMatch);
+  GDREGISTER_CLASS(PesLocomotion);
 }
 
 static void uninitialize_module(ModuleInitializationLevel) {}
