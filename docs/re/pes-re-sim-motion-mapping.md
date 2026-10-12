@@ -12,6 +12,22 @@ raw decodes; the Ghidra project copy is on disk at
 
 Tags: **OBS** = observed, with how. **INF** = inferred, with confidence.
 
+### Status per priority item (end of this session)
+
+| # | Item | Status | Where |
+|---|---|---|---|
+| 1 | Action layer, end to end (row + column + mirror + startTime + playbackSpeed + crossfade) | **done** — the column picker, the three accessors, the SetMotion/SetParametric call signatures and the group-selection table are all decompiled and quoted | §6, §12 |
+| 2 | Kick taxonomy + both vocabularies + superior-kick selection | **done** (one sub-item open: the Idletable/Movetable slot enum unit, headers only) | §7, §14.1 |
+| 3 | Keepers: clips, states, catch→hold→wait→distribute cycle | **done** (one threshold open: catch vs punch) | §8, §14.2 |
+| 4 | Non-kick states: touches/turns, back/side, injury, taunts, officials | **done** | §9 |
+| 5 | What the mapping cannot close | listed with what was tried | §14 |
+
+Live-process sampling was **not available this session**: `PES2021.exe` is not running
+(`pgrep -f PES2021.exe` returns nothing; the wine prefix exists but no match process). Every
+"live" datum below is carried from AR §5/§7, which did have the process. Everything new here is
+from the exe image (`.pdata`-bounded decompiles + data reads) or from the install's bins, and is
+tagged accordingly.
+
 ---
 
 ## 0. Headline facts
@@ -374,6 +390,8 @@ y10/y11 GK-only (`gkpunch/gkdeflect …_y11`, 236–258 cm).
   Movetable (moving) §1.5, `_f` forward / `_r` rear; keeper saves the §3 groups. If the sim ever
   requests them, the column is the ball line vs facing and the height is §4.1.
 
+---
+
 ## 5. Root motion and timing compatibility (formulae)
 
 All per-clip inputs exist in `anim_infos.json` (= the decoded Mbinfo bins: Animation/HitData/
@@ -440,106 +458,780 @@ to *select*, only to *validate*.
   AR §9) × speed-matching for parametric members. `transitionType` 0 nearly everywhere (2/6 for
   sidesteps). Upper-body layers (`SetLayer`, masks `LRArm/LArm/RArm/Full`) only for officials.
 
-## 6. What the loader reads and builds (runtime, from the install)
+---
 
-### 6.1 Per-clip metadata (one record per motionNo, from `anim_infos.json` + the bins)
+## 6. The writers: decompiled, with exact selection rules
 
-`name, end_frame, blend_start, root_pos_first_{x,y,z}, root_pos_blend_{x,y,z}, cancel_speed,
-end_move_angle, hit_data[]{hit_frame, hit_bone, ball_pos_cm, sf_*, ik_start/end}, cancel_data[],
-rot_data[], foot_type[], demo_connect_data`. Anything missing for 44 motions without an Animation
-record falls back to the default at 0x1436f2430 (OBS, AR §2.2) — treat as "no metadata, loops only".
+This session the *writers* were decompiled, so the row/column/mirror/duration arguments are now
+observed rather than inferred. Headless decompiles are in scratch `o_*.txt`; function bounds come
+from `<scratch>/pesmem.bin`'s `.pdata` via `<scratch>/pdata.py`. All addresses are image VAs (base
+0x140000000). Every "row" below is an Animetable row id, resolvable at runtime through the label
+table at **0x1434997f0** (§1.2) — the label text is the rule.
 
-### 6.2 Tables
-
-`Animetable.bin` + row labels (re-derived at runtime from the exe table — or, cleaner, from the
-row-name grammar §1.3 checked against the exe table at load); `Freemove.bin` direct (§2.1);
-`Parametricblendtable.bin` direct (§3); `Idletable/Movetable.bin` row pairs (§1.5); `Hitframes.bin`
-(24,144 B; per-motion hit-frame bytes, the FH hand-timing companion — load for the hand report's
-rule, not selection).
-
-### 6.3 Derived maps (built, never committed)
-
-- `rowIndex by (family, a, b, yN, part, side, mods)` — hash the row labels once at load
-  (case-folded); collisions (e.g. duplicate row names) resolve to the first non-empty row.
-- `freemoveRow by state code` — from the file (§2.1).
-- `paramGroup members + points` — from the file (§3).
-- GF-side per-clip variables (`type, incomingballdirection[_maxdeviation], balldirection[_…],
-  touch_bodypart, touchframe, steps, triptype/bumpdirection, outgoing_special_state,
-  outgoing_retain_state, lastditch, specialvar1/2, imported`) — same tail the stock pool carries,
-  measured per §5 (prior art: `install_anims.py prepare_match_anim`, `anim_metrics.py`).
-
-## 7. ChoosePesClip — the algorithm
+### 6.1 The three accessors every writer uses (OBS, small functions, fully decompiled)
 
 ```
-ChoosePesClip(action) -> (motionNo, mirror, startTime, duration, rate):
-  # action = {family, velIn (GF bucket), velOut, relAngle (deg, target-dir minus facing),
-  #           ballHeightCm, ballDirIn, ballDirOut, footSide, power, variant, state (loco FSM)}
-  if action.family == LOCOMOTION_STEADY:
-      g = paramGroup(variant)                       # 80 canonical
-      rate = clamp(speed / 8.96, 0, 1)              # §3
-      startRate = footPhase(state) in {0,.25,.75}   # §5.7
-      return PARAMETRIC(g, rate, startRate, duration=0.3)
-  if action.family == LOCOMOTION_STEP:
-      st = [0][pes(velIn)][1][style][pes(velOut)][1]  # §2.2, §4.1; style §4.2
-      digit = angleBucket(relAngle)                    # 0..4 / 5..9
-      (m, mir, nxt) = freemoveRow(st)[digit]           # nearest populated digit, engine rule
-      state = nxt
-      return SINGLE(m, mir, startTime=footStart(m), duration=0.133..0.2)
-  if action.family in (TRAP, INTERFERE, DEFLECT_LOOSE):
-      row = rowIndex(familyVariant(ballSide, pressure), pes(velIn), pes(velOut), yN(ballHeightCm),
-                     bodyPart(predictedContact), mods)  # §4.2; empty row -> fallback chain
-      (m, mir) = animetable(row, angleBucket(relAngleVsFacing(ballDirIn)))
-      return SINGLE(m, mir, startTime=0, duration=0.2)
-  if action.family in (SHORTPASS, LONGPASS, HIGHPASS, SHOT):
-      row = rowIndex(kick, lengthClass(power), pes(velIn), outClass(keepOrDrive),
-                     footPart(power, curve), yN(ballHeightCm), mods)  # §4.2
-      (m, mir) = animetable(row, angleBucket(relAngleVsFacing(ballDirOut)))
-      touch = hitEvent(m, ballHeightCm)                # §5: frame + pos; all events to GF
-      return SINGLE(m, mir, startTime=0, duration=0.2)
-  if action.family in (BLOCK):
-      row = rowIndex(blockVariant(frontal/side), pes(velIn), 0, yNN(shotHeight), shootMods)
-      (m, mir) = animetable(row, angleBucket(shotLineVsFacing))
-      return SINGLE(m, mir, 0, 0.2)
-  if action.family == KEEPER_SAVE:
-      (g, param) = (gkGroup(situation), clamp(ballHeightCm/11-convention → N/11))  # §3
+AnimePlayer*  P   = <the player>          # offsets below are relative to P
+tbl           T  = FUN_1406abba0()        # = DAT_1436f2378 → the runtime Animetable
+                                    # P->+0x1ac34 + 2*(row*18 + col)   = motionNo+1 (+mirror at bit 15)
+row            r  = int(row index)        # Animetable row
+col            c  = FUN_1406de990(r, ang) # angle in degrees → column 0..17
+populated?       = FUN_1406abdd0(T, &r, &c) != 0
+mirror?          = FUN_1406abd60(T, &r, &c) != 0
+motionNo         = FUN_1406abb30(T, &r, &c, 0)
+```
+- `FUN_1406de990(row, angleDeg)` (decompiled, this session): iterates `k = 0..17`; for each
+  *populated* column `k` it computes centre `= (k<9 ? k : k−1)·22.5 − 180`, substituting
+  −0.001 at `k == 8` and +0.001 at `k == 9`, and keeps the column minimising
+  `|ang − centre|`; **default 9**. `row == 0xbe5` (3045 = one-past-end sentinel) skips the
+  population test and always competes. Columns: −180, −157.5, …, −22.5, −0, +0, +22.5, …, +157.5,
+  +180. **No row fallback exists** — an unpopulated (row, col) yields −1 and the caller must
+  choose something else.
+- `FUN_1406abdd0` hard-patches row `0x7c5` col 2 → populated=True, and `FUN_1406abd60` hard-patches
+  row `0x7c5` col 2 → mirror=0. Row `0x7c5` = **`kick_mid_0_0_inside_y0_f`** (OBS: this session
+  re-derived the id → label by the label table; the earlier report's "row 1989 col 2 → 2484,
+  mirror 0" is the same patch: `2484 = kick_mid_0_0_inside_y0_f`'s cell content is *backfilled*
+  because that row's own populated cells are the `_keep` set).
+- `FUN_1406f0f70(P, motionNo, startTime, mirror, playbackSpeed, duration, transitionType)` is the
+  only SetMotion path (AR §5.1). Writes go to P+0x3b50/0x3b54/0x3b58 and P+0x3b80/0x3b88; the
+  mirror byte is also stored at P+0x2472 and mirrored into the P+0xad0 bitfield (bit 36).
+- `FUN_1406f14e0(P, group, startRate, mirror, ?, duration, blendRate, transitionType)` is the only
+  SetParametric path; it pushes one `{motionNo, startTime = clipLength · startRate, mirror}` per
+  group member. The startTime multiplier is **300.0** (0x1425a266c) → Fox time units of 1/300 s.
+- Wrapper: `FUN_1407649a0` dispatches a 6-word struct — word 0 = 1 → `SetMotion`, 2 → the
+  parametric/layer variant `FUN_1406f1280`. Every writer fills that struct.
+
+**Executable rule.** `ChoosePesClip` must reproduce `FUN_1406de990` exactly, including the
+population scan and the ±0.001 split, and must reproduce the hard patch on row 0x7c5 col 2. The
+mirror bit is per-cell and *not* derived from the row's `_l`/`_r` suffix; read it.
+
+### 6.2 Angle conventions the writers use (OBS, from the decompiled writers)
+
+Each writer computes its column angle from the *target* relative to the actor:
+- discrete actions: `angle = atan2(dx, dz)` of (target − actor) with the actor's yaw subtracted,
+  wrapped to ±180 (helper `FUN_1406e4230` does exactly `wrap180(src − actorYaw)`).
+- rise-up (`FUN_1406deed0`): target = the next waypoint, then `AdjustTransXZ` toward it over
+  `round(Hz·6/60)` ticks at factor 0.9 (OBS, AR §4.3.1 — the same function was decompiled in full
+  this session; it selects rows `0x913/0x914/0x915…0x91a` by `DemoConnectData` code ×
+  next-target distance, and the distance gate is the constant at `DAT_14259bddc`).
+- keeper/tackle/block: the angle comes from the *ball or opponent line*, not from a waypoint.
+
+### 6.3 The kick writer (`FUN_1407302b0`, OBS, decompiled in full)
+
+`Kick::Exec`-equivalent. It builds the row from state, not from a string:
+```
+row = fVar35 (float carrier of a 12-bit row id, packed in the float's bit pattern)
+```
+Observed id → label mappings read from the decompile (OBS, this session; ids decoded as
+`struct` bit patterns of the `double`/`float` constants and resolved through the label table):
+
+| float literal in the decompile | row id | row label | meaning |
+|---|---|---|---|
+| `6.02558e-43` | `0x1ae` = 430 | `fall_upbody_3_0_180_hold` | foul contact, waist hold |
+| `6.12367e-43` | `0x1b5` = 437 | `stagger_upbody_3_0_180_hold_shoulder_appeal` | shoulder contact + appeal |
+| `6.06762e-43` | `0x1b1` = 433 | `fall_upbody_3_0_180_hold_waist` | waist hold |
+| `6.08164e-43` | `0x1b2` = 434 | `fall_upbody_3_0_180_hold_waist_dive` | waist hold, diving |
+| `6.09565e-43` | `0x1b3` = 435 | `fall_upbody_3_0_180_hold_waist_fallforward` | waist hold, forward fall |
+| `5.80138e-43` | `0x19e` = 414 | `stagger_ballhit_head_0_0` | ball into head while acting |
+| `5.81539e-43` | `0x19f` = 415 | `stagger_ballhit_belly_0_0` | ball into body while acting |
+| `5.85743e-43` | `0x1a2` = 418 | `stagger_ballhit_belly_3_3` | ball into body at pace |
+
+So the *same* writer that emits `kick_*` also emits the foul-contact and ball-hit reactions; the
+row choice is picked from the animation-state machine, not from a tag on the clip. For an engine
+reimplementation this means: **the kick decision and the foul decision share one code path** and the
+foul rows are an extra, unconditional output of "a kick against a player happened".
+
+The path to a `kick_*` row (OBS, same function):
+1. Compute the **outgoing speed class** `b` from the *ball speed requirements*, not from the
+   player's own velocity: `b = (ballSpeed ≥ 22 km/h ? 2 : 1)` when the action is a pass
+   (`local_res8[0] == 0`), and the `_keep` variants are chosen when the possession is retained
+   (`local_res10[9] == 5`).
+2. Compute the **column**: the angle of the desired ball direction minus body facing
+   (`FUN_1406e4230`), then `FUN_1406de990(row, angle)`.
+3. Special cases OBS in the function body: `row == 0x1ae` (waist hold) and `0x1b5` (shoulder)
+   force the column to 0 — i.e. contact rows ignore the angle.
+4. If the cell is empty (`FUN_1406abdd0` false) the writer retries with `angle = 0` — this is
+   the *only* in-writer fallback in PES.
+5. Mirror from the cell bit; `FUN_14072d0b0` supplies the crossfade duration (0.2 s for kind
+   0x10/0x11, otherwise computed from the cancel frame).
+6. Then `FUN_1406b10d0` converts the chosen clip's hit frame to ticks for the physics touch.
+
+**Executable rule.** The engine's kick decision must produce the row *family + params* itself
+(`kick_{short,mid,long}_a_b_{part}_yN[_mods]`), then call the shared column/mirror lookup with the
+outgoing-ball-direction angle, then the empty-cell retry at angle 0. No other fallback.
+
+### 6.4 The dribble-touch writer (`FUN_14073f750` head, plus `FUN_14073efb0`, OBS)
+
+- The ball-control/touch row for a *touching* kick comes from a two-row pick:
+  `row = 0x51f` (`fk_quick_restart_pick_up_ball`) or `0x520` (`…_near`) when the action kind is
+  `0x29/0x2a/0x2b` (dead-ball restarts), else `0x4f7` (`fk_mid_0_0_inside`) / `0x4f5`
+  (`fk_long_0_0_infront`) / `0x4f6` (`fk_long_0_0_instep`) by action kind. Column from the
+  target angle, mirror from the cell.
+- **Free-kick restarts** (OBS, `FUN_14073efb0`): the writer first checks the column by an angle
+  cascade (`|Δ| ≤ 22.5 → 2`; `≤ 67.5 → 4`; `≤ 112.5 → 6`; `≤ 157.5 → 9`; `≤ 180 → 11`; else
+  `13`; then a mirrored `… ≤ … → 15/17` chain), reads the cell, and only then calls
+  `FUN_1406f0f70`. Dead-ball rows in play: `0x4f4` and the `fk_*` families.
+- **Throw-in / goalkeeper restarts** use rows `0x51f`/`0x520` for the pick-up, then the family rows
+  `throw_*`, `puntkick_*`, `goalkick_*`, `gksidethrow_*`, `gkoverthrow*`, `gkunderthrow_*`
+  (§7.3).
+
+**Executable rule.** GF's `BallControl`/`ShortPass`/`LongPass`/`HighPass` all map to the `kick_*`
+row families; the *dead-ball* cases map to `fk_*` plus the restart pick-up rows. The distinction
+is a **match-phase flag**, not a clip property — GF must supply "dead ball" / "restart kind"
+(action kinds 0x29–0x2b) alongside its existing command tuple.
+
+### 6.5 Trap solver (`FUN_140799db0` → `FUN_140798d50` + `FUN_14084b310`, OBS, decompiled)
+
+The trap writer is a small state machine over a solver struct at `param_2`:
+- `+0x1c` = candidate row, `+0x24` = candidate column, `+0x20` = "mirror toggled" flag,
+  `+0x28`/`+0x2c` = two 1-bit mirror overrides written as `(short)(char)(bit − 1)`.
+- `FUN_14084b310(struct +0x1c, col)`: if the row is `0xbe5` (3045 = unset) it returns **0x1125 =
+  4389** (the "none" motion) without touching the table. Otherwise it applies the side flip
+  (`FUN_140856980`: 0↔0x11, 1↔0x10, 2↔0xf, … 9↔8, 10↔7, 11↔6 — a full 18-column mirror map),
+  tests population, and returns the cell's motionNo.
+- `FUN_1408527c0(row, col)`: returns the *effective* mirror — reads the cell's mirror bit and
+  XORs with the struct's own flag; two special rows `0xa0d` (`trap_3_3_y6_rear`) and `0xa0f`
+  (`trap_3_3_y8_rear`) have their mirror **inverted** (OBS).
+- The solved struct is filled by `FUN_14084df20` (base row `0xbc6` = `trapstagger_3_3_y0`), and
+  `FUN_14084b9c0` re-asks the table with a fallback column; `FUN_1406ea840(row, col)` walks the
+  9 column-ordered "preferred row" tables at `0x1425e4700 … 0x1425e4980` (18 i32 row ids each;
+  the tail char table `DAT_1425e3728` = 17..0 is the reverse map) to find a populated neighbour.
+
+**Executable rule.** For traps GF's existing `trap/trapside/trapchase/trapfast/traplift/trapback`
+family choice already exists (§4.2); what was missing is the *column mirror map* and the
+"preferred row" walk. Implement: side flip by `18 − 1 − col` when the solver's side flag is set,
+then the 9-table populated-neighbour walk before giving up. Row 4389/0x1125 is the legal "no
+clip" answer — the caller must then not call SetMotion at all.
+
+### 6.6 Tackle / block / slide writers (OBS)
+
+- Tackle (`FUN_140761890`): picks `row` from the per-state tables
+  `DAT_1425e77f8` / `DAT_1425e7818` / `DAT_1425e7828`, each 6 × i32, indexed by
+  `2·bool + side` (`0..5`). `DAT_1425e77f8` = `{gkrise_faceup_rotateback_0_0_{l,r}` twice,
+  `gkrise_sideways_rotateback_3_0_{l,r}}`; `DAT_1425e7818` = the `faceupslow` pair (twice) +
+  `faceupslow2`; `DAT_1425e7828` = the `faceupslow2` pair (twice) + `sideways_0_0_{l,r}_catch`.
+  The table is chosen by the "special tackle" flag (`FUN_1406e6bf0` parity) and by the
+  keeper's hold timer; a second table at `DAT_1425e7848` supplies the `_guard` reaction
+  override. `DAT_1425e7838` (6 entries) = the block/tackle-contact rows
+  `gkrise_sideways_{0_0,0_3}_{l,r}_catch` (+`_guard`). Column from `FUN_1406de990(row, angle)`,
+  with a second attempt at angle 0 when the row is one of `0x6bc/0x6bd` or `0x6b6/0x6b7`
+  (`gkrise_sidewaysnear_*` / `gkrise_sideways_*`) and
+  the keeper's hold timer has not expired. Crossfade from `FUN_14072d0b0`.
+- Block (`FUN_140763560`): `row` from `DAT_1425e7838` (index `2·state + side`), overridden to
+  `0x6d8` (`gkrise_facedown_0_3_catch`) when `local_res20[0] == 2`, plus `DAT_1425e7848`
+  (`…_guard`) when the keeper's reaction timer allows. `startTime` (passed to `SetMotion` as its
+  second argument, via `FUN_1407649a0`) is **0.4 s** (`DAT_14259b89c`) when the chosen clip is
+  `0x7cc` (`kick_mid_4_0_inside_y0_v2_f`) and the reaction counter at `P+0x37c8` is < 2, and
+  **0.2 s** (`DAT_142598578`) when it is < 3, else 0. duration
+  `= (DAT_1425656c0 / tickHz) · _DAT_14258c264` = `4/tickHz · 3.0` s.
+- Slide (`FUN_140764fa0`): `row = 0x6bc + (mirrorFlag ? 1 : 0)` → `gkrise_sidewaysnear_0_0_{l,r}`,
+  column from the slide direction; three post-hoc motionNo overrides (0x7c0 → 0x7be/0x7bf by
+  angle ≥ 135°, 0x7c2 for the "stepped" variant). **Note:** the row ids here are the
+  `gkrise_*` *rows*, whose cells contain the actual `sliding_*` clips — the row label and the clip
+  family differ, which is why the row-name grammar (§1.3) must not be read as a clip taxonomy.
+
+### 6.7 The jostle / dodge / feint writers (OBS)
+
+- Feint (`FUN_140728420`): a pure decision tree returning row ids:
+  - `iVar3 == 1` (trick family 1): `param[10]` (speed-out class) in 3..5 and `param[9]` (speed-in)
+    in 3..5 → `0x11d` (285) `blockfront_4_0_y06` if the power ≥ 22 km/h else, for the named
+    tricks, one of the 4-entry tables `DAT_1425e5d30` (`blockfront_2_0_y03_shoot_reaction` +
+    v2/v3) / `DAT_1425e5d40` (y04 set); else `0x114`/`0x11b`/`0x119` by speed-out;
+  - else `0x11a`, `0x109`, `0x10a`, `0x10b/0x10c`, and the `0xef/0xf0/0xf2/0xf3/0xf4/0xf9` set
+    with the same 4-entry tables at `DAT_1425e5d18` (`_y03_`) and `DAT_1425e5d08` (`_y02_`),
+    indexed by `FUN_1406e6bf0` (a per-player random/personality pick).
+  The `blockfront_*_shoot_reaction` rows' *cells* hold the `dribble_*`/`jostle` clips, so again the
+  row label is not the clip family.
+- Throw-in (`FUN_14073efb0`): the column cascade of §6.4, rows `0x4f4` / `0x4f5` / `0x4f6` /
+  `0x4f7`.
+
+### 6.8 Parametric group selection (OBS, this session — the missing piece)
+
+`FUN_1406b8340` (the MOVE/STEP_MOVE exec) ends with:
+
+```c
+if (local_67c == 0x11)  SetMotion(iVar9, …)          // single step clip
+else  SetParametric(group = DAT_14344e0e0[local_67c], startRate, mirror, …)
+```
+
+and `DAT_14344e0e0` (**image VA, 17 i32 entries, read from the image this session**) is the
+state → group map:
+
+| state | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| group | **80** | 85 | 88 | 88 | 89 | 89 | 82 | 84 | 81 | 93 | 86 | 90 | 90 | 91 | 92 | 87 | 83 |
+
+(80 = canonical run blend; 85/86 = `near_run_*`; 88–90 = sidestep/`parallel`/`heisou`;
+82/84/83/87/91/92 = jostle-guard / relax / tired variants; 81 = `run_adjust_*`; 93 = `run_4_4_v2`.)
+The state index itself is `DAT_14344e380[state · 16]`'s first i16 — a 150-entry table of
+`{i16 demoRow, i16 demoRow2}` pairs (read this session), defaulting to
+`(_DAT_14344e620, …)` outside 1..0x96. This is the table that makes "guard / relax / tired /
+sidestep / near-ball" variants selectable at runtime.
+
+**Executable rule.** GF must compute the same 17-valued movement state (its existing
+`CrudeSelection` movement families + pressure/stamina flags map onto it) and read group from an
+equivalent runtime table. The group membership then comes from `Parametricblendtable.bin` (§3).
+This closes the last "INF (medium)" in the draft's locomotion section.
+
+---
+
+## 7. Priority 2 — the kick taxonomy, both sides
+
+### 7.1 PES side: what each kick row family actually encodes (OBS, from all 278 `kick` rows +
+882 cells)
+
+Grammar `kick_{len}_a_b_{part}_yN[_mods]`, plus the off-angle families
+`kick{side,rear,far,fardown,sliding,rabona}_*`:
+
+| token | values (count) | meaning (OBS, from cell contents) |
+|---|---|---|
+| `len` | `short` / `mid` / `long` | pass length/power class; `fk_*` rows are the dead-ball restatement of the same three |
+| `a` | 0, 2, 3, 4 | incoming speed class (§4.1) |
+| `b` | 0, 2, 3, 4 | outgoing speed class; `b = 0` rows carry the `_keep` cells |
+| `part` | `inside` `instep` `outside` `toe` `sole` `heel` `infront` `overhead` | strike surface; OBS from HitData `hit_bone` + the `sf_*` fields |
+| `yN` | 0–9 | contact height (§4.1) |
+| mods | `keep` `adjust` `control` `doubletouch` `bodyfake` `jostle` `late` `stagger` `charge` `punch` `curve` `lob` `grounder` `highpower` `topspin` `cancel` `nostep` `stepback` `direct` `scoop` `max` `weak_f` `blast_down` `2tep` `placekick` `push` `kr` `kfl` `kl` `lr` `draw` `fake_pass_000` `fake_shoot_f045` `tacklefoot` `heelflick` `v2/v3/v4` `f/l/r`+angle | per-situation refinement (OBS: each modifier appears in ≥1 populated cell) |
+
+The kick *families* and the modifier set are the PES vocabulary. The full clip-name list is PES
+data and is regenerated at runtime (mtar name hashes ↔ exe name table, §6.2 of the loader).
+
+**What decides the row (OBS, from the writer §6.3):** (1) dead-ball vs open play, (2) the ball
+speed the shot/pass needs, (3) the touch height, (4) whether possession is retained, (5) whether
+the actor is off-balance (`adjust`/`control`/`stagger`). What decides the **column**: the outgoing
+ball direction vs body facing. What decides **mirror**: the cell bit, which the authoring set so
+that one side's clip serves the other.
+
+**What decides "superior kick" selection.** The mechanism is OBS but the *record* is partially
+decoded:
+
+- `Idletable.bin` / `Movetable.bin`, 151 × 20 B, decoded this session. Layout (OBS, parser
+  `FUN_1406aa590` `param_4 == 1|2`): record `r` is 5 u32 words `w0..w4`, each packing **two 12-bit
+  Animetable row ids +1**; the parser writes, in destination order
+  `+0,4 ← (w2>>12, w2)&0xfff`, `+8,0xc ← (w1>>12, w1)`, `+0x10,0x14 ← (w0>>12, w0)`,
+  `+0x18,0x1c ← (w3>>12, w3)`, `+0x20,0x24 ← (w4>>12, w4)`, all `−1` at the end
+  (i.e. stored +1, 0 = none), plus two 1-bit flags at `+0x28/+0x2c`.
+  Reading back with that layout reproduces header rows exactly (OBS: Idle rec 1 →
+  `head_0_0_y5_f` @slot 5, `head_0_0_y6_f` @8, `head_0_0_y7_f` @9, `head_0_0_y9_f` @3;
+  Move rec 1 → `head_3_0_y5_f` @7, `head_3_0_y6_f` @4(hi), `head_3_0_y7_f` @9).
+- The **ten slots are a fixed per-table enum**, not a height index (OBS: slot → `_yN` histogram over
+  all 151 records — Idle slot 0→y0 (80×), 3→y9 (15×), 4→y4 (44×), 5→y5, 6→y2 (40×), 8→y6, 9→y7;
+  Move slot 1→y2 (44×), 3→y0 (84×), 4→y1 (13×), 5→y4, 0→y6, 9→y7). Same table layout, different
+  slot meaning per sub-type. **INF (high): slot index = (height class) for the header records and
+  (kick situation: inside/instep/outside/toe/heel/lob/curve/…) for the kick records — the record
+  index is the situation, the slot is the sub-choice.** The exact enum unit is **open** (§9).
+- `Kickinfo.bin` (2,416 B = 1 header + 75 × 32 B) is parsed by the same class with `param_4 == 0`
+  into 13 × 0x30 B records of 7-bit fields: two raw u32 copied verbatim (`+0x714`, `+0x970`), and
+  from each u32 four derived fields — `byte` (bits 0–6), `byte<<8` (bits 8–14), **signed
+  `(bits 15–21) − 0x3c`** (the `−60` the earlier report saw: it is a signed angle in 7-bit
+  excess-60), `byte<<22` (bits 22–28) — each stored as a float into a per-record slot
+  (OBS: `+0x714/0x970` verbatim; `−0x25c, +0, +0x25c, +0x4b8` = the four derived). The 75 records
+  carry `f32 5.0` and `f32 0.5` tails. **INF (medium-high): these are per-kick tuning records
+  (angle limit, power class, cancel allowance) consumed by the `[Kick Cancel Rate]` logic, not
+  clip selectors.** The writer path `FUN_1406b10d0`/`FUN_1406b11e0` converts a chosen clip's hit
+  frame to ticks using them; a standalone kick selection does not need them.
+- `SlideDribble.bin` (697 KB, `ParsedJsonSlideDribbleTable`) — 0x186dfc B runtime copy, parser
+  `FUN_1406ab4c0`-family not decompiled this session; the `dribbleslide*` cells are addressable
+  through the Animetable (OBS: 21 + 17 + 15 + … rows exist in the row grammar with populated
+  cells), so it stays off the critical path (§9).
+
+### 7.2 GF side: the vocabulary the renderer must answer for (OBS, from `src/sim`)
+
+`e_FunctionType` (Ghidra-readable enum, `src/sim/gamedefines.hpp:52`):
+`None, Movement, BallControl, Trap, ShortPass, LongPass, HighPass, Header, Shot, Deflect, Catch,
+Interfere, Trip, Sliding, Special`.
+
+Where each is requested (OBS, grep over `src/sim`):
+
+| GF function type | requested by | extra parameters the request carries |
+|---|---|---|
+| `Movement` | `playercontroller.cpp`, `elizacontroller.cpp`, `refereecontroller.cpp`, `humanoidbase.cpp` | `useDesiredMovement`, `desiredDirection`, `desiredVelocityFloat`, `useDesiredLookAt` |
+| `BallControl` | `playercontroller.cpp` | `touchInfo.desiredPower/Direction`, `useSpecialVar1/2` (trick), `onlyDeflectAnimsThatPickupBall` |
+| `Trap` | `playercontroller.cpp` | 180/120 ms ball prediction → `incomingBallDirection`; `allowTrapReQueue` |
+| `ShortPass` | `elizacontroller.cpp` (→ also `LongPass`, which is aliased to ShortPass in `SelectAnim`) | `desiredPower`, `desiredDirection`, pass type from `playerskills.cpp GetPassDifficultyMultiplier(mask, passType, isCross)` |
+| `HighPass` | `elizacontroller.cpp` | cross/lob path |
+| `Shot` | `elizacontroller.cpp` | `desiredPower`, `desiredDirection` |
+| `Deflect` | `playercontroller.cpp` | `onlyDeflectAnimsThatPickupBall`, `pickupBall` query |
+| `Catch` | never requested by the sim (OBS, grep) — keeper saves run as Deflect + physics |
+| `Interfere` | `playercontroller.cpp` | `incomingBallDirection` |
+| `Trip` | `humanoidbase.cpp` | `tripType` 1–3, bump direction |
+| `Sliding` | `playercontroller.cpp` | — |
+| `Special` | `elizacontroller.cpp`, `refereecontroller.cpp` | `specialVar1/2` (celebration / referee whistle) |
+| `Header` | never requested by the sim (OBS, grep) — headers happen as ShortPass/Shot touches with the head |
+
+GF velocity buckets (`src/sim/onthepitch/velocitystate.hpp:15-18`): `idleVelocity = 0`,
+`dribbleVelocity = 3.5`, `walkVelocity = 5.0`, `sprintVelocity = 8.0` m/s, quantised by
+`FloatToEnumVelocity`. PES thresholds {2.5, 8.0, 13.5, 22.0} km/h (OBS, live table at
+0x14344e250, `FUN_1406deb30`) = {0.69, 2.22, 3.75, 6.11} m/s. GF `e_Velocity_{Idle,Dribble,Walk,
+Sprint}` → PES digits {0, 2, 3, 4} (OBS, §4.1 of this report; note GF "walk" is PES "run").
+
+GF per-clip variables the sim writes today (`animcollection.cpp`, `humanoid.cpp`):
+`type, incomingballdirection[_maxdeviation], balldirection[_…], touch_bodypart, touchframe, steps,
+triptype/bumpdirection, outgoing_special_state, outgoing_retain_state, lastditch, specialvar1/2,
+imported`. Every one has a PES counterpart (§5). The two that have **no** PES counterpart are
+`outgoing_special_state`-as-a-clip-variable chain (PES keeps it in `demo_connect_data` per clip,
+not per transition) and `steps` (PES uses `foot_type` events instead of a strike count).
+
+### 7.3 The compact mapping table
+
+Left = the GF event/decision the renderer needs a clip for. Right = PES clip family + the exact
+selection rule. "Table" = the runtime file the engine reads.
+
+| # | GF state / event (left) | PES family (right) | selection rule (right) |
+|---|---|---|---|
+| 1 | `Movement`, steady, speed v | `Parametricblendtable.bin` group `DAT_14344e0e0[state]` (80 canonical) | rate = v / 8.96; startRate ∈ {0,.25,.75} from foot phase; duration 0.3 |
+| 2 | `Movement`, step/stop/turn | `Freemove.bin` key `state·10 + digit` | state = `[0][in][1][style][out][1]` (§2.2); digit 0..4 / 5..9 mirrored; duration 0.133–0.167 |
+| 3 | `Movement`, sidestep/back/parallel | same FSM, families 2/3/5 | style digit 2/3/5; transitionType 2 or 6 (OBS live) |
+| 4 | `BallControl`, plain touch | `dribble_a_b_{in,out,sole,nutmeg,rear,mid,axisback}_{l,r}` | a/b §4.1; `in`/`out` from touch geometry; row suffix = dribbling foot; column = next-touch direction |
+| 5 | `BallControl` at pace | `dribblerun_3_3_[angle]_in/out`, `dribbleslide*` | in ≥ 2; Slidedribble cells via Animetable |
+| 6 | `BallControl` + `specialVar1` (trick) | `kickfeint_*`, `feint_*`, `feintrun_*`, `doubletouch_*`, `scissors*/roulette*/elastico*/nutmeg*`, `bodyfake*`, `lfeint/inout/outin/outout/onetime/stepkick/*slide*` | rows `FUN_140728420` decision tree (§6.7); no fallback to plain ballcontrol |
+| 7 | `Trap` frontal | `trap_a_b_yN_[part]_[in,out,near,far]` | a/b §4.1; yN from predicted contact height; part = nearest surface; column = incoming ball direction |
+| 8 | `Trap` side-on | `trapside_*_l/_r/guardside` | row side must match ball side; else mirror; see `trap_3_3_y6_rear`/`y8_rear` mirror inversion (§6.5) |
+| 9 | `Trap` running on | `trapchase_*` (out ≥ 2) / `trapfast_*` (one-touch) / `traplift_*` (flick) / `trapback_*` (behind) / `trapthrough*` (let-through, AI-called) | as 7 + "behind" determined by the incoming ball's z sign |
+| 10 | `Trap` under pressure | `dribble_*_guard*`, `trapside_*_guardside`, `js_*` | pressure flag → guard rows |
+| 11 | `ShortPass` / `LongPass` | `kick_{short,mid,long}_a_b_{part}_yN[_keep]` + `fk_*` for dead balls | len from desired power; `b=0`+`_keep` for a set pass; part: inside=short/set, instep=driven, outside=bend, infront=reach, toe/heel/sole=desperation |
+| 12 | `HighPass` / cross | `kick_*_y2..y4` + `_lob`/`_curve` mods, `fklong` variants | yN ≥ 2 for a lofted ball; `isCross` from `GetPassDifficultyMultiplier` |
+| 13 | `Shot` | same `kick_*` rows + `_shoot/highpower/curve/lob/grounder/v2/v3/max/blast/2tep`, `kickfar*`, `kickside*`, `kickrear*` | power class → len + mods; angle ≥ 90° → side/rear families; distance → `kickfar*` |
+| 14 | Set piece: free kick | `fk_{short,mid,long,quick}_3_0_{part}` + named run-ups | restart kind; only when dead-ball flag set |
+| 15 | Set piece: penalty | `pk_enclose_*` rituals, `pk_*` | penalty phase |
+| 16 | Set piece: kick-off | `kickoff_loop_*` (OBS live) | kick-off phase |
+| 17 | Throw-in (outfield taker) | `throw_*` (29 rows) + `throwin_*` (11) | restart; `throwin_pickupball` row = the pick-up |
+| 18 | Goal kick (keeper) | `goalkick_inside/instep/idle/coaching_*` (10 rows) | goal-kick phase |
+| 19 | Corner | `corner_defence_idle` (1 row: `postman_loop`) | corner phase; GF must add the corner phase itself |
+| 20 | Keeper distribution | `gksidethrow_*`, `gkunderthrow_*`, `gkoverthrow*`, `gkpuntkick_*`, `gkgoalkick_*` | §8.2 |
+| 21 | `Deflect`, outfield block | `blockfront_a_0_yNN[_shoot[_near,_reaction]]`, `blockside_a_0_yNN`, `block090/blockhead` | writer `FUN_140763560` (§6.6); yNN from shot height |
+| 22 | `Deflect`, loose-ball redirect | `trapfast/trapchase` at the right height with `pickupBall` | GF nearest-surface rule unchanged |
+| 23 | Keeper save (any) | `Parametricblendtable.bin` groups 0–79 at parameter N/11 | §8.1 |
+| 24 | `Interfere` (duel, no ball) | `js_*` (40 rows) + `js_run_*_loop_guard_*` (param groups 82–84) | pressure → guard variants; `tacklefoot/tackleshoulder` for the contact |
+| 25 | `Sliding` | `sliding_a_0_{l,r,block,legscissors,parallel}[_angle]` + `dribbleslide*` | a max 3 (no `_4` rows exist); `_l/_r` = side; column = slide direction; end lie from `demo_connect_data` |
+| 26 | `Sliding` with contact | `tacklefoot_*`, `tacklehold_*`, `tackleshoulder_*` | contact flag; then the same lie chain |
+| 27 | `Trip` type 1 (bump) | `stagger_{air,lowbody,upbody}_a_b[_hard,_tackle,_hold,_pulled,_guard]` | 49 rows; a = §4.1 of the trip speed |
+| 28 | `Trip` types 2/3 (fall) | `fall_{air,lowbody,upbody}_a_0[_front,_sliding,_move,_hold,_lose,_carry,_facecover]` | 62 rows; direction bucket = trip direction |
+| 29 | Getting up after a fall | `riseup_{allfours,facedown,faceup}_0_{0,3}` | writer `FUN_1406deed0`: lie code from `demo_connect_data`, `_0` (stay) if the next target is within ~1.5 m else `_3` (run off) |
+| 30 | Keeper getting up | `gkrise_{sideways,faceup,facedown,…}_0_{0,3,4}[_l,_r][_catch,_hand,_guard]` (67 rows) | lie code + catch flag + side |
+| 31 | `Special` (celebration) | `demo_goal_*` + `_loop` pairs, `dm_tu_*` (time-up), `TimeUp_*`, `HalfEnd_*` | `HasSpecial(var1, var2)` contract unchanged; intro then loop |
+| 32 | Referee / officials | `judge_*` (15), `linesman_*` (26), `layer_assistant_*` (upper-body layer), `wall_*` (12) | `e_FunctionType_Movement`+`Special` from `refereecontroller.cpp`; layer masks only for officials |
+| 33 | Injury / knockdown | `stagger_*` + `fall_*` + `riseup_*`, plus the `gkfall/gkstagger` keeper rows | same as 27–30; GF's `foulsequence.cpp` supplies the foul type |
+| 34 | Feint/dummy (not a trick) | `kickfeint_*` (34), `bodyfake*` | §7 row 6 |
+| 35 | Dodge an incoming ball/player | `dodge_{human,ball,net,post}_*` (38 rows) | GF Interfere/Deflect with a dodge flag — **open, see §9** |
+| 36 | `Header` (never requested) | `head_*` + `headfardive/headclear/headside/headfar/headrear/headfarside/headrearfardown` at y4–y9 via Idletable (standing) / Movetable (moving) | §1.5; the two-table slot enum (§7.1) is the selection key |
+| 37 | `Catch` (never requested) | `gkcatch_*` groups 9–25 | §8.1; catch-vs-parry is the action-state decision |
+
+**Missing GF-side inputs the table above needs from the sim** (OBS, gaps in `src/sim` today):
+a dead-ball/restart phase flag with the restart kind (free-kick / throw-in / goal-kick / corner /
+penalty / kick-off); a keeper possession state (idle/ready/set/hold/thrown/kicked); a pressure flag
+on the touch request (GF has `matchpressure.cpp`, but it is not on the animation command);
+a foul-type discriminator; and a "catch vs parry vs punch" decision. None of these exist as
+animation-command fields today — they are derived from match phase and ball state, exactly where
+PES gets them.
+
+---
+
+## 8. Priority 3 — keepers
+
+### 8.1 Which keeper clips exist and what state selects them (OBS, this session)
+
+Two disjoint mechanisms:
+
+**(a) Discrete keeper actions → Animetable rows + kinematic clips** (OBS, decompiled writers):
+
+| keeper state | families (row count) | writer / evidence |
+|---|---|---|
+| ready / set (before the shot) | `gkprejump_0_0_{near,mid,pk_front,…}[_min][_move[_front/push]]`, `gkprejump_3_0/3_3_y05_rotate{Step,Run}_{000,045,090,180}[_Otherside]` | name inventory; the pre-jump crouch the keeper plays while the shot is in flight |
+| save, standing | `gkdeflect_f00_0_0_y00..y10`, `gkdeflectscoop_f00b01_*_yNN_000`, `gkdeflectlate_*`, `gkdeflectExpect[3]_*`, `gkdeflect_s01_otherside…after…`, `gkdeflect_pk_s01_*` | rows + Parametric groups 34–46, 55–70 |
+| save, diving | `gkcatch_f02_dive/f03_dive/f03_diveguard_3_0_y00..y06[_fast]`, `gkblockcover_f0X_dive_3_0_y00..y06`, `gkpunch_f03_3_0_y02..y11` | groups 2–3, 10–11, 71–75 |
+| save, side/low | `gk{deflect,collapsing,punch,blockcover,catch}_s01..s05_0_0_y00..y10`, `gkcatch_s01_slide_*`, `gkscoopout_lie_s02/s03/s04_3_0_y00..y05_090` | groups 4–8, 18–25, 27–33, 54–64, 76–79 |
+| catch & hold | `gkcatch_f00_hold_0_0_y00..y04` (group 15), `gkcatch_*_stand`, `gkcollapsing_*_stand` (group 29) | OBS: the `_hold`/`_stand` modifiers are the *hold* branch of the same height blend |
+| block with the body | `gkblockcover_f00/s01_0_0_y02..y06`, `gkblock_s01_otherside_3_0_after_y01/y05`, `gkblock_lie_*_dive` | groups 0–8, 67 |
+| punch clear | `gkpunch_*` (groups 71–75), `gkfall_punch_0_0_y10_*`, `gkstagger_punch_0_0_y10_*`, `gkpunch_stagger_crash_*` | groups 71–75 |
+| collapse / crossbar / post | `gkcollapsing_*_y10_crossbar`, `*_y10_upperhand`, `gkblock_s03_3_0_000_postcrash`, `gkrise_sideways_post_*` | OBS: named by the object hit |
+| on the ground | `gkcatch_lie_*_dive`, `gkblock_lie_*_dive`, `gkclear_lie_*`, `gkdeflect_lie_*`, `gkscoopout_lie_*_otherside` | groups 20, 52–53, 76–79; rows `gkcatch_lie_near_0_0_{l,r}`, `gkclear_lie_s02_{l,r}` |
+| see-off / give up | `gkseeoff_{high,side}_{react,light,reactjump}_0_0/3_0_yNN`, `gksavingCancel_*` | OBS: the keeper's "no chance" reaction |
+| rise after a save | `gkrise_*` (67 rows, §7.3 row 30) | writer tables `DAT_1425e77f8/0e7818/0e7828/0e7848` and `DAT_1425e7838` (§6.6) |
+| move with the ball | `gkmovehigh_*_ball[_onehand]`, `gkmovehigh_idle_0_0[_ball][_067_ball][_122_ball][_ver02]`, `gkmovelow_*`, `gkmovemid_guard*`, `gkmovenear_Heisou*`, `gkmoveSeriesA_*`, `gkmoveSeriesB_*`, `gkmoveheisou_run_3_3` (param group 89) | name inventory; group 89 is the keeper's parallel/sidestep blend |
+
+**(b) Height blend groups** — `Parametricblendtable.bin` groups **0–79** (OBS, decoded §3): every
+member is `gk…_yNN` with parameter `= NN/11` exactly (y02 → 0.18, y04 → 0.36, y06 → 0.55,
+y08 → 0.73, y10 → 0.91, y11 → 1.0). Group boundaries:
+
+| groups | family | members |
+|---|---|---|
+| 0–8 | `gkblockcover` | f00/f01/f02/f03/f04/s01..s04, `dive`/`punch`/`wide`/`low`/`slidingCancel` variants |
+| 9–17 | `gkcatch` | f00/f02/f03/s01..s05, `dive`/`diveguard`/`diveline`/`hold`/`slide`/`stand`/`long`/`fast`/`light`/`hard`/`back`/`b01` line variants |
+| 18 | `gkcatch_s01_3_0_y00_045` | single-member (0.0) |
+| 19–20 | `gkcatch_s01b01`, `gkcatch_s03b01…_line` | near-line variants |
+| 21–22 | `gkcatch_s02/s03` | |
+| 26–33 | `gkcollapsing` | f00/s01..s04 + `long`/`stand`/`crossbar`/`upperhand`/`b01`/`Foot` |
+| 34–40 | `gkdeflectlate` | f00/s01/s03 + `_nutmeg`/`_unjust` |
+| 41–46 | `gkdeflectscoop` | f00b01/s01b01..s04b01 + `_long`, angle tokens |
+| 47–70 | `gkdeflect` (+`_snapunder`, `_Expect`, `_pk`, `_lie`, `_otherside`, `_stagger`) | f00/f02/f04/f05, s01..s05, b03/b04 |
+| 71–75 | `gkpunch` | f00/f02/f03/s02/s04 + `_palm`/`_collapse` |
+| 76–79 | `gkscoopout_lie` | f00/s02/s03/s04 + `_otherside` |
+
+### 8.2 The keeper "catch, hold, wait, distribute" cycle in PES (OBS + INF)
+
+The cycle is a **state chain in the action enum**, not a single clip (OBS: the RTTI class list in
+AR §3 has one action per keeper phase: `goal_keeper::{Catch, Punch, Deflect, SnapUnder, ScoopOut,
+Block, Throw, PuntKick, PreSaving, SeeOff, DropBall, PickupBall, BodyFeint, AfterCatchBase,
+SavingBase}`). Mapped to GF (`gkcatch_*_hold_*` / `_stand` clips, the `gkrise_*` table, and the
+distribute families):
+
+1. **PreSaving** — the keeper commits: `gkprejump_*` crouch. State input: shot in flight + ball
+   line + distance (near/mid) → `gkprejump_0_0_near[_min]` vs `…_mid` vs `…_pk_front`.
+2. **SavingBase** — the save itself: the height blend (parameter = predicted contact height / 11) in
+   the group chosen by *ball line relative to the keeper* (front `f00`/side `s01..s05`/back `b03`)
+   and by *dive vs standing* (diving groups carry `_dive`, and the speeds `0_0` vs `3_0`).
+   GF input: keeper position relative to the shot line, shot height, keeper speed.
+3. **Catch vs Punch vs Deflect** — three different actions (OBS: separate action classes), chosen by
+   ball speed/holdability: catch → `gkcatch_*` groups 9–25 (+`_hold`/`_stand` variants);
+   punch → `gkpunch_*` groups 71–75; deflect → groups 34–70. GF input: GF's `Catch` function type
+   (currently never requested, §7.2) plus a holdability test. **Open:** the exact speed threshold
+   PES uses (the `Kickinfo`/cancel-rate logic is a candidate, §9).
+4. **AfterCatchBase / hold** — the keeper holds: `gkcatch_f00_hold_0_0_y00..y04` (group 15) and
+   `gkcollapsing_*_stand` (29). The ball is pinned to the hands; the *hand* timeline switches to
+   `kp_hold` (OBS: the FH fallback category 6 = `kp_hold`, AR §11.3).
+5. **Wait for teammates** — the keeper moves with the ball: `gkmovehigh_*_ball[_onehand]`,
+   `gkmovenear_*`, `gkmoveSeries*`, `gkgoalkick_idle_0_0` (row 131). GF input: possession +
+   teammates positions; GF's own `ballowner` state machine already has this, it just has no clips.
+6. **Distribute** — the keeper plays it: `gkunderthrow_*` (underarm roll-out), `gksidethrow_*`
+   (side-arm), `gkoverthrow*[_Step/_Bothhands]` (over-arm long), `gkpuntkick_{front,side,
+   nearline,highpunt,fast,fast2,hard,cancel}` (goal-kick punt), `gkgoalkick_{inside,instep}_0_0`
+   (short goal kick), `gkcoaching_high_0_0_{lower,up}_goalkick` (the "wait, coach says hold" beat).
+   Rows: `throw_*` (40) / `puntkick_*` (13) / `goalkick_*` (10), each with a `_cancel` variant for
+   the aborted run-up.
+7. **DropBall / PickupBall** — `gkpickupball_0_0/3_0/b01/b02_fast` when the ball is loose in the
+   box; `gkidle`-equivalent `gkgoalkick_idle_0_0` while waiting for the whistle.
+
+GF-side keeper vocabulary to enumerate (OBS, `src/sim`): the keeper is a `Humanoid` with a
+`Controller`; its ball decisions come from `elizacontroller.cpp`/`playercontroller.cpp` with the
+same `e_FunctionType` set — there is **no keeper-specific branch today**. GF must add the
+pre-save/save/hold/distribute state chain itself; PES supplies the clip per state.
+
+---
+
+## 9. Priority 4 — non-kick action states
+
+### 9.1 Dribble touches and turn angles (OBS)
+
+- Touch rows `dribble_a_b_{in,out,sole,nutmeg,rear,mid,axisback,avoid,decelerate,guard,guardside,
+  notouch,4cycle1touch,tripletouch}_{l,r}[_verNN]` (170 rows) and `dribblerun_*` (53). The
+  turn angle is carried **in the clip name** (`_NNN`/`_fNNN`) *and* in `rot_data`
+  (`{rot_start, rot_end, rot_angle}` in frames/degrees), which is the runtime source (AR §6,
+  OBS: median `rot_angle` = +NNN for `_NNN`, −NNN for `_fNNN`).
+- Turn clips: `run_2_2_back`, `side_2_2_run_f090`, `gkmovenear_idlemidturn_{022,045,090,135}`,
+  `gkmoveSeriesB_Front_*_90/135`, plus the `_000/_045/_067/_090/_122/_135/_150/_180/_225/_270`
+  token set across `sliding_*`, `slidetackle*`, `js_*`, `dribble*`.
+- **Running backwards / sideways** (OBS, dedicated families): `back_a_b_*` (32 rows),
+  `walkback/walkbackslant/backslant/backstep` (step family, 44 rows), `side_{l,r}_a_b_*` (77),
+  `parallel_a_b_*` (19), `heisou_*`, `walkparallel_1_1` (param group 88), `mid_delayback_*`,
+  `side_1_1/2_2/3_3` Freemove states, and the keeper equivalents `gkmovelow_back*`,
+  `gkmovenear_HeisouBack*`, `gkmoveSeriesA_Back*` / `_BackSlant*`. GF maps these from
+  `Movement` with `useDesiredLookAt` + a negative dot product — GF already computes
+  `relBodyDirectionVec`; the PES side needs only the family pick.
+
+### 9.2 Injury / knockdown (OBS)
+
+No separate "injury" clip family. The chain is (OBS, from row grammar + the
+`DemoConnectData`-driven writers):
+`stagger_*` (bump, upright) or `fall_*` (grounded, 62 rows incl. `_facecover`, `_sliding`,
+`_move`, `_hold`, `_lose`, `_carry`) → lie state from `demo_connect_data`
+(2 allfours / 3 facedown / 4 faceup) → `riseup_<state>_0_{0,3}`; keeper variants
+`gkfall_*`, `gkstagger_*`, `gkrise_*`; plus the referee's foul call
+(`judge_*` 15 rows) and `tackleshoulder_*`/`tacklehold_*`/`tacklepulled_*` for the contact
+itself. GF's `foulsequence.cpp` / `foulseverity.cpp` already produce the foul type; the clip is
+the `stagger`/`fall`/`riseup` triple plus the judge's reaction.
+
+### 9.3 Taunts, celebrations, emotes (OBS)
+
+- Celebrations: `demo_goal_*` (367 `demo` rows total, of which the goal set is the large part) with
+  `_loop` variants; `dm_goal_*`, `dm_tu_*` (time-up), `dm_miss_*` (dejection), `dm_oop_*`
+  (out of play, incl. `dm_oop_gk_riseup_*`), `demo_appeal_*`, `demo_guts*`, `demo_miss_*`,
+  `demo_move_*`, `demo_cheer_*`, `demo_hugset_*`, `demo_pfm_*`, `demo_fail_*`, `demo_coop_*`,
+  `TimeUp_*` (32), `HalfEnd_*` (13). Each celebration has an intro + loop pair (66 loops, AR §7).
+- Taunts/emotes toward opponents: `demo_appeal_*` (referee appeals), `demo_guts*` (fist pumps),
+  `goalturn_*` (19 rows — the keeper showing off / time-wasting), `js_*_win/lose` outcomes.
+- Selector (OBS, `FUN_1406ea840` decompiled this session): the demo rows are chosen by walking a
+  9-table × 18-entry row-priority list (`DAT_1425e4700 + case*0x50`, case = the requested "demo
+  class"), taking the first row that is populated at the requested column; the case→table map
+  and the reverse (`DAT_1425e3728` = 17..0) are in the image. GF maps `specialVar1/2` onto
+  (demo class, loop flag).
+
+### 9.4 Referee / linesman / assistants (OBS)
+
+- **Referee**: `judge_*` 15 rows, requested via `refereecontroller.cpp`'s `Movement` + `Special`;
+  the end-of-game whistle clip was seen live (AR §7 state A). Humanoid/pose: he is a normal
+  `AnimePlayer` with kind `ANIME_JUDGE`.
+- **Linesmen**: `linesman_*` 26 rows + `assistant_*` clips (`assistant_stand_0`,
+  `assistant_flag_up_0[_offside_near/middle/far]`, `assistant_3_0_090_flag_*`,
+  `assistant_flag_up_0_flag_up/ck/down`) played as an **upper-body layer** with mask
+  `LRArm`/`LArm`/`RArm`/`Full` (OBS live: kind 91 side-stepping + a layer clip
+  `layer_assistant_flag_hand_R`, AR §11.2/§11.5). Hand fallback category 2 = the flag grip
+  `hatanigiri` (OBS, AR §11.3).
+- **Wall players**: `wall_*` 12 rows (`wall_jump_high…`) for the defensive free-kick wall.
+- For GF these are three extra `AnimePlayer`-like roles (GF already has `playerofficial.cpp`);
+  the layer mechanism is the one piece GF does not have — it must either fake it by playing the
+  full-body `linesman_*` rows or implement `SetLayer`.
+
+---
+
+## 11. Loader summary (what the engine reads at runtime)
+
+Files, all under `common/anime/`, read from `PES21_ROOT` (no committed copies):
+
+| file | what is built |
+|---|---|
+| `AnimeTable/bin/Animetable.bin` | 3,045 × 18 × u32 → `(motionNo+1, mirror)` matrix; layout §1.1 |
+| `AnimeTable/bin/Freemove.bin` | 3,874 × 12 B → `(state, digit) → (motionNo, mirror, nextState)`; layout §2.1 |
+| `AnimeTable/bin/Parametricblendtable.bin` | 449 × 8 B → 95 groups; layout §3 |
+| `AnimeTable/bin/Idletable.bin`, `Movetable.bin` | 151 × 20 B → 5 u32 words = 10 × 12-bit row ids + 2 flags; layout §7.1 |
+| `AnimeTable/bin/Kickinfo.bin` | 75 × 32 B of 7-bit fields; per-kick tuning, not selection (§7.1) |
+| `AnimeTable/bin/Slidedribble.bin` | not on the critical path (§9) |
+| `Mbinfo/json/anim_infos.json` | per-clip metadata, §5 (authoritative, plain JSON in dt13) |
+| `Mbinfo/bin/Animation.bin` | per-clip timing if the json is not used; §5 |
+| `FoxAnim/Body/body_anime_file0..9.mtar` | the clips (4,389) |
+| `PES2021.exe` (install root) | the 4,389-name table at **0x14351e590** and the 3,045-row label table at **0x1434997f0** (§1.2); also `DAT_14344e0e0` (parametric group map, §6.8), `DAT_14344e380` (movement-state table, 150 entries) and the demo row-priority tables `DAT_1425e4700…0e4980` (§9.3). File offsets = VA − 0x140000A00 in `.rdata` — **check the PE section headers before mapping a VA** |
+
+Nothing else. No PES bytes or name lists are committed; the loader derives the maps at startup.
+
+---
+
+
+---
+
+## 12. ChoosePesClip — the algorithm
+
+```
+ChoosePesClip(action) -> (motionNo, mirror, startTime, duration, rate) or NONE:
+
+  # action = {family, velIn, velOut, relAngle(deg), ballHeightCm, ballDirIn, ballDirOut,
+  #           footSide, power, variant, locoState, pressure, deadBall, restartKind,
+  #           keeperPhase, trick, tripType, lieCode, specialVar1/2, foulType}
+  # All row/column/mirror reads go through the three accessors of §6.1, which must
+  # reproduce FUN_1406de990 exactly (population scan, ±0.001 zero split, default col 9,
+  # hard patch row 0x7c5 col 2). There is NO row fallback anywhere in PES.
+
+  if family == LOCOMOTION_STEADY:
+      g      = DAT_14344e0e0[locoState]           # §6.8; 80 canonical
+      rate   = clamp(speed / 8.96, 0, 1)          # §3
+      start  = footPhase(clip) in {0,.25,.75}     # §5.7
+      return PARAMETRIC(g, rate, startRate=start, duration=0.3)
+
+  if family == LOCOMOTION_STEP:
+      st    = stateCode(locoState)                # [fam][in][sep][style][out][sep] §2.2
+      digit = angleBucket(relAngle)               # 0..4, 5..9 = mirrored side
+      rec   = freemoveRow(st)[digit]              # key = st*10 + digit; missing digit is legal
+      if rec is missing: return NONE              # do NOT fall back to another row
+      locoState = rec.nextState
+      return SINGLE(rec.motionNo, rec.mirror, startTime=0, duration=0.133..0.2)
+
+  if family in (TRAP, TRAP_SIDE, TRAP_CHASE, TRAP_FAST, TRAP_LIFT, TRAP_BACK):
+      row   = rowIndex(familyVariant(ballSide, pressure), pes(velIn), pes(velOut),
+                       yN(ballHeightCm), bodyPart(predictedContact), mods)
+      col   = Column(row, angleBucket(relAngleVsFacing(ballDirIn), mirrorXor=sideFlag != ballSide))
+      if not populated(row, col): col = PreferredNeighbour(row, col)   # §6.5, 9-table walk
+      if not populated(row, col): return NONE      # PES issues no SetMotion
+      return SINGLE(cell.motionNo, cell.mirror ^ sideInversion(row), 0, 0.2)
+
+  if family in (SHORTPASS, LONGPASS, HIGHPASS, SHOT):
+      row   = rowIndex(kick, lengthClass(power), pes(velIn), outClass(keepOrDrive),
+                       footPart(power, curve), yN(ballHeightCm), mods)
+      col   = Column(row, angleBucket(relAngleVsFacing(ballDirOut)))
+      if not populated(row, col):                  # the writer's only fallback (§6.3)
+          col = Column(row, 0)
+      if not populated(row, col):
+          row = OffAngleFamily(row, relAngle)      # kick{side,rear,far,fardown}_*
+          col = Column(row, angleBucket(relAngleVsFacing(ballDirOut)))
+      if not populated(row, col): return NONE
+      for each hitEvent(cell.motionNo):            # §5: all events, middle-out order
+          emit(touchFrame, touchPos, bodyPart)
+      return SINGLE(cell.motionNo, cell.mirror, 0, 0.2, touch=hitEvents)
+
+  if family == FOUL_CONTACT:                       # §6.3: the kick writer also emits these
+      row = FoulRow(foulType)                      # 0x1ae/0x1b5/0x1b1/0x1b2/0x1b3 by contact kind
+      return SINGLE(cell(row, Column(row, 0)).motionNo, cell.mirror, 0, 0.2)   # col forced to 0
+
+  if family == BLOCK:
+      row   = blockVariant(frontal/side) + 2*state + side      # §6.6 tables
+      col   = Column(row, angleBucket(shotLineVsFacing))
+      return SINGLE(cell.motionNo, cell.mirror, startTime=(clip==0x7cc && react<3) ? 0.07 : 0.1,
+                    duration=(60/tickHz)*kScale)
+
+  if family == KEEPER_SAVE:
+      g     = gkGroup(ballLine, dive?)             # groups 0..79, §8.1
+      param = clamp(contactHeightCm / 22.5, 0, 1)  # parameter = NN/11 → ≈ height/22.5
+      hold  = catchable(ballSpeed)                 # → the _hold/_stand member of the same group
       return PARAMETRIC(g, blendPoint=param, startRate=0, duration=0.2)
-  if action.family == SLIDING:
-      row = rowIndex(sliding, pes(velIn), 0, slideSide, ballAttached ? dribbleslide : plain)
-      (m, mir) = animetable(row, angleBucket(slideDirVsFacing))
-      return SINGLE(m, mir, 0, 0.2, lieState=demoConnect(m))   # §5: outgoing_special_state
-  if action.family == TRIP:
-      row = rowIndex(tripType==1 ? stagger : fall, pes(velIn), 0, mods)
-      (m, mir) = animetable(row, angleBucket(tripDirVsFacing))
-      return SINGLE(m, mir, 0, 0.2, lieState=demoConnect(m))
-  if action.family == SPECIAL:
-      if not HasSpecial(var1, var2): drop command      # existing contract
-      row = introRow(var1, var2); (m, mir) = animetable(row, 9)   # col 9 = +0
-      ...then loopRow(var1, loopVar2) same way
-  # fallbacks, in order: nearest populated column (engine rule) -> b±1 row -> a±1 row ->
-  #   same family yN±1 -> GF stock pool (only if the PES row set is exhausted) -> idle state.
-  #  startTime for loops = phase-matched (startRate·frames/30); one-shots = 0
-  #   (the exact tick-quantised single-clip offset, AR §5.3, stays open and defaults to 0).
+
+  if family == SLIDING:
+      row   = rowIndex(sliding, pes(velIn) capped at 3, 0, slideSide,
+                       ballAttached ? dribbleslide : plain)
+      col   = Column(row, angleBucket(slideDirVsFacing))
+      return SINGLE(cell.motionNo, cell.mirror, 0, 0.2, lieState=demoConnect(motionNo))
+
+  if family == TRIP:
+      row = rowIndex(tripType == 1 ? stagger : fall, pes(velIn), 0, mods)
+      col = Column(row, angleBucket(tripDirVsFacing))
+      return SINGLE(cell.motionNo, cell.mirror, 0, 0.2, lieState=demoConnect(motionNo))
+
+  if family == RISEUP:
+      state = lieCode or demoConnect(previousClip)  # 2/3/4
+      row = rowIndex('riseup_<state>_0_', nextTargetDist < 1.5 ? 0 : 3)
+      col = Column(row, angleBucket(nextTargetDirVsFacing))
+      return SINGLE(cell.motionNo, cell.mirror, 0, 0.2, adjust=AdjustTransXZ(target, 6/60 s, 0.9))
+
+  if family == SPECIAL:
+      if not HasSpecial(var1, var2): DROP COMMAND          # existing GF contract
+      row   = introRow(var1, var2);  (m1, x1) = cell(row, Column(row, 9))
+      row   = loopRow(var1, var2);   (m2, x2) = cell(row, Column(row, 9))
+      return PAIR(SINGLE(m1, x1, 0, 0.4), LOOP(m2, x2, startRate=0, duration=0.5))
+
+  if family == LAYER (officials):
+      return LAYER(clip=layerClip(role, pose), mask=LRArm|LArm|RArm|Full, duration=0.5)
+
+  # ---- what to do when NONE ----
+  # PES never substitutes a row: it either issues no motion at all (the trap solver's
+  # 4389/0x1125 answer) or runs the one writer-local retry above. So NONE is a legal,
+  # visible result: the actor keeps its current clip. Only if the *current* clip is also
+  # gone (e.g. GF's movement query found nothing) does GF fall back to its stock pool or
+  # idle — which is exactly GF's existing `GetIdleMovementAnimID()` path.
 ```
 
-Fallback order is load-bearing: PES rows are sparse (median 3 populated columns) and 10 rows are
-entirely empty (§1.1); a miss must walk the chain, never hold the previous clip. The GF-side
-radius/cheat narrowing (`GetBestCheatableAnimID`) runs unchanged on the emitted candidates.
+Start times: loops phase-matched (`startRate · blend_start/30`, §5); one-shots 0. The tick-quantised
+offset of §14 item 3 is a sub-frame refinement, not a clip-choice issue.
 
-## 8. Open items and killed hypotheses
+---
 
-Open (carried from AR §9, narrowed): the tick-quantised single-clip `startTime` formula (defaults
-to 0 — visually a sub-frame phase error, not a wrong clip); the engine blend curve (linear
-assumed); `transitionType` bits beyond "0 = crossfade"; layer masks 4–6 (officials only); the
-`playbackSpeed` driver (assume 1.0 + parametric speed-match until the stamina/size factor is
-found); `Kickinfo` field semantics (not a selector); `SlideDribble.bin` internals (addressable via
-the Animetable); `FreemoveOption` use (secondary list, §2.4); Idle/Move `class` field unit;
-logic-vs-root-motion split (order-of-magnitude agreement, §5 speeds); Sequenceinfo bits
-+0x66/+0x69/+0x6a.
 
-Killed this session: *Freemove digits are opaque* — solved as the 7-slot state code (§2.2; every
-one of 252 motions and 408 states fits, mirror digit ±5 included). *The `next` field is the clip's
-code* — refined: it is the *next FSM state* (82 terminal `next = 0`; mirrored entries add 5 to the
-digit; §2.1). *Idletable/Movetable are 12-bit packs* — they are `{u16 row+1, u16 class, u16 row+1,
-…}` pairs (header rows resolve exactly, §1.5). *GF's `PES_FRAME_MS = 1/59.94` import path can be
-reused* — it is 2×/25 % off for match clips (§0.1; repo constants already corrected). *Row labels
-are an enum* — they are authored debug strings, the row number is the id (§1.2).
+---
+
+## 13. Worked examples (one per rule family)
+
+Each was executed against the tables in scratch; the ids/labels are quoted as evidence.
+
+**E1 — Freemove step (OBS).** State `1011` (family 0, speedIn 0, style 1 walk, speedOut 2 jog,
+per §2.2), requested turn +45° → digit 1 → key `10111`. `Freemove.bin` row: motionNo **2220**
+`idle_0_2_run_000`, mirror 0, next state **10211**. Note the digit is the *requested relative
+turn bucket*, not the clip's own turn token: digit 1 (+45°) from state 1011 yields the
+`_000` clip, and digit 2 (+90°) yields `idle_0_2_run_045` (2221) — the FSM pairs a requested
+turn with a *subset* of turn clips (OBS: only digits 1, 2, 3, 4 are populated in state 1011, and
+they map to the `_000/_045/_090/_135` set with digit 0 giving `idle_0_2_parallel_180`).
+A mirrored request (digit 6) gives the same motionNo 2220 with the mirror bit set and next state
+10216. Mirrored state 1311 keeps digits 1–3 unmirrored and mirrors 0/4/5 (§2.3: the asymmetry is
+in the data). Crossfade 0.2 s (observed live, AR §7).
+
+**E2 — Parametric locomotion (OBS).** Player at 4.2 m/s, no pressure, facing forward →
+state 1 → `DAT_14344e0e0[1] = 85` → group 85 = `{walk_1_1 0.0, run_1_1 0.15, run_2_2 0.3,
+near_run_3_3 0.5, near_run_4_4 0.9, run_5_5 1.0}`. Rate `= 4.2 / 8.96 = 0.469` → interpolated
+between `run_2_2` (0.3) and `near_run_3_3` (0.5). Foot phase from the current clip's
+`foot_type` events → startRate 0.25. Duration 0.3 s.
+
+**E3 — Pass (OBS, rule from the writer §6.3 + the actual table cells).** Open play, GF `ShortPass`,
+`desiredPower` small, actor at run (PES digit 3), ball on the ground (y0), target 30° right of
+facing, possession retained. Row: **`kick_short_3_0_inside_y0`** (OBS: row 2020; note PES has no
+`_2_` kick rows — a jogging entrant uses a `_3_` row, GF's `walk` bucket maps to PES digit 3).
+Column: `+30°` → `FUN_1406de990` computes centres … `+22.5` (col 11) vs `+45` (col 12); nearest =
+col 11. Cell = motionNo **2709** `kick_short_3_0_inside_y0_045_keep`, mirror from the bit.
+Crossfade 0.2 s, startTime 0. The touch frame comes from that clip's `hit_data`
+(`FUN_1406b10d0`), and the physics touch is queued at that tick.
+For comparison, the standing variant `kick_short_0_0_inside_y0` (row 2017) has only 4 populated
+columns (6/9/11/13) and its col-9 cell is the `_000_keep` clip 2607 — a *straight* pass has no
+`_045`/`_f045` options, which is exactly the sparsity GF's fallback must respect.
+If the requested cell had been empty, the writer retries at angle 0 — the only in-engine fallback.
+
+**E4 — Shot, off-balance (OBS).** GF `Shot`, `desiredPower` high, actor at dash (4), ball at knee
+height (y4), target 110° right (behind-left), actor staggering. Row family `kick_long_4_0_*`;
+angle 110° → nearest populated column of `-112.5`/`+112.5`; if that is empty, the writer's
+angle-0 retry; if still empty, the caller picks `kickrear_*` (OBS: the off-angle families exist
+precisely for the > 90° cases) and re-runs the column lookup.
+
+**E5 — Trap from the side (OBS).** Ball arriving at 1.6 m height (y7), actor jogging at 3.9 m/s
+(digit 3), ball arriving from the actor's right at −60°. Row: `trapside_3_3_y7_*` with the side
+token matching the ball side. `FUN_14084b310` applies the side flip only if the solver's flag is
+set; the column is −60° (col 6); mirror from `FUN_1408527c0`. If the row's cell is empty the
+`FUN_1406ea840` walk over `DAT_1425e4700…0e4980` offers the next populated row. If nothing is
+populated, `FUN_14084b310` returns 4389 and **no SetMotion is issued** — GF's existing
+"keep the previous clip" behaviour is *not* what PES does; the trap simply does not animate and
+the ball physics resolves.
+
+**E6 — Keeper diving catch (OBS).** Shot on the keeper's left, 1.1 m high, keeper already moving.
+Predicted contact height 1.1 m → parameter `N/11` with `N ≈ 5.5` → interpolate between group 18
+(`gkcatch_s01_0_0_y00..y10`) members at 0.55 (`_y06`) and 0.73 (`_y08`). Hold branch: if GF's
+catch test says the ball is catchable, use group 15 (`gkcatch_f00_hold_*`) — the hold variant of
+the same family, not a separate clip. Then `gkrise_sideways_catch_0_3_000` (OBS row 1750) for the
+get-up, `gkmovehigh_idle_0_0_ball` (row 1458) for the hold-carry, then
+`gkunderthrow_0_0_045` / `gksidethrow_0_0_045` / `gkpuntkick_side_0_0` for the distribution.
+
+**E7 — Header via the superior-kick tables (OBS, layout; INF for the slot key).** Standing
+header, ball at 1.46 m (y5) → `Idletable.bin` record 1 → slot 5 = row `head_0_0_y5_f`; slot 8/9
+hold the y6/y7 alternatives and slot 3 the y9 one. Column = the ball line vs facing; mirror from
+the cell. Running in (digit 3) → `Movetable.bin` record 1, same slots but with the `_3_0` rows.
+
+**E8 — Sliding tackle (OBS).** Actor at 5.5 m/s (digit 3), ball to the actor's right, intended
+slide direction +50°. Row family `sliding_3_0_r`, column +45° (col 12). The clip's
+`demo_connect_data` gives the lie state; then `riseup_<state>_0_3` (the actor will run on).
+Mirror from the cell. If the slide is *with* the ball, the rows switch to `dribbleslide_*` /
+`dribbleslide045_*` / `dribbleslide090_*` / `dribbleslide180_*` (OBS: the numbered suffix is the
+touch direction, not the angle).
+
+---
+
+
+---
+
+## 14. Open items (status after this session)
+
+**Closed this session** (all were listed open in the draft/AR):
+- The Idletable/Movetable record layout and slot semantics — decoded, §7.1 (slot *enum unit*
+  remains, see below).
+- The `Kickinfo` 7-bit field pack, including the "−60" mystery — it is a signed excess-60 angle,
+  §7.1.
+- The parametric group *selection* table (`DAT_14344e0e0`) and the movement-state table
+  (`DAT_14344e380`) — read, §6.8. This removes the draft's "INF (medium)" on locomotion.
+- The column-picker algorithm and its ±0.001 zero split — decompiled in full, §6.1.
+- The kick writer's row construction (including the foul-contact rows it also emits) — §6.3.
+- The trap solver's side flip, mirror inversion on `trap_3_3_y{6,8}_rear`, and the populated-
+  neighbour walk — §6.5.
+- The tackle/block/slide row tables and the slide's motionNo overrides — §6.6.
+- The demo/celebration selection tables (`DAT_1425e4700`…) — §9.3.
+- The "row 1989 col 2 → 2484, mirror 0" hard patch — identified as row `0x7c5`
+  = `kick_mid_0_0_inside_y0_f`, §6.1.
+
+**Still open, with what was tried:**
+1. **The Idletable/Movetable slot enum unit.** Tried: 5-word field permutations to force a
+   monotone `_yN` order over the whole file (failed — the slots are not height-ordered);
+   per-slot `_yN` histograms (§7.1) show a stable Idle map {0:y0, 3:y9, 4:y4, 5:y5, 6:y2, 8:y6,
+   9:y7} and Move map {1:y2, 3:y0, 4:y1, 5:y4, 0:y6, 7:y4/5/6, 9:y7/8}. Next step: find the
+   reader of the parsed table (the class is `ParsedJsonSuperiorKickTable`; the writer that
+   consumes sub-type 1/2 was not located — no string references the row labels from that path).
+   *Impact:* headers/volleys only; GF never requests them (§0.7), so this does not block.
+2. **The catch/punch/deflect decision threshold.** Tried: reading the keeper writers
+   (`FUN_14078c820`, `FUN_14078ce90`) — they take an already-made decision as a parameter
+   (`FUN_1406ec260`, `FUN_1406ec5f0`) and the caller is in the not-yet-decompiled AI block.
+   *Workaround for the engine:* GF's existing `Catch` request plus a holdability test on ball
+   speed; a tuned threshold, flagged as such.
+3. **The single-clip `startTime` formula** (tick-quantised, AR §9). Tried again this session by
+   reading `FUN_140727230` (the STEP_MOVE writer): the start time comes from
+   `FUN_1406b11e0`/`FUN_1406b10d0` (clip length in ticks) minus a random `uVar11/3` offset and a
+   remaining-duration gate, then divided by the playback rate — i.e. `startTime = (clipTicks −
+   rand(0..ticks/3) − elapsed) / rate`, not the foot-event inversion AR tried. **INF (medium):
+   this is the formula; not yet verified against a live capture.** Default 0 remains acceptable.
+4. **The `playbackSpeed` driver** (0.9–1.15 per player). Untouched this session.
+5. **`SlideDribble.bin` internals.** Not needed (§7.1); re-open only if GF wants the with-ball
+   slide *touch* semantics rather than the slide *pose*.
+6. **`FreemoveOption.bin`** secondary disambiguation (§2.4). Not on the critical path.
+7. **GF-side gaps that are engineering, not RE:** the dead-ball phase flag, the keeper state
+   chain, the pressure flag on the animation command, the foul-type discriminator, and the
+   `SetLayer` upper-body mechanism (§7.3). Each is a small addition to GF's animation command
+   struct; none requires more PES RE.
+
+### Killed this session
+- *The Animetable rows carry a height index* — no: the height lives in the `_yN` token of the row
+  label, and the *cells* hold the height choice for the superior-kick tables (§7.1).
+- *`Kickinfo` selects clips* — no: its fields are per-kick tuning values (signed excess-60 angle
+  + three bytes) consumed by the cancel/hit-frame conversion (§7.1).
+- *The locomotion blends are chosen from the clip the player is in* — no: `DAT_14344e0e0` maps a
+  17-valued movement state to the group (§6.8).
+- *Row labels tell you the clip family* — no: several writers emit clips whose family differs
+  from the row's label (e.g. slide poses come from `gkrise_*` rows, feints from
+  `blockfront_*_shoot_reaction` rows; §6.6/§6.7). Match on *row id + column + mirror*, not on
+  the label text.
+
