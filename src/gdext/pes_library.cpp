@@ -4,7 +4,12 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include "pes/exe.hpp"
+
 namespace godot {
+namespace {
+constexpr const char* EXE_NAME = "PES2021.exe";
+}  // namespace
 
 void PesLibrary::_bind_methods() {
   ClassDB::bind_method(D_METHOD("open", "root"), &PesLibrary::open);
@@ -28,6 +33,11 @@ Error PesLibrary::open(const String& root) {
   auto table = file ? pes::ParsePlayerAppearanceFile(*file, &err) : std::nullopt;
   if (table) appearances_ = std::move(*table);
   else UtilityFunctions::push_warning("PES21 PlayerAppearance.bin unreadable: ", ToGd(err));
+  // Hand rig. The motion name table lives in the game's executable.
+  if (auto exe = pes::PeImage::Open(FromGd(root) + "/" + EXE_NAME, &err)) motionNames_ = pes::MotionNames(*exe, vfs_, &err);
+  if (motionNames_) handSequences_ = pes::LoadHandSequences(vfs_, &err);
+  if (handSequences_) handPoses_ = pesrig::LoadHandPoses(vfs_, handSequences_->poses, &err);
+  if (!handPoses_) UtilityFunctions::push_warning("PES21 hand rig unavailable, hands stay at rest: ", ToGd(err));
   return OK;
 }
 

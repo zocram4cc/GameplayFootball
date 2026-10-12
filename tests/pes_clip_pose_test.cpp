@@ -5,7 +5,11 @@
 #include <cstdlib>
 #include <string>
 
+#include <algorithm>
+#include <optional>
+
 #include "pes/clips.hpp"
+#include "pes/handseq.hpp"
 #include "pes/gani.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
@@ -138,4 +142,85 @@ TEST(ClipPoseInstall, Run33MovesAtTheSpeedSeenInTheGame) {
   const auto a = sampler.Sample(0.0), b = sampler.Sample(SPAN_S / pesrig::PES_FRAME_S);
   const double travelled = std::hypot(b.bodyPosition.x - a.bodyPosition.x, b.bodyPosition.z - a.bodyPosition.z);
   EXPECT_NEAR(travelled / SPAN_S, LIVE_RUN_3_3_SPEED_MPS, SPEED_TOLERANCE_MPS);
+}
+
+namespace {
+double AngleDeg(const pes::Quat& q) { return 2.0 * std::acos(std::min(1.0, std::fabs(double(q.w)))) * 180.0 / M_PI; }
+
+struct HandFixture {
+  pes::PesVfs vfs;
+  std::optional<pesrig::Rig> rig;
+  std::optional<pes::HandSequences> seq;
+  std::optional<pesrig::HandPoseLibrary> poses;
+};
+HandFixture* Hands() {
+  static HandFixture f;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    const char* root = std::getenv("PES21_ROOT");
+    if (!root) return nullptr;
+    std::string err;
+    if (!f.vfs.Mount(root, &err)) return ADD_FAILURE() << err, nullptr;
+    f.rig = pesrig::BuildRig(f.vfs, &err);
+    f.seq = pes::LoadHandSequences(f.vfs, &err);
+    if (f.seq) f.poses = pesrig::LoadHandPoses(f.vfs, f.seq->poses, &err);
+    if (!f.rig || !f.poses) return ADD_FAILURE() << err, nullptr;
+  }
+  return f.poses ? &f : nullptr;
+}
+int PoseIndex(const HandFixture& f, const std::string& stem) {
+  return int(std::find(f.seq->poses.begin(), f.seq->poses.end(), stem) - f.seq->poses.begin());
+}
+int PesJoint(const pesrig::Rig& rig, const std::string& pes) {  // by PES bone name
+  for (size_t i = 0; i < rig.bones.size(); ++i)
+    if (rig.bones[i].pesBone == pes) return int(i);
+  return -1;
+}
+}  // namespace
+
+// normal.gani is a gently curled hand: index mcp 15, pip 32, dip 20 degrees
+// (decoded in GameplayFootball; AGENTS.md history).
+TEST(HandPoseInstall, NormalIsAGentlyCurledHand) {
+  auto* f = Hands();
+  if (!f) GTEST_SKIP() << "PES21_ROOT not set";
+  constexpr double CURL_TOLERANCE_DEG = 3.0;
+  std::vector<pes::Quat> local(f->rig->bones.size());
+  pesrig::ApplyHandPose(*f->rig, *f->poses, {{PoseIndex(*f, "normal"), 1.0f}}, false, local);
+  EXPECT_NEAR(AngleDeg(local[PesJoint(*f->rig, "skh_index_mcp_l")]), 15.0, CURL_TOLERANCE_DEG);
+  EXPECT_NEAR(AngleDeg(local[PesJoint(*f->rig, "skh_index_pip_l")]), 32.0, CURL_TOLERANCE_DEG);
+  EXPECT_NEAR(AngleDeg(local[PesJoint(*f->rig, "skh_index_dip_l")]), 20.0, CURL_TOLERANCE_DEG);
+}
+
+// The right hand wears the left-authored pose mirrored across x = 0.
+TEST(HandPoseInstall, RightHandIsTheMirroredLeft) {
+  auto* f = Hands();
+  if (!f) GTEST_SKIP() << "PES21_ROOT not set";
+  std::vector<pes::Quat> left(f->rig->bones.size()), right(f->rig->bones.size());
+  const std::vector<pes::HandWeight> pose = {{PoseIndex(*f, "nigiri"), 1.0f}};
+  pesrig::ApplyHandPose(*f->rig, *f->poses, pose, false, left);
+  pesrig::ApplyHandPose(*f->rig, *f->poses, pose, true, right);
+  for (const char* bone : {"skh_thumb_mcp", "skh_index_pip", "skh_ring_dip"}) {
+    const auto& l = left[PesJoint(*f->rig, std::string(bone) + "_l")];
+    const auto& r = right[PesJoint(*f->rig, std::string(bone) + "_r")];
+    EXPECT_NEAR(r.x, l.x, 1e-6f) << bone;
+    EXPECT_NEAR(r.y, -l.y, 1e-6f) << bone;
+    EXPECT_NEAR(r.z, -l.z, 1e-6f) << bone;
+    EXPECT_NEAR(r.w, l.w, 1e-6f) << bone;
+  }
+}
+
+// Blended poses land between their parts.
+TEST(HandPoseInstall, AnEvenBlendSitsBetweenTheTwoPoses) {
+  auto* f = Hands();
+  if (!f) GTEST_SKIP() << "PES21_ROOT not set";
+  const int a = PoseIndex(*f, "normal"), b = PoseIndex(*f, "nigiri"), j = PesJoint(*f->rig, "skh_middle_pip_l");
+  std::vector<pes::Quat> pa(f->rig->bones.size()), pb = pa, mix = pa;
+  pesrig::ApplyHandPose(*f->rig, *f->poses, {{a, 1.0f}}, false, pa);
+  pesrig::ApplyHandPose(*f->rig, *f->poses, {{b, 1.0f}}, false, pb);
+  pesrig::ApplyHandPose(*f->rig, *f->poses, {{a, 0.5f}, {b, 0.5f}}, false, mix);
+  const double lo = std::min(AngleDeg(pa[j]), AngleDeg(pb[j])), hi = std::max(AngleDeg(pa[j]), AngleDeg(pb[j]));
+  EXPECT_GT(hi - lo, 10.0) << "normal and nigiri should differ at the middle pip";
+  EXPECT_GT(AngleDeg(mix[j]), lo);
+  EXPECT_LT(AngleDeg(mix[j]), hi);
 }

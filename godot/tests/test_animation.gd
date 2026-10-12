@@ -10,6 +10,9 @@ const CLIP := "sliding_0_0_000"       # a PES body clip (resolved by name)
 const CLIP_BY_HASH := "0x2c5e8a2e"    # the first clip of body_anime_file0, by hash
 const MOVED_DOT := 0.9999             # |dot(rest, posed)| below this = a visibly rotated joint
 const BODY_HEIGHT_RANGE_M := Vector2(0.05, 2.0)
+# The linesman's flag-hand layer: one hand grips the flag (hatanigiri), the other
+# keeps another pose (pes-re-animselect.md 11.5).
+const LINESMAN_FLAG_CLIP := "layer_assistant_flag_hand_R"
 
 var failures := 0
 
@@ -59,5 +62,20 @@ func _ready() -> void:
 	var body := skeleton.get_bone_pose_position(0)
 	check(is_zero_approx(body.x) and is_zero_approx(body.z), "in-place zeroes body XZ")
 	check(skeleton.get_bone_pose_rotation(hip).is_normalized(), "hip rotation is a unit quaternion")
+
+	# Hand rig: every clip poses the fingers (its own timeline, or the engine's
+	# default pose), and the linesman's two hands differ.
+	var fingers := ["left_index_pip", "left_middle_mcp", "right_index_pip"]
+	anim.apply(skeleton, anim.length_seconds() * 0.5, true)
+	for name in fingers:
+		var q := skeleton.get_bone_pose_rotation(skeleton.find_bone(name))
+		check(absf(q.dot(Quaternion.IDENTITY)) < MOVED_DOT, "%s is posed, not at rest" % name)
+	var flag := PesAnimation.new()
+	check(flag.load(library, LINESMAN_FLAG_CLIP) == OK, "linesman flag clip loads")
+	flag.apply(skeleton, flag.length_seconds() * 0.5, true)
+	var l := skeleton.get_bone_pose_rotation(skeleton.find_bone("left_index_pip"))
+	var r := skeleton.get_bone_pose_rotation(skeleton.find_bone("right_index_pip"))
+	var r_mirrored := Quaternion(r.x, -r.y, -r.z, r.w)
+	check(absf(l.dot(r_mirrored)) < MOVED_DOT, "linesman hands hold different poses")
 
 	get_tree().quit(1 if failures > 0 else 0)

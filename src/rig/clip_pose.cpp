@@ -5,6 +5,7 @@
 
 #include <cmath>
 
+#include "pes/ask.hpp"
 #include "rig/rig_names.hpp"
 
 namespace pesrig {
@@ -105,6 +106,68 @@ ClipPose ClipSampler::Sample(double t) const {
   pose.bodyRotation = ToF(Mul(rq, mq));
   pose.bodyPosition = {float(rp.x + offset.x), float(rp.y + offset.y), float(rp.z + offset.z)};
   return pose;
+}
+
+
+namespace {
+constexpr const char* HAND_SKELETON = "common/anime/FoxAnim/Hand/CharacterAssets/hand_anim_skel.ask";
+constexpr size_t FIRST_FINGER_UNIT = 2;  // unit 0 RIG_ROOT, unit 1 skh_hand_l (the wrist: from the body clip)
+}  // namespace
+
+std::optional<HandPoseLibrary> LoadHandPoses(const pes::PesVfs& vfs, const std::vector<std::string>& poseOrder,
+                                             std::string* error) {
+  auto skelBytes = vfs.Read(HAND_SKELETON, error);
+  auto skel = skelBytes ? pes::ParseAsk(*skelBytes, error) : std::nullopt;
+  if (!skel) return std::nullopt;
+  HandPoseLibrary lib;
+  // Hand skeleton bone b = unit b + 1; bone 0 is the hand itself.
+  for (size_t b = FIRST_FINGER_UNIT - 1; b < skel->size(); ++b) lib.fingers.push_back((*skel)[b].name);
+  for (const auto& stem : poseOrder) {
+    const std::string path = std::string(pes::kHandPoseDir) + stem + ".gani";
+    auto blob = vfs.Read(path, error);
+    auto g = blob ? pes::ParseGani(*blob, error) : std::nullopt;
+    if (!g) return std::nullopt;
+    if (g->units.size() < FIRST_FINGER_UNIT + lib.fingers.size()) {
+      *error = path + ": fewer units than hand bones";
+      return std::nullopt;
+    }
+    std::vector<Quat> pose;
+    for (size_t f = 0; f < lib.fingers.size(); ++f) {
+      const auto& unit = g->units[FIRST_FINGER_UNIT + f];
+      pose.push_back(unit.segments.empty() ? Quat{} : ToF(SampleQuat(&unit.segments[0], 0.0)));
+    }
+    lib.poses.push_back(std::move(pose));
+  }
+  return lib;
+}
+
+void ApplyHandPose(const Rig& rig, const HandPoseLibrary& lib, const std::vector<pes::HandWeight>& weights, bool right,
+                   std::vector<Quat>& local) {
+  for (size_t f = 0; f < lib.fingers.size(); ++f) {
+    std::string bone = lib.fingers[f];
+    if (right) bone.back() = 'r';
+    int joint = -1;
+    for (size_t j = 0; j < rig.bones.size(); ++j)
+      if (rig.bones[j].pesBone == bone) joint = int(j);
+    if (joint < 0) continue;
+    // Weighted nlerp, each pose sign-aligned to the first.
+    DQ sum{0, 0, 0, 0}, first{};
+    bool have = false;
+    for (const auto& w : weights) {
+      if (w.clip < 0 || size_t(w.clip) >= lib.poses.size() || w.weight <= 0) continue;
+      const Quat& q = lib.poses[size_t(w.clip)][f];
+      DQ d{q.x, q.y, q.z, q.w};
+      if (!have) first = d, have = true;
+      const double s = (d.x * first.x + d.y * first.y + d.z * first.z + d.w * first.w) < 0 ? -w.weight : w.weight;
+      sum = {sum.x + s * d.x, sum.y + s * d.y, sum.z + s * d.z, sum.w + s * d.w};
+    }
+    if (!have) continue;
+    const double n = std::sqrt(sum.x * sum.x + sum.y * sum.y + sum.z * sum.z + sum.w * sum.w);
+    Quat q = ToF({sum.x / n, sum.y / n, sum.z / n, sum.w / n});
+    // Mirror across x = 0: the right hand is the left skeleton reflected in x.
+    if (right) q = {q.x, -q.y, -q.z, q.w};
+    local[size_t(joint)] = q;
+  }
 }
 
 }  // namespace pesrig

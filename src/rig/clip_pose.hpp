@@ -2,7 +2,12 @@
 
 #include <vector>
 
+#include <optional>
+#include <string>
+
 #include "pes/gani.hpp"
+#include "pes/handseq.hpp"
+#include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 
 namespace pesrig {
@@ -45,5 +50,18 @@ class ClipSampler {
   uint32_t frameCount_ = 0;
   pes::Gani clip_;  // owned copy; the pointers above point into it
 };
+
+// The 162 hand poses: single-frame ganis on the left hand animation skeleton,
+// unit u driving its bone u - 1 (HumanHand.frig; docs/re/pes-re-collision.md).
+struct HandPoseLibrary {
+  std::vector<std::vector<Quat>> poses;  // per pose: finger local rotations, hand skeleton order
+  std::vector<std::string> fingers;      // left-hand finger bone names, same order
+};
+std::optional<HandPoseLibrary> LoadHandPoses(const pes::PesVfs& vfs, const std::vector<std::string>& poseOrder,
+                                             std::string* error);
+// Blends the weighted poses into one hand's finger joints (local rotations, rig
+// joint order). The right hand wears the left pose mirrored across x = 0.
+void ApplyHandPose(const Rig& rig, const HandPoseLibrary& lib, const std::vector<pes::HandWeight>& weights, bool right,
+                   std::vector<Quat>& local);
 
 }  // namespace pesrig

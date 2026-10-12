@@ -5,6 +5,8 @@
 #include <optional>
 
 #include "pes/editsave.hpp"
+#include "pes/handseq.hpp"
+#include "rig/clip_pose.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 
@@ -26,6 +28,11 @@ class PesLibrary : public RefCounted {
   const pesrig::Rig* rig() const { return rig_ ? &*rig_ : nullptr; }
   // Save over PlayerAppearance.bin, by player id.
   const pes::AppearanceTable& appearances() const { return appearances_; }
+  // Hand rig: motionNo -> clip name (from PES2021.exe), per-clip hand timelines
+  // and the 162 hand poses. Null when the install lacks them; hands then rest.
+  const std::vector<std::string>* motion_names() const { return motionNames_ ? &*motionNames_ : nullptr; }
+  const pes::HandSequences* hand_sequences() const { return handSequences_ ? &*handSequences_ : nullptr; }
+  const pesrig::HandPoseLibrary* hand_poses() const { return handPoses_ ? &*handPoses_ : nullptr; }
 
  protected:
   static void _bind_methods();
@@ -34,6 +41,9 @@ class PesLibrary : public RefCounted {
   pes::PesVfs vfs_;
   std::optional<pesrig::Rig> rig_;
   pes::AppearanceTable appearances_;
+  std::optional<std::vector<std::string>> motionNames_;
+  std::optional<pes::HandSequences> handSequences_;
+  std::optional<pesrig::HandPoseLibrary> handPoses_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

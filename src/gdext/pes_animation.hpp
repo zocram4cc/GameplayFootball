@@ -16,7 +16,8 @@ class PesAnimation : public RefCounted {
  public:
   Error load(const Ref<PesLibrary>& library, const String& name_or_hash);
   double length_seconds() const;
-  // Poses the skeleton at `time_seconds` (clamped to the clip). With in_place
+  // Poses the skeleton at `time_seconds` (clamped to the clip): body from the
+  // clip, fingers from its hand timelines (pes-re-animselect.md 11). With in_place
   // the body joint's horizontal travel is removed. The skeleton must be inside
   // the tree: Godot 4.7 only invalidates cached global poses there, so posing
   // an out-of-tree skeleton would silently show the old pose (ERR_UNCONFIGURED).
@@ -26,7 +27,10 @@ class PesAnimation : public RefCounted {
   static void _bind_methods();
 
  private:
+  void ApplyHands(Skeleton3D* skeleton, double time_seconds) const;
   std::unique_ptr<pesrig::ClipSampler> sampler_;
+  Ref<PesLibrary> library_;
+  int motionNo_ = -1;  // index in the game's motion table; -1 = unknown
 };
 
 }  // namespace godot

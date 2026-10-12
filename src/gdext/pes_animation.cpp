@@ -3,8 +3,11 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
+
 #include "pes/clips.hpp"
 #include "pes/gani.hpp"
+#include "pes/strcode.hpp"
 
 namespace godot {
 
@@ -28,6 +31,13 @@ Error PesAnimation::load(const Ref<PesLibrary>& library, const String& name_or_h
     return ERR_PARSE_ERROR;
   }
   sampler_ = std::make_unique<pesrig::ClipSampler>(*clip, *library->rig());
+  library_ = library;
+  motionNo_ = -1;
+  if (const auto* names = library->motion_names()) {
+    const uint32_t id = pes::ClipId(FromGd(name_or_hash));
+    for (size_t m = 0; m < names->size() && motionNo_ < 0; ++m)
+      if (pes::StrCode32((*names)[m]) == id) motionNo_ = int(m);
+  }
   return OK;
 }
 
@@ -49,7 +59,32 @@ Error PesAnimation::apply(Skeleton3D* skeleton, double time_seconds, bool in_pla
   const auto& bp = pose.bodyPosition;
   skeleton->set_bone_pose_rotation(0, Quaternion(bq.x, bq.y, bq.z, bq.w));
   skeleton->set_bone_pose_position(0, in_place ? Vector3(0, bp.y, 0) : Vector3(bp.x, bp.y, bp.z));
+  ApplyHands(skeleton, time_seconds);
   return OK;
+}
+
+// Each hand blends up to four static poses from the clip's own timeline; a clip
+// without one keeps the engine's default track pose, normal3 (FUN_141eb6840).
+void PesAnimation::ApplyHands(Skeleton3D* skeleton, double time_seconds) const {
+  const auto* seq = library_.is_valid() ? library_->hand_sequences() : nullptr;
+  const auto* lib = library_.is_valid() ? library_->hand_poses() : nullptr;
+  if (!seq || !lib) return;
+  static constexpr const char* DEFAULT_HAND_POSE = "normal3";
+  const int fallback = int(std::find(seq->poses.begin(), seq->poses.end(), DEFAULT_HAND_POSE) - seq->poses.begin());
+  std::vector<pesrig::Quat> local(library_->rig()->bones.size());
+  for (const bool right : {false, true}) {
+    const auto& table = right ? seq->right : seq->left;
+    auto it = motionNo_ >= 0 ? table.find(motionNo_) : table.end();
+    auto weights = it != table.end() ? pes::EvaluateHand(it->second, float(time_seconds)) : std::vector<pes::HandWeight>{};
+    if (weights.empty()) weights = {{fallback, 1.0f}};
+    pesrig::ApplyHandPose(*library_->rig(), *lib, weights, right, local);
+  }
+  const auto& bones = library_->rig()->bones;
+  for (size_t j = 0; j < bones.size() && int(j) < skeleton->get_bone_count(); ++j)
+    if (bones[j].pesBone.rfind("skh_", 0) == 0) {
+      const auto& q = local[j];
+      skeleton->set_bone_pose_rotation(int(j), Quaternion(q.x, q.y, q.z, q.w));
+    }
 }
 
 }  // namespace godot
