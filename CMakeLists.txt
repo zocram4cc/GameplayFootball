@@ -21,11 +21,14 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_library(pesfmt STATIC
-  src/pes/strcode.cpp src/pes/cpk.cpp src/pes/fpk.cpp src/pes/vfs.cpp)
+  src/pes/strcode.cpp src/pes/cpk.cpp src/pes/fpk.cpp src/pes/vfs.cpp src/pes/ask.cpp src/pes/skl.cpp)
 target_include_directories(pesfmt PUBLIC src)
 
+add_library(pesrig STATIC src/rig/rig.cpp)
+target_link_libraries(pesrig PUBLIC pesfmt)
+
 add_executable(pesfmt_dump apps/pesfmt_dump.cpp)
-target_link_libraries(pesfmt_dump PRIVATE pesfmt)
+target_link_libraries(pesfmt_dump PRIVATE pesrig)
 set_target_properties(pesfmt_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps)
 
 add_library(godotfootball SHARED src/gdext/register_types.cpp)

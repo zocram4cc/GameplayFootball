@@ -6,3 +6,7 @@ include(GoogleTest)
 add_executable(pes_strcode_test pes_strcode_test.cpp)
 target_link_libraries(pes_strcode_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_strcode_test)
+
+add_executable(pes_rig_test pes_rig_test.cpp)
+target_link_libraries(pes_rig_test PRIVATE pesrig GTest::gtest_main)
+gtest_discover_tests(pes_rig_test)

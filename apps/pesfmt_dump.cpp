@@ -2,12 +2,19 @@
 //   pesfmt_dump mounts --pes21-root DIR
 //   pesfmt_dump ls <prefix> --pes21-root DIR
 //   pesfmt_dump cat <path> --pes21-root DIR > file   (dev only; never into the repo)
+//   pesfmt_dump ask <path> --pes21-root DIR
+//   pesfmt_dump skl <fpk path> <inner suffix> --pes21-root DIR
+//   pesfmt_dump rig --pes21-root DIR
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
+#include "pes/ask.hpp"
+#include "pes/fpk.hpp"
+#include "pes/skl.hpp"
 #include "pes/vfs.hpp"
+#include "rig/rig.hpp"
 
 namespace {
 
@@ -22,8 +29,20 @@ std::string Json(const std::string& s) {
   return out + "\"";
 }
 
+std::string V3(pes::Vec3 v) {
+  char buf[96];
+  std::snprintf(buf, sizeof buf, "[%.9g, %.9g, %.9g]", v.x, v.y, v.z);
+  return buf;
+}
+
+std::string Q4(pes::Quat q) {
+  char buf[128];
+  std::snprintf(buf, sizeof buf, "[%.9g, %.9g, %.9g, %.9g]", q.x, q.y, q.z, q.w);
+  return buf;
+}
+
 int Usage() {
-  std::fprintf(stderr, "usage: pesfmt_dump <mounts|ls PREFIX|cat PATH> --pes21-root DIR\n");
+  std::fprintf(stderr, "usage: pesfmt_dump <mounts|ls PREFIX|cat PATH|ask PATH|skl FPK SUFFIX|rig> --pes21-root DIR\n");
   return 2;
 }
 
@@ -78,6 +97,61 @@ int main(int argc, char** argv) {
       return 1;
     }
     std::fwrite(bytes->data(), 1, bytes->size(), stdout);
+    return 0;
+  }
+  auto fail = [&] {
+    std::fprintf(stderr, "%s\n", err.c_str());
+    return 1;
+  };
+  if (cmd == "ask" && pos.size() == 2) {
+    auto bytes = vfs.Read(pos[1], &err);
+    if (!bytes) return fail();
+    auto bones = pes::ParseAsk(*bytes, &err);
+    if (!bones) return fail();
+    std::printf("[");
+    for (size_t i = 0; i < bones->size(); ++i) {
+      const auto& b = (*bones)[i];
+      std::printf("%s\n  {\"name\": %s, \"parent\": %d, \"local\": %s, \"rotation\": %s}", i ? "," : "",
+                  Json(b.name).c_str(), b.parent, V3(b.local).c_str(), Q4(b.rotation).c_str());
+    }
+    std::printf("\n]\n");
+    return 0;
+  }
+  if (cmd == "skl" && pos.size() == 3) {
+    auto bytes = vfs.Read(pos[1], &err);
+    if (!bytes) return fail();
+    auto fpk = pes::FpkArchive::Parse(*bytes, &err);
+    if (!fpk) return fail();
+    const std::string& sfx = pos[2];
+    for (const auto& e : fpk->entries) {
+      if (e.path.size() < sfx.size() || e.path.compare(e.path.size() - sfx.size(), sfx.size(), sfx) != 0) continue;
+      auto bones = pes::ParseSkl(std::span(*bytes).subspan(e.offset, e.size), &err);
+      if (!bones) return fail();
+      std::printf("[");
+      for (size_t i = 0; i < bones->size(); ++i) {
+        const auto& b = (*bones)[i];
+        std::printf("%s\n  {\"name\": %s, \"parent\": %d, \"position\": %s}", i ? "," : "", Json(b.name).c_str(),
+                    b.parent, V3(b.Position()).c_str());
+      }
+      std::printf("\n]\n");
+      return 0;
+    }
+    err = "no fpk entry ends with " + sfx;
+    return fail();
+  }
+  if (cmd == "rig") {
+    auto rig = pesrig::BuildRig(vfs, &err);
+    if (!rig) return fail();
+    std::printf("[");
+    for (size_t i = 0; i < rig->bones.size(); ++i) {
+      const auto& b = rig->bones[i];
+      std::printf("%s\n  {\"gf\": %s, \"pes\": %s, \"parent\": %d, \"animLocal\": %s, \"animGlobal\": %s, "
+                  "\"renderGlobal\": %s, \"align\": %s}",
+                  i ? "," : "", Json(b.gfName).c_str(), Json(b.pesBone).c_str(), b.parent,
+                  V3(b.animLocalPos).c_str(), V3(b.animGlobalPos).c_str(), V3(b.renderGlobalPos).c_str(),
+                  Q4(b.align).c_str());
+    }
+    std::printf("\n]\n");
     return 0;
   }
   return Usage();
