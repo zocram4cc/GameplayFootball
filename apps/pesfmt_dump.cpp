@@ -54,7 +54,7 @@ std::string Q4(pes::Quat q) {
 }
 
 int Usage() {
-  std::fprintf(stderr, "usage: pesfmt_dump <mounts|ls PREFIX|cat PATH|ask PATH|skl FPK SUFFIX|rig> --pes21-root DIR\n");
+  std::fprintf(stderr, "usage: pesfmt_dump <mounts|ls PREFIX|cat PATH|ask PATH|skl FPK SUFFIX|fmdl FPK|rig> --pes21-root DIR\n");
   return 2;
 }
 
@@ -150,6 +150,39 @@ int main(int argc, char** argv) {
     }
     err = "no fpk entry ends with " + sfx;
     return fail();
+  }
+  // Materials of every fmdl in a pack: technique, shader, texture roles, params.
+  if (cmd == "fmdl" && pos.size() == 2) {
+    auto bytes = vfs.Read(pos[1], &err);
+    if (!bytes) return fail();
+    auto fpk = pes::FpkArchive::Parse(*bytes, &err);
+    if (!fpk) return fail();
+    for (const auto& e : fpk->entries) {
+      if (e.path.size() < 5 || e.path.compare(e.path.size() - 5, 5, ".fmdl") != 0) continue;
+      auto m = pes::ParseFmdl(std::span(*bytes).subspan(e.offset, e.size), &err);
+      if (!m) return fail();
+      size_t verts = 0;
+      pes::Vec3 lo{1e30f, 1e30f, 1e30f}, hi{-1e30f, -1e30f, -1e30f};
+      for (const auto& mesh : m->meshes) {
+        verts += mesh.pos.size();
+        for (uint32_t ix : mesh.indices) {  // what LOD 0 draws
+          if (ix >= mesh.pos.size()) continue;
+          const auto& p = mesh.pos[ix];
+          lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+          hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        }
+      }
+      std::printf("%s: %zu meshes, %zu verts, %zu bones, bounds %s..%s\n", e.path.c_str(), m->meshes.size(), verts,
+                  m->bones.size(), V3(lo).c_str(), V3(hi).c_str());
+      for (const auto& mat : m->materials) {
+        std::printf("  %s [%s / %s]\n", mat.name.c_str(), mat.technique.c_str(), mat.shader.c_str());
+        for (const auto& [role, t] : mat.textures)
+          std::printf("    tex %s = %s%s\n", role.c_str(), t >= 0 && size_t(t) < m->textures.size() ? m->textures[t].directory.c_str() : "?",
+                      t >= 0 && size_t(t) < m->textures.size() ? m->textures[t].filename.c_str() : "");
+        for (const auto& [name, v] : mat.params) std::printf("    %s = %g %g %g %g\n", name.c_str(), v.x, v.y, v.z, v.w);
+      }
+    }
+    return 0;
   }
   if (cmd == "rig") {
     auto rig = pesrig::BuildRig(vfs, &err);
@@ -267,7 +300,9 @@ int main(int argc, char** argv) {
       for (size_t i = 0; i < m->meshes.size(); ++i) {
         const auto& mesh = m->meshes[i];
         pes::Vec3 lo{1e9f, 1e9f, 1e9f}, hi{-1e9f, -1e9f, -1e9f};
-        for (const auto& p : mesh.pos) {
+        for (uint32_t ix : mesh.indices) {  // what LOD 0 draws
+          if (ix >= mesh.pos.size()) continue;
+          const auto& p = mesh.pos[ix];
           lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
           hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
         }

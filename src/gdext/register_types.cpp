@@ -10,6 +10,7 @@
 #include "gdext/pes_character.hpp"
 #include "gdext/pes_library.hpp"
 #include "gdext/pes_locomotion.hpp"
+#include "gdext/pes_model.hpp"
 
 using namespace godot;
 
@@ -32,6 +33,7 @@ static void initialize_module(ModuleInitializationLevel level) {
   GDREGISTER_CLASS(GfMatch);
   GDREGISTER_CLASS(PesLocomotion);
   GDREGISTER_CLASS(PesBroadcastCamera);
+  GDREGISTER_CLASS(PesModelBuilder);
 }
 
 static void uninitialize_module(ModuleInitializationLevel) {}

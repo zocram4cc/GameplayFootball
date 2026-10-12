@@ -38,7 +38,7 @@ set_target_properties(pesfmt_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BI
 
 add_library(godotfootball SHARED
   src/gdext/register_types.cpp src/gdext/pes_library.cpp src/gdext/pes_texture.cpp src/gdext/pes_character.cpp
-  src/gdext/pes_animation.cpp src/gdext/pes_marking.cpp src/gdext/gf_match.cpp src/gdext/pes_locomotion.cpp src/gdext/pes_broadcast_camera.cpp)
+  src/gdext/pes_animation.cpp src/gdext/pes_marking.cpp src/gdext/gf_match.cpp src/gdext/pes_locomotion.cpp src/gdext/pes_broadcast_camera.cpp src/gdext/pes_mesh.cpp src/gdext/pes_model.cpp)
 target_link_libraries(godotfootball PRIVATE gfsim pesrig godot-cpp)
 set_target_properties(godotfootball PROPERTIES
   PREFIX lib

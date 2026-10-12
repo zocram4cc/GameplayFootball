@@ -3,7 +3,7 @@ extends Node3D
 ## the PES players and the ball are placed where the simulation has them.
 ## Args (after `--`): --pes21-root DIR --home-team PES_ID --away-team PES_ID
 ## [--home-kit N --away-kit N] [--edit-save FILE] [--seed N] [--minutes N]
-## [--follow PLAYER_INDEX] (inspection: a close camera on one player).
+## [--ball ID] [--follow PLAYER_INDEX] (inspection: a close camera on one player).
 
 const GF_HOME_TEAM := 1        # teams in assets/fixtures/teams.sql
 const GF_AWAY_TEAM := 2
@@ -11,8 +11,10 @@ const DEFAULT_SEED := 1000
 const DEFAULT_MINUTES := 10
 const TICK_S := 0.01           # GfMatch.step() is one 10 ms tick
 const MAX_TICKS_PER_FRAME := 10
-const BALL_RENDER_RADIUS_M := 0.110  # PES ball.fmdl bbox (docs/re/pes-re-officials-ball.md 6)
-const BALL_ALBEDO := Color(0.95, 0.95, 0.95)
+# ponytail: PES picks the default ball from the user's settings
+# (pes-re-officials-ball.md 1); ball001, the first vanilla ball, until that is read.
+const DEFAULT_BALL_ID := 1
+const BALL_PACK_FORMAT := "Asset/model/ball/ball%03d/#Win/ball.fpk"
 const PITCH_SURROUND_M := 120.0
 const PITCH_ALBEDO := Color(0.22, 0.42, 0.18)
 const SUN_ROTATION_DEG := Vector3(-55.0, 35.0, 0.0)
@@ -24,7 +26,7 @@ var args := {}
 var library: PesLibrary
 var sim: GfMatch
 var players: Array[Node3D] = []
-var ball: MeshInstance3D
+var ball: Node3D
 var locomotion: PesLocomotion
 var _skeletons: Array[Skeleton3D] = []
 var _phases: PackedFloat64Array = []
@@ -69,14 +71,11 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	_broadcast.reset(sim.ball_position())
-	ball = MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = BALL_RENDER_RADIUS_M
-	sphere.height = 2.0 * BALL_RENDER_RADIUS_M
-	var ball_material := StandardMaterial3D.new()
-	ball_material.albedo_color = BALL_ALBEDO
-	sphere.material = ball_material
-	ball.mesh = sphere  # ponytail: plain sphere; the PES ball.fmdl comes with the stadium props (M5)
+	ball = PesModelBuilder.new().build_model(library, BALL_PACK_FORMAT % int(args.get("ball", DEFAULT_BALL_ID)), "")
+	if ball == null:
+		push_error("ball model missing")
+		get_tree().quit(1)
+		return
 	add_child(ball)
 	_place(0.0)
 

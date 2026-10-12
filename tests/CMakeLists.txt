@@ -45,6 +45,9 @@ set_tests_properties(godot_locomotion_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOU
 add_test(NAME godot_camera_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_camera.gd)
 set_tests_properties(godot_camera_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_test(NAME godot_model_test
+  COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_model.gd)
+set_tests_properties(godot_model_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 add_test(NAME godot_animation_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.
