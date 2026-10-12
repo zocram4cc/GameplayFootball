@@ -70,6 +70,12 @@ const float pitchFullHalfW = 60;  // including 'rim'
 const float pitchFullHalfH = 40;
 const float lineHalfW = 0.06f;
 
+// Checked against PES's live FieldInfo (docs/re/pes-re-stadium-camera.md 2):
+// PES gives 52.56 / 34.06 to the outer line edge, i.e. 52.5 / 34 line centres
+// with 0.12 m lines; goal 3.66 inner half-width and 2.44 height, i.e. 3.72 and
+// 2.50 to post/crossbar centres, which these values approximate. Goal depth
+// differs: PES's frame is 2.14 m deep and its net 2.90 m (goal.fmdl / net
+// AABBs), GF 2.55; revisit with the PES ball/net model.
 const float goalDepth = 2.55f;
 const float goalHeight = 2.5f;
 const float goalHalfWidth = 3.7f;
