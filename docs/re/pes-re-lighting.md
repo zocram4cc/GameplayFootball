@@ -406,7 +406,7 @@ Precompute cbuffer (`cb4`, same layout in all `Sky_*` precompute PS):
 | field | meaning | fox2 source |
 |---|---|---|
 | cb4[0].xyz | β_R scattering (km⁻¹) | `TppAtmosphere.rayleighScatteringCoefficient` (0.0058, 0.0135, 0.0331). These are exactly Bruneton's values. INF (high) |
-| cb4[0].w | H_R (km) | `rayleighHeightScale`. **The value is 4.0, but Bruneton uses 8 and the aerial-perspective shader hard-codes 8 (§3).** INF (medium): the engine doubles it or overrides it. Unresolved |
+| cb4[0].w | H_R (km) | `rayleighHeightScale`, used **verbatim** (4 km) for the clear tables. The cloudy tables use an engine constant of 8 km. OBS live (§10) |
 | cb4[1].xyz | β_M scattering | `mieScatteringCoefficient` 0.004 (Bruneton's value). INF (high) |
 | cb4[1].w | H_M (km) | `mieHeightScale` 1200 m → 1.2 km. INF (high); 1.2 also appears hard-coded in §3 |
 | cb4[2].x | Mie g | `mieAnisotropy` 0.8 (cloudy sky: `mieAnisotropyOfCloudySky` 0.2). INF |
@@ -453,7 +453,7 @@ out   = sky + bayer8x8(inMesh)*(1/128);                          // 7.8125e-3 di
 | cb4[4].y | camera altitude (km) | INF |
 | cb4[5].xyz | below-horizon colour | groundColor (0.5)? INF (low) |
 | cb4[5].w | froxel-fog weight on sky | `influenceOfFog` (0.0). INF (medium) |
-| cb4[7].x | night-sky glow | `starLight`. INF |
+| cb4[7].x | night-sky glow | `starLight·π·skyColorSunScale`. OBS live (§10) |
 | cb5[10].x | clear↔cloudy blend | cloudiness. INF (high) |
 
 - **OBS:** `Sky_SunColor.ps.asm` produces the directional-light colour: `T_sun = lerp(T_clear, T_cloudy, cloudiness)` at the sun direction, using the Cornette–Shanks phase.
@@ -673,6 +673,78 @@ INF mapping: `cb4[1].z = density` (0.6), `cb4[1].w = dirLightGain` (2), `cb4[1].
 
 `sky_dome.fmdl` is identical in af and ar (23234 B). Not parsed further.
 
+### 10. CPU-side bindings (live process read-only + Ghidra, follow-up)
+
+Method: live constant buffers were located in pid <pid> by scanning RW memory for float patterns (β_R triple, `0.03,4.0`, froxel `0.03125`) and dumped. Code was read with headless Ghidra; 6 functions were decompiled: `0x141941c40`, `0x141955000`, `0x141939ed0` (thunk, empty), `0x1417f7200`, `0x1417f6410`, `0x1416c5f40`. The property table offsets come from disassembling the TppAtmosphere property registration `0x14193ec00` (`mov r9d, off`).
+
+Caveat: the live process had a **night** rig loaded (sun below horizon, moon active; `skyColorSunScale = 0.2`, `daySkyAmbientScale = 0.4`, `cloudiness = 0`). Values differ from af.txt where the rigs differ; the bindings are what matters.
+
+**TppAtmosphere field offsets (OBS, `0x14193ec00`):** rayleighHeightScale `+0x1f0`, mieHeightScale `+0x1f4`, mieAbsorptionRate `+0x1f8`, mieAnisotropy `+0x1fc`, mieAnisotropyOfCloudySky `+0x200`, sunLux `+0x23c`, moonLux `+0x240`, starLight `+0x244`, skyLightSunScale `+0x248`, skyColorSunScale `+0x24c`, daySkyAmbientScale `+0x250`, cloudiness `+0x264`, skyLightLuminanceScale `+0x268`, influenceOfFog `+0x210`, numBands `+0x284`, β_R `+0x70`, β_R cloudy `+0x80`, β_M `+0x90`, β_M cloudy `+0xa0`, groundColor `+0x130`, moonColor `+0x140`, sunColorExtinctionOfClearSky `+0x150`, sunColorOfCloudySky `+0x160`. A live entity was found at `0x262f0120` (vtable `0x142a7aa40`).
+
+**Sun/moon intensity (OBS, `FUN_141941c40` + `FUN_141955000`):**
+- The manager copies sunLux, moonLux, skyLightSunScale and starLight, and copies skyColorSunScale to a light-param object at `+0x98`.
+- `FUN_141955000` computes the horizon fade from `e = dot(sunDir, up)`. Up is `(0,-1,0)` (`0x1429dc110`), so the stored dir points from the light.
+```
+fadeSun  = e < -0.137444 ? sat(1 - (-0.137444 - e)/0.00518455) : 1      // ~0.3° fade band
+fadeMoon = e < -0.142629 ? sat(1 - (-0.142629 - e)/0.0103569)  : 1
+I_sun  = sunLux  * fadeSun            -> mgr+0x1c0
+I_moon = moonLux * (1 - fadeMoon)     -> mgr+0x1c4
+SceneAtmosphereParameter(+0x110) = dir of active light (sun if I_sun>0 else moon)
+SceneAtmosphereParameter(+0x1c4) = I_active * π * skyColorSunScale     // sky/atmosphere light intensity
+SceneAtmosphereParameter(+0x1cc) = starLight * π * skyColorSunScale
+```
+- Live check: `SAP+0x1c4 = 0.62832 = 1(moonLux)·π·0.2(skyColorSunScale)` ✓. The live Sky_Draw / constant_sky `cb4[3].w = 0.62832` ✓ and `cb4[7].x = 0.62832` ✓ (= starLight·π·0.2; this confirms the night-glow term is starLight).
+- **So the sky shader's light intensity = lux·π·skyColorSunScale (sky units), × `cb2[23].z` (exposure).** Day (af): 150000·π·1.0 = 471239.
+- **Answer to "+0x1c0" (`11, 0.62832, 0.27, 0.62832`):** `.y` = active-light intensity (lux·π·skyColorSunScale) and `.w` = star intensity, both OBS. `.x = 11` and `.z = 0.27` are not written by `FUN_141955000` and remain unknown. 0.27 also appears as Sky_Draw `cb4[6].w`, the light-A intensity with dir (0,1,0) at night.
+- `cb2[23]` live = `(9.4993e-5, 4.0, 3.7997e-4, 0)`. `.z` = exposure multiplier (log2 = −11.36, inside gameMin/MaxExposure −14…−7); `.x = .z/4`.
+- **The atmospheric-fog material sets `cb4[3].w = 1/cb2[23].z`** (live 2631.78 × 3.7997e-4 = 1.00000004; it tracked an exposure change, 2376 earlier). So aerial-perspective fog is **exposure-invariant**: the inscatter-table radiance (unit sun) is output directly as display-referred value. OBS.
+
+**Precompute cbuffer source (OBS, `FUN_1417f6410`, PrecomputeSkyDx11):**
+- Builds `cb4[0..3]` from an atmosphere param block; the flag `param[0x75]` selects the clear or cloudy set.
+- `cb4[0] = (β_R, H_R)`, `cb4[1] = (β_M, H_M)`, `cb4[2] = (g, 1 - mieAbsorptionRate)`, `cb4[3].x = scattering order`.
+- The block's layout matches the live SceneAtmosphereParameter `0x242a3110 + 0x10`, value for value. INF high on the base; the values are OBS:
+
+| set | β_R | H_R (km) | β_M | H_M (km) | absorption | g |
+|---|---|---|---|---|---|---|
+| clear | 0.0058/0.0135/0.0331 | **4.0** (= rayleighHeightScale, verbatim) | 0.004 | **1.2** (= mieHeightScale/1000) | 0.1 | 0.8 |
+| cloudy | …OfCloudySky | **8.0** (no fox2 field → engine constant) | 0.05/0.05/0.03 | **3.0** (engine constant) | 0.1 | 0.2 |
+
+→ "rayleighHeightScale 4 vs 8" is resolved: the clear tables use 4 km verbatim. 8 km is the engine's cloudy-sky constant and the fog's hard-coded value. `multiScatteringOrder` live = 3.
+
+**Draw-time Mie constant (OBS, live):** Sky_Draw / fog / constant_sky have `cb4[2].x = 0.9584` = Schlick `k = 1.55g − 0.55g³` for g = 0.8 (1.24 − 0.2816). So the draw phase `(1-k²)/(4π(1-kν)²)` is Schlick's Henyey–Greenstein approximation (Fox's `mieAnisotropy` = HG g).
+
+**Atmospheric fog cb4 (live, OBS values):** `[0]=(β_R, 0.98)`, `[1]=(0.1,0.1,0.1, 1000)`, `[2]=(0.9584, 40, 1.25, 0)`, `[3]=(sunDir, 1/exposure)`, `[4]=(2.0, 0.0, 200, 1000)`, `[7]=(0.62832, 0.001, 0.26633, −265.333)`. Bindings:
+
+| cb4 | value | fox2 field | status |
+|---|---|---|---|
+| [1].w | 1000 | objFogRgbAmpFuncScale | OBS value match |
+| [1].xyz | 0.1 | objFogRgbAmp.rgb × objFogRgbAmp.a (1×0.1) | INF high |
+| [2].y | 40 | startDepth | OBS |
+| [4].x / [4].z | 2 / 200 | objFogHeightAmpMax / …MaxHeight | OBS |
+| [4].y | 0 | whiteness | OBS (value) |
+| [4].w | 1000 | rangeDepthNear (ramp breakpoint) | OBS |
+| [7].y | 0.001 | fogAmpNear / rangeDepthNear = 1/1000 | OBS (arithmetic) |
+| [7].z | 0.26633 | (fogAmpFar − fogAmpNear)/(rangeDepthFar − rangeDepthNear) = 799/3000 | OBS (arithmetic) |
+| [7].w | −265.333 | fogAmpNear − [7].z·rangeDepthNear (continuous at the breakpoint) | OBS |
+
+So the fog opacity weight is:
+```
+x = zView - startDepth
+w = x < rangeDepthNear ? sat(x*fogAmpNear/rangeDepthNear)
+                       : sat(fogAmpNear + (x-rangeDepthNear)*(fogAmpFar-fogAmpNear)/(rangeDepthFar-rangeDepthNear))
+```
+With af values, w reaches 1 at ≈1000 m and fogAmpFar = 800 only saturates. In Godot this is `fog_depth_begin = startDepth`, `fog_depth_end = startDepth + rangeDepthNear/fogAmpNear`, `fog_depth_curve = 1`.
+
+**Global fog (OBS, live cPSLight `0x1bfc0640`):** `cb3[7] = (0.03, 4.0, 0.00025, 4000)` = (globalFogDensity, globalFogHeightScale, 1/rangeDepthFar, rangeDepthFar). Density and height scale are fox2 af values verbatim, so `Fog_DrawVolume`/`Sky_DrawClouds` use them in **km⁻¹** (density 0.03/km, height falloff 4/km: e-fold 250 m). Godot: `fog_density = 3e-5`, `fog_height_density = 0.004` (per metre).
+- Other cPSLight rows: `cb3[1] = (8340, 7668, 5720)` is the sky-light colour (constant_sky / clouds `cb3[1]·cb2[23].z`). `cb3[3] = 1.4974e6 ×3` is unknown. `cb3[4]` = camera pos, `cb3[5]` = view dir.
+- `cb2[27]` (fog colour in Fog_DrawVolume / DeferredRendering) was live (0,0,0) at night. `cb2[24] = (0.00625, 0, 0, 0)` → the DeferredRendering linear fog is disabled (max clamp 0).
+
+**Froxel volume (OBS, live cPSScene):** `cb2[26] = (1.0675, 15.312, 0, 127)` → **128 exponential slices**, `slice = 15.312·ln(z)`. Slice 127 ↔ z = e^8.29 ≈ 3990 m = far plane 4000 ✓. `cb2[25] = (0.123047, 0.125, 0.03125, 0.25)` → atlas of 4 rows × 32 slices. Godot: `volumetric_fog_length = 4000`, `volumetric_fog_detail_spread` ≈ 2 (exponential).
+
+**pcsp consumer:** found the resource class `tpp::ef::atmosphere::PrecomputeSkyFile` (RTTI `0x14368f9b8`, vtable `0x142a78d68`, type string "PrecomputeSkyFile"/"pcsp" at `0x142a78c60`, registered from `0x14193a0c0`) and `PrecomputeSkyDx11` (vtable `0x142a34028`). The load/use path was not traced: the vtable slot `0x141939ed0` is a thunk into an unmapped/packed region, and no texture creation with 128×64 was found. Still Open.
+
+**Godot sky energy (updated):** `sky radiance = inscatter·phase·(sunLux·π·skyColorSunScale)·exposure`. With Godot's physical light units this means `PhysicalSkyMaterial.energy_multiplier ∝ skyColorSunScale` and `DirectionalLight3D.light_intensity_lux = sunLux` (the π factor is Bruneton's irradiance → radiance convention).
+
 ### Killed hypotheses
 - **"atsh = Bruneton precompute tables"**: killed. 5 KB is SH9 × 40 times × 2 weathers.
 - **"atsh entry = 28 halves (9 RGB + pad)"**: killed. The period is 30 halves; the 3 extra halves are light colour.
@@ -685,10 +757,10 @@ INF mapping: `cb4[1].z = density` (0.6), `cb4[1].w = dirLightGain` (2), `cb4[1].
 - **"SH ambient evaluated per pixel from coefficients"**: killed. Coefficients are baked into an equal-area sphere-map atlas (SH_SphereMap) and sampled by SSLighting_SH_SkyLight.
 
 ### Open
-1. Real fox2→cbuffer bindings. Shaders have no variable names, so a runtime cbuffer dump (RenderDoc) is needed to confirm the INF rows. Unconfirmed: sun intensity scale, fogAmpNear/Far, rangeDepth* ramp, objFogRgbAmpFuncScale.
-2. `rayleighHeightScale = 4` vs H_R = 8 hard-coded in fog. Not resolved whether the engine doubles it.
+1. Remaining fox2→cbuffer INF rows: Sky_Draw `cb4[5].xyz = 0.18` (below-horizon colour; live 0.18, not groundColor 0.5), `cb4[6]` light A (dir (0,1,0), 0.27 at night), `SAP+0x1c0 = 11` and `+0x1c8 = 0.27`, `cb3[3] = 1.4974e6`, fog `cb4[2].z = 1.25`, `cb4[5] = (0.005,0.005,0.01,0.005)`. Bound so far: sun/moon/star intensity, precompute cb, fog ramp, objFog*, global fog.
+2. Why cloudy-sky H_R = 8 / H_M = 3 are not data-driven. They come from the param block, but where it is filled was not traced.
 3. Froxel fog injection shader (density/scatter into `inFogVolume`) is not in the extracted PS set (likely compute).
-4. pcsp consumer is unknown (no shader uses its resolution).
+4. pcsp consumer: the class is identified (PrecomputeSkyFile), but its load path sits behind a thunk to unmapped code. Not traced.
 5. rpd: the meaning of the 9 state hashes (which hour/weather) and the exact role of −12.0 were not verified. Only an 8-bit Pillow decode was used (no float BC6H decoder available), so the absolute radiance scale was not checked.
 6. Blend states (fog ONE/INV_SRC_ALPHA, probe weighting) are not present in DXBC.
 7. `Sky_DrawClouds` elevation→v mapping constants `cb4[5]` and `TppSky.diffusion` were not tied to fields.
