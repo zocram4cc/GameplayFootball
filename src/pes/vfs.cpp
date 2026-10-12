@@ -59,7 +59,24 @@ void PesVfs::MountCpk(const std::string& file, const std::string& label) {
   const auto id = int32_t(archives_.size());
   for (uint32_t i = 0; i < cpk.Entries().size(); ++i) Add(cpk.Entries()[i].path, {id, i});
   report_ += label + "  " + std::to_string(cpk.Entries().size()) + " entries\n";
+  // Whole cpks stored inside this one (Data/dt30_g4.cpk: Asset/model/bg/stNNN.cpk)
+  // mount right after it, read in place: above their parent, below every later
+  // mount, so download overrides still win (docs/re/pes-re-stadium-camera.md 1.1).
+  std::vector<CpkEntry> nested;
+  for (const auto& e : cpk.Entries())
+    if (e.size == e.extractSize && Fold(e.path).ends_with(".cpk")) nested.push_back(e);
   archives_.push_back(std::move(cpk));
+  for (const auto& e : nested) {
+    CpkArchive inner;
+    if (!inner.Open(file, &err, e.offset, e.size)) {
+      report_ += label + " > " + e.path + "  FAILED: " + err + "\n";
+      continue;
+    }
+    const auto innerId = int32_t(archives_.size());
+    for (uint32_t i = 0; i < inner.Entries().size(); ++i) Add(inner.Entries()[i].path, {innerId, i});
+    report_ += label + " > " + e.path + "  " + std::to_string(inner.Entries().size()) + " entries\n";
+    archives_.push_back(std::move(inner));
+  }
 }
 
 void PesVfs::MountLooseRoot(const std::string& dir) {

@@ -352,3 +352,24 @@ TEST(FtexInstall, KitTexturesCubeAndArrayDecodeExactly) {
   ASSERT_TRUE(array);
   EXPECT_EQ(array->layers, UNI_PATTERN_SLICES);
 }
+
+// Data/dt30_g4.cpk holds whole cpks (Asset/model/bg/stNNN.cpk, common.cpk).
+// Their contents are part of the file system the game reads: stadiums, goals,
+// pitch (docs/re/pes-re-stadium-camera.md 1.1). They mount at their parent's
+// precedence, so download overrides still win, as the 4cc packs rely on.
+TEST(VfsInstall, SeesInsideNestedCpksBelowDownloadOverrides) {
+  REQUIRE_INSTALL();
+  constexpr const char* NESTED_ONLY = "Asset/model/bg/st002/audi/sourceimages/au_seat.png";
+  ASSERT_TRUE(vfs->Exists(NESTED_ONLY)) << "content inside st002.cpk is not mounted";
+  std::string err;
+  auto blob = vfs->Read(NESTED_ONLY, &err);
+  ASSERT_TRUE(blob) << err;
+  constexpr uint8_t PNG_MAGIC[] = {0x89, 'P', 'N', 'G'};
+  ASSERT_GE(blob->size(), sizeof PNG_MAGIC);
+  EXPECT_EQ(std::memcmp(blob->data(), PNG_MAGIC, sizeof PNG_MAGIC), 0);
+  // In both: nested original 48,342,208 B; the 4cc download override wins.
+  constexpr uint64_t NESTED_ORIGINAL_BYTES = 48342208;
+  auto size = vfs->Size("Asset/model/bg/st002/#Win/st002.fpk");
+  ASSERT_TRUE(size);
+  EXPECT_NE(*size, NESTED_ORIGINAL_BYTES);
+}

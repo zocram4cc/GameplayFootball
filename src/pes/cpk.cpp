@@ -203,20 +203,23 @@ std::optional<std::vector<uint8_t>> CrilaylaDecompress(const std::vector<uint8_t
   return out;
 }
 
-bool CpkArchive::Open(const std::string& path, std::string* error) {
+bool CpkArchive::Open(const std::string& path, std::string* error, uint64_t at, uint64_t length) {
   path_ = path;
   entries_.clear();
   file_.reset(std::fopen(path.c_str(), "rb"));
   if (!file_) { *error = "cannot open " + path; return false; }
   std::FILE* f = file_.get();
-
+  // A nested cpk is read in place inside its parent's file: every offset below
+  // is relative to `at`, and entry offsets are made absolute in the file.
   std::vector<uint8_t> buf;
-  if (!ReadAt(f, 0, 4, &buf) || std::memcmp(buf.data(), "CPK ", 4) != 0) { *error = path + ": not a CPK"; return false; }
+  auto read = [&](uint64_t offset, size_t n) { return ReadAt(f, at + offset, n, &buf); };
+
+  if (!read(0, 4) || std::memcmp(buf.data(), "CPK ", 4) != 0) { *error = path + ": not a CPK"; return false; }
   std::fseek(f, 0, SEEK_END);
-  const long fileSize = std::ftell(f);
+  const uint64_t fileSize = length ? length : uint64_t(std::ftell(f)) - at;
   const size_t headerBytes = std::min<size_t>(HEADER_UTF_BYTES, size_t(fileSize - HEADER_UTF_OFFSET));
   std::vector<UtfRow> header;
-  if (!ReadAt(f, HEADER_UTF_OFFSET, headerBytes, &buf) || !StripCrypt(buf) || !ReadUtf(buf, &header, error) ||
+  if (!read(HEADER_UTF_OFFSET, headerBytes) || !StripCrypt(buf) || !ReadUtf(buf, &header, error) ||
       header.empty()) {
     *error = path + ": bad CPK header " + *error;
     return false;
@@ -224,20 +227,20 @@ bool CpkArchive::Open(const std::string& path, std::string* error) {
   const uint64_t tocOffset = Get(header[0], "TocOffset");
   const uint64_t contentOffset = Get(header[0], "ContentOffset");
 
-  if (!ReadAt(f, tocOffset, 4, &buf) || std::memcmp(buf.data(), "TOC ", 4) != 0) { *error = path + ": no TOC"; return false; }
+  if (!read(tocOffset, 4) || std::memcmp(buf.data(), "TOC ", 4) != 0) { *error = path + ": no TOC"; return false; }
   // The @UTF block states its own size (big-endian at +4, after de-obfuscation).
-  if (!ReadAt(f, tocOffset + HEADER_UTF_OFFSET, UTF_PREAMBLE, &buf) || !StripCrypt(buf)) {
+  if (!read(tocOffset + HEADER_UTF_OFFSET, UTF_PREAMBLE) || !StripCrypt(buf)) {
     *error = path + ": bad TOC";
     return false;
   }
   const uint32_t utfSize = Be32(buf.data() + 4);
   std::vector<UtfRow> toc;
-  if (!ReadAt(f, tocOffset + HEADER_UTF_OFFSET, UTF_PREAMBLE + utfSize, &buf) || !StripCrypt(buf) ||
+  if (!read(tocOffset + HEADER_UTF_OFFSET, UTF_PREAMBLE + utfSize) || !StripCrypt(buf) ||
       !ReadUtf(buf, &toc, error)) {
     *error = path + ": bad TOC " + *error;
     return false;
   }
-  const uint64_t base = contentOffset ? std::min(tocOffset, contentOffset) : tocOffset;
+  const uint64_t base = at + (contentOffset ? std::min(tocOffset, contentOffset) : tocOffset);
   entries_.reserve(toc.size());
   for (const auto& row : toc) {
     auto dir = row.find("DirName");
