@@ -608,7 +608,7 @@ Alpha test on `base.a` (§3 prologue).
 
 OBS: ftex headers of `common/sourceimages/#windx11/*`.
 
-- **Array ftex:** `textureType` at +0x18 has bit 0x10 for 2D arrays, and the u16 at +0x1A is the slice count.
+- **Array ftex:** `textureType` at **+0x1C** has bit 0x10 for 2D arrays, and the u16 at **+0x22** is the slice count. (Corrected per pes-re-ftex.md §1: this line first gave +0x18 / +0x1A. The u32 at +0x18 is 0 in every file.)
   - `uni_pattern` 18 slices 256², pf 11 (BC7).
   - `shirts_normal` 6 slices 1024×2048, BC7.
   - `pants_normal` 7 slices 1024², BC7.
