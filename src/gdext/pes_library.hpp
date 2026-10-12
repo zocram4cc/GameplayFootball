@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "pes/editsave.hpp"
+#include "gdext/pes_marking.hpp"
 #include "pes/handseq.hpp"
 #include "rig/clip_pose.hpp"
 #include "pes/vfs.hpp"
@@ -37,6 +38,8 @@ class PesLibrary : public RefCounted {
   const std::vector<std::string>* motion_names() const { return motionNames_ ? &*motionNames_ : nullptr; }
   const pes::HandSequences* hand_sequences() const { return handSequences_ ? &*handSequences_ : nullptr; }
   const pesrig::HandPoseLibrary* hand_poses() const { return handPoses_ ? &*handPoses_ : nullptr; }
+  // Name glyphs (from PES2021.exe) and name folding; null without the exe.
+  const MarkingFonts* marking_fonts() const { return markingFonts_ ? &*markingFonts_ : nullptr; }
 
  protected:
   static void _bind_methods();
@@ -48,6 +51,7 @@ class PesLibrary : public RefCounted {
   std::optional<std::vector<std::string>> motionNames_;
   std::optional<pes::HandSequences> handSequences_;
   std::optional<pesrig::HandPoseLibrary> handPoses_;
+  std::optional<MarkingFonts> markingFonts_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

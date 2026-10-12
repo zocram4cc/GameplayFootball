@@ -41,6 +41,10 @@ Error PesLibrary::open(const String& root) {
   if (motionNames_) handSequences_ = pes::LoadHandSequences(vfs_, &*exe, &err);
   if (handSequences_) handPoses_ = pesrig::LoadHandPoses(vfs_, handSequences_->poses, &err);
   if (!handPoses_) UtilityFunctions::push_warning("PES21 hand rig unavailable, hands stay at rest: ", ToGd(err));
+  auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
+  auto nameFont = pes::LoadNameFontMap(vfs_, &err);
+  if (glyphs && nameFont) markingFonts_ = MarkingFonts{std::move(*glyphs), std::move(*nameFont)};
+  else UtilityFunctions::push_warning("PES21 name glyphs unavailable, names not drawn: ", ToGd(err));
   return OK;
 }
 

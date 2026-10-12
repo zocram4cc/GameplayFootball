@@ -16,6 +16,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "gdext/pes_marking.hpp"
 #include "gdext/pes_texture.hpp"
 #include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
@@ -42,6 +43,7 @@ constexpr const char* FACE_ARM_SKIN = "arm_bsm.ftex";  // a face folder's own ar
 constexpr const char* THIGH_MATERIAL = "thigh_mat";
 constexpr const char* SOCKS_MATERIAL = "uni_socks";
 constexpr const char* PANTS_MATERIAL_PREFIX = "uni_pants";
+constexpr const char* SLEEVE_MATERIAL = "uni_sleeve";  // badges, not markings
 constexpr const char* COMMON_TEXTURE_DIR = "Asset/model/character/common/sourceimages/#windx11/";
 constexpr const char* UNIFORM_SHADER = "res://shaders/pes_uniform.gdshader";
 constexpr const char* BASE_ROLE = "Base_Tex_SRGB";
@@ -77,6 +79,9 @@ class Build {
 
   Node3D* RunFace();
   Node3D* RunPlayer(int teamId, int kitIndex);
+  void SetMarkings(int number, std::string name, const MarkingFonts* fonts) {
+    number_ = number, name_ = std::move(name), fonts_ = fonts;
+  }
 
  private:
   void Begin();
@@ -103,6 +108,12 @@ class Build {
   int unresolved_ = 0;
   std::string kitAtlasPath_, armSkinPath_, thighSkinPath_;  // Player mode overrides
   int kitPattern_ = 0;
+  int number_ = -1;
+  std::string name_;
+  const MarkingFonts* fonts_ = nullptr;
+  std::optional<pes::KitConfig> kit_;
+  Ref<Texture> marking_, legNumber_;  // per-player composed textures
+  float nameWidthSum_ = 0;
   std::unordered_map<std::string, Ref<Texture>> layered_;  // shader textures by VFS path
   Node3D* root_ = nullptr;
   Skeleton3D* skeleton_ = nullptr;
@@ -321,6 +332,22 @@ Ref<Material> Build::MakeUniformMaterial(const pes::Fmdl& m, const pes::FmdlMate
   if (Ref<Texture> t = gpu(normal); t.is_valid()) {
     if (socks) mat->set_shader_parameter("socks_normal", t);
     else mat->set_shader_parameter("wrinkles", t), mat->set_shader_parameter("has_wrinkles", true);
+  }
+  // Markings (pes-re-markings.md; placement pes-kit-assembly.md 8.7).
+  if (kit_) {
+    auto v4 = [](pes::Vec4 v) { return Vector4(v.x, v.y, v.z, v.w); };
+    const bool pants = fm.name.rfind(PANTS_MATERIAL_PREFIX, 0) == 0;
+    if (pants && legNumber_.is_valid()) {
+      mat->set_shader_parameter("Number_Tex_LIN", legNumber_);
+      mat->set_shader_parameter("has_number", true);
+      mat->set_shader_parameter("NumberScaleXParam", v4(pes::LegNumberScale(*kit_)));
+    } else if (!pants && !socks && marking_.is_valid() && fm.name != SLEEVE_MATERIAL) {
+      mat->set_shader_parameter("Marking_Tex_LIN", marking_);
+      mat->set_shader_parameter("has_marking", true);
+      mat->set_shader_parameter("BNumberScaleXParam", v4(pes::BackNumberScale(*kit_)));
+      mat->set_shader_parameter("FNumberScaleXParam", v4(pes::ChestNumberScale(*kit_)));
+      mat->set_shader_parameter("NameScaleXParam", v4(pes::NameScale(*kit_, nameWidthSum_)));
+    }
   }
   return mat;
 }
@@ -544,6 +571,13 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
   }
   kitAtlasPath_ = std::string(KIT_TEXTURE_DIR) + kit->kitFile + TEXTURE_EXT;
   kitPattern_ = kit->shirtPattern;
+  kit_ = *kit;
+  if (fonts_ || number_ > 0) {
+    static const MarkingFonts NO_FONTS;
+    if (Ref<Image> m = ComposeMarking(vfs_, *kit, fonts_ ? *fonts_ : NO_FONTS, number_, fonts_ ? name_ : "", &nameWidthSum_); m.is_valid())
+      marking_ = ImageTexture::create_from_image(m);
+    if (Ref<Image> l = ComposeLegNumber(vfs_, *kit, number_); l.is_valid()) legNumber_ = ImageTexture::create_from_image(l);
+  }
   // The look the game shows: the EDIT save, else PlayerAppearance.bin. 4cc
   // players' ids equal their face ids (pes-kit-assembly.md 7.1).
   auto appearance = appearances_.find(uint32_t(faceId_));
@@ -595,8 +629,8 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
 
 void PesCharacterBuilder::_bind_methods() {
   ClassDB::bind_method(D_METHOD("build_face_model", "library", "face_id"), &PesCharacterBuilder::build_face_model);
-  ClassDB::bind_method(D_METHOD("build_player", "library", "team_id", "kit_index", "face_id"),
-                       &PesCharacterBuilder::build_player);
+  ClassDB::bind_method(D_METHOD("build_player", "library", "team_id", "kit_index", "face_id", "number", "name"),
+                       &PesCharacterBuilder::build_player, DEFVAL(-1), DEFVAL(String()));
 }
 
 Node3D* PesCharacterBuilder::build_face_model(const Ref<PesLibrary>& library, int face_id) {
@@ -607,12 +641,15 @@ Node3D* PesCharacterBuilder::build_face_model(const Ref<PesLibrary>& library, in
   return Build(library->vfs(), *library->rig(), library->appearances(), face_id, Mode::FaceOnly).RunFace();
 }
 
-Node3D* PesCharacterBuilder::build_player(const Ref<PesLibrary>& library, int team_id, int kit_index, int face_id) {
+Node3D* PesCharacterBuilder::build_player(const Ref<PesLibrary>& library, int team_id, int kit_index, int face_id,
+                                          int number, const String& name) {
   if (library.is_null() || !library->rig()) {
     UtilityFunctions::push_error("PesCharacterBuilder: library is not open");
     return nullptr;
   }
-  return Build(library->vfs(), *library->rig(), library->appearances(), face_id, Mode::Player).RunPlayer(team_id, kit_index);
+  Build build(library->vfs(), *library->rig(), library->appearances(), face_id, Mode::Player);
+  build.SetMarkings(number, FromGd(name), library->marking_fonts());
+  return build.RunPlayer(team_id, kit_index);
 }
 
 }  // namespace godot

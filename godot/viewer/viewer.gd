@@ -1,7 +1,7 @@
 extends Node3D
 ## Shows one PES 2021 character from the user's install, optionally animated.
 ## Args after `--`: --pes21-root DIR --face ID [--team ID [--kit N]] [--clip NAME|0xHASH] [--in-place]
-##   [--hide PART,...] [--edit-save EDIT00000000]  (each player's look from the user's save)
+##   [--hide PART,...] [--number N --name NAME] [--yaw DEG] [--edit-save EDIT00000000]  (each player's look from the user's save)
 ## With --team the player is assembled as PES does (kit N, 0 = 1st); without it,
 ## the face pack alone.
 
@@ -35,13 +35,15 @@ func _ready() -> void:
 		return
 	var builder := PesCharacterBuilder.new()
 	if args.has("team"):
-		character = builder.build_player(library, int(args["team"]), int(args.get("kit", "0")), int(args["face"]))
+		character = builder.build_player(library, int(args["team"]), int(args.get("kit", "0")), int(args["face"]),
+				int(args.get("number", "-1")), args.get("name", ""))
 	else:
 		character = builder.build_face_model(library, int(args["face"]))
 	if character == null:
 		get_tree().quit(1)
 		return
 	add_child(character)
+	character.rotation_degrees.y = float(args.get("yaw", "0"))  # inspection: 180 shows the back
 	skeleton = character.get_node("Skeleton")
 	if args.has("hide"):  # inspection: drop parts by model stem, e.g. --hide socks_middle,arm
 		var hidden: PackedStringArray = args["hide"].split(",")

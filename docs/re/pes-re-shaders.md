@@ -311,7 +311,7 @@ OBS: full disassembly of `shirt_nb_nc`; the others differ only in the marking bl
 | Part | Atlas region | Placement |
 |---|---|---|
 | name | u ∈ [0, 0.64) | `u'=(uv.x−0.5)·NameScale.x+0.5`, `v'=uv.y·NameScale.y+NameScale.z`; sampled at `(0.64u', v')` |
-| back number | u ∈ [0.64, 0.88) | `BNumberScale`; v scaled by an extra 160/255; sampled at `(0.64+0.24u', v')` |
+| back number | u ∈ [0.64, 0.88) | `u'=(uv.x−0.5)·BNumberScale.x+0.5` (centred like the name; `.z` is **not** a u offset), `v'=(160/255)·uv.y·BNumberScale.y+BNumberScale.z`, `.w` unused; sampled at `(0.64+0.24u', v')`. (Made precise from `pes3ddf_shirt_nb_nc.ps` lines 46–57 by the main session: the earlier wording read as the chest's plain affine form, which mis-placed the number in GodotFootball.) |
 | front number | u ∈ [0.88, 1.0), v ∈ [0, 0.5) | `sat(uv·FNumberScale.xy + FNumberScale.zw)`; sampled at `(0.88+0.12x, 0.5y)` |
 | badge | u ∈ [0.88, 0.96), v ∈ [0.5, 1) | `(sat(BadgeMatrix0.xyw·(uv,1)), sat(BadgeMatrix1.xyw·(uv,1)))`; sampled at `(0.88+0.08x, 0.5+0.5y)` |
 

@@ -20,6 +20,10 @@ const TECHNIQUE_SHADERS := [["thigh_middle:thigh_mat", "pes_skin.gdshader"],
 		["face_high:fox_skin_mat", "pes_skin.gdshader"], ["hair_high:fox_skin_mat", "pes_hair.gdshader"],
 		["arm:arm_mat", "pes_blin.gdshader"], ["eye_new:eye_mat", "pes_eye.gdshader"]]
 const THIGH_INCIDENCE_ROUGHNESS := 6.5  # thigh_middle.fmdl
+const MARKED_NUMBER := 10
+const MARKED_NAME := "TESTNAME"
+const MARKING_SIZE := Vector2i(1600, 256)  # pes-re-markings.md 3.5
+const LEG_SIZE := 128
 # k0062 is authored on the anim pose (its boots.skl); bound as render-pose it sat
 # 0.10 m inward, both boots overlapping between the feet.
 const BOOT_UNDER_ANKLE_TOLERANCE_M := 0.03
@@ -128,6 +132,27 @@ func _init() -> void:
 					"%s boot under %s: centroid x %.3f, ankle x %.3f" % [m.name, skeleton.get_bone_name(j), centroid.x, ankle.x])
 
 	character.free()
+
+	# Shirt number and name (pes-re-markings.md): one 1600x256 marking texture on
+	# shirt and collar, a 128x128 leg-number texture on the shorts.
+	var marked: Node3D = PesCharacterBuilder.new().build_player(library, TEAM, FIRST_KIT, FACE, MARKED_NUMBER, MARKED_NAME)
+	var marked_mats := {}
+	for m in marked.get_node("Skeleton").get_children():
+		if m is MeshInstance3D:
+			marked_mats[m.mesh.surface_get_material(0).resource_name] = m.mesh.surface_get_material(0)
+	for name in ["uni_shirts", "uni_collar"]:
+		var mat: ShaderMaterial = marked_mats.get(name) as ShaderMaterial
+		check(mat != null, "%s present" % name)
+		if mat:
+			var tex: Texture2D = mat.get_shader_parameter("Marking_Tex_LIN")
+			check(tex != null and tex.get_width() == MARKING_SIZE.x and tex.get_height() == MARKING_SIZE.y,
+					"%s carries the 1600x256 marking texture" % name)
+			check(mat.get_shader_parameter("BNumberScaleXParam") != null, "%s has back-number placement" % name)
+	var pants: ShaderMaterial = marked_mats.get("uni_pants") as ShaderMaterial
+	if pants:
+		var leg: Texture2D = pants.get_shader_parameter("Number_Tex_LIN")
+		check(leg != null and leg.get_width() == LEG_SIZE and leg.get_height() == LEG_SIZE, "shorts carry the 128x128 leg number")
+	marked.free()
 
 	# With the user's EDIT save, each player wears his own look. 75403 played in
 	# long sleeves for team 754's 2nd kit in a live match: a long sleeve, no
