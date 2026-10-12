@@ -8,6 +8,8 @@
 
 #include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
+#include <algorithm>
+
 #include "pes/ftex.hpp"
 #include "pes/pack_rules.hpp"
 #include "pes/vfs.hpp"
@@ -88,6 +90,81 @@ TEST(Ftex, RejectsSidecarFtexs) {
   std::string err;
   EXPECT_FALSE(pes::ParseFtex(b, &err));
   EXPECT_NE(err.find("ftexs"), std::string::npos);
+}
+
+// docs/re/pes-re-ftex.md 2.2: only the bit-31 flag marks a stored chunk. On
+// official files every unflagged chunk is zlib, even when its two size fields
+// are equal (997 kit textures).
+TEST(Ftex, EqualSizedUnflaggedChunkIsZlib) {
+  auto b = FtexHeader(4, 4, 1);
+  const std::vector<uint8_t> plain(64, 7);
+  std::vector<uint8_t> z(compressBound(plain.size()));
+  uLongf n = z.size();
+  ASSERT_EQ(compress(z.data(), &n, plain.data(), plain.size()), Z_OK);
+  z.resize(plain.size(), 0);  // the zlib stream, zero-padded to the plain size
+  const uint32_t mipAt = FTEX_HEADER + MIP_INFO;
+  Put<uint32_t>(b, FTEX_HEADER, mipAt);
+  Put<uint16_t>(b, FTEX_HEADER + 14, 1);
+  Put<uint16_t>(b, mipAt, uint16_t(z.size()));
+  Put<uint16_t>(b, mipAt + 2, uint16_t(plain.size()));
+  Put<uint32_t>(b, mipAt + 4, 8);
+  b.insert(b.end(), z.begin(), z.end());
+  std::string err;
+  auto img = pes::ParseFtex(b, &err);
+  ASSERT_TRUE(img) << err;
+  EXPECT_EQ(img->mips[0], plain);
+}
+
+// A chunk size field of 0 means 65,536 bytes.
+TEST(Ftex, ZeroSizeFieldsMean64KiB) {
+  constexpr size_t FULL_CHUNK = 65536;
+  auto b = FtexHeader(128, 128, 1);
+  const uint32_t mipAt = FTEX_HEADER + MIP_INFO;
+  Put<uint32_t>(b, FTEX_HEADER, mipAt);
+  Put<uint16_t>(b, FTEX_HEADER + 14, 1);
+  Put<uint16_t>(b, mipAt, 0);
+  Put<uint16_t>(b, mipAt + 2, 0);
+  Put<uint32_t>(b, mipAt + 4, 8u | 0x80000000u);
+  b.resize(mipAt + 8 + FULL_CHUNK, 3);
+  std::string err;
+  auto img = pes::ParseFtex(b, &err);
+  ASSERT_TRUE(img) << err;
+  EXPECT_EQ(img->mips[0].size(), FULL_CHUNK);
+}
+
+// textureType is the u32 at +0x1C (the one at +0x18 is always 0); arrays carry
+// their slice count in the u16 at +0x22; entries are slice-major.
+TEST(Ftex, TypeAndSlicesComeFromTheirOwnFields) {
+  constexpr uint32_t TYPE_CUBE = 4, TYPE_ARRAY = 0x10;
+  constexpr int SLICES = 3;
+  auto withEntries = [&](uint32_t type, int entries) {
+    auto b = FtexHeader(1, 1, 1);
+    Put<uint32_t>(b, 0x1C, type);
+    Put<uint16_t>(b, 0x22, uint16_t(SLICES));
+    const uint32_t dataAt = uint32_t(FTEX_HEADER + MIP_INFO * entries);
+    b.resize(dataAt, 0);  // whole mip table, zeroed: chunkCount 0 = data inline
+    for (int e = 0; e < entries; ++e) {
+      Put<uint32_t>(b, FTEX_HEADER + MIP_INFO * e, dataAt + 4 * e);
+      Put<uint32_t>(b, FTEX_HEADER + MIP_INFO * e + 4, 4);
+    }
+    b.resize(dataAt + 4 * entries, uint8_t(9));
+    return b;
+  };
+  std::string err;
+  auto array = pes::ParseFtex(withEntries(TYPE_ARRAY, SLICES), &err);
+  ASSERT_TRUE(array) << err;
+  EXPECT_EQ(array->layers, SLICES);
+  EXPECT_EQ(array->mips.size(), size_t(SLICES));
+  auto cube = pes::ParseFtex(withEntries(TYPE_CUBE, 6), &err);
+  ASSERT_TRUE(cube) << err;
+  EXPECT_TRUE(cube->cube);
+  EXPECT_EQ(cube->mips.size(), 6u);
+  auto flat = withEntries(0, 1);
+  Put<uint32_t>(flat, 0x18, TYPE_CUBE);  // the old, wrong offset: must be ignored
+  auto plain = pes::ParseFtex(flat, &err);
+  ASSERT_TRUE(plain) << err;
+  EXPECT_FALSE(plain->cube);
+  EXPECT_EQ(plain->layers, 1);
 }
 
 // ---- synthetic fmdl ----
@@ -220,4 +297,58 @@ TEST(FtexInstall, DecodesFullMipChain) {
   EXPECT_GT(img->height, 0);
   ASSERT_EQ(int(img->mips.size()), img->mipCount);
   for (size_t i = 1; i < img->mips.size(); ++i) EXPECT_LE(img->mips[i].size(), img->mips[i - 1].size());
+}
+
+namespace {
+// D3D size of one mip (docs/re/pes-re-ftex.md 2.3).
+size_t MipBytes(int pf, int w, int h) {
+  const bool bc8 = pf == 2 || pf == 8, bc16 = pf == 3 || pf == 4 || pf == 9 || pf == 10 || pf == 11;
+  if (bc8 || bc16) return size_t((w + 3) / 4) * ((h + 3) / 4) * (bc8 ? 8 : 16);
+  const int bpp = pf == 0 ? 4 : pf == 1 ? 1 : pf == 12 ? 8 : pf == 13 ? 16 : 4;
+  return size_t(w) * h * bpp;
+}
+}  // namespace
+
+// Every mip of every official kit texture decodes to its exact size (the
+// equal-size chunk bug corrupted 997 of them), and cubes and arrays are
+// recognised. Official kits are teams below 701; the 4cc teams (701+) ship
+// mod-tool files whose small mips are short, which the strict census also
+// rejects (pes-re-ftex.md 3.1) and PES tolerates.
+TEST(FtexInstall, KitTexturesCubeAndArrayDecodeExactly) {
+  REQUIRE_INSTALL();
+  constexpr int UNI_PATTERN_SLICES = 18;  // docs/re/pes-re-ftex.md 3.2
+  std::string err;
+  auto check = [&](const std::string& path) {
+    auto bytes = vfs->Read(path, &err);
+    if (!bytes) return ADD_FAILURE() << path << ": " << err, std::optional<pes::FtexImage>{};
+    auto img = pes::ParseFtex(*bytes, &err);
+    if (!img) return ADD_FAILURE() << path << ": " << err, std::optional<pes::FtexImage>{};
+    const int images = img->cube ? 6 : img->layers;
+    EXPECT_EQ(img->mips.size(), size_t(images * img->mipCount)) << path;
+    for (int i = 0; i < images && size_t(i * img->mipCount) < img->mips.size(); ++i)
+      for (int m = 0; m < img->mipCount; ++m)
+        EXPECT_EQ(img->mips[i * img->mipCount + m].size(),
+                  MipBytes(img->pixelFormat, std::max(1, img->width >> m), std::max(1, img->height >> m)))
+            << path << " image " << i << " mip " << m;
+    return img;
+  };
+  int kits = 0;
+  for (const auto& path : vfs->List("Asset/model/character/uniform/texture/#windx11/"))
+    if (path.ends_with(".ftex")) {
+      constexpr int FIRST_4CC_TEAM = 701;
+      // <letter><team %04d>[pg]N...: u0001p1, a0150g1_back, ...
+      const std::string file = path.substr(path.rfind('/') + 1);
+      if (file.size() < 5 || !std::all_of(file.begin() + 1, file.begin() + 5, ::isdigit)) continue;
+      if (std::stoi(file.substr(1, 4)) >= FIRST_4CC_TEAM) continue;
+      ++kits, check(path);
+    }
+  EXPECT_GT(kits, 0);
+  // An official face normal map whose 64 KiB chunks have size fields of 0.
+  check("Asset/model/character/face/real/100393/sourceimages/#windx11/face_nrm.ftex");
+  auto cube = check("Asset/model/character/common/sourceimages/#windx11/eye_catch_cbm.ftex");
+  ASSERT_TRUE(cube);
+  EXPECT_TRUE(cube->cube);
+  auto array = check("Asset/model/character/common/sourceimages/#windx11/uni_pattern.ftex");
+  ASSERT_TRUE(array);
+  EXPECT_EQ(array->layers, UNI_PATTERN_SLICES);
 }
