@@ -9,6 +9,8 @@ const CAMERA_POSITION := Vector3(0.0, 1.0, 3.2)  # metres; in front of a charact
 const CAMERA_TARGET := Vector3(0.0, 1.0, 0.0)    # about chest height of a 1.8 m player
 const CAMERA_FOV_DEG := 40.0                     # frames a T-pose (1.54 m arm span) with margin
 const SUN_ROTATION_DEG := Vector3(-50.0, 30.0, 0.0)
+const FLOOR_SIZE_M := 6.0                       # ground at y = 0 (Fox and gani root height), for foot contact
+const FLOOR_ALBEDO := Color(0.35, 0.45, 0.3)
 
 var character: Node3D
 var skeleton: Skeleton3D
@@ -92,6 +94,15 @@ func _build_environment() -> void:
 	sun.shadow_enabled = true
 	sun.rotation_degrees = SUN_ROTATION_DEG
 	add_child(sun)
+
+	var floor_mesh := PlaneMesh.new()
+	floor_mesh.size = Vector2(FLOOR_SIZE_M, FLOOR_SIZE_M)
+	var floor_material := StandardMaterial3D.new()
+	floor_material.albedo_color = FLOOR_ALBEDO
+	floor_mesh.material = floor_material
+	var ground := MeshInstance3D.new()
+	ground.mesh = floor_mesh
+	add_child(ground)
 
 	var camera := Camera3D.new()
 	camera.fov = CAMERA_FOV_DEG
