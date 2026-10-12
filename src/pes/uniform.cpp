@@ -12,7 +12,10 @@
 namespace pes {
 namespace {
 
-constexpr uint8_t WESYS_MAGIC[] = {0x05, 0x10, 0xd1, 0x57, 'W', 'E', 'S', 'Y', 'S'};
+// WESYS: u8 type, 0x10, u8 flags, "WESYS" at +3, u32 zlib/raw sizes, zlib
+// from +0x10 (vanilla UniformParameter "\x05\x10\xd1WESYS", constants "\xff\x10\x51WESYS").
+constexpr char WESYS_TAG[] = {'W', 'E', 'S', 'Y', 'S'};
+constexpr size_t WESYS_TAG_OFFSET = 3;
 constexpr size_t WESYS_ZLIB_START = 0x10;
 constexpr size_t TABLE_HEADER_BYTES = 8, TABLE_RECORD_BYTES = 12;
 
@@ -58,7 +61,8 @@ std::optional<std::span<const uint8_t>> UniformTable::Find(std::string_view name
 
 std::optional<UniformTable> ParseUniformTable(std::span<const uint8_t> blob, std::string* error) {
   UniformTable t;
-  if (blob.size() >= sizeof WESYS_MAGIC && std::memcmp(blob.data(), WESYS_MAGIC, sizeof WESYS_MAGIC) == 0) {
+  if (blob.size() >= WESYS_TAG_OFFSET + sizeof WESYS_TAG &&
+      std::memcmp(blob.data() + WESYS_TAG_OFFSET, WESYS_TAG, sizeof WESYS_TAG) == 0) {
     if (blob.size() < WESYS_ZLIB_START ||
         !Inflate(blob.data() + WESYS_ZLIB_START, blob.size() - WESYS_ZLIB_START, &t.data)) {
       *error = "UniformParameter: corrupt WESYS zlib stream";

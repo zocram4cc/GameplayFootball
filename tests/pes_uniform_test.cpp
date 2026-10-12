@@ -81,21 +81,25 @@ TEST(UniformTable, FindsEntryByName) {
   EXPECT_FALSE(t->Find("3_DEF_1st.bin"));
 }
 
+// WESYS container: u8 type, 0x10, u8 flags, "WESYS" at +3, u32 zlib size at
+// +8, u32 raw size at +12, zlib from +0x10. Headers as shipped: vanilla dt34
+// UniformParameter.bin "\x05\x10\xd1WESYS", constant_match.bin "\xff\x10\x51WESYS".
 TEST(UniformTable, InflatesWesysContainer) {
-  // Vanilla dt34 copy: "\x05\x10\xd1\x57WESYS" header, zlib stream from +0x10.
   auto raw = Table({{"1_DEF_1st_realUni.bin", {7, 7}}});
-  uLongf zlen = compressBound(raw.size());
-  std::vector<uint8_t> blob(16 + zlen);
-  const uint8_t magic[] = {0x05, 0x10, 0xd1, 0x57, 'W', 'E', 'S', 'Y', 'S'};
-  std::memcpy(blob.data(), magic, sizeof magic);
-  ASSERT_EQ(compress(blob.data() + 16, &zlen, raw.data(), raw.size()), Z_OK);
-  blob.resize(16 + zlen);
-  std::string err;
-  auto t = pes::ParseUniformTable(blob, &err);
-  ASSERT_TRUE(t) << err;
-  auto e = t->Find("1_DEF_1st_realUni.bin");
-  ASSERT_TRUE(e);
-  EXPECT_EQ(e->size(), 2u);
+  for (const auto& magic : {std::vector<uint8_t>{0x05, 0x10, 0xd1, 'W', 'E', 'S', 'Y', 'S'},
+                            std::vector<uint8_t>{0xff, 0x10, 0x51, 'W', 'E', 'S', 'Y', 'S'}}) {
+    uLongf zlen = compressBound(raw.size());
+    std::vector<uint8_t> blob(16 + zlen);
+    std::memcpy(blob.data(), magic.data(), magic.size());
+    ASSERT_EQ(compress(blob.data() + 16, &zlen, raw.data(), raw.size()), Z_OK);
+    blob.resize(16 + zlen);
+    std::string err;
+    auto t = pes::ParseUniformTable(blob, &err);
+    ASSERT_TRUE(t) << err;
+    auto e = t->Find("1_DEF_1st_realUni.bin");
+    ASSERT_TRUE(e);
+    EXPECT_EQ(e->size(), 2u);
+  }
 }
 
 TEST(UniformTable, RejectsEntryPastEnd) {
