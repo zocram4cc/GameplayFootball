@@ -45,5 +45,11 @@ set_target_properties(godotfootball PROPERTIES
   OUTPUT_NAME godotfootball
   LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/godot/bin)
 
+add_subdirectory(src/sim)
+
+add_executable(gfsim_run apps/gfsim_run.cpp)
+target_link_libraries(gfsim_run PRIVATE gfsim)
+set_target_properties(gfsim_run PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps)
+
 enable_testing()
 add_subdirectory(tests)

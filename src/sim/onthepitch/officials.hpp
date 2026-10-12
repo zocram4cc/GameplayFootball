@@ -1,0 +1,44 @@
+// written by bastiaan konings schuiling 2008 - 2015
+// this work is public domain. the code is undocumented, scruffy, untested, and should generally not
+// be used for anything important. i do not offer support, so don't ask. to be used for inspiration
+// :)
+
+#ifndef _HPP_OFFICIALS
+#define _HPP_OFFICIALS
+
+#include "player/humanoid/animcollection.hpp"
+#include <memory>
+
+class PlayerBase;
+class PlayerOfficial;
+class PlayerData;
+
+class Officials {
+public:
+  Officials(Match* match, std::shared_ptr<AnimCollection> animCollection);
+  virtual ~Officials();
+
+  void GetPlayers(std::vector<PlayerBase*>& players);
+  PlayerOfficial* GetReferee() { return referee.get(); }
+  // The names are the spawn sides and the accessor order is the array order;
+  // linesman[0] spawns at (25, -36.5) - the east touchline, which in this
+  // engine's axes is +X - so read these by POSITION at every call site
+  // (OffsideAssistantMark), never by which name "should" be where. The swap
+  // was latent, never a bug, and is documented here rather than churned.
+  PlayerOfficial* GetLinesmanNorth() { return linesmen[0].get(); }
+  PlayerOfficial* GetLinesmanSouth() { return linesmen[1].get(); }
+
+  virtual void Process();
+  virtual void PreparePutBuffers(unsigned long snapshotTime_ms);
+  virtual void FetchPutBuffers(unsigned long putTime_ms);
+  virtual void Put();
+
+protected:
+  Match* match;
+
+  std::unique_ptr<PlayerOfficial> referee;
+  std::unique_ptr<PlayerOfficial> linesmen[2];
+  std::unique_ptr<PlayerData> playerData;
+};
+
+#endif

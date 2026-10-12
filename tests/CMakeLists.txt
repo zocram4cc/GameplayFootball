@@ -31,3 +31,4 @@ add_test(NAME godot_animation_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.
 set_tests_properties(godot_animation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_subdirectory(sim)

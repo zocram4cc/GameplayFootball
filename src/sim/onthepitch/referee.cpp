@@ -1,0 +1,850 @@
+// written by bastiaan konings schuiling 2008 - 2015
+// this work is public domain. the code is undocumented, scruffy, untested, and should generally not
+// be used for anything important. i do not offer support, so don't ask. to be used for inspiration
+// :)
+
+#include "referee.hpp"
+
+#include "../data/playerskills.hpp"
+#include "simcontext.hpp"
+#include "AIsupport/AIfunctions.hpp"
+#include "foulseverity.hpp"
+#include "foulsequence.hpp"
+#include "goalsequence.hpp"
+#include "match.hpp"
+#include "matchprogression.hpp"
+#include "offsiderule.hpp"
+#include "setpiecelaws.hpp"
+#include "refereeprofile.hpp"
+
+// How long a match may sit with play off, nothing armed and the ball out of
+// play before the referee takes the ball's own position and restarts it. Long
+// enough that a normal stoppage - a goal, a foul, a substitution - has armed
+// its own restart well inside it; short enough that nobody watching thinks the
+// game has hung. It exists for measured stalls: four in one showcase, each
+// running until the period ended.
+static constexpr unsigned long kDeadBallRestart_ms = 4000;
+
+// How far a restart may be pushed back from the moment play stopped. Celebrations
+// and replays run for seconds, so this is well clear of any of them; it exists
+// so that whatever is holding a restart stops holding it. Without it a per-tick
+// deferral from the referee's special animation held a goal kick for 107 s.
+static constexpr unsigned long kMaxRestartDeferral_ms = 30000;
+
+Referee::Referee(Match* match) : match(match) {
+  buffer.desiredSetPiece = e_SetPiece_KickOff;
+  buffer.teamID = 0;
+  buffer.stopTime = 0;
+  buffer.prepareTime = 0;
+  buffer.startTime = buffer.prepareTime + 2000;
+  buffer.restartPos = Vector3(0, 0, 0);
+  buffer.taker = nullptr;
+  buffer.endPhase = true;
+  buffer.prepared = false;
+  buffer.started = false;
+  buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+
+  // Referee temperament, configurable per match; "standard" reproduces the
+  // historical thresholds.
+  profile = RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"));
+
+  foul.foulPlayer = nullptr;
+  foul.foulType = 0;
+  foul.advantage = false;
+  foul.foulTime = 0;
+  foul.hasBeenProcessed = true;
+
+  afterSetPieceRelaxTime_ms = 0;
+
+  addedTimeAnnouncedPhase = e_MatchPhase_PreMatch;
+  deadBallSince_ms = 0;
+}
+
+Referee::~Referee() {}
+
+void Referee::Process() {
+  // printf("%i", match->GetMatchState());
+
+  if (match->IsInPlay() && !match->IsInSetPiece()) {
+    Vector3 ballPos = match->GetBall()->Predict(0);
+
+    // some phase is over :[
+
+    // The fourth official's board: announce the allowance once, as the period
+    // reaches its scheduled end.
+    const unsigned long scheduledEnd_ms =
+        MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase());
+    if (scheduledEnd_ms > 0 && match->GetMatchTime_ms() >= scheduledEnd_ms &&
+        addedTimeAnnouncedPhase != match->GetMatchPhase()) {
+      addedTimeAnnouncedPhase = match->GetMatchPhase();
+      const int addedMinutes = MatchProgression::GetAnnouncedAddedMinutes(match->GetStoppage());
+      if (addedMinutes > 0 && Verbose())
+        printf("referee: added time +%i min\n", addedMinutes);
+    }
+
+    // Blow for the end of the period at a neutral moment - no earlier than the
+    // scheduled end plus the Law 7 allowance for time lost - but never let a
+    // period run away waiting for one.
+    if (MatchProgression::ShouldEndPeriod(
+            match->GetMatchTime_ms(),
+            MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase(), match->GetStoppage()),
+            ballPos.coords[0])) {
+      foul.advantage = false;
+      if (!CheckFoul()) {
+        match->StopPlay();
+
+        buffer.desiredSetPiece = e_SetPiece_KickOff;
+        buffer.stopTime = match->GetActualTime_ms();
+        // The walk-off plays first; the reset for the next period waits for it
+        // (SetPieceLaws::kHalfTimeCutscene_ms is also what SetMatchPhase gives
+        // the cutscene, so the two cannot drift apart).
+        buffer.prepareTime = SetPieceLaws::HalfTimePrepareAt_ms(match->GetActualTime_ms());
+        buffer.startTime = SetPieceLaws::HalfTimeTakeAt_ms(match->GetActualTime_ms());
+        buffer.restartPos = Vector3(0);
+        buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+        buffer.endPhase = true;
+        if (match->GetMatchPhase() == e_MatchPhase_1stHalf ||
+            match->GetMatchPhase() == e_MatchPhase_1stExtraTime) {
+          buffer.teamID = 1;
+        } else {
+          buffer.teamID = 0;
+        }
+
+        // Extra time only when the match is level, both extra periods always
+        // played, penalties only after a draw in them.
+        const MatchProgression::Outcome progression = MatchProgression::GetNext(
+            match->GetMatchPhase(), match->GetScore(0) == match->GetScore(1));
+        if (progression.gameOver) {
+          match->GameOver();
+          return;
+        }
+        match->SetMatchPhase(progression.nextPhase);
+      }
+    }
+
+    // goal kick / corner
+
+    if (fabs(ballPos.coords[0]) > pitchHalfW + lineHalfW + 0.11) {
+      foul.advantage = false;
+      bool isFoul = false;
+      if (!match->IsGoalScored())
+        isFoul = CheckFoul();
+      else
+        foul.foulType = 0;
+      if (isFoul == false) {
+        match->StopPlay();
+        // A pending pass died here rather than by interception: count it as
+        // out-of-bounds before the restart is set up.
+        match->GetMatchData()->FailPendingPassOutOfBounds();
+
+        // corner, goal kick or kick off?
+        signed int lastSide = -1;
+        Team* lastTouchTeam = match->GetLastTouchTeam();
+        if (lastTouchTeam == nullptr)
+          lastTouchTeam = match->GetTeam(0);
+        lastSide = lastTouchTeam->GetSide();
+
+        if (match->IsGoalScored()) {
+          match->AddLostTime(MatchProgression::e_Stoppage_Goal);
+          buffer.desiredSetPiece = e_SetPiece_KickOff;
+          buffer.stopTime = match->GetActualTime_ms();
+          // Preparing the restart calls Match::ResetSituation, which clears the
+          // goal state the replay trigger waits on - so it has to come after the
+          // replay has fired. GoalSequence owns both timings for that reason;
+          // the six seconds this used to wait killed the goal replay outright.
+          buffer.prepareTime = GoalSequence::RestartPrepareAt_ms(match->GetActualTime_ms());
+          buffer.startTime = GoalSequence::RestartKickOffAt_ms(match->GetActualTime_ms());
+          buffer.restartPos = Vector3(0, 0, 0);
+          buffer.teamID = abs(match->GetLastGoalTeamID() - 1);
+
+        } else if ((ballPos.coords[0] > 0 && lastSide > 0) ||
+                   (ballPos.coords[0] < 0 && lastSide < 0)) {
+          buffer.desiredSetPiece = e_SetPiece_Corner;
+          buffer.stopTime = match->GetActualTime_ms();
+          buffer.prepareTime = match->GetActualTime_ms() + 2000;
+          buffer.startTime = buffer.prepareTime + 2000;
+          float y = ballPos.coords[1];
+          if (y > 0)
+            y = pitchHalfH;
+          else
+            y = -pitchHalfH;
+          buffer.restartPos = Vector3(pitchHalfW * lastSide, y, 0);
+          buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          match->GetMatchData()->AddCorner(buffer.teamID);
+
+        } else {
+          buffer.desiredSetPiece = e_SetPiece_GoalKick;
+          buffer.stopTime = match->GetActualTime_ms();
+          buffer.prepareTime = match->GetActualTime_ms() + 2000;
+          buffer.startTime = buffer.prepareTime + 2000;
+          buffer.restartPos = Vector3(pitchHalfW * 0.92 * -lastSide, 0, 0);
+          buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+        }
+
+        buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+      }
+    }
+
+    // over sideline
+
+    if (afterSetPieceRelaxTime_ms == 0) {
+      if (fabs(ballPos.coords[1]) > pitchHalfH + lineHalfW + 0.11) {
+        foul.advantage = false;
+        if (!CheckFoul()) {
+          match->StopPlay();
+          match->GetMatchData()->FailPendingPassOutOfBounds();
+
+          Team* lastTouchTeam = match->GetLastTouchTeam();
+          if (lastTouchTeam == nullptr)
+            lastTouchTeam = match->GetTeam(0);
+          buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          buffer.desiredSetPiece = e_SetPiece_ThrowIn;
+          buffer.stopTime = match->GetActualTime_ms();
+          buffer.prepareTime = match->GetActualTime_ms() + 2000;
+          buffer.startTime = buffer.prepareTime + 2000;
+          buffer.restartPos.coords[0] =
+              clamp(ballPos.coords[0], -pitchHalfW + 0.6f, pitchHalfW - 0.6f);
+          if (ballPos.coords[1] > 0)
+            buffer.restartPos.coords[1] = pitchHalfH;
+          if (ballPos.coords[1] <= 0)
+            buffer.restartPos.coords[1] = -pitchHalfH;
+          buffer.restartPos.coords[2] = 0;
+          buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+        }
+      }
+    }
+
+    CheckFoul();
+
+  } else {  // not in play, maybe something needs to happen?
+
+    // Play is not on and nothing is being prepared. Every out-of-play test in
+    // this file lives inside `if (IsInPlay() && !IsInSetPiece())` above, so once
+    // anything stops play without arming a restart - and several things do -
+    // the ball is never looked at again. It sits beyond the goal line, every
+    // controller is gated on IsInPlay and queues nothing, and the match stands
+    // there until the period ends. Measured: four such stalls in one showcase,
+    // all with inPlay 0 and the ball at x 55.1, and the chaser "forced" to it
+    // three metres away that never moved because designating a chaser does
+    // nothing while play is not live.
+    //
+    // So: play off, nothing armed, nothing moving - arm the restart the ball's
+    // own position calls for. buffer.active is the guard that keeps this out of
+    // the windows where waiting is correct: the entrance, half-time and the end
+    // of the match all hold play with a restart already armed.
+    if (!match->IsInPlay() && !match->IsInSetPiece() && !buffer.active) {
+      const Vector3 ballPos = match->GetBall()->Predict(0);
+      const bool outOverGoalLine = std::fabs(ballPos.coords[0]) > pitchHalfW;
+      const bool outOverTouchline = std::fabs(ballPos.coords[1]) > pitchHalfH;
+      // Not gated on the ball being out of play. The first version was, and it
+      // fired zero times in four matches: the commonest stall by far is the ball
+      // sitting ON THE CENTRE SPOT with play off and nothing armed - a kick-off
+      // never prepared. Measured: "[stalemate] inPlay 0 ... at 0.0,0.0" with the
+      // forced-chaser count to 17007 ticks in a match.
+      if (deadBallSince_ms == 0) {
+          deadBallSince_ms = match->GetActualTime_ms();
+        } else if (match->GetActualTime_ms() - deadBallSince_ms >= kDeadBallRestart_ms) {
+          Team* lastTouchTeam = match->GetLastTouchTeam();
+          if (lastTouchTeam == nullptr)
+            lastTouchTeam = match->GetTeam(0);
+          buffer.teamID = abs(lastTouchTeam->GetID() - 1);
+          buffer.stopTime = match->GetActualTime_ms();
+          buffer.prepareTime = match->GetActualTime_ms() + 500;
+          buffer.startTime = buffer.prepareTime + 1000;
+          // One decision, in one tested place. It used to be spelled out inline
+          // here, which is precisely why nothing could check it: this is the
+          // branch only a live match reaches, so the arm that ends the freeze
+          // was the one part with no test behind it.
+          const SetPieceLaws::DeadBallDecision dead =
+              SetPieceLaws::GetDeadBallRestart(ballPos.coords[0], ballPos.coords[1], pitchHalfW,
+                                               pitchHalfH, lastTouchTeam->GetID(),
+                                               lastTouchTeam->GetSide(),
+                                               match->GetLastGoalTeamID());
+          switch (dead.kind) {
+            case SetPieceLaws::e_DeadBallRestart::ThrowIn:
+              buffer.desiredSetPiece = e_SetPiece_ThrowIn;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::Corner:
+              buffer.desiredSetPiece = e_SetPiece_Corner;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::GoalKick:
+              buffer.desiredSetPiece = e_SetPiece_GoalKick;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::KickOff:
+              buffer.desiredSetPiece = e_SetPiece_KickOff;
+              break;
+            case SetPieceLaws::e_DeadBallRestart::None:
+              break;
+          }
+          buffer.restartPos = Vector3(dead.posX, dead.posY, dead.posZ);
+          buffer.active = true;
+          buffer.prepared = false;
+          buffer.started = false;
+          deadBallSince_ms = 0;
+          printf("[dead-ball] %.0f m from play with nothing armed: restarting with a %s "
+                 "for team %d\n",
+                 std::fabs(ballPos.coords[0]) > pitchHalfW
+                     ? (ballPos.coords[0] > 0 ? pitchHalfW - ballPos.coords[0]
+                                              : -pitchHalfW - ballPos.coords[0])
+                     : (ballPos.coords[1] > 0 ? pitchHalfH - ballPos.coords[1]
+                                              : -pitchHalfH - ballPos.coords[1]),
+                 buffer.desiredSetPiece == e_SetPiece_ThrowIn   ? "throw-in"
+                 : buffer.desiredSetPiece == e_SetPiece_Corner  ? "corner"
+                 : buffer.desiredSetPiece == e_SetPiece_KickOff ? "kick-off"
+                                                                : "goal kick",
+                 buffer.teamID);
+        }
+    } else {
+      deadBallSince_ms = 0;
+    }
+
+    if (!match->IsInPlay() && !match->IsInSetPiece() && buffer.active == true) {
+      // Play has stopped: settle any bookings owed from advantages played.
+      if (CardBook::HasPending(cardBook) && buffer.stopTime + 300 <= match->GetActualTime_ms())
+        IssueDeferredCards();
+
+      if (!buffer.prepared && buffer.prepareTime <= match->GetActualTime_ms()) {
+        buffer.prepared = true;
+        if (buffer.endPhase == true) {
+          if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {
+            match->SetMatchPhase(e_MatchPhase_1stHalf);
+          } else {
+            if (match->GetMatchPhase() == e_MatchPhase_Penalties) {
+              // The shootout controller decides when this is over.
+              return;
+            }
+          }
+          buffer.endPhase = false;
+        }
+
+        PrepareSetPiece(buffer.desiredSetPiece);
+      }
+
+      // Law 16: the taker waits for the opponents to leave the penalty area. They walk
+      // out on their own (elizacontroller.cpp); this holds the whistle until they have,
+      // for a bounded time so a wedged player cannot freeze the match.
+      Team* restartTeam = match->GetTeam(buffer.teamID);
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms() &&
+          SetPieceLaws::ClearsThePenaltyArea(buffer.desiredSetPiece, buffer.restartPos.coords[0],
+                                             restartTeam->GetSide(), pitchHalfW)) {
+        Team* takerTeam = restartTeam;
+        Team* opponents = match->GetTeam(abs(buffer.teamID - 1));
+        std::vector<Player*> squad;
+        opponents->GetActivePlayers(squad);
+        int intruders = 0;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          if (SetPieceLaws::IntrudesOnPenaltyArea(at.coords[0], at.coords[1],
+                                                 takerTeam->GetSide(), pitchHalfW))
+            intruders++;
+        }
+        (void)opponents;
+        // How far past the area's edge the nearest of them is, for the release notice.
+        // Negative while a man is still inside it.
+        float nearest = 1e9f;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          const int side = takerTeam->GetSide();
+          const float depthIn = pitchHalfW - at.coords[0] * static_cast<float>(side);
+          const float pastDepth = depthIn - SetPieceLaws::kAreaDepth;
+          const float pastWidth = std::fabs(at.coords[1]) - SetPieceLaws::kAreaHalfWidth;
+          nearest = std::min(nearest, std::max(pastDepth, pastWidth));
+        }
+        if (nearest < 1e8f) {
+          clearingNearest_m = nearest;
+          clearingRule = "the area";
+        }
+        if (!clearingAnnounced) {
+          clearingAnnounced = true;
+          // One line per restart that the law touches: which kind, and how many of them
+          // have to move. A restart that never reports anyone is a restart where the
+          // area was already clear, which is worth being able to tell apart from a
+          // clearing that silently did nothing.
+          Log(e_Notice, "Referee", "Process",
+              "clearing the area for set piece " + int_to_str((int)buffer.desiredSetPiece) +
+                  ": " + int_to_str(intruders) + " opponent(s) to move");
+        }
+        if (!SetPieceLaws::MayRestart(intruders, match->GetActualTime_ms() - buffer.prepareTime)) {
+          buffer.startTime = match->GetActualTime_ms() + 10;
+          if (!clearingLogged) {
+            clearingLogged = true;
+            clearingHeldFrom_ms = match->GetActualTime_ms();
+            Log(e_Notice, "Referee", "Process",
+                "restart held: " + int_to_str(intruders) + " opponent(s) still in the area");
+          }
+        }
+      }
+
+      // Law 13: and the same wait for a free kick or a corner, measured from the ball.
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms() &&
+          SetPieceLaws::ClearsTheBallRadius(buffer.desiredSetPiece)) {
+        std::vector<Player*> squad;
+        match->GetTeam(abs(buffer.teamID - 1))->GetActivePlayers(squad);
+        const Vector3 ball = match->GetBall()->Predict(0).Get2D();
+        int tooClose = 0;
+        float nearest = 1e9f;
+        for (unsigned int i = 0; i < squad.size(); i++) {
+          const Vector3 at = squad.at(i)->GetPosition();
+          if (SetPieceLaws::IntrudesOnBallRadius(at.coords[0], at.coords[1], ball.coords[0],
+                                                ball.coords[1]))
+            tooClose++;
+          const float dx = at.coords[0] - ball.coords[0], dy = at.coords[1] - ball.coords[1];
+          nearest = std::min(nearest, std::sqrt(dx * dx + dy * dy) - SetPieceLaws::kRetreatRadius);
+        }
+        if (nearest < 1e8f) {
+          clearingNearest_m = nearest;
+          clearingRule = "nine metres";
+        }
+        if (!clearingAnnounced) {
+          clearingAnnounced = true;
+          Log(e_Notice, "Referee", "Process",
+              "standing them off the ball for set piece " +
+                  int_to_str((int)buffer.desiredSetPiece) + ": " + int_to_str(tooClose) +
+                  " opponent(s) to move");
+        }
+        if (!SetPieceLaws::MayRestart(tooClose, match->GetActualTime_ms() - buffer.prepareTime)) {
+          buffer.startTime = match->GetActualTime_ms() + 10;
+          if (!clearingLogged) {
+            clearingLogged = true;
+            clearingHeldFrom_ms = match->GetActualTime_ms();
+            Log(e_Notice, "Referee", "Process",
+                "restart held: " + int_to_str(tooClose) + " opponent(s) inside nine metres");
+          }
+        }
+      }
+
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms()) {
+        buffer.started = true;
+        if (clearingLogged) {
+          // How long the taker actually waited, and how far the nearest opponent had
+          // got by the time he kicked. Both are the point of the law: a restart that
+          // is released while a man is still standing on the line has cleared nothing.
+          Log(e_Notice, "Referee", "Process",
+              "restart released after " +
+                  int_to_str((int)(match->GetActualTime_ms() - clearingHeldFrom_ms)) +
+                  " ms: nearest opponent " + int_to_str((int)(clearingNearest_m * 100)) +
+                  " cm clear of " + clearingRule);
+        }
+        clearingLogged = false;
+        clearingAnnounced = false;
+        match->StartPlay();
+        match->StartSetPiece();
+      }
+    }
+  }
+
+  if (match->IsInSetPiece()) {
+    // check if set piece has been taken
+    if (buffer.taker->TouchAnim() && !buffer.taker->TouchPending()) {
+      if (buffer.desiredSetPiece == e_SetPiece_Penalty)
+        match->SetPendingPenaltyTaken(buffer.teamID, buffer.taker);
+      buffer.active = false;
+      match->StopSetPiece();
+      match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);
+      match->GetTeam(1)->GetController()->PrepareSetPiece(e_SetPiece_None);
+      afterSetPieceRelaxTime_ms = 400;
+      foul.foulPlayer = 0;
+      foul.foulType = 0;
+
+      if (match->GetMatchPhase() == e_MatchPhase_PreMatch) {
+        match->SetMatchPhase(e_MatchPhase_1stHalf);
+      }
+    }
+  }
+
+  if (afterSetPieceRelaxTime_ms > 0)
+    afterSetPieceRelaxTime_ms -= 10;
+}
+
+void Referee::IssueDeferredCards() {
+  const std::vector<CardBook::DeferredCard> cards = CardBook::Drain(cardBook);
+  bool anyCardShown = false;
+  for (const CardBook::DeferredCard& card : cards) {
+    if (!card.player)
+      continue;
+    const std::string playerName =
+        card.player->GetPlayerData() ? card.player->GetPlayerData()->GetLastName() : "";
+    match->GetMatchData()->AddEvent(
+        card.foulType == 3 ? MatchData::Event::RedCard : MatchData::Event::YellowCard,
+        card.player->GetTeamID(), match->GetMatchMinute(), playerName);
+    if (card.foulType == 2)
+      card.player->GiveYellowCard(match->GetActualTime_ms() + 4000);
+    else if (card.foulType == 3)
+      card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
+    if (Verbose())
+      printf("referee: deferred card issued (type %i)\n", card.foulType);
+    match->AddLostTime(MatchProgression::e_Stoppage_Card);
+    anyCardShown = true;
+  }
+
+  if (anyCardShown) {
+    // Leave room for the booking ceremony before the restart, like the
+    // directly-whistled card path does.
+    buffer.prepareTime += 6000;
+    buffer.startTime = buffer.prepareTime + 2000;
+    // Delayed, so both stages come round again - as they did when these were exact
+    // time comparisons.
+    buffer.prepared = false;
+    buffer.started = false;
+  }
+}
+
+void Referee::PrepareSetPiece(e_SetPiece setPiece) {
+  // position players for set piece situation
+
+  match->ResetSituation(buffer.restartPos);
+  match->GetMatchData()->RecordPassRestart();
+
+  match->GetTeam(0)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);
+  match->GetTeam(1)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);
+
+  buffer.taker = match->GetTeam(buffer.teamID)->GetController()->GetPieceTaker();
+}
+
+void Referee::AlterSetPiecePrepareTime(unsigned long newTime_ms) {
+  if (buffer.active) {
+    // Bounded. This is called once per tick by several things - a goal
+    // celebration's beats, a cutscene, and the referee playing his special
+    // animation (match.cpp) - each pushing the restart further out so it does
+    // not fire underneath them. Nothing stopped any of them going on for ever:
+    // the referee's special animation pushed it one second at a time for as
+    // long as it lasted, and the restart simply never arrived. Measured: a goal
+    // kick armed and prepared, `started 0`, `start-in` pinned at exactly 3.0 s
+    // on every sample for 107 s - the longest stall in the set, and the whole
+    // match standing still from 26:05 while the clock ran on.
+    //
+    // So the deferral is capped from the moment play stopped. The cap is well
+    // beyond any real celebration or replay, which run for seconds, so this
+    // never truncates one; it exists so that whatever is holding the restart
+    // stops holding it.
+    const unsigned long deferDeadline_ms = buffer.stopTime + kMaxRestartDeferral_ms;
+    if (newTime_ms > deferDeadline_ms) {
+      if (!deferralRefusedLogged) {
+        deferralRefusedLogged = true;
+        printf("[dead-ball] restart deferred past %u ms by %u; taking it anyway\n",
+               kMaxRestartDeferral_ms, newTime_ms - buffer.stopTime);
+      }
+      newTime_ms = deferDeadline_ms;
+    }
+    if (newTime_ms < buffer.stopTime + 500) {
+      // And never pulled earlier than the stop itself, which is what a caller
+      // asking for "now" means when the whistle has only just gone.
+      newTime_ms = buffer.stopTime + 500;
+    }
+    deferralRefusedLogged = false;
+    buffer.prepareTime = newTime_ms;
+    buffer.startTime = buffer.prepareTime + 2000;
+    buffer.prepared = false;
+    buffer.started = false;
+  }
+}
+
+void Referee::BallTouched() {
+  // check for offside player receiving the ball
+
+  int lastTouchTeamID = match->GetLastTouchTeamID();
+  if (lastTouchTeamID == -1)
+    return;  // shouldn't happen really ;)
+  if (match->IsInPlay() && !match->IsInSetPiece() && buffer.active == false &&
+      match->GetTeam(abs(lastTouchTeamID - 1))->GetActivePlayerCount() >
+          1) {  // disable if only 1 player: that's debug mode with only keeper
+    std::map<Player*, Vector3>::iterator playerIter = offsidePlayers.begin();
+    while (playerIter != offsidePlayers.end()) {
+      if (match->GetTeam(lastTouchTeamID)->GetLastTouchPlayer() == playerIter->first) {
+        foul.advantage = false;
+        if (!CheckFoul()) {
+          // uooooga uooooga offside!
+          match->StopPlay();
+          buffer.desiredSetPiece = e_SetPiece_FreeKick;
+          buffer.stopTime = match->GetActualTime_ms();
+          // Behind the choreography rather than under it (setpiecelaws.hpp):
+          // the flag and the complaint play out, and only then is anyone moved.
+          buffer.prepareTime = SetPieceLaws::OffsidePrepareAt_ms(buffer.stopTime);
+          buffer.startTime = SetPieceLaws::OffsideTakeAt_ms(buffer.stopTime);
+          // Law 11: the free kick is taken where the offence occurred - the
+          // spot where the flagged player just played the ball - not where he
+          // stood when the pass was struck (that stored position only judged
+          // the offside position itself).
+          buffer.restartPos =
+              OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
+          buffer.teamID = abs(lastTouchTeamID - 1);
+          match->GetMatchData()->AddOffside(lastTouchTeamID);
+          match->GetMatchData()->AddFreeKick(buffer.teamID);
+          buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+          if (Verbose())
+            printf("referee: offside\n");
+          break;
+        } else
+          break;
+      }
+      playerIter++;
+    }
+  }
+
+  // Law 11: a deliberate play by a defender resets the offside phase and makes
+  // a previously offside attacker onside; a deflection or a save does not. A
+  // touch by the flagged players' own team always starts a fresh phase, judged
+  // at this touch.
+  Player* toucher = match->GetTeam(lastTouchTeamID)->GetLastTouchPlayer();
+  const bool opponentOfFlagged =
+      !offsidePlayers.empty() &&
+      offsidePlayers.begin()->first->GetTeam()->GetID() != lastTouchTeamID;
+  const e_TouchType touchType =
+      toucher ? toucher->GetLastTouchType() : e_TouchType_Intentional_Kicked;
+  if (!OffsideRule::TouchResetsPhase(opponentOfFlagged, touchType))
+    return;  // the flagged attackers stay flagged; no new snapshot is taken
+
+  offsidePlayers.clear();
+
+  // Law 11: a goal kick, throw-in or corner can never put its receivers
+  // offside, so their delivery touch must not arm the flag.
+  if (OffsideRule::ShouldSnapshot(match->IsInPlay(), buffer.active, buffer.desiredSetPiece)) {
+    // check for offside players at moment of touch
+    float offside = AI_GetOffsideLine(match, match->GetMentalImage(0), abs(lastTouchTeamID - 1));
+    std::vector<Player*> players;
+    Team* team = match->GetTeam(lastTouchTeamID);
+    match->GetTeam(lastTouchTeamID)->GetActivePlayers(players);
+    for (unsigned int i = 0; i < players.size(); i++) {
+      if (players.at(i) != team->GetLastTouchPlayer()) {
+        if (players.at(i)->GetPosition().coords[0] * team->GetSide() <
+            offside * team->GetSide() - 0.20 /*relax*/) {
+          offsidePlayers.insert(
+              std::pair<Player*, Vector3>(players.at(i), players.at(i)->GetPosition()));
+        }
+      }
+    }
+  }
+}
+
+int Referee::ApplyGoalDenial(int foulType, Player* tripee, Player* tripper,
+                             float ballDistance_m) {
+  if (foulType < 1)
+    return foulType;
+
+  // The victim attacks the goal at x = -side * pitchHalfW; the reference line
+  // is the fouling team's offside line (their one-but-deepest man).
+  const float attackDirSign = -tripee->GetTeam()->GetSide();
+  const float defensiveLineX =
+      AI_GetOffsideLine(match, match->GetMentalImage(0), tripper->GetTeam()->GetID());
+  if (!FoulSeverity::DeniesObviousChance(attackDirSign, tripee->GetPosition().coords[0],
+                                         tripee->GetPosition().coords[1], defensiveLineX,
+                                         20.15f - lineHalfW))
+    return foulType;
+
+  const bool insidePenaltyArea =
+      fabs(tripee->GetPosition().coords[1]) < 20.15f - lineHalfW &&
+      tripee->GetPosition().coords[0] * attackDirSign > pitchHalfW - 16.5f + lineHalfW;
+  const int escalated = FoulSeverity::EscalateForDOGSO(
+      foulType, insidePenaltyArea,
+      ballDistance_m < FoulSeverity::genuineAttemptBallDistance_m);
+  if (Verbose() && escalated != foulType)
+    printf("referee: goal-scoring opportunity denied (type %i -> %i)\n", foulType, escalated);
+  return escalated;
+}
+
+void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
+  if (buffer.active)
+    return;
+
+  if ((tackleType == 1 || tackleType == 2) &&
+      (tripper != foul.foulPlayer || foul.foulType == 0)) {  // standing challenges
+
+    if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&
+        (tripper->GetCurrentFunctionType() == e_FunctionType_Interfere ||
+         tripper->GetCurrentFunctionType() == e_FunctionType_Sliding) &&
+        (tripee->GetPosition() - match->GetBall()->Predict(0).Get2D()).GetLength() < 2.0 &&
+        tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID()) {
+      // Law 12: a standing challenge is not automatically innocent. The same
+      // severity pipeline judges it that judges a slide.
+      FoulSeverity::Contact contact;
+      contact.tackleType = tackleType;
+      contact.ballDistance_m =
+          (match->GetBall()->Predict(0).Get2D() - tripee->GetPosition()).GetLength();
+      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
+                                         .GetNormalized(0)
+                                         .GetDotProduct(tripee->GetDirectionVec()) *
+                                     0.5f +
+                                 0.5f,
+                                 0.0f, 1.0f);
+
+      // Gamesmanship: the man brought down makes the contact look worse.
+      const int foulType = ApplyGoalDenial(
+          RefereeProfile::GetFoulType(
+              profile, FoulSeverity::Score(contact) +
+                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
+          tripee, tripper, contact.ballDistance_m);
+      if (foulType > 0) {
+        // uooooga uooooga foul!
+        foul.foulType = foulType;
+        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
+        foul.foulPlayer = tripper;
+        foul.foulVictim = tripee;
+        foul.foulTime = match->GetActualTime_ms();
+        foul.foulPosition = tripee->GetPosition();
+        foul.hasBeenProcessed = false;
+      }
+    }
+
+  } else if (tackleType == 3 &&
+             (tripper != foul.foulPlayer || foul.foulType == 0)) {  // sliding tackle
+
+    if (match->GetActualTime_ms() - tripper->GetLastTouchTime_ms() > 600 &&
+        tripper->GetCurrentFunctionType() == e_FunctionType_Sliding &&
+        tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID() &&
+        (match->GetBall()->Predict(0) - tripee->GetPosition()).GetLength() < 8.0) {
+      FoulSeverity::Contact contact;
+      contact.tackleType = 3;
+      contact.hasTouchData = tripper->TouchAnim();
+      if (contact.hasTouchData) {
+        contact.timingError =
+            clamp(fabs(tripper->GetTouchFrame() - tripper->GetCurrentFrame()) /
+                      tripper->GetTouchFrame(),
+                  0.0, 1.0);
+        contact.ballDistance_m =
+            (match->GetBall()->Predict(0) - tripper->GetTouchPos()).GetLength();
+      }
+      // from behind?
+      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
+                                         .GetNormalized(0)
+                                         .GetDotProduct(tripee->GetDirectionVec()) *
+                                     0.5f +
+                                 0.5f,
+                                 0.0f, 1.0f);
+
+      // How harshly this is judged depends on the referee's temperament. A
+      // slide that never played at the ball (no touch data) was no genuine
+      // attempt, whatever its distance says.
+      const int foulType = ApplyGoalDenial(
+          RefereeProfile::GetFoulType(
+              profile, FoulSeverity::Score(contact) +
+                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
+          tripee, tripper, contact.hasTouchData ? contact.ballDistance_m : 1000.0f);
+      if (foulType > 0) {
+        // uooooga uooooga foul!
+        // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -
+        // tripper->GetLastTouchTime_ms());
+        foul.foulType = foulType;
+        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
+        foul.foulPlayer = tripper;
+        foul.foulVictim = tripee;
+        foul.foulTime = match->GetActualTime_ms();
+        foul.foulPosition = tripee->GetPosition();
+        foul.hasBeenProcessed = false;
+      }
+    }
+  }
+}
+
+void Referee::CancelSetPiece() {
+  buffer.active = false;
+  buffer.endPhase = false;
+  buffer.desiredSetPiece = e_SetPiece_None;
+  buffer.taker = nullptr;
+  foul.foulType = 0;
+  foul.foulPlayer = nullptr;
+  foul.advantage = false;
+  foul.hasBeenProcessed = true;
+  match->StopSetPiece();
+}
+
+bool Referee::CheckFoul() {
+  bool penalty = false;
+  if (foul.foulType != 0) {
+    if (fabs(foul.foulPosition.coords[1]) < 20.15 - lineHalfW &&
+        foul.foulPosition.coords[0] * -foul.foulVictim->GetTeam()->GetSide() >
+            pitchHalfW - 16.5 + lineHalfW)
+      penalty = true;
+  }
+
+  if (foul.advantage) {
+    if (penalty) {
+      foul.advantage = false;
+    } else {
+      if (match->GetActualTime_ms() - 600 > foul.foulTime) {
+        if (match->GetActualTime_ms() - RefereeProfile::GetAdvantageWindow_ms(profile) >
+            foul.foulTime) {
+          // The advantage ran its course: the free kick is waived, but Law 5
+          // keeps the sanction - a card-worthy foul is booked at the next
+          // stoppage.
+          CardBook::OnAdvantageExpired(cardBook, foul.foulPlayer, foul.foulType, foul.foulTime);
+          foul.foulPlayer = 0;
+          foul.foulType = 0;
+          foul.advantage = false;
+        } else {
+          // calculate if there's advantage still
+          if (foul.foulVictim->GetTeam()->GetFadingTeamPossessionAmount() < 1.0) {
+            foul.advantage = false;
+          }
+        }
+      }
+    }
+  }
+
+  if (foul.foulType != 0 && foul.advantage == false && !foul.hasBeenProcessed) {
+    match->StopPlay();
+    if (!penalty) {
+      buffer.desiredSetPiece = e_SetPiece_FreeKick;
+      buffer.stopTime = match->GetActualTime_ms();
+      // Whistle, cutscene, close-up replay, restart. Preparing the restart
+      // resets the situation, so it has to wait for the replay - the two
+      // seconds this used to allow did not even cover the cutscene.
+      buffer.prepareTime =
+          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.restartPos = foul.foulPosition;
+    } else {
+      buffer.desiredSetPiece = e_SetPiece_Penalty;
+      buffer.stopTime = match->GetActualTime_ms();
+      buffer.prepareTime =
+          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
+      buffer.restartPos =
+          Vector3((pitchHalfW - 11.0) * foul.foulPlayer->GetTeam()->GetSide(), 0, 0);
+    }
+    buffer.teamID = foul.foulVictim->GetTeam()->GetID();
+    if (buffer.desiredSetPiece == e_SetPiece_FreeKick)
+      match->GetMatchData()->AddFreeKick(buffer.teamID);
+    buffer.active = true;
+        buffer.prepared = false;
+        buffer.started = false;
+    if (foul.foulType == 2) {
+      foul.foulPlayer->GiveYellowCard(match->GetActualTime_ms() +
+                                      6000);  // need to find out proper moment
+    }
+    if (foul.foulType == 3) {
+      foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
+                                   6000);  // need to find out proper moment
+    }
+    if (foul.foulType >= 2) match->AddLostTime(MatchProgression::e_Stoppage_Card);
+    // The statistic counts whistles, not collisions: it used to be incremented
+    // by the collision producer before the referee had decided anything.
+    match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());
+    {
+      PlayerData* foulPlayerData = foul.foulPlayer->GetPlayerData();
+      const std::string who = foulPlayerData ? foulPlayerData->GetLastName() : "";
+      const MatchData::Event::Kind kind = foul.foulType == 3   ? MatchData::Event::RedCard
+                                          : foul.foulType == 2 ? MatchData::Event::YellowCard
+                                                               : MatchData::Event::Foul;
+      match->GetMatchData()->AddEvent(kind, foul.foulPlayer->GetTeamID(), match->GetMatchMinute(),
+                                      who);
+    }
+    if (Verbose())
+      printf("referee: foul (type %i)%s\n", foul.foulType, penalty ? " penalty" : "");
+
+    foul.hasBeenProcessed = true;
+
+    return true;
+  }
+
+  return false;
+}

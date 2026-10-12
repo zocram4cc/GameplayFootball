@@ -1,0 +1,18 @@
+add_executable(sim_database_test sim_database_test.cpp)
+target_link_libraries(sim_database_test PRIVATE gfsim GTest::gtest_main)
+gtest_discover_tests(sim_database_test)
+
+add_executable(sim_fixture_test sim_fixture_test.cpp)
+target_link_libraries(sim_fixture_test PRIVATE gfsim GTest::gtest_main)
+target_compile_definitions(sim_fixture_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(sim_fixture_test)
+
+add_executable(sim_match_test sim_match_test.cpp)
+target_link_libraries(sim_match_test PRIVATE gfsim GTest::gtest_main)
+target_compile_definitions(sim_match_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+# Whole matches: far beyond gtest_discover_tests' default 5 s discovery budget per test.
+gtest_discover_tests(sim_match_test PROPERTIES TIMEOUT 1800)
+
+add_test(NAME gfsim_run_test
+  COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/gfsim_run_test.sh $<TARGET_FILE:gfsim_run> ${CMAKE_SOURCE_DIR})
+set_tests_properties(gfsim_run_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
