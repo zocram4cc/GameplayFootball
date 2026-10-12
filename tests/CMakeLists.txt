@@ -43,3 +43,11 @@ gtest_discover_tests(pes_uniform_test)
 add_executable(pes_editsave_test pes_editsave_test.cpp)
 target_link_libraries(pes_editsave_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_editsave_test)
+
+add_executable(pes_exe_test pes_exe_test.cpp)
+target_link_libraries(pes_exe_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_exe_test)
+
+add_executable(pes_handseq_test pes_handseq_test.cpp)
+target_link_libraries(pes_handseq_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_handseq_test)
