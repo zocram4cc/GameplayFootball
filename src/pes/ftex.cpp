@@ -1,7 +1,7 @@
 // Port of GameplayFootball tools/pes21_import/ftex.py (parse + _read_mip).
 #include "pes/ftex.hpp"
 
-#include <zlib.h>
+#include "pes/inflate.hpp"
 
 #include <cstring>
 
@@ -19,24 +19,6 @@ constexpr uint32_t CHUNK_STORED_RAW = 0x80000000;
 
 template <typename T>
 T Load(const uint8_t* p) { T v; std::memcpy(&v, p, sizeof v); return v; }
-
-bool Inflate(const uint8_t* src, size_t n, std::vector<uint8_t>* out) {
-  z_stream z{};
-  if (inflateInit(&z) != Z_OK) return false;
-  z.next_in = const_cast<Bytef*>(src);
-  z.avail_in = uInt(n);
-  uint8_t buf[1 << 16];
-  int rc;
-  do {
-    z.next_out = buf;
-    z.avail_out = sizeof buf;
-    rc = inflate(&z, Z_NO_FLUSH);
-    if (rc != Z_OK && rc != Z_STREAM_END) { inflateEnd(&z); return false; }
-    out->insert(out->end(), buf, buf + (sizeof buf - z.avail_out));
-  } while (rc != Z_STREAM_END && z.avail_in > 0);
-  inflateEnd(&z);
-  return rc == Z_STREAM_END;
-}
 
 }  // namespace
 

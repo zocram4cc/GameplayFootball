@@ -32,3 +32,7 @@ add_test(NAME godot_animation_test
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.
 set_tests_properties(godot_animation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 add_subdirectory(sim)
+
+add_executable(pes_uniform_test pes_uniform_test.cpp)
+target_link_libraries(pes_uniform_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_uniform_test)
