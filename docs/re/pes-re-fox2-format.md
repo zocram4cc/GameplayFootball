@@ -12,8 +12,9 @@ only offsets, sizes and structural facts.
 
 Unresolved: whether `ndyn > 0` ever occurs (0 in all 514 entities read); the
 meaning of the 4th WideVec3 float (padding/garbage); EntityLink (22) field
-semantics beyond the 32-byte element; the 8 trailer bytes after the string
-table; the `ent` bytes at entity +2 and the u32 at +0x28.
+semantics beyond the 32-byte element; the purpose of the trailer `end`
+bytes after the string table (§6, open); the `ent` bytes at entity +2 and
+the u32 at +0x28.
 
 ---
 
@@ -34,16 +35,20 @@ table; the `ent` bytes at entity +2 and the u32 at +0x28.
 
 ## 2. File header, 32 bytes at offset 0 (OBS)
 
-- Bytes 0..8 of every file read: `f2 62 6f 78 35 00 00 00`
-  (`\xf2box5` + 3 NULs). OBS at st002/pitch/goal/corner/st071/goalnet/light
-  offset 0.
+- Bytes 0..8 of every file read: `F2 62 6F 78 35 00 00 00` (byte 0xF2 then
+  ASCII `box5`, then 3 NULs). OBS at st002/pitch/goal/corner/st071/goalnet/
+  light offset 0. WARNING: never write this as the C++ literal `"\xf2box5"`
+  — `\x` consumes the `b` as a hex digit, so the literal compiles to
+  `+ox5\0` and the comparison silently matches nothing (this exact bug
+  broke `ParseFox2` and the test blob builder on 2026-10-13). Compare
+  explicit bytes `{0xF2, 'b', 'o', 'x', '5'}` instead.
 - u32 at +8 = entity count; u32 at +12 = string-table offset; u32 at +16 =
   entity-data offset (32 in all 7 files); 12 reserved bytes at +20 are zero.
 - OBS: st002 offset 8: {11, 5088, 32}; pitch: {3, 1600, 32};
   goal_post: {9, 5344, 32}; cornerflag: {12, 7536, 32}; st071: {9, 3712, 32};
   goalnet_l: {3, 1024, 32}; light_af: {479, 444128, 32}.
 - The header comment in `fox2.py` ("FOX2/FOXF magic, n_ent/strtab/dataoff")
-  is confirmed except the literal magic, which is `\xf2box5`, not `FOX2`.
+  is confirmed except the literal magic, which is byte 0xF2 + `box5`.
 
 ## 3. Entity blocks (OBS)
 
@@ -127,11 +132,27 @@ Type ids follow the FoxKit TNames order (confirmed by the observed widths):
 ## 6. String table and hash scheme (OBS)
 
 - The table at the header offset holds {u64 hash, u32 length, bytes} entries
-  with no terminator, ended by an 8-byte zero hash. OBS: st002 table at
-  5088..6201 (41 entries; first = hash `0x35116a93df3c`, length 7,
-  `DataSet`), terminator `00×8` at 6201, then 31 trailer bytes
-  (`00×23 + 65 6e 64 00…`, same `end`-flavoured tail in goalnet_l at
-  1595..1632 — purpose open).
+  with no terminator. Table parsing ends at a zero-hash entry: the parser
+  reads a 12-byte {hash, length} header per entry and stops when the hash is
+  zero, so it requires 12 zero bytes there (8-byte hash + 4-byte length).
+  OBS: st002 table at 5088..6201 (41 entries; first = hash `0x35116a93df3c`,
+  length 7, `DataSet`); the zero-hash entry is at 6201 with a zero length
+  field (bytes 6201..6212 all zero, verified by walking the table).
+  CORRECTION 2026-10-13: this entry was first recorded as an "8-byte zero
+  hash"; the length word at 6209..6212 is also zero, so the terminator
+  occupies 12 bytes (6201..6212), not 8.
+- Past the terminator the file carries a trailer: 27 bytes in st002
+  (6213..6239 = 13 zero bytes, ASCII `end` at 6226..6228, then 11 zero bytes
+  to the end of the 6,240-byte payload) and 25 bytes in goalnet_l (payload
+  1607..1631, same shape: zeros, `end`, zeros). The `end` bytes are not a
+  table entry — the table walk already terminated at the zero hash 12+
+  bytes earlier, and `end` has no {hash, length} header — so it is a file
+  trailer/sentinel, not table data (INF, high). Its purpose is open.
+  CORRECTION 2026-10-13: the trailer was first recorded as "31 bytes
+  (`00×23 + end …`)"; the actual zero run after the last name byte (6200)
+  is 25 bytes (6201..6225: the 12-byte terminator plus 13 trailer zeros),
+  and the trailer past the terminator is 27 bytes, not 31. The old "23" was
+  a miscount from the earlier 8-byte-terminator assumption.
 - Hashes are the low 48 bits of StrCode64 (`src/pes/strcode.hpp`,
   CityHash64 1.0 with seeds): OBS `StrCode64("StadiumModel") &
   0xFFFFFFFFFFFF = 0x212d37ce42ab`, the stored class hash. Value hashes
