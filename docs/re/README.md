@@ -27,6 +27,9 @@ address given.
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
 |`pes-re-matchlogic.md`|player and team records, tuning files, ball parameters, formations, AI map|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
+|`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
+|`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
+|`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 
 Paths in the reports are placeholders: `$PES21_ROOT` is your install,
 `<scratch>` the analyst's scratch folder (its scripts are not in the repo),
