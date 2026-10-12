@@ -244,7 +244,7 @@ Caveat for this install: with the 4cc `UniformParameter.bin`, PES itself would n
 - Secondary-sleeve slot names 0x335cade007ee / 0x582a734dcac9: their contents were identified live (§7.3), but the literal names are still unhashed.
 - Socks UV: resolved in §8.5 (UV0, kit atlas).
 - b0x13, d8 bits 25–31, d9 bits 0–4: no reader found in `FUN_141ea3190`.
-- Texture parameter 0x16f09b71 = `Marking_Tex_LIN` and 0x7bcbb6cb = `Dirty_Tex_LIN` (§8.8). Path code 0xb8a0bf169f98 is the engine's "no path" value: `FUN_14022dfa0` tests a path against exactly this code, and `FUN_14022dfc0` maps it to an empty string. So "engine default" in §7.2 means *nothing bound*.
+- Texture parameter 0x16f09b71 = `Marking_Tex_LIN` and 0x7bcbb6cb = `Dirty_Tex_LIN` (§8.8). Path code 0xb8a0bf169f98 is the engine's "no path" value: `FUN_14022dfa0` tests a path against exactly this code, and `FUN_14022dfc0` maps it to an empty string. **Corrected (§8.7):** a slot showing this code holds a texture with no file path. That can be a runtime-generated texture (the per-player marking texture in a match), so it does not by itself mean "nothing bound".
 - The `collar_%03d_alp` flag polarity in `FUN_141960a70` (+0x9C when flag 0, else +0x98).
 
 ---
@@ -335,7 +335,7 @@ Live bindings (State 2, kits `u0725p1` / `u0767p1`; full dump `<scratch>/mm2_2.j
 
 | Material | Base_Tex_SRGB | Other textures |
 |---|---|---|
-| `uni_shirts`, `uni_collar` | **`uniform/texture/u####pN`** | Normal `common/sourceimages/shirts_normal`; Stain `uni_stain_g`; StainMask `uni_stain_mask_g`; Specular + `Marking_Tex_LIN` (0x16f09b71) = null path 0xb8a0bf169f98, i.e. nothing bound (§8.8) |
+| `uni_shirts`, `uni_collar` | **`uniform/texture/u####pN`** | Normal `common/sourceimages/shirts_normal`; Stain `uni_stain_g`; StainMask `uni_stain_mask_g`; Specular + `Marking_Tex_LIN` (0x16f09b71) = a texture with no file path (0xb8a0bf169f98). In a match the marking one is a per-player runtime texture (§8.7) |
 | `uni_sleeve` | **kit atlas** | same + Badge = default |
 | `uni_pants`, `uni_pants.001` | **kit atlas** | Number = default (State 2), Stain/StainMask |
 | `uni_socks` | **kit atlas** | Number, Stain/StainMask |
@@ -600,15 +600,62 @@ OBS, `FUN_141ec4560` → `FUN_141ec3a20`:
   - Folder = `"/Assets/pes16/model/character/glove/"` + `"g%04d"` (string 0x142aadc54, used by `FUN_141a8e8d0` only when id ≠ 0).
   - VFS: `glove/g0001…` and the 4cc `g1052…g1061` exist.
 
-### 8.4 Q4 — match-state draw list (**open live; answered statically**)
+### 8.4 Q4 — match-state draw list (**closed live**, State 4)
 
-The game was not in a match during this pass (State 3 = preview). The static rules, all OBS from earlier decompiles:
+**State 4 (OBS, live play):** 25 `UniformUnit`s.
+- uid 0 = team **752**, kit `u0752p3` (3rd); uid 1 = `u0752g1`.
+- uid 2 = team **754**, kit `u0754p2` (2nd); uid 3 = `u0754g1`.
+- uid 4 = `referee_2` (3 referees).
+- Configs (§1 decode of the winning `UniformParameter.bin`):
+  - 752 3rd: short code A (0,1), ShortsModel 1, TightKit 0, Collar 105;
+  - 754 2nd: long code B (1,3), ShortsModel 16, Collar 105;
+  - the 752 GK kit is tight with Collar 2.
 
-- **Thighs:** with `+0xD8 == 0` (match), one thigh model, chosen by socks type (`FUN_141a91210`: 0/3 → `thigh_middle`, 1 → `thigh_long`, 2 → `thigh_short`; `_classic` when +0x58). The six-variant set seen live is the preview-only path (`+0xD8 = 1`).
-- **Socks:** the single `socks` slot per §3, from +0xC4.
-- **Shirt:** cloth vs nocloth is `uStack_1d0` (§3). For players the flag word is 0xFFFFFFFF, so the `(f bit2 && !bit1)` term is false. Cloth is then chosen iff the player is not a referee, the kit is not tight, and `FUN_141a80400 == 0 && FUN_141a7ff50 == 0`; neither function was traced.
-  - State 1 (an earlier match) had 22 `ClothShirtParts`, each holding both a nocloth (+0x20) and a cloth (+0x78) model. Which of the two was in the draw list during the match was not read.
-- **To close live:** in a match, take one `UniformUnit`, walk its Model list (§7.3 method), and check whether `cloth/shirt_*` or `nocloth/shirt_*` is in the chain, plus which single `thigh_*`.
+**How the per-character model set was read (OBS, `<scratch>/kar2/chars2.py`):** in a match the global Model list is grouped by part type, not by character, so walking it from one model (the §7.3 method) mixes characters. Instead:
+1. Every `cobra::rd::*Unit` whose +0x10 is the same `CharacterObject` belongs to one character: `UniformUnit`, `ArmUnit`, `HandUnit`, `ThighUnit`, `BootsUnit`, `HeadUnit`, `AccessoryUnit`, `ShadowUnit`, `PartsUnit`.
+2. Unit → model offsets (layouts from the allocators: `Parts` is 0x30 B, `GeneralParts`/`ClothShirtParts` 0x80 B):
+   - `UniformUnit+0x38` vector of parts: model at part+0x20, cloth model at +0x78, slot hash at +0x48;
+   - `ArmUnit+0x40` vector of `Parts`: model at part+0x18, slot hash at +0x28;
+   - `HandUnit+0x60` / `+0x68` `HandData`: model at +0x8 (left / right);
+   - `ThighUnit+0x30` vector: [0] = model;
+   - `BootsUnit+0x78` model;
+   - `HeadUnit+0x90/+0x98/+0xA0/+0xA8` `FaceData`: model at +0x8 (face_high, hair_high, eye, mouth).
+3. **Drawn = Model+0x24 == 1 and the model is linked into the global list (+0x10/+0x18 non-null).** These two always agreed. Loaded-but-hidden parts have +0x24 = 0 and are unlinked; examples are the unused shirt variant, `sleeve_*_cap` on non-captains, `pants_in_sub`/`pants_out_sub` per tail, and all cloth shirts.
+
+**Drawn sets (OBS)**, team 752 outfield (human-player face packs, 75201–75223):
+
+| Player (shirt no.) | Appearance | Uniform parts drawn | Arm | Hands | Thigh | Boots |
+|---|---|---|---|---|---|---|
+| 3 | short, tail out, socks 2 | `nocloth/pants_001`, `collar_105`, `nocloth/shirt_out`, `sleeve_short_001`, `socks_short`, `pants_out_sub` | `arm`, `arm_cap` | `hand_l`, `hand_r` | `thigh_short` | `k1392` |
+| 4 | short, out, socks 0 | same with `socks_middle` | `arm`, `arm_cap` | `hand_l/r` | `thigh_middle` | `k0062` |
+| 15 | short, out, socks 2, glove 1400 | as no. 3 | `arm_glove`, `arm_glove_cap` | `glove/g1400` `glove_l`, `glove_r` (replace the hands) | `thigh_short` | `k1389` |
+| 6 | **long**, tail in, socks 2, glove 12 | `pants_001`, `collar_105`, `nocloth/shirt_in`, **`sleeve_glove`** (long+glove name, no number), `socks_short`, `pants_in_sub` | **none** (ArmUnit part vector empty) | **none**: `glove/g0012` does not exist in the VFS | `thigh_short` | **none**: boots id 38 → `k0038` does not exist |
+| GK 1 (752 GK, tight kit) | short, out, socks 2, glove 1398 | `pants_001`, `collar_002`, `shirt_out_tight`, `sleeve_short_tight_001`, `socks_short`, `pants_out_sub_tight` | `arm_glove`, `arm_glove_cap` | `g1398` gloves | `thigh_short` | `k1377` |
+
+Team 754:
+
+| Player | Appearance | Drawn |
+|---|---|---|
+| 11 / 13 | long, no glove | `nocloth/shirt_in`, `sleeve_long_003` (a `4cc_04_fpc` 1,218 B stub ⇒ draws nothing), `socks_short`, `pants_in_sub`; **no arm models**; `hand_l/r`; `thigh_short` |
+| 9 / 36 / 97 | short, socks 1 | `socks_long`, `thigh_long`, `pants_out_inner_sub` (the item-7/8 / type-3 rule of §3) |
+| GK 55 | long, glove 1 | `shirt_in`, `sleeve_glove`, no arms, `g0001` gloves |
+
+Conclusions (OBS unless marked):
+- **Thigh:** exactly one model per player in a match (`ThighUnit` holds one), chosen by socks: 0 → `thigh_middle`, 1 → `thigh_long`, 2 → `thigh_short`. Matches `FUN_141a91210`; 0 `_classic` seen.
+- **Shirt:** the **nocloth** shirt is the one drawn for every player and GK: 0 of 22 cloth models are drawn. Every non-tight `ClothShirtParts` still holds a `uniform/cloth/shirt_{in,out}.fmdl` with +0x24 = 0, unlinked.
+  - `UniformUnit+0x218/+0x220` hold two `ClothObject@UniformUnit` (each has `fox::sim::ClothObject`, `RawFile`, `SkeletonData`).
+  - INF (medium): the cloth simulation exists but in this session's match the cloth mesh is not rendered (could depend on graphics settings; not checked).
+  - `shirt_in` vs `shirt_out` follows the tail flag. The other variant is loaded hidden.
+- **Long sleeves:** no `arm`/`arm_cap` part exists at all. That confirms §8.9's control-flow reading live: the slot is skipped, not loaded hidden.
+  - Long+glove → `sleeve_glove` (and a hidden `sleeve_glove_cap`).
+  - Long without glove → `sleeve_long_%03d` from the long code.
+- **Captain** (no. 86 on 752, no. 66 on 754): `sleeve_short_cap_001` is drawn instead of `sleeve_short_001` (cap variant visible, base hidden).
+- **Gloves:** glove id ≠ 0 → `glove/g%04d/glove.fpk` `glove_l`/`glove_r` replace `hand_l`/`hand_r`, and arms switch to `arm_glove`/`arm_glove_cap`.
+- **Missing files:** a missing glove folder leaves **no hand models**; a missing boots folder leaves **no boots**. There is no fallback to `hand_*`, `g0001` or `k0062`. Same empty-slot behaviour as §8.9.
+  - Boots ids came from the live 72-byte table, e.g. 75206 boots 38 / glove 12.
+  - In this install, glove 12 and boots 38 come from the EDIT save but have no folders.
+- **Face:** `HeadUnit` draws `face_high` + `hair_high` from `face/real/<id>/face.fpk` plus `eye_new`/`mouth`. Several 4cc packs have no `face_high` (that slot is empty).
+- Referees (uid 4) were not examined in detail.
 
 ### 8.5 Q5 — which UV set samples the kit atlas (**closed**)
 
@@ -645,7 +692,11 @@ Pixel-shader samples (OBS):
 - sider is not loaded, and no kit-swap Lua module is enabled in `sider.ini` (`kitrewrite.lua` exists but is not listed).
 - **INF (medium):** PES draws `u0739p0` as-is for every kit of these teams; the p1..p3 files are dead weight without an external swapper.
 - New related fact (OBS, VFS): 4cc packs also ship team folders `Asset/model/character/common/<teamId>/sourceimages/…` (30+ teams, e.g. `common/715/…/MGE_skin_u0715p1..p8.ftex`). No exe string builds `common/%d/`. INF: they are referenced only by path from the packs' own fmdls.
-- **Live check, if team 739/769 is ever loaded:** read the bound Texture path of a `kit`/`metal_kit` `MaterialModifier2`.
+- **Live, State 4 (match 752 vs 754) (OBS):**
+  - Only `u0731p0` (boots `k0856`) and `u0739p0` (boots `k1060/k1061`, faces 73909–73923) exist in the VFS; neither team is on the pitch.
+  - No `fox::gr::Texture` with a `u0###…` path outside `uniform/texture/` was resident.
+  - The kit atlases were bound only to `uni_*` materials and to `basic_fx` (the `4cc_04_fpc` stubs): `u0752p3` ×36 on `basic_fx`, etc.; full counts in `<scratch>/kar2/mm2_match.json`.
+  - So the question stays **open live**. It still needs team 739 (or a team using `k0856`) in a match.
 
 ### 8.7 Q7 — number / name placement (**closed** for placement math; marking-texture composition open)
 
@@ -655,7 +706,9 @@ Pixel-shader samples (OBS):
   - Params: `FNumberScaleXParam` (chest), `BNumberScaleXParam` (back), `NameScaleXParam` (name), and `BadgeMatrix0/1`.
 - The leg number uses `Number_Tex_LIN` (0x249c31cb) on `uni_pants`/`uni_pants.001` with `NumberScaleXParam`, also UV0.
 - The sleeve badge uses `Badge_Tex_LIN` with `BadgeMatrix0..3`.
-- In both preview states `Marking_Tex_LIN` = null path (nothing bound), so previews draw no numbers.
+- **Corrected (State 4, live match, OBS):** `Marking_Tex_LIN` is not unbound. Each player's `uni_shirts`/`uni_collar` materials share one texture slot index that is **unique per player** (e.g. indices 1026, 1048, 1113, …; 2–3 materials each). `Number_Tex_LIN` on `uni_pants` is likewise per player (3 materials share index 146).
+  - These textures have no file path (0xb8a0bf169f98). INF (high): they are the per-player composited number/name textures built at runtime by `FUN_141a96d50`.
+  - The earlier "previews draw no numbers" claim is withdrawn: previews were not re-checked for per-player indices.
 - The texture that carries the composited numbers/name is set later by `FUN_141a96d50`; its composition from `_back` / `_chest` / `_name` ftex + glyph layout was **not traced**.
 
 **Config int → float (OBS, converters called from the realUni parser `FUN_141ea3190`):** every field is `lo + v·(hi−lo)/N`.
@@ -703,7 +756,7 @@ OBS: StrCode32 over every quoted name in `PesShaders_dx11.lua`:
 - 0x16f09b71 = **`Marking_Tex_LIN`** (`pes3DDF_Shirt_NB*` / `Collar*` slot 7);
 - 0x7bcbb6cb = **`Dirty_Tex_LIN`** (`pes3DDF_Skin_Occ` slot 5, bound to `skin_dtm`).
 
-Also OBS: path code 0xb8a0bf169f98 is the engine's null path. `FUN_14022dfa0` returns true iff a path equals it; `FUN_14022dfc0` maps it to an empty string.
+Also OBS: path code 0xb8a0bf169f98 is the engine's null path. `FUN_14022dfa0` returns true iff a path equals it; `FUN_14022dfc0` maps it to an empty string. A `fox::gr::Texture` carrying it is a texture with no file behind it: 739 such textures were resident in State 4, including the per-player marking textures (§8.7). It is not proof that a slot is empty.
 
 ### 8.9 Q9 — tight long-sleeve code 1003 → `sleeve_long_tight_003` missing (**closed statically; not observed live**)
 
@@ -735,9 +788,9 @@ INF (high): a visible gap between shoulder and hand. A faithful reimplementation
 | 1 EDIT save | **closed**: cipher, keys, layout, digests; records at `data+0x7C + 0x138·i + 0xF0`. Some body bits decoded; accessory slot→model map partly INF; X bits 0–3 unread |
 | 2 skin → arm/thigh | **closed**: N = 1..6 (arm/thigh/torso), selector body+0x20 bits 8–10; array index = skin−1 is INF high |
 | 3 boots/glove → folder | **closed** (`k%04d` / `g%04d`, list defaults 62 / 1, overrides) |
-| 4 match draw list | **open live** (no match during this pass); static rules given |
+| 4 match draw list | **closed live** (State 4): one thigh by socks; nocloth shirt drawn, cloth hidden; no arm parts under long sleeves; gloves replace hands; missing glove/boots folders leave empty slots |
 | 5 atlas UV | **closed**: UV0 for all, socks included |
-| 6 p0 swap | **open live**; static: no swap mechanism in the exe |
+| 6 p0 swap | **open live** (no p0-using team on the pitch in State 4); static: no swap mechanism in the exe |
 | 7 numbers/name | **closed** for materials, UVs, placement formulas (numerically verified); glyph/marking-texture composition open |
 | 8 param hashes | **closed** |
-| 9 missing tight sleeve | **closed statically** (slot left empty, no fallback); live unconfirmed |
+| 9 missing tight sleeve | **closed statically**; the empty-slot-on-missing-file rule is now confirmed live for gloves (`g0012`) and boots (`k0038`), and the "no arms under long sleeves" half is confirmed live (§8.4). The tight-long-003 case itself is not observed (no team 714 / 739 3rd on the pitch) |
