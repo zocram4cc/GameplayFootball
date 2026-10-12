@@ -13,6 +13,13 @@ const DRAWN_PARTS := ["pants_016", "collar_105", "shirt_out", "sleeve_short_001"
 		"pants_out_sub", "thigh_middle", "arm", "arm_cap", "hand_l", "hand_r", "eye_new", "mouth",
 		"face_high", "hair_high", "boots"]  # boots: BootsList default k0062 (76711 unlisted)
 const UNIFORM_MATERIAL_PREFIX := "uni_"
+# fmdl material -> shader file, by its technique.
+# part:material -> shader file, by the material's technique (two parts may share a
+# material name: 76711's face and helmet are both fox_skin_mat).
+const TECHNIQUE_SHADERS := [["thigh_middle:thigh_mat", "pes_skin.gdshader"],
+		["face_high:fox_skin_mat", "pes_skin.gdshader"], ["hair_high:fox_skin_mat", "pes_hair.gdshader"],
+		["arm:arm_mat", "pes_blin.gdshader"], ["eye_new:eye_mat", "pes_eye.gdshader"]]
+const THIGH_INCIDENCE_ROUGHNESS := 6.5  # thigh_middle.fmdl
 # k0062 is authored on the anim pose (its boots.skl); bound as render-pose it sat
 # 0.10 m inward, both boots overlapping between the feet.
 const BOOT_UNDER_ANKLE_TOLERANCE_M := 0.03
@@ -71,14 +78,31 @@ func _init() -> void:
 		check(uv2.size() == m.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size(), "%s carries UV1 as UV2" % m.name)
 	check(uniform_surfaces > 0, "uniform materials present")
 
+	# Character shaders by PES technique (pes-re-shaders.md 3.4-3.9): each fmdl
+	# param and texture role binds to the uniform of the same name.
+	var by_material := {}
 	for m in meshes:
 		var mat: Material = m.mesh.surface_get_material(0)
-		if not mat is StandardMaterial3D:
-			continue
+		by_material["%s:%s" % [m.get_meta("part"), mat.resource_name]] = mat
+	for expect in TECHNIQUE_SHADERS:
+		var mat: Material = by_material.get(expect[0])
+		check(mat is ShaderMaterial and mat.shader.resource_path.ends_with(expect[1]),
+				"%s uses %s" % [expect[0], expect[1]])
+	var thigh: ShaderMaterial = by_material.get("thigh_middle:thigh_mat") as ShaderMaterial
+	if thigh:
+		check(is_equal_approx(thigh.get_shader_parameter("Incidence_Roughness").x, THIGH_INCIDENCE_ROUGHNESS),
+				"thigh Incidence_Roughness comes from its fmdl")
+		var base: Texture2D = thigh.get_shader_parameter("Base_Tex_SRGB")
+		check(base != null and base.resource_name.get_file() == "thigh_1_bsm.ftex", "thigh wears the engine-bound skin")
+
+	for m in meshes:
+		var mat: Material = m.mesh.surface_get_material(0)
 		for prefix in SKIN_BY_MATERIAL:
-			if mat.resource_name.begins_with(prefix):
-				check(mat.albedo_texture != null and mat.albedo_texture.resource_name.get_file() == SKIN_BY_MATERIAL[prefix],
-						"%s (%s) wears %s" % [m.name, mat.resource_name, SKIN_BY_MATERIAL[prefix]])
+			if not mat.resource_name.begins_with(prefix):
+				continue
+			var skin: Texture2D = mat.albedo_texture if mat is StandardMaterial3D else mat.get_shader_parameter("Base_Tex_SRGB")
+			check(skin != null and skin.resource_name.get_file() == SKIN_BY_MATERIAL[prefix],
+					"%s (%s) wears %s" % [m.name, mat.resource_name, SKIN_BY_MATERIAL[prefix]])
 
 	# Skinned at rest, each boot sits under its own ankle.
 	for m in meshes:

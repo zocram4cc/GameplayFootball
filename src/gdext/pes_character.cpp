@@ -44,6 +44,7 @@ constexpr const char* SOCKS_MATERIAL = "uni_socks";
 constexpr const char* PANTS_MATERIAL_PREFIX = "uni_pants";
 constexpr const char* COMMON_TEXTURE_DIR = "Asset/model/character/common/sourceimages/#windx11/";
 constexpr const char* UNIFORM_SHADER = "res://shaders/pes_uniform.gdshader";
+constexpr const char* BASE_ROLE = "Base_Tex_SRGB";
 constexpr const char* TEXTURE_EXT = ".ftex";
 constexpr const char* KIT_SRM_SUFFIX = "_srm.ftex";
 constexpr int MAX_INFLUENCES = 4;  // PES and Godot both skin with four
@@ -86,6 +87,8 @@ class Build {
   const CachedTexture* LoadTexturePath(const std::string& path);
   Ref<Material> MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot);
   Ref<Material> MakeUniformMaterial(const pes::Fmdl& m, const pes::FmdlMaterial& fm);
+  Ref<Material> MakeTechniqueMaterial(const pes::Fmdl& m, const pes::FmdlMaterial& fm, const std::string& baseOverride);
+  Ref<Texture> LayeredTexture(const std::string& path);
   bool FacesSampleOpaque(const pes::FmdlMesh& mesh, const CachedTexture& tex) const;
   Ref<ArrayMesh> MakeMesh(const pes::FmdlMesh& mesh, const std::vector<int>& jointOfBone, int* unbound);
 
@@ -182,6 +185,7 @@ Ref<Material> Build::MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot) {
   std::string skin;
   if (mode_ == Mode::Player && fm.name.starts_with(ARM_MATERIAL)) skin = armSkinPath_;
   else if (mode_ == Mode::Player && fm.name.starts_with(THIGH_MATERIAL)) skin = thighSkinPath_;
+  if (Ref<Material> pes = MakeTechniqueMaterial(m, fm, skin); pes.is_valid()) return pes;
   if (!skin.empty())
     if (const CachedTexture* tex = LoadTexturePath(skin)) mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
   for (const auto& [role, texIndex] : fm.textures) {
@@ -217,6 +221,65 @@ Ref<Material> Build::MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot) {
 // transparency), the kit's _srm when it has one. ponytail: wrinkle normals and
 // the weave are Texture2DArrays the ftex reader does not decode yet; until it
 // does, cloth shades flat.
+// Any PES texture as its Godot type (2D, cube, array), cached by VFS path.
+Ref<Texture> Build::LayeredTexture(const std::string& path) {
+  if (path.empty() || !vfs_.Exists(path)) return {};
+  auto it = layered_.find(path);
+  if (it == layered_.end()) {
+    std::string err;
+    Ref<Texture> t = LoadPesTexture(vfs_, path, &err);
+    if (t.is_valid()) t->set_name(ToGd(path));
+    it = layered_.emplace(path, t).first;
+  }
+  return it->second;
+}
+
+// Character techniques drawn with their own Godot shader (godot/shaders/*),
+// per docs/re/pes-re-shaders.md 3.4-3.9. Uniforms carry PES's own names: every
+// fmdl param and texture role binds by name; `has_<role>` marks bound maps.
+Ref<Material> Build::MakeTechniqueMaterial(const pes::Fmdl& m, const pes::FmdlMaterial& fm, const std::string& baseOverride) {
+  struct TechniqueShader { const char* technique; const char* shader; bool face; };
+  static constexpr TechniqueShader SHADERS[] = {
+      {"pes3DDF_Skin_Occ", "res://shaders/pes_skin.gdshader", false},
+      {"pes3DDF_Skin", "res://shaders/pes_skin.gdshader", false},
+      {"pes3DDF_Skin_Face", "res://shaders/pes_skin.gdshader", true},
+      {"fox3DDF_Blin", "res://shaders/pes_blin.gdshader", false},
+      {"pes3DDF_Eye", "res://shaders/pes_eye.gdshader", false},
+      {"pes3DDF_Hair2", "res://shaders/pes_hair.gdshader", false},
+  };
+  const TechniqueShader* ts = nullptr;
+  for (const auto& t : SHADERS)
+    if (fm.technique == t.technique) ts = &t;
+  if (!ts) return {};
+  Ref<ShaderMaterial> mat;
+  mat.instantiate();
+  mat->set_name(ToGd(fm.name));
+  mat->set_shader(ResourceLoader::get_singleton()->load(ts->shader));  // cached by the loader
+  mat->set_shader_parameter("is_face", ts->face);
+  for (const auto& [name, v] : fm.params) mat->set_shader_parameter(ToGd(name), Vector4(v.x, v.y, v.z, v.w));
+  for (const auto& [role, ti] : fm.textures) {
+    if (ti < 0 || ti >= int(m.textures.size())) continue;
+    const bool base = role == BASE_ROLE;
+    std::string path = base && !baseOverride.empty() ? baseOverride : "";
+    if (path.empty()) {
+      if (pes::IsPlaceholderTexture(Lower(TextureStem(m.textures[ti].filename)))) continue;  // dummy stand-ins
+      const std::string key = Lower(m.textures[ti].directory + m.textures[ti].filename);
+      auto it = resolved_.find(key);
+      if (it == resolved_.end()) it = resolved_.emplace(key, resolver_.Resolve(m.textures[ti])).first;
+      path = it->second;
+    }
+    Ref<Texture> t = LayeredTexture(path);
+    if (t.is_null()) continue;
+    mat->set_shader_parameter(ToGd(role), t);
+    mat->set_shader_parameter(ToGd("has_" + role), true);
+    if (base)
+      if (const CachedTexture* c = LoadTexturePath(path)) mat->set_shader_parameter("alpha_tested", c->hasAlpha);
+  }
+  // The engine-bound skin replaces a Base role the fmdl may not even name.
+  if (!baseOverride.empty()) mat->set_shader_parameter(BASE_ROLE, LayeredTexture(baseOverride));
+  return mat;
+}
+
 // PES's uniform shader (godot/shaders/pes_uniform.gdshader). Parameters start
 // from the fmdl's own values; RepetitionParam.z is the kit's ShirtPattern, as
 // the engine writes it (FUN_141a874a0, docs/re/pes-re-uniform-params.md 3).
@@ -229,17 +292,7 @@ Ref<Material> Build::MakeUniformMaterial(const pes::Fmdl& m, const pes::FmdlMate
   mat.instantiate();
   mat->set_name(ToGd(fm.name));
   mat->set_shader(shader);
-  auto gpu = [&](const std::string& path) -> Ref<Texture> {
-    if (path.empty() || !vfs_.Exists(path)) return {};
-    auto it = layered_.find(path);
-    if (it == layered_.end()) {
-      std::string err;
-      Ref<Texture> t = LoadPesTexture(vfs_, path, &err);
-      if (t.is_valid()) t->set_name(ToGd(path));
-      it = layered_.emplace(path, t).first;
-    }
-    return it->second;
-  };
+  auto gpu = [&](const std::string& path) { return LayeredTexture(path); };
   auto param = [&](const char* name, Vector4 fallback) {
     for (const auto& [k, v] : fm.params)
       if (k == name) return Vector4(v.x, v.y, v.z, v.w);
