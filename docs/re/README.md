@@ -32,7 +32,7 @@ address given.
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
 |`pes-re-fox2-format.md`|the binary fox2 (FoxDataFile) layout: header, string table, entity and property blocks, containers, value types|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
-|`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection (partial: agent stopped)|
+|`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
 
 Paths in the reports are placeholders: `$PES21_ROOT` is your install,
 `<scratch>` the analyst's scratch folder (its scripts are not in the repo),
