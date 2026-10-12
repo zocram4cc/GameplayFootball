@@ -42,8 +42,8 @@ Statistics: 1,775 VFS-winning loose realUni files (all 120 B), script `<scratch>
 | b0x13 | — (kserv `Unk_0x13`) | not read in this parser; **UNKNOWN** | 0–145 |
 | b0x14 | Collar | `FUN_141965330` → +0x98 | 1–131 |
 | b0x15 | WinterCollar | → +0x9C | 0–131 |
-| d5 bits 16–20 | ShortsNumberY ⚠ sider reads bits 16–19 only | game reads 5 bits | 0–17 (17 > 4-bit max ⇒ game is right) |
-| d5 bits 21–25 | ShortsNumberX ⚠ sider reads bits 22–25 | game reads 5 bits from bit 21 | 0–28 |
+| d5 bits 16–20 | ShortsNumberY ⚠ sider reads bits 16–19 only. **Corrected (§8.7):** the game uses this field as the *horizontal* leg-number position (side-dependent range) | game reads 5 bits | 0–17 (17 > 4-bit max ⇒ game is right) |
+| d5 bits 21–25 | ShortsNumberX ⚠ sider reads bits 22–25. **Corrected (§8.7):** the game uses this field as the *vertical* leg-number position | game reads 5 bits from bit 21 | 0–28 |
 | d5 bits 26–30 | ShortsNumberSize | ✓ | 0–27 |
 | d5 bit 31 | ShortsNumberSide | ✓ | 0/1 |
 | d6 bits 0–4 / 5–9 / 10–13 | BackNumberY / Size / Spacing | ✓ | 0–29 / 10–28 / 0–14 |
@@ -151,7 +151,7 @@ Sleeve selection: if `+0xC0 == 0`, primary = (+0xA0, +0xA4) and collar = +0x98 (
 **Second table** `0x143517c20`: arm, arm_cap, hand_l/r, glove_pl_*, thigh_*, tights_*, spats, taping, wristtaping, inner*, highneck, glasses.
 
 - Arms (OBS, `FUN_141a8d530`):
-  - Slot `arm`: the variant choice below runs only when NOT (primary sleeve type ∈ {1,3} (`FUN_141a8c840`) and shirt worn). For `arm_cap` that case explicitly jumps past loading (`goto LAB_141a8dd1e`); for `arm` the decompile shows no explicit skip, so "bare arm hidden under long sleeves" is INF (medium) there.
+  - Slot `arm`: the variant choice below runs only when NOT (primary sleeve type ∈ {1,3} (`FUN_141a8c840`) and shirt worn). For `arm_cap` that case explicitly jumps past loading (`goto LAB_141a8dd1e`). **Corrected (§8.9):** for `arm` the load label `LAB_141a8db21` sits inside the other branch, so the long-sleeve case also falls out without loading; "bare arm not loaded under long sleeves" is OBS (control flow), not INF.
   - Otherwise: type 2 → `arm_half`; gloves (+0x9E) → `arm_glove`; else `arm`.
   - Slot `arm_cap`: same, with `arm_glove_cap`. Visibility is tied to +0x9D (INF: captain).
 - Thighs (OBS, `FUN_141a91210`, keyed by the socks type): 0 or 3 → `thigh_middle`, 1 → `thigh_long`, 2 → `thigh_short`; `_classic` when +0x58.
@@ -178,9 +178,9 @@ Sleeve selection: if `+0xC0 == 0`, primary = (+0xA0, +0xA4) and collar = +0x98 (
 - **OBS — UVs:** every uniform part has two UV sets (vertex usages 8 = UV0, 9 = UV1, half2).
   - UV0 bounds: shirt [0.34–0.66]×[0.02–0.91], short sleeve [0.24–0.76]×[0.34–0.59], long sleeve [0.00–0.88]×[0.07–0.32], pants [0.02–0.98]×[0.57–0.95], collar [0.33–0.67]×[0.44–0.96].
   - These match the panel layout of `u0001p1` decoded to PNG (`<scratch>/kittex/u0001p1.png`): centre column shirt front/back, top band long sleeves, mid band short-sleeve panels with cuff stripes at u≈0.24/0.76, bottom shorts.
-  - INF (high): **UV0 samples the kit atlas** for `uni_shirts` / `uni_sleeve` / `uni_collar` / `uni_pants`.
-  - INF (medium): UV1 samples `uni_pattern_*` / `pants_pattern_*`.
-  - Socks UV0 [0.0–1.0]×[0.31–0.56] does **not** match a socks region of the atlas. Socks texturing is **UNRESOLVED**; candidates are SocksColor + `uni_socks` maps.
+  - **Corrected (§8.5, OBS from the DXBC shaders):** UV0 samples the kit atlas (`Base_Tex_SRGB`), SRM, stain and stain mask for `uni_shirts` / `uni_sleeve` / `uni_collar` / `uni_pants` / `uni_socks`.
+  - **Corrected (§8.5):** UV1 samples the normal map (`NormalMap_Tex_NRM`, a texture array in the shirt/pants/sleeve shaders). The pattern array is sampled at UV1 × RepetitionParam for shirts/sleeves and at UV0 × RepetitionParam for socks/pants. The earlier "UV1 = pattern" guess was wrong.
+  - **Corrected (§8.5):** socks UV0 is two separate patches, u∈[0.005,0.19] and u∈[0.81,0.995], v∈[0.31,0.56]. These are the left/right side panels of the atlas beside the short-sleeve band. The earlier union bound [0–1] made it look like a mismatch. Socks are textured from the kit atlas through UV0.
 
 ---
 
@@ -242,9 +242,9 @@ Caveat for this install: with the 4cc `UniformParameter.bin`, PES itself would n
 ## Open items (tried / not resolved)
 
 - Secondary-sleeve slot names 0x335cade007ee / 0x582a734dcac9: their contents were identified live (§7.3), but the literal names are still unhashed.
-- Socks: OBS live that `uni_socks` gets the kit atlas as `Base_Tex_SRGB` (§7.2). Which UV set samples it is not resolved.
+- Socks UV: resolved in §8.5 (UV0, kit atlas).
 - b0x13, d8 bits 25–31, d9 bits 0–4: no reader found in `FUN_141ea3190`.
-- Texture parameter 0x16f09b71 (uni_shirts/uni_collar) and `SpecularMap_Tex_LIN` bind an engine-default texture (path code 0xb8a0bf169f98, unresolved).
+- Texture parameter 0x16f09b71 = `Marking_Tex_LIN` and 0x7bcbb6cb = `Dirty_Tex_LIN` (§8.8). Path code 0xb8a0bf169f98 is the engine's "no path" value: `FUN_14022dfa0` tests a path against exactly this code, and `FUN_14022dfc0` maps it to an empty string. So "engine default" in §7.2 means *nothing bound*.
 - The `collar_%03d_alp` flag polarity in `FUN_141960a70` (+0x9C when flag 0, else +0x98).
 
 ---
@@ -318,8 +318,8 @@ Validation: all 24 named players of the State-1 match matched on (sleeves, socks
 - The in-memory copy of `PlayerAppearance.bin` (60-byte records at 0x2c000010, 5,336 records) is byte-identical to the VFS file (`4cc_01_base.cpk`). In it, every 4cc player has the same placeholder record (`… 40 40 00 02 …` = short sleeves, socks 0, tail out).
 - `4cc_01_base` `Player.bin` is likewise `PLACEHOLDER` names.
 - The real names and appearance live only in the decrypted **EDIT save**: the live player table at 0x45770040 (stride 0x17C, 4,830 players; real names present, not reproduced here) and the 72-byte table above.
-- On disk the save is `~/Documents/KONAMI/eFootball PES 2021 SEASON UPDATE/<steamid>/save/EDIT00000000` (11,011,039 B, dated 2022-10-22). The prefix `Documents` folder is a symlink to `~/Documents`. Only the directory was listed; the file was not read and is encrypted.
-- **Consequence:** per-player sleeves/socks/tail/glove/boots for this install require decrypting EDIT00000000, or a mod-side export (4cc `.ted` / EDIT.tsv in the same folder). They are not in any cpk.
+- On disk the save is `~/Documents/KONAMI/eFootball PES 2021 SEASON UPDATE/<steamid>/save/EDIT00000000` (11,011,039 B, dated 2022-10-22). The prefix `Documents` folder is a symlink to `~/Documents`. **Update (§8.1):** the cipher is now reimplemented and the file was decrypted into scratch; the 72-byte records map 1:1 to it.
+- **Consequence:** per-player sleeves/socks/tail/glove/boots for this install come from the decrypted EDIT00000000 (§8.1). They are not in any cpk.
 
 ### 7.2 Kit atlas binding (priority 2)
 
@@ -329,19 +329,19 @@ Validation: all 24 named players of the State-1 match matched on (sleeves, socks
 - +0x40/+0x48 = texture slot array of `{u16 1, u16 textureIndex}`.
 - `fox::gr::Texture` objects carry +0x10 = path code and +0x22 = u16 index, so each slot resolves to a file.
 
-Param names were brute-forced as StrCode32: `Base_Tex_SRGB` 0x7be81b61, `NormalMap_Tex_NRM` 0x05511ae0, `SpecularMap_Tex_LIN` 0x6b98b10e, `Stain_Tex_LIN` 0xcbe9de46, `StainMask_Tex_LIN` 0x87143ee6, `Badge_Tex_LIN` 0xc45cb7b2, `Number_Tex_LIN`. Two stayed unresolved: 0x16f09b71 and 0x7bcbb6cb (the latter bound to `skin_dtm`).
+Param names were brute-forced as StrCode32: `Base_Tex_SRGB` 0x7be81b61, `NormalMap_Tex_NRM` 0x05511ae0, `SpecularMap_Tex_LIN` 0x6b98b10e, `Stain_Tex_LIN` 0xcbe9de46, `StainMask_Tex_LIN` 0x87143ee6, `Badge_Tex_LIN` 0xc45cb7b2, `Number_Tex_LIN`. **Resolved in §8.8:** 0x16f09b71 = `Marking_Tex_LIN`, 0x7bcbb6cb = `Dirty_Tex_LIN`.
 
 Live bindings (State 2, kits `u0725p1` / `u0767p1`; full dump `<scratch>/mm2_2.json`):
 
 | Material | Base_Tex_SRGB | Other textures |
 |---|---|---|
-| `uni_shirts`, `uni_collar` | **`uniform/texture/u####pN`** | Normal `common/sourceimages/shirts_normal`; Stain `uni_stain_g`; StainMask `uni_stain_mask_g`; Specular + 0x16f09b71 = engine default (code 0xb8a0bf169f98) |
+| `uni_shirts`, `uni_collar` | **`uniform/texture/u####pN`** | Normal `common/sourceimages/shirts_normal`; Stain `uni_stain_g`; StainMask `uni_stain_mask_g`; Specular + `Marking_Tex_LIN` (0x16f09b71) = null path 0xb8a0bf169f98, i.e. nothing bound (§8.8) |
 | `uni_sleeve` | **kit atlas** | same + Badge = default |
 | `uni_pants`, `uni_pants.001` | **kit atlas** | Number = default (State 2), Stain/StainMask |
 | `uni_socks` | **kit atlas** | Number, Stain/StainMask |
 | `basic_fx` (the 4cc placeholder stubs) | kit atlas too | — |
-| `arm_mat` | `common/sourceimages/arm_1_bsm`, **or the face folder's `face/real/<id>/sourceimages/arm_bsm`** when present (72503) | 0x7bcbb6cb = `skin_dtm` |
-| `thigh_mat` | `common/sourceimages/thigh_1_bsm` | `skin_dtm` |
+| `arm_mat` | `common/sourceimages/arm_1_bsm`, **or the face folder's `face/real/<id>/sourceimages/arm_bsm`** when present (72503) | `Dirty_Tex_LIN` (0x7bcbb6cb) = `skin_dtm` |
+| `thigh_mat` | `common/sourceimages/thigh_1_bsm` | `Dirty_Tex_LIN` = `skin_dtm` |
 
 Notes:
 - **Socks get their colour from the kit atlas** (OBS). The fmdl-stored `Pattern_Tex_LIN` roles are replaced at runtime; no `uni_pattern*` texture was bound in State 2 (pattern 4/6 kits).
@@ -371,7 +371,7 @@ uniform/nocloth/sleeve_short_001     (dt35, vanilla)                  [code A = 
 common/socks_middle, common/pants_out_sub                             [socks 0]
 common/thigh_{middle,long,short}{,_classic}  (all six: preview flag +0xD8)
 common/hand_l, common/hand_r
-boots.fmdl                           (boots/k0062/#Win/boots.fpk; boots id 0 → k0062, INF)
+boots.fmdl                           (boots/k0062/#Win/boots.fpk; boots id 0 → BootsList.bin lookup by player id → list default 62, OBS §8.3)
 ```
 
 Part slots also loaded but not in the draw list (preview only): `shirt_in` (stub), the secondary pair 0x335cade007ee → `sleeve_long_003` (stub) and 0x582a734dcac9 → `sleeve_long_cap_003` (stub), and the extra socks slots 0xcb3a…/0xa836…/0x4526…/0x3f1d… → socks_middle/long/short/noguard.
@@ -410,12 +410,12 @@ Teams with human players (767) keep vanilla sleeves, socks and `pants_out_sub` t
 | Shorts | `common_package.fpk` → `common/pants_out_sub.fmdl` (both `uni_pants` meshes). `uniform/nocloth/#Win/pants_016.fmdl` is a stub: skip or load (it draws nothing) | draw list |
 | Collar | `uniform/nocloth/#Win/collar_105.fmdl` is a stub. The collar comes from `shirt_out`'s `uni_collar` mesh | draw list |
 | Socks / thighs | `common_package.fpk` → `common/socks_middle.fmdl`, `common/thigh_middle.fmdl` (socks 0; thigh mapping per §3 `FUN_141a91210`); `thigh_mat` Base = `common/sourceimages/#windx11/thigh_1_bsm.ftex` | draw list (preview loads all six thighs; a match loads one, INF) |
-| Boots | `Asset/model/character/boots/k0062/#Win/boots.fpk` → `boots.fmdl` | draw list |
+| Boots | `Asset/model/character/boots/k0062/#Win/boots.fpk` → `boots.fmdl` (appearance boots id 0 → `BootsList.bin` has no entry for this player → list default 62, §8.3) | draw list |
 | Kit textures | `Asset/model/character/uniform/texture/#windx11/u0767p1.ftex` → `Base_Tex_SRGB` of `uni_shirts`, `uni_collar`, `uni_sleeve`, `uni_pants(.001)`, `uni_socks`; Normal `Asset/model/character/common/sourceimages/#windx11/shirts_normal.ftex`; Stain `…/uni_stain_g.ftex`, `…/uni_stain_mask_g.ftex`; Specular = engine default (no `u0767p1_srm`) | §7.2 |
 | Numbers / name | `u0767p1_back`, `_chest`, `_leg`, `_name` `.ftex`, placed by the §1 fields of the config entry | §1 |
 | Skip | `common/shadow.fmdl` (shadow caster) | draw list |
 
-Remaining live gaps:
-- which UV set samples the atlas on `uni_socks`;
-- the `u####p0` → `pN` swap in 4cc face/boots packs (only teams 739/769 use it; not loaded when bindings were read);
-- the decryption of EDIT00000000 needed to reproduce §7.1 offline.
+Remaining live gaps (status after §8):
+- socks UV set: **closed**, UV0 (§8.5);
+- the `u####p0` → `pN` swap in 4cc face/boots packs: still unobserved live; statically there is no swap rule (§8.6);
+- EDIT00000000 decryption: **closed** (§8.1).
