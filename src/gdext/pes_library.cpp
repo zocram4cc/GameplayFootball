@@ -4,6 +4,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include "gdext/pes_texture.hpp"
 #include "pes/exe.hpp"
 
 namespace godot {
@@ -16,6 +17,7 @@ void PesLibrary::_bind_methods() {
   ClassDB::bind_method(D_METHOD("mount_report"), &PesLibrary::mount_report);
   ClassDB::bind_method(D_METHOD("list", "prefix"), &PesLibrary::list);
   ClassDB::bind_method(D_METHOD("load_edit_save", "path"), &PesLibrary::load_edit_save);
+  ClassDB::bind_method(D_METHOD("load_texture", "path"), &PesLibrary::load_texture);
 }
 
 Error PesLibrary::open(const String& root) {
@@ -63,6 +65,13 @@ PackedStringArray PesLibrary::list(const String& prefix) const {
   PackedStringArray out;
   for (const auto& p : vfs_.List(FromGd(prefix))) out.push_back(ToGd(p));
   return out;
+}
+
+Ref<Texture> PesLibrary::load_texture(const String& path) const {
+  std::string err;
+  Ref<Texture> t = LoadPesTexture(vfs_, FromGd(path), &err);
+  if (t.is_valid()) t->set_name(path);
+  return t;
 }
 
 }  // namespace godot

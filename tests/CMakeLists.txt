@@ -30,6 +30,9 @@ set_tests_properties(godot_character_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT
 add_test(NAME godot_player_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_player.gd)
 set_tests_properties(godot_player_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_test(NAME godot_textures_test
+  COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_textures.gd)
+set_tests_properties(godot_textures_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 add_test(NAME godot_animation_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.

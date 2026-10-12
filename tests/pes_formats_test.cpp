@@ -351,6 +351,8 @@ TEST(FtexInstall, KitTexturesCubeAndArrayDecodeExactly) {
   auto array = check("Asset/model/character/common/sourceimages/#windx11/uni_pattern.ftex");
   ASSERT_TRUE(array);
   EXPECT_EQ(array->layers, UNI_PATTERN_SLICES);
+  // Slices are distinct images (15 of 18 differ; 0, 2 and 12 are identical).
+  EXPECT_NE(array->mips[0], array->mips[size_t(array->mipCount)]);
 }
 
 // Data/dt30_g4.cpk holds whole cpks (Asset/model/bg/stNNN.cpk, common.cpk).

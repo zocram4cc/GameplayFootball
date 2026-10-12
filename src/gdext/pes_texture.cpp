@@ -1,5 +1,10 @@
 #include "gdext/pes_texture.hpp"
 
+#include <godot_cpp/classes/cubemap.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
+#include <godot_cpp/classes/texture2d_array.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -8,6 +13,8 @@
 
 namespace godot {
 namespace {
+
+constexpr int CUBE_FACE_COUNT = 6;
 
 // ftex pixelFormat values (GF ftex.py FORMATS table).
 enum PesPixelFormat {
@@ -83,38 +90,78 @@ std::vector<uint8_t> ExpandPacked(int pf, const std::vector<uint8_t>& src) {
 
 }  // namespace
 
-Ref<Image> LoadPesImage(const pes::PesVfs& vfs, const std::string& path, std::string* error) {
+// One Godot image per ftex image (2D: one; cube: 6 faces; array: one per slice).
+std::vector<Ref<Image>> LoadPesImages(const pes::PesVfs& vfs, const std::string& path, std::string* error,
+                                      PesTextureKind* kind) {
   auto bytes = vfs.Read(path, error);
   if (!bytes) return {};
   auto ftex = pes::ParseFtex(*bytes, error);
   if (!ftex) return {};
-  if (ftex->cube) { *error = "cube texture skipped: " + path; return {}; }
   FormatInfo f;
   if (!Lookup(ftex->pixelFormat, &f)) { *error = "unhandled ftex pixel format " + std::to_string(ftex->pixelFormat); return {}; }
+  if (kind) *kind = ftex->cube ? PesTextureKind::Cube : ftex->layers > 1 ? PesTextureKind::Array : PesTextureKind::Flat;
+  const int images = ftex->cube ? CUBE_FACE_COUNT : ftex->layers;
 
-  // Godot wants a full chain down to 1x1 or none at all.
+  // Godot wants a full chain down to 1x1 or none at all; layered textures share
+  // one chain length across layers.
   const int fullChain = int(std::floor(std::log2(std::max(ftex->width, ftex->height)))) + 1;
   int mips = ftex->mipCount == fullChain ? fullChain : 1;
-  std::vector<uint8_t> data;
-  for (int m = 0, w = ftex->width, h = ftex->height; m < mips; ++m, w = std::max(1, w / 2), h = std::max(1, h / 2)) {
-    std::vector<uint8_t> mip = ftex->mips[m];
-    if (ftex->pixelFormat == PF_R10G10B10A2 || ftex->pixelFormat == PF_R11G11B10F) mip = ExpandPacked(ftex->pixelFormat, mip);
-    if (mip.size() != MipBytes(f, w, h)) {
-      if (m == 0) { *error = "ftex mip 0 size mismatch: " + path; return {}; }
-      data.resize(MipBytes(f, ftex->width, ftex->height));  // inconsistent chain: keep mip 0 only
-      mips = 1;
-      break;
+  std::vector<std::vector<uint8_t>> data(images);
+  for (int i = 0; i < images; ++i)
+    for (int m = 0, w = ftex->width, h = ftex->height; m < mips; ++m, w = std::max(1, w / 2), h = std::max(1, h / 2)) {
+      std::vector<uint8_t> mip = ftex->mips[size_t(i) * ftex->mipCount + m];
+      if (ftex->pixelFormat == PF_R10G10B10A2 || ftex->pixelFormat == PF_R11G11B10F) mip = ExpandPacked(ftex->pixelFormat, mip);
+      if (mip.size() != MipBytes(f, w, h)) {
+        if (m == 0) { *error = "ftex mip 0 size mismatch: " + path; return {}; }
+        mips = 1;  // inconsistent chain: keep mip 0 only, for every layer
+        for (auto& d : data) d.resize(std::min(d.size(), MipBytes(f, ftex->width, ftex->height)));
+        break;
+      }
+      if (ftex->pixelFormat == PF_RGBA8)
+        for (size_t k = 0; k + 3 < mip.size(); k += 4) std::swap(mip[k], mip[k + 2]);  // stored BGRA
+      data[i].insert(data[i].end(), mip.begin(), mip.end());
     }
-    if (ftex->pixelFormat == PF_RGBA8)
-      for (size_t i = 0; i + 3 < mip.size(); i += 4) std::swap(mip[i], mip[i + 2]);  // stored BGRA
-    data.insert(data.end(), mip.begin(), mip.end());
+  std::vector<Ref<Image>> out;
+  for (auto& d : data) {
+    d.resize(mips > 1 ? d.size() : MipBytes(f, ftex->width, ftex->height));
+    PackedByteArray pba;
+    pba.resize(int64_t(d.size()));
+    std::memcpy(pba.ptrw(), d.data(), d.size());
+    Ref<Image> img = Image::create_from_data(ftex->width, ftex->height, mips > 1, f.format, pba);
+    if (img.is_null() || img->is_empty()) { *error = "Godot rejected image data: " + path; return {}; }
+    out.push_back(img);
   }
-  PackedByteArray pba;
-  pba.resize(int64_t(data.size()));
-  std::memcpy(pba.ptrw(), data.data(), data.size());
-  Ref<Image> img = Image::create_from_data(ftex->width, ftex->height, mips > 1, f.format, pba);
-  if (img.is_null() || img->is_empty()) *error = "Godot rejected image data: " + path;
-  return img;
+  return out;
+}
+
+Ref<Image> LoadPesImage(const pes::PesVfs& vfs, const std::string& path, std::string* error) {
+  PesTextureKind kind;
+  auto images = LoadPesImages(vfs, path, error, &kind);
+  if (images.empty()) return {};
+  if (kind != PesTextureKind::Flat) { *error = "layered texture, not a 2D image: " + path; return {}; }
+  return images[0];
+}
+
+Ref<Texture> LoadPesTexture(const pes::PesVfs& vfs, const std::string& path, std::string* error) {
+  PesTextureKind kind;
+  auto images = LoadPesImages(vfs, path, error, &kind);
+  if (images.empty()) return {};
+  if (kind == PesTextureKind::Flat) {
+    Ref<ImageTexture> t = ImageTexture::create_from_image(images[0]);
+    return t;
+  }
+  TypedArray<Image> layers;
+  for (auto& img : images) layers.push_back(img);
+  if (kind == PesTextureKind::Cube) {
+    Ref<Cubemap> cube;
+    cube.instantiate();
+    if (cube->create_from_images(layers) != OK) { *error = "Godot rejected cube faces: " + path; return {}; }
+    return cube;
+  }
+  Ref<Texture2DArray> array;
+  array.instantiate();
+  if (array->create_from_images(layers) != OK) { *error = "Godot rejected array slices: " + path; return {}; }
+  return array;
 }
 
 }  // namespace godot

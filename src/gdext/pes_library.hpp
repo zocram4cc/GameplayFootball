@@ -1,6 +1,7 @@
 #pragma once
 
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/classes/texture.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <optional>
 
@@ -23,6 +24,9 @@ class PesLibrary : public RefCounted {
   // The user's EDIT00000000: each player's appearance as the game shows it.
   // Without it, players fall back to PlayerAppearance.bin, as in the game.
   Error load_edit_save(const String& path);
+  // A PES texture as the matching Godot type (ImageTexture, Texture2DArray,
+  // Cubemap); null when missing or unreadable.
+  Ref<Texture> load_texture(const String& path) const;
 
   const pes::PesVfs& vfs() const { return vfs_; }
   const pesrig::Rig* rig() const { return rig_ ? &*rig_ : nullptr; }
