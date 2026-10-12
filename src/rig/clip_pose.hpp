@@ -7,12 +7,17 @@
 
 namespace pesrig {
 
-// One PES animation frame (GF gani_to_anim.py PES_FRAME_MS = 1000 / 59.94).
-inline constexpr double PES_FRAME_S = 1.0 / 59.94;
-// Root/mover position tracks, raw units -> metres for match animation. Measured
-// by GF calibrate_pos_scale.py (stance feet do not slide, ankles reach the
-// grass, a lying player's pelvis ~0.14 m up); see GF retarget.py.
-inline constexpr double PES_POS_TO_M_GAMEPLAY = 1.0 / 20480.0;
+// One match-gani frame: 1/30 s. FUN_1406af720 divides frames by the constant
+// 30.0 at 0x142591140, and run cadences only make sense at 30 fps
+// (docs/re/pes-re-animselect.md 1). GF's 1/59.94 played clips at 2x.
+inline constexpr double PES_FRAME_S = 1.0 / 30.0;
+// Root/mover position tracks: 16384 raw units per metre. The developer export
+// anim_infos.json (cm) against the raw root gives 163.8 raw/cm on 5 clips, and
+// run_3_3 then moves at 3.95 m/s against 3.88 m/s measured live (same report).
+// GF's 1/20480 was a visual fit (feet not sliding) on GF's skeleton; a
+// planted-ankle slide measurement here could not separate the two (ankles
+// roll through contact), so PES's own data decides.
+inline constexpr double PES_POS_TO_M_GAMEPLAY = 1.0 / 16384.0;
 
 struct ClipPose {
   Quat bodyRotation;         // world rotation of the body joint (RIG_ROOT o mover), Fox space

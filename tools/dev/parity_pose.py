@@ -14,6 +14,9 @@ import subprocess
 import sys
 
 TOLERANCE = 1e-5
+# Our root scale (src/rig/clip_pose.hpp), not GF's 1/20480: the parity checks
+# the sampling maths, so both sides must scale alike.
+PES_POS_TO_M_GAMEPLAY = 1.0 / 16384.0
 SAMPLE_FRACTIONS = (0.0, 0.37, 0.5, 0.91, 1.0)
 
 
@@ -52,7 +55,7 @@ def main():
         for frac in SAMPLE_FRACTIONS:
             t = frac * ref.frame_count
             body_q, body_p = g2a.sample_root(bones, rq, rp, mq, mp, t,
-                                             scale=retarget.PES_POS_TO_M_GAMEPLAY)
+                                             scale=PES_POS_TO_M_GAMEPLAY)
             ours = json.loads(dump("pose", "0x%08x" % h, repr(t)))
             sign = 1.0 if sum(a * b for a, b in zip(body_q, ours["bodyRotation"])) >= 0 else -1.0
             worst = max(worst, max(abs(a - sign * b) for a, b in zip(body_q, ours["bodyRotation"])))
