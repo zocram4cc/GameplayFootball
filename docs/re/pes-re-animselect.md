@@ -516,7 +516,7 @@ Token meanings, from statistics over the json and the decoded tables:
 
   Frames are body-clip frames at 30 Hz.
 - **Proof that slot = motionNo.** The two candidate keys were tested on hand semantics (`hatanigiri`, `kp_*`, `taore`):
-  - `id − 216` gives: flag-grip `hatanigiri` only on `assistant_*_flag_*` (linesman) clips; `kp_hold` / `kp_catch_before` mostly on `gkcatch_*` / `gkdeflect_*`; `taore` on `fall_*` / `block_*_dive`.
+  - `id − 216` gives: flag-grip `hatanigiri` only on linesman clips; `kp_hold` / `kp_catch_before` mostly on `gkcatch_*` / `gkdeflect_*`; `taore` on `fall_*` / `block_*_dive`. (Corrected by GodotFootball's `HandSequenceInstall` test, which checks every event: the grip is on `assistant_*` and `layer_assistant_*` clips, including `assistant_idle_0_point_f090` and `layer_assistant_flag_switch_R_L`, not only on names matching `assistant_*_flag_*`.)
   - The 12-bit field (`w0 >> 13`) gives nonsense (`taore` on `feint`/`kick`).
   - OBS live: one linesman's FH key 3171 resolves through Sequenceinfo to id 3001 → motionNo 2785 = `layer_assistant_flag_hand_R`. That is exactly the upper-body layer motion his AnimePlayer showed (`+0x27e4 = 2785`).
 - **`Sequenceinfo.bin`** (8 B: `w0`, `w1`; 3,855 records):
