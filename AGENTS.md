@@ -34,7 +34,12 @@ not evidence.
 - No personal data or machine paths in any tracked file. The PES install path
   arrives at runtime only (`PES21_ROOT` / `--pes21-root`), never as a default.
 - No file extracted from PES, no name list mined from it, no number table
-  transcribed from it. Everything PES-derived is read or built at runtime.
+  transcribed from it into code or data. Everything PES-derived that the
+  program uses is read or built at runtime.
+- Exception, owner decision: the reverse-engineering reports in `docs/re/`
+  quote PES values verbatim (tables, constants, addresses) as evidence. Code
+  never takes a value from them; it reads the value from the install at the
+  address the report gives.
 - `bash tools/check_pii.sh` runs as the `repo_pii_scan` test and must pass
   before every commit.
 

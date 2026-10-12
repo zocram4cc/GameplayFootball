@@ -419,3 +419,325 @@ Remaining live gaps (status after §8):
 - socks UV set: **closed**, UV0 (§8.5);
 - the `u####p0` → `pN` swap in 4cc face/boots packs: still unobserved live; statically there is no swap rule (§8.6);
 - EDIT00000000 decryption: **closed** (§8.1).
+
+---
+
+## 8. Follow-up findings
+
+### 8.0 Method and state
+
+- **Static:** targeted headless Ghidra decompiles (`-noanalysis -readOnly`) of single functions on the existing `<scratch>/pesmem.bin` project. Function bounds come from `.pdata`, with chained unwind entries followed to their primary (`<scratch>/fb.py`, `<scratch>/dc.sh`). Outputs are in `<scratch>/ghk/out/q1.txt`…`q20.txt`. Byte-pattern and xref scans use `<scratch>/callers.py` and capstone.
+- **Live:** reads of `/proc/<pid>/mem` only (pid unchanged, still alive). Nothing was written and no input was sent.
+- **Game state during this pass (State 3):** a 2-model preview, the same kind as State 2: 2 `UniformUnit`s, players 75403 and 75223, kits of teams 752 and 754.
+  - The heap also still held `MaterialModifier2` instances from an earlier match (kits `u0752p3`, `u0754p2`, `u0754g1`, referee). These were used only as numeric samples in §8.7.
+  - **The game was never in a match during this pass.**
+- **Scratch scripts:**
+  - `<scratch>/pxd/dec21.py`: save decrypter, self-checking.
+  - `<scratch>/kar2/fsop.py`: PES shader-pack reader and minimal DXBC disassembler.
+  - `<scratch>/kar2/uvplot.py`: UV scatter over an atlas.
+- **Privacy:** the decrypted save was processed in memory and then deleted from scratch. No names or other personal data are reproduced here.
+
+### 8.1 Q1 — EDIT save: cipher, layout, and where the 72-byte appearance records come from (**closed**)
+
+**Code (OBS, decompiles q1–q9):**
+
+| Function | Role |
+|---|---|
+| `FUN_141413270` | MT19937 `genrand_int32` (standard tempering) |
+| `FUN_1414136a0` | MT19937 `init_by_array` (seed 19650218, multipliers 1664525 / 1566083941) |
+| `FUN_14140e0f0` | **cryptStream(key64, out, in, len)** |
+| `FUN_14140dd40` (encrypt side) / `FUN_14140e2b0` (decrypt side) | encryption-header crypt |
+| `FUN_14140c4b0` | XOR-fold of a buffer into 64 bytes |
+| `FUN_1414133e0` | byte-swap each of 8 u64 |
+| `FUN_14140f470` | **load** (CreateFile / MapViewOfFile, then per-block decrypt + digest check) |
+| `FUN_141410d10` | **save** (CryptGenRandom-based salt, then encrypt) |
+| `FUN_1414100b0` | `savedata::IOImpl` dispatch (vtable 0x142944268, RTTI `.?AVIOImpl@…@savedata@@`) |
+| `FUN_14140ea40` | key derivation |
+
+**cryptStream algorithm (OBS, `FUN_14140e0f0`):**
+1. Seed MT19937 with `init_by_array` over the 64-byte key read as 16 little-endian u32.
+2. Draw `c0, c1, c2, c3`.
+3. For each little-endian u32 `w` of the input: draw `c4`; `out = w ^ c0 ^ c1 ^ c2 ^ c3 ^ c4`; then `c0 = ror(c1,15)`, `c1 = rol(c2,11)`, `c2 = rol(c3,7)`, `c3 = ror(c4,13)`.
+4. A 1–3 byte tail is XORed with one more draw combined the same way.
+5. Encryption and decryption are the same operation.
+
+**Key derivation (OBS, `FUN_14140ea40` + live):**
+- `IOImpl+0xF0` is a SHA-512 context; the constructor `FUN_14140b7e0` stores the SHA-512 IV there.
+  - It is fed the UTF-16LE (no NUL) of the string returned by thunk `0x1414a18c0`.
+  - That thunk is code in the unpacked region at 0x1449eb9e0: `"eFootball PES 2021 SEASON UPDATE"`, or `"eFootball Winning Eleven 2021 SEASON UPDATE"` when the dword at 0x1434fce54 == 1.
+- After finalisation the 8 state words sit there as native u64. So the 64 bytes in memory are the SHA-512 digest with every u64 byte-reversed. This is exactly pesXdecrypter's `MasterKeyPes21`.
+  - OBS live: those bytes are at `IOImpl+0xF0` (IOImpl at 0x266d4b90). The byte-reversed form is at 0x1f24fb20.
+  - SHA-512(UTF-16LE title) recomputed in Python equals that byte-reversed form.
+- `IOImpl+0x1B8` holds a second key = SHA-512 of `"eFootball PES 2020"` (or `"eFootball Winning Eleven 2020"`). The load selects it when the file object's type method (`vtbl+0x30`) returns 3. INF (medium): importing a previous-year file.
+
+**File layout (OBS: decrypt routine + successful decrypt of this install's file):**
+
+| File offset | Size | Content | Key |
+|---|---|---|---|
+| 0x000 | 0x100 | encryption header body | `K_hdr` |
+| 0x100 | 0x40 | salt, plaintext. INF (medium): random per save; `FUN_141410d10` fills 64 B from CryptGenRandom ⊕ `FUN_141b34a30` draws, but the copy into the header (`FUN_14140c620`) was not traced | — |
+| 0x140 | 0xD0 | file header | `R ⊕ 0xD0` |
+| 0x210 | descSize (0x180) | description | `R ⊕ 0` |
+| … | logoSize | logo (PNG) | `R ⊕ 1` |
+| … | dataSize | save data | `R ⊕ 2` |
+| … | serialLength×2 | serial/version string, UTF-16 | `R ⊕ 3` |
+
+Keys:
+- `K_hdr = salt ⊕ SHA512(UTF16LE(title))` (standard big-endian digest bytes).
+- Decrypt the first 0x140 bytes with `K_hdr`, then put the plaintext salt back at 0x100. This is `FUN_14140e2b0`: it keeps 0x100 decrypted bytes plus the original 0x40.
+- `R` = the decrypted 0x140-byte header folded into 64 bytes by XOR (bytes `i` and `i+64k` combine).
+- `R ⊕ n` means: XOR every little-endian u64 of `R` with `n`.
+
+**File header (0xD0):**
+- +0x00: 64 B. In this file it equals the title digest (OBS); its purpose is unknown.
+- +0x40: u32 dataSize.
+- +0x44: u32 logoSize.
+- +0x48: u32 descSize.
+- +0x4C: u32 serialLength (UTF-16 units).
+- +0x50: 64 B. **Not** a SHA-512 of the encryption header, salt, or file header (tested). **UNKNOWN.**
+- +0x90: `char[32]` file type, `"EDIT"`.
+- +0xB0: `char[32]` game title.
+
+**New fact (OBS):** decrypted encryption header bytes `[64·i, 64·i+64)` = SHA-512 of decrypted block `i` (0 description, 1 logo, 2 data, 3 serial), 4/4 on this file.
+- `FUN_14140f470` recomputes the hash through the SHA-512 compress function `0x1414122d0` and `memcmp`s 0x40 bytes per block. INF (high): the save side fills them in `FUN_14140c620` (it references the same compress function at 0x14140c7a4).
+- pesXdecrypter's README says the game ignores hashes. INF: that holds only when the per-file flags (word from `vtbl+0x48`) skip the check; the check itself is OBS.
+- A writer should store these four digests.
+
+**Reference implementation:** `<scratch>/pxd/dec21.py` (Python stdlib + numpy; MT via `random.setstate` after a hand-written `init_by_array`).
+- It asserts the four digests and the exact length.
+- It decrypts the 11,011,039 B file in ~3 s.
+- Self-check run: OK. Header sizes (dataSize 10,995,800, logoSize 14,235, descSize 384, serialLength 46) and the type/title strings were observed.
+- pesXdecrypter (public domain, `github.com/the4chancup/pesXdecrypter`, `src/crypt.c`) was used as a cross-check of the algorithm. Everything above was confirmed against the exe.
+
+**`data.dat` (EDIT payload) — the parts used here (OBS):**
+- +0x00: u32 14. +0x04: u32 0x50. +0x08: u32 dataSize−0x50. +0x0C: u32 10100.
+- +0x60: u32 **player count = 4830**, then u16 210, u16 231, u16 55, u16 46, u32 622 (INF: team/league counts; not verified).
+- **Player records start at +0x7C, stride 0x138 (312 B), 4830 records**, ids 70101…91023:
+  - +0x000: u32 playerId.
+  - +0x004..+0x0F0: the Player.bin-style player data (0xF0 B total including the id; names inside are UTF-8 text fields).
+  - **+0x0F0: the 72-byte appearance record.**
+- Validation (OBS): all 4830 live 72-byte records (table at 0x7fdc0920) are byte-identical to `record+0xF0` of the save record with the same id (4830/4830).
+  - The remaining 506 live records (ids absent from the save) equal `PlayerAppearance.bin` bodies byte for byte, with `X = 0` and the two zero words (506/506).
+  - So the live table = EDIT save ∪ `PlayerAppearance.bin` fallback.
+- The live player table at 0x45770040 (stride 0x17C, 4830) is not a raw copy of the save records. It is an expanded in-memory form; not decoded further.
+
+**72-byte appearance record — fields and consumers:**
+
+| Offset | Field | Evidence |
+|---|---|---|
+| +0x00 u32 | playerId | OBS |
+| +0x04 u32 `X` | bits 4–17 = boots id, bits 18–31 = glove id. Bits 0–3 are **not read** by the character builder (`FUN_141ec4560` only uses `X>>4 & 0x3fff` and `X>>18`). Observed values {0,3,4,5,7,8,12,13,15}; meaning UNKNOWN (no correlation with boots/glove presence) | OBS |
+| +0x08 u32 | **alternate player id**: when non-zero and ≠ playerId, `FUN_141ec4560` uses it as the id for the character build (INF: appearance copied from another player) | OBS |
+| +0x0C..+0x44 | 56-byte body, copied verbatim (`FUN_141e58240` = `memcpy(…, rec+0xC, 0x38)`) and decoded by `FUN_141ad9220` | OBS |
+| +0x44 u32 | 0 in every record | OBS |
+
+**Body decode (`FUN_141ad9220`):**
+- Offsets are relative to the body; record offset = body + 0xC.
+- `desc` is the character description object (`param_1+0x10`). Its setters are one-instruction stores:
+
+| Body field | Use | Evidence |
+|---|---|---|
+| +0x08 bits 0–2 | index into float table 0x1435181d8; value copied to many accessory slots | OBS. Meaning UNKNOWN (INF: accessory colour) |
+| +0x08 bits 3–5 | non-zero `n` enables accessory slot `9+n` | OBS |
+| +0x08 bits 6–7 | sleeves: 0 → caller default, else value−1 (0 short, 1 long) → `desc+0x68` | OBS |
+| +0x08 bits 8–9 | accessory slots 8 (≠0) and 9 (==2); **kept only for long sleeves**, otherwise both are cleared | OBS. Live: 75403 (sleeves long, bits 8–9 = 2) loads `common/inner.fmdl` ⇒ INF (high): long-sleeved inner top |
+| +0x08 bits 10–11 | socks → `desc+0x6C` | OBS (matches §7.1) |
+| +0x08 bits 12–13 | accessory slots 0–3. With `param_3 == 0`: slot 0 = bit 12. Otherwise slot 0 = (value == 1) and slots 1–3 = (value ≥ 2) | OBS. Meaning UNKNOWN |
+| +0x08 bit 14 | shirt tail out → `desc+0x64` | OBS. Correction to §7.1: tail is bit 14 alone; it was also copied to the unit's +0x9D in `FUN_141ec4560` |
+| +0x08 bit 15 / bit 16 | accessory slots 6 / 7 | OBS |
+| +0x08 bits 17–19 | float table 0x1435181f8 → slot parameter | OBS |
+| +0x04 bit 31 / bit 30 | accessory slots 4 / 5 | OBS. Live: 75403 has bit 31 set and loads `common/highneck.fmdl` ⇒ INF (high): slot 4 = high neck |
+| +0x04 bits 24–26, 27–29 | each selects one of 3 floats at 0x143518218 (0 = default) for two slot parameters | OBS |
+| +0x20 bits 8–10 | **skin colour 1–6** → `desc+0x160` (`FUN_141a058d0`) | OBS. Save stats: {1:4766, 2:16, 3:9, 4:4, 5:10, 6:25}; see §8.2 |
+| +0x20 other bits, +0x24, +0x2C, +0x30 | packed into a 0x60-byte face/head struct (`uStack_b8…`, then `FUN_141ada240`) | OBS that they are read. Not decoded (head/face morph, out of scope) |
+| +0x28 bits 6–7 | <3 → float from table 0x142ab6b90 → `desc+0x164` | OBS. Meaning UNKNOWN |
+| +0x34 bits 0–3 | <11 → one of 11 two-vec4 colour entries at 0x1437ce490 → `desc+0x1E8..0x204` | OBS. INF (high): eye colour; the exe has exactly 11 `eye_color_sub_00..10` textures |
+
+- The 18 accessory slots are pushed with `FUN_141a04a40(desc, index, &param, enabled)` into a list at `desc+0x180`.
+- The slot→model mapping is only partly identified: slot 4 = high neck, slots 8/9 = inner, from the single live sample above.
+
+**4cc exports in the save folder (OBS, own folder only):**
+- `EDIT.tsv`: UTF-8 with BOM.
+  - 73 board-header lines of the form `/<tag>/`.
+  - 137 one-column lines (blank/separator).
+  - **4830 four-column rows**: shirt number, print name, position, a free-text label.
+  - Its row count equals the save's player count. It carries **no** appearance fields.
+- `*.4ccs`: fixed 8,273 B, ASCII magic `20a21` + low-entropy binary. Not decoded. INF (medium): a 4ccEditor team/tactics export.
+- No `.ted` files exist in the folder.
+- So the only per-player appearance source is the decrypted EDIT save.
+
+### 8.2 Q2 — skin colour → `arm_N_bsm` / `thigh_N_bsm` (**closed**; the index rule is INF high)
+
+- **OBS (`FUN_1419112b0`):** at init the character-resource singleton (getter `FUN_141910ef0`, global 0x1437c3840) builds, for `N = 1..6` (`"%u"`):
+  - the path `"/Assets/pes16/model/character/common/sourceimages/arm_@_bsm.ftex"` with `@` replaced by N;
+  - then `arm` → `thigh`, then `thigh` → `torso`.
+  - Arrays: arm at singleton+0x28[6], thigh at +0x58[6], torso at +0x88[6].
+  - Also `skin_dtm` at +0x1B0 and `head_dtm` at +0x1B8.
+- **OBS live:** singleton = 0x13d00100. Its +0x28..+0x50 point to the Texture objects for `arm_1..6_bsm`, +0x58..+0x80 to `thigh_1..6_bsm`, +0x1B0 to `skin_dtm`.
+- **VFS:** `common/sourceimages/#windx11/{arm,thigh,torso}_{1..6}_bsm.ftex` all exist (18 files).
+- **Selector (OBS):** appearance body +0x20 bits 8–10 → `desc+0x160`, range 1–6 in the save. The getter at 0x141a046a0 (`mov rax,[rcx+0x10]; mov eax,[rax+0x160]`) has a single caller, `FUN_141a1e6e0`. That caller forwards the value into the player-model property `FUN_141a80b80` (property key `DAT_143517b28`).
+- **INF (high):** texture = array[skin−1].
+  - The range 1–6 matches the 6-entry arrays.
+  - Every live player sampled (skin 1) binds `arm_1_bsm` / `thigh_1_bsm`.
+  - The final property → texture index read was not traced.
+- A face-folder `arm_bsm.ftex` overrides the arm texture (§7.2, OBS).
+
+### 8.3 Q3 — boots / glove id → folder (**closed**)
+
+OBS, `FUN_141ec4560` → `FUN_141ec3a20`:
+
+- **Boots:** `id = (X >> 4) & 0x3fff` from the appearance record.
+  - If the id is 0, or there is no appearance record (referee, or the "no record" case), use `FUN_1414e03c0(playerId)`. That is a binary search of `BootsList.bin` (`common/character0/model/character/boots/BootsList.bin`: sorted `{u32 playerId, u32 bootsId}` pairs, 14,786 here). It returns the list default when the player is absent.
+    - OBS live: the default is u16 at list object+0x18 = **62** (list object `*0x1437065b8`). It is also the hard-coded result when the list is not loaded.
+  - Overrides in `FUN_141ec3a20`:
+    - display mode `param_1[0xC] == 2` forces 62;
+    - character kinds 4/5 (referees) use `playerId + 9900`.
+  - Folder = `"/Assets/pes16/model/character/boots/"` + `"k%04d"` (string 0x142b8c3a4). The model is `boots.fpk` → `boots.fmdl` in it.
+  - `FUN_1414e0490(id)` tests membership in `BootsHighCut.bin` (WESYS-wrapped u32 list: 1051, 1061, 1064, 1071, 2011, 2021, 2061, 3041, 3051).
+- **Correction to §7.3:** k0062 for 76711/75403 is the BootsList default, not a special meaning of id 0.
+  - OBS live, State 3: 75403 (boots id 0, not in BootsList) → `k0062`; 75223 (boots id 1386) → `k1386`.
+- **Gloves:** `id = X >> 18` when an appearance record exists, with **no** list fallback (0 = no gloves). Without a record: `FUN_1414e03e0(playerId)` = binary search of `GloveList.bin` (315 pairs), default 1.
+  - Folder = `"/Assets/pes16/model/character/glove/"` + `"g%04d"` (string 0x142aadc54, used by `FUN_141a8e8d0` only when id ≠ 0).
+  - VFS: `glove/g0001…` and the 4cc `g1052…g1061` exist.
+
+### 8.4 Q4 — match-state draw list (**open live; answered statically**)
+
+The game was not in a match during this pass (State 3 = preview). The static rules, all OBS from earlier decompiles:
+
+- **Thighs:** with `+0xD8 == 0` (match), one thigh model, chosen by socks type (`FUN_141a91210`: 0/3 → `thigh_middle`, 1 → `thigh_long`, 2 → `thigh_short`; `_classic` when +0x58). The six-variant set seen live is the preview-only path (`+0xD8 = 1`).
+- **Socks:** the single `socks` slot per §3, from +0xC4.
+- **Shirt:** cloth vs nocloth is `uStack_1d0` (§3). For players the flag word is 0xFFFFFFFF, so the `(f bit2 && !bit1)` term is false. Cloth is then chosen iff the player is not a referee, the kit is not tight, and `FUN_141a80400 == 0 && FUN_141a7ff50 == 0`; neither function was traced.
+  - State 1 (an earlier match) had 22 `ClothShirtParts`, each holding both a nocloth (+0x20) and a cloth (+0x78) model. Which of the two was in the draw list during the match was not read.
+- **To close live:** in a match, take one `UniformUnit`, walk its Model list (§7.3 method), and check whether `cloth/shirt_*` or `nocloth/shirt_*` is in the chain, plus which single `thigh_*`.
+
+### 8.5 Q5 — which UV set samples the kit atlas (**closed**)
+
+**Shader package (OBS):** `shaders/dx11/PesShaders_dx11.fsop` (VFS).
+- Entries are `u8 nameLen+1, name\0, u32 vsSize, VS, u32 psSize, PS`, and the shader bytes are XOR 0x9C (decoded `DXBC` magic).
+- The technique table `shaders/dx11/PesShaders_dx11.lua` lists each technique's texture slot order and param packing:
+  - `pes3DDF_Uniform` (socks) → shader `pes3ddf_uniform`;
+  - `pes3DDF_Shirt_NB*`, `pes3DDF_Pants_NB*`, `pes3DDF_Sleeve*`, `pes3DDF_Collar*`.
+- Reader / disassembler: `<scratch>/kar2/fsop.py`.
+
+**Vertex shaders (all five) (OBS):** `o2.xy = TEXCOORD0` (fmdl usage 8, UV0) and `o2.zw = TEXCOORD1` (usage 9, UV1). The pixel shader reads them as `v2`.
+
+Pixel-shader samples (OBS):
+
+| Shader | t0 Base (kit atlas) | t1 Normal | t2 SRM | t3 Pattern array | t4/t5 Stain / StainMask | t6 |
+|---|---|---|---|---|---|---|
+| `pes3ddf_uniform` (socks) | `v2.xy` = **UV0** | `v2.zw` = UV1 | UV0 | UV0 × cb4[1].x (RepetitionParam), slice cb4[1].z×2 | UV0 / UV0·(0.125,1)+offset | — |
+| `pes3ddf_pants_nb` | **UV0** | UV1 (array) | UV0 | UV0 × cb4[1].x | UV0 | `g_tex_number`: UV0·cb4[3].xy + cb4[3].zw |
+| `pes3ddf_shirt_nb` | **UV0** | UV1 (array) | UV0 | **UV1** × cb4[1].xy | UV0 | `g_tex_marking`, sampled 4× at affine transforms of UV0 (`UV0·cb.xy+cb.zw` forms) |
+| `pes3ddf_sleeve` | **UV0** | UV1 (array) | UV0 | UV1 × cb4[1].xy | UV0 | `g_tex_badge`, 2 affine transforms of UV0 |
+
+- So the kit atlas is always sampled with UV0, socks included.
+- Socks UV0 covers two patches (u 0.005–0.19 and 0.81–0.995, v 0.31–0.56). Those are the side panels of the atlas between the long-sleeve band and the lower body (`<scratch>/kar2/s1_both.png`, examined).
+- The earlier §4 "socks don't match" note is corrected in place.
+
+### 8.6 Q6 — `u####p0` → current kit in 4cc face/boots packs (**open live; static: no swap rule found**)
+
+- **OBS (fmdl):** the packs reference the texture as a plain file next to the model:
+  - `boots/k1060` `metal_kit` → `boots/k1060/u0739p0.dds`;
+  - face 73909 `oral.fmdl` material `kit` → `face/real/73909/sourceimages/u0739p0.dds`.
+  - `u0739p1..p3.ftex` sit beside them. 12 such `u0###p0` files exist in the VFS.
+  - The materials are plain `fox3DDF_Blin`, not `uni_*`.
+- **Static (OBS):** the exe has no string or format that could rebuild `p0` → `pN`: the only `u%04dp…` format is `u%04dp1` in a script-bind debug path. The runtime kit binder writes `Base_Tex_SRGB` only into `uni_*` materials (`FUN_141a86310` / `FUN_141a86830` iterate the part's own material list).
+- sider is not loaded, and no kit-swap Lua module is enabled in `sider.ini` (`kitrewrite.lua` exists but is not listed).
+- **INF (medium):** PES draws `u0739p0` as-is for every kit of these teams; the p1..p3 files are dead weight without an external swapper.
+- New related fact (OBS, VFS): 4cc packs also ship team folders `Asset/model/character/common/<teamId>/sourceimages/…` (30+ teams, e.g. `common/715/…/MGE_skin_u0715p1..p8.ftex`). No exe string builds `common/%d/`. INF: they are referenced only by path from the packs' own fmdls.
+- **Live check, if team 739/769 is ever loaded:** read the bound Texture path of a `kit`/`metal_kit` `MaterialModifier2`.
+
+### 8.7 Q7 — number / name placement (**closed** for placement math; marking-texture composition open)
+
+**Which materials (OBS, shaders + live MaterialModifier2):**
+- Back number, chest number and name go through **one** texture param, `Marking_Tex_LIN` (0x16f09b71), on `uni_shirts` and `uni_collar`.
+  - The shirt pixel shader samples it 4× at affine transforms of **UV0**.
+  - Params: `FNumberScaleXParam` (chest), `BNumberScaleXParam` (back), `NameScaleXParam` (name), and `BadgeMatrix0/1`.
+- The leg number uses `Number_Tex_LIN` (0x249c31cb) on `uni_pants`/`uni_pants.001` with `NumberScaleXParam`, also UV0.
+- The sleeve badge uses `Badge_Tex_LIN` with `BadgeMatrix0..3`.
+- In both preview states `Marking_Tex_LIN` = null path (nothing bound), so previews draw no numbers.
+- The texture that carries the composited numbers/name is set later by `FUN_141a96d50`; its composition from `_back` / `_chest` / `_name` ftex + glyph layout was **not traced**.
+
+**Config int → float (OBS, converters called from the realUni parser `FUN_141ea3190`):** every field is `lo + v·(hi−lo)/N`.
+
+| Field (realUni bits) | Converter | Float = | Stored |
+|---|---|---|---|
+| BackNumberY (d6 0–4) | `FUN_141e58c80` | `1.2 − v·1.2/29` | kit +0x5C |
+| BackNumberSize (d6 5–9) | same | `v/28` | kit +0x58 |
+| BackNumberSpacing (d6 10–13) | same | `v/14` | (glyph layout; not in the shader param) |
+| ChestNumberX (d6 19–23) | `FUN_141e58d90` | `0.4 + v·0.207/29` | kit +0x74 |
+| ChestNumberY (d6 14–18) | same | `1 − (0.22 + v·0.24/29)` | kit +0x78 |
+| ChestNumberSize (d6 24–28) | same | `0.6 + v·1.2/28` | kit +0x70 |
+| leg horizontal (**d5 16–20**, sider "ShortsNumberY") | `FUN_141e594a0` | side 0: `0.96 − v·0.19/29`; side 1: `0.04 + v·0.19/29` | kit +0x8C |
+| leg vertical (**d5 21–25**, sider "ShortsNumberX") | same | `1 − (0.1 + v·0.14/29)` | kit +0x90 |
+| leg size (d5 26–30) | same | `0.6 + v·1.2/28` | kit +0x88 |
+| NameY (d7 3–8, N=39) | `FUN_141e59150` | `1 − (0.95 − v·0.37/39)` | kit +0x40 |
+| NameSize (d7 9–13, N=20) | same | `0.9 + v·1.5/20` | kit +0x48 (INF) |
+| NameStretch (d9 8–9; 0 → 3) | `FUN_141e59240` | `0.5 + v·0.5/3` | kit +0x4C (INF) |
+| NameShape (d7 14–16) | `FUN_1419a4e30` | curvature 0, −0.002, −0.016, −0.019 for 0/1/2/3 | added to NameY |
+
+**Float → shader vec4 (OBS, `FUN_141a86310` / `FUN_141a85fe0`):**
+- Chest, `FUN_1419a4bf0`: `s = 16/size` (1e-4 if size = 0); `(s, s, 0.5 − s·x, 0.5 − s·y)`.
+- Back, `FUN_1419a44f0`: `k = 12·size − 20`; `(0.5k, k, −(0.27557 − 0.1·y)·k, same)`.
+- Leg, `FUN_1419a5000`: if `x > 0.5` then `size = −size` (mirror); `s = 16/size`; `(s, s, 0.5 − s·x, 0.5 − s·y)`.
+- Name, `FUN_1419a4d20`:
+  - `.y = 16/size`;
+  - `.z = .w = 0.5 − (16/size)·(nameY + curvature)`;
+  - `.x = 4/(w·stretch)`, where `w = min(1, glyphWidthSum/2·(1/512))` clamps the name's total glyph width.
+  - So `.x` varies per player with name length (OBS: 6 different `.x` values for one kit).
+
+**Verified numerically against live params (OBS):**
+- Team 752 (back size 21 / Y 21): BNumber = (−5.5, −11, 2.6672, 2.6672) ✓.
+- Team 754 2nd (24/21): (−4.8571, −9.7143, 2.3554, 2.3554) ✓.
+- Team 754 GK (26/20): (−4.4286, −8.8571, 2.1109, 2.1109) ✓.
+- Chest (size 0, X 0, Y 3) → (26.667, 26.667, −10.167, −19.638) ✓; Y 2 → −19.859 ✓.
+- Leg:
+  - 754 2nd (h 4, v 15, size 10, side 0) → (−15.556, −15.556, 15.026, 13.374) ✓;
+  - 752 (h 5, v 19, size 11) → (−14.933, −14.933, 14.347, 12.570) ✓.
+- Name: 752 (Y 31, size 14, shape 1) → `.y` 8.2051, `.z` −2.307 ✓; 754 (Y 32, size 7, shape 0) → 11.228, −3.470 ✓.
+- **Correction made in §1:** the game treats realUni d5 bits 16–20 as the horizontal leg-number position and bits 21–25 as the vertical one, the reverse of sider's labels.
+
+### 8.8 Q8 — param hashes (**closed**)
+
+OBS: StrCode32 over every quoted name in `PesShaders_dx11.lua`:
+- 0x16f09b71 = **`Marking_Tex_LIN`** (`pes3DDF_Shirt_NB*` / `Collar*` slot 7);
+- 0x7bcbb6cb = **`Dirty_Tex_LIN`** (`pes3DDF_Skin_Occ` slot 5, bound to `skin_dtm`).
+
+Also OBS: path code 0xb8a0bf169f98 is the engine's null path. `FUN_14022dfa0` returns true iff a path equals it; `FUN_14022dfc0` maps it to an empty string.
+
+### 8.9 Q9 — tight long-sleeve code 1003 → `sleeve_long_tight_003` missing (**closed statically; not observed live**)
+
+**Name build (OBS, `FUN_1419637c0`):** no clamping or fallback. It appends type suffix, `_glove`, `_cap`, `_tight`, then `_%03d` and `.fmdl`, and returns the string.
+- For TightKit = 1 and code (1,3) it produces `sleeve_long_tight_003.fmdl` (slot `sleeve`) and `sleeve_long_cap_tight_003.fmdl` (slot `sleeve_cap`).
+- VFS has only `_001`/`_002` for both tight variants (OBS, allpaths): `sleeve_long_tight_001/002`, `sleeve_long_cap_tight_001/002`, `s_inner_*_tight_001/002`.
+
+**Load (OBS, `FUN_141a89120` around `LAB_141a8b13d`, p2.txt l.556–604):** every path-built slot goes through the same steps:
+1. `FUN_14022d070(path)` → path object.
+2. `FUN_14022dfa0`: null path? If so, skip.
+3. `FUN_14022dfc0` → string.
+4. `FUN_1403b8c80` constructs a 0xA8-byte file object on that string; `FUN_1403bb5a0` opens it and returns success.
+5. Only on success is the part created (`LAB_141a8b306` → `FUN_141a81c70`, appended to the unit's part list).
+6. On failure the slot is abandoned for this player and the loop moves to the next slot (`goto LAB_141a8a854`). There is no retry with another name and no stub.
+
+**Result for a long-sleeved player in kits 714_DEF_1st..7th / 739_DEF_3rd:**
+- **no sleeve and no sleeve-cap model**;
+- **no bare `arm`/`arm_cap` either**: the arm slot is skipped whenever the primary sleeve type ∈ {1,3} and the shirt is worn; the decision uses the type, not file existence (§3, corrected);
+- `hand_l`/`hand_r` still load.
+
+INF (high): a visible gap between shoulder and hand. A faithful reimplementation should reproduce that: an empty slot, not a substitute.
+- Short-sleeved players in those kits use code A and are unaffected.
+- **Live confirmation** needs a team-714 (or 739 3rd) long-sleeved player loaded. Then walk the unit's part list and check that no `sleeve` (0x1158d590d986) / `sleeve_cap` (0x1efca60661a9) part exists. Not possible in this pass.
+
+### 8.10 Status summary
+
+| Q | Status |
+|---|---|
+| 1 EDIT save | **closed**: cipher, keys, layout, digests; records at `data+0x7C + 0x138·i + 0xF0`. Some body bits decoded; accessory slot→model map partly INF; X bits 0–3 unread |
+| 2 skin → arm/thigh | **closed**: N = 1..6 (arm/thigh/torso), selector body+0x20 bits 8–10; array index = skin−1 is INF high |
+| 3 boots/glove → folder | **closed** (`k%04d` / `g%04d`, list defaults 62 / 1, overrides) |
+| 4 match draw list | **open live** (no match during this pass); static rules given |
+| 5 atlas UV | **closed**: UV0 for all, socks included |
+| 6 p0 swap | **open live**; static: no swap mechanism in the exe |
+| 7 numbers/name | **closed** for materials, UVs, placement formulas (numerically verified); glyph/marking-texture composition open |
+| 8 param hashes | **closed** |
+| 9 missing tight sleeve | **closed statically** (slot left empty, no fallback); live unconfirmed |
