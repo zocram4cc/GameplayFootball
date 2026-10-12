@@ -10,7 +10,7 @@ An AI-vs-AI football match engine built on Godot 4.7 and a C++ GDExtension.
 
 ## Build
 
-Requirements: CMake ≥ 3.24, Ninja, a C++17 compiler, zlib, SQLite 3 and Boost
+Requirements: CMake ≥ 3.24, Ninja, a C++20 compiler, zlib, SQLite 3 and Boost
 headers. Godot 4.7.2 is downloaded and checksum-verified on first use by
 `tools/fetch_godot.sh`.
 
@@ -47,6 +47,15 @@ tools/capture_viewer.sh --face <player id> -- --team <team id> --kit 0 --edit-sa
 
 Without the save, players fall back to `PlayerAppearance.bin`, as in the game.
 Tests read it from `PES21_EDIT_SAVE` and skip those checks when it is unset.
+
+## How PES does it: `docs/re/`
+
+The reverse-engineering reports behind every format reader and assembly rule
+here. They cover kit and body assembly, the EDIT save, shaders and materials,
+textures, animation selection and the hand rig, physique, markings, collision,
+stadium and camera, lighting, cutscenes, match logic, faces, and officials and
+the ball. Each claim is tagged OBS (observed, and how) or INF (inferred), with
+killed hypotheses recorded. Start at `docs/re/README.md`.
 
 ## Licence
 

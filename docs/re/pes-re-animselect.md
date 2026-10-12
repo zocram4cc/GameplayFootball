@@ -564,6 +564,31 @@ Each frame `AnimePlayer` calls the face/hand updater on its FH object (`AnimePla
 - Branch B timing: time accumulators advance by `1/54 s` per tick and are clamped to each fallback's last `endFrame`.
 - Branch B switching: the category may change only when it differs and at least **0.2 s** (0x142598578) has passed.
 
+#### 11.3.1 Fallback sequences resolved (main session, analysed project + live; OBS)
+
+Decompile of `FUN_141eb9a30` on the fully analysed image, plus reads of the table data from disk and from the live game:
+
+- **Table `0x142b67ef0`** (on disk, `.rdata`): 17 × `{i16 sequenceKey, i16 category}`:
+  `(2564,0) (2565,1) (3318,0) (3319,0) (3320,0) (3321,0) (3322,0) (3340,1) (3341,1) (6,2) (2120,3) (2122,4) (2098,5) (2097,6) (3530,7) (3318,7) (3320,7)`.
+- **Runtime tables** (filled at init, read live):
+  - `0x14351e568`: 17 × i16 resolved slot;
+  - `0x1437f4b90`: 17 × 4 f32 track durations (s) `{face-base, face-add, hand L, hand R}`, e.g. entry 0 = `(1.4, 0, 1.4, 1.4)`.
+- **Resolution, checked 15/15 exactly:**
+  1. `sequenceKey` → the `Sequenceinfo.bin` record with that key (`w0` bits 13–24).
+  2. That record's raw id (`w0` bits 0–12, always < 216, e.g. key 2564 → id 24, key 6 → id 215).
+  3. The `Handlbase`/`Handrbase` records with that **raw** id are the fallback's hand timelines.
+  4. Each live duration equals that timeline's last `endFrame / 30` for both hands.
+  - So fallback timelines are the sub-216 "overflow" ids. A reader that drops ids below 216 loses them.
+- **Selection** (`FUN_141eb9a30`, branch B; `param_5` = category):
+  - On a category change, gated by the 0.2 s timer at FH `+0x3f8`, the updater scans the 17 entries **cyclically from the current index + 1** and takes the first with the wanted category that differs from the current entry.
+  - Each tick it advances the four track clocks (FH `+0x3e8..+0x3f4`) by `DAT_14256ae1c / rate` and clamps each at its duration, setting a done flag (`+0x3fc..+0x3ff`).
+  - When the face-add, hand L and hand R flags are all set, it re-runs the same cyclic pick within the **same** category.
+  - So idle hands cycle: category 0 rotates through keys 2564, 3318–3322; category 1 through 2565, 3340, 3341; category 7 through 3530, 3318, 3320.
+- **Killed hypotheses:**
+  - *The slot shorts are raw sequence ids:* their durations disagree with those ids' timelines (e.g. 191 → 3.0 s vs 1.4 s).
+  - *The slot shorts are motionNos:* they name goalkeeper layer clips, and slot 69 is `back_3_3` for the linesman category. Both are killed by the durations as well.
+  - The resolved slot short follows `215 − id` for 14 entries but is 69 for id 215 (key 6). Its meaning as a table index is not needed for the rule above.
+
 ### 11.4 Evaluation and blending (OBS, `FUN_141ebb160` left / `FUN_141ebb640` right)
 
 - **Output per hand** (FH object +0xb0 left, +0xe0 right; +0x50 face add, +0x80 face base):
