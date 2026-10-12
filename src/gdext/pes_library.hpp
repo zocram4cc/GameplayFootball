@@ -6,6 +6,7 @@
 #include <array>
 #include <optional>
 
+#include "pes/camera.hpp"
 #include "pes/editsave.hpp"
 #include "gdext/pes_marking.hpp"
 #include "pes/handseq.hpp"
@@ -43,6 +44,8 @@ class PesLibrary : public RefCounted {
   const MarkingFonts* marking_fonts() const { return markingFonts_ ? &*markingFonts_ : nullptr; }
   // Speed-class bounds, km/h (from PES2021.exe); null without the exe.
   const std::array<float, 4>* speed_classes() const { return speedClasses_ ? &*speedClasses_ : nullptr; }
+  // Dynamic Wide broadcast camera tables (exe + constant_match.bin); null when missing.
+  const pes::DynamicWideParams* camera_params() const { return cameraParams_ ? &*cameraParams_ : nullptr; }
 
  protected:
   static void _bind_methods();
@@ -56,6 +59,7 @@ class PesLibrary : public RefCounted {
   std::optional<pesrig::HandPoseLibrary> handPoses_;
   std::optional<MarkingFonts> markingFonts_;
   std::optional<std::array<float, 4>> speedClasses_;
+  std::optional<pes::DynamicWideParams> cameraParams_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

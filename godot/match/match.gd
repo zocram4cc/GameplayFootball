@@ -16,8 +16,6 @@ const BALL_ALBEDO := Color(0.95, 0.95, 0.95)
 const PITCH_SURROUND_M := 120.0
 const PITCH_ALBEDO := Color(0.22, 0.42, 0.18)
 const SUN_ROTATION_DEG := Vector3(-55.0, 35.0, 0.0)
-const CAMERA_POSITION := Vector3(0.0, 28.0, 62.0)  # placeholder overview until M4's broadcast camera
-const CAMERA_FOV_DEG := 50.0
 const FACE_DIR := "Asset/model/character/face/real/"
 const FOLLOW_OFFSET := Vector3(4.0, 2.2, 6.0)  # inspection camera, metres from the followed player
 const FOLLOW_TARGET_HEIGHT_M := 1.0
@@ -32,6 +30,7 @@ var _skeletons: Array[Skeleton3D] = []
 var _phases: PackedFloat64Array = []
 var _accumulator := 0.0
 var _camera: Camera3D
+var _broadcast: PesBroadcastCamera
 
 
 func configure(a: Dictionary) -> void:
@@ -65,6 +64,11 @@ func _ready() -> void:
 		locomotion = null  # bodies keep the bind pose; the match still plays
 		push_warning("PES locomotion unavailable")
 	_build_players()
+	_broadcast = PesBroadcastCamera.new()
+	if _broadcast.load(library, sim.field_half_width()) != OK:
+		get_tree().quit(1)
+		return
+	_broadcast.reset(sim.ball_position())
 	ball = MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = BALL_RENDER_RADIUS_M
@@ -107,6 +111,8 @@ func _place(delta: float) -> void:
 	if args.has("follow"):
 		var p: Vector3 = players[int(args["follow"])].global_position
 		_camera.look_at_from_position(p + FOLLOW_OFFSET, p + Vector3.UP * FOLLOW_TARGET_HEIGHT_M)
+	elif _broadcast != null:
+		_broadcast.update(_camera, sim.ball_position(), delta)
 
 
 # One PES face per GF slot, in folder order: real/<team><NN>.
@@ -181,7 +187,5 @@ func _build_environment() -> void:
 	ground.mesh = plane
 	add_child(ground)
 	_camera = Camera3D.new()
-	_camera.fov = CAMERA_FOV_DEG
 	add_child(_camera)
-	_camera.look_at_from_position(CAMERA_POSITION, Vector3.ZERO)
 	_camera.current = true

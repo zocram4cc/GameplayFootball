@@ -42,6 +42,9 @@ set_tests_properties(godot_match_scene_test PROPERTIES SKIP_RETURN_CODE 77 TIMEO
 add_test(NAME godot_locomotion_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_locomotion.gd)
 set_tests_properties(godot_locomotion_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_test(NAME godot_camera_test
+  COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_camera.gd)
+set_tests_properties(godot_camera_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
 add_test(NAME godot_animation_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.
@@ -71,3 +74,7 @@ gtest_discover_tests(pes_marking_test)
 add_executable(pes_locomotion_test pes_locomotion_test.cpp)
 target_link_libraries(pes_locomotion_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_locomotion_test)
+
+add_executable(pes_camera_test pes_camera_test.cpp)
+target_link_libraries(pes_camera_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_camera_test)

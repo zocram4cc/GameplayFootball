@@ -43,6 +43,8 @@ Error PesLibrary::open(const String& root) {
   if (handSequences_) handPoses_ = pesrig::LoadHandPoses(vfs_, handSequences_->poses, &err);
   if (!handPoses_) UtilityFunctions::push_warning("PES21 hand rig unavailable, hands stay at rest: ", ToGd(err));
   if (exe) speedClasses_ = pes::SpeedClassLimits(*exe);
+  if (exe) cameraParams_ = pes::LoadDynamicWide(*exe, vfs_, &err);
+  if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);
   if (glyphs && nameFont) markingFonts_ = MarkingFonts{std::move(*glyphs), std::move(*nameFont)};

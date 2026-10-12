@@ -4,6 +4,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include "data/matchdata.hpp"
+#include "gametypes.hpp"
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchsetup.hpp"
 #include "onthepitch/player/player.hpp"
@@ -38,6 +39,7 @@ void GfMatch::_bind_methods() {
   ClassDB::bind_method(D_METHOD("ball_position"), &GfMatch::ball_position);
   ClassDB::bind_method(D_METHOD("match_time_ms"), &GfMatch::match_time_ms);
   ClassDB::bind_method(D_METHOD("score", "team"), &GfMatch::score);
+  ClassDB::bind_method(D_METHOD("field_half_width"), &GfMatch::field_half_width);
 }
 
 Error GfMatch::start(const Ref<PesLibrary>& library, const String& db_sql, const String& anims_dir, int home,
@@ -108,5 +110,7 @@ int GfMatch::player_database_id(int i) const {
 Vector3 GfMatch::ball_position() const { return match_ ? ToFox(match_->GetBall()->Predict(0)) : Vector3(); }
 int GfMatch::match_time_ms() const { return match_ ? int(match_->GetMatchTime_ms()) : 0; }
 int GfMatch::score(int team) const { return match_ && (team == 0 || team == 1) ? match_->GetScore(team) : 0; }
+
+double GfMatch::field_half_width() const { return pitchHalfH + lineHalfW; }
 
 }  // namespace godot

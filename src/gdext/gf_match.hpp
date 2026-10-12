@@ -38,6 +38,7 @@ class GfMatch : public RefCounted {
   Vector3 ball_position() const;
   int match_time_ms() const;
   int score(int team) const;
+  double field_half_width() const;  // to the touchline's outer edge (PES FieldInfo +0x08)
 
  protected:
   static void _bind_methods();
