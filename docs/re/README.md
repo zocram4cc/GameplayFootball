@@ -22,6 +22,7 @@ address given.
 |`pes-re-markings.md`|numbers, names, captain armband, badges, GK and referee kits|
 |`pes-re-collision.md`|`.frig` format (incl. the hand unit map), ball/player capsules, contact data|
 |`pes-re-face.md`|real-face and edit-face heads, `face_diff.bin`|
+|`pes-re-camera-target.md`|Dynamic Wide camera internals: focus and its lead, target.y lift, the k spring, clamp blend, the zoom/height sliders, mode ids|
 |`pes-re-stadium-camera.md`|nested stadium cpks, pitch dimensions, crowd, the in-play camera|
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
