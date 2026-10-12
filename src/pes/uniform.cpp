@@ -3,6 +3,7 @@
 // checked field by field against the kit struct of the running game.
 #include "pes/uniform.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -29,6 +30,12 @@ enum SleeveLimits { ROUTE_SHORT_A_LONG_B = 0, ROUTE_BOTH_B = 1, ROUTE_BOTH_A = 2
 
 template <typename T>
 T Load(const uint8_t* p) { T v; std::memcpy(&v, p, sizeof v); return v; }
+
+std::string Numbered(const char* format, int n) {
+  char s[96];
+  std::snprintf(s, sizeof s, format, n);
+  return s;
+}
 
 SleeveCode DecodeSleeve(int code) {
   SleeveCode c{code / SLEEVE_CODE_TYPE_DIVISOR, code % SLEEVE_CODE_TYPE_DIVISOR};
@@ -155,7 +162,7 @@ std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLo
       loose(numbered("pants", kit.shortsModel)),
       loose(numbered("collar", look.longSleeves ? kit.winterCollar : kit.collar)),
       loose((look.shirtTailOut ? "shirt_out" : "shirt_in") + tight),
-      loose(SleeveModelName(sleeve, look.glove, false, kit.tight)),
+      loose(SleeveModelName(sleeve, look.gloveId != 0, false, kit.tight)),
       common(SOCKS[look.socks & 3]),
       common(THIGHS[look.socks & 3]),
       common(kit.tight ? "pants_out_sub_tight" : sleeve.type == INNER ? "pants_out_inner_sub" : "pants_out_sub"),
@@ -165,12 +172,40 @@ std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLo
       common("mouth"),
   };
   if (!look.shirtTailOut) parts.push_back(common("pants_in_sub"));
-  // FUN_141a8d530: half sleeves bare a half arm, gloves a gloved one. arm_cap
-  // is skipped under a long or inner sleeve.
-  const std::string arm = sleeve.type == HALF ? "arm_half" : look.glove ? "arm_glove" : "arm";
-  parts.push_back(common(arm));
-  if (sleeve.type != LONG && sleeve.type != INNER) parts.push_back(common(look.glove ? "arm_glove_cap" : "arm_cap"));
+  // FUN_141a8d530: no bare arm at all under a worn long or inner sleeve (by type,
+  // even when the sleeve model is missing); otherwise half sleeves bare a half
+  // arm and gloves a gloved one.
+  if (sleeve.type != LONG && sleeve.type != INNER) {
+    parts.push_back(common(sleeve.type == HALF ? "arm_half" : look.gloveId ? "arm_glove" : "arm"));
+    parts.push_back(common(look.gloveId ? "arm_glove_cap" : "arm_cap"));
+  }
   return parts;
 }
+
+std::string ArmSkinPath(int skin) { return Numbered("Asset/model/character/common/sourceimages/#windx11/arm_%d_bsm.ftex", skin); }
+std::string ThighSkinPath(int skin) { return Numbered("Asset/model/character/common/sourceimages/#windx11/thigh_%d_bsm.ftex", skin); }
+
+std::optional<BootsList> ParseBootsList(std::span<const uint8_t> blob, std::string* error) {
+  constexpr size_t PAIR_BYTES = 8;
+  if (blob.size() % PAIR_BYTES != 0) {
+    *error = "BootsList: size is not whole {playerId, bootsId} pairs";
+    return std::nullopt;
+  }
+  BootsList list(blob.size() / PAIR_BYTES);
+  for (size_t i = 0; i < list.size(); ++i)
+    list[i] = {Load<uint32_t>(&blob[PAIR_BYTES * i]), Load<uint32_t>(&blob[PAIR_BYTES * i + 4])};
+  return list;
+}
+
+int ResolveBootsId(int appearanceBootsId, int playerId, const BootsList& list) {
+  if (appearanceBootsId != 0) return appearanceBootsId;
+  // Sorted by player id, binary-searched like FUN_1414e03c0.
+  auto it = std::lower_bound(list.begin(), list.end(), uint32_t(playerId),
+                             [](const auto& pair, uint32_t id) { return pair.first < id; });
+  return it != list.end() && it->first == uint32_t(playerId) ? int(it->second) : kBootsListDefaultId;
+}
+
+std::string BootsPackPath(int bootsId) { return Numbered("Asset/model/character/boots/k%04d/#Win/boots.fpk", bootsId); }
+std::string GlovePackPath(int gloveId) { return Numbered("Asset/model/character/glove/g%04d/#Win/glove.fpk", gloveId); }
 
 }  // namespace pes

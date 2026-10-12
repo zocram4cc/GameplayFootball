@@ -246,7 +246,10 @@ TEST(SelectUniformParts, LongSleevesUseTheLongSlotAndWinterCollar) {
   auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
   EXPECT_TRUE(has(NOCLOTH + "sleeve_long_003.fmdl"));
   EXPECT_TRUE(has(NOCLOTH + "collar_045.fmdl"));
-  EXPECT_FALSE(has("fpk:common/arm_cap.fmdl"));  // arm_cap is skipped under long sleeves
+  // The arm slot is skipped by sleeve type, not by file existence (pes-kit-assembly.md 8.9).
+  EXPECT_FALSE(has("fpk:common/arm_cap.fmdl"));
+  EXPECT_FALSE(has("fpk:common/arm.fmdl"));
+  EXPECT_TRUE(has("fpk:common/hand_l.fmdl"));
 }
 
 TEST(SelectUniformParts, TailInWearsShirtInOverTheInnerShorts) {
@@ -311,10 +314,57 @@ TEST(UniformInstall, EverySelectedPartExists) {
     for (bool tailOut : {false, true})
       for (bool glove : {false, true})
         for (int socks = 0; socks < 4; ++socks) {
-          pes::PlayerLook look{longSleeves, socks, tailOut, glove};
+          pes::PlayerLook look{longSleeves, socks, tailOut, glove ? 1 : 0};
           for (const auto& part : pes::SelectUniformParts(*kit, look))
             EXPECT_TRUE(part.inCommonPackage ? inPack(part.path) : vfs.Exists(part.path))
                 << part.path << " long=" << longSleeves << " out=" << tailOut << " glove=" << glove
                 << " socks=" << socks;
         }
+}
+
+TEST(SkinTone, PicksTheMatchingArmAndThighTextures) {
+  EXPECT_EQ(pes::ArmSkinPath(1), "Asset/model/character/common/sourceimages/#windx11/arm_1_bsm.ftex");
+  EXPECT_EQ(pes::ThighSkinPath(6), "Asset/model/character/common/sourceimages/#windx11/thigh_6_bsm.ftex");
+}
+
+// FUN_1414e03c0: a boots id of 0 means "look the player up in BootsList.bin",
+// whose default is 62 when the player is absent.
+TEST(Boots, ZeroIdFallsBackToTheListThenItsDefault) {
+  std::vector<uint8_t> blob;
+  Put<uint32_t>(blob, 0, 100);   // player 100 -> boots 7011
+  Put<uint32_t>(blob, 4, 7011);
+  Put<uint32_t>(blob, 8, 200);   // player 200 -> boots 1386
+  Put<uint32_t>(blob, 12, 1386);
+  std::string err;
+  auto list = pes::ParseBootsList(blob, &err);
+  ASSERT_TRUE(list) << err;
+  EXPECT_EQ(pes::ResolveBootsId(1052, 100, *list), 1052);  // the appearance id wins
+  EXPECT_EQ(pes::ResolveBootsId(0, 200, *list), 1386);
+  EXPECT_EQ(pes::ResolveBootsId(0, 300, *list), pes::kBootsListDefaultId);
+  EXPECT_EQ(pes::BootsPackPath(62), "Asset/model/character/boots/k0062/#Win/boots.fpk");
+  EXPECT_EQ(pes::GlovePackPath(1), "Asset/model/character/glove/g0001/#Win/glove.fpk");
+}
+
+TEST(Boots, RejectsAListThatIsNotWholePairs) {
+  std::vector<uint8_t> blob(12, 0);
+  std::string err;
+  EXPECT_FALSE(pes::ParseBootsList(blob, &err));
+}
+
+// Live: 76711 and 75403 (boots id 0, not listed) wear k0062.
+TEST(UniformInstall, BootsListResolvesUnlistedPlayersToTheDefaultPack) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  pes::PesVfs vfs;
+  std::string err;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto blob = vfs.Read(pes::kBootsListPath, &err);
+  ASSERT_TRUE(blob) << err;
+  auto list = pes::ParseBootsList(*blob, &err);
+  ASSERT_TRUE(list) << err;
+  for (int player : {76711, 75403}) {
+    const int id = pes::ResolveBootsId(0, player, *list);
+    EXPECT_EQ(id, 62) << player;
+    EXPECT_TRUE(vfs.Exists(pes::BootsPackPath(id))) << player;
+  }
 }

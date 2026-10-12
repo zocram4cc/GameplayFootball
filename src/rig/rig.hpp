@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "pes/skl.hpp"
 #include "pes/types.hpp"
 
 namespace pes { class PesVfs; }
@@ -35,5 +36,11 @@ std::optional<Rig> BuildRig(pes::PesVfs& vfs, std::string* error);
 // Joint ID for a PES bone name; falls back to the nearest render-bind joint
 // when the name is unknown and renderPos is given.
 std::optional<int> ResolveBone(const Rig& rig, std::string_view pesBone, const Vec3* renderPos);
+
+// Which of PES's two skeletons a part pack's own .skl was authored on: its
+// bones sit at the rig's render positions or at its anim positions. A part
+// authored on the anim pose needs no render -> anim alignment.
+enum class PartPose { Render, Anim, Unknown };
+PartPose ClassifyPartPose(const Rig& rig, const std::vector<pes::SklBone>& partSkeleton);
 
 }  // namespace pesrig

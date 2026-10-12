@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
+#include "pes/fpk.hpp"
+#include "pes/skl.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 
@@ -11,6 +14,11 @@ namespace {
 
 // The rig is built from the user's own PES install; without one there is
 // nothing to test against.
+pes::PesVfs& SharedVfs() {
+  static pes::PesVfs vfs;
+  return vfs;
+}
+
 const pesrig::Rig* SharedRig() {
   static std::optional<pesrig::Rig> rig;
   static bool tried = false;
@@ -18,7 +26,7 @@ const pesrig::Rig* SharedRig() {
     tried = true;
     const char* root = std::getenv("PES21_ROOT");
     if (!root) return nullptr;
-    static pes::PesVfs vfs;
+    pes::PesVfs& vfs = SharedVfs();
     std::string err;
     if (!vfs.Mount(root, &err)) ADD_FAILURE() << err;
     rig = pesrig::BuildRig(vfs, &err);
@@ -114,4 +122,55 @@ TEST(PesRig, ResolveBone) {
   EXPECT_FALSE(id("unknown_bone").has_value());
   const pes::Vec3 nearHead{0, 1.75f, 0.05f};
   EXPECT_EQ(rig->bones[*pesrig::ResolveBone(*rig, "unknown_bone", &nearHead)].gfName, "head");
+}
+
+namespace {
+std::vector<pes::SklBone> PackSkeleton(const std::string& fpkPath, const std::string& member) {
+  std::string err;
+  auto blob = SharedVfs().Read(fpkPath, &err);
+  EXPECT_TRUE(blob) << err;
+  if (!blob) return {};
+  auto fpk = pes::FpkArchive::Parse(*blob, &err);
+  for (const auto& e : fpk->entries)
+    if (e.path.ends_with(member)) return *pes::ParseSkl(std::span(*blob).subspan(e.offset, e.size), &err);
+  ADD_FAILURE() << "no " << member << " in " << fpkPath;
+  return {};
+}
+}  // namespace
+
+// A part pack's own .skl says which of PES's two skeletons it was authored on:
+// boots on the anim T-pose (feet straight down), face packs on the render pose.
+TEST(PesRig, PartSkeletonNamesThePoseItWasAuthoredOn) {
+  REQUIRE_RIG();
+  EXPECT_EQ(pesrig::ClassifyPartPose(*rig, PackSkeleton("Asset/model/character/boots/k0062/#Win/boots.fpk", "boots.skl")),
+            pesrig::PartPose::Anim);
+  EXPECT_EQ(pesrig::ClassifyPartPose(*rig, PackSkeleton("Asset/model/character/#Win/common_package.fpk", "/body.skl")),
+            pesrig::PartPose::Render);
+  EXPECT_EQ(pesrig::ClassifyPartPose(*rig, PackSkeleton("Asset/model/character/#Win/common_package.fpk", "/common/face.skl")),
+            pesrig::PartPose::Render);
+}
+
+// Every boots pack ships a boots.skl, and each one is authored on one of the two
+// PES skeletons, never neither. Both occur: most on the render pose, some
+// (k0062 among them) on the anim pose, so the pose must be read per pack.
+TEST(PesRig, EveryBootsPackIsAuthoredOnOneOfTheTwoSkeletons) {
+  REQUIRE_RIG();
+  int render = 0, anim = 0;
+  for (const std::string& path : SharedVfs().List("Asset/model/character/boots/"))
+    if (path.ends_with("/#Win/boots.fpk")) {
+      const pesrig::PartPose pose = pesrig::ClassifyPartPose(*rig, PackSkeleton(path, "boots.skl"));
+      EXPECT_NE(pose, pesrig::PartPose::Unknown) << path;
+      (pose == pesrig::PartPose::Render ? render : anim) += pose != pesrig::PartPose::Unknown;
+    }
+  EXPECT_GT(render, 0);
+  EXPECT_GT(anim, 0);
+  std::printf("boots packs: %d render pose, %d anim pose\n", render, anim);
+}
+
+TEST(PesRig, PartSkeletonOnNeitherPoseIsUnknown) {
+  REQUIRE_RIG();
+  pes::SklBone foot;
+  foot.name = "sk_foot_l";
+  foot.matrix = {1, 0, 0, 0.5f, 0, 1, 0, 0.5f, 0, 0, 1, 0.5f};  // nowhere near either ankle
+  EXPECT_EQ(pesrig::ClassifyPartPose(*rig, {foot}), pesrig::PartPose::Unknown);
 }

@@ -53,7 +53,9 @@ struct PlayerLook {
   bool longSleeves = false;
   int socks = 0;  // 0 middle, 1 long, 2 short, 3 no guard
   bool shirtTailOut = true;
-  bool glove = false;
+  int gloveId = 0;  // glove/g%04d, 0 = none
+  int bootsId = 0;  // boots/k%04d, 0 = look the player up in BootsList.bin
+  int skin = 1;     // 1..6, arm_N_bsm / thigh_N_bsm
 };
 
 // One body part model: a loose fmdl in the VFS, or a member of
@@ -71,5 +73,21 @@ std::string SleeveModelName(SleeveCode code, bool glove, bool cap, bool tight);
 // its arm/thigh table), in no particular order. Face pack, gloves and boots are
 // chosen elsewhere.
 std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLook& look);
+
+// Skin textures the engine binds to arm_mat / thigh_mat (FUN_1419112b0).
+std::string ArmSkinPath(int skin);
+std::string ThighSkinPath(int skin);
+
+// BootsList.bin: sorted {u32 playerId, u32 bootsId} pairs, no header.
+inline constexpr const char* kBootsListPath = "common/character0/model/character/boots/BootsList.bin";
+// The list's default for an unlisted player, read live (list object +0x18) and
+// also the hard-coded result when the list is not loaded (FUN_1414e03c0).
+inline constexpr int kBootsListDefaultId = 62;
+using BootsList = std::vector<std::pair<uint32_t, uint32_t>>;
+std::optional<BootsList> ParseBootsList(std::span<const uint8_t> blob, std::string* error);
+// The appearance's boots id, or the player's BootsList entry when it is 0.
+int ResolveBootsId(int appearanceBootsId, int playerId, const BootsList& list);
+std::string BootsPackPath(int bootsId);
+std::string GlovePackPath(int gloveId);
 
 }  // namespace pes

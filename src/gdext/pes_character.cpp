@@ -17,6 +17,7 @@
 #include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
 #include "pes/pack_rules.hpp"
+#include "pes/skl.hpp"
 #include "pes/uniform.hpp"
 
 namespace godot {
@@ -36,10 +37,6 @@ constexpr const char* ARM_MATERIAL = "arm_mat";
 constexpr const char* KIT_TEXTURE_DIR = "Asset/model/character/uniform/texture/#windx11/";
 constexpr const char* FACE_ARM_SKIN = "arm_bsm.ftex";  // a face folder's own arm skin
 constexpr const char* THIGH_MATERIAL = "thigh_mat";
-// Skin tone 1, as bound live for 76711 (pes-kit-assembly.md 7.2). ponytail: the
-// appearance field that picks the tone is not decoded yet; tone 1 for everyone.
-constexpr const char* ARM_SKIN = "Asset/model/character/common/sourceimages/#windx11/arm_1_bsm.ftex";
-constexpr const char* THIGH_SKIN = "Asset/model/character/common/sourceimages/#windx11/thigh_1_bsm.ftex";
 constexpr const char* SOCKS_MATERIAL = "uni_socks";
 constexpr const char* TEXTURE_EXT = ".ftex";
 constexpr const char* KIT_SRM_SUFFIX = "_srm.ftex";
@@ -79,8 +76,8 @@ class Build {
 
  private:
   void Begin();
-  bool AddFacePack();
-  void AddModel(std::span<const uint8_t> blob, const std::string& entryPath);
+  bool AddPack(const std::string& packPath);
+  void AddModel(std::span<const uint8_t> blob, const std::string& entryPath, const Ref<Skin>& skin);
   Node3D* Finish();
   const Texture* LoadTexture(const pes::FmdlTexture& t);
   const Texture* LoadTexturePath(const std::string& path);
@@ -97,10 +94,11 @@ class Build {
   std::unordered_map<std::string, std::optional<Texture>> textures_;  // by VFS path
   std::unordered_map<std::string, std::string> resolved_;             // fmdl reference -> VFS path
   int unresolved_ = 0;
-  std::string kitAtlasPath_, armSkinPath_;  // Player mode overrides
+  std::string kitAtlasPath_, armSkinPath_, thighSkinPath_;  // Player mode overrides
   Node3D* root_ = nullptr;
   Skeleton3D* skeleton_ = nullptr;
-  Ref<Skin> skin_;
+  Ref<Skin> skin_;      // parts authored on the render pose (body.skl): aligned by W
+  Ref<Skin> animSkin_;  // parts authored on the anim pose (some boots.skl): no alignment
   int kept_ = 0, dropped_ = 0, unbound_ = 0;
 };
 
@@ -177,7 +175,7 @@ Ref<StandardMaterial3D> Build::MakeMaterial(const pes::Fmdl& m, int index, bool 
   if (mode_ == Mode::Player && fm.name.starts_with(UNIFORM_MATERIAL_PREFIX)) return MakeUniformMaterial(mat, fm.name);
   std::string skin;
   if (mode_ == Mode::Player && fm.name.starts_with(ARM_MATERIAL)) skin = armSkinPath_;
-  else if (mode_ == Mode::Player && fm.name.starts_with(THIGH_MATERIAL)) skin = THIGH_SKIN;
+  else if (mode_ == Mode::Player && fm.name.starts_with(THIGH_MATERIAL)) skin = thighSkinPath_;
   if (!skin.empty())
     if (const Texture* tex = LoadTexturePath(skin)) mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
   for (const auto& [role, texIndex] : fm.textures) {
@@ -305,6 +303,7 @@ void Build::Begin() {
   skeleton_->set_name("Skeleton");
   root_->add_child(skeleton_);
   skin_.instantiate();
+  animSkin_.instantiate();
   for (size_t i = 0; i < rig_.bones.size(); ++i) {
     const auto& b = rig_.bones[i];
     const int id = skeleton_->add_bone(ToGd(b.gfName));
@@ -314,29 +313,41 @@ void Build::Begin() {
     const Quaternion w(b.align.x, b.align.y, b.align.z, b.align.w);
     const Vector3 render(b.renderGlobalPos.x, b.renderGlobalPos.y, b.renderGlobalPos.z);
     skin_->add_bind(id, Transform3D(Basis(w.inverse()), render).affine_inverse());
+    const Vector3 anim(b.animGlobalPos.x, b.animGlobalPos.y, b.animGlobalPos.z);
+    animSkin_->add_bind(id, Transform3D(Basis(), anim).affine_inverse());
   }
   skeleton_->reset_bone_poses();
 }
 
-bool Build::AddFacePack() {
-  const std::string packPath = pes::FacePackPath(faceId_);
+bool Build::AddPack(const std::string& packPath) {
   std::string err;
   auto pack = vfs_.Read(packPath, &err);
   if (!pack) {
-    UtilityFunctions::push_error("PES face pack missing: ", ToGd(packPath));
+    UtilityFunctions::push_error("PES pack missing: ", ToGd(packPath));
     return false;
   }
   auto fpk = pes::FpkArchive::Parse(*pack, &err);
   if (!fpk) {
-    UtilityFunctions::push_error("PES face pack unreadable: ", ToGd(packPath), " (", ToGd(err), ")");
+    UtilityFunctions::push_error("PES pack unreadable: ", ToGd(packPath), " (", ToGd(err), ")");
     return false;
   }
+  // A pack that ships its own skeleton says which PES skeleton its meshes were
+  // authored on (boots: 883 render pose, 65 anim pose in this install).
+  Ref<Skin> skin = skin_;
   for (const auto& entry : fpk->entries)
-    if (EndsWith(Lower(entry.path), ".fmdl")) AddModel(std::span(*pack).subspan(entry.offset, entry.size), entry.path);
+    if (EndsWith(Lower(entry.path), ".skl")) {
+      auto skl = pes::ParseSkl(std::span(*pack).subspan(entry.offset, entry.size), &err);
+      const pesrig::PartPose pose = skl ? pesrig::ClassifyPartPose(rig_, *skl) : pesrig::PartPose::Unknown;
+      if (pose == pesrig::PartPose::Anim) skin = animSkin_;
+      if (pose == pesrig::PartPose::Unknown)
+        UtilityFunctions::push_warning("PES pack skeleton on neither pose, bound as render pose: ", ToGd(packPath));
+    }
+  for (const auto& entry : fpk->entries)
+    if (EndsWith(Lower(entry.path), ".fmdl")) AddModel(std::span(*pack).subspan(entry.offset, entry.size), entry.path, skin);
   return true;
 }
 
-void Build::AddModel(std::span<const uint8_t> blob, const std::string& entryPath) {
+void Build::AddModel(std::span<const uint8_t> blob, const std::string& entryPath, const Ref<Skin>& skin) {
   std::string err;
   auto model = pes::ParseFmdl(blob, &err);
   if (!model) {
@@ -386,7 +397,7 @@ void Build::AddModel(std::span<const uint8_t> blob, const std::string& entryPath
     mi3d->set_name(ToGd("mesh_" + part + "_" + std::to_string(mi)));
     mi3d->set_meta("part", ToGd(part));
     mi3d->set_mesh(am);
-    mi3d->set_skin(skin_);
+    mi3d->set_skin(skin);
     skeleton_->add_child(mi3d);
     mi3d->set_skeleton_path(NodePath(".."));
     UtilityFunctions::print("  keep ", ToGd(label), ": ", int64_t(mesh.pos.size()), " vertices");
@@ -402,7 +413,7 @@ Node3D* Build::Finish() {
 
 Node3D* Build::RunFace() {
   Begin();
-  if (!AddFacePack()) {
+  if (!AddPack(pes::FacePackPath(faceId_))) {
     memdelete(root_);
     return nullptr;
   }
@@ -424,8 +435,16 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
     return nullptr;
   }
   kitAtlasPath_ = std::string(KIT_TEXTURE_DIR) + kit->kitFile + TEXTURE_EXT;
+  // ponytail: the 4cc placeholder appearance for everyone until the EDIT save
+  // is read (pes-kit-assembly.md 8.1).
+  const pes::PlayerLook look;
   const std::string faceArm = pes::FaceTextureDir(faceId_) + FACE_ARM_SKIN;
-  armSkinPath_ = vfs_.Exists(faceArm) ? faceArm : ARM_SKIN;
+  armSkinPath_ = vfs_.Exists(faceArm) ? faceArm : pes::ArmSkinPath(look.skin);
+  thighSkinPath_ = pes::ThighSkinPath(look.skin);
+  auto bootsBlob = vfs_.Read(pes::kBootsListPath, &err);
+  auto bootsList = bootsBlob ? pes::ParseBootsList(*bootsBlob, &err) : std::nullopt;
+  // 4cc players' ids equal their face ids (pes-kit-assembly.md 7.1).
+  const int bootsId = pes::ResolveBootsId(look.bootsId, faceId_, bootsList ? *bootsList : pes::BootsList{});
 
   auto common = vfs_.Read(pes::kCommonPackagePath, &err);
   auto commonFpk = common ? pes::FpkArchive::Parse(*common, &err) : std::nullopt;
@@ -434,11 +453,11 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
     return nullptr;
   }
   Begin();
-  if (!AddFacePack()) {
+  if (!AddPack(pes::FacePackPath(faceId_))) {
     memdelete(root_);
     return nullptr;
   }
-  for (const auto& part : pes::SelectUniformParts(*kit, pes::PlayerLook{})) {
+  for (const auto& part : pes::SelectUniformParts(*kit, look)) {
     if (part.inCommonPackage) {
       auto it = std::find_if(commonFpk->entries.begin(), commonFpk->entries.end(),
                              [&](const pes::FpkEntry& e) { return e.path.ends_with("/" + part.path); });
@@ -446,13 +465,20 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
         UtilityFunctions::push_warning("PES part missing from common package: ", ToGd(part.path));
         continue;
       }
-      AddModel(std::span(*common).subspan(it->offset, it->size), it->path);
+      AddModel(std::span(*common).subspan(it->offset, it->size), it->path, skin_);
     } else if (auto blob = vfs_.Read(part.path, &err)) {
-      AddModel(*blob, part.path);
+      AddModel(*blob, part.path, skin_);
     } else {
-      UtilityFunctions::push_warning("PES part missing: ", ToGd(part.path));
+      // PES leaves the slot empty when a part file is missing (8.9).
+      UtilityFunctions::print("  empty slot, no file: ", ToGd(part.path));
     }
   }
+  // A missing boots or glove folder leaves the slot empty (pes-kit-assembly.md 8.4).
+  for (const std::string& pack : {pes::BootsPackPath(bootsId), look.gloveId ? pes::GlovePackPath(look.gloveId) : ""})
+    if (!pack.empty()) {
+      if (vfs_.Exists(pack)) AddPack(pack);
+      else UtilityFunctions::print("  empty slot, no pack: ", ToGd(pack));
+    }
   return Finish();
 }
 

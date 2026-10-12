@@ -251,4 +251,26 @@ std::optional<int> ResolveBone(const Rig& rig, std::string_view pesBone, const V
   return best;
 }
 
+PartPose ClassifyPartPose(const Rig& rig, const std::vector<pes::SklBone>& partSkeleton) {
+  // Face packs agree with body.skl to 4e-5 m, boots with the .ask to 1e-7 m
+  // (docs/re/pes-re-face.md, measured here); the poses differ by centimetres.
+  constexpr float SAME_POSE_TOLERANCE_M = 1e-3f;
+  auto near = [](const Vec3& a, const Vec3& b) {
+    return std::abs(a.x - b.x) < SAME_POSE_TOLERANCE_M && std::abs(a.y - b.y) < SAME_POSE_TOLERANCE_M &&
+           std::abs(a.z - b.z) < SAME_POSE_TOLERANCE_M;
+  };
+  // Only joints named exactly: collapsed helpers (dsk_toe -> ankle) sit elsewhere.
+  bool render = true, anim = true, compared = false;
+  for (const auto& sb : partSkeleton)
+    for (const auto& b : rig.bones)
+      if (b.pesBone == sb.name) {
+        compared = true;
+        render = render && near(sb.Position(), b.renderGlobalPos);
+        anim = anim && near(sb.Position(), b.animGlobalPos);
+      }
+  if (!compared) return PartPose::Unknown;
+  // Where the poses coincide (trunk), both hold and the alignment is identity anyway.
+  return render ? PartPose::Render : anim ? PartPose::Anim : PartPose::Unknown;
+}
+
 }  // namespace pesrig
