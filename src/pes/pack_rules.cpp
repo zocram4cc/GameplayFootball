@@ -34,6 +34,7 @@ bool EndsWith(const std::string& s, const std::string& tail) {
 }  // namespace
 
 std::string FacePackPath(int faceId) { return FACE_DIR + std::to_string(faceId) + FACE_PACK_FILE; }
+std::string FaceTextureDir(int faceId) { return FACE_DIR + std::to_string(faceId) + FACE_TEXTURE_DIR; }
 
 std::string TextureStem(const std::string& file) {
   const size_t slash = file.find_last_of("/\\");
@@ -77,7 +78,7 @@ std::string TextureResolver::Resolve(const FmdlTexture& texture) {
                           TEXTURE_PLATFORM_DIR + stem + TEXTURE_EXT;
     if (vfs_.Exists(p)) return p;
   }
-  const std::string local = FACE_DIR + std::to_string(faceId_) + FACE_TEXTURE_DIR + stem + TEXTURE_EXT;
+  const std::string local = FaceTextureDir(faceId_) + stem + TEXTURE_EXT;
   if (vfs_.Exists(local)) return local;
   if (characterFiles_.empty()) characterFiles_ = vfs_.List(CHARACTER_ROOT);
   const std::string want = Lower(stem);

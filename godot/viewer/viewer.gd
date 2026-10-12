@@ -1,6 +1,9 @@
 extends Node3D
 ## Shows one PES 2021 character from the user's install, optionally animated.
-## Args after `--`: --pes21-root DIR --face ID [--clip NAME|0xHASH] [--in-place]
+## Args after `--`: --pes21-root DIR --face ID [--team ID [--kit N]] [--clip NAME|0xHASH] [--in-place]
+##   [--hide PART,...]
+## With --team the player is assembled as PES does (kit N, 0 = 1st); without it,
+## the face pack alone.
 
 const CAMERA_POSITION := Vector3(0.0, 1.0, 3.2)  # metres; in front of a character facing +Z (Fox forward)
 const CAMERA_TARGET := Vector3(0.0, 1.0, 0.0)    # about chest height of a 1.8 m player
@@ -25,12 +28,21 @@ func _ready() -> void:
 	if library.open(args["pes21-root"]) != OK:
 		get_tree().quit(1)
 		return
-	character = PesCharacterBuilder.new().build_face_model(library, int(args["face"]))
+	var builder := PesCharacterBuilder.new()
+	if args.has("team"):
+		character = builder.build_player(library, int(args["team"]), int(args.get("kit", "0")), int(args["face"]))
+	else:
+		character = builder.build_face_model(library, int(args["face"]))
 	if character == null:
 		get_tree().quit(1)
 		return
 	add_child(character)
 	skeleton = character.get_node("Skeleton")
+	if args.has("hide"):  # inspection: drop parts by model stem, e.g. --hide socks_middle,arm
+		var hidden: PackedStringArray = args["hide"].split(",")
+		for m in skeleton.get_children():
+			if m is MeshInstance3D and str(m.get_meta("part", "")) in hidden:
+				m.visible = false
 	in_place = args.has("in-place")
 	if args.has("clip"):
 		animation = PesAnimation.new()

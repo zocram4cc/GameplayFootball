@@ -16,6 +16,7 @@ namespace pes {
 inline constexpr int HIDER_MAX_ALPHA = 8;
 
 std::string FacePackPath(int faceId);
+std::string FaceTextureDir(int faceId);  // the face folder's sourceimages/#windx11/
 std::string TextureStem(const std::string& file);  // file name without directory or extension
 
 // Extra passes PES draws (antiblur, outline shell), matched on whole words.
