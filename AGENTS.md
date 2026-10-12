@@ -51,3 +51,40 @@ A failing test is fixed or deleted with a reason in the commit that noticed it.
 
 Work produced by a subagent is accepted only after its full diff is read and
 the step's verification commands are re-run by the reviewer.
+
+## Strict TDD
+
+No production code without a failing test first. Write the test, run it,
+watch it fail for the expected reason (feature missing, not a typo), then
+write the minimal code that passes, then refactor while green. A test written
+after the code proves nothing: it was never seen to catch anything.
+
+Tests that need a PES install read it from `PES21_ROOT` and `GTEST_SKIP` when
+it is unset; they assert on real decoded data, never on mocks.
+
+## Nothing is done until it is verifiably correct
+
+A task is closed only when it is correct on every axis that applies:
+
+- **functionally**: its tests and verification commands pass, re-run by
+  whoever closes it;
+- **conceptually**: it does what PES does, not a look-alike (two skeletons,
+  per-side file values, shaders as Fox names them);
+- **visually**: anything that draws has a captured frame that was opened and
+  examined. Subjective qualities get some leeway; "it renders at all" does not.
+
+Numeric checks are not visual proof. A rig that passes parity is still open
+until the viewer shows the T-pose. Record what was verified, and what was
+not, in the commit message.
+
+## Plan facts are claims until checked
+
+A fact written in a plan is a hypothesis about the install. Check it against
+the data before building on it, and record the correction in the commit when
+it is wrong (e.g. the CharacterAssets file list, the "full-body" test face,
+GF's transcribed rig tables, which differ from the files by up to 1.9e-3 in W).
+
+## Git identity
+
+Commits use the owner's GitHub identity, passed per command with `git -c
+user.name=... -c user.email=...`. Never run `git config`.
