@@ -111,6 +111,12 @@ std::optional<KitConfig> ParseRealUni(std::span<const uint8_t> r, std::string* e
   k.collar = r[COLLAR];
   k.winterCollar = r[WINTER_COLLAR];
   k.shirtPattern = (Load<uint32_t>(&r[PATTERN_WORD]) >> SHIRT_PATTERN_SHIFT) & SHIRT_PATTERN_MASK;
+  auto bits = [&](size_t word, int lo, int n) { return int((Load<uint32_t>(&r[4 * word]) >> lo) & ((1u << n) - 1)); };
+  k.legNumberH = bits(5, 16, 5), k.legNumberV = bits(5, 21, 5), k.legNumberSize = bits(5, 26, 5), k.legNumberSide = bits(5, 31, 1);
+  k.backNumberY = bits(6, 0, 5), k.backNumberSize = bits(6, 5, 5), k.backNumberSpacing = bits(6, 10, 4);
+  k.chestNumberY = bits(6, 14, 5), k.chestNumberX = bits(6, 19, 5), k.chestNumberSize = bits(6, 24, 5);
+  k.backNumberType = bits(7, 2, 1), k.nameY = bits(7, 3, 6), k.nameSize = bits(7, 9, 5), k.nameShape = bits(7, 14, 3);
+  k.nameStretch = bits(9, 8, 2);
   k.kitFile = FileName(r, KIT_FILE);
   k.backNumbersFile = FileName(r, BACK_NUMBERS_FILE);
   k.chestNumbersFile = FileName(r, CHEST_NUMBERS_FILE);
@@ -207,5 +213,51 @@ int ResolveBootsId(int appearanceBootsId, int playerId, const BootsList& list) {
 
 std::string BootsPackPath(int bootsId) { return Numbered("Asset/model/character/boots/k%04d/#Win/boots.fpk", bootsId); }
 std::string GlovePackPath(int gloveId) { return Numbered("Asset/model/character/glove/g%04d/#Win/glove.fpk", gloveId); }
+
+// Converters: every config int maps linearly, lo + v*(hi-lo)/N (realUni
+// parser FUN_141ea3190 -> FUN_141e58c80 / 8d90 / 594a0 / 59150 / 59240), then
+// the shader vectors of FUN_1419a44f0 (back), 4bf0 (chest), 5000 (leg) and
+// 4d20 (name). Formulas and live checks: pes-kit-assembly.md 8.7.
+namespace {
+float Back(int v) { return 1.2f - v * 1.2f / 29.0f; }  // BackNumberY
+float ChestX(int v) { return 0.4f + v * 0.207f / 29.0f; }
+float ChestY(int v) { return 1.0f - (0.22f + v * 0.24f / 29.0f); }
+float NumberSize(int v) { return 0.6f + v * 1.2f / 28.0f; }  // chest and leg
+float LegH(int v, int side) { return side == 0 ? 0.96f - v * 0.19f / 29.0f : 0.04f + v * 0.19f / 29.0f; }
+float LegV(int v) { return 1.0f - (0.1f + v * 0.14f / 29.0f); }
+float NameY(int v) { return 1.0f - (0.95f - v * 0.37f / 39.0f); }
+float NameSizeF(int v) { return 0.9f + v * 1.5f / 20.0f; }
+float NameStretchF(int v) { return 0.5f + (v ? v : 3) * 0.5f / 3.0f; }  // 0 means 3
+constexpr float NAME_CURVATURE[] = {0.0f, -0.002f, -0.016f, -0.019f};  // FUN_1419a4e30, by NameShape
+constexpr float MARKING_UNIT = 16.0f;     // shader scale numerator
+constexpr float ZERO_SIZE_SCALE = 1e-4f;  // FUN_1419a4bf0 guard for size 0
+constexpr float NAME_SPACE_UNITS = 512.0f;
+}  // namespace
+
+Vec4 BackNumberScale(const KitConfig& k) {
+  const float size = k.backNumberSize / 28.0f, y = Back(k.backNumberY);
+  const float s = 12.0f * size - 20.0f, offset = -(0.27557f - 0.1f * y) * s;
+  return {0.5f * s, s, offset, offset};
+}
+
+Vec4 ChestNumberScale(const KitConfig& k) {
+  const float size = NumberSize(k.chestNumberSize);
+  const float s = size != 0 ? MARKING_UNIT / size : ZERO_SIZE_SCALE;
+  return {s, s, 0.5f - s * ChestX(k.chestNumberX), 0.5f - s * ChestY(k.chestNumberY)};
+}
+
+Vec4 LegNumberScale(const KitConfig& k) {
+  const float x = LegH(k.legNumberH, k.legNumberSide), y = LegV(k.legNumberV);
+  const float size = x > 0.5f ? -NumberSize(k.legNumberSize) : NumberSize(k.legNumberSize);  // right leg mirrors
+  const float s = MARKING_UNIT / size;
+  return {s, s, 0.5f - s * x, 0.5f - s * y};
+}
+
+Vec4 NameScale(const KitConfig& k, float glyphWidthSum) {
+  const float sy = MARKING_UNIT / NameSizeF(k.nameSize);
+  const float off = 0.5f - sy * (NameY(k.nameY) + NAME_CURVATURE[k.nameShape & 3]);
+  const float w = std::min(1.0f, glyphWidthSum / 2.0f / NAME_SPACE_UNITS);
+  return {w > 0 ? 4.0f / (w * NameStretchF(k.nameStretch)) : 0.0f, sy, off, off};
+}
 
 }  // namespace pes

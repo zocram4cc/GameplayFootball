@@ -7,6 +7,8 @@
 #include <string_view>
 #include <vector>
 
+#include "pes/types.hpp"
+
 namespace pes {
 
 // Where PES takes every kit config from (the kit loader FUN_141ea3190 looks the
@@ -38,8 +40,21 @@ struct KitConfig {
   bool tight = false;
   int shirtPattern = 0;
   std::string kitFile, backNumbersFile, chestNumbersFile, legNumbersFile, nameFontFile;
+  // Number/name placement, raw config ints (pes-kit-assembly.md 1, 8.7).
+  int backNumberY = 0, backNumberSize = 0, backNumberSpacing = 0, backNumberType = 0;
+  int chestNumberX = 0, chestNumberY = 0, chestNumberSize = 0;
+  int legNumberH = 0, legNumberV = 0, legNumberSize = 0, legNumberSide = 0;
+  int nameY = 0, nameSize = 0, nameShape = 0, nameStretch = 0;
 };
 std::optional<KitConfig> ParseRealUni(std::span<const uint8_t> record, std::string* error);
+
+// Shader vectors that place the markings on the garment (UV0 affine maps),
+// from FUN_1419a44f0 / 4bf0 / 5000 / 4d20 after the realUni converters.
+Vec4 BackNumberScale(const KitConfig& kit);
+Vec4 ChestNumberScale(const KitConfig& kit);
+Vec4 LegNumberScale(const KitConfig& kit);
+// glyphWidthSum: the name's glyph widths in glyph-table pixels.
+Vec4 NameScale(const KitConfig& kit, float glyphWidthSum);
 
 // FUN_141ea2400 with real=1. kitIndex 0 = 1st .. 8 = 9th. The competition tag is
 // always _DEF_: ponytail: FUN_1414bda30's other tags (_LB_, _JL_ ...) belong to

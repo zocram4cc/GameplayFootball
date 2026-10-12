@@ -368,3 +368,86 @@ TEST(UniformInstall, BootsListResolvesUnlistedPlayersToTheDefaultPack) {
     EXPECT_TRUE(vfs.Exists(pes::BootsPackPath(id))) << player;
   }
 }
+
+// Number/name placement on the garment (pes-kit-assembly.md 8.7). Oracles are
+// the shader vectors read from live players' materials mid-match.
+namespace {
+void ExpectVec(const pes::Vec4& got, float x, float y, float z, float w, const char* what) {
+  constexpr float LIVE_READ_TOLERANCE = 2e-3f;  // live values were printed to 4-5 digits
+  EXPECT_NEAR(got.x, x, LIVE_READ_TOLERANCE) << what;
+  EXPECT_NEAR(got.y, y, LIVE_READ_TOLERANCE) << what;
+  EXPECT_NEAR(got.z, z, LIVE_READ_TOLERANCE) << what;
+  EXPECT_NEAR(got.w, w, LIVE_READ_TOLERANCE) << what;
+}
+}  // namespace
+
+TEST(MarkingPlacement, BackNumberMatchesLiveKits) {
+  pes::KitConfig k;
+  k.backNumberSize = 21, k.backNumberY = 21;  // team 752
+  ExpectVec(pes::BackNumberScale(k), -5.5f, -11.f, 2.6672f, 2.6672f, "752");
+  k.backNumberSize = 24, k.backNumberY = 21;  // team 754 2nd
+  ExpectVec(pes::BackNumberScale(k), -4.8571f, -9.7143f, 2.3554f, 2.3554f, "754 2nd");
+  k.backNumberSize = 26, k.backNumberY = 20;  // team 754 GK
+  ExpectVec(pes::BackNumberScale(k), -4.4286f, -8.8571f, 2.1109f, 2.1109f, "754 GK");
+}
+
+TEST(MarkingPlacement, ChestNumberMatchesLiveKits) {
+  pes::KitConfig k;
+  k.chestNumberSize = 0, k.chestNumberX = 0, k.chestNumberY = 3;
+  ExpectVec(pes::ChestNumberScale(k), 26.667f, 26.667f, -10.167f, -19.638f, "Y 3");
+  k.chestNumberY = 2;
+  EXPECT_NEAR(pes::ChestNumberScale(k).w, -19.859f, 2e-3f);
+}
+
+TEST(MarkingPlacement, LegNumberMatchesLiveKits) {
+  pes::KitConfig k;
+  k.legNumberSide = 0, k.legNumberH = 4, k.legNumberV = 15, k.legNumberSize = 10;  // 754 2nd
+  ExpectVec(pes::LegNumberScale(k), -15.556f, -15.556f, 15.026f, 13.374f, "754 2nd");
+  k.legNumberH = 5, k.legNumberV = 19, k.legNumberSize = 11;  // 752
+  ExpectVec(pes::LegNumberScale(k), -14.933f, -14.933f, 14.347f, 12.570f, "752");
+}
+
+TEST(MarkingPlacement, NameMatchesLiveKits) {
+  pes::KitConfig k;
+  k.nameY = 31, k.nameSize = 14, k.nameShape = 1;  // 752
+  pes::Vec4 v = pes::NameScale(k, 0);
+  EXPECT_NEAR(v.y, 8.2051f, 2e-3f);
+  EXPECT_NEAR(v.z, -2.307f, 2e-3f);
+  k.nameY = 32, k.nameSize = 7, k.nameShape = 0;  // 754
+  v = pes::NameScale(k, 0);
+  EXPECT_NEAR(v.y, 11.228f, 2e-3f);
+  EXPECT_NEAR(v.z, -3.470f, 2e-3f);
+}
+
+// The realUni bits behind those fields (pes-kit-assembly.md 1, 8.7; the game
+// reads d5 16-20 as the horizontal leg position, the reverse of sider).
+TEST(RealUni, DecodesMarkingFields) {
+  auto r = RealUni(0, false);
+  const uint32_t d5 = (4u << 16) | (15u << 21) | (10u << 26) | (1u << 31);
+  const uint32_t d6 = (21u << 0) | (21u << 5) | (7u << 10) | (3u << 14) | (5u << 19) | (9u << 24);
+  const uint32_t d7 = (1u << 2) | (31u << 3) | (14u << 9) | (1u << 14);
+  const uint32_t d9 = (6u << 5) | (2u << 8);
+  std::memcpy(&r[20], &d5, 4);
+  std::memcpy(&r[24], &d6, 4);
+  std::memcpy(&r[28], &d7, 4);
+  std::memcpy(&r[36], &d9, 4);
+  std::string err;
+  auto k = pes::ParseRealUni(r, &err);
+  ASSERT_TRUE(k) << err;
+  EXPECT_EQ(k->legNumberH, 4);
+  EXPECT_EQ(k->legNumberV, 15);
+  EXPECT_EQ(k->legNumberSize, 10);
+  EXPECT_EQ(k->legNumberSide, 1);
+  EXPECT_EQ(k->backNumberY, 21);
+  EXPECT_EQ(k->backNumberSize, 21);
+  EXPECT_EQ(k->backNumberSpacing, 7);
+  EXPECT_EQ(k->chestNumberY, 3);
+  EXPECT_EQ(k->chestNumberX, 5);
+  EXPECT_EQ(k->chestNumberSize, 9);
+  EXPECT_EQ(k->backNumberType, 1);
+  EXPECT_EQ(k->nameY, 31);
+  EXPECT_EQ(k->nameSize, 14);
+  EXPECT_EQ(k->nameShape, 1);
+  EXPECT_EQ(k->nameStretch, 2);
+  EXPECT_EQ(k->shirtPattern, 6);
+}
