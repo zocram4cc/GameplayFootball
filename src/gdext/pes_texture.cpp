@@ -105,10 +105,22 @@ std::vector<Ref<Image>> LoadPesImages(const pes::PesVfs& vfs, const std::string&
   // Godot wants a full chain down to 1x1 or none at all; layered textures share
   // one chain length across layers.
   const int fullChain = int(std::floor(std::log2(std::max(ftex->width, ftex->height)))) + 1;
-  int mips = ftex->mipCount == fullChain ? fullChain : 1;
+  // PES often stores the chain down to ~4 texels only (shirts_normal: 10 of 12
+  // levels). Missing tail levels are completed below; without mipmaps the
+  // normal arrays alias into moire.
+  int mips = ftex->mipCount > 1 ? fullChain : 1;
   std::vector<std::vector<uint8_t>> data(images);
-  for (int i = 0; i < images; ++i)
+  for (int i = 0; i < images; ++i) {
+    std::vector<uint8_t> lastLevel;  // the previous level, decoded
     for (int m = 0, w = ftex->width, h = ftex->height; m < mips; ++m, w = std::max(1, w / 2), h = std::max(1, h / 2)) {
+      if (m >= ftex->mipCount) {
+        // Below the stored chain: repeat the start of the last level as decoded.
+        // For block formats these levels are one block each, sampled only at a
+        // few pixels' size. ponytail: not a true box filter.
+        const size_t n = MipBytes(f, w, h);
+        for (size_t k = 0; k < n; ++k) data[i].push_back(lastLevel[k % lastLevel.size()]);
+        continue;
+      }
       std::vector<uint8_t> mip = ftex->mips[size_t(i) * ftex->mipCount + m];
       if (ftex->pixelFormat == PF_R10G10B10A2 || ftex->pixelFormat == PF_R11G11B10F) mip = ExpandPacked(ftex->pixelFormat, mip);
       if (mip.size() != MipBytes(f, w, h)) {
@@ -120,7 +132,9 @@ std::vector<Ref<Image>> LoadPesImages(const pes::PesVfs& vfs, const std::string&
       if (ftex->pixelFormat == PF_RGBA8)
         for (size_t k = 0; k + 3 < mip.size(); k += 4) std::swap(mip[k], mip[k + 2]);  // stored BGRA
       data[i].insert(data[i].end(), mip.begin(), mip.end());
+      lastLevel = std::move(mip);
     }
+  }
   std::vector<Ref<Image>> out;
   for (auto& d : data) {
     d.resize(mips > 1 ? d.size() : MipBytes(f, ftex->width, ftex->height));

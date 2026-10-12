@@ -33,7 +33,7 @@ struct FmdlMesh {
   std::vector<int> boneGroup;  // local joint index -> fmdl bone index
   std::vector<Vec3> pos, nrm;
   std::vector<Vec4> tan;
-  std::vector<Vec2> uv0;
+  std::vector<Vec2> uv0, uv1;  // uv1: uniform wrinkle/weave space
   std::vector<std::array<uint16_t, 4>> joints;  // indices into boneGroup
   std::vector<Vec4> weights;
   std::vector<uint32_t> indices;  // LOD 0 only

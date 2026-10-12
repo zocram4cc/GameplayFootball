@@ -52,18 +52,29 @@ func _init() -> void:
 		check(parts.has(p), "part %s is built" % p)
 	check(not parts.has("pants_in_sub"), "no inner shorts under a shirt worn out")
 
+	# Uniform parts draw with PES's uniform shader (pes-re-shaders.md 3.1/3.2):
+	# kit atlas on UV0, fabric weave (uni_pattern array) and wrinkle normals on UV1.
 	var uniform_surfaces := 0
 	for m in meshes:
 		var mat: Material = m.mesh.surface_get_material(0)
-		if mat.resource_name.begins_with(UNIFORM_MATERIAL_PREFIX):
-			uniform_surfaces += 1
-			var albedo: Texture2D = (mat as StandardMaterial3D).albedo_texture
-			check(albedo != null and albedo.resource_name == KIT_ATLAS,
-					"%s (%s) wears the kit atlas" % [m.name, mat.resource_name])
+		if not mat.resource_name.begins_with(UNIFORM_MATERIAL_PREFIX):
+			continue
+		uniform_surfaces += 1
+		check(mat is ShaderMaterial, "%s (%s) uses the uniform shader" % [m.name, mat.resource_name])
+		if not mat is ShaderMaterial:
+			continue
+		var kit: Texture2D = mat.get_shader_parameter("kit_atlas")
+		check(kit != null and kit.resource_name == KIT_ATLAS, "%s (%s) wears the kit atlas" % [m.name, mat.resource_name])
+		var weave = mat.get_shader_parameter("pattern")
+		check(weave is Texture2DArray, "%s (%s) has the weave array" % [m.name, mat.resource_name])
+		var uv2: PackedVector2Array = m.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV2]
+		check(uv2.size() == m.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size(), "%s carries UV1 as UV2" % m.name)
 	check(uniform_surfaces > 0, "uniform materials present")
 
 	for m in meshes:
-		var mat: StandardMaterial3D = m.mesh.surface_get_material(0)
+		var mat: Material = m.mesh.surface_get_material(0)
+		if not mat is StandardMaterial3D:
+			continue
 		for prefix in SKIN_BY_MATERIAL:
 			if mat.resource_name.begins_with(prefix):
 				check(mat.albedo_texture != null and mat.albedo_texture.resource_name.get_file() == SKIN_BY_MATERIAL[prefix],

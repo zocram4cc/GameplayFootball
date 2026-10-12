@@ -3,6 +3,9 @@
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/resource_loader.hpp>
+#include <godot_cpp/classes/shader.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/classes/skin.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -38,11 +41,11 @@ constexpr const char* KIT_TEXTURE_DIR = "Asset/model/character/uniform/texture/#
 constexpr const char* FACE_ARM_SKIN = "arm_bsm.ftex";  // a face folder's own arm skin
 constexpr const char* THIGH_MATERIAL = "thigh_mat";
 constexpr const char* SOCKS_MATERIAL = "uni_socks";
+constexpr const char* PANTS_MATERIAL_PREFIX = "uni_pants";
+constexpr const char* COMMON_TEXTURE_DIR = "Asset/model/character/common/sourceimages/#windx11/";
+constexpr const char* UNIFORM_SHADER = "res://shaders/pes_uniform.gdshader";
 constexpr const char* TEXTURE_EXT = ".ftex";
 constexpr const char* KIT_SRM_SUFFIX = "_srm.ftex";
-// Shirt, collar, sleeve and pants shaders draw an opaque kit at 85% of its
-// texel colour; socks at full (pes-re-shaders.md 3.1, 3.2 / section 7).
-constexpr float kOpaqueKitAlbedoScale = 0.85f;
 constexpr int MAX_INFLUENCES = 4;  // PES and Godot both skin with four
 
 std::string Lower(std::string s) {
@@ -54,7 +57,7 @@ bool EndsWith(const std::string& s, const std::string& tail) {
   return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0;
 }
 
-struct Texture {
+struct CachedTexture {
   Ref<ImageTexture> gpu;
   Ref<Image> rgba;  // decompressed copy, for alpha rules
   bool hasAlpha = false;
@@ -79,11 +82,11 @@ class Build {
   bool AddPack(const std::string& packPath);
   void AddModel(std::span<const uint8_t> blob, const std::string& entryPath, const Ref<Skin>& skin);
   Node3D* Finish();
-  const Texture* LoadTexture(const pes::FmdlTexture& t);
-  const Texture* LoadTexturePath(const std::string& path);
-  Ref<StandardMaterial3D> MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot);
-  Ref<StandardMaterial3D> MakeUniformMaterial(Ref<StandardMaterial3D> mat, const std::string& name);
-  bool FacesSampleOpaque(const pes::FmdlMesh& mesh, const Texture& tex) const;
+  const CachedTexture* LoadTexture(const pes::FmdlTexture& t);
+  const CachedTexture* LoadTexturePath(const std::string& path);
+  Ref<Material> MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot);
+  Ref<Material> MakeUniformMaterial(const pes::Fmdl& m, const pes::FmdlMaterial& fm);
+  bool FacesSampleOpaque(const pes::FmdlMesh& mesh, const CachedTexture& tex) const;
   Ref<ArrayMesh> MakeMesh(const pes::FmdlMesh& mesh, const std::vector<int>& jointOfBone, int* unbound);
 
   const pes::PesVfs& vfs_;
@@ -92,10 +95,12 @@ class Build {
   int faceId_;
   Mode mode_;
   pes::TextureResolver resolver_;
-  std::unordered_map<std::string, std::optional<Texture>> textures_;  // by VFS path
+  std::unordered_map<std::string, std::optional<CachedTexture>> textures_;  // by VFS path
   std::unordered_map<std::string, std::string> resolved_;             // fmdl reference -> VFS path
   int unresolved_ = 0;
   std::string kitAtlasPath_, armSkinPath_, thighSkinPath_;  // Player mode overrides
+  int kitPattern_ = 0;
+  std::unordered_map<std::string, Ref<Texture>> layered_;  // shader textures by VFS path
   Node3D* root_ = nullptr;
   Skeleton3D* skeleton_ = nullptr;
   Ref<Skin> skin_;      // parts authored on the render pose (body.skl): aligned by W
@@ -103,7 +108,7 @@ class Build {
   int kept_ = 0, dropped_ = 0, unbound_ = 0;
 };
 
-const Texture* Build::LoadTexture(const pes::FmdlTexture& t) {
+const CachedTexture* Build::LoadTexture(const pes::FmdlTexture& t) {
   const std::string key = Lower(t.directory + t.filename);
   auto it = resolved_.find(key);
   if (it == resolved_.end()) {
@@ -117,7 +122,7 @@ const Texture* Build::LoadTexture(const pes::FmdlTexture& t) {
 }
 
 // Cached by VFS path; the GPU texture is named after it.
-const Texture* Build::LoadTexturePath(const std::string& path) {
+const CachedTexture* Build::LoadTexturePath(const std::string& path) {
   auto it = textures_.find(path);
   if (it != textures_.end()) return it->second ? &*it->second : nullptr;
   auto& slot = textures_[path];
@@ -128,7 +133,7 @@ const Texture* Build::LoadTexturePath(const std::string& path) {
     ++unresolved_;
     return nullptr;
   }
-  Texture tex;
+  CachedTexture tex;
   tex.gpu = ImageTexture::create_from_image(img);
   tex.gpu->set_name(ToGd(path));
   tex.rgba = Image::create_from_data(img->get_width(), img->get_height(), img->has_mipmaps(), img->get_format(),
@@ -144,7 +149,7 @@ const Texture* Build::LoadTexturePath(const std::string& path) {
 }
 
 // Face-centroid UVs decide, as in GF's mesh_faces_sample_opaque.
-bool Build::FacesSampleOpaque(const pes::FmdlMesh& mesh, const Texture& tex) const {
+bool Build::FacesSampleOpaque(const pes::FmdlMesh& mesh, const CachedTexture& tex) const {
   if (mesh.uv0.size() != mesh.pos.size()) return true;
   const int w = tex.rgba->get_width(), h = tex.rgba->get_height();
   const PackedByteArray px = tex.rgba->get_data();
@@ -157,7 +162,7 @@ bool Build::FacesSampleOpaque(const pes::FmdlMesh& mesh, const Texture& tex) con
   return false;
 }
 
-Ref<StandardMaterial3D> Build::MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot) {
+Ref<Material> Build::MakeMaterial(const pes::Fmdl& m, int index, bool kitSlot) {
   Ref<StandardMaterial3D> mat;
   mat.instantiate();
   if (index < 0 || index >= int(m.materials.size())) return mat;
@@ -173,12 +178,12 @@ Ref<StandardMaterial3D> Build::MakeMaterial(const pes::Fmdl& m, int index, bool 
   // time (the fmdl carries only Pattern_Tex_LIN), and a face folder's arm_bsm
   // replaces the arm skin. Arm and thigh fmdls carry a dummy Base or none; the
   // engine binds the skin, opaque (arm_mat.001 on hand_r is the same material).
-  if (mode_ == Mode::Player && fm.name.starts_with(UNIFORM_MATERIAL_PREFIX)) return MakeUniformMaterial(mat, fm.name);
+  if (mode_ == Mode::Player && fm.name.starts_with(UNIFORM_MATERIAL_PREFIX)) return MakeUniformMaterial(m, fm);
   std::string skin;
   if (mode_ == Mode::Player && fm.name.starts_with(ARM_MATERIAL)) skin = armSkinPath_;
   else if (mode_ == Mode::Player && fm.name.starts_with(THIGH_MATERIAL)) skin = thighSkinPath_;
   if (!skin.empty())
-    if (const Texture* tex = LoadTexturePath(skin)) mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
+    if (const CachedTexture* tex = LoadTexturePath(skin)) mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
   for (const auto& [role, texIndex] : fm.textures) {
     if (texIndex < 0 || texIndex >= int(m.textures.size())) continue;
     const std::string stem = Lower(TextureStem(m.textures[texIndex].filename));
@@ -187,7 +192,7 @@ Ref<StandardMaterial3D> Build::MakeMaterial(const pes::Fmdl& m, int index, bool 
     const bool normal = role.find("NormalMap") != std::string::npos || EndsWith(stem, "_nrm");
     const bool spec = role.find("SpecularMap") != std::string::npos || EndsWith(stem, "_srm");
     if (!base && !normal && !spec) continue;
-    const Texture* tex = LoadTexture(m.textures[texIndex]);
+    const CachedTexture* tex = LoadTexture(m.textures[texIndex]);
     if (!tex) continue;
     if (base) {
       mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
@@ -212,15 +217,58 @@ Ref<StandardMaterial3D> Build::MakeMaterial(const pes::Fmdl& m, int index, bool 
 // transparency), the kit's _srm when it has one. ponytail: wrinkle normals and
 // the weave are Texture2DArrays the ftex reader does not decode yet; until it
 // does, cloth shades flat.
-Ref<StandardMaterial3D> Build::MakeUniformMaterial(Ref<StandardMaterial3D> mat, const std::string& name) {
-  if (const Texture* tex = LoadTexturePath(kitAtlasPath_)) mat->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, tex->gpu);
-  if (name != SOCKS_MATERIAL) mat->set_albedo(Color(kOpaqueKitAlbedoScale, kOpaqueKitAlbedoScale, kOpaqueKitAlbedoScale));
-  const std::string srm = kitAtlasPath_.substr(0, kitAtlasPath_.size() - std::strlen(TEXTURE_EXT)) + KIT_SRM_SUFFIX;
-  if (vfs_.Exists(srm))
-    if (const Texture* tex = LoadTexturePath(srm)) {
-      mat->set_texture(BaseMaterial3D::TEXTURE_ROUGHNESS, tex->gpu);
-      mat->set_roughness_texture_channel(BaseMaterial3D::TEXTURE_CHANNEL_GREEN);
+// PES's uniform shader (godot/shaders/pes_uniform.gdshader). Parameters start
+// from the fmdl's own values; RepetitionParam.z is the kit's ShirtPattern, as
+// the engine writes it (FUN_141a874a0, docs/re/pes-re-uniform-params.md 3).
+// ponytail: Repetition.xy for shirts (live 25/50 from a still-unlocated data
+// table), pants/socks .z and BlendNormalX are the fmdl defaults until the
+// runtime rules are documented.
+Ref<Material> Build::MakeUniformMaterial(const pes::Fmdl& m, const pes::FmdlMaterial& fm) {
+  Ref<Shader> shader = ResourceLoader::get_singleton()->load(UNIFORM_SHADER);  // cached by the loader
+  Ref<ShaderMaterial> mat;
+  mat.instantiate();
+  mat->set_name(ToGd(fm.name));
+  mat->set_shader(shader);
+  auto gpu = [&](const std::string& path) -> Ref<Texture> {
+    if (path.empty() || !vfs_.Exists(path)) return {};
+    auto it = layered_.find(path);
+    if (it == layered_.end()) {
+      std::string err;
+      Ref<Texture> t = LoadPesTexture(vfs_, path, &err);
+      if (t.is_valid()) t->set_name(ToGd(path));
+      it = layered_.emplace(path, t).first;
     }
+    return it->second;
+  };
+  auto param = [&](const char* name, Vector4 fallback) {
+    for (const auto& [k, v] : fm.params)
+      if (k == name) return Vector4(v.x, v.y, v.z, v.w);
+    return fallback;
+  };
+  const bool socks = fm.name == SOCKS_MATERIAL;
+  mat->set_shader_parameter("is_socks", socks);
+  mat->set_shader_parameter("kit_atlas", gpu(kitAtlasPath_));
+  const std::string srm = kitAtlasPath_.substr(0, kitAtlasPath_.size() - std::strlen(TEXTURE_EXT)) + KIT_SRM_SUFFIX;
+  if (Ref<Texture> t = gpu(srm); t.is_valid()) {
+    mat->set_shader_parameter("kit_srm", t);
+    mat->set_shader_parameter("has_kit_srm", true);
+  }
+  mat->set_shader_parameter("pattern", gpu(std::string(COMMON_TEXTURE_DIR) + "uni_pattern.ftex"));
+  Vector4 repetition = param("RepetitionParam", Vector4());
+  if (!socks && fm.name.rfind(PANTS_MATERIAL_PREFIX, 0) != 0) repetition.z = float(kitPattern_);
+  mat->set_shader_parameter("repetition", repetition);
+  mat->set_shader_parameter("blend_normal_x", param("BlendNormalXParam", Vector4()));
+  // Normal arrays: the fmdl names one (pants, socks); shirts get shirts_normal
+  // from the engine (pes-re-shaders.md 3.1).
+  std::string normal;
+  for (const auto& [role, ti] : fm.textures)
+    if (role.find("NormalMap") != std::string::npos && ti >= 0 && ti < int(m.textures.size()))
+      normal = std::string(COMMON_TEXTURE_DIR) + Lower(TextureStem(m.textures[ti].filename)) + TEXTURE_EXT;
+  if (normal.empty() && !socks) normal = std::string(COMMON_TEXTURE_DIR) + "shirts_normal.ftex";
+  if (Ref<Texture> t = gpu(normal); t.is_valid()) {
+    if (socks) mat->set_shader_parameter("socks_normal", t);
+    else mat->set_shader_parameter("wrinkles", t), mat->set_shader_parameter("has_wrinkles", true);
+  }
   return mat;
 }
 
@@ -279,6 +327,11 @@ Ref<ArrayMesh> Build::MakeMesh(const pes::FmdlMesh& mesh, const std::vector<int>
     uv.resize(n);
     for (int64_t i = 0; i < n; ++i) uv.set(i, Vector2(mesh.uv0[i].x, mesh.uv0[i].y));
   }
+  PackedVector2Array uv2;  // PES UV1: uniform weave and wrinkle space
+  if (mesh.uv1.size() == size_t(n)) {
+    uv2.resize(n);
+    for (int64_t i = 0; i < n; ++i) uv2.set(i, Vector2(mesh.uv1[i].x, mesh.uv1[i].y));
+  }
   // Fox and Godot agree on front-face winding; indices pass through as stored.
   indices.resize(int64_t(mesh.indices.size()));
   for (size_t k = 0; k < mesh.indices.size(); ++k) indices.set(int64_t(k), int32_t(mesh.indices[k]));
@@ -288,6 +341,7 @@ Ref<ArrayMesh> Build::MakeMesh(const pes::FmdlMesh& mesh, const std::vector<int>
   if (!nrm.is_empty()) arrays[Mesh::ARRAY_NORMAL] = nrm;
   if (!tan.is_empty()) arrays[Mesh::ARRAY_TANGENT] = tan;
   if (!uv.is_empty()) arrays[Mesh::ARRAY_TEX_UV] = uv;
+  if (!uv2.is_empty()) arrays[Mesh::ARRAY_TEX_UV2] = uv2;
   arrays[Mesh::ARRAY_BONES] = bones;
   arrays[Mesh::ARRAY_WEIGHTS] = weights;
   arrays[Mesh::ARRAY_INDEX] = indices;
@@ -361,7 +415,7 @@ void Build::AddModel(std::span<const uint8_t> blob, const std::string& entryPath
     auto id = pesrig::ResolveBone(rig_, bone.name, &bone.worldPos);
     jointOfBone.push_back(id ? *id : -1);
   }
-  std::unordered_map<int, Ref<StandardMaterial3D>> materials;
+  std::unordered_map<int, Ref<Material>> materials;
   for (size_t mi = 0; mi < model->meshes.size(); ++mi) {
     const auto& mesh = model->meshes[mi];
     const pes::FmdlMaterial* fm =
@@ -379,7 +433,7 @@ void Build::AddModel(std::span<const uint8_t> blob, const std::string& entryPath
     if (pes::IsNonRenderPass(fm ? fm->name : "", baseStem)) reason = "non-render pass";
     else if (mode_ == Mode::FaceOnly && pes::IsEffectTexture(baseStem)) reason = "effect texture";
     else if (mode_ == Mode::FaceOnly && base && !kitSlot) {
-      if (const Texture* tex = LoadTexture(*base)) {
+      if (const CachedTexture* tex = LoadTexture(*base)) {
         if (tex->maxAlpha <= pes::HIDER_MAX_ALPHA) reason = "kit hider (transparent texture)";
         else if (pes::IsPlaceholderTexture(baseStem) && !FacesSampleOpaque(mesh, *tex))
           reason = "unresolved swap mesh (no opaque face)";
@@ -436,6 +490,7 @@ Node3D* Build::RunPlayer(int teamId, int kitIndex) {
     return nullptr;
   }
   kitAtlasPath_ = std::string(KIT_TEXTURE_DIR) + kit->kitFile + TEXTURE_EXT;
+  kitPattern_ = kit->shirtPattern;
   // The look the game shows: the EDIT save, else PlayerAppearance.bin. 4cc
   // players' ids equal their face ids (pes-kit-assembly.md 7.1).
   auto appearance = appearances_.find(uint32_t(faceId_));

@@ -31,7 +31,7 @@ constexpr size_t STRING_INFO_BYTES = 8, BUFFER_OFFSET_BYTES = 16;
 constexpr size_t VEC4_BYTES = 16;
 
 // Vertex attribute types.
-enum Attr : uint8_t { POSITION = 0, BONE_WEIGHTS = 1, NORMAL = 2, BONE_INDICES = 7, UV0 = 8, TANGENT = 0xE };
+enum Attr : uint8_t { POSITION = 0, BONE_WEIGHTS = 1, NORMAL = 2, BONE_INDICES = 7, UV0 = 8, UV1 = 9, TANGENT = 0xE };
 constexpr float UNORM8_MAX = 255.0f;
 constexpr uint8_t INDEX_BUFFER = 2;  // buffer-offset slot holding the u16 triangle list
 
@@ -180,6 +180,7 @@ std::optional<Fmdl> ParseFmdl(std::span<const uint8_t> blob, std::string* error)
             case NORMAL: mesh.nrm.push_back({h(0), h(1), h(2)}); break;
             case TANGENT: mesh.tan.push_back({h(0), h(1), h(2), h(3)}); break;
             case UV0: mesh.uv0.push_back({h(0), h(1)}); break;
+            case UV1: mesh.uv1.push_back({h(0), h(1)}); break;
             case BONE_WEIGHTS:
               mesh.weights.push_back({u8(0) / UNORM8_MAX, u8(1) / UNORM8_MAX, u8(2) / UNORM8_MAX, u8(3) / UNORM8_MAX});
               break;

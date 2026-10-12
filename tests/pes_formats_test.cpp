@@ -375,3 +375,19 @@ TEST(VfsInstall, SeesInsideNestedCpksBelowDownloadOverrides) {
   ASSERT_TRUE(size);
   EXPECT_NE(*size, NESTED_ORIGINAL_BYTES);
 }
+
+// Uniform shaders sample wrinkle normals and the fabric weave on UV1
+// (pes-re-shaders.md 3.1), so every uniform mesh carries a second UV set.
+TEST(FmdlInstall, UniformMeshesCarryUv1) {
+  REQUIRE_INSTALL();
+  std::string err;
+  auto blob = vfs->Read("Asset/model/character/uniform/nocloth/#Win/sleeve_short_001.fmdl", &err);
+  ASSERT_TRUE(blob) << err;
+  auto m = pes::ParseFmdl(*blob, &err);
+  ASSERT_TRUE(m) << err;
+  ASSERT_FALSE(m->meshes.empty());
+  for (const auto& mesh : m->meshes) {
+    ASSERT_EQ(mesh.uv1.size(), mesh.pos.size());
+    EXPECT_NE(mesh.uv1, mesh.uv0) << "UV1 is its own set, not a copy of UV0";
+  }
+}
