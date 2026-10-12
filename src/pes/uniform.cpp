@@ -3,6 +3,7 @@
 // checked field by field against the kit struct of the running game.
 #include "pes/uniform.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 #include "pes/inflate.hpp"
@@ -114,6 +115,62 @@ std::optional<KitConfig> ParseRealUni(std::span<const uint8_t> r, std::string* e
 std::string RealUniName(int teamId, int kitIndex, bool goalkeeper) {
   static constexpr const char* ORDINALS[] = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"};
   return std::to_string(teamId) + "_DEF_" + (goalkeeper ? "GK" : "") + ORDINALS[kitIndex] + "_realUni.bin";
+}
+
+std::string SleeveModelName(SleeveCode code, bool glove, bool cap, bool tight) {
+  static constexpr const char* TYPE_SUFFIX[] = {"_short", "_long", "_half", "_inner"};
+  enum { SHORT = 0, LONG = 1, HALF = 2, INNER = 3 };
+  glove = glove && code.type != SHORT && code.type != HALF;
+  const bool longGlove = code.type == LONG && glove;  // one model, no suffix or number
+  std::string name = code.type == INNER ? "s" : "sleeve";
+  if (!longGlove) name += TYPE_SUFFIX[code.type & 3];
+  if (glove) name += "_glove";
+  if (cap) name += "_cap";
+  if (tight) name += "_tight";
+  if (!longGlove) {
+    char num[8];
+    std::snprintf(num, sizeof num, "_%03d", code.model);
+    name += num;
+  }
+  return name;
+}
+
+std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLook& look) {
+  static const std::string NOCLOTH = "Asset/model/character/uniform/nocloth/#Win/";
+  static constexpr const char* SOCKS[] = {"socks_middle", "socks_long", "socks_short", "socks_noguard"};
+  static constexpr const char* THIGHS[] = {"thigh_middle", "thigh_long", "thigh_short", "thigh_middle"};
+  enum { LONG = 1, HALF = 2, INNER = 3 };
+  auto loose = [](const std::string& name) { return UniformPart{false, NOCLOTH + name + ".fmdl"}; };
+  auto common = [](const std::string& name) { return UniformPart{true, "common/" + name + ".fmdl"}; };
+  auto numbered = [](const char* stem, int n) {
+    char s[32];
+    std::snprintf(s, sizeof s, "%s_%03d", stem, n);
+    return std::string(s);
+  };
+
+  // Long sleeves wear the long slot and the winter collar (FUN_141a89120).
+  const SleeveCode sleeve = look.longSleeves ? kit.longSleeves : kit.shortSleeves;
+  const std::string tight = kit.tight ? "_tight" : "";
+  std::vector<UniformPart> parts = {
+      loose(numbered("pants", kit.shortsModel)),
+      loose(numbered("collar", look.longSleeves ? kit.winterCollar : kit.collar)),
+      loose((look.shirtTailOut ? "shirt_out" : "shirt_in") + tight),
+      loose(SleeveModelName(sleeve, look.glove, false, kit.tight)),
+      common(SOCKS[look.socks & 3]),
+      common(THIGHS[look.socks & 3]),
+      common(kit.tight ? "pants_out_sub_tight" : sleeve.type == INNER ? "pants_out_inner_sub" : "pants_out_sub"),
+      common("hand_l"),
+      common("hand_r"),
+      common("eye_new"),
+      common("mouth"),
+  };
+  if (!look.shirtTailOut) parts.push_back(common("pants_in_sub"));
+  // FUN_141a8d530: half sleeves bare a half arm, gloves a gloved one. arm_cap
+  // is skipped under a long or inner sleeve.
+  const std::string arm = sleeve.type == HALF ? "arm_half" : look.glove ? "arm_glove" : "arm";
+  parts.push_back(common(arm));
+  if (sleeve.type != LONG && sleeve.type != INNER) parts.push_back(common(look.glove ? "arm_glove_cap" : "arm_cap"));
+  return parts;
 }
 
 }  // namespace pes

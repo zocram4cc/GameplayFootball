@@ -46,4 +46,30 @@ std::optional<KitConfig> ParseRealUni(std::span<const uint8_t> record, std::stri
 // licensed leagues absent from this install; add them when one is needed.
 std::string RealUniName(int teamId, int kitIndex, bool goalkeeper);
 
+// Per-player appearance the part choice depends on. Defaults are the record
+// every 4cc player carries in PlayerAppearance.bin (short sleeves, socks 0,
+// shirt out); the real values live in the user's EDIT save.
+struct PlayerLook {
+  bool longSleeves = false;
+  int socks = 0;  // 0 middle, 1 long, 2 short, 3 no guard
+  bool shirtTailOut = true;
+  bool glove = false;
+};
+
+// One body part model: a loose fmdl in the VFS, or a member of
+// common_package.fpk (kCommonPackagePath).
+struct UniformPart {
+  bool inCommonPackage = false;
+  std::string path;
+};
+inline constexpr const char* kCommonPackagePath = "Asset/model/character/#Win/common_package.fpk";
+
+// FUN_1419637c0, without the ".fmdl".
+std::string SleeveModelName(SleeveCode code, bool glove, bool cap, bool tight);
+
+// The uniform and bare-body parts an outfield player wears (FUN_141a89120 and
+// its arm/thigh table), in no particular order. Face pack, gloves and boots are
+// chosen elsewhere.
+std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLook& look);
+
 }  // namespace pes

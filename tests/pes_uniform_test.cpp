@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 #include <zlib.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#include "pes/fpk.hpp"
 #include "pes/uniform.hpp"
 #include "pes/vfs.hpp"
 
@@ -183,4 +185,136 @@ TEST(RealUniName, FollowsTheGamesNameBuilder) {
   EXPECT_EQ(pes::RealUniName(767, 2, false), "767_DEF_3rd_realUni.bin");
   EXPECT_EQ(pes::RealUniName(767, 8, false), "767_DEF_9th_realUni.bin");
   EXPECT_EQ(pes::RealUniName(767, 0, true), "767_DEF_GK1st_realUni.bin");
+}
+
+// FUN_1419637c0: "sleeve" ("s" for type 3) + type suffix unless long + glove,
+// then _glove (never for types 0/2), _cap, _tight, then _%03d unless long + glove.
+TEST(SleeveModelName, FollowsTheGamesNameBuilder) {
+  using pes::SleeveCode;
+  using pes::SleeveModelName;
+  EXPECT_EQ(SleeveModelName({0, 1}, false, false, false), "sleeve_short_001");
+  EXPECT_EQ(SleeveModelName({1, 2}, false, true, true), "sleeve_long_cap_tight_002");
+  EXPECT_EQ(SleeveModelName({3, 1}, true, true, false), "s_inner_glove_cap_001");
+  EXPECT_EQ(SleeveModelName({1, 2}, true, true, true), "sleeve_glove_cap_tight");
+  EXPECT_EQ(SleeveModelName({0, 1}, true, false, false), "sleeve_short_001");  // glove off for short
+  EXPECT_EQ(SleeveModelName({2, 3}, true, false, false), "sleeve_half_003");   // and for half
+}
+
+namespace {
+std::vector<std::string> Paths(const std::vector<pes::UniformPart>& parts) {
+  std::vector<std::string> out;
+  for (const auto& p : parts) out.push_back((p.inCommonPackage ? "fpk:" : "") + p.path);
+  std::sort(out.begin(), out.end());
+  return out;
+}
+pes::KitConfig Kit767() {
+  pes::KitConfig k;
+  k.shortSleeves = {0, 1};
+  k.longSleeves = {1, 3};
+  k.shortsModel = 16;
+  k.collar = 105;
+  k.winterCollar = 45;
+  k.kitFile = "u0767p1";
+  return k;
+}
+const std::string NOCLOTH = "Asset/model/character/uniform/nocloth/#Win/";
+}  // namespace
+
+// Oracle: player 76711's uniform/body draw list read from the running game
+// (team 767 1st kit; short sleeves, socks type 0, shirt tail out).
+TEST(SelectUniformParts, MatchesTheLiveDrawListOf76711) {
+  pes::PlayerLook look;
+  look.longSleeves = false;
+  look.socks = 0;
+  look.shirtTailOut = true;
+  std::vector<std::string> want = {
+      NOCLOTH + "pants_016.fmdl",       NOCLOTH + "collar_105.fmdl",
+      NOCLOTH + "shirt_out.fmdl",       NOCLOTH + "sleeve_short_001.fmdl",
+      "fpk:common/socks_middle.fmdl",   "fpk:common/pants_out_sub.fmdl",
+      "fpk:common/thigh_middle.fmdl",   "fpk:common/arm.fmdl",
+      "fpk:common/arm_cap.fmdl",        "fpk:common/hand_l.fmdl",
+      "fpk:common/hand_r.fmdl",         "fpk:common/eye_new.fmdl",
+      "fpk:common/mouth.fmdl"};
+  std::sort(want.begin(), want.end());
+  EXPECT_EQ(Paths(pes::SelectUniformParts(Kit767(), look)), want);
+}
+
+TEST(SelectUniformParts, LongSleevesUseTheLongSlotAndWinterCollar) {
+  pes::PlayerLook look;
+  look.longSleeves = true;
+  auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+  auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
+  EXPECT_TRUE(has(NOCLOTH + "sleeve_long_003.fmdl"));
+  EXPECT_TRUE(has(NOCLOTH + "collar_045.fmdl"));
+  EXPECT_FALSE(has("fpk:common/arm_cap.fmdl"));  // arm_cap is skipped under long sleeves
+}
+
+TEST(SelectUniformParts, TailInWearsShirtInOverTheInnerShorts) {
+  pes::PlayerLook look;
+  look.shirtTailOut = false;
+  auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+  auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
+  EXPECT_TRUE(has(NOCLOTH + "shirt_in.fmdl"));
+  EXPECT_FALSE(has(NOCLOTH + "shirt_out.fmdl"));
+  EXPECT_TRUE(has("fpk:common/pants_in_sub.fmdl"));
+}
+
+TEST(SelectUniformParts, SocksTypePicksSocksAndThighs) {
+  struct Case { int socks; const char *sock, *thigh; };
+  for (const Case& c : {Case{0, "socks_middle", "thigh_middle"}, Case{1, "socks_long", "thigh_long"},
+                        Case{2, "socks_short", "thigh_short"}, Case{3, "socks_noguard", "thigh_middle"}}) {
+    pes::PlayerLook look;
+    look.socks = c.socks;
+    auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+    auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
+    EXPECT_TRUE(has(std::string("fpk:common/") + c.sock + ".fmdl")) << c.socks;
+    EXPECT_TRUE(has(std::string("fpk:common/") + c.thigh + ".fmdl")) << c.socks;
+  }
+}
+
+TEST(SelectUniformParts, TightKitUsesTightShirtSleeveAndShorts) {
+  auto k = Kit767();
+  k.tight = true;
+  auto p = Paths(pes::SelectUniformParts(k, pes::PlayerLook{}));
+  auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
+  EXPECT_TRUE(has(NOCLOTH + "shirt_out_tight.fmdl"));
+  EXPECT_TRUE(has(NOCLOTH + "sleeve_short_tight_001.fmdl"));
+  EXPECT_TRUE(has("fpk:common/pants_out_sub_tight.fmdl"));
+}
+
+// Every part chosen for a real kit, under every look, exists in this install:
+// loose parts in the VFS, common parts as a common_package.fpk member whose
+// path ends in "/" + part path.
+TEST(UniformInstall, EverySelectedPartExists) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  pes::PesVfs vfs;
+  std::string err;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto blob = vfs.Read(pes::kUniformParameterPath, &err);
+  ASSERT_TRUE(blob) << err;
+  auto t = pes::ParseUniformTable(*blob, &err);
+  ASSERT_TRUE(t) << err;
+  auto kit = pes::ParseRealUni(*t->Find(pes::RealUniName(767, 0, false)), &err);
+  ASSERT_TRUE(kit) << err;
+  auto pack = vfs.Read(pes::kCommonPackagePath, &err);
+  ASSERT_TRUE(pack) << err;
+  auto fpk = pes::FpkArchive::Parse(*pack, &err);
+  ASSERT_TRUE(fpk) << err;
+  auto inPack = [&](const std::string& p) {
+    return std::any_of(fpk->entries.begin(), fpk->entries.end(),
+                       [&](const pes::FpkEntry& e) { return e.path.ends_with("/" + p); });
+  };
+  // Open: tight kits with long model 3 (team 714) name sleeve_long_tight_003,
+  // which no install file provides; PES's handling is not yet known.
+  for (bool longSleeves : {false, true})
+    for (bool tailOut : {false, true})
+      for (bool glove : {false, true})
+        for (int socks = 0; socks < 4; ++socks) {
+          pes::PlayerLook look{longSleeves, socks, tailOut, glove};
+          for (const auto& part : pes::SelectUniformParts(*kit, look))
+            EXPECT_TRUE(part.inCommonPackage ? inPack(part.path) : vfs.Exists(part.path))
+                << part.path << " long=" << longSleeves << " out=" << tailOut << " glove=" << glove
+                << " socks=" << socks;
+        }
 }
