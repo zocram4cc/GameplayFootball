@@ -7,15 +7,21 @@
 //   pesfmt_dump rig --pes21-root DIR
 //   pesfmt_dump fmdl <fpk path> --pes21-root DIR   (every .fmdl inside; summary)
 //   pesfmt_dump ftex <path> --pes21-root DIR
+//   pesfmt_dump gani <name|0xHASH> --pes21-root DIR  (decoded keys of one body clip)
+//   pesfmt_dump names --pes21-root DIR               (recovered body clip names, one per line)
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
+#include "pes/anim_names.hpp"
 #include "pes/ask.hpp"
+#include "pes/clips.hpp"
 #include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
 #include "pes/ftex.hpp"
+#include "pes/gani.hpp"
 #include "pes/skl.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
@@ -156,6 +162,45 @@ int main(int argc, char** argv) {
                   Q4(b.align).c_str());
     }
     std::printf("\n]\n");
+    return 0;
+  }
+  if (cmd == "names") {
+    auto idx = pes::AnimNameIndex::Build(vfs, root, &err);
+    if (!idx) return fail();
+    std::vector<std::string> names;
+    for (const auto& [hash, name] : idx->All()) names.push_back(name);
+    std::sort(names.begin(), names.end());
+    for (const auto& n : names) std::printf("%s\n", n.c_str());
+    return 0;
+  }
+  if (cmd == "gani" && pos.size() == 2) {
+    auto blob = pes::FindBodyClip(vfs, pes::ClipId(pos[1]), &err);
+    if (!blob) return fail();
+    auto g = pes::ParseGani(*blob, &err);
+    if (!g) return fail();
+    std::printf("{\"frameCount\": %u, \"frameScale\": %d, \"units\": [", g->frameCount, g->frameScale);
+    for (size_t u = 0; u < g->units.size(); ++u) {
+      const auto& unit = g->units[u];
+      std::printf("%s\n {\"nameHash\": %u, \"flags\": %u, \"segments\": [", u ? "," : "", unit.nameHash, unit.flags);
+      for (size_t s = 0; s < unit.segments.size(); ++s) {
+        const auto& seg = unit.segments[s];
+        std::printf("%s\n  {\"type\": %u, \"bits\": %u, \"frames\": [", s ? "," : "", seg.type, seg.componentBits);
+        for (size_t k = 0; k < seg.frames.size(); ++k) std::printf("%s%u", k ? ", " : "", seg.frames[k]);
+        std::printf("], \"quats\": [");
+        for (size_t k = 0; k < seg.quats.size(); ++k) std::printf("%s%s", k ? ", " : "", Q4(seg.quats[k]).c_str());
+        std::printf("], \"vecs\": [");
+        const int comps = seg.type == pes::GANI_FLOAT ? 1 : seg.type == pes::GANI_VECTOR2 ? 2 : seg.type == pes::GANI_VECTOR4 ? 4 : 3;
+        for (size_t k = 0; k < seg.vecs.size(); ++k) {
+          const float c[4] = {seg.vecs[k].x, seg.vecs[k].y, seg.vecs[k].z, seg.vecs[k].w};
+          std::printf("%s[", k ? ", " : "");
+          for (int i = 0; i < comps; ++i) std::printf("%s%.9g", i ? ", " : "", c[i]);
+          std::printf("]");
+        }
+        std::printf("]}");
+      }
+      std::printf("]}");
+    }
+    std::printf("\n]}\n");
     return 0;
   }
   if (cmd == "ftex" && pos.size() == 2) {
