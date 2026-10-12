@@ -19,7 +19,15 @@ add_executable(pes_anim_test pes_anim_test.cpp)
 target_link_libraries(pes_anim_test PRIVATE pesrig GTest::gtest_main)
 gtest_discover_tests(pes_anim_test)
 
+add_executable(pes_clip_pose_test pes_clip_pose_test.cpp)
+target_link_libraries(pes_clip_pose_test PRIVATE pesrig GTest::gtest_main)
+gtest_discover_tests(pes_clip_pose_test)
+
 # Godot-side checks run the real extension headless; 77 = skipped (no PES21_ROOT).
 add_test(NAME godot_character_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_character.gd)
-set_tests_properties(godot_character_test PROPERTIES SKIP_RETURN_CODE 77 DEPENDS godotfootball)
+set_tests_properties(godot_character_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_test(NAME godot_animation_test
+  COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
+# A script error in _ready stops before quit(): the timeout turns a hang into a failure.
+set_tests_properties(godot_animation_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

@@ -4,6 +4,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/godot.hpp>
 
+#include "gdext/pes_animation.hpp"
 #include "gdext/pes_character.hpp"
 #include "gdext/pes_library.hpp"
 
@@ -24,6 +25,7 @@ static void initialize_module(ModuleInitializationLevel level) {
   GDREGISTER_CLASS(GFInfo);
   GDREGISTER_CLASS(PesLibrary);
   GDREGISTER_CLASS(PesCharacterBuilder);
+  GDREGISTER_CLASS(PesAnimation);
 }
 
 static void uninitialize_module(ModuleInitializationLevel) {}

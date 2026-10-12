@@ -1,5 +1,5 @@
 extends Node3D
-## Shows one PES 2021 character from the user's install.
+## Shows one PES 2021 character from the user's install, optionally animated.
 ## Args after `--`: --pes21-root DIR --face ID [--clip NAME|0xHASH] [--in-place]
 
 const CAMERA_POSITION := Vector3(0.0, 1.0, 3.2)  # metres; in front of a character facing +Z (Fox forward)
@@ -8,6 +8,10 @@ const CAMERA_FOV_DEG := 40.0                     # frames a T-pose (1.54 m arm s
 const SUN_ROTATION_DEG := Vector3(-50.0, 30.0, 0.0)
 
 var character: Node3D
+var skeleton: Skeleton3D
+var animation: PesAnimation
+var in_place := false
+var clock := 0.0
 
 
 func _ready() -> void:
@@ -26,6 +30,22 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	add_child(character)
+	skeleton = character.get_node("Skeleton")
+	in_place = args.has("in-place")
+	if args.has("clip"):
+		animation = PesAnimation.new()
+		if animation.load(library, args["clip"]) != OK:
+			push_error("clip not found: %s" % args["clip"])
+			get_tree().quit(1)
+			return
+		print("clip ", args["clip"], ": ", animation.length_seconds(), " s")
+
+
+func _process(delta: float) -> void:
+	if animation == null:
+		return
+	clock += delta
+	animation.apply(skeleton, fmod(clock, animation.length_seconds()), in_place)
 
 
 func _parse_args(raw: PackedStringArray) -> Dictionary:

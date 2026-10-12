@@ -9,6 +9,7 @@
 //   pesfmt_dump ftex <path> --pes21-root DIR
 //   pesfmt_dump gani <name|0xHASH> --pes21-root DIR  (decoded keys of one body clip)
 //   pesfmt_dump names --pes21-root DIR               (recovered body clip names, one per line)
+//   pesfmt_dump pose <name|0xHASH> <pesFrame> --pes21-root DIR  (sampled pose on the rig)
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,7 @@
 #include "pes/gani.hpp"
 #include "pes/skl.hpp"
 #include "pes/vfs.hpp"
+#include "rig/clip_pose.hpp"
 #include "rig/rig.hpp"
 
 namespace {
@@ -162,6 +164,22 @@ int main(int argc, char** argv) {
                   Q4(b.align).c_str());
     }
     std::printf("\n]\n");
+    return 0;
+  }
+  if (cmd == "pose" && pos.size() == 3) {
+    auto rig = pesrig::BuildRig(vfs, &err);
+    if (!rig) return fail();
+    auto blob = pes::FindBodyClip(vfs, pes::ClipId(pos[1]), &err);
+    if (!blob) return fail();
+    auto g = pes::ParseGani(*blob, &err);
+    if (!g) return fail();
+    const auto pose = pesrig::ClipSampler(*g, *rig).Sample(std::stod(pos[2]));
+    std::printf("{\"bodyRotation\": %s, \"bodyPosition\": %s, \"joints\": [", Q4(pose.bodyRotation).c_str(),
+                V3(pose.bodyPosition).c_str());
+    for (size_t j = 0; j < rig->bones.size(); ++j)
+      std::printf("%s\n  {\"gf\": %s, \"pes\": %s, \"local\": %s}", j ? "," : "", Json(rig->bones[j].gfName).c_str(),
+                  Json(rig->bones[j].pesBone).c_str(), Q4(pose.local[j]).c_str());
+    std::printf("\n]}\n");
     return 0;
   }
   if (cmd == "names") {

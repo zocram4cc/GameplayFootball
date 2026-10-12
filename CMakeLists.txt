@@ -29,7 +29,7 @@ add_library(pesfmt STATIC
 target_include_directories(pesfmt PUBLIC src)
 target_link_libraries(pesfmt PUBLIC ZLIB::ZLIB)
 
-add_library(pesrig STATIC src/rig/rig.cpp)
+add_library(pesrig STATIC src/rig/rig.cpp src/rig/clip_pose.cpp)
 target_link_libraries(pesrig PUBLIC pesfmt)
 
 add_executable(pesfmt_dump apps/pesfmt_dump.cpp)
@@ -37,7 +37,8 @@ target_link_libraries(pesfmt_dump PRIVATE pesrig)
 set_target_properties(pesfmt_dump PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps)
 
 add_library(godotfootball SHARED
-  src/gdext/register_types.cpp src/gdext/pes_library.cpp src/gdext/pes_texture.cpp src/gdext/pes_character.cpp)
+  src/gdext/register_types.cpp src/gdext/pes_library.cpp src/gdext/pes_texture.cpp src/gdext/pes_character.cpp
+  src/gdext/pes_animation.cpp)
 target_link_libraries(godotfootball PRIVATE pesrig godot-cpp)
 set_target_properties(godotfootball PROPERTIES
   PREFIX lib
