@@ -25,7 +25,7 @@ find_package(ZLIB REQUIRED)
 add_library(pesfmt STATIC
   src/pes/strcode.cpp src/pes/cpk.cpp src/pes/fpk.cpp src/pes/vfs.cpp src/pes/ask.cpp src/pes/skl.cpp
   src/pes/ftex.cpp src/pes/fmdl.cpp src/pes/pack_rules.cpp src/pes/mtar.cpp src/pes/gani.cpp src/pes/clips.cpp
-  src/pes/anim_names.cpp src/pes/uniform.cpp src/pes/editsave.cpp src/pes/exe.cpp src/pes/handseq.cpp)
+  src/pes/anim_names.cpp src/pes/uniform.cpp src/pes/editsave.cpp src/pes/exe.cpp src/pes/handseq.cpp src/pes/marking.cpp)
 target_include_directories(pesfmt PUBLIC src)
 target_link_libraries(pesfmt PUBLIC ZLIB::ZLIB)
 

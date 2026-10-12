@@ -54,3 +54,7 @@ gtest_discover_tests(pes_exe_test)
 add_executable(pes_handseq_test pes_handseq_test.cpp)
 target_link_libraries(pes_handseq_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_handseq_test)
+
+add_executable(pes_marking_test pes_marking_test.cpp)
+target_link_libraries(pes_marking_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_marking_test)
