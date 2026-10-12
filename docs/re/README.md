@@ -29,6 +29,7 @@ address given.
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
 |`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
+|`pes-re-fox2-format.md`|the binary fox2 (FoxDataFile) layout: header, string table, entity and property blocks, containers, value types|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection (partial: agent stopped)|
 
