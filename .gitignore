@@ -1,0 +1,25 @@
+# build and tool outputs
+build*/
+godot/.godot/
+godot/bin/
+*.so
+*.import
+
+# PES files: never committed, always read from the user's install
+*.cpk
+*.fpk
+*.fpkd
+*.fmdl
+*.ftex
+*.gani
+*.mtar
+*.ask
+*.skl
+*.frig
+*.dds
+
+# names mined from PES at runtime
+anim_names*.txt
+
+# render captures
+captures/

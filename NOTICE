@@ -1,0 +1,29 @@
+GodotFootball
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project contains or derives from the following works.
+
+GameplayFootball
+  The match engine under src/sim/, its tests under tests/sim/, the stock
+  animations under assets/gf_anims/, and the PES 2021 format logic ported into
+  src/pes/ and src/rig/ come from GameplayFootball, commit
+  efd50d91c71947ab85974ddccbf224514eeab32f.
+  Its original code was written by Bastiaan Konings Schuiling (2008-2015) and
+  released into the public domain; it reached GameplayFootball through
+  Google Research Football (Apache License 2.0) and later community work
+  (Apache License 2.0). Copyright headers inside copied files are kept verbatim.
+
+FMDL-Studio-v2 (MIT License)
+  Used as the format reference for the clean-room FMDL reader in src/pes/fmdl.*.
+  No code was copied.
+
+Godot Engine (MIT License)
+  Copyright (c) 2014-present Godot Engine contributors.
+  Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+godot-cpp (MIT License)
+  Copyright (c) 2017-present Godot Engine contributors.
+
+No file from Pro Evolution Soccer 2021, or derived from one, is distributed
+with this project. Every PES asset is read at runtime from the user's own
+installation.
