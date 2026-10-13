@@ -65,6 +65,8 @@ The fox2 layout (already parsed by `src/pes/fox2.cpp`; layout doc
   to 3 digits — 55/55 (id 2 → `st002`, id 5 → `st005`, … max id 84 → `st084`).
   `ParseStadiumRecords` reads exactly this; no id is 0.
 
+> **CORRECTED 2026-10-13 (orchestrator).** The string at +370 is not the folder. The vanilla `Stadium.bin` (dt cpk) is WESYS-wrapped, inflating to 20384 B = 52 records, and +370 holds names such as `CAMP_NOU` and `ESTADIO_OLIMPICO` next to some `st005`-style values. The 55-record raw file measured above is a mod's. The folder is `st<id:03d>` (vanilla stadium id 2 → `bg/st002`); the parser now reads only the id. Vanilla `st002.fpk` also ships `scenes/cover.fmdl`, which no fox2 names.
+
 ## 4. `LoadStadiumScene(vfs, id)` — the sources and how the fmdl maps
 
 Folder = `st<id:03d>`; `bg = Asset/model/bg/`. Sources, in placement order:

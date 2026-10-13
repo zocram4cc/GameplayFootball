@@ -64,6 +64,8 @@ the predicted 200-px pitch, ink height 180 of the 256).
 tight-cropped in v, so **the vertical strip holds the glyphs pre-rotated 90° clockwise and
 cropped to the cell height**, which is what mode 1 un-does (see §3).
 
+> **DISPUTED 2026-10-13 (orchestrator).** The leg-number direction in this report is not settled. The MarkingCorrections implementation took this section's clockwise turn and measured the 4cc vertical strip's glyphs as upright (pixel IoU CW 0.59 vs CCW 0.14 against its own reference). But on a vanilla kit (team 1, kit `u0001p1_leg`, number 7, vanilla-only root, RX 6900 XT frame) that code draws the 7 upside down, while the previous +90° code draws it upright, matching the real kit. Until a frame of the running game's leg number is compared with ours for both a vanilla and a 4cc strip, treat the direction in §1, §3 and §6 item 1 as unverified.
+
 ## 2. Number layout inside a region — OBS `FUN_1419e2c10` (0x1419e2c10)
 
 Signature (register order, verified from the prologue's stack offsets):
