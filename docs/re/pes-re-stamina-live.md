@@ -631,3 +631,86 @@ conversion site already read at `FUN_141b970e0`. The candidate writers found are
 `FUN_141b92600` (colour/normalisation helper — OBS, verified by its output: it writes only
 `param_1[0..16]` byte-lane values, `255.0` flags and 5.6e-45) and `FUN_141b99b40` (writes
 `+0x34`). Neither is a drain; both are still unread in full.
+
+### 8.12 Pass 6 (2026-10-13) — `FUN_1402160c0` is a **sound-effect table**, not the drain
+
+Decompiled OBS, full body read. `FUN_1402160c0` is a **static initialiser that fills 15 audio
+descriptor records** at `DAT_1437f1d50 + k*0x48` — one per ball-hit sound — through
+`FUN_141b99b40`:
+
+```
+FUN_141b99b40(&DAT_1437f1d50, 1, s_Atari_Ball_Hit_01, 1, ...);
+FUN_141b99b40(&DAT_1437f1d98, 1, s_Atari_Ball_Hit_02, 2, ...);
+... 15 total (ids 1..15 incl. 10,12,13,14,15 as hex/dec) ...
+```
+
+Each record = `{ u32 enabled=1, char* name, u32 id, 14 tuning floats }`. The 17-argument setter
+is therefore a **record initialiser**, not a per-tick updater — it runs once at load and its
+arguments are the constants `DAT_142ad26xx`/`DAT_14259bxxx` (volumes/pitches/ranges). OBS.
+INF (certain): there is no stamina arithmetic here. This closes the `FUN_141b99b40` branch.
+
+### 8.13 What Pass 6 leaves — the exact next candidate, with the search already narrowed
+
+Everything below is OBS from the passes above; nothing new is invented.
+
+The per-player stamina accumulator must satisfy four observed constraints:
+1. it is **per player** (indexed like the roster/`0x128` block or the `+0x16a8`-style slot array);
+2. it is written **per tick** (its writer is reachable from `FUN_14163d140` or the
+   `FUN_141b985a0` tick chain);
+3. it is read by a **band test** (the 20/15/10/5 boundaries must be applied *somewhere*, and the
+   only 20/15/10 compares in the image are `FUN_1407f7370`'s, whose input turned out to be a
+   wrapped angle — so either the boundaries are integer compares elsewhere, or the stamina value
+   is *converted to an angle-like wrapped quantity* before that test, which is what the 360°
+   wrap in both functions suggests);
+4. it recovers when the player is idle (the `5_0` band exists).
+
+The two unindexed-but-promising spots left, in order:
+
+- **`FUN_14163dbb0`'s 0x100-byte per-player block** (§8.6): it is a **descriptor-driven copy**
+  of a 0x100-byte record from the descriptor registry (`FUN_1415dc1c0`, key
+  `0xb8a0bf169f98` → `0xd8fd1368c292`) or, on miss, the identity row
+  `0x14253ee50…ee8c`. Its 16 floats are the band function's coefficients. The **same registry
+  key family** is what the `PLAY_DATA_*_DASH_STAMINA_*` descriptors were looked up by (§8.1),
+  so the stamina tier's own descriptor record — and the value it is compared against — is one
+  more `getReferencesTo` on the *registry value array* away, not on the name string. This is the
+  single highest-value next read: find the writer of the descriptor records themselves (the
+  .fox object loader that fills `DAT_143736d00`'s buckets) and read the `DASH_STAMINA` record's
+  float fields directly — they are the band thresholds, and the consumer's arithmetic is then
+  the test `value < record[k]`.
+- **`FUN_141b97880`/`FUN_141b98620`'s player-list walk** (§8.6/§8.9): it inserts each player's
+  update entity into a 28-bucket list keyed by `*(uint*)(*node + 0x68)` (a **priority/phase
+  index**, 0..0x1a, OBS) and calls the update callback registered at
+  `FUN_141623820`-time. The per-tick body of *that* callback (not `FUN_141b970e0`, which is the
+  ctor's) is unread — and it is the one place where a per-player scalar would be decremented by
+  a speed term and clamped.
+
+### 8.14 Pass 6 continued — the descriptor registry layout, and why the names have no xrefs
+
+Two more OBS facts that make the next step mechanical:
+
+- The registry is a **chained hash map**, decompiled OBS from `FUN_140241530`:
+  `bucketCount = *(int*)(map+4)`, `bucketHeads = *(qword*)(map+0x18)`,
+  `entries = *(qword*)(map+0x20)` with **0x18-byte entries** whose **48-bit key is at `+0x10`**
+  and whose **next index is at `+0x10`'s sibling slot `+0x14`** (the same 0x18 record), and a
+  parallel **u32 value array at `map+0x28`** (`FUN_140264b20` returns
+  `*(u16*)(values[idx])`; `FUN_1415dcdc0` returns `*(qword*)(values[idx])`). Lookup key is
+  `h % (bucketCount*2)`. So **a descriptor is `{u48 id; next; ...}` + a value pointer**, and the
+  `PLAY_DATA_*` names are *labels* that live only in the .rdata blob — nothing points at them.
+- The magic remap in `FUN_1415dc1c0` (`0xb8a0bf169f98 → 0xd8fd1368c292`) is therefore **not** a
+  hash of any `PLAY_DATA_*` name: I computed FNV-1a-32, CRC-32 and CRC-32-lower for all 58 names
+  in the blob (OBS, computed this pass) and none matches the low 32 bits of either key. INF
+  (high): PES descriptor ids are **hand-assigned 48-bit constants** (a 16-bit class tag + a
+  32-bit instance id), not string hashes — which is exactly why every earlier string-mining and
+  hash-lookup pass failed (§6 of the parent report). The 20 `DASH_STAMINA` descriptors are
+  entries in this map with unknown ids.
+- **Practical consequence:** the DASH_STAMINA records can be recovered by *iterating the map at
+  runtime* — `map = *(qword*)DAT_143736d38` (OBS: `FUN_1415e22f0` returns it; the slot currently
+  holds a heap pointer `0x1be0780` in the mid-match dump) — and for each of the `bucketCount*2`
+  buckets walking the chain, reading `entry+0x10`'s id and the value array. The band thresholds
+  are the floats in the value object. This is a read-only live scan (or, with the heap pointers
+  unavailable statically, a one-line addition to the existing `rd.py` reader) and it needs **no
+  decompilation at all** — it is the cheapest remaining route to the actual tier numbers.
+
+**Route B final check:** `*(u64*)0x1436F3DC8 == 0` and `DAT_14351ad20 == 0.0` (OBS, read once as
+instructed) — the game is still out of a match, so no 30 s drain-direction sample could be
+taken. All my sampling processes were already stopped in the previous pass and none were restarted.
