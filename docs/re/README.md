@@ -45,6 +45,7 @@ address given.
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
 |`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
 |`pes-re-matchlogic.md`|player and team records, tuning files, ball parameters, formations, AI map|
+|`pes-re-rng.md`|PES's RNG: math::Random/GameRandom layout, the 31-bit LCG and 15-bit slot-3 LCG literals, range/normal draws, the kick-off seed commit in the MatchControl ctor (clock-derived t, t+1, t+2), sub-generators, a consumer census, live step verification, the seed-pinning procedure|
 |`pes-re-kick-launch.md`|kick launch: the launch writer FUN_1407324b0, ability/foot/ball-height terms, the logistic error scale and exponential scatter, the per-action spin tilt, the per-player LCG; partial (per-family ability index, live validation open)|
 |`pes-re-ball-contact-2.md`|the bounce: a min() between a speed-derived impulse and vy gives reflection or restitution, which reproduces the live 0.37-2.26 band; the mode-byte writer (dry normal pitch = mode 2); corrections to part 1|
 |`pes-re-ball-contact.md`|ball ground contact, the tangential and spin response, and rolling, every constant mapped to a named ball.o field|
