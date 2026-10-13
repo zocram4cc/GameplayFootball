@@ -64,7 +64,13 @@ the predicted 200-px pitch, ink height 180 of the 256).
 tight-cropped in v, so **the vertical strip holds the glyphs pre-rotated 90° clockwise and
 cropped to the cell height**, which is what mode 1 un-does (see §3).
 
-> **DISPUTED 2026-10-13 (orchestrator).** The leg-number direction in this report is not settled. The MarkingCorrections implementation took this section's clockwise turn and measured the 4cc vertical strip's glyphs as upright (pixel IoU CW 0.59 vs CCW 0.14 against its own reference). But on a vanilla kit (team 1, kit `u0001p1_leg`, number 7, vanilla-only root, RX 6900 XT frame) that code draws the 7 upside down, while the previous +90° code draws it upright, matching the real kit. Until a frame of the running game's leg number is compared with ours for both a vanilla and a 4cc strip, treat the direction in §1, §3 and §6 item 1 as unverified.
+> **RESOLVED 2026-10-13 (orchestrator; LegNumberTruth agent RE + frames).** The leg number is drawn upright, with no net rotation, and the clockwise claims in §1, §3, §4 and §6 item 1 are wrong. Evidence:
+>
+> - The emitter `FUN_1419c0290` writes the position rectangle into slots 0..3 and the UV rectangle into slot `table[i]`. Its mode-1 permutation table at `0x142a91cd8` is `{1,3,0,2}`, which solves to `fu = fx, fv = fy`, the identity, not `U = fy, V = 1 − fx`.
+> - `mode != 0` in `FUN_1419e2c10` only swaps which dividend goes on which axis. That produces the landscape quad: one-digit stores at `0x1419e2efc..f0e` give pos `(13, 32, 102, 64)` on the 128² canvas (pad 26), which matches `LegQuad`.
+> - Both strip layouts hold upright glyphs (decoded and examined): vanilla `a0150p1_leg` is 1024×128 with ten cells along u; the 4cc `u0767p1_leg` is 64×1024 with ten cells down v, pitch 102.4 px.
+> - Frames from the repo's existing composer (+90° blit into its own quad convention) show an upright 7 on the vanilla kit (team 1, vanilla root) and on the 4cc kit (team 767), RX 6900 XT. The −90° rewrite drew the vanilla 7 upside down and was dropped.
+
 
 ## 2. Number layout inside a region — OBS `FUN_1419e2c10` (0x1419e2c10)
 
