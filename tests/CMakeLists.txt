@@ -48,6 +48,9 @@ set_tests_properties(godot_camera_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 12
 add_test(NAME godot_model_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot -s res://tests/test_model.gd)
 set_tests_properties(godot_model_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+add_test(NAME godot_stadium_test
+  COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_stadium.tscn)
+set_tests_properties(godot_stadium_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 600)
 add_test(NAME godot_animation_test
   COMMAND ${CMAKE_SOURCE_DIR}/tools/godot.sh --headless --path ${CMAKE_SOURCE_DIR}/godot res://tests/test_animation.tscn)
 # A script error in _ready stops before quit(): the timeout turns a hang into a failure.
@@ -89,3 +92,7 @@ gtest_discover_tests(pes_fox2_test)
 add_executable(pes_stadium_test pes_stadium_test.cpp)
 target_link_libraries(pes_stadium_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_stadium_test)
+
+add_executable(pes_fmdl_uv_test pes_fmdl_uv_test.cpp)
+target_link_libraries(pes_fmdl_uv_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_fmdl_uv_test)

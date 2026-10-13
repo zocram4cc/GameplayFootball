@@ -32,6 +32,16 @@ constexpr size_t VEC4_BYTES = 16;
 
 // Vertex attribute types.
 enum Attr : uint8_t { POSITION = 0, BONE_WEIGHTS = 1, NORMAL = 2, BONE_INDICES = 7, UV0 = 8, UV1 = 9, TANGENT = 0xE };
+// Vertex attribute encodings, the byte at vfAt+1 (OBS: the VERTEX_FORMATS
+// tables of pitch_st002, goal_post and face.fpk). Only the UV encodings differ
+// between the packs: f32x2 on the pitch, half2 everywhere else.
+enum AttrFormat : uint8_t {
+  kFmtF32x3 = 1,  // position
+  kFmtF32x2 = 2,  // the pitch mesh's UV0
+  kFmtU8x4 = 3,   // colours
+  kFmtHalf = 6,   // normals and tangents
+  kFmtHalf2 = 7,  // UV0 of the character, goal and scene packs
+};
 constexpr float UNORM8_MAX = 255.0f;
 constexpr uint8_t INDEX_BUFFER = 2;  // buffer-offset slot holding the u16 triangle list
 
@@ -173,14 +183,38 @@ std::optional<Fmdl> ParseFmdl(std::span<const uint8_t> blob, std::string* error)
         const uint16_t attrOff = r.At<uint16_t>(vfAt + 2);
         for (uint16_t v = 0; v < vertexCount; ++v) {
           const size_t p = base + size_t(v) * stride + attrOff;
+          // The attribute's encoding is the byte at vfAt+1, not its type: the
+          // pitch stores UV0 as float32 (f32x2) and the goal as a single f32,
+          // while the character packs store normals and tangents as halves
+          // (OBS: the VERTEX_FORMATS table of pitch_st002, goal_post and the
+          // character packs). Reading a float stream as halves reads position
+          // bits instead, which is what put a UV of ~29328 on the pitch.
+          const uint8_t fmt = r.At<uint8_t>(vfAt + 1);
           auto h = [&](int k) { return Half(r.At<uint16_t>(p + 2 * k)); };
+          auto f = [&](int k) { return r.At<float>(p + 4 * k); };
           auto u8 = [&](int k) { return r.At<uint8_t>(p + k); };
           switch (type) {
-            case POSITION: mesh.pos.push_back({r.At<float>(p), r.At<float>(p + 4), r.At<float>(p + 8)}); break;
-            case NORMAL: mesh.nrm.push_back({h(0), h(1), h(2)}); break;
-            case TANGENT: mesh.tan.push_back({h(0), h(1), h(2), h(3)}); break;
-            case UV0: mesh.uv0.push_back({h(0), h(1)}); break;
-            case UV1: mesh.uv1.push_back({h(0), h(1)}); break;
+            case POSITION: mesh.pos.push_back({f(0), f(1), f(2)}); break;
+            case NORMAL:
+              mesh.nrm.push_back(fmt == kFmtHalf ? Vec3{h(0), h(1), h(2)} : Vec3{f(0), f(1), f(2)});
+              break;
+            case TANGENT:
+              mesh.tan.push_back(fmt == kFmtHalf ? Vec4{h(0), h(1), h(2), h(3)} : Vec4{f(0), f(1), f(2), f(3)});
+              break;
+            case UV0:
+              // Two half floats in four bytes (the character packs: face.fpk's
+              // face_high.fmdl, where the bytes at the UV offset decode to
+              // 0x3af8/0x3954 = 0.871/0.666) or two float32s (the pitch pack:
+              // pitch_st002.fpk's pitch_st002.fmdl, where the same offset holds
+              // 0.6467/0.5570). Reading a half2 stream as float32 halves reads
+              // the position bits instead, which is what put a UV of ~29328 on
+              // the pitch; reading a float32 stream as halves does the reverse
+              // and blanks a kit's UV atlas.
+              mesh.uv0.push_back(fmt == kFmtF32x2 ? Vec2{f(0), f(1)} : Vec2{h(0), h(1)});
+              break;
+            case UV1:
+              mesh.uv1.push_back(fmt == kFmtF32x2 ? Vec2{f(0), f(1)} : Vec2{h(0), h(1)});
+              break;
             case BONE_WEIGHTS:
               mesh.weights.push_back({u8(0) / UNORM8_MAX, u8(1) / UNORM8_MAX, u8(2) / UNORM8_MAX, u8(3) / UNORM8_MAX});
               break;

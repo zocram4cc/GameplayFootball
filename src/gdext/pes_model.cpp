@@ -18,6 +18,7 @@
 #include "pes/fmdl.hpp"
 #include "pes/fpk.hpp"
 #include "pes/pack_rules.hpp"
+#include "pes/stadium.hpp"
 
 namespace godot {
 namespace {
@@ -108,10 +109,53 @@ class StaticBuild {
   std::unordered_map<std::string, std::optional<Loaded>> cache_;  // by VFS path
 };
 
+// Every fmdl of a pack (or only `want` when set) as one Node3D per fmdl, named
+// after the fmdl and holding its meshes as MeshInstance3Ds, so a caller can
+// place a stadium member by name and reuse the rest.
+Node3D* MeshMembers(StaticBuild& build, const pes::FpkArchive& fpk, std::span<const uint8_t> pack,
+                    const std::string& name, const std::string& want = std::string()) {
+  Node3D* root = memnew(Node3D);
+  root->set_name(ToGd(name));
+  std::string err;
+  bool built = false;
+  for (const auto& e : fpk.entries) {
+    if (!EndsWith(e.path, FMDL_EXT) || (!want.empty() && !EndsWith(e.path, want))) continue;
+    auto m = pes::ParseFmdl(pack.subspan(e.offset, e.size), &err);
+    if (!m) {
+      UtilityFunctions::push_warning("PES model unreadable: ", ToGd(e.path), " (", ToGd(err), ")");
+      continue;
+    }
+    std::vector<Ref<ShaderMaterial>> materials;
+    for (const auto& fm : m->materials) materials.push_back(build.Material(*m, fm));
+    Node3D* group = memnew(Node3D);
+    group->set_name(ToGd(e.path.substr(e.path.find_last_of('/') + 1)));
+    group->set_meta("pes_member", ToGd(e.path));
+    for (const auto& mesh : m->meshes) {
+      if (mesh.indices.empty()) continue;
+      Ref<ArrayMesh> am;
+      am.instantiate();
+      am->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, FmdlSurfaceArrays(mesh));
+      if (mesh.materialIndex >= 0 && mesh.materialIndex < int(materials.size()))
+        am->surface_set_material(0, materials[mesh.materialIndex]);
+      MeshInstance3D* mi = memnew(MeshInstance3D);
+      mi->set_mesh(am);
+      group->add_child(mi);
+      built = true;
+    }
+    root->add_child(group);
+  }
+  if (!built) {
+    memdelete(root);
+    return nullptr;
+  }
+  return root;
+}
+
 }  // namespace
 
 void PesModelBuilder::_bind_methods() {
   ClassDB::bind_method(D_METHOD("build_model", "library", "fpk_path", "member"), &PesModelBuilder::build_model);
+  ClassDB::bind_method(D_METHOD("build_stadium", "library", "stadium_id"), &PesModelBuilder::build_stadium);
 }
 
 Node3D* PesModelBuilder::build_model(const Ref<PesLibrary>& library, const String& fpk_path, const String& member) const {
@@ -127,34 +171,67 @@ Node3D* PesModelBuilder::build_model(const Ref<PesLibrary>& library, const Strin
     return nullptr;
   }
   StaticBuild build(vfs);
-  Node3D* root = memnew(Node3D);
-  root->set_name(ToGd(packPath.substr(packPath.find_last_of('/') + 1)));
-  int built = 0;
-  for (const auto& e : fpk->entries) {
-    if (!EndsWith(e.path, FMDL_EXT) || (!want.empty() && !EndsWith(e.path, want))) continue;
-    auto m = pes::ParseFmdl(std::span(*pack).subspan(e.offset, e.size), &err);
-    if (!m) {
-      UtilityFunctions::push_warning("PES model unreadable: ", ToGd(e.path), " (", ToGd(err), ")");
-      continue;
-    }
-    std::vector<Ref<ShaderMaterial>> materials;
-    for (const auto& fm : m->materials) materials.push_back(build.Material(*m, fm));
-    for (const auto& mesh : m->meshes) {
-      if (mesh.indices.empty()) continue;
-      Ref<ArrayMesh> am;
-      am.instantiate();
-      am->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, FmdlSurfaceArrays(mesh));
-      if (mesh.materialIndex >= 0 && mesh.materialIndex < int(materials.size()))
-        am->surface_set_material(0, materials[mesh.materialIndex]);
-      MeshInstance3D* mi = memnew(MeshInstance3D);
-      mi->set_mesh(am);
-      root->add_child(mi);
-      ++built;
-    }
-  }
-  if (built == 0) {
-    memdelete(root);
+  return MeshMembers(build, *fpk, *pack, packPath.substr(packPath.find_last_of('/') + 1), want);
+}
+
+Node3D* PesModelBuilder::build_stadium(const Ref<PesLibrary>& library, int stadium_id) const {
+  if (library.is_null()) return nullptr;
+  std::string err;
+  const auto models = pes::LoadStadiumScene(library->vfs(), stadium_id, &err);
+  if (!models) {
+    UtilityFunctions::push_error("PES stadium not readable: ", ToGd(err));
     return nullptr;
+  }
+  Node3D* root = memnew(Node3D);
+  root->set_name("Stadium" + String::num_int64(stadium_id, 3));
+  // Each .fpk pack is read and meshed once, then every placement of one of its
+  // members re-uses that mesh tree: the st002 scene pack is 130 MB on disk and
+  // two of its members are placed, and every material in it loads its textures
+  // through StaticBuild's cache.
+  std::unordered_map<std::string, Node3D*> meshed;  // pack member path -> its meshes
+  for (const auto& m : *models) {
+    // A MobCharacterModel carries sklFile (docs/re/pes-re-fox2-format.md 191):
+    // the cornerflag rig is a skinned model PES positions at runtime, so its
+    // fox2 identity transform is not where PES draws it. Placing it at the
+    // identity puts a flag pole on the centre spot, which PES never draws, so
+    // the class is skipped. Where PES draws it (the staff package) is an open
+    // RE item: docs/re/pes-re-fox2-stadium.md 4.2, pes-re-stadium-camera.md.
+    if (m.className == "MobCharacterModel") continue;
+    auto it = meshed.find(m.member);
+    if (it == meshed.end()) {
+      auto pack = library->vfs().Read(m.fpk, &err);
+      Node3D* group = nullptr;
+      if (pack) {
+        auto fpk = pes::FpkArchive::Parse(*pack, &err);
+        if (!fpk) {
+          UtilityFunctions::push_error("PES pack unreadable: ", ToGd(m.fpk), " (", ToGd(err), ")");
+        } else {
+          // One child per fmdl of the pack, in pack order, each named after it
+          // so every placement of one member re-uses the same subtree.
+          StaticBuild build(library->vfs());
+          group = MeshMembers(build, *fpk, *pack, m.fpk.substr(m.fpk.find_last_of('/') + 1));
+          if (group != nullptr)
+            for (int i = 0; i < group->get_child_count(); ++i) {
+              Node3D* c = Object::cast_to<Node3D>(group->get_child(i));
+              if (c->has_meta("pes_member")) meshed[FromGd(c->get_meta("pes_member"))] = c;
+            }
+        }
+      }
+      it = meshed.emplace(m.member, group).first;
+    }
+    Node3D* placed = memnew(Node3D);
+    if (it->second != nullptr) placed->add_child(it->second->duplicate());
+    // The fox2 TransformEntity is the model's whole placement in Fox space,
+    // which is Godot's space: scale, then the (x,y,z,w) rotation, then the
+    // translation, composed as translation * rotation * scale.
+    const pes::Transform& t = m.transform;
+    const Quaternion q(t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w);
+    Basis b(Basis(q).scaled(Vector3(t.scale.x, t.scale.y, t.scale.z)));
+    placed->set_transform(Transform3D(b, Vector3(t.translation.x, t.translation.y, t.translation.z)));
+    placed->set_meta("pes_class", ToGd(m.className));
+    placed->set_meta("pes_member", ToGd(m.member));
+    placed->set_meta("pes_rotation_y", q.get_euler(EULER_ORDER_YXZ).y);
+    root->add_child(placed);
   }
   return root;
 }

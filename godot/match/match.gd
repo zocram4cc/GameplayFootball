@@ -3,7 +3,8 @@ extends Node3D
 ## the PES players and the ball are placed where the simulation has them.
 ## Args (after `--`): --pes21-root DIR --home-team PES_ID --away-team PES_ID
 ## [--home-kit N --away-kit N] [--edit-save FILE] [--seed N] [--minutes N]
-## [--ball ID] [--follow PLAYER_INDEX] (inspection: a close camera on one player).
+## [--ball ID] [--stadium N] [--follow PLAYER_INDEX] (inspection: a close camera
+## on one player).
 
 const GF_HOME_TEAM := 1        # teams in assets/fixtures/teams.sql
 const GF_AWAY_TEAM := 2
@@ -15,8 +16,14 @@ const MAX_TICKS_PER_FRAME := 10
 # (pes-re-officials-ball.md 1); ball001, the first vanilla ball, until that is read.
 const DEFAULT_BALL_ID := 1
 const BALL_PACK_FORMAT := "Asset/model/ball/ball%03d/#Win/ball.fpk"
+# The stadium the match plays in. 2 (st002) is vanilla: dt30_g4.cpk ships
+# Asset/model/bg/st002.cpk, and its scene, pitch, goals, nets and corner flags
+# all come from dt30/common or its own pack, so it holds on any install.
+const DEFAULT_STADIUM_ID := 2
 const PITCH_SURROUND_M := 120.0
-const PITCH_ALBEDO := Color(0.22, 0.42, 0.18)
+# Only used when the install ships no such stadium: a mid green mean of the
+# common turf map (docs/re/pes-re-pitch-grass.md 5.3).
+const PITCH_SURROUND_ALBEDO := Color(0.22, 0.42, 0.18)
 # FieldInfo +0x00 / +0x08 live (PES 52.56 / 34.06 to the outer line edge);
 # the sim exposes the width, the length is the pitch constant in src/sim.
 const SUN_ROTATION_DEG := Vector3(-55.0, 35.0, 0.0)
@@ -68,6 +75,7 @@ func _ready() -> void:
 		locomotion = null  # bodies keep the bind pose; the match still plays
 		push_warning("PES locomotion unavailable")
 	_build_players()
+	_build_stadium()
 	_broadcast = PesBroadcastCamera.new()
 	# FieldInfo +0x00 (52.56) and +0x08 (34.06) live; the sim exposes the width.
 	if _broadcast.load(library, sim.field_half_width(), sim.field_half_length()) != OK:
@@ -179,15 +187,26 @@ func _build_environment() -> void:
 	sun.shadow_enabled = true
 	sun.rotation_degrees = SUN_ROTATION_DEG
 	add_child(sun)
-	# ponytail: flat green until the PES pitch (M5); line-accurate size only.
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(PITCH_SURROUND_M, PITCH_SURROUND_M)
-	var grass := StandardMaterial3D.new()
-	grass.albedo_color = PITCH_ALBEDO
-	plane.material = grass
-	var ground := MeshInstance3D.new()
-	ground.mesh = plane
-	add_child(ground)
 	_camera = Camera3D.new()
 	add_child(_camera)
 	_camera.current = true
+
+
+# PES's own stadium: its scene, its pitch, both goals with their nets and the
+# corner flags, each model where PES's fox2 places it (pes::LoadStadiumScene).
+# The builder fails only when the install has no such stadium.
+func _build_stadium() -> void:
+	var stadium_id := int(args.get("stadium", DEFAULT_STADIUM_ID))
+	var stadium: Node3D = PesModelBuilder.new().build_stadium(library, stadium_id)
+	if stadium == null:
+		push_error("stadium %d missing from this install; fallback plane drawn" % stadium_id)
+		var plane := PlaneMesh.new()
+		plane.size = Vector2(PITCH_SURROUND_M, PITCH_SURROUND_M)
+		var grass := StandardMaterial3D.new()
+		grass.albedo_color = PITCH_SURROUND_ALBEDO
+		plane.material = grass
+		var ground := MeshInstance3D.new()
+		ground.mesh = plane
+		add_child(ground)
+		return
+	add_child(stadium)

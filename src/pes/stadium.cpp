@@ -1,5 +1,6 @@
 // Assembles one PES 2021 stadium's model placements from its fox2 data files
 // (docs: docs/re/pes-re-stadium-camera.md 1.2-1.3, docs/re/pes-re-fox2-format.md).
+#include "pes/inflate.hpp"
 #include "pes/stadium.hpp"
 
 #include <cstdio>
@@ -11,15 +12,14 @@
 namespace pes {
 namespace {
 
-// Stadium.bin: one fixed record per stadium (OBS: the file is 21560 bytes =
-// 55 records, and every folder field reads "st" + the id zero-padded to 3
-// digits, 55/55).
+// Stadium.bin: one fixed record per stadium (OBS: 55 records in a mod's raw
+// file, 52 in vanilla's WESYS-wrapped one).
 constexpr size_t kStadiumRecordBytes = 392;
-constexpr size_t kStadiumIdOffset = 4;        // u16 stadium id
-constexpr size_t kStadiumFolderOffset = 370;  // NUL-terminated folder
-constexpr int kStadiumFolderDigits = 3;       // "st002" for id 2
+constexpr size_t kStadiumIdOffset = 4;   // u16 stadium id
+constexpr int kStadiumFolderDigits = 3;  // "st002" for id 2
 
-// OBS: every Stadium.bin folder is "st" + id zero-padded to 3 digits.
+// OBS: every stadium pack folder under Asset/model/bg is "st" + id zero-padded
+// to 3 digits (vanilla st002 is the stadium with id 2).
 std::string StadiumFolder(int id) {
   std::string s = std::to_string(id);
   if (static_cast<int>(s.size()) < kStadiumFolderDigits)
@@ -154,14 +154,6 @@ std::vector<StadiumInfo> ParseStadiumRecords(std::span<const uint8_t> blob,
     uint16_t id;
     std::memcpy(&id, rec + kStadiumIdOffset, sizeof id);
     info.id = id;
-    const char* f = reinterpret_cast<const char*>(rec + kStadiumFolderOffset);
-    size_t len = 0;
-    while (kStadiumFolderOffset + len < kStadiumRecordBytes && f[len] != 0) ++len;
-    if (kStadiumFolderOffset + len >= kStadiumRecordBytes) {
-      *error = "Stadium.bin folder string overruns the record";
-      return out;
-    }
-    info.folder.assign(f, len);
     out.push_back(std::move(info));
   }
   return out;
@@ -170,7 +162,9 @@ std::vector<StadiumInfo> ParseStadiumRecords(std::span<const uint8_t> blob,
 std::vector<StadiumInfo> ReadStadiumList(const PesVfs& vfs, std::string* error) {
   auto blob = vfs.Read("common/etc/pesdb/Stadium.bin", error);
   if (!blob) return {};
-  return ParseStadiumRecords(*blob, error);
+  auto data = UnwrapWesys(*blob, "Stadium", error);  // vanilla ships it WESYS-wrapped
+  if (!data) return {};
+  return ParseStadiumRecords(*data, error);
 }
 
 std::optional<std::vector<PlacedModel>> LoadStadiumScene(const PesVfs& vfs,

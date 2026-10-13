@@ -34,15 +34,14 @@ struct PlacedModel {
   uint32_t flags = 0;      // fox2 "flags"
 };
 
-// One row of common/etc/pesdb/Stadium.bin: the stadium id and its content
-// folder (e.g. id 2 -> "st002").
+// One row of common/etc/pesdb/Stadium.bin: the stadium id. Its content folder
+// is derived from the id ("st" + id zero-padded to 3 digits, e.g. "st002");
+// the string at +370 is not the folder (vanilla holds names like "CAMP_NOU").
 struct StadiumInfo {
   int id = 0;
-  std::string folder;
 };
 
-// Pure parse of Stadium.bin: 392-byte records, u16 id at +4, NUL-terminated
-// folder C string at +370 (verified: 55 records, every folder == "st" + id).
+// Pure parse of Stadium.bin (after WESYS unwrap): 392-byte records, u16 id at +4.
 std::vector<StadiumInfo> ParseStadiumRecords(std::span<const uint8_t> blob,
                                              std::string* error);
 

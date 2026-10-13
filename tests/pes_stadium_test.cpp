@@ -13,19 +13,18 @@
 
 namespace {
 
-// A 392-byte Stadium.bin record: u16 id at +4, NUL-terminated folder at +370.
-// Synthetic ids (2 and 5); no PES bytes anywhere in this test.
+// A 392-byte Stadium.bin record: u16 id at +4. Synthetic ids (2 and 5); no PES
+// bytes anywhere in this test.
 std::vector<uint8_t> MakeStadiumBinBlob() {
-  auto rec = [&](uint16_t id, const char* folder) {
+  auto rec = [&](uint16_t id) {
     std::vector<uint8_t> r(392, 0);
     // u16 id at +4, little-endian.
     r[4] = static_cast<uint8_t>(id & 0xFF);
     r[5] = static_cast<uint8_t>((id >> 8) & 0xFF);
-    std::memcpy(r.data() + 370, folder, std::strlen(folder) + 1);
     return r;
   };
   std::vector<uint8_t> blob;
-  for (auto& r : {rec(2, "st002"), rec(5, "st005")})
+  for (auto& r : {rec(2), rec(5)})
     blob.insert(blob.end(), r.begin(), r.end());
   return blob;
 }
@@ -54,9 +53,7 @@ TEST(Stadium, ParsesStadiumRecordsSynthetically) {
   auto list = pes::ParseStadiumRecords({blob.data(), blob.size()}, &err);
   ASSERT_EQ(list.size(), 2u) << err;
   EXPECT_EQ(list[0].id, 2);
-  EXPECT_EQ(list[0].folder, "st002");
   EXPECT_EQ(list[1].id, 5);
-  EXPECT_EQ(list[1].folder, "st005");
 }
 
 TEST(Stadium, RejectsTruncatedStadiumRecords) {
@@ -85,17 +82,8 @@ TEST(StadiumInstall, StadiumListNamesStadiumTwo) {
   std::string err;
   auto list = pes::ReadStadiumList(*vfs, &err);
   ASSERT_FALSE(list.empty()) << err;
-  const pes::StadiumInfo* two = nullptr;
-  for (const auto& s : list)
-    if (s.id == 2) two = &s;
-  ASSERT_NE(two, nullptr) << "stadium 2 missing among " << list.size() << " records";
-  EXPECT_EQ(two->folder, "st002");
-  // The list's own rule: folder = "st" + id zero-padded to 3 digits.
-  for (const auto& s : list) {
-    std::string num = std::to_string(s.id);
-    while (num.size() < 3) num = "0" + num;
-    EXPECT_EQ(s.folder, "st" + num);
-  }
+  EXPECT_TRUE(std::any_of(list.begin(), list.end(), [](const auto& s) { return s.id == 2; }))
+      << "stadium 2 missing among " << list.size() << " records";
 }
 
 TEST(StadiumInstall, AssemblesStadiumTwoWithPitchAndTwoGoals) {
@@ -117,23 +105,28 @@ TEST(StadiumInstall, AssemblesStadiumTwoWithPitchAndTwoGoals) {
     EXPECT_TRUE(found) << "member " << m.member << " not in " << m.fpk;
   }
 
-  // The scene: every fmdl the st002 scene pack ships is placed.
+  // The scene: every fmdl the st002 fox2 names is placed. A pack may ship an
+  // fmdl no fox2 names (vanilla st002 ships scenes/cover.fmdl unreferenced);
+  // that one is not the scene's to place.
   {
     const std::string fpk = "Asset/model/bg/st002/#Win/st002.fpk";
     auto fpkBlob = vfs->Read(fpk, &err);
     ASSERT_TRUE(fpkBlob.has_value()) << err;
     auto pack = pes::FpkArchive::Parse(*fpkBlob, &err);
     ASSERT_TRUE(pack.has_value()) << err;
-    int shipped = 0, placed = 0;
+    auto fox2Blob = vfs->Read(fpk + "d", &err);
+    ASSERT_TRUE(fox2Blob.has_value()) << err;
+    const std::string fox2(fox2Blob->begin(), fox2Blob->end());
+    int named = 0;
     for (const auto& e : pack->entries)
-      if (e.path.size() > 5 && e.path.compare(e.path.size() - 5, 5, ".fmdl") == 0) {
-        ++shipped;
-        if (std::any_of(ms.begin(), ms.end(),
-                        [&](const auto& m) { return m.fpk == fpk && m.member == e.path; }))
-          ++placed;
+      if (e.path.size() > 5 && e.path.compare(e.path.size() - 5, 5, ".fmdl") == 0 &&
+          fox2.find(e.path) != std::string::npos) {
+        ++named;
+        EXPECT_TRUE(std::any_of(ms.begin(), ms.end(),
+                                [&](const auto& m) { return m.fpk == fpk && m.member == e.path; }))
+            << "the fox2 names " << e.path << " but it was not placed";
       }
-    EXPECT_GT(shipped, 0);
-    EXPECT_EQ(placed, shipped) << "a shipped scene fmdl was not placed";
+    EXPECT_GT(named, 0);
   }
 
   // The pitch is present.
