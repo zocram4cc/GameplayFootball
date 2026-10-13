@@ -28,9 +28,11 @@ address given.
 |`pes-re-camera-target.md`|Dynamic Wide camera internals: focus and its lead, target.y lift, the k spring, clamp blend, the zoom/height sliders, mode ids|
 |`pes-re-pitch-grass.md`|the pitch, line and turf shaders as port-ready formulas, verified numerically against the compiled DXBC|
 |`pes-re-stadium-camera.md`|nested stadium cpks, pitch dimensions, crowd, the in-play camera|
+|`pes-re-effects-particles.md`|the Tpp Effect system: the runtime path, the particle update rule, weather, the post chain, and the negative result on in-play emitters|
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
+|`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
 |`pes-re-matchlogic.md`|player and team records, tuning files, ball parameters, formations, AI map|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
 |`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
