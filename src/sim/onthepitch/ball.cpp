@@ -11,16 +11,18 @@
 #include "simcontext.hpp"
 #include "ballphysics.hpp"
 #include "match.hpp"
-#include "pitchconditions.hpp"
+#include "pesballphysics.hpp"
 
 Ball::Ball(Match* match) : match(match) {
-  bounce = 0.62f;         // 1 = full bounce, 0 = no bounce
-  linearBounce = 0.06f;   // bigger = more brake force
-  drag = 0.015f;          // previously 0.025f; // bigger = more
-  friction = 0.04f;       // bigger = more
-  linearFriction = 1.6f;  // bigger = more, arbitrary scale
-  gravity = -9.81f;
-  grassHeight = 0.025f;
+  // PES 2021's ball physics (docs/re/pes-re-ball-contact.md). The constants come
+  // from the install: the `ball.o` record of constant_match.bin and the image
+  // values that live in the exe and nowhere else. GF's own bounce (0.62),
+  // linear bounce, drag and grass friction had no PES counterpart and are gone -
+  // PES has no restitution coefficient and no friction coefficient, only the
+  // clamped interpolations over `ball.o`'s mode columns that the Match hands
+  // over. The Match refuses to build without them, exactly as it does for the
+  // clock constants.
+  ballConstants = &match->GetPesBallConstants();
 
   // Weather defaults to calm and dry; a match/season can override it via config
   // or SetWeather() to bend balls in the wind and skid them on a wet pitch.
@@ -80,15 +82,39 @@ void Ball::SetWeather(const Vector3& wind, float wetness) {
 
 void Ball::SetRotation(radian x, radian y, radian z,
                        float bias) {  // radians per second for each axis
-  Quaternion rotX;
-  rotX.SetAngleAxis(clamp(x * 0.001f, -pi * 0.49f, pi * 0.49f), Vector3(-1, 0, 0));
-  Quaternion rotY;
-  rotY.SetAngleAxis(clamp(y * 0.001f, -pi * 0.49f, pi * 0.49f), Vector3(0, 1, 0));
-  Quaternion rotZ;
-  rotZ.SetAngleAxis(clamp(z * 0.001f, -pi * 0.49f, pi * 0.49f), Vector3(0, 0, 1));
+  // GF's per-axis rotation becomes PES's raw spin vector: PES stores spin raw,
+  // with rad/s = raw * spinScale (docs/re/pes-re-officials-ball.md 5). `bias` is
+  // the blend towards the new spin, the same slerp GF applied.
+  const pes::PesBallConstants& pc = *ballConstants;
+  // GF (x, y, z) -> Fox (x, -z, y), the same basis change the skeleton uses.
+  const pes::Vec3 target(z * 0.001f, -x * 0.001f, y * 0.001f);
 
-  Quaternion tmpRotation_ms = rotX * rotY * rotZ;
-  rotation_ms = rotation_ms.GetSlerped(bias, tmpRotation_ms);
+  radian angle = 0.0f;
+  const float w = rotation_ms.elements[3];
+  const float half = std::acos(clamp(w, -1.0f, 1.0f));
+  const float sinHalf = std::sin(half);
+  pes::Vec3 current(0.0f, 0.0f, 0.0f);
+  if (sinHalf > 1e-6f) {
+    const Vector3 axis(rotation_ms.elements[0] / sinHalf, rotation_ms.elements[1] / sinHalf,
+                       rotation_ms.elements[2] / sinHalf);
+    const float spinRad = 2.0f * half;
+    current = pes::Vec3(axis.coords[0], -axis.coords[2], axis.coords[1]) * (spinRad /
+              pc.image.spinScale);
+  }
+  const pes::Vec3 blended = current * (1.0f - bias) + target * bias;
+  // Store the blended spin in the quaternion GF keeps, so the render path and
+  // the prediction read the same state.
+  const float spinRad =
+      std::sqrt(blended.x * blended.x + blended.y * blended.y + blended.z * blended.z) *
+      pc.image.spinScale;
+  if (spinRad > 1e-6f) {
+    const float inv = 1.0f / spinRad;
+    const Vector3 axisFox(blended.x * inv, blended.y * inv, blended.z * inv);
+    const Vector3 axisGf(axisFox.coords[0], -axisFox.coords[2], axisFox.coords[1]);
+    rotation_ms.SetAngleAxis(spinRad * 0.001f, axisGf);
+  } else {
+    rotation_ms = QUATERNION_IDENTITY;
+  }
 
   CalculatePrediction();
 }
@@ -106,50 +132,80 @@ BallSpatialInfo Ball::CalculatePrediction() {
   Vector3 nextPos = positionBuffer;
   Quaternion nextOrientation = orientationBuffer;
   Vector3 momentumPredict = momentum;
-  Quaternion rotationPredict_ms = rotation_ms;
 
   predictions[0] = nextPos;
 
   bool woodwork_enabled = true;
   bool netting_enabled = true;
-  bool groundRotationEffects_enabled = true;
-  bool swerve_enabled = true;
 
-  float timeStep = 0.01f;  // 0.001f; // seconds
-  bool autoDegrade_timeStep = false;
-
-  // printf("timestep: %i\n", int(timeStep * 1000.0f));
-  bool firstTime = true;
-
-  BallPhysicsConfig physicsConfig;
-  physicsConfig.bounce = bounce;
-  physicsConfig.linearBounce = linearBounce;
-  physicsConfig.drag = drag;
-  physicsConfig.friction = friction;
-  physicsConfig.linearFriction = linearFriction;
-  physicsConfig.gravity = gravity;
-  physicsConfig.grassHeight = grassHeight;
-  physicsConfig.wind = weatherWind;
-  // Pitch degradation: the surface cuts up as the match wears on, which slows
-  // the ball along the ground; rain also thickens the air it flies through.
-  PitchConditions::Apply(physicsConfig, PitchConditions::GetWear(match->GetMatchTime_ms()),
-                         weatherWetness);
+  // GF's tick: Match::kTick_ms = 10 ms, this loop's fixed step.
+  const float timeStep = 0.01f;
 
   ballTouchesNet = false;
 
+  // PES 2021's ball physics (docs/re/pes-re-ball-contact.md). The state is
+  // carried in Fox space (Y up) because that is where every rule in the report
+  // is written; GF's ball is Z-up, so the conversion happens at the boundary
+  // only - the same (x, y, z) -> (x, -z, y) the player skeleton uses.
+  const pes::PesBallConstants& pc = *ballConstants;
+  pesball::BallState fox;
+  fox.position = pes::Vec3(nextPos.coords[0], -nextPos.coords[2], nextPos.coords[1]);
+  fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
+                           momentumPredict.coords[1]);
+  // GF's rotation is a quaternion per GF axis; PES's spin is a raw vector whose
+  // magnitude is |w| / spinScale. Take the axis-angle out of GF's quaternion and
+  // hand PES the raw spin it corresponds to.
+  // w = elements[3]; the axis-angle form is angle = 2*acos(w), axis = (x,y,z)/sin(angle/2).
+  {
+    const float w = rotation_ms.elements[3];
+    const float half = std::acos(clamp(w, -1.0f, 1.0f));
+    const float sinHalf = std::sin(half);
+    const float spinRad = 2.0f * half;  // radians per second
+    if (sinHalf > 1e-6f && spinRad > 1e-6f) {
+      const Vector3 axis(rotation_ms.elements[0] / sinHalf, rotation_ms.elements[1] / sinHalf,
+                         rotation_ms.elements[2] / sinHalf);
+      fox.spinRaw = pes::Vec3(axis.coords[0], -axis.coords[2], axis.coords[1]) * (spinRad /
+                    pc.image.spinScale);
+    }
+  }
+
+  // PES applies its per-tick factors once per 1/54 s and integrates its
+  // accelerations over that step. GF ticks every 10 ms, so every per-tick keep
+  // factor is converted with <func>KeepFactorPerGfTick</func> (a factor k per
+  // PES tick becomes k^(0.01*54) per GF tick) and the accelerations are
+  // integrated with dt = timeStep. Both are applied inside the pesball calls.
+
   for (unsigned int predictTime_ms = int(timeStep * 1000.0f);
        predictTime_ms < ballPredictionSize_ms; predictTime_ms += int(timeStep * 1000.0f)) {
-    BallPhysicsState physicsState{nextPos, momentumPredict};
-    BallGroundInteraction groundInteraction =
-        ApplyBallMotionForces(physicsState, physicsConfig, timeStep);
-    nextPos = physicsState.position;
-    momentumPredict = physicsState.momentum;
+    const bool firstTime = (predictTime_ms == 10);
 
-    float frictionFactor = groundInteraction.frictionFactor;
-    float grassInfluenceBias = groundInteraction.grassInfluenceBias;
+    if (pesball::IsResting(pc, fox)) {
+      // Report 2.1: a resting ball skips the flight function entirely. Nothing
+      // moves, and PES's at-rest path recomputes the velocity as the finite
+      // difference of the position, which is zero here.
+    } else if (fox.position.y <= pc.image.ballRadius) {
+      // Report 2.3: ground contact - the snap, the vertical response, the
+      // tangential rewrite, the spin rebuild and the stop gate. PES integrates
+      // no position on a contact tick: its own loop re-tests next tick and
+      // lets the *flight* branch carry the ball forward on the new velocity.
+      // This predictor runs one 10 ms step per outcome, so it does the same here
+      // - the contact rewrites the velocity and then the position follows,
+      // which is what PES's next-tick flight step does with it.
+      pesball::ContactTick(pc, &fox, contactTicks, true, false);
+      ++contactTicks;
+      fox.position = pes::Vec3(fox.position.x + fox.velocity.x * timeStep,
+                               fox.position.y + fox.velocity.y * timeStep,
+                               fox.position.z + fox.velocity.z * timeStep);
+    } else {
+      // Report 6.3: flight - gravity, drag with the drag-crisis band and
+      // Magnus, integrated with dt = 0.01 s.
+      pesball::FlightTick(pc, &fox, timeStep, false);
+    }
 
-    float postAbsorbInv = 0.8f;
-    float ballRadius = physicsConfig.ballRadius;
+    nextPos = Vector3(fox.position.x, -fox.position.z, fox.position.y);
+    momentumPredict = Vector3(fox.velocity.x, -fox.velocity.z, fox.velocity.y);
+
+    float ballRadius = pc.image.ballRadius;
     float postRadius = 0.07f;
 
     // woodwork
@@ -194,7 +250,6 @@ BallSpatialInfo Ball::CalculatePrediction() {
             // 'upper' side of pitch
             normal = (nextPos.Get2D() - Vector3(pitchHalfW, goalHalfWidth, 0))
                          .GetNormalized(Vector3(-1, 0, 0));
-            // match->SetDebugPilon(Vector3(55, 3.8, 0) + normal * 5);
             float nextPosZ = nextPos.coords[2];
             nextPos = Vector3(pitchHalfW, goalHalfWidth, 0) + normal * (postRadius + ballRadius);
             nextPos.coords[2] = nextPosZ;
@@ -203,8 +258,10 @@ BallSpatialInfo Ball::CalculatePrediction() {
 
         momentumPredict =
             (momentumPredict.Get2D().GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
-                momentumPredict.Get2D().GetLength() * postAbsorbInv +
+                momentumPredict.Get2D().GetLength() * 0.8f +
             (Vector3(0, 0, 1) * momentumPredict.coords[2]);
+        fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
+                                 momentumPredict.coords[1]);
       }
 
       // crossbar
@@ -235,8 +292,10 @@ BallSpatialInfo Ball::CalculatePrediction() {
         Vector3 momentumPredictXZ = momentumPredict * Vector3(1, 0, 1);
         momentumPredict =
             (momentumPredictXZ.GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
-                momentumPredictXZ.GetLength() * postAbsorbInv +
+                momentumPredictXZ.GetLength() * 0.8f +
             (Vector3(0, 1, 0) * momentumPredict.coords[1]);
+        fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
+                                 momentumPredict.coords[1]);
       }
     }
 
@@ -255,143 +314,35 @@ BallSpatialInfo Ball::CalculatePrediction() {
           nettingState, match->IsBallInGoal(), nettingConfig, timeStep);
       nextPos = nettingState.position;
       momentumPredict = nettingState.momentum;
+      fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
+                               momentumPredict.coords[1]);
 
       if (predictTime_ms == 10 && nettingResult.touchedNet)
         ballTouchesNet = true;
     }
 
-    // calculate rotation
-
-    if (nextPos.coords[2] < 0.11f + grassHeight && groundRotationEffects_enabled) {
-      // rewrite idea: find out difference in ball velo / roll velo and then change both ball velo
-      // and rot (instead of having these 2 seperate sections)
-
-      // ground friction induced rotation
-      radian xR, yR;
-
-      // x movement causes roll over y axis.. so this is correct ;)
-      float radius = 0.11f;
-      xR = momentumPredict.coords[1] / radius;
-      yR = momentumPredict.coords[0] / radius;
-
-      // clamp, because we can not rotate faster than this or the maths don't know what direction to
-      // rotate into anymore
-      Quaternion rotX;
-      rotX.SetAngleAxis(clamp(xR * 0.001f, -pi * 0.49f, pi * 0.49f), Vector3(-1, 0, 0));
-      Quaternion rotY;
-      rotY.SetAngleAxis(clamp(yR * 0.001f, -pi * 0.49f, pi * 0.49f), Vector3(0, 1, 0));
-
-      Quaternion groundRot = rotX * rotY;
-
-      Quaternion oldToNewRotation = rotationPredict_ms.GetRotationTo(groundRot).GetNormalized();
-      radian rotationChangePerSecond =
-          fabs(oldToNewRotation.GetRotationAngle(QUATERNION_IDENTITY)) * 1000.0f;
-
-      radian maxRotationChangePerSecond = 1.0f * pi * grassInfluenceBias;
-      // ball slams into ground; see origin of frictionFactor variable for more clarity. this
-      // happens only once per bounce this works here because the 'if' statement is always true when
-      // frictionFactor > 0, because when then happens, nextPos.coords[2] has been set to ballRadius
-      // anyway
-      if (frictionFactor > 0.0f) {
-        maxRotationChangePerSecond += 4.0f * pi;
-      }
-      volatile radian factor = 1.0f;
-      if (rotationChangePerSecond > maxRotationChangePerSecond) {
-        factor = maxRotationChangePerSecond / rotationChangePerSecond;
-      }
-      if (factor < 1.0f) {
-        oldToNewRotation = oldToNewRotation.GetRotationMultipliedBy(factor);
-      }
-
-      Quaternion newRotationPredict_ms = oldToNewRotation * rotationPredict_ms;
-
-      // rotation induced ground friction
-
-      radian x, y, z;
-      rotationPredict_ms.GetAngles(x, y, z);
-      x = -x;
-
-      // how fast the ball would move if we took 100% of its rotational velo
-      Vector3 ballRotationMomentum;
-      ballRotationMomentum.coords[0] = y * radius * 1000.0f;  // * bias;
-      ballRotationMomentum.coords[1] = x * radius * 1000.0f;  // * bias;
-
-      // mix (not sure if mathematically correct, i think so, but maybe check out on a rainy sunday
-      // once)
-      float rotBias =
-          0.01f;  // lower == ball is lighter. higher == pitch/ball contact seems more 'rubbery'
-      rotBias *= grassInfluenceBias;
-
-      // ball slams into ground; see origin of frictionFactor variable for more clarity. this
-      // happens only once per bounce this works here because the 'if' statement is always true when
-      // frictionFactor > 0, because when then happens, nextPos.coords[2] has been set to ballRadius
-      // anyway
-      if (frictionFactor > 0.0f) {
-        rotBias += 0.5f * frictionFactor;
-      }
-      rotBias = clamp(rotBias, 0.0f, 1.0f);
-      momentumPredict.coords[0] =
-          momentumPredict.coords[0] * (1.0f - rotBias) + ballRotationMomentum.coords[0] * rotBias;
-      momentumPredict.coords[1] =
-          momentumPredict.coords[1] * (1.0f - rotBias) + ballRotationMomentum.coords[1] * rotBias;
-
-      // finally, add the previously calculated ground friction induced rotation
-      rotationPredict_ms = newRotationPredict_ms;
-    }
-
-    // magnus effect (swerve)
-
-    if (swerve_enabled) {
-      Vector3 rotVec;
-      rotationPredict_ms.GetAngles(rotVec.coords[0], rotVec.coords[1], rotVec.coords[2]);
-      rotVec *= 10.0f;
-
-      // magnus effect has a strength curve that goes down after a certain velocity
-      float swerveAmount = NormalizedClamp(momentumPredict.GetLength(), 0.0f, 70.0f);
-      // http://www.wolframalpha.com/input/?i=sin%28x+*+pi+*+0.7%29+^+2.2+from+x+%3D+0+to+1
-      // <bazkie_drunk> ^ tnx, past myself, that's very convenient!
-      swerveAmount = pow(std::sin(swerveAmount * pi * 0.94f), 2.6f);
-      Vector3 adaptedMomentumPredict = momentumPredict.GetNormalized(0) * swerveAmount * 30.0f;
-
-      Vector3 swerve = adaptedMomentumPredict.GetCrossProduct(-rotVec) * 1.0;
-
-      momentumPredict += swerve * timeStep;
-    }
-
-    // predict next ms
-
-    nextPos += momentumPredict * timeStep;
-
-    Vector3 rotationVector;
-    rotationPredict_ms.GetAngles(rotationVector.coords[0], rotationVector.coords[1],
-                                 rotationVector.coords[2]);
-    rotationVector *= timeStep / 0.001f;
-    Quaternion rotationPredictTimeStepped;
-    rotationPredictTimeStepped.SetAngles(rotationVector.coords[0], rotationVector.coords[1],
-                                         rotationVector.coords[2]);
-
-    nextOrientation = rotationPredictTimeStepped * nextOrientation;
-
     if (predictTime_ms % 10 == 0) {
-      if (autoDegrade_timeStep) {
-        if (predictTime_ms == 100)
-          timeStep = 0.005f;
-        if (predictTime_ms == 200)
-          timeStep = 0.01f;
-        // if (predictTime_ms == 2000) timeStep = 0.04f; can't go above 0.01f, would leave open
-        // spaces in array
-      }
-
       predictions[predictTime_ms / 10] = nextPos;
     }
 
     if (predictTime_ms == 10) {
       newMomentum = momentumPredict;
-      newRotation_ms = rotationPredict_ms;
+      // PES keeps the spin in a raw vector; GF keeps a quaternion. The render
+      // orientation is the ball rolling about its spin axis at |w| rad/s.
+      const float spinRad =
+          std::sqrt(fox.spinRaw.x * fox.spinRaw.x + fox.spinRaw.y * fox.spinRaw.y +
+                    fox.spinRaw.z * fox.spinRaw.z) *
+          pc.image.spinScale;
+      if (spinRad > 1e-6f) {
+        const float inv = 1.0f / spinRad;
+        const Vector3 axisFox(fox.spinRaw.x * inv, fox.spinRaw.y * inv, fox.spinRaw.z * inv);
+        const Vector3 axisGf(axisFox.coords[0], -axisFox.coords[2], axisFox.coords[1]);
+        newRotation_ms.SetAngleAxis(spinRad * timeStep, axisGf);
+      } else {
+        newRotation_ms = QUATERNION_IDENTITY;
+      }
       orientPrediction = nextOrientation;
     }
-
-    firstTime = false;
   }
 
   return BallSpatialInfo(newMomentum, newRotation_ms);

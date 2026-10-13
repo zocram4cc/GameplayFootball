@@ -73,6 +73,17 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
   pesClockConstants = std::make_unique<pes::PesClockConstants>(*setup.pesClockConstants);
   pesClock = std::make_unique<pes::PesClock>(*pesClockConstants);
 
+  // PES 2021's ball physics (docs/re/pes-re-ball-contact.md): every constant
+  // comes from the install - the `ball.o` record of constant_match.bin and the
+  // image values that live in the exe and nowhere else. Required like the
+  // clock's: the ball's flight, bounce and rolling are PES's, and there is no
+  // GF number to fall back on.
+  if (setup.pesBallConstants == nullptr)
+    throw std::runtime_error(
+        "PES ball constants missing: read them from the install with "
+        "pes::LoadPesBallConstants into MatchSetup::pesBallConstants");
+  pesBallConstants = std::make_unique<pes::PesBallConstants>(*setup.pesBallConstants);
+
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);
 

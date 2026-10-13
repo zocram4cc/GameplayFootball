@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "pes/camera.hpp"
+#include "onthepitch/pesball.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
 #include "gdext/pes_marking.hpp"
@@ -52,6 +53,11 @@ class PesLibrary : public RefCounted {
   }
   // Dynamic Wide broadcast camera tables (exe + constant_match.bin); null when missing.
   const pes::DynamicWideParams* camera_params() const { return cameraParams_ ? &*cameraParams_ : nullptr; }
+  // PES 2021's ball physics constants (`ball.o` in constant_match.bin plus the
+  // image values, docs/re/pes-re-ball-contact.md 6). Required by every GfMatch.
+  const pes::PesBallConstants* ball_constants() const {
+    return ballConstants_ ? &*ballConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -67,6 +73,7 @@ class PesLibrary : public RefCounted {
   std::optional<std::array<float, 4>> speedClasses_;
   std::optional<pes::DynamicWideParams> cameraParams_;
   std::optional<pes::PesClockConstants> clockConstants_;
+  std::optional<pes::PesBallConstants> ballConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

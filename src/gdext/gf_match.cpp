@@ -66,6 +66,7 @@ Error GfMatch::start(const Ref<PesLibrary>& library, const String& db_sql, const
   setup.rig = library->rig();
   // PES's match clock: its constants come from the install's own exe.
   setup.pesClockConstants = library->clock_constants();
+  setup.pesBallConstants = library->ball_constants();
   match_ = std::make_unique<Match>(new MatchData(home, away), setup, Properties());  // owns the MatchData
   RefreshPlayers();
   return OK;

@@ -2,8 +2,6 @@
 
 #include <algorithm>
 
-#include "ballphysics.hpp"
-
 namespace PitchConditions {
 
 namespace {
@@ -24,26 +22,6 @@ const float balanceSlipRelief = 0.7f;
 
 float GetWear(unsigned long matchTime_ms) {
   return Clamp01(static_cast<float>(matchTime_ms) / static_cast<float>(fullWearTime_ms));
-}
-
-float GetWearFrictionMultiplier(float wear) {
-  return 1.0f + maxWearFrictionBonus * Clamp01(wear);
-}
-
-float GetWetnessDragMultiplier(float wetness) {
-  return 1.0f + maxWetnessDragBonus * Clamp01(wetness);
-}
-
-void Apply(BallPhysicsConfig& config, float wear, float wetness) {
-  const float wearFriction = GetWearFrictionMultiplier(wear);
-
-  // Long grass and divots slow the ball down along the ground.
-  config.friction *= wearFriction;
-  config.linearFriction *= wearFriction;
-  // A wet ball flying through rain meets more resistance...
-  config.drag *= GetWetnessDragMultiplier(wetness);
-  // ...while the turf itself gets slicker; that part lives in the ball physics.
-  config.wetness = Clamp01(wetness);
 }
 
 float GetSlipChance(float wetness, float wear, float turnSharpness, float balance) {

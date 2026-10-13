@@ -175,6 +175,9 @@ public:
   // of the running period's game-minutes, at 960 ticks per game-minute. The
   // Match always has one: the constants are exe-derived and required.
   const pes::PesClockConstants& GetPesClockConstants() const { return *pesClockConstants; }
+  // PES 2021's ball physics constants (docs/re/pes-re-ball-contact.md 6): the
+  // `ball.o` record and the image values, required like the clock's.
+  const pes::PesBallConstants& GetPesBallConstants() const { return *pesBallConstants; }
   const pes::PesClock& GetPesClock() const { return *pesClock; }
   pes::PesClock& GetPesClock() { return *pesClock; }
   // Advances the match clock by elapsed game-seconds, frozen while play is
@@ -347,6 +350,7 @@ protected:
   // PES 2021's match clock: its exe-derived constants, owned here, and the
   // clock itself.
   std::unique_ptr<pes::PesClockConstants> pesClockConstants;
+  std::unique_ptr<pes::PesBallConstants> pesBallConstants;
   std::unique_ptr<pes::PesClock> pesClock;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;

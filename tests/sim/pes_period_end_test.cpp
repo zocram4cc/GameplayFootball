@@ -10,6 +10,7 @@
 
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchsetup.hpp"
+#include "onthepitch/pesball.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
@@ -37,8 +38,29 @@ const pesrig::Rig* SharedRig() {
   return rig ? &*rig : nullptr;
 }
 
-#define REQUIRE_RIG() \
-  if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"
+// PES 2021's ball physics constants, from the user's install (docs/re/
+// pes-re-ball-contact.md 6). The Match requires them like the clock's.
+const pes::PesBallConstants* SharedBallConstants() {
+  static std::optional<pes::PesBallConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      pes::PesVfs vfs;
+      std::string err;
+      if (vfs.Mount(root, &err)) {
+        if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+          constants = pes::LoadPesBallConstants(*exe, vfs, &err);
+      }
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
+#define REQUIRE_RIG()                                                                    \
+  if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
+  if (!SharedBallConstants())                                                            \
+    GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"
 
 // A match in the given phase with PES's clock constants installed, and the
 // simulation clock driven to `seconds` of elapsed game time.
@@ -67,6 +89,8 @@ std::unique_ptr<Match> MatchAtPhase(e_MatchPhase phase, float seconds) {
   constants.addedTier_3_6_ET = 3600.0f;
   constants.ticksPerMinute = 960;
   setup.pesClockConstants = &constants;
+  setup.pesBallConstants = SharedBallConstants();
+  if (!setup.pesBallConstants) return nullptr;
   auto match = std::make_unique<Match>(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   match->SetMatchPhase(phase);
   match->StartPlay();

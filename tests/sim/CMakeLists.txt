@@ -26,3 +26,7 @@ gtest_discover_tests(pes_period_end_test PROPERTIES TIMEOUT 1800)
 add_test(NAME gfsim_run_test
   COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/gfsim_run_test.sh $<TARGET_FILE:gfsim_run> ${CMAKE_SOURCE_DIR})
 set_tests_properties(gfsim_run_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
+
+add_executable(pes_ball_physics_test pes_ball_physics_test.cpp)
+target_link_libraries(pes_ball_physics_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_ball_physics_test PROPERTIES TIMEOUT 600)

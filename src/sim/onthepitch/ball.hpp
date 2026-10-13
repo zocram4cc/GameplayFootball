@@ -22,6 +22,7 @@
 #include "../gamedefines.hpp"
 #include "../utils.hpp"
 #include "defines.hpp"
+#include "pesball.hpp"
 
 using namespace blunted;
 
@@ -89,13 +90,16 @@ protected:
 
   Match* match;
 
-  float bounce;
-  float linearBounce;
-  float drag;
-  float friction;
-  float linearFriction;
-  float gravity;
-  float grassHeight;
+  // PES 2021's ball physics, read from the install by the caller
+  // (docs/re/pes-re-ball-contact.md, docs/re/pes-re-ball-constants.md). GF's own
+  // bounce, drag and friction coefficients had no PES counterpart and are gone:
+  // PES's vertical, tangential and spin response are all clamped interpolations
+  // over `ball.o`'s mode columns, not single numbers.
+  const pes::PesBallConstants* ballConstants = nullptr;
+
+  // The ball's own contact-tick counter, the input the grounder kick's
+  // `int(|x|*1000) mod gounnderprob[mode]` gate runs on.
+  unsigned contactTicks = 0;
 
   Vector3 weatherWind;
   float weatherWetness;

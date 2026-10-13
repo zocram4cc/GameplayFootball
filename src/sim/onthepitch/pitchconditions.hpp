@@ -6,27 +6,15 @@
 #ifndef _HPP_PITCH_CONDITIONS
 #define _HPP_PITCH_CONDITIONS
 
-struct BallPhysicsConfig;
-
 namespace PitchConditions {
 
 // The pitch is considered fully chewed up by the end of regulation time.
 const unsigned long fullWearTime_ms = 90UL * 60000UL;
-// Extra ground friction on a completely worn pitch.
-const float maxWearFrictionBonus = 0.3f;
-// Extra air resistance in heavy rain.
-const float maxWetnessDragBonus = 0.25f;
 const float maxSlipChance = 0.2f;
 
 // Fraction of the match's wear accumulated so far, in [0, 1].
 float GetWear(unsigned long matchTime_ms);
 
-float GetWearFrictionMultiplier(float wear);
-float GetWetnessDragMultiplier(float wetness);
-
-// Folds the current conditions into the ball physics configuration. A fresh dry
-// pitch (wear 0, wetness 0) leaves the configuration untouched.
-void Apply(BallPhysicsConfig& config, float wear, float wetness);
 
 // Probability that a player loses his footing. `turnSharpness` is 0 for running
 // straight and 1 for a full change of direction; `balance` is the player's
