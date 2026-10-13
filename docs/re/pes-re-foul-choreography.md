@@ -78,23 +78,27 @@ reset by `FUN_140a3c560` and refreshed every frame from `MatchControl+0x2910..` 
 | victim | `MI+0x1594` (0..21) | must be a valid on-pitch player or no scene; injured if `player+4+0x14 != 0` or `player+4+0x10 != 0` (OBS) |
 | fouler | `MI+0x1590` | |
 | card given | `MI+0x158c ∈ {3,4}` | otherwise the fouler slot is treated as 0xff = "no card" (`uVar4`) |
-| card colour | newest kind-4 event record (`FUN_140a3e150(matchHist,4,0)`, ring of 8 × 800 B per kind) `+0x1c` | 3 = yellow, 4 = red, 2 = warning-only (OBS compare chains) |
-| demo type | same record `+0x18` | **3 ⇒ never a scene** (OBS @0x14047f2c0) |
-| injury veto | record `+0x00 != 0x37 && +0x42 != 0` ⇒ victim not treated as injured | |
+| card colour | newest kind-4 event record (`FUN_140a3e150(matchHist,4,0)`, ring of 8 × 800 B per kind) `+0x1c` = a copy of `MI+0x158c` (OBS, `FUN_140a3d0c0`) | 3 = yellow, 4 = red, 2 = warning only (OBS compare chains); INF(med) 0 = no card |
+| foul kind | same record `+0x18` = copy of `MI+0x1588` | **3 ⇒ never a scene** (OBS @0x14047f2c0); 1 = offside; `FUN_140a63940` treats 1 and 3 as **indirect** offences (§4.4); 0 = direct (INF hi) |
+| injury veto | record `+0x00 != 0x37 && +0x42 != 0` ⇒ victim not treated as injured; `+0x42` is set when the victim's match-stat entry (`MI+0x17ac` block) has kind 0xf (OBS `FUN_140a3d0c0`, meaning open) | |
 | booking count | `*(u8*)fouler.player` (`FUN_1414dab90` is identity) | **after** this foul's card: 1 = one yellow, ≥2 = second yellow |
-| restart kind | `MI+0x1554 == 6` | penalty kick (PK scenes; also bypasses the pitch-bounds check) |
+| restart kind | `MI+0x1554` | 6 = penalty kick (PK scenes; also bypasses the pitch-bounds check). INF(hi) from the gesture/linesman choosers: 1 kick-off, 2 throw-in, 3 goal kick, 4 corner, 5 free kick (step 0x17 `FUN_1404a9ce0` = FK setup only for 5), 6 PK, 7 game end |
 | advantage-card flag | `MI+0x15b8` | INF(med): the card follows an advantage that was played |
 | period | `MI+0x1168` | 3 = 2nd half, 7 = 2nd half of extra time (FUN_140a74d00 map: 1→0,3→1,5→2,7→3,9→4) |
 | foul spot | `MI+0x155c` (x), `MI+0x1564` (z) | Fox metres, pitch centre origin |
 
 Event ring: event type 0x1e (30) is the only type mapped to ring 4 by the table at 0x142642e60 (OBS), so the
 kind-4 record is the **foul event**; it is pushed by `FUN_140a3dac0` from the generic recorder `FUN_140a3dc40`.
+It is written by `ObserverFoul@record@match` slot 1 `FUN_140a13bc0` when the match goes out of play
+(`MI+0x116c == 2`) with out-of-play reason `MI+0x1574 == 5` (foul, incl. offside), or when `MI+0x11bb` / `MI+0x135c`
+is set; the payload at record+0x14 is `FUN_140a3d0c0(MI+0x1584)`: +0x18 = `MI+0x1588`, +0x1c = `MI+0x158c`,
++0x20/+0x28 = player ids of `MI+0x1590`/`MI+0x1594`, +0x43 = PK flag (OBS).
 
 ### 1.3 Decision tree (OBS, verified against disassembly; float compares re-read in raw bytes)
 
 ```
 if MI==0 || G+0x2aa8==0 || hist==0 || victim>21 || !valid(victim) -> NONE
-if foulRec.demoType == 3 -> NONE
+if foulRec.foulKind == 3 -> NONE          # MI+0x1588 copy; 3 = indirect (non-offside) offence
 if !( (spot.x <= fieldInfo[0] && spot.z <= fieldInfo[1])  // signed compares, @0x14047f2cd..2ea
       || restart == PK ) -> NONE
 injured = victim injured && !(rec.type!=0x37 && rec[+0x42]) ? victim : none
@@ -370,3 +374,113 @@ have passed since `FUN_140a3bd80(MI)`, step 6 plays `FOUL_CMN_CARD_Y_B` (= `foul
 
 `freekick.o` `suspendTime` 3.0 s / `waitTime` 0.0 (see `pes-re-setpiece-referee.md` §3) govern the set play after
 step 0x1a; not re-derived here.
+
+---
+
+## 5. Offside
+
+### 5.1 How an offside is represented (OBS)
+
+- Out-of-play reason `MI+0x1574 == 5` (same as a foul) with foul kind **`MI+0x1588 == 1`**; the offside player is
+  `MI+0x1590` (fallback `match+0x2470c`, `FUN_14047feb0`), the offence position is `MI+0x155c` (x) / `MI+0x1564` (z)
+  (read by the linesman, §5.3).
+- `MI+0x1574 == 5 && MI+0x15a5 != 0` is the **offside goal** (goal scored then disallowed): it switches the goal
+  builder to `GOAL_S_OFFSIDEGOAL_START` (0x300f9, see `pes-re-cutscenes.md` §4.3), the stop step to 4, and the
+  out-of-play role writer to the generic one; the reason strings `OFFSIDE_GOAL_START/LINESMAN/CELEBRATE/OBJECTION`
+  (0x1425d8048..) are its phases (INF hi).
+- Offside line used by the linesman (OBS `FUN_140a38f20`, RefereeLinesman vtable 0x142642348 slot 26): per side a
+  record at `registry(+0x7e0)->+0x18 + 0x44 + side·0x14` = `{f32 lineX, i32 playerIdx, …}`; side chosen by
+  `team0+0x255`. In play the linesman's look-at target is that player (the second-last defender) whenever the ball is
+  past him; when stopped with `MI+0x1588 == 1` he looks at `(own x, MI+0x1564)`.
+
+### 5.2 Detection — OPEN
+
+Not located: the moment the line is evaluated, the level tolerance and the passive/active rule. Tried: writers of
+`MI+0x1588` / `MatchControl+0x2944` (only struct copies `FUN_140430c30`, resets `FUN_140a571f0`/`FUN_140a57750`);
+`lea` sub-struct pointers into 0x2908..0x2980 (BallInfo and situation-unit objects alias the same offsets);
+`ObserverOffsideTrap@record` (`FUN_140a15e80`/`FUN_140a172e0`: records event 0x2a for successful *traps* from
+team flags `+0xe4/+0x140`, not the judgement); float writers `[r+r*4+0x44]` in 0x140400000–0x140b00000;
+`CameraOffside` slots (not decompilable in the GUI database). AI-side constants that are **not** the judge:
+`checkOffsideLineDistX*`, `distXOffsideLineMin/Max`, `backOffsideLine` (`pes-re-setpiece-referee.md` §1).
+Next: decompile the `MatchControl` vtable 0x1425984c0 slots 6/8/16/17 (`FUN_140423050`, `FUN_140423af0`,
+`FUN_1404232e0`, `FUN_140423b60`) and the function that writes `MatchControl+0x2910` (restart kind) with value 6/FK,
+or watch `MI+0x1588` live across an offside.
+GF recommendation (rule-faithful, INF): judge at the pass/touch frame, attacker offside iff strictly ahead of both
+the ball and the second-last opponent in his opponents' half; level = onside.
+
+### 5.3 Call sequence (OBS)
+
+1. **Linesman (`LinesmanAction` Update `FUN_1407a2920`, chooser `FUN_1407a2ea0`).** Animetable rows 213–238:
+   | row | name | clip |
+   |---|---|---|
+   | 216 | linesman_flagup | assistant_3_0_f090_flag_up m5 (c4) / assistant_idle_0_flag_up m14 (c9) / assistant_3_0_090_flag_up m2 (c13) |
+   | 217 | linesman_flagup_loop | assistant_flag_up_0 m6 |
+   | 218 | linesman_flagup_appeal | assistant_flag_up_0_wave m12 |
+   | 219 | linesman_corner_fromflagup | assistant_flag_up_0_flag_ck m7 |
+   | 220/221/222 | linesman_offside_far/mid/near_fromflagup | assistant_flag_up_0_offside_far/middle/near m9/m10/m11 |
+   | 223 | linesman_offside_cancel_fromflagup | assistant_flag_up_0_flag_down m8 |
+   | 213/214/215 | throughin_right/left_hand, goalkick | assistant_*_flag_middle_point / _flag_gk |
+   | 224/225 | stand_wait / linesman_0_0 | assistant_stand_0 m16 |
+   | 226–232 | side_1_1/2_2/3_3, walk_1_1, run_2_2/3_3/4_4 | locomotion; 235–238 turns |
+   | 233/234 | linesman_layer_flag / _switch | layer_assistant_flag_hand_R m2785 / _switch_R_L m2786 |
+   - From idle (state < 2) a linesman command 7 or 2 (`cmd+0x85c`) raises the flag (216, angle column).
+   - Flag up (state 2–3) with `MI+0x1588 == 1`: `w = halfWidth/3` (FieldInfo[1]/3.0 = 11.35 m); `s = −1` if the
+     linesman's z < 0 else +1; `t = s · MI+0x1564`. `t > w` → **222 near**; `−w ≤ t ≤ w` → **221 middle**; `t < −w` →
+     **220 far** (the flag points across the pitch to the third where the offence happened).
+   - Flag up for a foul seen by the linesman (`MI+0x1588 == 0`): cmd 7 → 217 loop; cmd 2 → 218 wave, or 223 flag down
+     once `MI+0x1198 − MI+0x1550` exceeds `gameSpeed·60/60 + 0.5` frames (≈ 1 s) with `MI+0x154c` set; cmd 6 → 218
+     while more than `gameSpeed·3.0/60 + 0.5` frames of the current clip remain (OBS 0x14259a764 = 60.0,
+     0x14258c264 = 3.0), else falls through to 223.
+   - Other restarts while the flag is up: `MI+0x1554` 2–3 → 225 stand, 4 → 219 corner flag; from idle `MI+0x1554 == 2`
+     → 213/214 throw-in direction by attacking team vs. linesman side, 3/4 → 215 goal kick / 216 flag up when the
+     linesman is within 4 m (0x1425656c0) of the goal line, else 232 run.
+   - Rows 223 and 218 play at **1.6×** speed while still in play (`MI+0x116c == 1`) (0x1425ab12c); default
+     transition 0.2 s (0x142598578).
+2. **Referee (`Judge` action, §4.4):** command 5 with `MI+0x1588 == 1` ⇒ `judge_fk_indirect_start`
+   (`referee_stand_0_hand_up_whistle`, whistle + arm up) → `judge_fk_indirect_loop` (arm held) → `_rotate` to face the
+   kick point when the angle exceeds 45° → `_down` when the kick is taken.
+3. **Sequencer (§4.1):** `[3, 0xb, 0x45]` — hold **3.0 s** (`Flow+0x868 = 0x40400000` for `MI+0x1588==1`, OBS
+   `FUN_140447690`) — then `0x11` wipe 0.1 s, substitution window, restart steps, fade-in 1.0 s. **No fixdemo scene is
+   requested for an offside** (step 0xb never calls `FUN_14047feb0`); a pending advantage card can add step 6.
+4. **Player reactions during the hold (`FUN_1405ad720`, DC kind 2):** offside player → **0x15**; on his team the last
+   passer (newest pass event of types 1–3 or 0x10 whose player ≠ offside player, from `FUN_140a3e190`) → **0x16**,
+   others → **0x19**, or **0x17** when within **13 m** (0x1425c5948) of the offside player and he is the ball owner's
+   team target; defending team: players whose formation role (`team+0x4c00[slot]`) is 1 or 2 → **0x18** (INF med: the
+   back line appealing / raising arms), others → **0x13**.
+5. **Indirect FK placement:** not traced; INF(med): `MI+0x155c/0x1564` (the offence position) is the restart point.
+6. **Camera:** `CameraOffside@match` (vtable 0x142bd3df8) and the `OffsideReplay` string exist; selection not traced.
+
+---
+
+## 6. Live observation
+
+Not possible in this session. `pes_state.py` at the start of the pass: `STATE=MATCH_FROZEN` but `*(G+0x270) == 0`
+(no match-info object; read 2026-10-13 between 18:43 and 19:00 CEST); at 19:11 CEST: `STATE=MENU`. No foul/offside could be observed
+(input to the game is forbidden). Script for a future capture: `~/ghidra-projects/scratch/FoulChoreographyRE/live.py`
+(dumps `MI+0x1550..0x15d0`, period and out-of-play reason).
+
+---
+
+## 7. Open items (with what was tried)
+
+1. **Slot → match-player resolution for foul scenes** (§2.2): role pairs are constants; remap not found (tries listed
+   there). Recommendation given as INF.
+2. **Scene origin for kind-3 foul steps** (§3): `FUN_140476c50` is the goal anchor; the foul DemoInfo has pos (0,0,0).
+   Next: the FixDemoMatch kind-3 origin (FixDemoManager vtable 0x142ba6800 slots) or a live capture.
+3. **Offside detection** (§5.2).
+4. Meanings of `MI+0x15b8` (WARN = advantage card, INF med), `rec+0x42`, card value 2, `MI+0x1690` advantage states,
+   `FUN_14042d5e0` area value 3 (pinch), `FUN_140444d20` (advantage-running branch, step 0x18).
+5. Steps 0x12–0x17, 0x23, 0x34, 0x19 of the restart program were only skimmed (UI/net/substitution plumbing and
+   restart setup); the frame where players are teleported to set-piece positions is inside these (INF: 0x16/0x17
+   `FUN_140449d20` / `FUN_1404a9ce0`, the latter only when `MI+0x1554 == 5`).
+6. `FUN_1442313a0` (card HUD flag) lies outside the dumped image (0x144…); `FUN_141f56800` jumps into a protected stub
+   at 0x15b59a660 (read live: a plain vector push with 5 byte args).
+
+## 8. GodotFootball / GF divergences to fix
+
+- GF has no cutscene gate: PES plays **no scene** for an ordinary foul (no card, fouler not booked, not in the
+  pinch zone) — only a 2.0 s hold with reactions, then a 0.1 s wipe and teleport to the restart.
+- Cards are only ever shown inside a scene; the referee has no in-play card clip.
+- Offside has no scene: whistle + raised arm (indirect gesture), linesman flag near/mid/far, 3.0 s hold, wipe.
+- One EXCITE scene per match at most; late-match leading-team pinch fouls only.
+- Second yellow = red via the `W` scenes; booked-player no-card fouls use the BEJUDGED → ONCOMING (hard cut) intro.
