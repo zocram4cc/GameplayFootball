@@ -116,3 +116,93 @@ TEST(NameCodesInstall, FoldsThroughInfoNameFont) {
   EXPECT_EQ(pes::NameCodes(*map, "o'neil"), (std::vector<uint32_t>{'O', 'N', 'E', 'I', 'L'}));
   EXPECT_EQ(pes::NameCodes(*map, "\xC3\x86on"), (std::vector<uint32_t>{'A', 'E', 'O', 'N'}));  // Æon
 }
+
+// The finished marking texture holds the glyph page rotated 180 degrees: the
+// quad is emitted mirrored in x and the canvas write flips y (FUN_1419e1df0
+// 6.5), so the garment shader's positive name scales read it right way up.
+// A blit without both flips rotates the glyphs; laying the band out right to
+// left instead of left to right renders the name backwards (RELLUM).
+TEST(NameBlit, GlyphIsTurned180InTheCanvas) {
+  const pes::NameGlyph r{0x52, 0, 256, 130, 64, 124};  // 'R', page 0
+  auto quads = pes::NameLayout({64.0f}, 0);            // one glyph: N = 32, no scale
+  ASSERT_EQ(quads.size(), 1u);
+  const auto b = pes::NameBlitOf(quads[0], r, 1600, 256, 0.64f, 512.0f, 128.0f);
+  EXPECT_TRUE(b.mirrorU);
+  EXPECT_TRUE(b.mirrorV);
+  // centre = 256 units either way (symmetric for one glyph): 256 * 2 canvas px.
+  EXPECT_NEAR(b.cx, 512.0f, 1e-3f);
+  EXPECT_NEAR(b.cy, 128.0f, 1e-3f);
+  EXPECT_NEAR(b.w, 64.0f, 1e-3f);   // gw = 64/2 name units * 2
+  EXPECT_NEAR(b.h, 62.0f * 0.98f * 2.0f, 1e-3f);
+  // The source window is the whole glyph cell of the page.
+  EXPECT_NEAR(b.u0, 256.0f / 1024.0f, 1e-6f);
+  EXPECT_NEAR(b.v0, 130.0f / 256.0f, 1e-6f);
+  EXPECT_NEAR(b.uw, 64.0f / 1024.0f, 1e-6f);
+  EXPECT_NEAR(b.vh, 124.0f / 256.0f, 1e-6f);
+}
+
+// An asymmetric two-glyph name pins both the order and the orientation. The
+// quad loop places the first code point at the right (FUN_1419e1df0 6.3) and the
+// canvas mirrors the band, so the first code point ends up at the canvas LEFT -
+// the orientation the shirt back samples into reading order. Reversed: RELLUM.
+constexpr float NAME_CENTRE_REF = 256.0f;  // name space centre, FUN_1419e1df0 6.2
+
+TEST(NameBlit, TwoGlyphsKeepOrderAndTurn) {
+  const pes::NameGlyph m{0x4D, 0, 850, 2, 84, 124};   // 'M' (wide)
+  const pes::NameGlyph u{0x55, 0, 484, 130, 64, 124}; // 'U' (narrow)
+  const auto widths = std::vector<float>{84.0f, 64.0f};
+  auto quads = pes::NameLayout(widths, 0);
+  ASSERT_EQ(quads.size(), 2u);
+  // N = (84 + 64)/2 = 74; the loop runs right to left, so the last code point is
+  // placed first at the right and the first code point ends up at the left.
+  EXPECT_LT(quads[0].cx, quads[1].cx);
+  EXPECT_NEAR(quads[0].w, 42.0f, 1e-4f);  // gw = 84/2
+  EXPECT_NEAR(quads[1].w, 32.0f, 1e-4f);  // gw = 64/2
+  const auto bm = pes::NameBlitOf(quads[0], m, 1600, 256, 0.64f, 512.0f, 128.0f);
+  const auto bu = pes::NameBlitOf(quads[1], u, 1600, 256, 0.64f, 512.0f, 128.0f);
+  // The canvas mirrors the band, so 'M' is right of 'U' on the canvas: the shirt
+  // back samples the name region from the other side and reads "MU".
+  EXPECT_GT(bm.cx, bu.cx);
+  EXPECT_NEAR(bm.cx - bm.w / 2 - (bu.cx + bu.w / 2), 0.0f, 1e-3f);  // no gap
+  EXPECT_NEAR((bm.cx + bm.w / 2 + bu.cx - bu.w / 2) / 2, NAME_CENTRE_REF * 2.0f, 1e-3f);  // centred
+  EXPECT_TRUE(bm.mirrorU);
+  EXPECT_TRUE(bm.mirrorV);
+  EXPECT_TRUE(bu.mirrorU);
+  EXPECT_TRUE(bu.mirrorV);
+}
+
+// Page 1 glyphs live on the 1024x512 page: v is divided by 512, not 256.
+TEST(NameBlit, PageOneGlyphsUseTheHalfHeightPage) {
+  const pes::NameGlyph ue{0xC39C, 1, 8, 2, 72, 124};  // 'Ü', page 1
+  auto quads = pes::NameLayout({72.0f}, 0);
+  const auto b = pes::NameBlitOf(quads[0], ue, 1600, 256, 0.64f, 512.0f, 128.0f);
+  EXPECT_NEAR(b.v0, 2.0f / 512.0f, 1e-6f);
+  EXPECT_NEAR(b.vh, 124.0f / 512.0f, 1e-6f);
+  EXPECT_NEAR(b.u0, 8.0f / 1024.0f, 1e-6f);
+}
+
+// The canvas write flips y (FUN_1419e1df0 6.5): a name-space y of 64 maps to
+// canvas row 128 of 256, and a glyph above the row lands higher in the texture.
+TEST(NameBlit, CanvasFlipsY) {
+  auto quads = pes::NameLayout({64.0f}, 0);
+  const pes::NameGlyph k{0x4B, 0, 710, 2, 64, 124};  // 'K'
+  const auto b = pes::NameBlitOf(quads[0], k, 1600, 256, 0.64f, 512.0f, 128.0f);
+  EXPECT_NEAR(b.cy, 128.0f, 1e-3f);  // (128 - 64) * 2
+  // A curved name put above the row (y > 64) must come out BELOW canvas row 128.
+  auto curved = pes::NameLayout(std::vector<float>(6, 84.0f), 1);
+  ASSERT_EQ(curved.size(), 6u);
+  // The arc rises towards its ends: the ends sit above the row in name space and
+  // below row 128 on the canvas; the middle sits the other way round.
+  const auto first = pes::NameBlitOf(curved[0], k, 1600, 256, 0.64f, 512.0f, 128.0f);
+  const auto last = pes::NameBlitOf(curved[5], k, 1600, 256, 0.64f, 512.0f, 128.0f);
+  const auto middle = pes::NameBlitOf(curved[2], k, 1600, 256, 0.64f, 512.0f, 128.0f);
+  EXPECT_GT(curved[0].cy, 64.0f);
+  EXPECT_GT(curved[5].cy, 64.0f);
+  EXPECT_LT(first.cy, 128.0f);
+  EXPECT_LT(last.cy, 128.0f);
+  EXPECT_LT(curved[2].cy, 64.0f);
+  EXPECT_GT(middle.cy, 128.0f);
+  // The mirrored canvas keeps the arc rising towards both ends.
+  EXPECT_LT(first.cy, middle.cy);
+  EXPECT_LT(last.cy, middle.cy);
+}

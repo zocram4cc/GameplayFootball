@@ -53,9 +53,9 @@ Rgba Decode(const pes::PesVfs& vfs, const std::string& file) {
 }
 
 // Draws src[u0..u0+uw, v0..v0+vh] into the canvas rect, rotated by `angle`
-// about its centre, optionally mirrored in x; source-over.
+// about its centre, optionally mirrored in x and/or y; source-over.
 void Blit(PackedByteArray& dst, int dw, int dh, const Rgba& src, float u0, float v0, float uw, float vh,
-          float cx, float cy, float w, float h, float angle, bool mirror) {
+          float cx, float cy, float w, float h, float angle, bool mirrorX, bool mirrorY = false) {
   const float c = std::cos(angle), s = std::sin(angle), reach = 0.5f * std::sqrt(w * w + h * h);
   const int xmin = std::max(0, int(cx - reach)), xmax = std::min(dw - 1, int(cx + reach) + 1);
   const int ymin = std::max(0, int(cy - reach)), ymax = std::min(dh - 1, int(cy + reach) + 1);
@@ -65,8 +65,10 @@ void Blit(PackedByteArray& dst, int dw, int dh, const Rgba& src, float u0, float
       const float lx = c * dx + s * dy, ly = -s * dx + c * dy;  // into the quad's frame
       if (std::fabs(lx) > w / 2 || std::fabs(ly) > h / 2) continue;
       float fu = lx / w + 0.5f;
-      if (mirror) fu = 1.0f - fu;
-      const Color sc = src.At(u0 + fu * uw, v0 + (ly / h + 0.5f) * vh);
+      if (mirrorX) fu = 1.0f - fu;
+      float fv = ly / h + 0.5f;
+      if (mirrorY) fv = 1.0f - fv;
+      const Color sc = src.At(u0 + fu * uw, v0 + fv * vh);
       if (sc.a <= 0) continue;
       const int64_t i = (int64_t(y) * dw + x) * 4;
       const float da = dst[i + 3] / 255.0f, oa = sc.a + da * (1 - sc.a);
@@ -137,14 +139,15 @@ Ref<Image> ComposeMarking(const pes::PesVfs& vfs, const pes::KitConfig& kit, con
       if (const auto* g = pes::FindGlyph(fonts.glyphs, code); g && (g->page == 0 || page1.ok()))
         glyphs.push_back(g), widths.push_back(float(g->w)), *nameWidthSum += float(g->w);
     const auto quads = pes::NameLayout(widths, kit.nameShape);
-    constexpr float PAGE0_W = 1024, PAGE0_H = 256, PAGE1_H = 512;  // glyph-table pixel space
-    const float toPx = NAME_REGION_W * MARKING_W / NAME_SPACE_W;  // name space -> canvas px (x2)
     for (size_t i = 0; i < quads.size(); ++i) {
-      const auto& g = *glyphs[i];
-      const Rgba& page = g.page == 0 ? page0 : page1;
-      const float ph = g.page == 0 ? PAGE0_H : PAGE1_H;
-      Blit(px, MARKING_W, MARKING_H, page, g.x / PAGE0_W, g.y / ph, g.w / PAGE0_W, g.h / ph, quads[i].cx * toPx,
-           (NAME_SPACE_H - quads[i].cy) * toPx, quads[i].w * toPx, quads[i].h * toPx, -quads[i].angle, true);
+      const auto b = pes::NameBlitOf(quads[i], *glyphs[i], MARKING_W, MARKING_H, NAME_REGION_W, NAME_SPACE_W,
+                                     NAME_SPACE_H);
+      const Rgba& page = glyphs[i]->page == 0 ? page0 : page1;
+      // The canvas holds the glyph page turned 180 degrees: the exe emits the
+      // quad mirrored in x and flips y on the canvas write (FUN_1419e1df0
+      // 6.5), and the garment shader's name scales are both positive.
+      Blit(px, MARKING_W, MARKING_H, page, b.u0, b.v0, b.uw, b.vh, b.cx, b.cy, b.w, b.h, b.angle, b.mirrorU,
+           b.mirrorV);
       drew = true;
     }
   }

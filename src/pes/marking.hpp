@@ -29,10 +29,24 @@ struct GlyphQuad { float cx = 0, cy = 0, w = 0, h = 0, angle = 0; };
 // FUN_1419e1df0. widths: glyph-table px per glyph; shape: NameShape 0..3.
 std::vector<GlyphQuad> NameLayout(const std::vector<float>& widths, int shape);
 
-struct NameGlyph { uint32_t code = 0; int page = 0, x = 0, y = 0, w = 0, h = 0; };
+struct NameGlyph { uint32_t code = 0; int page = 0; int x = 0, y = 0, w = 0, h = 0; };
 // The game's 78-entry glyph table (DAT_142a96ce0), read from the user's exe.
 std::optional<std::vector<NameGlyph>> ReadNameGlyphs(const PeImage& exe, std::string* error);
 const NameGlyph* FindGlyph(const std::vector<NameGlyph>& glyphs, uint32_t code);
+
+// Where one glyph lands on the marking canvas, and which corner of its glyph
+// cell the canvas takes. PES emits the quad mirrored in x and flips y on the
+// canvas write (FUN_1419e1df0 §6.5), so the finished texture holds the glyph
+// page rotated 180 degrees: the garment shader's positive name scales then
+// read it right way up.
+struct NameBlit {
+  float cx = 0, cy = 0, w = 0, h = 0, angle = 0;  // canvas px, quad frame
+  float u0 = 0, v0 = 0, uw = 0, vh = 0;           // the glyph cell in page UV
+  bool mirrorU = true, mirrorV = true;            // per-glyph page flips
+};
+// canvas: the 1600x256 marking texture; nameSpaceW/H: 512/128.
+NameBlit NameBlitOf(const GlyphQuad& q, const NameGlyph& g, int canvasW, int canvasH, float regionW,
+                    float nameSpaceW, float nameSpaceH);
 
 // info_name_font.bin (common_package.fpk): code -> ASCII replacement.
 using NameFontMap = std::unordered_map<uint32_t, uint32_t>;

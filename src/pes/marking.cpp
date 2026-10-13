@@ -82,6 +82,10 @@ std::vector<GlyphQuad> NameLayout(const std::vector<float>& widths, int shape) {
   if (m != 0 && N < NAME_SPACE) gap = CURVED_GAP, N += CURVED_GAP * float(widths.size() - 1);
   const float scale = std::min(1.0f, NAME_SPACE / N);
   N = std::min(N, NAME_SPACE);
+  // PES's glyph loop walks the cursor right to left and places each glyph at
+  // cursor - gw/2 (FUN_1419e1df0 6.3), so the last code point is written first
+  // and the first code point ends up at the LEFT of the band - already reading
+  // order. NameBlitOf then mirrors the band for the shirt back's UV direction.
   float cursor = NAME_CENTRE + N / 2;
   for (size_t k = widths.size(); k-- > 0;) {
     const float gw = widths[k] * scale / 2, centre = cursor - gw / 2;
@@ -98,6 +102,26 @@ std::vector<GlyphQuad> NameLayout(const std::vector<float>& widths, int shape) {
     }
     cursor = centre - gap - gw / 2;
   }
+  return out;
+}
+
+NameBlit NameBlitOf(const GlyphQuad& q, const NameGlyph& g, int canvasW, int canvasH, float regionW,
+                    float nameSpaceW, float nameSpaceH) {
+  NameBlit out;
+  // name space -> canvas px, x and y both scaled by the region's x ratio (x2
+  // for the 1600x256 canvas), y flipped (FUN_1419e1df0 6.5).
+  const float sx = regionW * canvasW / nameSpaceW, sy = regionW * canvasW / nameSpaceW;
+  // The shirt back's UV.x runs opposite to the front's, so the name region is
+  // mirrored here as well: together with the y flip each glyph lands turned 180
+  // degrees and the band keeps the viewer's reading order. The garment shader's
+  // name scales are both positive, which un-does both flips on the shirt.
+  out.cx = (nameSpaceW - q.cx) * sx;
+  out.cy = (nameSpaceH - q.cy) * sy;
+  out.w = q.w * sx, out.h = q.h * sy;
+  out.angle = -q.angle;
+  // The glyph cell in the page's UV; page 1 is 1024x512, everything else 1024x256.
+  const float pw = 1024.0f, ph = g.page == 1 ? 512.0f : 256.0f;
+  out.u0 = g.x / pw, out.v0 = g.y / ph, out.uw = g.w / pw, out.vh = g.h / ph;
   return out;
 }
 
