@@ -369,6 +369,43 @@ elif adv_timer > 0:
 
 ---
 
+### 3.1 The attack-chance test `FUN_14050f7e0` (orchestrator, 2026-10-13, PESLive decompile + .rdata reads)
+
+Decompiled from the full image (`pes-re-protection.md`); body in `.trace`, 0x14050f7e0–0x14050f8f7, helpers
+`FUN_14050f0d0` (zone counter) and `FUN_14050f580` (candidate). Constants are `.rdata` floats (OBS by value):
+25.0 @0x14259be20, 10.0 @0x142588210, 5.0 @0x14259222c, 17.0 @0x14259d614, 3.0 @0x14258c264, 15.0 @0x14259be0c,
+8.0 @0x14259bdf4, 50.0 @0x14259be34, 60.0 @0x14259a764, 1225.0 (=35²) @0x1425c5258, 0.2 @0x142598578, 0.5 @0x142565600,
+0.1 @0x142588200, 70.0 @0x14259be4c.
+
+`FUN_14050f7e0(judge, rec, p3, p4)` returns 1/2 = advantage-worthy attack, 0 and 0xfb..0xff = no. Structure (OBS
+control flow; field meanings INF-medium where marked):
+1. Team t = the victim's team (`rec+4` id 11..21 → 1). Attack sign s = `team+0x254` (±1).
+2. **Early out:** unless `team+0xb6e0`, return 0 when `s·ball.x < s·line − 25`, `line` = `*(field+0x44 + t'·0x14)`
+   (INF: the opponents' defensive-line x; cf. DOGSO §2.6). The ball is `*(ctx18+0x2482c)` (x) / `+0x24834` (z).
+3. **Zone count** `FUN_14050f0d0(point = ball)` → per team a count, plus a "cut-off" counter:
+   - for each on-pitch player not in action 0x11/0x57: *own (fouled) team* counts when `s·x ≥ s·p.x − 5` (−10 for
+     the team's key player) and `|z − p.z| ≤ 17`; *opponents* count when `s·x ≥ s·p.x − 3`, `|dz| ≤ 15`, and
+     (`s·x ≥ s·p.x` or `|dz| ≤ 5`);
+   - for opponents ahead of the key player: the key player's position is predicted `gs·0.2+0.5` frames ahead
+     (`pos+vel·k`, +0x55c/+0x574); if the bearing difference between key→opponent and key→ball is < 70° and
+     `FUN_140a6e3f0(action)` holds (INF: a defending action), the cut-off counter increments.
+   - If the fouled team counts 0, the count is redone around the key player's own position; still 0 → **0xfd**.
+4. **Clear lane:** when the key player is within 35 m of the goal centre (`field[0..]`), the bearing to goal is
+   computed (`atan2`, wrapped, ×57.2958); each of up to 11 opponents from the distance-sorted table
+   `ctx18+0x22e4c + key·200` within 5 m (10 m when `p4`), predicted `gs·0.1+0.5` frames ahead, clears the
+   "lane free" flag when its bearing is within 50° (60° when far) of the goal bearing and it is not in
+   actions 0x11/0x14/0x52/0x57 (bitmask `0x8000000000000009` from 0x11).
+5. **Final-third shortcut:** if `|ball.z|` is inside `field[7]` and the ball is beyond `field[6] − 10` or
+   beyond `line − 8`, and no cut-off and a key player exists → **2**.
+6. **Numbers:** defaults `maxDefenders = 7`, `maxMargin = 4`; with `p3`: 6 and `2 + bVar4` (7 and `3 + bVar4` when
+   the lane is free); `p4` adds 1 to both. `opp ≥ maxDefenders` → **0xff**; `opp − own ≥ maxMargin` → **0xfe**.
+7. **Last ball event** (`FUN_140a3e190(ctx+0xe0, 0)`): kinds 4, 10..13 → 1; 1/2/3/5 → 1 if by the fouled team;
+   6/7 → 1 if the key player is on the fouled side; otherwise 0xfb/0xfc.
+
+**Status:** structure and constants OBS; the meanings of `field+0x44`, the `+0x22e4c` table and the event kinds
+are INF-medium, so GodotFootball keeps its distance-only advantage test (ponytail in `pesjudge.cpp`) until those
+are pinned.
+
 ## 4. Handball
 
 **Not modelled as an offence** (INF hi). Evidence (OBS):
