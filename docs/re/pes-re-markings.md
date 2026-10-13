@@ -78,6 +78,10 @@ In 2048-px units, horizontal cells are:
 
 This matches the shipped strips (OBS, `u0001p1_back.ftex` decoded and examined: ten digits 0–9 left to right). In the vertical layout, cell pitch and height are both 204/2048.
 
+**Clarification (OBS, MarkingPixelsRE-2, raw disassembly of `FUN_1419e4a90`):** the function writes only `u, v, w, adj` (four outputs); **`h` is not one of them.** The caller `FUN_1419e2c10` supplies `h = 0.099609375` (vertical) or `1.0` (horizontal) itself, chosen by the same width/height test, at 0x1419e2dfa/0x1419e2e05. The `u0`/`adj` zero cases are written as 32-bit integers (bit-identical to float 0). Exact float bit patterns: `0.09765625` = 3dc80000, `0.029296875` = 3cf00000, `0.048828125` = 3d480000, `0.078125` = 3da00000, `0.1875` = 3e400000, `0.099609375` = 3dcc0000, `0.75` = 3f400000, `0.15625` = 3e200000 — all exact binaries of 200/2048, 60/2048, 100/2048, 160/2048, 384/2048, 204/2048, 3/4, 320/2048.
+
+**Strip census (OBS, MarkingPixelsRE-2, VFS listing of all 1672 kit prefixes in `Asset/model/character/uniform/texture/#windx11`):** `_back` 1671, `_chest` 1431, `_leg` 1593, `_name` 1670, `_name_ex` 29. So 241 kits have **no** chest strip, 79 no leg strip, 2 no name strip, 1 no back strip — the compositor must treat an absent file as "draw nothing", not "draw a blank glyph". Examples of absent strips: `u0758p4` (no `_back`), `u0704p*`/`u0705p*` (no `_chest`), `u0714p*`/`u0707p1` (no `_leg`), `u0756p2`/`u0756p3` (no `_name`).
+
 ### 2.2 Layout of a number inside its region — OBS `FUN_1419e2c10`
 
 Arguments:
@@ -120,7 +124,14 @@ Rules:
 | ≠1 | ≠1 | yes | −f | −a | f−a |
 | ≠1 | ≠1 | no | −f | 0 | f |
 
+**Clarification (OBS, MarkingPixelsRE-2, raw disassembly 0x1419e3372–0x1419e398b):** the `hundreds==1` column never changes `oH` — the decompiled branches collapse to `b−f` when `tens==1 && units==1`, `a−f` in every other case except `tens!=1 && units!=1` (where it is `−f` regardless of the hundreds digit). The table is correct; it just implies a distinction that the code does not make. Exact constants (float bit patterns at their image VAs): `a = 0x142a96c00 = 3d555555` (the float nearest 1/19.2 = 0.0520833), `a' = 0x142a96c04 = 3d5558d4` (0.0520867 — **different from `a`**, and used only in the `oU` slot of the `tens!=1 && units==1` row), `b = 0x142a96c0c = 3dd55555` (0.1041667 = 2a exactly), `−a = 0x142a96c1c = 0xbd555555`. The `W/3` divisor is the float `3.0f` (0x14258c264 = 40400000, a `divss`), whereas `W/4` and `W/2` are **integer** shifts (`(W>>1) − (W>>2)` and `W>>1`) converted to float — a CPU rasteriser must reproduce both. `f` is computed as `((s·0.16f) − 0.16f)·0.5f` (0.16f = 3e23d70a, 0.5f = 3f000000), not `0.08·(s−1)` directly.
+
 **`rotate == 1` (leg number):** x and y swap roles. Digits run along v, with the offsets scaled by `rw`, and the quad UVs are rotated 90° (`func 0x1419c0290(…, 1)`).
+  - **Exact quad (OBS, raw disassembly 0x1419e2ecb–0x1419e2f17, render-verified):** for a digit with cell `(u, v, w, h)` and `adj`, with `pad' = pad/rh`:
+    - `x = x0 + (pad'/2)/W · rw`, `y = y0 + (base + adj/2) · rh` (base = 0.25 for one digit, the `oT`/`oU`/`oH` table values otherwise),
+    - `w = (H − pad')/W · rw`, `h = (step − adj) · rh` (step = 0.5 for 1–2 digits, 1/3 for 3).
+  - **Quad UV mode 1 = `U = fy`, `V = 1 − fx`** (OBS, the permutation table at `0x142a91cd8` is `(1,3,0,2)`; mode 0 = identity `U=fx,V=fy`, mode 2 = `U=1−fy,V=fx`, mode 3 = `U=1−fx,V=1−fy`). Net effect: strip-u runs **down** the quad's x axis and strip-v runs **right-to-left** along y — because the vertical strip's glyphs are pre-rotated clockwise and cropped to the cell height (ink 178–180 of a 204.8-px cell, OBS measured), the leg number appears rotated **90° clockwise** (glyph top → +x). This supersedes any "direction unknown" reading: the render `leg3_10.png` shows upright digits.
+  - **`src/gdext/pes_marking.cpp:98` gets this wrong** — it blits with `angle = +M_PI/2`, which yields the mirrored digit, and it passes the vertical stretch as the quad's width and the digit width as its height (both swapped). See `docs/re/pes-re-marking-pixels.md` §4 and §7.1.
 
 **Passes:** draws twice, blend mode 4 then mode 2 (`func_0x1416f0890`), because the RT descriptor flag bit1 is always set. Vertex colour = `0xFF<<24 | rgb` (§2.4).
 
@@ -205,6 +216,7 @@ Name space is 512×128 units, mapped to RT pixels as `X_rt = X·(1600·0.64)/512
   - Glyph centre = `(256 + 0.8R·sinθ, 0.89R − 0.8R·cosθ)`, rotated by θ.
   - Local x is scaled again by `scale·0.95`.
   - INF (medium) for the exact matrix order: the decompile shows composite rotation/translation rows. The values above come from reducing them with identity bases.
+  - **Confirmed by render (OBS, MarkingPixelsRE-2):** a synthetic raster of `ABCDEF` through these rules against the decoded `u0001p1_name.ftex` produces a correct upward arch with each glyph rotated along it (`<scratch>/MarkingPixelsRE/name_curve_A.png`), and the flat case produces `ABCDEF` left-to-right (`name_flat3.png`). The RT write applies `Y_rt = (128 − Y)·2` and `X_rt = X·2` (0x1419e2a61/0x1419e2a79), so the canvas is vertically flipped relative to the source page — the CPU rasteriser must apply that flip and must not mirror the source y a second time.
   - On the garment the shader mirrors back: back-number sampling has a negative x scale, the name a positive one; INF (high).
 
 The name's shader `.x` scale uses the same width sum (`FUN_1419a4d20`, kit report §8.7). `NameShape` both bends the glyphs here and adds the curvature constant to NameY there. Vanilla NameShape distribution: 0 ×1204, 1 ×123, 2 ×45.
@@ -382,9 +394,13 @@ Competition remap:
 
 ## 11. Open
 
-- Exact pixel output of curved names: the matrix reduction is INF (medium), with no live pixels to compare. To close it, hook or capture the GPU image, or render §3.3 and compare against a screenshot.
-- Badge composite builder (`BadgeLoadJob`) and the badge matrix maths (`FUN_1419a2a60`).
+- Exact pixel output of curved names: the matrix reduction is INF (medium), with no live pixels to compare. To close it, hook or capture the GPU image, or render §3.3 and compare against a screenshot. *(Partial progress: MarkingPixelsRE-2 rendered §3.3 synthetically against the decoded `u0001p1_name.ftex` and got a correct upward arch + correct flat string — see `docs/re/pes-re-marking-pixels.md` §6. The remaining unknown is only the composite matrix's exact operation order, not the constants.)*
+- Badge composite builder (`BadgeLoadJob`) and the badge matrix maths (`FUN_1419a2a60`). *(The chest badge inside the marking RT is now closed: `FUN_1419e1610` → region `(0.88, 0.5, 0.08, 0.5)`, blend mode 6, identity quad permutation, full-texture source. Only the sleeve badges remain open.)*
 - Fox format `0x4002` → DXGI mapping. INF (high): BC3, from the byte size and the alpha need.
 - What BackNumberType means in the menu (behaviour = zero-pad single digits; never set in vanilla).
 
-Scratch: `<scratch>/MarkingRE/` (decompiles `out/`, live scripts `lv*.py`, decoded textures `tex/`).
+**Known compositor divergences (OBS, MarkingPixelsRE-2 — see `docs/re/pes-re-marking-pixels.md` §7 for the full list):**
+1. `src/gdext/pes_marking.cpp:98` rotates the leg number `+90°` where PES uses net `−90°` (the digits come out mirrored), and swaps the quad's width/height; `:97` treats the y origin as the quad's centre rather than its top.
+2. `pes_marking.cpp:142` folds names through `info_name_font.bin` even when the kit has a `_name_ex` texture (29 kits) — PES uses the raw codes there.
+
+Scratch: `<scratch>/MarkingRE/` (decompiles `out/`, live scripts `lv*.py`, decoded textures `tex/`); the pixel-exactness pass is `<scratch>/MarkingPixelsRE/`.
