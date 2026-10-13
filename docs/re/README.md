@@ -52,6 +52,7 @@ address given.
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
 |`pes-re-fox2-stadium.md`|stadium assembly: Stadium.bin, the scene/pitch/goal/net/corner-flag placements, goal and corner-flag transforms|
 |`pes-re-fox2-format.md`|the binary fox2 (FoxDataFile) layout: header, string table, entity and property blocks, containers, value types|
+|`pes-re-goalkeeper.md`|goalkeeper: base position and sweeper rush, the shot-response timing window and Reflexes/Reach weight, dive urgency, catch/punch/block gates, crosses, throw distribution, penalty phases; deflect side and distribution choice in packed code|
 |`pes-re-team-plans.md`|team AI: the team-brain class inventory, formation slot to target position, advanced-instruction enums, off-ball run selector gates, the press trigger/target/count, ZoneDefenceManager marking, pass/shoot/dribble scoring skeletons|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
