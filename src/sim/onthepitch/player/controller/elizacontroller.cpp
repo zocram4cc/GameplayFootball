@@ -30,6 +30,7 @@
 #include "data/playingstyles.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/matchpressure.hpp"
+#include "onthepitch/peskeeper.hpp"
 #include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/penaltyshootoutcontroller.hpp"
 #include "onthepitch/teamphilosophy.hpp"
@@ -291,30 +292,27 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
         }
 
       } else if (match->GetBallRetainer() == player) {  // keeper fetched ball, probably
-        // GK Long Throw rolls it out to a full-back, GK Low Punt drives it flat
-        // to the halfway line, GK High Punt hoofs it deep; a plain keeper hoofs.
-        const PlayerSkills::Distribution distribution = PlayerSkills::PickDistribution(
-            CastPlayer()->GetPlayerData()->GetSkills(), random(0.0f, 1.0f));
-        actionCommand.desiredFunctionType = e_FunctionType_HighPass;
-        desiredTargetPosition =
-            Vector3(pitchHalfW * team->GetSide(), random(-pitchHalfH, pitchHalfH), 0.0f);
-        switch (distribution) {
-          case PlayerSkills::Distribution::LongThrow:
-            actionCommand.desiredFunctionType = e_FunctionType_ShortPass;
-            desiredTargetPosition.coords[0] = pitchHalfW * team->GetSide() * 0.6f;
-            break;
-          case PlayerSkills::Distribution::LowPunt:
-            actionCommand.desiredFunctionType = e_FunctionType_LongPass;
-            desiredTargetPosition.coords[0] = 0.0f;
-            break;
-          case PlayerSkills::Distribution::HighPunt:
-            desiredTargetPosition.coords[0] = pitchHalfW * -team->GetSide() * 0.3f;
-            break;
-          default:
-            break;
-        }
-        Player* targetPlayer =
-            AI_GetClosestPlayer(team, desiredTargetPosition, CastPlayer());
+        // PES's after-catch distribution (ActionKeeperAfterCatchMove::exec
+        // 0x1409e8880, docs/re/pes-re-keeper-port.md 2): the ball is carried
+        // up-field first - at least 4 m, and never back across his own line -
+        // and the teammate is picked from there, then the target steps 4 m
+        // farther on the bearing to that teammate. The choice itself (throw /
+        // short throw / punt) stays this engine's: PES reads a request kind,
+        // and GF's pass types already are the three kinds.
+        // ponytail: PES picks the teammate from a per-keeper 11-entry table
+        // (team+0x22e4c) that is install data this engine does not carry, so
+        // the nearest man to the carry point stands in for it.
+        const pes::KeeperConstants& keeperConstants = match->GetPesKeeperConstants();
+        // His own penalty-area line, signed with the attack direction: the Law-1
+        // box line on his half (pitchHalfW - kAreaDepth), and the goal-area half
+        // width for the lateral reflection.
+        const int attackDir = -team->GetSide();
+        const float ownPenaltyLineX =
+            -attackDir * (pitchHalfW - SetPieceLaws::kAreaDepth);
+        const pes::DistributionPoint carry = pes::PesAfterCatchCarry(
+            player->GetPosition().coords[0], player->GetPosition().coords[1], attackDir,
+            ownPenaltyLineX, SetPieceLaws::kAreaHalfWidth, keeperConstants);
+        Player* targetPlayer = AI_GetClosestPlayer(team, Vector3(carry.x, carry.z, 0), CastPlayer());
 
         if (targetPlayer) {
           // check if this player is away from opponents, before throwing ball to him
@@ -331,6 +329,17 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
               doCommand = false;
             }
           }
+        }
+
+        if (doCommand) {
+          // With no reachable teammate the carry point itself is the target,
+          // which PES's fallback (the keeper, displaced 2 m) also lands on.
+          const float targetX = targetPlayer ? targetPlayer->GetPosition().coords[0] : carry.x;
+          const float targetZ = targetPlayer ? targetPlayer->GetPosition().coords[1] : carry.z;
+          const pes::DistributionPoint aimed = pes::PesAfterCatchStep(
+              carry.x, carry.z, targetX, targetZ, attackDir, ownPenaltyLineX,
+              SetPieceLaws::kAreaHalfWidth, keeperConstants);
+          desiredTargetPosition = Vector3(aimed.x, aimed.z, 0.0f);
         }
       }
 

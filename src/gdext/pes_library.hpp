@@ -9,6 +9,7 @@
 #include "pes/camera.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
+#include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
@@ -68,6 +69,11 @@ class PesLibrary : public RefCounted {
   const pes::RngConstants* rng_constants() const {
     return rngConstants_ ? &*rngConstants_ : nullptr;
   }
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md).
+  const pes::KeeperConstants* keeper_constants() const {
+    return keeperConstants_ ? &*keeperConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -86,6 +92,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::PesBallConstants> ballConstants_;
   std::optional<pes::JudgeConstants> judgeConstants_;
   std::optional<pes::RngConstants> rngConstants_;
+  std::optional<pes::KeeperConstants> keeperConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

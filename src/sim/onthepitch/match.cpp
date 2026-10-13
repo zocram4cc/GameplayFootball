@@ -103,6 +103,13 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES judge constants missing: read them from the install with "
         "pes::LoadJudgeConstants into MatchSetup::pesJudgeConstants");
   pesJudgeConstants = *setup.pesJudgeConstants;
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md), exe-derived and required like the rest.
+  if (setup.pesKeeperConstants == nullptr)
+    throw std::runtime_error(
+        "PES keeper constants missing: read them from the install with "
+        "pes::LoadKeeperConstants into MatchSetup::pesKeeperConstants");
+  pesKeeperConstants = *setup.pesKeeperConstants;
 
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);

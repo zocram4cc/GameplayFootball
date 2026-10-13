@@ -82,6 +82,10 @@ int main(int argc, char** argv) {
   if (!judgeConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   auto rngConstants = pes::LoadRngConstants(*exe, &err);
   if (!rngConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md).
+  auto keeperConstants = pes::LoadKeeperConstants(*exe, &err);
+  if (!keeperConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -99,6 +103,7 @@ int main(int argc, char** argv) {
   setup.pesBallConstants = &*ballConstants;
   setup.pesJudgeConstants = &*judgeConstants;
   setup.pesRngConstants = &*rngConstants;
+  setup.pesKeeperConstants = &*keeperConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

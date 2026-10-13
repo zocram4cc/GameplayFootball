@@ -179,6 +179,9 @@ public:
   // `ball.o` record and the image values, required like the clock's.
   const pes::PesBallConstants& GetPesBallConstants() const { return *pesBallConstants; }
   const pes::JudgeConstants& GetPesJudgeConstants() const { return pesJudgeConstants; }
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md).
+  const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
   const pes::PesClock& GetPesClock() const { return *pesClock; }
   pes::PesClock& GetPesClock() { return *pesClock; }
   // Advances the match clock by elapsed game-seconds, frozen while play is
@@ -370,6 +373,7 @@ protected:
   std::unique_ptr<pes::PesClockConstants> pesClockConstants;
   std::unique_ptr<pes::PesBallConstants> pesBallConstants;
   pes::JudgeConstants pesJudgeConstants{};
+  pes::KeeperConstants pesKeeperConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;

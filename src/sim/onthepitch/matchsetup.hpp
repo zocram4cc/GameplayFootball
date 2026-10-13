@@ -19,6 +19,7 @@ struct Rig;
 // image, read by the caller and handed to the Match the same way.
 #include "pesball.hpp"
 #include "pesjudge.hpp"
+#include "peskeeper.hpp"
 #include "pesrandom.hpp"
 
 struct MatchSetup {
@@ -52,6 +53,9 @@ struct MatchSetup {
   // PES 2021's generator (docs/re/pes-re-rng.md 1): every random draw of the
   // match comes from it, seeded at kick-off from `seed`. Required.
   const pes::RngConstants* pesRngConstants = nullptr;
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md). Required.
+  const pes::KeeperConstants* pesKeeperConstants = nullptr;
 };
 
 #endif

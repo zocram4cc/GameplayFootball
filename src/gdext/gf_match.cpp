@@ -69,6 +69,7 @@ Error GfMatch::start(const Ref<PesLibrary>& library, const String& db_sql, const
   setup.pesBallConstants = library->ball_constants();
   setup.pesJudgeConstants = library->judge_constants();
   setup.pesRngConstants = library->rng_constants();
+  setup.pesKeeperConstants = library->keeper_constants();
   match_ = std::make_unique<Match>(new MatchData(home, away), setup, Properties());  // owns the MatchData
   RefreshPlayers();
   return OK;

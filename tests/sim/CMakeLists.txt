@@ -23,6 +23,10 @@ target_link_libraries(pes_period_end_test PRIVATE gfsim pesfmt GTest::gtest_main
 target_compile_definitions(pes_period_end_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(pes_period_end_test PROPERTIES TIMEOUT 1800)
 
+add_executable(pes_keeper_test pes_keeper_test.cpp)
+target_link_libraries(pes_keeper_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_keeper_test)
+
 add_test(NAME gfsim_run_test
   COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/gfsim_run_test.sh $<TARGET_FILE:gfsim_run> ${CMAKE_SOURCE_DIR})
 set_tests_properties(gfsim_run_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)

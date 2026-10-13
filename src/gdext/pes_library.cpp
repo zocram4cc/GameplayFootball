@@ -68,6 +68,13 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 RNG constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  // PES 2021's goalkeeper deflect point and post-catch distribution target
+  // (docs/re/pes-re-keeper-port.md).
+  if (exe) keeperConstants_ = pes::LoadKeeperConstants(*exe, &err);
+  if (!keeperConstants_) {
+    UtilityFunctions::push_error("PES21 keeper constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);

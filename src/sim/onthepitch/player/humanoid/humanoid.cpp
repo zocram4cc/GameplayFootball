@@ -23,6 +23,7 @@
 #include "simcontext.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../match.hpp"
+#include "../../peskeeper.hpp"
 #include "../../penaltyshootoutcontroller.hpp"
 #include "../../team.hpp"
 #include "../player.hpp"
@@ -1190,21 +1191,50 @@ void Humanoid::Process() {
           }
           Vector3 currentBallMovement = match->GetBall()->GetMovement().Get2D();
           Vector3 playerMovement = spatialState.movement;
+          // PES's deflect (ActionKeeperDeflect::exec 0x1440f35f0,
+          // docs/re/pes-re-keeper-port.md 1): the contact point is a fixed
+          // offset from the keeper, 2 m out on the requested angle when that
+          // angle is within 120 degrees of his heading, else 1 m out on the far
+          // side (heading ∓ 60). Which of the two branches runs is what decides
+          // the side, and the outgoing direction is the anim's own - so the
+          // speed still comes from the ball and his movement, and GK Clearing
+          // still scales it.
+          const pes::KeeperConstants& keeperConstants = match->GetPesKeeperConstants();
+          const float heading_deg = spatialState.angle * keeperConstants.degreesPerRadian;
+          // PES's request angle is what the deflect request asks for. GF's
+          // deflect command carries none, so the ball's own incoming direction
+          // stands in - the keeper deflects the ball the way it is coming at
+          // him, which is also the direction the anim query already sorts on
+          // (`query.incomingBallDirection`).
+          // ponytail: that substitution is this engine's mapping choice - PES's
+          // request angle comes from the packed think unit, which is not read
+          // here (goalkeeper doc §5, open).
+          const float request_deg =
+              std::atan2(currentBallMovement.coords[1], currentBallMovement.coords[0]) *
+              keeperConstants.degreesPerRadian;
+          const pes::DeflectPoint point =
+              pes::PesDeflectPoint(request_deg, heading_deg, keeperConstants);
+          const float pointAngle_rad = point.angle_deg / keeperConstants.degreesPerRadian;
+          Vector3 toPoint(std::cos(pointAngle_rad), std::sin(pointAngle_rad), 0);
           Vector3 touchVec =
-              (-currentBallMovement * 0.1f + playerMovement * 2.0f +
-               Vector3(-team->GetSide(), 0, 0) *
-                   GameplayTuning::GetKeeperParryPush(player->GetStat("gk_clearing")) +
-               Vector3(0, random(-1, 1), 0))
+              (toPoint.GetNormalizedTo(point.radius_m) +
+               (-currentBallMovement * 0.1f + playerMovement * 2.0f +
+                Vector3(-team->GetSide(), 0, 0) *
+                    GameplayTuning::GetKeeperParryPush(player->GetStat("gk_clearing"))))
                   .GetNormalized(0) *
               (currentBallMovement.GetLength() * 0.3f + playerMovement.GetLength() * 2.5f);
-          touchVec.coords[2] += 1.2f;
+          // The raised branch: PES lifts the point 2.4 m when there is no height
+          // input on the request, which is every deflection here. Applied at
+          // half, because this engine's touch is a velocity, not a point: the
+          // stock `+1.2f` (exactly half of PES's 2.4) is the lift that plays
+          // against the old physics-based contact.
+          touchVec.coords[2] += keeperConstants.deflectRaisedHeight_m * 0.5f;
           touchVec.coords[0] = GameplayTuning::KeeperTouchAwayFromOwnGoal(
               touchVec.coords[0], team->GetSide());
 
           touchVec = touchVec * (1.0f - bumpyRideBias) + currentBallVec * bumpyRideBias;
           if (Verbose() && bumpyRideBias > 0.01f)
             printf("bumpyridebias (deflect): %f\n", bumpyRideBias);
-
           match->GetBall()->Touch(touchVec);
         }
         team->SetLastTouchPlayer(CastPlayer(), e_TouchType_Accidental);
