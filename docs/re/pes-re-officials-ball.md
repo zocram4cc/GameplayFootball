@@ -51,6 +51,13 @@ The vanilla `Ball.bin` / `BallCondition.bin` are WESYS-wrapped (header `ff 10 ..
 - 4cc: ball 1 has conditions 0..28 (incl. 26); balls 2..49 have {0, 4, 5, 13}. Default = 1; OBS live: u16 = 1.
 - Vanilla: `1600 2a00 1a00` → ball 22 is the default.
 - INF (medium): the condition values are competition ids (which ball each competition uses). The consumer (`thunk 0x144a58df0`) lies outside the dumped image; not decoded.
+- **Update (orchestrator, 2026-10-13, PESLive full image):** `0x144a58df0` (`.impdata`, clean) decompiles to a
+  membership query `bool(table, cond, value)`: for each BallCondition record `i < *(table+0x21c0)` with
+  `(u16 condition & 0x3F) == cond`, look the ball up (`FUN_1414bae10` on `*(db+0x48)`), read its attribute 0
+  (`func_0x1414dfed0(ball, 0, &out)`) and return 1 if `out == value` (OBS). Reached through the jmp chain
+  `0x1414d6010` / `0x14eb61782` / `0x140ea942c`, with no direct `call` sites in the image (OBS byte scan), so it is called
+  through a pointer or vtable. What `cond` and the attribute mean stays INF(medium); still open: name the vtable slot
+  that holds the thunk and its callers.
 
 ### 1.4 Per-match ball id (OBS)
 

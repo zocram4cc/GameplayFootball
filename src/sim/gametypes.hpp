@@ -79,5 +79,8 @@ const float lineHalfW = 0.06f;
 const float goalDepth = 2.55f;
 const float goalHeight = 2.5f;
 const float goalHalfWidth = 3.7f;
+// Law 1: the goal area runs 5.5 m beyond the inside of each post of a 7.32 m
+// goal; PES's FieldInfo +0x18 holds the same 9.16.
+const float goalAreaHalfWidth = 9.16f;
 
 #endif

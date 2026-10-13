@@ -14,6 +14,8 @@
 #include "foulsequence.hpp"
 #include "goalsequence.hpp"
 #include "match.hpp"
+#include "officials.hpp"
+#include "player/playerofficial.hpp"
 #include "matchprogression.hpp"
 #include "offsiderule.hpp"
 #include "setpiecelaws.hpp"
@@ -463,6 +465,7 @@ void Referee::Process() {
       if (buffer.desiredSetPiece == e_SetPiece_Penalty)
         match->SetPendingPenaltyTaken(buffer.teamID, buffer.taker);
       buffer.active = false;
+      buffer.chiefSpot.reset();
       match->StopSetPiece();
       match->GetTeam(0)->GetController()->PrepareSetPiece(e_SetPiece_None);
       match->GetTeam(1)->GetController()->PrepareSetPiece(e_SetPiece_None);
@@ -522,6 +525,23 @@ void Referee::PrepareSetPiece(e_SetPiece setPiece) {
   match->GetTeam(1)->GetController()->PrepareSetPiece(setPiece, buffer.teamID);
 
   buffer.taker = match->GetTeam(buffer.teamID)->GetController()->GetPieceTaker();
+
+  // The chief referee's mark. PES teleports the officials under the restart's
+  // wipe (docs/re/pes-re-setpiece-choreography.md 8.2); a throw-in has no wipe,
+  // so there he walks. The box is this engine's Law 16 box, 14 cm short of
+  // PES's FieldInfo line (docs/re/pes-re-stadium-camera.md 2).
+  const pes::FieldMarks field{pitchHalfW + lineHalfW, goalAreaHalfWidth,
+                              pitchHalfW - SetPieceLaws::kAreaDepth, SetPieceLaws::kAreaHalfWidth};
+  const auto mark = pes::ChiefRefereeSpot(
+      setPiece, {buffer.restartPos.coords[0], -buffer.restartPos.coords[1]},
+      -match->GetTeam(buffer.teamID)->GetSide(), field, match->GetPesJudgeConstants().refereeSpot);
+  buffer.chiefSpot.reset();
+  if (mark) {
+    buffer.chiefSpot = Vector3(mark->x, -mark->z, 0);
+    if (setPiece != e_SetPiece_ThrowIn)
+      match->GetOfficials()->GetReferee()->CastHumanoid()->ResetPosition(*buffer.chiefSpot,
+                                                                         buffer.restartPos);
+  }
 }
 
 void Referee::AlterSetPiecePrepareTime(unsigned long newTime_ms) {
@@ -735,6 +755,7 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
 }
 
 void Referee::CancelSetPiece() {
+  buffer.chiefSpot.reset();
   buffer.active = false;
   buffer.endPhase = false;
   buffer.desiredSetPiece = e_SetPiece_None;

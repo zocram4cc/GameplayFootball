@@ -493,7 +493,7 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 
 ## 9. Open items (with what was tried)
 
-1. **Referee placement for goal kick / corner / free kick**: the chief's MODE 3/4/5 handlers are `.impdata` thunks
+1. **CLOSED (pes-re-protection.md 3.3: all six modes decoded, throw-in included; ported as `pes::ChiefRefereeSpot`).** **Referee placement for goal kick / corner / free kick**: the chief's MODE 3/4/5 handlers are `.impdata` thunks
    (0x144161f30, 0x14415d330, 0x144161790) outside the dump; the on-disk code is mutation-obfuscated (push/lea/not
    trampolines). `protscan.py` recovered only ±1.0 sign constants and a `MI+0x155c` read. Live samples are given in §8.2.
    Next: emulate the thunk (unicorn) with a fake MI/F, or capture more restarts.

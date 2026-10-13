@@ -173,6 +173,21 @@ x / z; `F = *(G+0x2aa8)` pitch floats (F[0] 52.56, F[5] 9.16, F[6] 36.14, F[7] 2
   "INF high from the arithmetic" into OBS. The report's live 35.63 vs the computed 35.64: INF(low) the referee had not
   quite reached the target when sampled; not checked.
 
+- **Dispatcher modes (orchestrator, 2026-10-13, PESLive decompile of 0x140a38c40):** 1 kick-off `FUN_140a38a00`,
+  **2 throw-in `FUN_140a38b00`**, 3 GK, 4 CK, 5 FK, 6 PK `FUN_140a38a70`; any other mode → the in-play target
+  `FUN_140a37910`. A shootout (`MI+0x1168 == 9` with `G+0x310` set) uses `func_0x140a6a620` instead.
+- **MODE 2 throw-in** `FUN_140a38b00` (clean, OBS; dir = `char(team(MI+0x1558)+0x254)`, the taking side's attack sign):
+  `x = spot.x − dir·5` when `dir·spot.x > 3`, else `x = (|spot.x|/10 + 8)·dir + spot.x`; `z = (F[7] − 4)·S(spot.z)`;
+  then if `dir·x ≥ F[6] − 4`: `x = (F[6] − 4)·dir`, `z = S(spot.z)·F[5]`. Constants 3 @0x14258c264, 5 @0x14259222c,
+  10 @0x142588210, 8 @0x14259bdf4, 4 @0x1425656c0. No live sample.
+- **FK zone labels 4 and 7** are the protected words `*(u32*)0x14810f530 ^ 0x28671b19` = 4 (`mov eax,[rip+d]` @0x144161880,
+  `xor eax, imm` @0x144161886) and `*(u32*)0x14810f534 ^ 0x1c874803` = 7 (@0x1441618c0 / 0x1441618c6); read from the
+  on-disk exe, identical to the dump. Zone 2 (|x| ≥ F[6], |z| < F[7]) writes nothing: the referee keeps his previous target.
+- **Ported** (GodotFootball `pes::ChiefRefereeSpot`, `src/sim/onthepitch/pesjudge.cpp`): all six modes, constants read
+  from the user's exe; the install test reproduces the kick-off, FK-zone-3, GK and CK samples above to 1 cm with
+  PES's FieldInfo. The engine feeds its own Law-1/Law-16 field (box line 36.0 / 20.15 vs PES 36.14 / 20.12), teleports
+  the referee at the restart's set-up (throw-ins: he walks), and holds him on the mark until the restart is taken.
+
 ### 3.4 Other named protected targets (OBS decompiles)
 - `CornerKick` slot 2 0x1407335c0 → **0x143fb8d40**: `return (*(p2+0xab8))->vfunc[5]() == 0x31;`
 - `Base` slot 22 0x1406deb20 → **0x143fb3990**: `return 0.3f;` (@0x142590d98)

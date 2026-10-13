@@ -111,6 +111,18 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
           }
         }
 
+      } else if (const auto& mark = match->GetReferee()->GetBuffer().chiefSpot) {
+        // A restart is set: he goes to his mark (already there unless it is a
+        // throw-in) and watches the ball.
+        PlayerCommand command;
+        command.desiredFunctionType = e_FunctionType_Movement;
+        command.useDesiredMovement = true;
+        command.useDesiredLookAt = true;
+        const Vector3 toMark = (*mark - CastPlayer()->GetPosition()).Get2D();
+        command.desiredDirection = toMark.GetNormalized(CastPlayer()->GetDirectionVec());
+        command.desiredVelocityFloat = RangeVelocity(toMark.GetLength());
+        command.desiredLookAt = match->GetBall()->Predict(0).Get2D();
+        commandQueue.push_back(command);
       } else {  // NORMAL
 
         PlayerCommand command;

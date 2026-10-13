@@ -15,9 +15,48 @@
 #include <optional>
 #include <string>
 
+#include "../gametypes.hpp"
+
 #include "pes/exe.hpp"
 
 namespace pes {
+
+// Where the chief referee stands for each restart: RefereeChief slot 20
+// (0x140a38c40) dispatches on the restart mode, docs/re/pes-re-protection.md
+// 3.3. All .rdata floats; the comment is the PES value and its handler.
+struct RefereeSpotConstants {
+  float kickOffBehind_m;        // 5, kick-off FUN_140a38a00
+  float kickOffAcross_m;        // 10
+  float throwInUpfieldGate_m;   // 3, throw-in FUN_140a38b00
+  float throwInTrail_m;         // 5: upfield of the gate, this far behind the ball
+  float throwInLeadDivisor;     // 10: otherwise |x|/10 + 8 ahead of it
+  float throwInLeadBase_m;      // 8
+  float throwInInset_m;         // 4: off the box's side line and its front line
+  float goalKickX_m;            // -4, goal kick 0x144161f30
+  float goalKickDrop_m;         // 2.5
+  float cornerInset_m;          // 0.5, corner 0x14415d330 (read by emulation)
+  float cornerOut_m;            // 2
+  float penaltyAhead_m;         // 4, penalty FUN_140a38a70
+  float penaltyOut_m;           // 5
+  // Free kick 0x144161790.
+  float fkHalf;                 // 0.5: the box line's midpoint splits two bands
+  float fkDeepX_m;              // -14: own half, near the centre line
+  float fkOwnHalfOut_m;         // 2: own half, off the goal area
+  float fkOwnBoxX_m;            // 3: own half, beyond the box line
+  float fkOwnBoxIn_m;           // 3
+  float fkWideDivisor;          // 3: the box width splits in thirds
+  float fkBoxCornerInset_m;     // 4, zone 1
+  float fkBoxCornerOut_m;       // 2
+  float fkQuarter;              // 0.25, zone 3
+  float fkEdgeInset_m;          // 3, zones 4 and 6
+  float fkEdgeOut_m;            // 3.5
+  float fkWideOut_m;            // 1.5, zone 5
+  float fkFarAcross_m;          // 10, zone 7
+  float fkCentreAhead_m;        // 10, zone 8
+  float fkCentreAcross_m;       // 8
+  float fkFlankAhead_m;         // 5, zone 9
+  float fkFlankAcross_m;        // 15
+};
 
 struct JudgeConstants {
   // P_angle (report 2.3, protected 0x143f738a0).
@@ -56,6 +95,7 @@ struct JudgeConstants {
   // runs for this long (FUN_14050b490: GameSpeed << 2 frames).
   float whistleHold_s;         // 0.8
   float advantageWindow_s;     // 4
+  RefereeSpotConstants refereeSpot;
 };
 
 std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string* error);
@@ -106,5 +146,24 @@ bool ShouldPlayAdvantage(int level, bool penalty, bool foulerBooked, float foule
 // (gs frames, i.e. one second by construction).
 float AdvanceAdvantage(float remaining_s, float dt_s, bool fouledTeamHasBall,
                        bool fouledTeamPassed);
+
+// PES pitch space: x along the pitch, z across it (z = -GF y), metres.
+struct PitchSpot {
+  float x, z;
+};
+
+// The four FieldInfo values the referee reads (*(G+0x2aa8) F[0], F[5..7]).
+struct FieldMarks {
+  float halfLength_m;        // F[0]
+  float goalAreaHalfWidth_m;  // F[5]
+  float penaltyLineX_m;      // F[6]
+  float penaltyHalfWidth_m;  // F[7]
+};
+
+// The chief referee's mark for a restart at `restart`, taken by the team
+// attacking towards `attackDir` x (+1/-1). Empty for a free kick level with
+// the penalty area, where PES writes nothing and he stays where he is.
+std::optional<PitchSpot> ChiefRefereeSpot(e_SetPiece kind, PitchSpot restart, int attackDir,
+                                          const FieldMarks& f, const RefereeSpotConstants& k);
 
 }  // namespace pes

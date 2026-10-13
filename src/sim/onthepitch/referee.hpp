@@ -6,6 +6,8 @@
 #ifndef _HPP_REFEREE
 #define _HPP_REFEREE
 
+#include <optional>
+
 #include "../gamedefines.hpp"
 #include "cardbook.hpp"
 #include "defines.hpp"
@@ -34,6 +36,9 @@ struct RefereeBuffer {
   // 10x scale produced three kick-offs and not one other set piece.
   bool prepared;
   bool started;
+  // Where the chief referee stands for this restart (pes::ChiefRefereeSpot), held
+  // until it is taken. Empty when PES leaves him where he is.
+  std::optional<Vector3> chiefSpot;
 };
 
 struct Foul {
