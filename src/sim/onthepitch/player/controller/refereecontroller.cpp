@@ -5,6 +5,8 @@
 
 #include "refereecontroller.hpp"
 
+#include <cmath>
+
 #include "simcontext.hpp"
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../match.hpp"
@@ -66,13 +68,21 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
           match->GetReferee()->GetBuffer().prepareTime >
               match->GetActualTime_ms() + 5000) {  // FOUL, walk towards offender
 
-        Vector3 desiredPosition = match->GetReferee()->GetCurrentFoulPlayer()->GetPosition() +
-                                  (CastPlayer()->GetPosition() -
-                                   match->GetReferee()->GetCurrentFoulPlayer()->GetPosition())
-                                          .GetNormalized(0) *
-                                      2.0;
+        // PES 2021 (docs/re/pes-re-foul-choreography.md 9.7): the referee's
+        // foul action walks (action 2 = approach) until he is within 4.0 m of
+        // the fouler - `d^2 < 16.0` @0x14259be10, read here at runtime - and
+        // only then plays his JUDGE action. The 2.0 m this used to keep was
+        // GF's own: it had him stop almost on top of the man.
+        const float approachSq = match->GetPesStoppageConstants().judgeApproachSq_m2;
+        Player* judgedPlayer = match->GetReferee()->GetCurrentFoulPlayer();
+        const Vector3 toJudged = CastPlayer()->GetPosition() - judgedPlayer->GetPosition();
 
-        if ((CastPlayer()->GetPosition() - desiredPosition).GetLength() > 2.0) {
+        if (toJudged.Get2D().GetLength() > 0.001f &&
+            toJudged.Get2D().GetLength() * toJudged.Get2D().GetLength() > approachSq) {
+          // His standoff: the approach distance from the judge constant, not a
+          // fixed two metres.
+          const Vector3 desiredPosition =
+              judgedPlayer->GetPosition() + toJudged.GetNormalized(0) * std::sqrt(approachSq) * 0.5f;
           PlayerCommand command;
           command.desiredFunctionType = e_FunctionType_Movement;
           command.useDesiredMovement = true;
@@ -84,7 +94,7 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
                                          .GetNormalized(CastPlayer()->GetDirectionVec());
           command.desiredVelocityFloat =
               RangeVelocity((desiredPosition - CastPlayer()->GetPosition()).GetLength() * 1.0f);
-          command.desiredLookAt = match->GetReferee()->GetCurrentFoulPlayer()->GetPosition();
+          command.desiredLookAt = judgedPlayer->GetPosition();
           commandQueue.push_back(command);
         } else {
           {
@@ -102,11 +112,10 @@ void RefereeController::RequestCommand(PlayerCommandQueue& commandQueue) {
             command.desiredFunctionType = e_FunctionType_Movement;
             command.useDesiredMovement = true;
             command.useDesiredLookAt = true;
-            command.desiredDirection = (desiredPosition - CastPlayer()->GetPosition())
-                                           .Get2D()
-                                           .GetNormalized(CastPlayer()->GetDirectionVec());
+            // He stays put and keeps his eye on the man.
+            command.desiredDirection = CastPlayer()->GetDirectionVec();
             command.desiredVelocityFloat = idleVelocity;
-            command.desiredLookAt = match->GetReferee()->GetCurrentFoulPlayer()->GetPosition();
+            command.desiredLookAt = judgedPlayer->GetPosition();
             commandQueue.push_back(command);
           }
         }

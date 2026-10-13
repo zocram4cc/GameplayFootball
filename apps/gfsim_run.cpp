@@ -10,7 +10,7 @@
 #include "onthepitch/matchreport.hpp"
 #include "onthepitch/matchsetup.hpp"
 #include "onthepitch/pesball.hpp"
-#include "onthepitch/pesclock.hpp"
+#include "onthepitch/pesstoppage.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
@@ -91,6 +91,8 @@ int main(int argc, char** argv) {
   // (docs/re/pes-re-keeper-port.md).
   auto keeperConstants = pes::LoadKeeperConstants(*exe, &err);
   if (!keeperConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  auto stoppageConstants = pes::LoadStoppageConstants(*exe, &err);
+  if (!stoppageConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -110,6 +112,7 @@ int main(int argc, char** argv) {
   setup.pesStaminaConstants = &*staminaConstants;
   setup.pesRngConstants = &*rngConstants;
   setup.pesKeeperConstants = &*keeperConstants;
+  setup.pesStoppageConstants = &*stoppageConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

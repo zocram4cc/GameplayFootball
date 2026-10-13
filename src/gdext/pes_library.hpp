@@ -11,6 +11,7 @@
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesstamina.hpp"
+#include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
@@ -80,6 +81,11 @@ class PesLibrary : public RefCounted {
     return staminaConstants_ ? &*staminaConstants_ : nullptr;
   }
 
+  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+  const pes::StoppageConstants* stoppage_constants() const {
+    return stoppageConstants_ ? &*stoppageConstants_ : nullptr;
+  }
+
  protected:
   static void _bind_methods();
 
@@ -99,6 +105,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;
   std::optional<pes::StaminaConstants> staminaConstants_;
+  std::optional<pes::StoppageConstants> stoppageConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

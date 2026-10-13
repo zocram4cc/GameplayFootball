@@ -10,8 +10,8 @@
 
 #include "../gamedefines.hpp"
 #include "cardbook.hpp"
-#include "defines.hpp"
 #include "pesjudge.hpp"
+#include "pesstoppage.hpp"
 
 using namespace blunted;
 
@@ -23,6 +23,10 @@ struct RefereeBuffer {
   e_SetPiece desiredSetPiece;
   signed int teamID;
   unsigned long stopTime;
+  // When the players are released from the hold PES makes them act out
+  // (docs/re/pes-re-foul-choreography.md 9.3): stopTime + the hold, 2.5 s
+  // out-of-play, 5.0 s a foul, +2.5 s either way while a player is down.
+  unsigned long holdTime;
   unsigned long prepareTime;
   unsigned long startTime;
   Vector3 restartPos;
@@ -66,6 +70,11 @@ public:
   void PrepareSetPiece(e_SetPiece setPiece);
 
   const RefereeBuffer& GetBuffer() const { return buffer; };
+
+  // The schedule PES runs after a whistle, for the callers that arm a restart
+  // themselves (the dead-ball arm in Process and the late-card window).
+  RefereeBuffer& Buffer() { return buffer; }
+  const pes::StoppageConstants& GetStoppageConstants() const;
 
   void AlterSetPiecePrepareTime(unsigned long newTime_ms);
 

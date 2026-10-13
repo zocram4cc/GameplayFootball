@@ -20,6 +20,7 @@
 #include "matchprogression.hpp"
 #include "pesstamina.hpp"
 #include "officials.hpp"
+#include "pesstoppage.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
 #include "referee.hpp"
@@ -183,6 +184,10 @@ public:
   // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): its constants,
   // read from the install's exe, required like the clock's and the ball's.
   const pes::StaminaConstants& GetPesStaminaConstants() const { return *pesStaminaConstants; }
+  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+  const pes::StoppageConstants& GetPesStoppageConstants() const {
+    return pesStoppageConstants;
+  }
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
@@ -384,6 +389,7 @@ protected:
   std::unique_ptr<pes::PesBallConstants> pesBallConstants;
   pes::JudgeConstants pesJudgeConstants{};
   pes::KeeperConstants pesKeeperConstants{};
+  pes::StoppageConstants pesStoppageConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 

@@ -337,7 +337,7 @@ skipped by their own guard, which also skip on the unmodified tree).
 `tools/check_pii.sh`: exit 0.
 
 Commit: `875ae8e` "Port PES's goalkeeper deflect point and post-catch
-distribution" (KeeperPort worktree).
+distribution" (ported in a separate worktree).
 
 ### 6.4 Mutation checks
 

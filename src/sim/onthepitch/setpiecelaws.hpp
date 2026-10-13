@@ -83,28 +83,14 @@ constexpr unsigned long kMaxWait_ms = 6000;
 
 bool MayRestart(int intruders, unsigned long waited_ms);
 
-// An offside is staged like a foul: the flag, the complaint, and only then the
-// restart. It kept upstream's two seconds to prepare and four to take while
-// starting a seven-second choreography over the top, so ResetSituation
-// teleported everyone into their restart positions two seconds in and the
-// whistle went at four - with three seconds of choreography still posing the
-// cast in live play. A cast opponent standing on the ball is then the nearest
-// man to it, so he is the taker the keeper is waiting for, and he cannot move
-// (Match::UpdateCutsceneChoreo feeds him until the clip ends).
+// An offside is PES's 0xb out-of-play stop: the flag, the complaint, and only
+// then the restart. Its hold is table[5] = 2.5 s
+// (docs/re/pes-re-foul-choreography.md 9.3, live 138-140 frames); the referee
+// schedules it from her own constants (src/sim/onthepitch/foulsequence.hpp),
+// which are read from the install at runtime.
 //
-// One number, read by both the referee's schedule and the StartCutscene call,
-// so they cannot drift apart again.
-constexpr unsigned long kOffsideCutscene_ms = 7000;
-constexpr unsigned long kOffsidePrepareAfterCutscene_ms = 1500;
-constexpr unsigned long kOffsideTakeAfterPrepare_ms = 2000;
-
-inline unsigned long OffsidePrepareAt_ms(unsigned long offsideTime_ms) {
-  return offsideTime_ms + kOffsideCutscene_ms + kOffsidePrepareAfterCutscene_ms;
-}
-
-inline unsigned long OffsideTakeAt_ms(unsigned long offsideTime_ms) {
-  return OffsidePrepareAt_ms(offsideTime_ms) + kOffsideTakeAfterPrepare_ms;
-}
+// A player down adds PES's +2.5 s (9.3), which is what makes an offside during
+// a scramble cost 5 s rather than 2.5.
 
 // The half-time whistle is staged the same way: the walk-off plays, then the
 // pitch is reset behind the wipe for the second-half kick-off. The referee gave

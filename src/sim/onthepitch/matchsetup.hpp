@@ -20,6 +20,7 @@ struct Rig;
 #include "pesball.hpp"
 #include "pesjudge.hpp"
 #include "peskeeper.hpp"
+#include "pesstoppage.hpp"
 #include "pesrandom.hpp"
 #include "pesstamina.hpp"
 
@@ -51,6 +52,10 @@ struct MatchSetup {
   // point weights and thresholds, read from the install's exe. Required: the
   // referee scores every contact with them.
   const pes::JudgeConstants* pesJudgeConstants = nullptr;
+  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9): the
+  // foul/offside holds and the beats between the stop and the kick. Required:
+  // they are the length of every stoppage.
+  const pes::StoppageConstants* pesStoppageConstants = nullptr;
   // PES 2021's generator (docs/re/pes-re-rng.md 1): every random draw of the
   // match comes from it, seeded at kick-off from `seed`. Required.
   const pes::RngConstants* pesRngConstants = nullptr;

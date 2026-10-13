@@ -28,10 +28,15 @@
 // running until the period ended.
 static constexpr unsigned long kDeadBallRestart_ms = 4000;
 
-// How far a restart may be pushed back from the moment play stopped. Celebrations
-// and replays run for seconds, so this is well clear of any of them; it exists
-// so that whatever is holding a restart stops holding it. Without it a per-tick
-// deferral from the referee's special animation held a goal kick for 107 s.
+// RE-SHIM: how far a restart may be pushed back from the moment play stopped.
+// This is GF's own safety net, NOT a PES value - docs/re/pes-re-foul-choreography.md
+// 9.8 records that nothing in PES's step program caps a restart deferral (the
+// only 30 s clock in PES runs after the restart is armed, and only for human
+// pads). It exists here because several things push the restart out per tick -
+// a goal celebration's beats, a cutscene, the referee's card animation - and
+// nothing used to stop any of them going on for ever. Measured: a goal kick
+// armed and prepared with `started 0`, `start-in` pinned at exactly 3.0 s for
+// 107 s, the whole match standing still from 26:05 while the clock ran on.
 static constexpr unsigned long kMaxRestartDeferral_ms = 30000;
 
 namespace {
@@ -43,12 +48,67 @@ namespace {
 // the added time is the plain per-match-second term only.
 constexpr int kPesNoPerfTier = 0;
 
+// A player this injured has stayed down (docs/re/pes-re-injury-fatigue.md:
+// one hard trip is 0.08), which is PES's condition for the +2.5 s hold
+// (docs/re/pes-re-foul-choreography.md 9.3, FUN_1404441d0).
+// ponytail: an injury level is not PES's `player+0x34` down byte, which lives
+// in a struct this engine does not carry; the level is what writes it. Move to
+// the real flag if a downed-player state is ever modelled.
+const float kPesDownedInjuryLevel = 0.01f;
+
+// PES's late card (docs/re/pes-re-foul-choreography.md 9.5/9.8): the card
+// prop's own start tick `REF_CARD_Y/R` on the scene, 5..411 ticks into the cut
+// at 60 fps, most variants 40. Rounded to the 3.0 s the report gives.
+constexpr unsigned long kPesCardOnScreen_ms = 3000;
+
+// The late-card window PES opens (9.5): a pending card is dropped unless the
+// next ball-out or offside comes within `MI+0x1690 ∈ 7..0x13` game-minutes.
+// ponytail: PES's window unit (its clock float divided by 3600 - minutes or
+// hours, which 9.10 lists as open) is not resolved, so this engine's window is
+// the whole match: the card is owed until it is shown, which is Law 5 either
+// way. Narrow it here when 9.10 closes.
+
+// PES's hold table indices (FUN_14044e460, docs/re/pes-re-foul-choreography.md
+// 4.2/9.3): step 5 is a foul, step 0xb is every out-of-play stop.
+constexpr int kPesHoldFoul = 1;
+constexpr int kPesHoldOutOfPlay = 5;
+
 }  // namespace
+
+// PES's player-down test (FUN_1404441d0, docs/re/pes-re-foul-choreography.md
+// 9.3): any on-pitch player whose record byte `player+0x34` is set. The engine
+// has no such byte, but it does carry the injury level the trip collision
+// wrote, which is what puts a man on the ground in the first place.
+bool AnyPlayerDown(Match* match) {
+  std::vector<Player*> squad;
+  match->GetActiveTeamPlayers(0, squad);
+  match->GetActiveTeamPlayers(1, squad);
+  for (Player* p : squad)
+    if (p && p->GetInjuryLevel() >= kPesDownedInjuryLevel) return true;
+  return false;
+}
+
+// Arms the referee's restart schedule for a PES stop (report 9.2/9.3/9.4). The
+// whistle has already gone and play is off: the players act out the hold, the
+// wipe and the teleport hide the cut back to their marks, and the fade-in and
+// the tail run before the kick. Foul and out-of-play stops differ only in
+// their hold table index; FoulSequence owns the bracket.
+//   holdKind = 1  a foul (step 5, table[1] = 5.0 s)
+//   holdKind = 5  an out-of-play stop (step 0xb, table[5] = 2.5 s)
+void ScheduleStop(Referee* referee, unsigned long stopTime_ms, bool downed, int holdKind) {
+  RefereeBuffer& b = referee->Buffer();
+  const pes::StoppageConstants& k = referee->GetStoppageConstants();
+  b.stopTime = stopTime_ms;
+  b.holdTime = FoulSequence::HoldEndsAt_ms(stopTime_ms, k, downed, holdKind);
+  b.prepareTime = FoulSequence::RestartPrepareAt_ms(stopTime_ms, k, downed, holdKind);
+  b.startTime = FoulSequence::RestartTakeAt_ms(stopTime_ms, k, downed, holdKind);
+}
 
 Referee::Referee(Match* match) : match(match) {
   buffer.desiredSetPiece = e_SetPiece_KickOff;
   buffer.teamID = 0;
   buffer.stopTime = 0;
+  buffer.holdTime = 0;
   buffer.prepareTime = 0;
   buffer.startTime = buffer.prepareTime + 2000;
   buffer.restartPos = Vector3(0, 0, 0);
@@ -76,6 +136,10 @@ Referee::Referee(Match* match) : match(match) {
 }
 
 Referee::~Referee() {}
+
+const pes::StoppageConstants& Referee::GetStoppageConstants() const {
+  return match->GetPesStoppageConstants();
+}
 
 void Referee::Process() {
   // printf("%i", match->GetMatchState());
@@ -183,8 +247,10 @@ void Referee::Process() {
                    (ballPos.coords[0] < 0 && lastSide < 0)) {
           buffer.desiredSetPiece = e_SetPiece_Corner;
           buffer.stopTime = match->GetActualTime_ms();
-          buffer.prepareTime = match->GetActualTime_ms() + 2000;
-          buffer.startTime = buffer.prepareTime + 2000;
+          // PES's 0xb out-of-play stop (9.3): hold, then wipe, teleport and
+          // fade-in before the kick. It used to be two and two - two seconds
+          // to prepare and two to take - which is not PES's bracket at all.
+          ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
           float y = ballPos.coords[1];
           if (y > 0)
             y = pitchHalfH;
@@ -197,8 +263,9 @@ void Referee::Process() {
         } else {
           buffer.desiredSetPiece = e_SetPiece_GoalKick;
           buffer.stopTime = match->GetActualTime_ms();
-          buffer.prepareTime = match->GetActualTime_ms() + 2000;
-          buffer.startTime = buffer.prepareTime + 2000;
+          // PES's 0xb out-of-play stop (9.3). Live: 139 frames without a man
+          // down, 274 with one - 2.5 s and 5.0 s.
+          ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
           buffer.restartPos = Vector3(pitchHalfW * 0.92 * -lastSide, 0, 0);
           buffer.teamID = abs(lastTouchTeam->GetID() - 1);
         }
@@ -224,8 +291,10 @@ void Referee::Process() {
           buffer.teamID = abs(lastTouchTeam->GetID() - 1);
           buffer.desiredSetPiece = e_SetPiece_ThrowIn;
           buffer.stopTime = match->GetActualTime_ms();
-          buffer.prepareTime = match->GetActualTime_ms() + 2000;
-          buffer.startTime = buffer.prepareTime + 2000;
+          // PES's 0xb out-of-play stop (9.3). Live: 135 frames, 2.5 s - the
+          // wipe alone runs 5 frames, and the CPU taker's own wait after the
+          // restart is armed is his business, not the referee's.
+          ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
           buffer.restartPos.coords[0] =
               clamp(ballPos.coords[0], -pitchHalfW + 0.6f, pitchHalfW - 0.6f);
           if (ballPos.coords[1] > 0)
@@ -326,7 +395,10 @@ void Referee::Process() {
 
     if (!match->IsInPlay() && !match->IsInSetPiece() && buffer.active == true) {
       // Play has stopped: settle any bookings owed from advantages played.
-      if (CardBook::HasPending(cardBook) && buffer.stopTime + 300 <= match->GetActualTime_ms())
+      // PES's late-card step (9.5) runs the card scene from the stop, with a
+      // 2.5 s timeout, so the booking is issued at 3000 ms rather than 300.
+      if (CardBook::HasPending(cardBook) && buffer.stopTime + kPesCardOnScreen_ms <=
+                                                 match->GetActualTime_ms())
         IssueDeferredCards();
 
       if (!buffer.prepared && buffer.prepareTime <= match->GetActualTime_ms()) {
@@ -494,19 +566,27 @@ void Referee::IssueDeferredCards() {
     match->GetMatchData()->AddEvent(
         card.foulType == 3 ? MatchData::Event::RedCard : MatchData::Event::YellowCard,
         card.player->GetTeamID(), match->GetMatchMinute(), playerName);
+    // PES's late card (9.5): step 6 starts the card scene on its second frame
+    // (no referee-approach gate), the step runs max(2.5 s, the 340-tick scene
+    // FOUL_CMN_CARD_Y_B), and the card prop REF_CARD_Y shows at 40 ticks in.
+    // This engine holds the ceremony at 3.0 s, which is also the window the
+    // card is on screen for, measured from the stop rather than the second.
     if (card.foulType == 2)
-      card.player->GiveYellowCard(match->GetActualTime_ms() + 4000);
+      card.player->GiveYellowCard(buffer.stopTime + kPesCardOnScreen_ms);
     else if (card.foulType == 3)
-      card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
+      card.player->GiveRedCard(buffer.stopTime + kPesCardOnScreen_ms);
     if (Verbose())
       printf("referee: deferred card issued (type %i)\n", card.foulType);
     anyCardShown = true;
   }
 
   if (anyCardShown) {
-    // Leave room for the booking ceremony before the restart, like the
-    // directly-whistled card path does.
-    buffer.prepareTime += 6000;
+    // The ceremony the booking scene stands for: PES's step-6 timeout. The
+    // restart the stop already armed is pushed out by this much, and PES's own
+    // 340-tick scene sits inside it (5.6 s of cut + 0.5 s of fades), so 3.0 s
+    // is the card being on screen, not the whole scene.
+    buffer.holdTime = buffer.prepareTime;
+    buffer.prepareTime += kPesCardOnScreen_ms;
     buffer.startTime = buffer.prepareTime + 2000;
     // Delayed, so both stages come round again - as they did when these were exact
     // time comparisons.
@@ -600,10 +680,10 @@ void Referee::BallTouched() {
           match->StopPlay();
           buffer.desiredSetPiece = e_SetPiece_FreeKick;
           buffer.stopTime = match->GetActualTime_ms();
-          // Behind the choreography rather than under it (setpiecelaws.hpp):
-          // the flag and the complaint play out, and only then is anyone moved.
-          buffer.prepareTime = SetPieceLaws::OffsidePrepareAt_ms(buffer.stopTime);
-          buffer.startTime = SetPieceLaws::OffsideTakeAt_ms(buffer.stopTime);
+          // The offside is PES's 0xb stop (9.3): a 2.5 s hold, +2.5 s while a
+          // player is down, then the wipe, teleport and fade-in. Live: 140
+          // frames without a man down, 275 end to end across a flag.
+          ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
           // Law 11: the free kick is taken where the offence occurred - the
           // spot where the flagged player just played the ball - not where he
           // stood when the pass was struck (that stored position only judged
@@ -824,22 +904,19 @@ bool Referee::CheckFoul(bool heldWhistle) {
 
   if (foul.foulType != 0 && foul.advantage == false && !foul.hasBeenProcessed) {
     match->StopPlay();
+    // PES's foul hold (9.2) is 5.0 s with no scene, and a scene never picks a
+    // hold below its own; a player down adds PES's +2.5 s (9.3) to either.
+    const bool downed =
+        foul.foulVictim && foul.foulVictim->GetInjuryLevel() >= kPesDownedInjuryLevel;
     if (!penalty) {
       buffer.desiredSetPiece = e_SetPiece_FreeKick;
       buffer.stopTime = match->GetActualTime_ms();
-      // Whistle, cutscene, close-up replay, restart. Preparing the restart
-      // resets the situation, so it has to wait for the replay - the two
-      // seconds this used to allow did not even cover the cutscene.
-      buffer.prepareTime =
-          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
-      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
+      ScheduleStop(this, buffer.stopTime, downed, kPesHoldFoul);
       buffer.restartPos = foul.foulPosition;
     } else {
       buffer.desiredSetPiece = e_SetPiece_Penalty;
       buffer.stopTime = match->GetActualTime_ms();
-      buffer.prepareTime =
-          FoulSequence::RestartPrepareAt_ms(match->GetActualTime_ms(), foul.foulType);
-      buffer.startTime = FoulSequence::RestartTakeAt_ms(match->GetActualTime_ms(), foul.foulType);
+      ScheduleStop(this, buffer.stopTime, downed, kPesHoldFoul);
       buffer.restartPos =
           Vector3((pitchHalfW - 11.0) * foul.foulPlayer->GetTeam()->GetSide(), 0, 0);
     }
@@ -849,14 +926,14 @@ bool Referee::CheckFoul(bool heldWhistle) {
     buffer.active = true;
         buffer.prepared = false;
         buffer.started = false;
-    if (foul.foulType == 2) {
-      foul.foulPlayer->GiveYellowCard(match->GetActualTime_ms() +
-                                      6000);  // need to find out proper moment
-    }
-    if (foul.foulType == 3) {
-      foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
-                                   6000);  // need to find out proper moment
-    }
+    // PES's late card (9.5): the card prop's own start tick `REF_CARD_Y/R`,
+    // 5..411 ticks into the cut at 60 fps - most variants about 30, and the
+    // card on screen for the 3.0 s the whole step's timeout is. The old six
+    // seconds was GF's own guess ("need to find out proper moment").
+    if (foul.foulType == 2)
+      foul.foulPlayer->GiveYellowCard(buffer.stopTime + kPesCardOnScreen_ms);
+    if (foul.foulType == 3)
+      foul.foulPlayer->GiveRedCard(buffer.stopTime + kPesCardOnScreen_ms);
 
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.

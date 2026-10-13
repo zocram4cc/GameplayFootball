@@ -19,6 +19,7 @@
 #include "crowdmood.hpp"
 #include "matchduration.hpp"
 #include "matchreport.hpp"
+#include "pesstoppage.hpp"
 #include "player/playerofficial.hpp"
 #include "simcontext.hpp"
 
@@ -36,8 +37,11 @@ static constexpr unsigned long kStalemateReportInterval_ms = 3000;
 // A goal-line crossing episode ends once the ball is this far back inside the
 // line (GF match.cpp).
 static constexpr float kGoalLineReopen_m = 2.0f;
-// While the referee plays his special animation after a card, the restart is
-// held this far ahead (GF match.cpp's foul camera block).
+// RE-SHIM: while the referee plays his special animation after a card, the
+// restart is held this far ahead. NOT a PES value: 9.8 records that no PES step
+// waits on the referee's JUDGE action at all (cards live inside their scene,
+// which this engine does not have), so this is GF's own way of not cutting the
+// card ceremony off. Bounded by Referee::AlterSetPiecePrepareTime's cap.
 static constexpr unsigned long kRefereeSpecialHold_ms = 1000;
 // Foul types 2 (yellow card) and 3 (red card), see Referee::CheckFoul.
 static constexpr int kFoulTypeYellow = 2;
@@ -98,6 +102,14 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES ball constants missing: read them from the install with "
         "pes::LoadPesBallConstants into MatchSetup::pesBallConstants");
   pesBallConstants = std::make_unique<pes::PesBallConstants>(*setup.pesBallConstants);
+  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9): the
+  // foul/offside holds and the beats between the stop and the kick. Required:
+  // without them the referee has no length for a stoppage at all.
+  if (setup.pesStoppageConstants == nullptr)
+    throw std::runtime_error(
+        "PES stoppage constants missing: read them from the install with "
+        "pes::LoadStoppageConstants into MatchSetup::pesStoppageConstants");
+  pesStoppageConstants = *setup.pesStoppageConstants;
   if (setup.pesJudgeConstants == nullptr)
     throw std::runtime_error(
         "PES judge constants missing: read them from the install with "

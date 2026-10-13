@@ -16,6 +16,7 @@
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesstamina.hpp"
+#include "onthepitch/pesstoppage.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
@@ -114,6 +115,9 @@ TEST(SimStamina, DrainsInPlayFreezesAtDeadBallsAndJumpsAtTheBreak) {
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
   setup.pesStaminaConstants = &*staminaConstants;
+  auto stoppage = pes::LoadStoppageConstants(*exe, &err);
+  if (!stoppage) GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
+  setup.pesStoppageConstants = &*stoppage;
 
   // Without the other PES models a Match cannot be built; they are needed as
   // much as the stamina constants are. Skipped unless the install supplies
@@ -209,6 +213,9 @@ TEST(SimStamina, HalfTimeAppliesTheBreakBonusOnce) {
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
   setup.pesStaminaConstants = &*staminaConstants;
+  auto stoppage = pes::LoadStoppageConstants(*exe, &err);
+  if (!stoppage) GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
+  setup.pesStoppageConstants = &*stoppage;
   setup.pesBallConstants = &*ball;
   setup.pesClockConstants = &*clock;
   setup.pesJudgeConstants = &*judge;

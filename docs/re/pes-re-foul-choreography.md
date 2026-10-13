@@ -698,3 +698,32 @@ cmd 9, `+0x34` 0, latch `+0x38` 0, indirect `+0x39` 0.
 - `MI+0x158c == 1` as "foul without card" (gates the referee's on-the-spot JUDGE): one live foul read resolves it.
 - How the JUDGE action's `cmd+0x85c` is fed from `RefereeActionBasePosition+0x30` (copy site not located).
 - Late card on ball-out stops: the stop-kind-4 program builder was not read.
+
+## 10. Where this is implemented (StoppageTimingPort, 2026-10-14)
+
+Every timing in 9.8 is read from the user's own PES2021.exe at runtime by
+`src/sim/onthepitch/pesstoppage.{hpp,cpp}` (`pes::StoppageConstants`,
+`pes::LoadStoppageConstants`) and scheduled by `FoulSequence`
+(`src/sim/onthepitch/foulsequence.{hpp,cpp}`) through one helper,
+`Referee::ScheduleStop` in `src/sim/onthepitch/referee.cpp`.
+
+| PES timing (9.8) | value | where it lives now |
+|---|---|---|
+| foul hold, no scene | table[1] @0x14259ce60 | `holdKind1_s`; the 5.0 s in `ScheduleStop(..., kPesHoldFoul)` |
+| out-of-play hold (corner/goal kick/throw-in/offside) | table[5] @0x14259ce54 | `holdKind5_s`; `kPesHoldOutOfPlay` |
+| offside 3.0 s (`MI+0x1588==1`) | imm @0x140447a25 | `offsideHold_s`, opcode-checked; not used: GF never routes an offside through a stop kind (9.9.2) |
+| player down | +2.5 s @0x14259bde4 | `downedPlayerExtra_s`, gated on `kPesDownedInjuryLevel` |
+| wipe + UI | 0.1 s @0x142588200 | `wipe_s` + `FoulSequence`'s teleport/UI beats |
+| teleport -> armed | 117 frames | `kTeleport_ms`, `kStopStamp_ms`, `kUiFrames_ms` |
+| fade-in / tail | 1.0 s / 0.25 s | `fadeIn_s`, `restartTail_s` |
+| scene start gate | fps*3/env+0x5c (lea) | `sceneGate_s` = 3.0, named constant + `ponytail:` |
+| referee approach | d^2 < 16.0 @0x14259be10 | `judgeApproachSq_m2`; the refereecontroller walks to 4 m (9.7) |
+| late card | step 6, max(2.5 s, 340 ticks) | `kPesCardOnScreen_ms` = 3000 in `Referee::IssueDeferredCards` and the directly-whistled card path |
+| restart deferral cap | none in PES | GF-only `kMaxRestartDeferral_ms`, marked `RE-SHIM` |
+| referee gesture holding the restart | none in PES | GF-only `kRefereeSpecialHold_ms` (match.cpp), marked `RE-SHIM` |
+| replay between whistle and restart | none in PES | deleted with `FoulSequence`'s replay schedule; the sim has no replay machinery |
+
+Measured in a live match (`tests/sim/pes_stoppage_timing_test.cpp`, seed 1000):
+a throw-in at 9570 ms, a free kick at 20940 ms, a corner at 32710 ms, a
+penalty at 42840 ms - each stop-to-take 4830 ms out-of-play or 7330 ms with a
+foul hold, plus 3000 ms where a late card is shown (52280 ms, 10330 ms).

@@ -18,6 +18,7 @@
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesstamina.hpp"
+#include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "rig/rig.hpp"
@@ -98,6 +99,21 @@ const pes::RngConstants* SharedRngConstants() {
 
 // PES 2021's goalkeeper deflect point and post-catch distribution target
 // (docs/re/pes-re-keeper-port.md).
+// PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+const pes::StoppageConstants* SharedStoppageConstants() {
+  static std::optional<pes::StoppageConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadStoppageConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 const pes::KeeperConstants* SharedKeeperConstants() {
   static std::optional<pes::KeeperConstants> constants;
   static bool tried = false;
@@ -131,7 +147,9 @@ const pes::StaminaConstants* SharedStaminaConstants() {
 #define REQUIRE_RIG()                                                                    \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedBallConstants())                                                            \
-    GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"
+    GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"; \
+  if (!SharedStoppageConstants())                                               \
+    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
 
 // The report's clock constants, so the arithmetic is exercised against a Match.
 pes::PesClockConstants FakeConstants() {
@@ -172,6 +190,7 @@ TEST(PesClockInMatch, ClockIsThePesPercentageForm) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
 
@@ -206,6 +225,7 @@ TEST(PesClockInMatch, ClockCountsTheMatchsGameTime) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
 
@@ -238,6 +258,7 @@ TEST(PesClockInMatch, HalfLengthComesFromThePhaseNotTheSetting) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
     Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     // The half length is a function of the phase alone: the match-length
     // setting no longer reaches it.
@@ -270,6 +291,7 @@ TEST(PesClockInMatch, AddedTimeIsOncePerHalfAndHasNoEventCounters) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_2ndHalf);
@@ -306,6 +328,7 @@ TEST(PesClockInMatch, AddedTimeTierIsAnExplicitInput) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_2ndHalf);
@@ -338,6 +361,7 @@ TEST(PesClockInMatch, ClockFreezesWhenPlayIsStopped) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_1stHalf);
@@ -373,6 +397,7 @@ TEST(PesClockInMatch, ExtraTimeHasItsOwnPeriodEndAndRate) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_1stExtraTime);
@@ -419,6 +444,7 @@ TEST(PesClockInMatch, ClockConstantsAreExeDerived) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match withExe(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   EXPECT_FLOAT_EQ(withExe.GetPesClockConstants().gameSpeed, 54.0f);
   EXPECT_FLOAT_EQ(withExe.GetPesBallConstants().image.tickHz, 54.0f);
@@ -446,6 +472,7 @@ TEST(PesBallInMatch, BallConstantsAreRequiredAndInstallDerived) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   // Without them, the Match refuses to build, like the clock's and the rig.
   setup.pesBallConstants = nullptr;
   EXPECT_THROW(Match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties()),
@@ -465,6 +492,7 @@ TEST(PesBallInMatch, BallConstantsAreRequiredAndInstallDerived) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   Match withBall(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   // docs/re/pes-re-ball-constants.md 3.1/6.1: the mode-1 column.
   EXPECT_FLOAT_EQ(withBall.GetPesBallConstants()

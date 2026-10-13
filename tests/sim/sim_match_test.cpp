@@ -14,6 +14,7 @@
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesstamina.hpp"
+#include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/exe.hpp"
@@ -116,6 +117,21 @@ const pes::RngConstants* SharedRngConstants() {
 
 // PES 2021's goalkeeper deflect point and post-catch distribution target
 // (docs/re/pes-re-keeper-port.md).
+// PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+const pes::StoppageConstants* SharedStoppageConstants() {
+  static std::optional<pes::StoppageConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadStoppageConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 const pes::KeeperConstants* SharedKeeperConstants() {
   static std::optional<pes::KeeperConstants> constants;
   static bool tried = false;
@@ -150,7 +166,8 @@ const pes::StaminaConstants* SharedStaminaConstants() {
 #define REQUIRE_PES_INSTALL()                                          \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedClockConstants())                                                          \
-    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable"
+    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable" \
+  if (!SharedStoppageConstants()) GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"
 
 struct Outcome {
   bool finished = false;
@@ -176,6 +193,7 @@ Outcome Play(unsigned int seed, int minutes) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
 
   Outcome out;
   {
@@ -201,9 +219,11 @@ Outcome Play(unsigned int seed, int minutes) {
 #define REQUIRE_RIG() \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedClockConstants())                                                  \
-    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable";            \
+    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable"; \
   if (!SharedBallConstants())                                                   \
-    GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"
+    GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"; \
+  if (!SharedStoppageConstants())                                               \
+    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
 
 }  // namespace
 
@@ -229,6 +249,7 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   for (int match = 0; match < 2; ++match) {
     Match m(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     std::vector<Player*> players;
@@ -258,6 +279,7 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
+  setup.pesStoppageConstants = SharedStoppageConstants();
   setup.aiManagerRuns[0] = aiManagerRunsHome;
   bool pressed = false;
   {
