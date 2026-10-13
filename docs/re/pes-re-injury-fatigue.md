@@ -384,6 +384,8 @@ Sample durations (OBS, same source): `fall_upbody_3_0_000_hold` 230 f, `fall_upb
 
 ## 4b. Stamina — second pass (2026-10-13, decompiler working)
 
+**CORRECTED 2026-10-13 (orchestrator).** The on-disk/live labels above are reversed. Measured: on-disk exe `.data 0x14351ad20` = 1/48 (the default); live on the title screen = 1/48; live in a match (3 samples) = 1/54; `pesmem.bin` (dumped mid-match) = 1/54. So the slot defaults to 1/48 and is set to 1/54 while a match runs - never read it from the exe file for match timing.
+
 **RESOLVED 2026-10-13 (orchestrator, live in-match read).** During a match, `DAT_14351ad20` = 0.0185185 (1/54) on three samples 0.5 s apart, with `DAT_14351ae54` = 54.0 and `DAT_14351ae50` = 54. The 1/48 value above is title-screen only (the period at `entObj+0x5c` is 1.125 there). **The match runs on a 1/54 s step**; the clock, camera and ball reports' 54 Hz assumption holds.
 
 

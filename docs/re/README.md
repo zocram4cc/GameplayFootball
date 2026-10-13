@@ -34,6 +34,7 @@ address given.
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
 |`pes-re-hud-ui.md`|the match HUD as a Flash/AS3 system: every overlay element with its region, trigger and data, plus the layout and scaling rules|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
+|`pes-re-stamina-live.md`|live match structures (match context, roster and player blocks) and the stamina field search, partial|
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
 |`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
 |`pes-re-matchlogic.md`|player and team records, tuning files, ball parameters, formations, AI map|
