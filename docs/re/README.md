@@ -14,6 +14,7 @@ address given.
 
 |Report|Covers|
 |---|---|
+|`pes-re-tooling-ghidra.md`|the RE toolchain: GhidraMCP 1.4 on Ghidra 12.1.2 (two fixes), the headless postScript path, and how agents call both|
 |`pes-kit-assembly.md`|kit configs (`UniformParameter.bin`, realUni), part selection, kit texture binding, the 4cc composition, live draw lists, the EDIT save cipher and appearance records, boots/gloves, skin tone|
 |`pes-re-shaders.md`|shader packs, the deferred G-buffer and lighting model, per-shader texture roles and formulas, a Godot recipe|
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
