@@ -663,19 +663,6 @@ inline float GetKeeperParryPush(float clearing) {
   return 2.2f + Clamp01(clearing) * 3.0f;
 }
 
-// Distance remains the primary fatigue input. This workload factor makes
-// jogging slightly cheaper and repeated sprinting slightly more expensive.
-inline float GetFatigueWorkloadFactor(float movementSpeed, float maximumSpeed, bool carryingBall) {
-  if (maximumSpeed <= 0.0f)
-    return 1.0f;
-
-  const float speedRatio = Clamp01(movementSpeed / maximumSpeed);
-  const float sprintLoad = Clamp01((speedRatio - 0.55f) / 0.45f);
-  float workload = 0.90f + sprintLoad * sprintLoad * 0.28f;
-  if (carryingBall)
-    workload += sprintLoad * 0.04f;
-  return workload;
-}
 
 inline bool IsGoalMouthThreat(float lateralPosition, float ballHeight, float goalHalfWidth,
                               float goalHeight, float anticipationFactor) {

@@ -46,3 +46,12 @@ gtest_discover_tests(pes_random_test)
 add_executable(pes_ball_collision_test pes_ball_collision_test.cpp)
 target_link_libraries(pes_ball_collision_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_ball_collision_test)
+
+add_executable(pes_stamina_test pes_stamina_test.cpp)
+target_link_libraries(pes_stamina_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_stamina_test)
+
+add_executable(sim_stamina_test sim_stamina_test.cpp)
+target_link_libraries(sim_stamina_test PRIVATE gfsim pesfmt GTest::gtest_main)
+target_compile_definitions(sim_stamina_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(sim_stamina_test PROPERTIES TIMEOUT 1800)

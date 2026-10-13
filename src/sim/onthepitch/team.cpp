@@ -11,6 +11,7 @@
 #include "../utils.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "match.hpp"
+#include "pesstamina.hpp"
 #include "player/humanoid/pesplayernode.hpp"
 
 Team::Team(int id, Match* match, TeamData* teamData) : id(id), match(match), teamData(teamData) {
@@ -76,6 +77,29 @@ void Team::InitPlayers() {
     const FormState::Arrow arrow = FormState::ArrowForPlayer(
         conditionPolicy, playerData->GetStat("physical_form"), conditionSeed, id, i);
     player->SetConditionArrow(arrow);
+    // PES's stamina tank at kick-off (docs/re/pes-re-stamina-drain.md 2): the
+    // Stamina ability with PES's tiered scaling, the condition arrow the same
+    // draw just dealt, the match length as F, and the full 100% freshness a
+    // fresh player starts a match with. The tank, the starting value and the
+    // breath reserve are all set here.
+    {
+      // PES's Stamina ability (40..99) is GF's physical_stamina on 0..1,
+      // converted by the report's own range (ponytail: the range is the
+      // roster's span, not a transcribed table).
+      const int staminaAbility = static_cast<int>(
+          std::lround(playerData->GetStat("physical_stamina") * (99.0f - 40.0f) + 40.0f));
+      // F is the match length in minutes (report 2: F = the match-length
+      // setting, live 10.0 under a 10-minute setting). This engine's
+      // durationMinutes plays the same role.
+      // The inline getters call the constants too, so the player holds a
+      // copy of them alongside his state.
+      player->SetStaminaConstants(match->GetPesStaminaConstants());
+      pes::InitStamina(match->GetPesStaminaConstants(), staminaAbility, static_cast<int>(arrow),
+                       0, static_cast<float>(match->GetMatchDurationMinutes()),
+                       100, &player->GetStamina());
+      player->GetStamina().breath =
+          pes::BreathCap(match->GetPesStaminaConstants(), player->GetStamina());
+    }
     arrowsDealt[(int)arrow]++;
     // Add the player to 'players' before Activate(), since Activate() (via
     // Player::GetFormationEntry() -> Team::GetFormationEntry(playerID)) looks
@@ -316,14 +340,6 @@ void Team::ResetSituation(const Vector3& focusPos) {
   }
 
   GetController()->Reset();
-}
-
-void Team::RelaxFatigue(float howMuch) {
-  for (unsigned int i = 0; i < players.size(); i++) {
-    if (players.at(i)->IsActive()) {
-      players.at(i)->RelaxFatigue(howMuch);
-    }
-  }
 }
 
 void Team::Process() {

@@ -41,8 +41,6 @@ unsigned long GetTeamPressureDurationBonus_ms(e_Philosophy philosophy);
 // Whether losing possession alone should trigger team pressure.
 bool PressesOnPossessionLoss(e_Philosophy philosophy);
 
-// Multiplier applied to fatigue accumulation.
-float GetStaminaDrainMultiplier(e_Philosophy philosophy);
 
 // Whether the passing game should favour short, safe links.
 bool PrefersShortPassing(e_Philosophy philosophy);

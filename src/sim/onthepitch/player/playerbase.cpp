@@ -21,9 +21,10 @@ PlayerBase::PlayerBase(Match* match, PlayerData* playerData)
   debug = false;
   lastTouchTime_ms = 0;
   lastTouchType = e_TouchType_None;
-  fatigueFactorInv = 1.0;
   confidenceFactor = 1.0;
-  injuryLevel = 0.0f;
+  // The stamina state is filled at kick-off (Match deals the constants and
+  // the tank); until then it is empty and the inline getters read 0.
+  stamina = pes::StaminaState{};
 
   averageStat = playerData->GetAverageStat();
 
@@ -100,9 +101,11 @@ float PlayerBase::GetStat(const char* name) const {
 }
 
 float PlayerBase::GetMaxVelocity() const {
-  // fatigue reduces sprint speed: fully rested = 100%, exhausted = 60%
-  const float fatigueFactor = 0.6f + 0.4f * fatigueFactorInv;
-  return sprintVelocity * GetVelocityMultiplier() * fatigueFactor * GetSlipFactor();
+  // Fatigue reduces sprint speed: PES's A5 factor is 1.0 at a full tank and
+  // 0.8 when the tank empties (docs/re/pes-re-stamina-drain.md 4), so the
+  // rested-to-spent range is 100%..80% of the player's own top speed.
+  return sprintVelocity * GetVelocityMultiplier() * GetFatigueFactor() *
+         GetSlipFactor();
 }
 
 float PlayerBase::GetVelocityMultiplier() const {
@@ -123,7 +126,6 @@ void PlayerBase::ResetSituation(const Vector3& focusPos) {
   positionHistoryPerSecond.clear();
   lastTouchTime_ms = 0;
   lastTouchType = e_TouchType_None;
-  injuryLevel = 0.0f;
   if (IsActive())
     humanoid->ResetSituation(focusPos);
   if (GetController())

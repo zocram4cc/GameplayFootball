@@ -88,6 +88,13 @@ int Random::Range(int slot) {
 
 float Random::Unit(int slot) { return static_cast<float>(Step(slot)) * k_.scale; }
 
+int Random::RangeRaw(int slot, int modulus) {
+  // cvtsi2ss both, `mulss` the scale, `mulss` the modulus, `cvttss2si`: the
+  // new state as a float times M, truncated towards zero (0x140a924ef.trunc).
+  const float u = static_cast<float>(Step(slot)) * k_.scale;
+  return static_cast<int>(u * static_cast<float>(modulus));
+}
+
 int Random::Range0(int count) {
   if (count <= 0) return 0;
   const int r = static_cast<int>(static_cast<float>(Step(MATCH_SLOT)) * k_.scale *

@@ -49,6 +49,10 @@ class Random {
   int Range(int slot);
   // RangeRaw 0x140a924e0: the step's new state as a float in [0, 1).
   float Unit(int slot);
+  // RangeRaw's other half, 0x140a924e0: `trunc(u * M)` on an explicit M, not
+  // the slot's modulus entry. This is the injury roll's draw: PES passes
+  // `Range(rng, 100, 2)` through it, so the modulus is 100, not modulus[2].
+  int RangeRaw(int slot, int modulus);
   // Range0(rng, count) 0x140a92530: slot 1 mapped to [0, count).
   int Range0(int count);
   // Slot 3's bare advance (the 0x140a92470 idx == 3 branch).

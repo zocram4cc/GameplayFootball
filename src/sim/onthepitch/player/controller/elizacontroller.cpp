@@ -559,7 +559,7 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     if (CastPlayer() != match->GetDesignatedPossessionPlayer()) {
       float mindSet = AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role);
       float huntDistanceThreshold = 10.0f + (1.0f - mindSet) * 10.0f;  // 10 + .. * 10
-      huntDistanceThreshold *= 0.5f * CastPlayer()->GetFatigueFactorInv() +
+      huntDistanceThreshold *= 0.5f * CastPlayer()->GetStaminaPct() +
                                0.5f * (1.0f - NormalizedClamp(CastPlayer()->GetAverageVelocity(10),
                                                               idleVelocity, sprintVelocity));
       huntDistanceThreshold *= 0.3f + GetMatch()->GetMatchDifficulty() * 0.7f;
@@ -685,8 +685,8 @@ float ElizaController::GetLazyVelocity(float desiredVelocityFloat) {
     adaptedDesiredVelocityFloat =
         sprintVelocity + (adaptedDesiredVelocityFloat - sprintVelocity) * 0.1f;
 
-  float startLazinessDistance = 20.0f * (CastPlayer()->GetFatigueFactorInv() * 0.8f + 0.2f);
-  float endLazinessDistance = 65.0f * (CastPlayer()->GetFatigueFactorInv() * 0.5f + 0.5f);
+  float startLazinessDistance = 20.0f * (CastPlayer()->GetStaminaPct() * 0.8f + 0.2f);
+  float endLazinessDistance = 65.0f * (CastPlayer()->GetStaminaPct() * 0.5f + 0.5f);
 
   Vector3 oppPos =
       match->GetTeam(abs(team->GetID() - 1))->GetDesignatedTeamPossessionPlayer()->GetPosition();

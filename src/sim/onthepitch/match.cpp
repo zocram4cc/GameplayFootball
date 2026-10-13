@@ -110,6 +110,14 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES keeper constants missing: read them from the install with "
         "pes::LoadKeeperConstants into MatchSetup::pesKeeperConstants");
   pesKeeperConstants = *setup.pesKeeperConstants;
+  // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): every number
+  // lives in the image, so a match without the install's constants cannot be
+  // built - there is no fallback fatigue to invent.
+  if (setup.pesStaminaConstants == nullptr)
+    throw std::runtime_error(
+        "PES stamina constants missing: read them from the install with "
+        "pes::LoadStaminaConstants into MatchSetup::pesStaminaConstants");
+  pesStaminaConstants = std::make_unique<pes::StaminaConstants>(*setup.pesStaminaConstants);
 
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);
@@ -345,9 +353,21 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   matchTimeExact_ms = static_cast<double>(matchTime_ms);
 
 
-  if (matchPhase == e_MatchPhase_2ndHalf) {
-    teams[0]->RelaxFatigue(0.05f);
-    teams[1]->RelaxFatigue(0.05f);
+  if (matchPhase == e_MatchPhase_2ndHalf || matchPhase == e_MatchPhase_2ndExtraTime) {
+    // PES's break bonus (docs/re/pes-re-stamina-drain.md 3.4): once at the
+    // whistle, 9000 * F plus the fitness tier, clamped to the tank. The old
+    // GF "relax 5%" is replaced by it. Period 2 is the half-time break, 4 the
+    // extra-time break; this engine's phase names carry the same two.
+    const int period = (matchPhase == e_MatchPhase_2ndHalf) ? 2 : 4;
+    for (int teamID = 0; teamID < 2; teamID++) {
+      std::vector<Player*> squad;
+      GetAllTeamPlayers(teamID, squad);
+      for (Player* player : squad) {
+        pes::StaminaState& st = player->GetStamina();
+        st.cur = pes::BreakBonus(*pesStaminaConstants, st, period, 1,
+                                 matchDurationMinutes);
+      }
+    }
 #ifndef NDEBUG
     // [pass-dist] per-half instrumentation, printed at the break: the chosen
     // pass-length distribution and the support-web width each team played
@@ -471,8 +491,12 @@ void Match::ProcessAutoSubstitutions() {
         continue;
 
       AIManager::SubstitutionCandidate candidate;
-      candidate.fatigueFactorInv = player->GetFatigueFactorInv();
-      candidate.injuryLevel = player->GetInjuryLevel();
+      // The remaining stamina as a fraction of the tank, so the manager's
+      // threshold below reads on the same 0..1 scale it always did.
+      const pes::StaminaState& st = player->GetStamina();
+      candidate.fatigueFactorInv =
+          st.max == 0 ? 1.0f : clamp(static_cast<float>(st.cur) / st.max, 0.0f, 1.0f);
+      candidate.injuryLevel = static_cast<float>(st.injuryLevel) / 3.0f;
       candidate.isOnPitch = player->IsActive();
       // A super-sub is the bench's first choice, rating aside.
       candidate.averageStat =
@@ -794,6 +818,36 @@ void Match::ReplacePlayerReferences(Player* playerOut, Player* playerIn) {
   InvalidateCachedMentalImages();
   mentalImages.clear();
   bestPossessionTeamID = -1;
+}
+
+// PES 2021's injury roll for one contact
+// (docs/re/pes-re-stamina-drain.md 6): the victim's severity accumulates from
+// both players' speeds, the attacker's action state and the approach angle,
+// then the player's injury resistance decides how badly it lands. Both
+// bodies here are standing tackles, which is PES's attacker state
+// "neither sliding" (the 0.5 factor).
+void Match::InjureFromContact(Player* victim, Player* attacker) {
+  if (victim == nullptr || attacker == nullptr) return;
+  // A contact that puts a man on the floor is PES's "victim down" (the
+  // e_FunctionType_Trip state this engine's bumps already produce), which
+  // doubles the severity's base.
+  const bool down = victim->GetCurrentFunctionType() == e_FunctionType_Trip;
+  // ponytail: PES reads the injury resistance off the roster byte at
+  // PMS+0x70+0x2f, which this engine does not load. The middle tier (B, the
+  // 50-point roll) is what the report ships; 0.20's low outfield gk_* stats
+  // make the third tier the obvious next step when that byte does load.
+  constexpr int kInjuryResistance = 1;
+  // ponytail: the approach angle is the attacker's heading against the line
+  // to the victim; this engine's contact already carries both directions, so
+  // the victim's own heading stands in for the pair.
+  const float toAttackerAngle =
+      victim->GetAngle() - (attacker->GetPosition() - victim->GetPosition()).GetAngle2D();
+  pes::RecordContact(*pesStaminaConstants, &victim->GetStamina(), kInjuryResistance, down,
+                     victim->GetMovement().GetLength() * 3.6f,
+                     attacker->GetMovement().GetLength() * 3.6f,
+                     attacker->GetCurrentFunctionType() == e_FunctionType_Sliding,
+                     attacker->GetCurrentFunctionType() == e_FunctionType_Sliding,
+                     static_cast<float>(toAttackerAngle) * 180.0f / pi, &rngSource->rng);
 }
 
 bool Match::BallTeleportedThisTick() const {
@@ -1247,7 +1301,8 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
           referee->TripNotice(p1, p2, tripType);
           // foul statistics are counted by the referee at the whistle
           const bool p1WasFit = p1->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
-          p1->Injure(tripType * 0.04f);
+          (void)p1WasFit;
+          InjureFromContact(p1, p2);
         }
       }
       if (p2sensitivity > trip0threshold) {
@@ -1263,7 +1318,8 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
           referee->TripNotice(p2, p1, tripType);
           // foul statistics are counted by the referee at the whistle
           const bool p2WasFit = p2->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
-          p2->Injure(tripType * 0.04f);
+          (void)p2WasFit;
+          InjureFromContact(p2, p1);
         }
       }
 

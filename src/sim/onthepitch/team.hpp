@@ -70,7 +70,6 @@ public:
 
   void ResetSituation(const Vector3& focusPos);
 
-  void RelaxFatigue(float howMuch);
 
   void Process();
   void PreparePutBuffers(unsigned long snapshotTime_ms);

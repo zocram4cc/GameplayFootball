@@ -92,9 +92,6 @@ bool PressesOnPossessionLoss(e_Philosophy philosophy) {
   return philosophy == e_Philosophy_Gegenpressing;
 }
 
-float GetStaminaDrainMultiplier(e_Philosophy philosophy) {
-  return philosophy == e_Philosophy_Gegenpressing ? 1.2f : 1.0f;
-}
 
 bool PrefersShortPassing(e_Philosophy philosophy) {
   return philosophy == e_Philosophy_TikiTaka;

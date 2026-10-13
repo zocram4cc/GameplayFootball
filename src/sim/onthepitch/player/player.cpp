@@ -460,8 +460,6 @@ void Player::Process() {
     Vector3 posAfter = CastHumanoid()->GetPosition();
 
     float distance = (posAfter - posBefore).GetLength();
-    const float fatigueWorkload = GameplayTuning::GetFatigueWorkloadFactor(
-        (posAfter - posBefore).GetLength() * 100.0f, GetMaxVelocity(), hasPossession);
     // Wet or chewed-up pitch: a sharp turn at pace can put a player on the
     // floor, which costs him his momentum for a moment (proposal 4A).
     if (distance > 0.0f) {
@@ -483,15 +481,24 @@ void Player::Process() {
       previousDirectionVec = currentDirection;
     }
 
-    // A high-pressing philosophy burns more stamina (proposal 2A); fighting
-    // spirit keeps a player going.
-    const float staminaDrain = team->GetController()->GetStaminaDrainMultiplier() *
-                               PlayerSkills::GetFatigueDrainMultiplier(playerData->GetSkills());
-    fatigueFactorInv -= distance * 0.00003f * (2.0f - GetStaminaStat()) * fatigueWorkload *
-                        staminaDrain * (1.0f / match->GetMatchDurationFactor());
-    fatigueFactorInv = clamp(fatigueFactorInv, 0.01f, 1.0f);
-    // if (GetDebug() && match->GetActualTime_ms() % 1000 == 0) printf("fatigue: %f\n",
-    // GetFatigueFactorInv());
+    // PES 2021's per-tick stamina drain
+    // (docs/re/pes-re-stamina-drain.md 3.3), which only runs while the ball is
+    // in play: a dead ball freezes the tank. The GF distance-based drain it
+    // replaces is gone.
+    if (match->IsInPlay() && !match->IsInSetPiece()) {
+      float speed_kmh = 0.0f;
+      // The movement the humanoid produced this tick, in km/h.
+      const float moved_m = (posAfter - posBefore).GetLength();
+      if (moved_m > 0.0f) speed_kmh = moved_m * 100.0f * 3.6f;
+      // The 3-D velocity PES tests against 22 km/h uses the same speed here.
+      pes::UpdateBreath(match->GetPesStaminaConstants(), stamina, speed_kmh,
+                        hasPossession, &stamina.breath);
+      const int breathPct = stamina.breath * 100 /
+                            std::max(1, pes::BreathCap(match->GetPesStaminaConstants(), stamina));
+      stamina.cur = pes::DrainTick(match->GetPesStaminaConstants(), stamina,
+                                   pes::SpeedClass(match->GetPesStaminaConstants(), speed_kmh),
+                                   breathPct, team->HasPossession());
+    }
 
     if (cards > 1 && cardEffectiveTime_ms <= match->GetActualTime_ms()) {
       SendOff();
@@ -521,18 +528,18 @@ void Player::SendOff() {
   }
 }
 
-float Player::GetStaminaStat() const {
-  return playerData->GetStat("physical_stamina");
-}
-
 float Player::GetStat(const char* name) const {
   // GF ran CPU teams at the configured difficulty; every team here is CPU.
   float multiplier = 0.3f + 0.7f * team->GetMatch()->GetMatchDifficulty();
-  multiplier *=
-      0.7f +
-      0.3f * GetFatigueFactorInv();  // todo: some stats are more affected by fatigue than others
-  // injury reduces all stats by up to 40%
-  multiplier *= 1.0f - injuryLevel * 0.4f;
+  // PES's A5 fatigue factor (docs/re/pes-re-stamina-drain.md 4): 1.0 at a full
+  // tank, 0.8 when it empties, on the ten stat ids the report names. It goes
+  // on the base along with the per-match arrays, so the ceiling clamp below
+  // still sees a rested player at 1.00 rather than past it.
+  const float fatigue = GetFatigueFactor();
+  // Injury: PES's 2 = knock (plays on) and 3 = injured, out of 3, so a knock
+  // costs a third and an injury all of the 40% the old GF scale reserved for
+  // a fully-dead player.
+  multiplier *= 1.0f - 0.4f * (std::min(3, stamina.injuryLevel) / 3.0f);
   // A speed merchant loses his head at full tilt (proposal 3A).
   if (std::strcmp(name, "mental_calmness") == 0) {
     const PlayerSkills::Mask skills = playerData->GetSkills();
@@ -562,9 +569,14 @@ float Player::GetStat(const char* name) const {
   // scale it: a player already at 1.00 on a red arrow gets 1.00, never more,
   // and nothing that reads this ever sees a value past the range it was
   // written for. The clamp at the end catches a clutch multiplier above one.
-  const float base = FormState::Apply(playerData->GetStat(name), conditionArrow,
-                                      GetDeployedFamiliarity(), name);
-  return clamp(base * multiplier, 0.0f, 1.0f);
+  // The breath penalty (report 4) is a flat integer subtraction from the
+  // four breath-sensitive ids, on PES's 0..99 stat byte. Applied here as a
+  // fraction of the full stat range (100 points = the whole scale), and
+  // multiplied by the A5 fatigue factor on the way out.
+  const float penalty = static_cast<float>(GetBreathPenalty()) / 100.0f;
+  const float base = FormState::Apply(std::max(0.0f, playerData->GetStat(name) - penalty),
+                                      conditionArrow, GetDeployedFamiliarity(), name);
+  return clamp(base * multiplier, 0.0f, 1.0f) * fatigue;
 }
 
 FormState::Slot Player::GetDeployedSlot() const {

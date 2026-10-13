@@ -119,7 +119,6 @@ public:
 
   void SendOff();
 
-  float GetStaminaStat() const;
   virtual float GetStat(const char* name) const;
 
   virtual void ResetSituation(const Vector3& focusPos);

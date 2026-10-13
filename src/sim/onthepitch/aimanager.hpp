@@ -20,7 +20,8 @@ struct MatchSituation {
 };
 
 struct SubstitutionCandidate {
-  // 1 when fully rested, approaching 0 when spent (Player::GetFatigueFactorInv).
+  // 1 when fully rested, approaching 0 when spent (the player's remaining
+  // stamina as a fraction of his tank, fed from his PES tank directly).
   float fatigueFactorInv = 1.0f;
   float injuryLevel = 0.0f;
   bool isOnPitch = false;

@@ -82,6 +82,11 @@ int main(int argc, char** argv) {
   if (!judgeConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   auto rngConstants = pes::LoadRngConstants(*exe, &err);
   if (!rngConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): the tank, the
+  // drain, the breath, the break bonus and the injury roll's constants, all
+  // read from the install's own exe.
+  auto staminaConstants = pes::LoadStaminaConstants(*exe, &err);
+  if (!staminaConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   auto keeperConstants = pes::LoadKeeperConstants(*exe, &err);
@@ -102,6 +107,7 @@ int main(int argc, char** argv) {
   setup.pesClockConstants = &*clockConstants;
   setup.pesBallConstants = &*ballConstants;
   setup.pesJudgeConstants = &*judgeConstants;
+  setup.pesStaminaConstants = &*staminaConstants;
   setup.pesRngConstants = &*rngConstants;
   setup.pesKeeperConstants = &*keeperConstants;
 

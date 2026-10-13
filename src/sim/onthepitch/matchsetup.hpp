@@ -21,6 +21,7 @@ struct Rig;
 #include "pesjudge.hpp"
 #include "peskeeper.hpp"
 #include "pesrandom.hpp"
+#include "pesstamina.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -56,6 +57,11 @@ struct MatchSetup {
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md). Required.
   const pes::KeeperConstants* pesKeeperConstants = nullptr;
+  // PES 2021's stamina, fatigue and injury model
+  // (docs/re/pes-re-stamina-drain.md): the tank, the drain, the breath, the
+  // break bonus and the injury roll's constants, read from the install's exe.
+  // Required like the others: the model's every number lives in the image.
+  const pes::StaminaConstants* pesStaminaConstants = nullptr;
 };
 
 #endif

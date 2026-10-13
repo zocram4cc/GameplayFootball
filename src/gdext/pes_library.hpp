@@ -10,6 +10,7 @@
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
+#include "onthepitch/pesstamina.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
@@ -74,6 +75,10 @@ class PesLibrary : public RefCounted {
   const pes::KeeperConstants* keeper_constants() const {
     return keeperConstants_ ? &*keeperConstants_ : nullptr;
   }
+  // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md).
+  const pes::StaminaConstants* stamina_constants() const {
+    return staminaConstants_ ? &*staminaConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -93,6 +98,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::JudgeConstants> judgeConstants_;
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;
+  std::optional<pes::StaminaConstants> staminaConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

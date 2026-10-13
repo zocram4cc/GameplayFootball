@@ -75,6 +75,13 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 keeper constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  // PES 2021's stamina, fatigue and injury model
+  // (docs/re/pes-re-stamina-drain.md).
+  if (exe) staminaConstants_ = pes::LoadStaminaConstants(*exe, &err);
+  if (!staminaConstants_) {
+    UtilityFunctions::push_error("PES21 stamina constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);

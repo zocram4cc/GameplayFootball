@@ -581,9 +581,6 @@ float GetStumbleChanceMultiplier(Mask ownMask, bool captainOnPitch) {
   return multiplier;
 }
 
-float GetFatigueDrainMultiplier(Mask mask) {
-  return Has(mask, Skill::FightingSpirit) ? 0.85f : 1.0f;
-}
 
 float GetSubstituteBonus(Mask mask, bool isOnPitch) {
   return !isOnPitch && Has(mask, Skill::SuperSub) ? 0.1f : 0.0f;

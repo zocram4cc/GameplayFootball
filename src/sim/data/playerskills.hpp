@@ -214,8 +214,6 @@ float GetPenaltyRating(Mask mask, float baseRating);
 // Captaincy: a captain on the pitch steadies everybody; Fighting Spirit
 // steadies himself. Multiplier on the chance of losing composure.
 float GetStumbleChanceMultiplier(Mask ownMask, bool captainOnPitch);
-// Fighting Spirit: slower to tire.
-float GetFatigueDrainMultiplier(Mask mask);
 // Super-sub: added to the rating when picking who comes off the bench.
 float GetSubstituteBonus(Mask mask, bool isOnPitch);
 

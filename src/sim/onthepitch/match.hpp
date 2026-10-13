@@ -18,6 +18,7 @@
 #include "gameplaytuning.hpp"
 #include "matchsetup.hpp"
 #include "matchprogression.hpp"
+#include "pesstamina.hpp"
 #include "officials.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
@@ -179,6 +180,9 @@ public:
   // `ball.o` record and the image values, required like the clock's.
   const pes::PesBallConstants& GetPesBallConstants() const { return *pesBallConstants; }
   const pes::JudgeConstants& GetPesJudgeConstants() const { return pesJudgeConstants; }
+  // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): its constants,
+  // read from the install's exe, required like the clock's and the ball's.
+  const pes::StaminaConstants& GetPesStaminaConstants() const { return *pesStaminaConstants; }
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
@@ -196,6 +200,7 @@ public:
 
   void GameOver();
   bool IsGameOver() const { return gameOver; }
+
   // Player IDs phase per-player work ((time + id * 10) % 100), so they are
   // numbered per match: a process-wide counter made a second match diverge.
   int AllocatePlayerID() { return nextPlayerID++; }
@@ -229,6 +234,8 @@ public:
   bool AIManagerRunsTeam(int teamID) const { return aiManagerRuns[teamID]; }
 
   float GetMatchDurationFactor() const { return matchDurationFactor; }
+  // The match length in minutes, PES's match-length factor F (report 2).
+  float GetMatchDurationMinutes() const { return matchDurationMinutes; }
   float GetMatchDifficulty() const { return matchDifficulty; }
 
   std::vector<Vector3>& GetAnimPositionCache(Animation* anim) {
@@ -266,6 +273,9 @@ protected:
     blunted::RandomSource* restoreTo = nullptr;
   };
   std::unique_ptr<RngSource> rngSource;
+
+  // PES 2021's injury roll for one contact (docs/re/pes-re-stamina-drain.md 6).
+  void InjureFromContact(Player* victim, Player* attacker);
 
   bool BallTeleportedThisTick() const;
   bool CheckForGoal(signed int side);
@@ -375,6 +385,7 @@ protected:
   pes::JudgeConstants pesJudgeConstants{};
   pes::KeeperConstants pesKeeperConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
+  std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;
 

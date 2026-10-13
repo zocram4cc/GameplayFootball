@@ -92,9 +92,6 @@ public:
   MatchMentality::e_Mentality GetMentality() const { return mentality; }
   // Outfield shape the team wants while chasing the game.
   MatchMentality::FormationShape GetDesperationShape() const;
-  float GetStaminaDrainMultiplier() const {
-    return TeamPhilosophy::GetStaminaDrainMultiplier(philosophy);
-  }
 
   unsigned long GetEndApplyAttackingRun_ms() { return endApplyAttackingRun_ms; }
   Player* GetAttackingRunPlayer() { return attackingRunPlayer; }
