@@ -183,7 +183,10 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   {
     MatchData* data = new MatchData(HOME_TEAM, AWAY_TEAM);
     Match match(data, setup, Properties());
-    data->SetGoalCount(1, 1);
+    // A deficit no 1-minute match can close: with PES's ball the home side scores
+    // in this window, and a one-goal deficit ended the "trailing" precondition.
+    constexpr int kAwayLead = 3;
+    data->SetGoalCount(1, kAwayLead);
     while (!match.IsGameOver() && match.GetSimTime_ms() < kMaxSimTime_ms && !pressed) {
       match.Process();
       if (data->GetGoalCount(0) >= data->GetGoalCount(1)) break;  // no longer trailing

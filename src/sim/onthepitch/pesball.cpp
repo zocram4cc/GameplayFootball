@@ -83,7 +83,30 @@ std::optional<BallImageConstants> LoadBallImageConstants(const PeImage& exe, std
   }
   std::memcpy(&c.spinScale, imm, sizeof c.spinScale);
   c.invSpinScale = 1.0f / c.spinScale;
+
+  // The contact-mode table (report 3.1) is a 3x3 i32 block in the exe's
+  // writable .data at VA 0x14349f718, read by FUN_1408723d0's
+  // `mov ebx,[rax + (pitch*3 + weather)*4]`. Read it the same way: the table
+  // is not transcribed, and it is not initialised by code (a full
+  // rip-relative scan of .text finds no other reference to it, and the bytes
+  // the game reads live match what the disk carries).
+  for (int p = 0; p < kPitchCount; ++p)
+    for (int w = 0; w < kWeatherCount; ++w) {
+      const uint64_t va = MODE_TABLE_VA + uint64_t(p * kWeatherCount + w) * sizeof(uint32_t);
+      uint32_t value = 0;
+      if (!exe.ReadVa(va, sizeof value, reinterpret_cast<uint8_t*>(&value))) {
+        *error = "PES2021.exe: contact mode table slot unmapped";
+        return std::nullopt;
+      }
+      c.modeTable[p][w] = int(value);
+    }
   return c;
+}
+
+int ContactModeFor(const BallImageConstants& c, int pitch, int weather) {
+  if (pitch < 0 || pitch >= kPitchCount || weather < 0 || weather >= kWeatherCount)
+    return kContactModeOutOfRange;
+  return c.modeTable[pitch][weather];
 }
 
 std::optional<BallRecordConstants> LoadBallRecordConstants(const PesVfs& vfs, std::string* error) {

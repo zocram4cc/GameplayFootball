@@ -83,6 +83,26 @@ inline constexpr uint64_t MILLI_VA = 0x14256ae34;                 // .rdata 1000
 inline constexpr uint64_t TICK_HZ_VA = 0x14259d624;                // .rdata 54.0
 inline constexpr uint64_t NON_SPIN_TOP_MAX_VA = 0x142608c04;      // .rdata 23.6111107
 inline constexpr uint64_t NON_SPIN_TOP_PLATEAU_VA = 0x142608c08;  // .rdata 48.22531
+// The 3x3 contact-mode table FUN_1408723d0 reads (docs/re/pes-re-ball-contact-2.md
+// 3.1): `mode = table[pitch*3 + weather]`, pitch = i32[cfg+0x78] and
+// weather = i32[cfg+0x7c], with any out-of-range index falling back to 1. The
+// table lives in the exe's writable .data at VA 0x14349f718 (9 u32 slots); it is
+// not transcribed here, it is read from the install's executable at run time.
+inline constexpr uint64_t MODE_TABLE_VA = 0x14349f718;
+// The table's shape: pitch rows 0..2, weather columns 0..2.
+inline constexpr int kPitchCount = 3, kWeatherCount = 3;
+// The mode a match plays when out-of-range indices arrive (report 3.1: `ebx = 1`).
+inline constexpr int kContactModeOutOfRange = 1;
+// A dry, normal pitch (report 3.2): weather index 0 on any pitch row gives
+// mode 2, so that is the default GF plays when its own weather/pitch config has
+// no PES counterpart. GF has no pitch-condition notion of its own, so the pitch
+// index is always this one.
+inline constexpr int kContactModeDryNormal = 2;
+// The PES pitch-condition index for a dry, normal pitch.
+inline constexpr int kPitchDryNormal = 0;
+// The PES weather index for no weather at all.
+inline constexpr int kWeatherNone = 0;
+
 // The port of the exe-image constants the flight model and the contact tick
 // need. Gravity, air density, ball area, the radius, the drag-crisis threshold
 // and the spin scale live in the image and nowhere else; the km/h factors and
@@ -104,11 +124,30 @@ struct BallImageConstants {
   float nonSpinTopPlateau = 0.0f;     // 48.22531, m/s
   float spinScale = 0.0f;             // 492.181, raw -> rad/s (report 4.1)
   float invSpinScale = 0.0f;          // 1/492.181
+  // The 3x3 pitch/weather to contact-mode table of report 3.1, as shipped in
+  // the exe's .data. `modeTable[pitch*kWeatherCount + weather]`.
+  std::array<std::array<int, kWeatherCount>, kPitchCount> modeTable{};
   bool operator==(const BallImageConstants&) const = default;
 };
 
-// Reads every image constant the ball needs out of the install's PES2021.exe.
+// Reads every image constant the ball needs out of the install's PES2021.exe:
+// the .rdata floats of the flight/contact models plus the contact-mode table.
 std::optional<BallImageConstants> LoadBallImageConstants(const PeImage& exe, std::string* error);
+
+// Report 3.1's lookup, literal: `mode = table[pitch*3 + weather]`, with any
+// out-of-range pitch or weather index falling back to
+// kContactModeOutOfRange (the writer's `ebx = 1`).
+int ContactModeFor(const BallImageConstants& c, int pitch, int weather);
+
+// The PES weather index for GF's `match_weather` (report 3.2: 0 = no weather,
+// rising indices pick the wetter columns, which ramp the mode down towards 0).
+// GF's config is a 0..1 float; the thresholds are this engine's own reading of
+// "dry / wet / soaked" and are not PES numbers.
+inline int WeatherIndexForGfWeather(float gfWeather) {
+  if (gfWeather <= 0.0f) return kWeatherNone;
+  if (gfWeather < 0.5f) return 1;
+  return 2;
+}
 
 // docs/re/pes-re-ball-constants.md 6: ball.o's scalar header (disk offsets) and
 // its 24 mode blocks. Field names are the game's own JSON keys; the offsets are
@@ -210,6 +249,10 @@ std::optional<BallRecordConstants> LoadBallRecordConstants(const PesVfs& vfs, st
 struct PesBallConstants {
   BallImageConstants image;
   BallRecordConstants record;
+  // The per-match contact mode column the tables are indexed with (report 3.1:
+  // `modeTable[pitch*3 + weather]`, out of the exe's .data). A match without a
+  // chosen pitch/weather index plays PES's dry, normal index.
+  int contactMode = kContactModeDryNormal;
   bool operator==(const PesBallConstants&) const = default;
 };
 

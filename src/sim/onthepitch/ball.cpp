@@ -86,8 +86,10 @@ void Ball::SetRotation(radian x, radian y, radian z,
   // with rad/s = raw * spinScale (docs/re/pes-re-officials-ball.md 5). `bias` is
   // the blend towards the new spin, the same slerp GF applied.
   const pes::PesBallConstants& pc = *ballConstants;
-  // GF (x, y, z) -> Fox (x, -z, y), the same basis change the skeleton uses.
-  const pes::Vec3 target(z * 0.001f, -x * 0.001f, y * 0.001f);
+  // GF (x, y, z) -> Fox (x, z, -y): the inverse of the skeleton's
+  // Fox (x, y, z) -> GF (x, -z, y) (pesplayernode.cpp), so a GF height maps to a
+  // Fox height and a GF lateral to a Fox lateral with the opposite sign.
+  const pes::Vec3 target(x * 0.001f, z * 0.001f, -y * 0.001f);
 
   radian angle = 0.0f;
   const float w = rotation_ms.elements[3];
@@ -98,7 +100,7 @@ void Ball::SetRotation(radian x, radian y, radian z,
     const Vector3 axis(rotation_ms.elements[0] / sinHalf, rotation_ms.elements[1] / sinHalf,
                        rotation_ms.elements[2] / sinHalf);
     const float spinRad = 2.0f * half;
-    current = pes::Vec3(axis.coords[0], -axis.coords[2], axis.coords[1]) * (spinRad /
+    current = pes::Vec3(axis.coords[0], axis.coords[2], -axis.coords[1]) * (spinRad /
               pc.image.spinScale);
   }
   const pes::Vec3 blended = current * (1.0f - bias) + target * bias;
@@ -146,12 +148,15 @@ BallSpatialInfo Ball::CalculatePrediction() {
   // PES 2021's ball physics (docs/re/pes-re-ball-contact.md). The state is
   // carried in Fox space (Y up) because that is where every rule in the report
   // is written; GF's ball is Z-up, so the conversion happens at the boundary
-  // only - the same (x, y, z) -> (x, -z, y) the player skeleton uses.
+  // only. The mapping is the inverse of the skeleton's Fox (x, y, z) ->
+  // GF (x, -z, y) (pesplayernode.cpp): GF -> Fox is (x, y, z) -> (x, z, -y), so
+  // GF's height lands on Fox's height and GF's lateral on Fox's lateral with the
+  // opposite sign.
   const pes::PesBallConstants& pc = *ballConstants;
   pesball::BallState fox;
-  fox.position = pes::Vec3(nextPos.coords[0], -nextPos.coords[2], nextPos.coords[1]);
-  fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
-                           momentumPredict.coords[1]);
+  fox.position = pes::Vec3(nextPos.coords[0], nextPos.coords[2], -nextPos.coords[1]);
+  fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
+                           -momentumPredict.coords[1]);
   // GF's rotation is a quaternion per GF axis; PES's spin is a raw vector whose
   // magnitude is |w| / spinScale. Take the axis-angle out of GF's quaternion and
   // hand PES the raw spin it corresponds to.
@@ -164,7 +169,7 @@ BallSpatialInfo Ball::CalculatePrediction() {
     if (sinHalf > 1e-6f && spinRad > 1e-6f) {
       const Vector3 axis(rotation_ms.elements[0] / sinHalf, rotation_ms.elements[1] / sinHalf,
                          rotation_ms.elements[2] / sinHalf);
-      fox.spinRaw = pes::Vec3(axis.coords[0], -axis.coords[2], axis.coords[1]) * (spinRad /
+      fox.spinRaw = pes::Vec3(axis.coords[0], axis.coords[2], -axis.coords[1]) * (spinRad /
                     pc.image.spinScale);
     }
   }
@@ -202,6 +207,7 @@ BallSpatialInfo Ball::CalculatePrediction() {
       pesball::FlightTick(pc, &fox, timeStep, false);
     }
 
+    // Fox -> GF, the skeleton's own mapping (pesplayernode.cpp).
     nextPos = Vector3(fox.position.x, -fox.position.z, fox.position.y);
     momentumPredict = Vector3(fox.velocity.x, -fox.velocity.z, fox.velocity.y);
 
@@ -260,8 +266,8 @@ BallSpatialInfo Ball::CalculatePrediction() {
             (momentumPredict.Get2D().GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
                 momentumPredict.Get2D().GetLength() * 0.8f +
             (Vector3(0, 0, 1) * momentumPredict.coords[2]);
-        fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
-                                 momentumPredict.coords[1]);
+        fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
+                                 -momentumPredict.coords[1]);
       }
 
       // crossbar
@@ -294,8 +300,8 @@ BallSpatialInfo Ball::CalculatePrediction() {
             (momentumPredictXZ.GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
                 momentumPredictXZ.GetLength() * 0.8f +
             (Vector3(0, 1, 0) * momentumPredict.coords[1]);
-        fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
-                                 momentumPredict.coords[1]);
+        fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
+                                 -momentumPredict.coords[1]);
       }
     }
 
@@ -314,8 +320,8 @@ BallSpatialInfo Ball::CalculatePrediction() {
           nettingState, match->IsBallInGoal(), nettingConfig, timeStep);
       nextPos = nettingState.position;
       momentumPredict = nettingState.momentum;
-      fox.velocity = pes::Vec3(momentumPredict.coords[0], -momentumPredict.coords[2],
-                               momentumPredict.coords[1]);
+      fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
+                               -momentumPredict.coords[1]);
 
       if (predictTime_ms == 10 && nettingResult.touchedNet)
         ballTouchesNet = true;

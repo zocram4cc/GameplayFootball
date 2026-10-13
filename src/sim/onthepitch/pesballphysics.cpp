@@ -76,19 +76,18 @@ float FrictionMultiplier(const pes::PesBallConstants& c, int mode, float speed_m
 }
 
 float VerticalKeep(const pes::PesBallConstants& c, int mode, float vy) {
-  // Report 3.4, the raw read literally:
+  // Report 3.4 / report 2 corrections: this 0.03..0.10 keep is NOT PES's vertical
+  // bounce path. Read literally from 0x1408770e6..0x14087718f:
   //   X = 3.6*|vy| (km/h)
   //   t = clamp01((X - boundToRotationSpeedMinY[mode]) /
   //               (boundToRotationSpeedMaxY[mode] - boundToRotationSpeedMinY[mode]))
   //   vy_keep = boundToRotationBaseY[mode] + t*boundToRotationAddRateY[mode]
-  // Mode 1: base 0.03, +0.07 over the band 0.1 .. 0.7 km/h, so the keep is 3% at
-  // rest, 10% above 0.19 m/s of vertical speed - the true restitution, which is
-  // why report 6.4 saw a spread instead of a single coefficient.
-  //
-  // The report's text calls the low bound "frictionRollSpeedMin = 8 km/h"; the
-  // raw at 0x1408770e6 reads BallBase+0x11c + mode*4, which is
-  // boundToRotationSpeedMinY (0.1 for mode 1), and 0x1408770f3 reads
-  // BallBase+0xec + mode*4 = boundToRotationSpeedMaxY (0.7). The raw wins.
+  // Its output is consumed by 0x140877169..0x140877185 and multiplied into the
+  // raw-spin-Y blend at 0x1408771ba only. It never touches vy: report 2 §2.1
+  // proves the raw-spin pump is the only consumer, and report 2 §4.1 removes
+  // every other candidate (no -e*vy reflection, no second contact routine, and
+  // no caller post-processing). So this function is not wired into the contact
+  // tick's vertical response; the bounce is Bounce() below.
   const pes::BallRecordConstants& r = c.record;
   const float X = ToKmh(c, std::fabs(vy));
   const float lo = r.At(pes::BallRecordConstants::kBoundToRotationSpeedMinY, mode);
@@ -102,6 +101,64 @@ float StopSpeed_mps(const pes::PesBallConstants& c, int mode) {
   // Report 3.4: `stopSpeed * 1000 / 3600`, i.e. 0.175 km/h -> 0.04861 m/s.
   (void)mode;
   return c.record.stopSpeed * c.image.milli / c.image.secondsPerHour;
+}
+
+float RollSpinRamp(const pes::PesBallConstants& c, int mode, float spinRad) {
+  // Report 3.3's `s4 = band(hypot(wx, wz), 2, 7)` at 0x140876ec5, the same
+  // clamped ramp over the horizontal spin, from rollToBoundRollMin to
+  // rollToBoundRollMax. s4 enters F as `s4^2 * rollToBoundAdd` (0x140876f61).
+  const pes::BallRecordConstants& r = c.record;
+  return Ramp(spinRad, r.rollToBoundRollMin, r.rollToBoundRollMax);
+}
+
+float NaturalBound_mps(const pes::PesBallConstants& c, int mode, float horizontalSpeed_mps) {
+  // Report 1.3's impulse cap, from 0x1408771d2..0x1408771ea: the record's
+  // natualBoundB is a scalar in km/h, so the whole sum is in km/h and is divided
+  // by 3600 after a *1000 - i.e. `(A*3.6*|v_xz| + B)/3.6` m/s. A SPEED, not a
+  // ratio: with the shipped A = 0.055 and B = 0.4 it is >= 0.111 m/s.
+  const pes::BallRecordConstants& r = c.record;
+  const float kmh = r.At(pes::BallRecordConstants::kNatualBoundA, mode) *
+                        ToKmh(c, horizontalSpeed_mps) +
+                    r.natualBoundB;
+  return kmh * c.image.milli / c.image.secondsPerHour;
+}
+
+BounceResult Bounce(const pes::PesBallConstants& c, int mode, float vy, float horizontalSpeed_mps,
+                    float spinRad) {
+  // Report 1.3, the whole vertical response of a contact tick, read from the raw
+  // bytes at 0x1408771d2..0x1408771f9 and 0x14087723d/0x140877248:
+  //   F   = boundBoundRate[m] * (1 + boundCheckBoundAddRate[m]/100 * s2) + s4^2 * rollToBoundAdd
+  //   s2  = clamp01((3.6*|vy| - boundBoundSpeedMin) / (boundBoundSpeedMax - boundBoundSpeedMin))
+  //   imp = (natualBoundA[m]*3.6*|v_xz| + natualBoundB)/3.6     [m/s]
+  //   z   = min(-imp, vy_trimmed)      vy_trimmed = vy - the grounder's vy trim
+  //   vy_out = -F * z
+  //
+  // This is PES's per-contact instantaneous response: there is no k^0.54
+  // mapping, because it is not a per-tick keep factor that compounds. Its terms
+  // are a speed clamp and ratios of speeds at this contact, both dimensionless
+  // in time - dividing them by 54 (as KeepFactorPerGfTick does for a keep factor)
+  // would corrupt them. The only per-tick factor in the contact tick is K, the
+  // horizontal keep, and that one is mapped (see ContactTick).
+  const pes::BallRecordConstants& r = c.record;
+  BounceResult out;
+
+  // s2, over the incoming |vy| in km/h (0x1408770e6..0x14087710f's band, applied
+  // here to the boundBoundSpeed band of F at 0x140876b26).
+  const float vyKmh = ToKmh(c, std::fabs(vy));
+  const float s2 = Ramp(vyKmh, r.boundBoundSpeedMin, r.boundBoundSpeedMax);
+  const float s4 = RollSpinRamp(c, mode, spinRad);
+  out.restitution = r.At(pes::BallRecordConstants::kBoundRate, mode) *
+                    (1.0f +
+                     r.At(pes::BallRecordConstants::kBoundCheckBoundAddRate, mode) / kPercent * s2) +
+                    s4 * s4 * r.rollToBoundAdd;
+
+  out.speedCap_mps = NaturalBound_mps(c, mode, horizontalSpeed_mps);
+  // Both operands of PES's min() are negative for a falling ball: -imp is the
+  // speed clamp and vy_trimmed is the incoming vertical speed. min picks the
+  // less-negative one, i.e. the smaller magnitude.
+  out.minOperand = std::min(-out.speedCap_mps, vy);
+  out.vy = -out.restitution * out.minOperand;
+  return out;
 }
 
 float SpinCapScale(const pes::PesBallConstants& c, int mode, float spinRad) {
@@ -149,6 +206,7 @@ GrounderResult GrounderKick(const pes::PesBallConstants& c, int mode, float gate
   out.applied = true;
   out.keepMultiplier = f + r.grounderFrictionRate;
   out.speedTrim_mps = horizontalSpeed_mps * r.grounderBoundYAdd * (1.0f - f);
+  out.vyTrim_mps = out.speedTrim_mps;
   (void)tickIndex;
   return out;
 }
@@ -218,12 +276,13 @@ void FlightTick(const pes::PesBallConstants& c, BallState* state, float dt_s, bo
 
 void ContactTick(const pes::PesBallConstants& c, BallState* state, unsigned tickIndex, bool airborne,
                  bool quatIntegrate) {
-  // The contact mode. ponytail: report 7.2 - the per-match mode byte's writer
-  // (weather/pitch condition -> mode 0..5) was not found, so this engine plays
-  // mode 1 (normal ground), which is what PES showed live in both observed
-  // matches. The whole model is mode-parameterised, so filling the mode in is a
-  // one-line change once the writer is known.
-  const int mode = 1;
+  // The contact mode. Report 3.1 closed report 7.2: the mode byte is written by
+  // FUN_1408723d0 (0x140872479, `mov [rax+0x279d], bl`) as
+  // `modeTable[pitch*3 + weather]`, and the table is read out of the install's
+  // exe into pes::PesBallConstants::image (see pesball.cpp). The caller picks the
+  // indices; the launch default is a dry, normal pitch - PES's own index for
+  // that (report 3.2) is mode 2, not mode 1.
+  const int mode = ClampMode(c.contactMode);
 
   // Report 2.3/2.7: the snap and the wobble-flag clear, and NO position
   // integration on a contact tick - y stays r and x,z stay where the flight
@@ -235,6 +294,10 @@ void ContactTick(const pes::PesBallConstants& c, BallState* state, unsigned tick
   const float spinRad =
       std::sqrt(state->spinRaw.x * state->spinRaw.x + state->spinRaw.y * state->spinRaw.y +
                 state->spinRaw.z * state->spinRaw.z) *
+      c.image.spinScale;
+  // Report 3.3's s4 band is over the *horizontal* spin, hypot(wx, wz).
+  const float spinHorizontal =
+      std::sqrt(state->spinRaw.x * state->spinRaw.x + state->spinRaw.z * state->spinRaw.z) *
       c.image.spinScale;
 
   // Report 2.4: the per-tick keep K, over the pre-contact 3-D speed. PES applies
@@ -249,6 +312,11 @@ void ContactTick(const pes::PesBallConstants& c, BallState* state, unsigned tick
   // Report 2.5: the grounder kick trims the horizontal speed and K. The trim is
   // a speed, not a factor, so it is used as-is; the keep product is a per-tick
   // factor chain and is converted as one.
+  //
+  // Report 2's correction 3 (1.4): the trim lands on VY, not on the horizontal
+  // speed: `vy -= |v_xz|*grounderBoundYAdd*(1-f)` at 0x140876a5c, stored to the
+  // min() operand at 0x140876a61. Only K is multiplied here; the vertical trim is
+  // applied to the Bounce() input below.
   const GrounderResult grounder =
       GrounderKick(c, mode, state->position.x, state->position.z, tickIndex, horizontal, vy);
   if (grounder.applied) {
@@ -256,49 +324,24 @@ void ContactTick(const pes::PesBallConstants& c, BallState* state, unsigned tick
     speed = std::max(0.0f, horizontal - grounder.speedTrim_mps);
   }
 
-  // Report 3.1: the tangential friction multiplier F (= A) and the K term. F is
-  // the per-tick ratio PES multiplies into K, so it converts with the same
-  // exponent.
-  float baseA = 0.0f;
-  const float friction = FrictionMultiplier(c, mode, speed3d, vy, spinRad, &baseA);
+  // Report 3.1: the tangential friction multiplier F. F is the per-tick ratio
+  // PES multiplies into K, so it converts with the same exponent. The F of the
+  // bounce (0x1408768a6/0x140876b26, [rbp+0x90]) is a different quantity, built
+  // inside Bounce() from boundBoundRate and the s2/s4 ramps.
+  const float friction = FrictionMultiplier(c, mode, speed3d, vy, spinRad, nullptr);
   keep *= KeepFactorPerGfTick(friction);
 
-  // Report 3.4, the vertical response, read literally from
-  // 0x1408770e6..0x14087718f and the assembly at 0x14087722c:
-  //   X = 3.6*|vy| (km/h)
-  //   t = clamp01((X - boundToRotationSpeedMinY[mode]) / (boundToRotationSpeedMaxY[mode] - ...))
-  //   vy_keep = t*boundToRotationAddRateY[mode] + boundToRotationBaseY[mode]
-  // The velocity's vertical is that vy_keep times the incoming vy (the ratio
-  // the report calls the true restitution: 3% at rest rising to 10%), and the
-  // |vy|/0.01 blend applies to the raw-spin rebuild, not to it.
-  // ponytail: see pesballphysics.hpp - PES's 0.03..0.10 vertical keep leaves the
-  // ball 0.075..0.10 of its incoming |vy|, against a live band of 0.37..2.26; the
-  // missing spread is in report 3.3's un-decoded spin pump. GF's bounce stands in
-  // for it, so the ball behaves like a football rather than like a beanbag.
-  const float vyKeep = VerticalKeep(c, mode, vy);
-  (void)vyKeep;  // PES's own 0.03..0.10 keep, kept for when 3.3 closes
-  // GF's exact form: reverse, then scale, then floor (so a ball with no vertical
-  // speed gets no bounce, and a very slow one is stopped by the floor).
-  float newVy = 0.0f;
-  if (vy < 0.0f)
-    newVy = std::max(-vy * kGroundBounceFactor, kGroundBounceFloor_mps);
+  // Report 1.3's vertical response, the literal rule from report 2:
+  //   vy_out = -F * min(-imp, vy_trimmed)
+  // Report 2's correction 3 gives the trim: `vy -= |v_xz|*grounderBoundYAdd*(1-f)`
+  // at 0x140876a5c, stored to the min()'s second operand at 0x140876a61.
+  const float vyTrimmed = grounder.applied ? vy - grounder.vyTrim_mps : vy;
+  float newVy = Bounce(c, mode, vyTrimmed, horizontal, spinHorizontal).vy;
 
   // The horizontal: the per-tick ratio for a coupled roller is K (report 5.2),
   // applied along the pre-contact direction, after the grounder trim.
   const float hScale = horizontal > 0.0f ? (speed * keep) / horizontal : 0.0f;
   float newVx = vx * hScale, newVz = vz * hScale;
-
-  // Report 3.4's spin pump (0x1408771d2..0x140877206): the vertical additionally
-  // carries `(|v_xz| * natualBoundA[mode] + natualBoundB) * 1000/3600`, a km/h
-  // speed converted to m/s, clipped against the grounder-trimmed horizontal
-  // speed and multiplied by -A (A = boundBoundRate = F). That is what lifts a
-  // backspin lob above its own inbound speed and drives a topspin ball down -
-  // the answer to report 6.4's 0.37-2.26 restitution spread.
-  const float pumpSpeed =
-      (c.record.At(pes::BallRecordConstants::kNatualBoundA, mode) * speed + c.record.natualBoundB) *
-      c.image.milli / c.image.secondsPerHour;
-  const float pump = pumpSpeed >= 0.0f ? std::min(pumpSpeed, speed) : std::max(pumpSpeed, speed);
-  newVy += -pump * baseA;
 
   // Report 3.4: the spin rebuild and the cap. spin_raw += (omega_new/492.181 -
   // spin_raw) * k with k = 1 on the render path and the contact-vs-air blend
@@ -316,12 +359,15 @@ void ContactTick(const pes::PesBallConstants& c, BallState* state, unsigned tick
   state->spinRaw.y = (newSpinY * capScale - state->spinRaw.y) * blendRaw + state->spinRaw.y;
   state->spinRaw.z = (newSpinZ * capScale - state->spinRaw.z) * blendRaw + state->spinRaw.z;
 
-  // Report 3.4: the stop gate. |v_new| < stopSpeed*1000/3600 zeroes the velocity.
+  // Report 3.4's stop gate, with report 2's correction 2: the gate zeroes ONLY
+  // vx and vz (`xmm13`, `xmm3`, `xmm12` at 0x1408772d5/2d9/2dc; the vy register
+  // `xmm5` is untouched at 0x140877323 and is stored straight through). A ball
+  // whose vertical energy falls below the min-clamp is therefore re-launched at
+  // F*imp every tick until its horizontal speed also drops under the gate -
+  // which is why PES balls roll forever instead of stopping.
   const float stopSpeed = StopSpeed_mps(c, mode);
-  if (newVx * newVx + newVy * newVy + newVz * newVz < stopSpeed * stopSpeed) {
-    newVx = newVy = newVz = 0.0f;
-    state->spinRaw.x = state->spinRaw.y = state->spinRaw.z = 0.0f;
-  }
+  const bool stopped = newVx * newVx + newVz * newVz < stopSpeed * stopSpeed;
+  if (stopped) newVx = newVz = 0.0f;
   state->velocity.x = newVx;
   state->velocity.y = newVy;
   state->velocity.z = newVz;

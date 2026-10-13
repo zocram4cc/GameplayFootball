@@ -123,50 +123,114 @@ TEST(PesBallContact, SnapsToRadiusAndKeepsHorizontalSpeed) {
   EXPECT_NEAR(s.position.z, -2.0f, 1e-6);
 }
 
-// ponytail: PES's own vertical keep is 0.03..0.10 (VerticalKeep), which leaves a
-// ball at 3-10% of its incoming |vy| - a 10 m/s 30-degree kick at 0.579 m/s, a 2 m
-// drop at 0.608 m/s, and spin makes no difference, so every case lands in
-// 0.075..0.100. The live measurement (pes-re-officials-ball.md 6.4) is 0.37..2.26,
-// whose spread sits in pes-re-ball-contact.md 3.3's un-decoded spin pump. So the
-// contact's vertical response is GF's 0.62 bounce (see pesballphysics.hpp), and
-// this test pins both numbers: the literal PES keep, and what the contact does.
-TEST(PesBallContact, VerticalKeepIsPesThreeToTenPercentAndContactUsesGfBounce) {
-  // Report 3.4, read literally: the vertical keep ramps from
+// The vertical keep of report 3.4 is the raw-spin-Y blend's input, NOT the
+// vertical bounce (report 2 §2.1/§4.1). It is pinned here so the port keeps the
+// literal rule available, and the contact tick is checked against the bounce
+// formula that is the vertical response (report 1.3).
+TEST(PesBallContact, VerticalKeepIsPesThreeToTenPercentAndIsNotTheBounce) {
+  // Report 3.4, read literally from the raw: the vertical keep ramps from
   // boundToRotationBaseY to boundToRotationBaseY + boundToRotationAddRateY
-  // across boundToRotationSpeedMinY .. boundToRotationSpeedMaxY (km/h), so mode 1
-  // keeps 3% of |vy| at rest and 10% above 0.7 km/h (0.19 m/s). That is the true
-  // restitution, and the reason report 6.4 measured a spread, not a number.
+  // across boundToRotationSpeedMinY .. MaxY (km/h), so mode 1 keeps 3% of |vy| at
+  // rest and 10% above 0.7 km/h (0.19 m/s).
   const PesBallConstants c = SyntheticConstants();
   const float loV = c.record.At(BallRecordConstants::kBoundToRotationSpeedMinY, 1) / c.image.kmhPerMs;
   const float hiV = c.record.At(BallRecordConstants::kBoundToRotationSpeedMaxY, 1) / c.image.kmhPerMs;
   const float base = c.record.At(BallRecordConstants::kBoundToRotationBaseY, 1);
   const float add = c.record.At(BallRecordConstants::kBoundToRotationAddRateY, 1);
-  // PES's own keep: 3% at rest, 10% above 0.7 km/h.
   EXPECT_NEAR(pesball::VerticalKeep(c, 1, loV * 0.5f), base, 1e-6);
   EXPECT_NEAR(pesball::VerticalKeep(c, 1, hiV * 2.0f), base + add, 1e-6);
   EXPECT_NEAR(pesball::VerticalKeep(c, 1, (loV + hiV) * 0.5f), base + add * 0.5f, 1e-6);
 
-  // The contact applies GF's standing bounce: 62% of the incoming |vy|, floored
-  // at 0.06 m/s. ponytail: this is the stand-in for the missing 3.3 spin pump.
-  BallState soft, hard;
-  soft.position = hard.position = pes::Vec3(0, c.image.ballRadius, 0);
-  soft.velocity = pes::Vec3(0, -1.0f, 0);
+  // And that 3..10% is nowhere near what a contact does to vy: the bounce is
+  // F*min(imp, |vy|), which is a speed clamp, not a keep.
+  BallState hard;
+  hard.position = pes::Vec3(0, c.image.ballRadius, 0);
   hard.velocity = pes::Vec3(0, -4.0f, 0);
-  pesball::ContactTick(c, &soft, 0, true, false);
   pesball::ContactTick(c, &hard, 0, true, false);
-  EXPECT_NEAR(soft.velocity.y, 1.0f * pesball::kGroundBounceFactor, 1e-3f);
-  EXPECT_NEAR(hard.velocity.y, 4.0f * pesball::kGroundBounceFactor, 1e-3f);
-  EXPECT_GT(soft.velocity.y, 0.0f) << "a bounce is upward";
-  EXPECT_GT(hard.velocity.y, soft.velocity.y) << "a harder drop bounces harder";
-  // And that ratio is inside the live 0.37..2.26 band, unlike PES's raw keep.
-  EXPECT_GE(hard.velocity.y / 4.0f, 0.37f);
-  EXPECT_LE(hard.velocity.y / 4.0f, 2.26f);
-  // A ball with no vertical speed gets no bounce.
-  BallState flat;
-  flat.position = pes::Vec3(0, c.image.ballRadius, 0);
-  flat.velocity = pes::Vec3(0.0f, 0.0f, 0.0f);
-  pesball::ContactTick(c, &flat, 0, true, false);
-  EXPECT_LE(std::fabs(flat.velocity.y), 1e-6f);
+  EXPECT_GT(hard.velocity.y, 0.3f) << "a 4 m/s drop must not come back at 0.4 m/s";
+}
+
+// --- the bounce: report 1.3's min-clamp, the two regimes (report 2 §1.3/§5) ---
+
+TEST(PesBallContact, BounceIsSpeedClampWhenTheContactIsFasterThanTheCap) {
+  // A normal falling contact: |vy| is far larger than imp, so min(-imp, vy) is
+  // the more-negative -imp... no: min is the smaller of the two, so for a steep
+  // fall min(-imp, vy) = vy and the contact is a true reflection with ratio F.
+  // imp is only >= |vy| for a slow/rolling contact - that is the clamp regime,
+  // and it is the one that re-launches a grazed ball at F*imp.
+  const PesBallConstants c = SyntheticConstants();
+  const pesball::BounceResult b = pesball::Bounce(c, 2, -6.1746f, 0.0f, 0.0f);
+  EXPECT_FLOAT_EQ(b.minOperand, -6.1746f) << "z = vy for a falling contact";
+  EXPECT_NEAR(b.speedCap_mps, 0.1111f, 1e-4) << "imp = (0.055*3.6*0 + 0.4)/3.6";
+  EXPECT_NEAR(b.vy, 4.3222f, 1e-3) << "report 5.2 case A, contact #1 (mode 2)";
+}
+
+TEST(PesBallContact, BounceIsAReflectionOfTheIncomingSpeed) {
+  // Report 5.2, the mode-2 series for a 2 m drop: boundCheckBoundAddRate[2] = 0
+  // removes the speed ramp, so F is a flat boundBoundRate and every contact of
+  // the series comes back at exactly 0.70 of |vy|.
+  const PesBallConstants c = SyntheticConstants();
+  const float kVy[] = {-6.1746f, -4.3948f, -3.0982f, -2.1898f, -1.5544f};
+  const float kExpected[] = {4.3222f, 3.0764f, 2.1687f, 1.5329f, 1.0881f};
+  for (int i = 0; i < 5; ++i) {
+    const pesball::BounceResult b = pesball::Bounce(c, 2, kVy[i], 0.0f, 0.0f);
+    EXPECT_NEAR(b.restitution, 0.7f, 1e-6);
+    EXPECT_NEAR(b.vy, kExpected[i], 1e-3) << "contact #" << (i + 1);
+    EXPECT_NEAR(b.vy / -kVy[i], 0.7f, 1e-3) << "ratio is F in mode 2";
+  }
+}
+
+TEST(PesBallContact, BounceRelaunchesAGrazeAboveItsIncomingSpeed) {
+  // A graze: |vy| <= imp, so min(-imp, vy) = -imp and the ball leaves at F*imp,
+  // which is above its own inbound speed. That is the bobble regime report 5.3
+  // identifies as the top of the live 0.37..2.26 band.
+  const PesBallConstants c = SyntheticConstants();
+  const float graze = 0.05f;  // |vy| far under imp
+  const pesball::BounceResult b = pesball::Bounce(c, 2, -graze, 0.5f, 0.0f);
+  EXPECT_FLOAT_EQ(b.minOperand, -b.speedCap_mps) << "z = -imp for a graze";
+  EXPECT_NEAR(b.vy, 0.7f * b.speedCap_mps, 1e-6) << "vy_out = +F*imp";
+  EXPECT_GT(b.vy, graze) << "a graze leaves faster than it arrived";
+  const pesball::BounceResult stop = pesball::Bounce(c, 2, -0.01f, 1.0f, 0.0f);
+  EXPECT_NEAR(stop.vy, 0.1163f, 1e-3) << "report 5.3's vxz=1, |vy|=0.010 row";
+  EXPECT_NEAR(stop.vy / 0.01f, 11.628f, 0.01) << "its ratio, the report's 11.628";
+}
+
+TEST(PesBallContact, BounceDoesNotDependOnSpin) {
+  // Report 3.3: the tangential vector is exactly horizontal (T_y = A_*e_y +
+  // B_*e_y with e_y = 0), so a body-axis Y spin couples into vy nowhere in the
+  // contact function. Report 5's sweep confirms it: vy_out is identical across
+  // spin = +-20 rps. F does carry a `s4^2 * rollToBoundAdd` term, but over
+  // hypot(wx, wz) - the HORIZONTAL spin - so a pure Y spin must not move it.
+  const PesBallConstants c = SyntheticConstants();
+  auto bounceWith = [&](float spinRawY) {
+    BallState s;
+    s.position = pes::Vec3(0, c.image.ballRadius, 0);
+    s.velocity = pes::Vec3(5.0f, -4.99f, 0.0f);
+    s.spinRaw = pes::Vec3(0.0f, spinRawY, 0.0f);
+    pesball::ContactTick(c, &s, 0, true, false);
+    return s.velocity.y;
+  };
+  const float none = bounceWith(0.0f);
+  EXPECT_FLOAT_EQ(bounceWith(10.0f * 2.0f * 3.14159265f), none)
+      << "10 rps topspin does not change vy";
+  EXPECT_FLOAT_EQ(bounceWith(-10.0f * 2.0f * 3.14159265f), none)
+      << "10 rps backspin does not change vy";
+}
+
+TEST(PesBallContact, RollSpinRampAddsRestitutionThroughTheHorizontalSpin) {
+  // Report 3.3/2.2: F carries `s4^2 * rollToBoundAdd`, s4 being the clamped ramp
+  // over hypot(wx, wz) from rollToBoundRollMin (2) to rollToBoundRollMax (7). So
+  // a horizontal spin raises F above boundBoundRate, while a small spin does not.
+  const PesBallConstants c = SyntheticConstants();
+  EXPECT_NEAR(pesball::RollSpinRamp(c, 2, 0.0f), 0.0f, 1e-6);
+  EXPECT_NEAR(pesball::RollSpinRamp(c, 2, 2.0f), 0.0f, 1e-6);
+  EXPECT_NEAR(pesball::RollSpinRamp(c, 2, 7.0f), 1.0f, 1e-6);
+  EXPECT_NEAR(pesball::RollSpinRamp(c, 2, 4.5f), 0.5f, 1e-6);
+  const float flat = pesball::Bounce(c, 2, -0.5f, 0.0f, 0.0f).restitution;
+  const float spinning = pesball::Bounce(c, 2, -0.5f, 0.0f, 7.0f).restitution;
+  EXPECT_NEAR(spinning, flat + c.record.rollToBoundAdd, 1e-6)
+      << "s4 = 1 adds s4^2 * rollToBoundAdd = rollToBoundAdd";
+  EXPECT_GT(spinning, flat) << "a rolling spin makes the ball livelier";
 }
 
 // --- the grounder kick (report 2.5) ---
@@ -228,11 +292,16 @@ TEST(PesBallContact, SpinRebuildMovesRawSpinTowardTheRollingSpin) {
   s.velocity = pes::Vec3(4.0f, 0.0f, 0.0f);  // a coupled roller: w = v/r
   s.spinRaw = pes::Vec3(0, 0, 0);
   pesball::ContactTick(c, &s, 0, true, false);
-  // The rolling spin v/r is 36.8 rad/s, well above the boundRollMax cap of 7.5,
-  // so the rebuilt raw spin must land exactly on the cap.
+  // The rolling spin v/r is 36.3 rad/s, well above the boundRollMax cap of 7.5,
+  // so the rebuilt raw spin must land on the cap. The cap scales the whole
+  // vector, and this contact's bounce (report 1.3: min(-imp, 0) = -imp) also puts
+  // a vertical spin in it, so the x component alone is under the cap.
   const float cap = c.record.boundRollMax;
-  EXPECT_NEAR(s.spinRaw.x * c.image.spinScale, cap, cap * 1e-3)
-      << "spin_raw is rebuilt towards v/r, capped at boundRollMax";
+  const float total = std::sqrt(s.spinRaw.x * s.spinRaw.x + s.spinRaw.y * s.spinRaw.y +
+                                s.spinRaw.z * s.spinRaw.z) *
+                      c.image.spinScale;
+  EXPECT_NEAR(total, cap, cap * 1e-3) << "spin_raw is rebuilt towards v/r, capped at boundRollMax";
+  EXPECT_GT(s.spinRaw.x, 0.0f) << "a forward roller spins the way it rolls";
   // A slow roller stays under the cap and lands on v/r.
   BallState slowRoll;
   slowRoll.position = pes::Vec3(0, c.image.ballRadius, 0);
@@ -242,31 +311,67 @@ TEST(PesBallContact, SpinRebuildMovesRawSpinTowardTheRollingSpin) {
               0.5f / c.image.ballRadius * 0.05f);
 }
 
-// --- the stop gate (report 3.4) ---
+// --- the stop gate (report 3.4, report 2 correction 2) ---
 
-TEST(PesBallContact, StopGateZeroesSubStopSpeedMotion) {
+TEST(PesBallContact, StopGateZeroesOnlyTheHorizontalVelocity) {
   const PesBallConstants c = SyntheticConstants();
   const float stop = pesball::StopSpeed_mps(c, 1);
   EXPECT_NEAR(stop, 0.175f * 1000.0f / 3600.0f, 1e-6);
   EXPECT_NEAR(stop, 0.04861f, 1e-4);
 
-  // A ball slower than the stop speed - measured on the post-contact velocity,
-  // which is what the raw compares - is stopped outright, spin included.
+  // A ball slower than the stop speed - measured on the post-contact horizontal
+  // velocity, which is what the raw compares - loses its horizontal motion, and
+  // keeps its vertical one: report 2's correction 2 zeroes xmm13, xmm3 and xmm12
+  // (vx, and the two vz stores) and leaves xmm5 (vy) untouched at 0x140877323.
   BallState s;
   s.position = pes::Vec3(0, c.image.ballRadius, 0);
-  s.velocity = pes::Vec3(0.001f, 0.0f, 0.001f);  // 0.0014 m/s, far below 0.0486
+  s.velocity = pes::Vec3(0.001f, -0.02f, 0.001f);  // horizontal 0.0014 m/s, below
   pesball::ContactTick(c, &s, 0, true, false);
   EXPECT_EQ(s.velocity.x, 0.0f);
   EXPECT_EQ(s.velocity.z, 0.0f);
-  EXPECT_EQ(s.spinRaw.x, 0.0f) << "the stop gate clears the spin too";
-  EXPECT_EQ(s.spinRaw.z, 0.0f);
+  EXPECT_GT(s.velocity.y, 0.0f) << "the vertical velocity survives the stop gate";
 
-  // A ball rolling comfortably faster than the stop speed is not stopped.
+  // A rolling ball is not stopped, and its vertical is likewise untouched.
   BallState rolling;
   rolling.position = pes::Vec3(0, c.image.ballRadius, 0);
-  rolling.velocity = pes::Vec3(1.0f, 0.0f, 0.0f);
+  rolling.velocity = pes::Vec3(1.0f, -0.5f, 0.0f);
   pesball::ContactTick(c, &rolling, 0, true, false);
   EXPECT_GT(std::fabs(rolling.velocity.x), 0.5f) << "a rolling ball keeps rolling";
+}
+
+// --- the contact mode table (report 3.1) ---
+
+TEST(PesBallContact, ContactModeComesFromThePitchWeatherTable) {
+  // The table report 3.1 read out of FUN_1408723d0's operand, stated here as the
+  // rule under test. Rows = pitch, columns = weather; a dry, normal pitch (weather
+  // 0) is mode 2 on every row, never the mode 1 the reports observed live.
+  PesBallConstants c = SyntheticConstants();
+  c.image.modeTable = {{{2, 1, 1}, {2, 1, 0}, {1, 0, 0}}};
+  c.contactMode = 1;
+  EXPECT_EQ(pes::ContactModeFor(c.image, 0, 0), 2);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 1, 0), 2);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 2, 0), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 0, 1), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 1, 1), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 2, 2), 0);
+  // The writer's out-of-range fallback is 1.
+  EXPECT_EQ(pes::ContactModeFor(c.image, 3, 0), pes::kContactModeOutOfRange);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 0, 9), pes::kContactModeOutOfRange);
+  EXPECT_EQ(pes::ContactModeFor(c.image, -1, 0), pes::kContactModeOutOfRange);
+}
+
+TEST(PesBallContact, DryNormalIsModeTwoAndModeTwoHasASeventyPercentBounce) {
+  // Report 3.2's action for the porter: GF defaults to PES's dry, normal pitch.
+  const PesBallConstants c = SyntheticConstants();
+  EXPECT_EQ(pes::kContactModeDryNormal, 2);
+  EXPECT_EQ(pes::WeatherIndexForGfWeather(0.0f), 0) << "no weather";
+  // boundCheckBoundAddRate[2] = 0 removes mode 1's speed ramp, so F is a flat
+  // boundBoundRate = 0.7 at every speed in the dry-normal mode.
+  EXPECT_NEAR(c.record.At(BallRecordConstants::kBoundCheckBoundAddRate, 2), 0.0f, 1e-6);
+  for (const float vy : {-0.05f, -0.5f, -3.0f, -8.0f}) {
+    const pesball::BounceResult slow = pesball::Bounce(c, 2, vy, 0.5f, 0.0f);
+    EXPECT_NEAR(slow.restitution, 0.7f, 1e-6) << "F is flat in mode 2 at vy = " << vy;
+  }
 }
 
 // --- rolling K(V) and the report's own numbers ---
@@ -477,6 +582,22 @@ TEST(PesBallInstall, LoadsTheInstallConstantsAndReproducesTheReportNumbers) {
   EXPECT_NEAR(c.image.spinScale, 492.181f, 1e-3);
   EXPECT_NEAR(c.image.invSpinScale, 1.0f / 492.181f, 1e-8);
 
+  // Report 3.1's contact-mode table, read out of the exe's .data at run time.
+  // The table is a runtime-written slot, not .rdata; this engine reads the
+  // install's own copy, so no on-disk value is transcribed here.
+  EXPECT_EQ(pes::ContactModeFor(c.image, 0, 0), 2) << "a dry, normal pitch is mode 2";
+  EXPECT_EQ(pes::ContactModeFor(c.image, 1, 0), 2);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 0, 1), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 1, 1), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 2, 0), 1);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 1, 2), 0);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 2, 2), 0);
+  EXPECT_EQ(pes::ContactModeFor(c.image, 5, 0), 1) << "out of range falls back to 1";
+  // Report 5.2's mode-2 dry-pitch numbers, from the shipped mode-2 table.
+  EXPECT_NEAR(c.record.At(BallRecordConstants::kBoundCheckBoundAddRate, 2), 0.0f, 1e-5);
+  EXPECT_NEAR(pesball::Bounce(c, 2, -6.1746f, 0.0f, 0.0f).vy, 4.3222f, 1e-3);
+  EXPECT_NEAR(pesball::Bounce(c, 2, -4.9883f, 0.0f, 0.0f).vy, 3.4918f, 1e-3);
+
   // Report 5.2's own numbers, from the shipped tables.
   EXPECT_NEAR(pesball::RollingKeepFactor(c, 1, 2.0f), 0.981f, 1e-6);
   const float k = pesball::RollingKeepFactor(c, 1, 2.0f);
@@ -560,9 +681,10 @@ TEST(PesBallConversion, ASecondOfGfTicksIsASecondOfPesTicksWhileRolling) {
   ASSERT_TRUE(cc.has_value()) << err;
   const PesBallConstants c = *cc;
 
-  // The same rolling ball, one second of PES ticks and one second of GF ticks.
+  // The same rolling ball, one second of PES ticks and one second of GF ticks,
+  // in the dry-normal contact mode this engine plays by default (report 3.2).
   float vPes = 10.0f, vGf = 10.0f;
-  for (int i = 0; i < 54; ++i) vPes *= pesball::RollingKeepFactor(c, 1, vPes);
+  for (int i = 0; i < 54; ++i) vPes *= pesball::RollingKeepFactor(c, pesball::ClampMode(c.contactMode), vPes);
   for (int i = 0; i < 100; ++i) {
     BallState s;
     s.position = pes::Vec3(0, c.image.ballRadius, 0);

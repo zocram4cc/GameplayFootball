@@ -10,10 +10,7 @@
 //
 // Two things remain GF's, each marked ponytail: at its line:
 //   - the goal frame and the net (report 7.1: the response function was not
-//     found; GF's post/crossbar/netting stays);
-//   - the per-match contact mode byte (report 7.2: its writer - weather/pitch
-//     condition to mode 0..5 - was not found; GF plays mode 1 = normal ground,
-//     the live mode in both observed matches).
+//     found; GF's post/crossbar/netting stays).
 //
 // GF's ball is in GF space (Z up); PES's is Fox space (Y up). This model is in
 // Fox space and the caller converts.
@@ -71,31 +68,36 @@ float FrictionMultiplier(const pes::PesBallConstants& c, int mode, float speed_m
 // +boundToRotationAddRateY across boundToRotationSpeedMinY..MaxY km/h).
 float VerticalKeep(const pes::PesBallConstants& c, int mode, float vy);
 
-// ponytail: the bounce coefficient actually applied at a ground contact.
-//
-// PES's own vertical keep is 0.03..0.10 of the incoming |vy| (VerticalKeep), so a
-// literal port makes shots barely bounce: a 10 m/s 30-degree kick comes back at
-// 0.579 m/s (ratio 0.079), a 2 m drop at 0.608 m/s (0.100), and no spin setting
-// changes it - the whole sweep lands in 0.075..0.100.
-//
-// PES balls visibly bounce: pes-re-officials-ball.md 6.4 measured live
-// vy_out/vy_in **0.37 .. 2.26**, a spread with no single coefficient behind it.
-// pes-re-ball-contact.md 5.1 attributes the excess to the grounder kick plus a
-// spin pump into vy, whose literal chain (3.3's rolling-direction block,
-// 0x140876c0f..0x140876f6e) the report itself leaves INF medium and which is
-// therefore not ported here.
-//
-// Until 3.3 closes, the vertical response at contact is GF's previous bounce:
-// |vy| * 0.62, floored at 0.06 m/s. The flight integrator, rolling K(V),
-// friction F, the spin cap, the stop gate and the 10 ms mapping are all
-// validated against the reports and untouched.
-constexpr float kGroundBounceFactor = 0.62f;   // GF's former `bounce` = 0.62
-constexpr float kGroundBounceFloor_mps = 0.06f;  // GF's former `linearBounce`
+// Report 3.3's `s4 = band(hypot(wx, wz), 2, 7)`: the clamped ramp over the
+// horizontal spin, from rollToBoundRollMin to rollToBoundRollMax.
+float RollSpinRamp(const pes::PesBallConstants& c, int mode, float spinRad);
+
+// Report 1.3's impulse cap: `imp = (natualBoundA[mode]*3.6*|v_xz| +
+// natualBoundB)/3.6`, a constant speed in m/s (>= 0.111), the value the
+// min-clamp selects for a normal falling contact.
+float NaturalBound_mps(const pes::PesBallConstants& c, int mode, float horizontalSpeed_mps);
+
+// The vertical response of report 1.3, one instantaneous contact response:
+// `vy_out = -F * min(-imp, vy_trimmed)`. `vyTrimmed` is the grounder-trimmed
+// incoming vertical speed (report 1.4: the grounder kick's trim lands on vy, not
+// on the horizontal speed). Returns F separately so the caller can report the
+// ratio; the two regimes are:
+//   |vy_in| > imp  ->  z = -imp  ->  vy_out = +F*imp  (a speed clamp)
+//   |vy_in| <= imp ->  z = vy_in ->  vy_out = -F*vy_in (a true reflection)
+struct BounceResult {
+  float vy;
+  float restitution;  // F
+  float speedCap_mps;  // imp
+  float minOperand;  // z
+};
+BounceResult Bounce(const pes::PesBallConstants& c, int mode, float vy, float horizontalSpeed_mps,
+                     float spinRad);
 
 struct GrounderResult {
   bool applied = false;
   float keepMultiplier = 1.0f;  // multiplies K
   float speedTrim_mps = 0.0f;  // subtracted from |v_xz|, along the old heading
+  float vyTrim_mps = 0.0f;    // subtracted from vy, the min() clamp's operand
 };
 
 // The grounder kick of report 2.5: a fast shallow shot trims its horizontal
@@ -104,6 +106,12 @@ struct GrounderResult {
 // coordinate the fraction reads (PES reads old z at 0x1408769e6). GF's ball is
 // in GF space, so the caller passes the coordinate it calls longitudinal for
 // both; they are the same role in each frame.
+//
+// Report 2's correction 3 (1.4): the `|v_xz| * grounderBoundYAdd * (1-f)` term
+// lands on VY, not on the horizontal speed (`vy -= vx1` at 0x140876a5c), and it
+// is the second operand of the bounce's min(). So `speedTrim_mps` keeps the
+// report's "horizontal trim" reading for the recipe's K step and `vyTrim_mps`
+// carries the raw's actual target.
 GrounderResult GrounderKick(const pes::PesBallConstants& c, int mode, float gateX, float fracZ,
                             unsigned tickIndex, float horizontalSpeed_mps, float vy);
 
