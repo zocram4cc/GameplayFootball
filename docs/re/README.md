@@ -19,6 +19,7 @@ address given.
 |`pes-kit-assembly.md`|kit configs (`UniformParameter.bin`, realUni), part selection, kit texture binding, the 4cc composition, live draw lists, the EDIT save cipher and appearance records, boots/gloves, skin tone|
 |`pes-re-shaders.md`|shader packs, the deferred G-buffer and lighting model, per-shader texture roles and formulas, a Godot recipe|
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
+|`pes-re-locomotion.md`|player movement: no speed formula - displacement is the clip root track times AnimMovePlugin scale and playbackSpeed; speed classes, member root speeds, turn buckets, the plugin scale clamp; playbackSpeed driver and the Speed coefficient open|
 |`pes-re-animselect.md`|motion ids, 30 fps clips, 1/16384 root scale, situation tables, locomotion graph, blends, the hand rig|
 |`pes-re-physique-helpers.md`|the physique helpers: slider decode and normalisers, the per-bone scale tables, the global scale and how it reaches the skeleton and animation|
 |`pes-re-physique.md`|height/weight/sliders to per-bone scale, global scale and stride|
