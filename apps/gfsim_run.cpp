@@ -78,6 +78,8 @@ int main(int argc, char** argv) {
   // image values (docs/re/pes-re-ball-contact.md 6).
   auto ballConstants = pes::LoadPesBallConstants(*exe, vfs, &err);
   if (!ballConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  auto judgeConstants = pes::LoadJudgeConstants(*exe, &err);
+  if (!judgeConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -93,6 +95,7 @@ int main(int argc, char** argv) {
   setup.rig = &*rig;
   setup.pesClockConstants = &*clockConstants;
   setup.pesBallConstants = &*ballConstants;
+  setup.pesJudgeConstants = &*judgeConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

@@ -199,8 +199,6 @@ float GetMarkingQualityBonus(Mask mask);
 float GetTrackBackDepth(Mask mask, bool teamHasPossession);
 // Interception: how likely he thinks he wins a ball duel.
 float GetBallDuelLikeliness(Mask mask, float baseLikeliness);
-// Gamesmanship: bonus on the referee's foul score when he is the one brought down.
-float GetFoulScoreBonus(Mask mask);
 
 // --- Keeper distribution (ElizaController set piece / retainer) ---
 

@@ -641,121 +641,84 @@ void Referee::BallTouched() {
   }
 }
 
-int Referee::ApplyGoalDenial(int foulType, Player* tripee, Player* tripper,
-                             float ballDistance_m) {
-  if (foulType < 1)
-    return foulType;
-
-  // The victim attacks the goal at x = -side * pitchHalfW; the reference line
-  // is the fouling team's offside line (their one-but-deepest man).
+int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action) {
+  // PES 2021's foul decision (docs/re/pes-re-duels-fouls.md 2): points from the
+  // approach angle, the closing speed and the challenge, then thresholds. The
+  // victim attacks the goal at x = -side * pitchHalfW.
+  const pes::JudgeConstants& k = match->GetPesJudgeConstants();
+  const Vector3 a = tripee->GetPosition(), b = tripper->GetPosition();
   const float attackDirSign = -tripee->GetTeam()->GetSide();
-  const float defensiveLineX =
-      AI_GetOffsideLine(match, match->GetMentalImage(0), tripper->GetTeam()->GetID());
-  if (!FoulSeverity::DeniesObviousChance(attackDirSign, tripee->GetPosition().coords[0],
-                                         tripee->GetPosition().coords[1], defensiveLineX,
-                                         20.15f - lineHalfW))
-    return foulType;
+  constexpr float RAD_TO_DEG = 180.0f / static_cast<float>(M_PI);
+  constexpr float HALF_TURN_DEG = 180.0f;
+  const auto angleBetween = [](const Vector3& u, const Vector3& v) {
+    return std::acos(clamp(u.GetNormalized(0).GetDotProduct(v.GetNormalized(0)), -1.0f, 1.0f)) *
+           RAD_TO_DEG;
+  };
 
-  const bool insidePenaltyArea =
-      fabs(tripee->GetPosition().coords[1]) < 20.15f - lineHalfW &&
-      tripee->GetPosition().coords[0] * attackDirSign > pitchHalfW - 16.5f + lineHalfW;
-  const int escalated = FoulSeverity::EscalateForDOGSO(
-      foulType, insidePenaltyArea,
-      ballDistance_m < FoulSeverity::genuineAttemptBallDistance_m);
-  if (Verbose() && escalated != foulType)
-    printf("referee: goal-scoring opportunity denied (type %i -> %i)\n", foulType, escalated);
-  return escalated;
+  pes::JudgeContact c;
+  c.action = action;
+  // 180 = B came in along A's own facing, i.e. from directly behind.
+  c.approachAngle_deg = HALF_TURN_DEG - angleBetween(a - b, tripee->GetDirectionVec());
+  c.slideOffLine_deg = angleBetween(tripper->GetDirectionVec(), a - b);
+  c.headingsDelta_deg = angleBetween(tripee->GetDirectionVec(), tripper->GetDirectionVec());
+  c.relativeSpeed_mps = (tripee->GetMovement() - tripper->GetMovement()).GetLength();
+  // This engine's standing tackle (2) and slide (3) put the man down; the light
+  // contact (1) does not.
+  c.victimFell = action != pes::JudgeAction::Jostle;
+  const float boxHalfWidth = 20.15f - lineHalfW;
+  c.dogso = FoulSeverity::DeniesObviousChance(
+      attackDirSign, a.coords[0], a.coords[1],
+      AI_GetOffsideLine(match, match->GetMentalImage(0), tripper->GetTeam()->GetID()),
+      boxHalfWidth);
+  // The spot moves spotBias towards A's own goal and the touchline, so a
+  // contact on the box line is judged outside (FUN_1405b6870).
+  const float spotX = a.coords[0] - attackDirSign * k.spotBias_m;
+  const float spotY = a.coords[1] + (a.coords[1] < 0 ? -k.spotBias_m : k.spotBias_m);
+  c.inAttackingBox =
+      fabs(spotY) < boxHalfWidth && spotX * attackDirSign > pitchHalfW - 16.5f + lineHalfW;
+
+  // PES level 1 foul, 2 foul + warning, 3 yellow, 4 red; this engine's foul
+  // types are 1 foul, 2 yellow, 3 red.
+  const int level = pes::JudgeLevel(c, k);
+  constexpr int FOUL_TYPE_FOR_LEVEL[] = {0, 1, 1, 2, 3};
+  if (Verbose() && level > 0)
+    printf("referee: judge points %i level %i\n", pes::JudgePoints(c, k), level);
+  return FOUL_TYPE_FOR_LEVEL[level];
+}
+
+void Referee::RecordFoul(Player* tripee, Player* tripper, int foulType) {
+  foul.foulType = foulType;
+  foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
+  foul.foulPlayer = tripper;
+  foul.foulVictim = tripee;
+  foul.foulTime = match->GetActualTime_ms();
+  foul.foulPosition = tripee->GetPosition();
+  foul.hasBeenProcessed = false;
 }
 
 void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
   if (buffer.active)
     return;
+  if (tripper == foul.foulPlayer && foul.foulType != 0)
+    return;
 
-  if ((tackleType == 1 || tackleType == 2) &&
-      (tripper != foul.foulPlayer || foul.foulType == 0)) {  // standing challenges
-
+  if (tackleType == 1 || tackleType == 2) {  // standing challenges
     if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&
         (tripper->GetCurrentFunctionType() == e_FunctionType_Interfere ||
          tripper->GetCurrentFunctionType() == e_FunctionType_Sliding) &&
         (tripee->GetPosition() - match->GetBall()->Predict(0).Get2D()).GetLength() < 2.0 &&
         tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID()) {
-      // Law 12: a standing challenge is not automatically innocent. The same
-      // severity pipeline judges it that judges a slide.
-      FoulSeverity::Contact contact;
-      contact.tackleType = tackleType;
-      contact.ballDistance_m =
-          (match->GetBall()->Predict(0).Get2D() - tripee->GetPosition()).GetLength();
-      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
-                                         .GetNormalized(0)
-                                         .GetDotProduct(tripee->GetDirectionVec()) *
-                                     0.5f +
-                                 0.5f,
-                                 0.0f, 1.0f);
-
-      // Gamesmanship: the man brought down makes the contact look worse.
-      const int foulType = ApplyGoalDenial(
-          RefereeProfile::GetFoulType(
-              profile, FoulSeverity::Score(contact) +
-                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
-          tripee, tripper, contact.ballDistance_m);
-      if (foulType > 0) {
-        // uooooga uooooga foul!
-        foul.foulType = foulType;
-        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
-        foul.foulPlayer = tripper;
-        foul.foulVictim = tripee;
-        foul.foulTime = match->GetActualTime_ms();
-        foul.foulPosition = tripee->GetPosition();
-        foul.hasBeenProcessed = false;
-      }
+      const int foulType = JudgeContact(
+          tripee, tripper, tackleType == 1 ? pes::JudgeAction::Jostle : pes::JudgeAction::Tackle);
+      if (foulType > 0) RecordFoul(tripee, tripper, foulType);
     }
-
-  } else if (tackleType == 3 &&
-             (tripper != foul.foulPlayer || foul.foulType == 0)) {  // sliding tackle
-
+  } else if (tackleType == 3) {  // sliding tackle
     if (match->GetActualTime_ms() - tripper->GetLastTouchTime_ms() > 600 &&
         tripper->GetCurrentFunctionType() == e_FunctionType_Sliding &&
         tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID() &&
         (match->GetBall()->Predict(0) - tripee->GetPosition()).GetLength() < 8.0) {
-      FoulSeverity::Contact contact;
-      contact.tackleType = 3;
-      contact.hasTouchData = tripper->TouchAnim();
-      if (contact.hasTouchData) {
-        contact.timingError =
-            clamp(fabs(tripper->GetTouchFrame() - tripper->GetCurrentFrame()) /
-                      tripper->GetTouchFrame(),
-                  0.0, 1.0);
-        contact.ballDistance_m =
-            (match->GetBall()->Predict(0) - tripper->GetTouchPos()).GetLength();
-      }
-      // from behind?
-      contact.fromBehind = clamp((tripee->GetPosition() - tripper->GetPosition())
-                                         .GetNormalized(0)
-                                         .GetDotProduct(tripee->GetDirectionVec()) *
-                                     0.5f +
-                                 0.5f,
-                                 0.0f, 1.0f);
-
-      // How harshly this is judged depends on the referee's temperament. A
-      // slide that never played at the ball (no touch data) was no genuine
-      // attempt, whatever its distance says.
-      const int foulType = ApplyGoalDenial(
-          RefereeProfile::GetFoulType(
-              profile, FoulSeverity::Score(contact) +
-                           PlayerSkills::GetFoulScoreBonus(tripee->GetPlayerData()->GetSkills())),
-          tripee, tripper, contact.hasTouchData ? contact.ballDistance_m : 1000.0f);
-      if (foulType > 0) {
-        // uooooga uooooga foul!
-        // printf("sliding! %lu ms ago\n", match->GetActualTime_ms() -
-        // tripper->GetLastTouchTime_ms());
-        foul.foulType = foulType;
-        foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
-        foul.foulPlayer = tripper;
-        foul.foulVictim = tripee;
-        foul.foulTime = match->GetActualTime_ms();
-        foul.foulPosition = tripee->GetPosition();
-        foul.hasBeenProcessed = false;
-      }
+      const int foulType = JudgeContact(tripee, tripper, pes::JudgeAction::Slide);
+      if (foulType > 0) RecordFoul(tripee, tripper, foulType);
     }
   }
 }

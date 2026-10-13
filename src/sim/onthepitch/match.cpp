@@ -83,6 +83,11 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES ball constants missing: read them from the install with "
         "pes::LoadPesBallConstants into MatchSetup::pesBallConstants");
   pesBallConstants = std::make_unique<pes::PesBallConstants>(*setup.pesBallConstants);
+  if (setup.pesJudgeConstants == nullptr)
+    throw std::runtime_error(
+        "PES judge constants missing: read them from the install with "
+        "pes::LoadJudgeConstants into MatchSetup::pesJudgeConstants");
+  pesJudgeConstants = *setup.pesJudgeConstants;
 
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);

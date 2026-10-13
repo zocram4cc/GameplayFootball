@@ -18,6 +18,7 @@ struct Rig;
 // constants come from the install's constant_match.bin `ball.o` and the exe
 // image, read by the caller and handed to the Match the same way.
 #include "pesball.hpp"
+#include "pesjudge.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -43,6 +44,10 @@ struct MatchSetup {
   // the caller. Required for the same reason as the clock: the ball's flight,
   // bounce and rolling are PES's, and there is no GF fallback to invent.
   const pes::PesBallConstants* pesBallConstants = nullptr;
+  // PES 2021's foul decision (docs/re/pes-re-duels-fouls.md 2): the Judge's
+  // point weights and thresholds, read from the install's exe. Required: the
+  // referee scores every contact with them.
+  const pes::JudgeConstants* pesJudgeConstants = nullptr;
 };
 
 #endif

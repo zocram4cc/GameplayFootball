@@ -11,6 +11,7 @@
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchsetup.hpp"
 #include "onthepitch/pesball.hpp"
+#include "onthepitch/pesjudge.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
@@ -57,6 +58,21 @@ const pes::PesBallConstants* SharedBallConstants() {
   return constants ? &*constants : nullptr;
 }
 
+// PES 2021's foul-decision constants (docs/re/pes-re-duels-fouls.md 2).
+const pes::JudgeConstants* SharedJudgeConstants() {
+  static std::optional<pes::JudgeConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadJudgeConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 #define REQUIRE_RIG()                                                                    \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedBallConstants())                                                            \
@@ -90,6 +106,7 @@ std::unique_ptr<Match> MatchAtPhase(e_MatchPhase phase, float seconds) {
   constants.ticksPerMinute = 960;
   setup.pesClockConstants = &constants;
   setup.pesBallConstants = SharedBallConstants();
+  setup.pesJudgeConstants = SharedJudgeConstants();
   if (!setup.pesBallConstants) return nullptr;
   auto match = std::make_unique<Match>(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   match->SetMatchPhase(phase);

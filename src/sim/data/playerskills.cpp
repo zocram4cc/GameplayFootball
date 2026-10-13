@@ -542,10 +542,6 @@ float GetBallDuelLikeliness(Mask mask, float baseLikeliness) {
   return std::min(1.0f, baseLikeliness + 0.15f);
 }
 
-float GetFoulScoreBonus(Mask mask) {
-  return Has(mask, Skill::Gamesmanship) ? 0.1f : 0.0f;
-}
-
 // --- Keeper distribution ---
 
 Distribution PickDistribution(Mask mask, float roll) {

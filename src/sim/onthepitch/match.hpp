@@ -178,6 +178,7 @@ public:
   // PES 2021's ball physics constants (docs/re/pes-re-ball-contact.md 6): the
   // `ball.o` record and the image values, required like the clock's.
   const pes::PesBallConstants& GetPesBallConstants() const { return *pesBallConstants; }
+  const pes::JudgeConstants& GetPesJudgeConstants() const { return pesJudgeConstants; }
   const pes::PesClock& GetPesClock() const { return *pesClock; }
   pes::PesClock& GetPesClock() { return *pesClock; }
   // Advances the match clock by elapsed game-seconds, frozen while play is
@@ -351,6 +352,7 @@ protected:
   // clock itself.
   std::unique_ptr<pes::PesClockConstants> pesClockConstants;
   std::unique_ptr<pes::PesBallConstants> pesBallConstants;
+  pes::JudgeConstants pesJudgeConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;

@@ -9,6 +9,7 @@
 #include "../gamedefines.hpp"
 #include "cardbook.hpp"
 #include "defines.hpp"
+#include "pesjudge.hpp"
 #include "refereeprofile.hpp"
 
 using namespace blunted;
@@ -98,7 +99,9 @@ protected:
   void IssueDeferredCards();
 
   // Law 12 DOGSO: escalates a foul on a player who was through on goal.
-  int ApplyGoalDenial(int foulType, Player* tripee, Player* tripper, float ballDistance_m);
+  // PES 2021's foul decision for one contact: this engine's foul type 0..3.
+  int JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action);
+  void RecordFoul(Player* tripee, Player* tripper, int foulType);
 
   RefereeProfile::e_Profile profile;
 

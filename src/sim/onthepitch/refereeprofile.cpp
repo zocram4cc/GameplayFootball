@@ -1,7 +1,6 @@
 #include "refereeprofile.hpp"
 
 #include <cctype>
-#include <cmath>
 
 namespace RefereeProfile {
 
@@ -17,10 +16,6 @@ std::string Normalize(const std::string& name) {
   }
   return result;
 }
-
-// A strict referee whistles for contact a lenient one waves away.
-const float strictThresholdScale = 0.85f;
-const float lenientThresholdScale = 1.2f;
 
 }  // namespace
 
@@ -45,32 +40,6 @@ std::string GetName(e_Profile profile) {
   }
 }
 
-Thresholds GetThresholds(e_Profile profile) {
-  Thresholds thresholds;  // historical values: 1.0 / 1.4 / 2.0
-
-  float scale = 1.0f;
-  if (profile == e_Profile_Strict)
-    scale = strictThresholdScale;
-  else if (profile == e_Profile_Lenient)
-    scale = lenientThresholdScale;
-
-  thresholds.foul *= scale;
-  thresholds.yellow *= scale;
-  thresholds.red *= scale;
-  return thresholds;
-}
-
-int GetFoulType(e_Profile profile, float severity) {
-  const Thresholds thresholds = GetThresholds(profile);
-  if (severity >= thresholds.red)
-    return 3;
-  if (severity >= thresholds.yellow)
-    return 2;
-  if (severity > thresholds.foul)
-    return 1;
-  return 0;
-}
-
 unsigned long GetAdvantageWindow_ms(e_Profile profile) {
   switch (profile) {
     case e_Profile_Lenient:
@@ -80,19 +49,6 @@ unsigned long GetAdvantageWindow_ms(e_Profile profile) {
     default:
       return 3000;  // historical value in Referee::CheckFoul
   }
-}
-
-bool ShouldReviewOffside(float offsideMargin, bool goalScored) {
-  if (!goalScored)
-    return false;
-  return std::fabs(offsideMargin) <= varOffsideMargin;
-}
-
-bool ShouldReviewPenalty(e_Profile profile, float severity, bool insidePenaltyBox) {
-  if (!insidePenaltyBox)
-    return false;
-  const float threshold = GetThresholds(profile).foul;
-  return std::fabs(severity - threshold) <= varPenaltyMargin;
 }
 
 }  // namespace RefereeProfile

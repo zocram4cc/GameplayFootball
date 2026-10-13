@@ -30,3 +30,7 @@ set_tests_properties(gfsim_run_test PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
 add_executable(pes_ball_physics_test pes_ball_physics_test.cpp)
 target_link_libraries(pes_ball_physics_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_ball_physics_test PROPERTIES TIMEOUT 600)
+
+add_executable(pes_judge_test pes_judge_test.cpp)
+target_link_libraries(pes_judge_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_judge_test)
