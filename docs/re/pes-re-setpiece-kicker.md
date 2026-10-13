@@ -4,7 +4,7 @@ Read-only RE. Sources: Ghidra PESLive decompiles via `dec.sh` (scratch `~/ghidra
 capstone over `<scratch>/pesmem.bin` (raw checks), read-only `pread` of the running AI-vs-AI match (`kwatch.py`, an extension of
 `SetPieceChoreoRE/spwatch.py` that also logs the taker's request block `ap+0x2bb0..0x2d1f` and the ball trajectory
 `*(G+0x40)+0x88`), and the earlier captures `SetPieceChoreoRE/live.jsonl`, `live_match1.jsonl`.
-Scratch: `/mnt/Extra4/gf-SetpieceKickerRE-scratch/` (`kwatch.py`, `ana.py`, `onset.py`, `launch.py`, `live2.jsonl`,
+Scratch: the SetpieceKickerRE scratch dir (`kwatch.py`, `ana.py`, `onset.py`, `launch.py`, `live2.jsonl`,
 `fk_runup.json`, `strike.json`). No player/team names; slots 0..21. Frames = 54 Hz logic frames.
 
 Tags: **OBS** = read in the decompile/raw bytes at the named address, or observed live. **INF(conf)** = inference.
