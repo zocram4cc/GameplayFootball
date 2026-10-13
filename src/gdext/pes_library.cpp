@@ -63,6 +63,11 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 foul-decision constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) rngConstants_ = pes::LoadRngConstants(*exe, &err);
+  if (!rngConstants_) {
+    UtilityFunctions::push_error("PES21 RNG constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);

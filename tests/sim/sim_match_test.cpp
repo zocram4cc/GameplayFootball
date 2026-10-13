@@ -12,6 +12,7 @@
 #include "onthepitch/matchsetup.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
+#include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
@@ -96,6 +97,21 @@ const pes::JudgeConstants* SharedJudgeConstants() {
   return constants ? &*constants : nullptr;
 }
 
+// PES 2021's generator constants (docs/re/pes-re-rng.md 1).
+const pes::RngConstants* SharedRngConstants() {
+  static std::optional<pes::RngConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadRngConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 #define REQUIRE_PES_INSTALL()                                          \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedClockConstants())                                                          \
@@ -122,6 +138,7 @@ Outcome Play(unsigned int seed, int minutes) {
   setup.pesClockConstants = SharedClockConstants();
   setup.pesBallConstants = SharedBallConstants();
   setup.pesJudgeConstants = SharedJudgeConstants();
+  setup.pesRngConstants = SharedRngConstants();
 
   Outcome out;
   {
@@ -171,6 +188,7 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   setup.pesClockConstants = SharedClockConstants();
   setup.pesBallConstants = SharedBallConstants();
   setup.pesJudgeConstants = SharedJudgeConstants();
+  setup.pesRngConstants = SharedRngConstants();
   for (int match = 0; match < 2; ++match) {
     Match m(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     std::vector<Player*> players;
@@ -197,6 +215,7 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   setup.pesClockConstants = SharedClockConstants();
   setup.pesBallConstants = SharedBallConstants();
   setup.pesJudgeConstants = SharedJudgeConstants();
+  setup.pesRngConstants = SharedRngConstants();
   setup.aiManagerRuns[0] = aiManagerRunsHome;
   bool pressed = false;
   {

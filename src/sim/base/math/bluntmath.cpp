@@ -6,17 +6,27 @@
 #include "bluntmath.hpp"
 
 #include <cmath>
-#include <random>
+#include <stdexcept>
 
 namespace blunted {
 
-unsigned int fastrandseed;
-unsigned int max_uint;
+namespace {
+RandomSource* randomSource = nullptr;
 
-std::mutex randMutex;
+real Draw(int stream, real min, real max) {
+  if (!randomSource)
+    throw std::logic_error("random draw with no match generator installed");
+  return min + randomSource->Unit(stream) * (max - min);
+}
+}  // namespace
 
-std::mt19937 rng_engine;
-std::uniform_real_distribution<float> rng_dist(0.0f, 1.0f);
+void SetRandomSource(RandomSource* source) {
+  randomSource = source;
+}
+
+RandomSource* GetRandomSource() {
+  return randomSource;
+}
 
 real clamp(const real value, const real min, const real max) {
   assert(max >= min);
@@ -62,21 +72,12 @@ bool is_odd(int n) {
   return n & 1;
 }
 
-void randomseed(unsigned int seed) {
-  rng_engine.seed(seed);
-}
-
-inline real boostrandom() {
-  return rng_dist(rng_engine);
-}
-
 real random(real min, real max) {
-  float stretch = max - min;
+  return Draw(kRandomStream, min, max);
+}
 
-  randMutex.lock();
-  real value = min + (boostrandom() * stretch);
-  randMutex.unlock();
-  return value;
+real fastrandom(real min, real max) {
+  return Draw(kFastRandomStream, min, max);
 }
 
 int pot(int x) {

@@ -43,11 +43,26 @@ static constexpr unsigned long kRefereeSpecialHold_ms = 1000;
 static constexpr int kFoulTypeYellow = 2;
 static constexpr int kFoulTypeRed = 3;
 
+float Match::RngSource::Unit(int stream) {
+  // ponytail: GF's two generators map to PES slots by convention (random() ->
+  // slot 2, fastrandom() -> slot 0), not by PES's per-system draw sites; each
+  // system takes PES's own slot as it is ported (docs/re/pes-re-rng.md 3).
+  constexpr int SLOT_FOR_STREAM[] = {2, 0};
+  return rng.Unit(SLOT_FOR_STREAM[stream]);
+}
+
 Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& config)
     : rig(setup.rig), matchData(matchData), aiManagerRuns{setup.aiManagerRuns[0], setup.aiManagerRuns[1]} {
   // Before anything below draws a number: the anim collection and the wind do.
-  randomseed(setup.seed);
-  fastrandomseed(setup.seed);
+  // PES seeds its match generator once, at kick-off, with one value t as
+  // slots t, t+1, t+2 (docs/re/pes-re-rng.md 2.1); MatchSetup::seed is t.
+  if (setup.pesRngConstants == nullptr)
+    throw std::runtime_error(
+        "PES RNG constants missing: read them from the install with "
+        "pes::LoadRngConstants into MatchSetup::pesRngConstants");
+  rngSource = std::make_unique<RngSource>(*setup.pesRngConstants);
+  pes::SeedAtKickoff(rngSource->rng, setup.seed);
+  SetRandomSource(rngSource.get());
   *GetConfiguration() = config;
 
   Log(e_Notice, "Match", "Match", "Starting Match");
@@ -170,6 +185,10 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
 }
 
 Match::~Match() {
+  // Teardown draws (players reset their idle frame) come from this match's own
+  // generator, not from a newer match's.
+  rngSource->restoreTo = GetRandomSource();
+  SetRandomSource(rngSource.get());
   InvalidateCachedMentalImages();
   mentalImages.clear();
   possessionSideHistory.reset();

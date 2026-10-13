@@ -20,7 +20,7 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
   // printf("test: %s\n", test.c_str());
 
   auto result = GetDB()->Query(
-      "select firstname, lastname, role, base_stat, profile_xml, age, skincolor, hairstyle, "
+      "select firstname, lastname, role, base_stat, profile_xml, age, hairstyle, "
       "haircolor, height from players where id = " +
       int_to_str(databaseID) + " limit 1");
 
@@ -29,7 +29,6 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
   float baseStat = 0.0f;
   int age = 15;
 
-  skinColor = int(round(random(1, 4)));
   hairStyle = "short01";
   hairColor = "darkblonde";
   height = 1.8f;
@@ -47,8 +46,6 @@ PlayerData::PlayerData(int playerDatabaseID) : databaseID(playerDatabaseID) {
       profileString = result->data.at(0).at(c);
     if (result->header.at(c).compare("age") == 0)
       age = atoi(result->data.at(0).at(c).c_str());
-    if (result->header.at(c).compare("skincolor") == 0)
-      skinColor = atoi(result->data.at(0).at(c).c_str());
     if (result->header.at(c).compare("hairstyle") == 0)
       hairStyle = result->data.at(0).at(c);
     if (result->header.at(c).compare("haircolor") == 0)
@@ -186,7 +183,6 @@ void PlayerData::FillMissingStats() {
 
 PlayerData::PlayerData() {
   // officials, for example, use this constructor
-  skinColor = int(round(random(1, 4)));
   hairStyle = "short01";
   hairColor = "darkblonde";
   height = 1.8f;

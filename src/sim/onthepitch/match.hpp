@@ -247,6 +247,23 @@ public:
   uint64_t GetDeterminismHash() const { return determinismHash; }
 
 protected:
+  // PES's match generator and the adapter GF's random()/fastrandom() draw from.
+  // Declared first so it is destroyed last: players still draw while the
+  // teams are torn down. ~Match makes it current for that teardown, and its
+  // destructor hands the source back to whichever match was current before
+  // (a test may build the next match before this one dies).
+  struct RngSource : blunted::RandomSource {
+    explicit RngSource(const pes::RngConstants& k) : constants(k), rng(constants) {}
+    ~RngSource() override {
+      blunted::SetRandomSource(restoreTo == this ? nullptr : restoreTo);
+    }
+    float Unit(int stream) override;
+    pes::RngConstants constants;
+    pes::Random rng;
+    blunted::RandomSource* restoreTo = nullptr;
+  };
+  std::unique_ptr<RngSource> rngSource;
+
   bool BallTeleportedThisTick() const;
   bool CheckForGoal(signed int side);
 

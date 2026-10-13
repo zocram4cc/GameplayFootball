@@ -56,7 +56,6 @@ public:
   // MatchPressure::unknownAge when the player was not loaded from the database.
   int GetAge() const { return playerAge; }
 
-  int GetSkinColor() { return skinColor; }
   std::string GetHairStyle() { return hairStyle; }
   std::string GetHairColor() { return hairColor; }
   float GetHeight() { return height; }
@@ -77,7 +76,6 @@ protected:
   std::string positionFamiliarity;
   int playerAge;
 
-  int skinColor;
   std::string hairStyle;
   std::string hairColor;
   float height;

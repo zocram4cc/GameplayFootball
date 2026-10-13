@@ -9,6 +9,7 @@
 #include "pes/camera.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
+#include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
 #include "gdext/pes_marking.hpp"
@@ -63,6 +64,10 @@ class PesLibrary : public RefCounted {
   const pes::JudgeConstants* judge_constants() const {
     return judgeConstants_ ? &*judgeConstants_ : nullptr;
   }
+  // PES 2021's generator constants (docs/re/pes-re-rng.md 1).
+  const pes::RngConstants* rng_constants() const {
+    return rngConstants_ ? &*rngConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -80,6 +85,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::PesClockConstants> clockConstants_;
   std::optional<pes::PesBallConstants> ballConstants_;
   std::optional<pes::JudgeConstants> judgeConstants_;
+  std::optional<pes::RngConstants> rngConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

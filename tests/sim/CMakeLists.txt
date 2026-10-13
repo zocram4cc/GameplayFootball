@@ -34,3 +34,7 @@ gtest_discover_tests(pes_ball_physics_test PROPERTIES TIMEOUT 600)
 add_executable(pes_judge_test pes_judge_test.cpp)
 target_link_libraries(pes_judge_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_judge_test)
+
+add_executable(pes_random_test pes_random_test.cpp)
+target_link_libraries(pes_random_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_random_test)
