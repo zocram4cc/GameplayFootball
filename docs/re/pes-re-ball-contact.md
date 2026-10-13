@@ -21,6 +21,13 @@ is literal; the net cloth itself is an open item with a named next step (§7).**
 
 ## 0. Headline
 
+> **CORRECTIONS 2026-10-13 (orchestrator, from the BallPhysics port, confirmed against raw bytes).**
+> 1. The grounder gate's `idiv [rdi+r14*4+0x1d8]` divides by `gounnderprob[mode]` (u32 {5,5,5,9,9,5}), not `frictionRollSpeedStop[m][3]`. Mode 1's divisor is 5, so the gate is live, with no divide-by-zero (§2.5).
+> 2. The vertical keep band is `boundToRotationSpeedMinY..MaxY` = 0.1..0.7 km/h (`0x1408770e6`, `0x1408770f3`), not `frictionRollSpeedMin` = 8 km/h (§3.4).
+> 3. §3.4's "spin pump" enters the tangential rewrite (×−A or ÷A), not vy.
+> 4. A port of §2.5 and §3.4 alone gives vy_out/vy_in 0.075–0.10, outside the live 0.37–2.26. The bounce source is still open (pes-re-ball-contact-2.md); the sim keeps GF's 0.62 bounce until it closes.
+> 5. Per-PES-tick keep factors must be mapped to the host step (k^(dt·54)); applying them per 10 ms tick loses 1.85x the speed per second.
+
 1. **OBS — The contact code is *inside the integrator itself***, `FUN_140876360`
    (`0x140876360 … 0x1408773f1`). It is **not** among the ~40 callers named as candidates in
    §6.4; those are prediction/measurement passes that *reuse* the integrator (§4.5).
