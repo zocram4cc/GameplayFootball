@@ -50,6 +50,7 @@ address given.
 |`pes-re-rng.md`|PES's RNG: math::Random/GameRandom layout, the 31-bit LCG and 15-bit slot-3 LCG literals, range/normal draws, the kick-off seed commit in the MatchControl ctor (clock-derived t, t+1, t+2), sub-generators, a consumer census, live step verification, the seed-pinning procedure|
 |`pes-re-kick-launch.md`|kick launch: the launch writer FUN_1407324b0, ability/foot/ball-height terms, the logistic error scale and exponential scatter, the per-action spin tilt, the per-player LCG; partial (per-family ability index, live validation open)|
 |`pes-re-ball-contact-2.md`|the bounce: a min() between a speed-derived impulse and vy gives reflection or restitution, which reproduces the live 0.37-2.26 band; the mode-byte writer (dry normal pitch = mode 2); corrections to part 1|
+|`pes-re-ball-collision.md`|ball vs posts, crossbar, boards, stands, flags and player bodies: `FUN_14086d6f0` via PostCollisionListener; restitution/retention per object and bone, recent-hit softening, speed caps 70/50 km/h, analytic goal-frame cylinders, and the GoalnetFilm net model; nine live contacts reproduced|
 |`pes-re-ball-contact.md`|ball ground contact, the tangential and spin response, and rolling, every constant mapped to a named ball.o field|
 |`pes-re-ball-constants.md`|where PES ball physics constants live: ball.o in constant_match.bin, the named field map, and the runtime-written spin scale|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
