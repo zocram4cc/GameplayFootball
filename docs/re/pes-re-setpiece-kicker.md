@@ -163,7 +163,8 @@ pass type. Timers belong to SetplayWaitRE (agreed split). Aim/target rules:
   `|ball.z| ≤ F[1]/2` or `dir·x ≤ F[6]/2`, type 2 otherwise; wide in the final third → `FUN_142134fe0` (INF: nearest free
   team-mate within 20 m `0x14259be1c` inside ±60° `0x14259a764` of the attack) type 2. No receiver → hold, then fallbacks.
 - **Penalty (MODE 6)** `FUN_142134a40` (raw: `% 7` via magic 0x92492493; 0.13042313 = 1.2·ball radius): after fps
-  frames, command 1 to one of 7 points chosen by `*(int*)*(G+0x360) % 7` (frame-random int, 0..32767, OBS live) —
+  frames, command 1 to one of 7 points chosen by `*(int*)*(G+0x360) % 7`. This is a frame-random int, 0..32767, seen
+  varying live (8584, 2568, 452, …). It is a different object from the constant int-fps global `0x14351ae50` (§5) —
   `x = sign(ball.x)·F[0]`; `zs = (F[2] − r)·0.75` = 2.66 m, `hh = (F[3] − r)·0.75` = 1.75 m, `hm = F[3]/2` = 1.22 m,
   `hl = 1.2r` = 0.13 m (r = 0.10869 `0x142598958`):
   0 (+zs, hh), 1 (+zs, hm), 2 (+zs, hl), 3 (0, hm), 4 (−zs, hh), 5 (−zs, hm), 6 (−zs, hl).
