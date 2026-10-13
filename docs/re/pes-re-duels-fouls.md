@@ -1,0 +1,507 @@
+# PES 2021: how duels, fouls, cards, advantage and offside are DECIDED (RE report, DuelsFoulsRE)
+
+Companion of `pes-re-foul-choreography.md` (which covers how they are *staged*). Read-only RE.
+
+Tags: **OBS** = read in raw bytes / disassembly / decompile at the named address (decompiles were
+re-checked against capstone disassembly where a formula or constant is quoted); **INF(conf)** = inferred.
+Addresses are VAs of PES2021.exe (base 0x140000000). Code below 0x143d14000 was read from the mid-match
+image `<scratch>/pesmem.bin`; code in the protected `.impdata` range (0x143d14000+, `thunk_EXT_FUN_*` targets)
+was read **read-only from the live process** (`/proc/<pid>/mem`, region 0x143d14000-0x15b952000 rwx) and
+cross-checked byte-for-byte against the on-disk exe at `fileoff = 0x391b400 + (VA - 0x143d14000)`
+(identical for every function quoted). The protected functions used here are plain compiler output with a
+few junk instructions (`xchg [rip+…]`, `sub edi,[rip+…]`, `mov rbp,[rip+…]` into dead registers) and
+**XOR-obfuscated immediates** (`mov r,[rip+X]; xor r,K`), decoded below.
+
+Scratch: `~/ghidra-projects/scratch/DuelsFoulsRE/` — `dec/*.c` (GhidraMCP + headless decompiles),
+`live/*.bin` (protected-code dumps), `ldis.py` (disassembler that resolves rip-relative constants from the
+image or the on-disk exe), `dumplive.py` (read-only live dump), `xscan.py`/`xscan2.py`/`xcall.py` (scans of
+the on-disk protected region), `f.py` (constant reader).
+
+Names used below:
+- `G = *(0x1436f3dc8)` (gMatchContext); `MI = *(G+0x270)`; `field = *(G+0x2aa8)` = pitch info floats
+  `[0]` 52.56 half length, `[1]` 34.06 half width, `[4]` 47.06 goal-area line, `[5]` 9.16 goal-area half
+  width, `[6]` 36.14 penalty line, `[7]` 20.12 penalty-area half width (`pes-re-matchlogic.md` §6).
+- `human(i) = FUN_140a48910(G,i)` — per-player anime state record. `human+1` (i8) = **current ANIME action
+  id** (same ids as `pes-re-animselect.md` §4.1: 8/9/10 long pass / short pass / shoot, 0xb/0xc SLIDING /
+  SLIDING_KEEP, 0xd TACKLE, 0xe BLOCK, 0xf DIVE, 0x10 STAGGER, 0x11 FALL_DOWN, 0x48 JOSTLE, 0x38..0x3d
+  keeper actions). OBS: every compare below matches those ids (e.g. the dive judge tests `== 0xf`, the
+  victim-fell tests `== 0x11`, the jostle divisor `== 0x48`). `human+0x44` = tackle sub-kind (1/2/3),
+  `human+8` = flag word.
+- `player(i) = FUN_140a48a10(G,i)` (position `+0x55c/+0x564` = Fox x/z, metres); `ai(i) = FUN_140a489f0(G,i)`.
+- Player ids 0..10 = team 0, 11..21 = team 1; `team(i) = (i >= 11)`.
+- `team+0x254` (i8) = the team's attack direction ±1 (used as `dir·x > 0` = "in the half the team attacks").
+- `gs` = game speed (frames per second, `FUN_141e532d0`/`FUN_141e532e0`; 54 at speed setting 0 per
+  `pes-re-matchlogic.md` §7). Every "frames" value is seconds × gs.
+
+---
+
+## 0. Summary (what GodotFootball must do)
+
+1. **`sub_1405027A0` is NOT a duel.** It is the per-player AI **reaction-delay** timer (writes
+   `team+0x6a4[i]` / `team+0xb860[i]`), with the awareness term `(99 − clamp(OA|DA, 50, 99)) / (49 / ⌊0.2·gs⌋)`
+   frames. The EXT "(49 / rand)" is wrong: it is a fixed 0.2-second frame count, no RNG (§1.1).
+2. **Fouls are decided by the referee module `match::ai::Judge`** (object at Flow+0x908) from **contact
+   events** (match event 0xf: player A = victim, player B = fouler). A deterministic **points score**
+   (no RNG) is computed from approach angle, relative speed, the fouler's action and the victim's reaction
+   (stagger / fall), then mapped to a level by **thresholds 40 / 80 / 110** (60 / 80 / 110 when the spot is
+   in the penalty area): `0` play on, `1` foul, `2` foul + warning, `3` yellow, `4` red (§2).
+3. **The level is the card** (`MI+0x158c` = level for contact fouls). Straight reds exist (≥110 points, or
+   the "sub-kind 1" tackle on a goal-scoring chance). In the penalty area a non-DOGSO card is dropped to a
+   plain foul and a DOGSO red is lowered to yellow (the modern double-jeopardy rule). A warned player who
+   fouls again within 45 game minutes adds a third of the stored points and can reach yellow
+   (persistent infringement) (§2.5–2.7). The flag meant to mark that yellow (`MI+0x15b8`) compares the stored
+   points with the period id — a game bug that leaves it 0 in practice (§2.5 step 4).
+4. **Advantage is a two-stage timer**: the whistle waits ≈ `0.8·gs+0.5` frames (0.8 s) after the foul; in
+   the last third of that wait the judge may play advantage; an advantage lasts **4.0 s** (`4·gs` frames),
+   burns 1 s per pass/shot by the fouled team and runs at double speed while the fouled team has the ball;
+   it is called back (free kick at the original spot, `MI+0x15a4 = 1`) when the fouling team wins the ball
+   or the fouled team loses its edge (§3).
+5. **Simulation (dive) is judged** and, because of a fixed-seed RNG, a dive without real contact is
+   **always** punished: yellow + indirect free kick (`MI+0x1588 = 3`) (§2.8).
+6. **No handball offence** is generated by any foul producer found (§4).
+7. **Offside** is a pending foul of kind 1 created by the same judge; the offside player is flagged
+   earlier (per-team bit sets in the match-analysis object) and the call is made only when he becomes
+   involved (touches the ball, blocks the keeper's view, or is the nearest player to a loose ball) (§5).
+
+---
+
+## 1. Duels
+
+### 1.1 `sub_1405027A0` — correction of the EXT "duel formula" (OBS, decompile + raw @0x140502c60..0x140502cd9)
+
+`FUN_1405027a0(ctx, team, side, …, p5, p6, p7)` loops over the 11 players of `team` and writes a frame
+count into `team+0x6a4[i]` and `team+0xb860[i]` (both as int). It runs only in play (`MI+0x116c == 1`).
+Per player, the start value is `⌊0.6·gs⌋ − (⌊0.2·gs⌋ + base)` scaled by two factors from `FUN_140503430`
+(INF: a distance/role term), then:
+
+```
+stat  = (attacking side) ? ability[+0x14] : ability[+0x15]      # record = FUN_14124dad0(ai(i));  0x14 OA, 0x15 DA (INF hi, matchlogic §1.3)
+t    += (int)( (99 − clamp(stat, 50, 99)) / (49 / (float)(int)(gsInt · 0.2)) )      # raw: maxss 50 / minss 99, divss 49, mulss 0.2 (0x142598578)
+```
+
+i.e. up to **0.2 s of extra delay for a 50-rated player, 0 for 99**. There is **no random term** (the EXT
+"49 / rand" is wrong: the divisor is `⌊0.2·gs⌋` frames). The other multipliers named by the EXT
+(`×0.5`, `×0.4/0.5`, `×0.2/0.8`, …) are the constants 0.5 (0x142565600), 0.4 (0x14259b89c), 0.2, 0.8
+(0x142572348), 0.3 (0x142590d98) applied to the same delay in this function by situation (non-pass
+trigger ×0.5; event 3 with sub-kind 3/4 ×0.5; team tactic flags 0xb/0xc ×0.3; player type 0x33 ×0.5 or ×0.4;
+distance-based ×0.2 / ×0.8; a 10/15/25/32-frame-per-second addition by formation role for the defending
+side). **INF(hi): this is the "who reacts first" decision latency of every AI player, not a duel
+resolution.** The final value is clamped to `≥ team+0x6a4[i]` (never shortens a running delay) and
+`+0.5` frame.
+
+### 1.2 How a ball duel is actually resolved (OBS + INF)
+
+There is **no ability roll that decides who gets the ball**. Ball winning is geometric: a tackle / slide /
+jostle clip has an authored contact (`hit_data`) and the ball-sensor capsules of `pes-re-collision.md` §2.4–2.5
+decide whether the tackler's foot reaches the ball first. Abilities change *whether the action may start,
+its reach and its timing*, and the body push. The stat consumers were found by scanning every call of the
+ability-record getter `FUN_14124dad0` and of the live-stat getter `FUN_1406e6660(ap, index)` (OBS, scan in
+scratch). Index → name follows `pes-re-matchlogic.md` §1.3 (0x18 BC, 0x17 Dribbling, 0x1e BW = "Tackling" in
+eFootball naming, 0x1f Aggression, 0x28 PC, 0x29 Balance, 0x15 DA; "Defensive Engagement" has no PES 2021
+field — INF it maps to DA/BW).
+
+| duel | where | formula (OBS) |
+|---|---|---|
+| **Body contact (PvP capsule push)** | `FUN_140a6d670(ctx,P,Q)` returns P's share of the separation (callers `0x1406e3f44`, `0x1408c37a2`, `0x1408c4b5f`, `0x14084437f`; raw @0x140a6d853..0x140a6dcef) | `pc = PC(+0x28)`; −20 if the player is in action 0x15 and not the ball owner; −15 if his flag bit 13 or action-property bit 13 (table 0x1426484f0) is set; −15 if collision class `human+0x3f == 6`. `diff = pcP − pcQ`; when the two headings differ by < 45° and both bearing tests (`FUN_1404583b0`) exceed 135°, `diff += 15` if P's bearing ≥ Q's else `−15`. `d = clamp(diff, −30, 30)/30`. Speeds `v = |vel|·gs·3.6` km/h, `s = clamp((v−5)/8.5, 0, 1)`, `ds = sQ − sP`. **share = 0.5 − 0.35·ds − 0.3·(1 − 0.5·|ds|)·d**. When P and Q are opponents and either is the ball owner / team key player (`team+0x78`): **share = pcQ' / (pcP' + pcQ')** (the modified PCs). Class-pair table 0x142648900 (7×7 of −1/0/0.1/0.2/0.8/0.9/1.0) short-circuits special classes (entry ≥ 0). |
+| **Jostle (shoulder-to-shoulder)** | Jostle action (vtable 0x1425e0f68) Enter `FUN_140780870`, targets `FUN_1407780d0`, `FUN_14077cdb0` | Push: `dPC = PC_live(self) − PC(opp)`; `f = clamp((dPC + 5)/25, 0, 1)`; the pair is rotated by `−sign·3.0·f·54/gs` degrees per frame (`FUN_1407780d0`, 0x14259be7c = −5, 20, 25, 3.0, 54). Separation target `clamp(0.6 + 0.2·clamp((|θ|−50)/20), 0.35, …)` m. `FUN_14077cdb0` blends the contact point toward the stronger player by `clamp(dPC/20)` (or `(dPC+20)/40`, `(dPC−20)/−40` by who is in front). **Shoulder-through:** when the chosen clip is `js_run_3_2_090_guard_back` (m0x8eb) and `PC_live(self) > PC(opp) + 5`, the clip is replaced by `tackleshoulder_3_3` (m0xced) — the stronger player charges through (`FUN_140780870` @0x140780bfb). |
+| **Standing tackle** | Tackle action (vtable 0x1425e1a48) slot 13 `FUN_1407902c0`; readiness `FUN_14078e5a0` | Angle window: success needs `|θ| < 112.5° + 22.5°·clamp((BW−79)·0.0625, 0, 1)` (BW 79→95 widens 112.5→135°), else result 3 (fail). Re-tackle cooldown: `f = clamp((BW−40)/59)`, wait `⌊gs·8/60+0.5⌋ + ⌊gs·(1−f)·6/60+0.5⌋` frames after the last tackle event. Dribbler escape window `⌊gs·16/60+0.5⌋ − ⌊gs·0.10⌋` frames (0.125 / 0.15 with style/skill bit 12 or role 3). |
+| **Slide tackle** | Sliding action (vtable 0x1425e1878), `FUN_14078a640` | `bw = clamp((BW−40)/59)`: facing gate 67.5° (0x1425cca34) uses `bw`; `+bw²` is added to the reach parameter passed to the slide solver `FUN_140789f70` (units INF). Result 3 (miss) when the target distance exceeds `1.5 + 3.0·clamp((Aggression−60)/35)` m or **2.0 m** (so only Aggression < 66 shortens it). |
+| **Stagger recovery** | Stagger action slot 31 `FUN_14072dd90` | `f = clamp((Balance_live − 40)/60)`; the stagger may be cancelled `min(5, 6 − ⌊6f²⌋)` frames after the clip's cancel frame instead of later — high Balance recovers earlier. |
+| **Stay-up roll** | `FUN_1406d6780` (chooser; its candidate clips are `gkcollapsing_*`), `FUN_1406ebf30` | **The only random stat roll found near duels:** `rand_player(stream 2) % 100 < clamp(Balance − 10 (−20 more under a flag), 0, 99)` — per-player LCG at `ap+0x32d0`. INF(lo): keeper collapse stand-or-fall, not an outfield duel. |
+
+The arithmetic in this table is OBS (decompile + raw constants); what each result *means* (push share,
+cooldown, escape window, reach) is INF(med) from the call context.
+
+INF(hi) for GodotFootball: resolve possession by contact geometry/timing (GF already does), and use these
+formulas only for (a) the push share between two bodies, (b) the jostle rotation and shoulder-through,
+(c) tackle/slide gating. Ball Control / Dribbling (0x18 / 0x17) are read by 4 / 19 functions in the
+dribble/trap actions (0x1407a7e40…0x1407cd4f0); not traced here.
+
+---
+
+## 2. The foul decision (`match::ai::Judge`)
+
+### 2.1 Objects (OBS)
+
+- `match::ai::Judge` (RTTI COL 0x142c9a9e0, vtable 0x1425c50f0 = dtor only) lives at **Flow+0x908** (ctor
+  `FUN_14050ab20` called from the Flow ctor `FUN_140441fc0` @0x140442074). `FUN_14050b2b0` binds it:
+  `judge+0x3b8 = ctx`, `judge+0x3c0 = JR` (the judge result).
+- **JR = `MatchControl+0x2910`** (reset by `FUN_14050a8c0/FUN_14050a990`). The MI block is a per-frame copy of
+  JR (`FUN_140422030`, OBS @0x140422175..): `MI+0x1554 ← JR+0x00` … so **`MI+X = JR+(X−0x1554)`**.
+- Every whistle goes through **`FUN_14050e770(judge, side, restart, reason, spot*, foulKind, fouler, victim)`**
+  (OBS): `JR+0x04 = side` (team awarded), `JR+0x00 = restart` (`MI+0x1554`), `JR+0x20 = reason` (`MI+0x1574`),
+  spot → `JR+0x08..` (`MI+0x155c/0x1564`, clamped inside the touch/goal lines), **`JR+0x34 = foulKind`
+  (`MI+0x1588`), `JR+0x3c = fouler` (`MI+0x1590`), `JR+0x40 = victim` (`MI+0x1594`)**. In special modes
+  (`MI+0x1775` ∈ 1..7 or ≥ 0xb, not 0x12..0x16) reason 3 becomes 4 and the restart becomes kick-off.
+- Callers of `FUN_14050e770` (complete: 5 in the image + 2 in protected code, OBS by rel32 scan of both):
+  kick-off/training `FUN_14050c490`, PK shoot-out `FUN_14050cc40` (restart 6, reason 9), ball out
+  `FUN_14050e020` (corner 4 / goal kick 3, reason 4), throw-in/goal `FUN_14050e110` (restart 1),
+  `FUN_14050e320` (throw-in 2, reason 4), **foul commit `0x143f546f0`** (reason 5), period end
+  `0x143f5530b` (restart 7, reason 1, kind 0, fouler/victim 0xff).
+
+### 2.2 Pipeline (OBS)
+
+```
+match event 0xf (contact, two player ids: A = event+0x14, B = event+0x20)
+ └ Judge event handler FUN_14050e4a0 (called from FUN_1404514f0 @0x140451a8e)
+    └ FUN_14050d6a0(ctx, ev, judge+0xc)           # gate
+       └ FUN_1405b7470(judge, A=victim, B=fouler)  # decide level
+          └ FUN_1405b8000                          # build the pending foul
+             └ FUN_14050ee40 = Judge::SetPending   # judge+0x08 = 1, record at judge+0x14
+ Judge update FUN_14050b490 (each frame): hold / advantage / call-back (§3)
+    └ 0x143f546f0 = Judge::Commit(judge, rec)      # → FUN_14050e770(...) + card/extra fields
+```
+
+Gate `FUN_14050d6a0` (OBS): returns 0 unless in play, both ids < 22, and either (A, B on different teams
+**and** (B "has played the ball" `FUN_140a63da0(ctx,B,…,1)` **or** B's AI was targeting A
+`ai(B)+0x1478 == A && ai(B)+0x1474` **or** A is in STAGGER/FALL_DOWN)) **or** A's flag bit 29
+(`human(A)+8`). Also skipped in online-host-only mode, and for the first 10 frames of a freshly started
+advantage (`judge+0xc` = advantage timer `> 4·gs − 10`).
+
+Role check (OBS): A is the victim because the PK test uses A's team attack direction (a foul in the box A
+attacks = penalty), the injury points use A's fall/stagger, and the committed record writes A to `MI+0x1594`
+and B to `MI+0x1590`.
+
+### 2.3 Points (all OBS; integer bytes; no RNG)
+
+`points = P_angle(A,B) + P_speed(A,B) + P_action(A,B)` (u8 sum).
+
+**P_angle** — protected `0x143f738a0` (thunk `0x14050b…`; read live, = disk). `θ` = `ai(B)+0x12a0` (B's approach
+angle to A, degrees) when B targeted A, else 0. `W = 40` (max points) except: B in JOSTLE (0x48) with flag
+bit 34 → `W = 2`; B tackling (0xd or flag bit 16) with sub-kind 2 → `W = 20`.
+- default / jostle / tackle sub-kind ≠ 3: `p = clamp((θ − 40)/140, 0, 1)` (θ ≥ 180 ⇒ 1, θ ≤ 40 ⇒ 0);
+- tackle sub-kind 3: `p = clamp((θ − 150)/30, 0, 1)`;
+- slide (0xb/0xc): `g1 = clamp((|Δ(B heading, B→A)| − 40)/5)`, `g2 = clamp((|Δ(A heading, B heading)| − 45)/−10)`
+  (1 below 35°, 0 above 45°); if θ > 80: `θ += g1·g2·(80 − θ)`; then `p = clamp((θ − 40)/120)`;
+- jostle without flag bit 34 → `p = 0`.
+Multipliers on `W`: victim fell (0x11) → ×1; victim staggering with flag bit 30 → ×1 unless B's tackle
+sub-kind is 2 (×0.7); otherwise ×0.7; B's tackle sub-kind 3 and victim not fallen → ×0.5.
+`P_angle = (int)(p·W)`. **INF(hi): θ = 180 is a challenge from directly behind, so "from behind" scores
+the full 40, a frontal challenge 0.**
+
+**P_speed** — protected `0x143fa8420`. `v = |vel(A) − vel(B)|·3.6·gs` km/h (velocities per frame from
+`FUN_140a6c8f0`). `P_speed = (int)(30·clamp((v − 2)/28, 0, 1))`; if A fell: `max(P_speed, 5)` (5 =
+`0xc749dad1 ^ 0xc749dad4` @0x1482b3dc4); if B is jostling: `/20`.
+
+**P_action** — `FUN_1405b6d40` (image). By B's action:
+
+| B action | base |
+|---|---|
+| SLIDING 0xb/0xc, keeper 0x38/0x3d, BLOCK 0xe with flag sign bit, or kick 8/9/10 with `human+0x3c == 7` | **35** ("reckless" class, `bVar17`) |
+| TACKLE 0xd with flag bit 6 | 30 |
+| TACKLE (0xd or flag bit 16), sub-kind 2 / 3 / other | 5 / 15 / 25 |
+
+plus, when A fell (0x11): +15 (reckless class), +12 (tackle bit 6), +8 (sub-kind 2/3), else +10;
+when A staggered with bit 30 (and not tackle sub-kind 3): +5;
+**+30 if A fell and DOGSO (§2.6) and (B's AI flag `ai(B)+0x134` or reckless class)** (INF: `+0x134` =
+deliberate/tactical-foul intent);
+for tackle sub-kinds 2/3 when A was the last ball player (event 6/7): "missed the ball" bonus
+`30·clamp((∠(B tackle vector +0x124, ball) − 22.5)/22.5)`, or if that is 0,
+`30·clamp((∠(B tackle vector, A) − 45)/15)`; halved unless A fell; not added if B himself is staggering/falling;
+sub-kind 3: `+20·clamp(|B contact point (+100) − ball| − 2, 0, 1)` m.
+
+### 2.4 Level thresholds (OBS, protected `0x143f71690` + `0x143fa8760`)
+
+```
+(T1, T2, T3) = spot in the penalty area A attacks ? (60, 80, 110) : (40, 80, 110)
+                # 0x5028 → T1 40 / T2 80; in-box word = [0x1482b3dc8] ^ 0x50fc = 0x503c → 60 / 80; T3 = 0x6e
+level = points <  T1 ? 0
+      : points <  T2 ? (points > T1 + (T2 − T1)/2 ? 2 : 1)       # 2 = foul + warning above the midpoint
+      : points <  T3 ? 3 : 4
+```
+"In the penalty area" = `FUN_140a72e70(field, spot, dir(A))` bit 0x800: `|x| > 36.14 ∧ |z| < 20.12 ∧ dir·x > 0`.
+The spot is A's position (or B's predicted interception point when `ai(B)` targeted A) moved **6 cm back
+towards A's own goal and 6 cm towards the touchline** (`FUN_1405b6870`, 0.06 @0x1425cc238): a contact exactly
+on the box line is judged outside (game-specific, against the Laws where the line belongs to the area).
+
+### 2.5 Overrides on the level (OBS, `FUN_1405b7470`, in order)
+
+1. **Forced cards before scoring:** A's flag bit 29 outside the box → level 3 ("FACE", type 7);
+   B in TACKLE with sub-kind 1 → level 3, or **4 if DOGSO** (§2.6).
+2. **B did not play the ball** (`FUN_140a63da0` false) and no forced card: only a "FORCE" foul is possible —
+   requires the contact rule `FUN_140a639a0(B,A)`, the spot **outside** A's attacking box (a no-ball contact in
+   the box is never a foul), and `ai(B)+0x14a0 == A`; then level 1, type 8. Otherwise no foul.
+   Before that: if `ai(B)+0x148c == 1` (INF: challenge flagged fair) and (B played the ball with approach angle
+   < 145°, or the contact rule holds) → no foul.
+3. **Keeper exception:** B is his team's keeper (`FUN_140a62690`) and the special mode `(G+0x40)+0x2920 == 4`
+   with flags → no foul. **Event switch** (OBS @0x1405b7932..0x1405b7b9d; event-type meanings INF): the level
+   is reset to 0 when the newest ball event is type 5 by A, or when B is his team's keeper and the newest event
+   is 1..4 by A or 6/7 by B's team, or for 8/10..14 events by B's team while B is in BLOCK/0x3d; step 5 can raise
+   it back to ≥ 1 when A made that event (not modelled further).
+4. **Repeat offender** (raw @0x1405b7860..0x1405b792b): if level < 3 and the fouler has stored warning points
+   `m` (`judge+0xe0[team·40+slot]`) from at most **45 game minutes** earlier (`now − minute ≤ 0x2d`, minutes
+   from `FUN_140a74db0`): re-score with `points + ⌊m/3⌋`; if that reaches ≥ 3 the level is **3** (capped) and
+   the memory is cleared; otherwise the original level is kept and the memory stays. Older memories are
+   cleared. A level-2 foul stores `m = points`, the minute and the period (`+0x270`). The record flag that
+   feeds `MI+0x15b8` is `(byte)m == MI+0x1168` — the stored **points** compared with the **period id**
+   (`movzx edx,[rbx+rsi+0xe0]; cmp edx,[MI+0x1168]`, @0x1405b7907): since a stored `m` is always ≥ 61 and
+   the period ≤ 10, **the flag is never set** (INF hi: a bug; the intended compare is `+0x270`).
+5. **Minimum level:** unless (the ball is within 5 m of A, free or at A's feet, and A did not make the newest
+   ball event): if B's intent flag `ai(B)+0x134` is set, A fell, and A has had no ball event for ≥ gs/3 frames
+   → level ≥ 3 (**professional foul**); else if A made the newest ball event → level ≥ 1 (a contact on a
+   player who has just played the ball is always at least a foul).
+6. **Penalty area:** if the spot is in A's attacking box and level ≠ 0: no foul unless A fell or B's intent flag
+   (`level = 0`); then **if not DOGSO: level 3/4 → 1** (no card for a penalty); **if DOGSO: 4 → 3**
+   (double-jeopardy rule).
+7. Suppressions: tutorial/training (`G+0x3b0`) or **card-suppression flag `*(G+0x2c0)+0x76`** → 3/4 → 1;
+   online-practice (`G+0x400`) → any foul → 1.
+8. A pending foul with more points is not replaced by a weaker one (`judge+8 && points < judge+0x30`).
+
+### 2.6 DOGSO (OBS `FUN_1405b7390`)
+
+`DOGSO(A,B) = dir(A)·spot.x > dir(A)·line[team(B)]  ∧  |spot.z| < 20.12`, where `line[t]` is the
+match-analysis float at `*( *(ctx)+0x18 ) + 0x40` (team 0) / `+0x54` (team 1) (INF(med): the defending
+team's last-defender line). No distance-to-goal or ball-control test: "beyond the last defender and
+within the penalty-area width".
+
+### 2.7 Severity → record → card (OBS)
+
+`FUN_1405b8000` builds the pending foul (`FUN_14050ee40`, raw @0x1405b8210):
+
+| judge field | value | → MI on commit |
+|---|---|---|
+| +0x14 | fouler B | `MI+0x1590` |
+| +0x18 | victim A | `MI+0x1594` |
+| +0x1c / +0x20 | B / A event-context indices | `MI+0x1598` / `MI+0x159c` |
+| +0x24 | restart: **5 FK**, **6 PK** when the spot is in A's attacking box (spot replaced by the penalty mark, `FUN_14050d280(6,…)`) | `MI+0x1554` |
+| +0x28 | **foul kind 2 (direct)** | `MI+0x1588` |
+| +0x2c | level | → card |
+| +0x30 | points (u8) | — |
+| +0x34 | spot | `MI+0x155c/0x1564` |
+| +0x10 | whistle delay `⌊0.8·gs + 0.5⌋` frames (`FUN_14050cd70`) | — |
+| +0x40 | frame `MI+0x1198` | `MI+0x15a0` |
+| +0x44 | replay-snapshot id | `MI+0x15ac` |
+| +0x50 | 4 for contact fouls and dives; the offside **category 0..2** for offside (§5.1) | `MI+0x15b4` |
+| +0x54 | repeat-offender flag (§2.5 step 4; never set in practice) | **`MI+0x15b8`** |
+| +0x55 | foul type (below) | — |
+
+Commit `0x143f546f0`: `FUN_14050e770(judge, side = team(A), rec.restart, reason 5, &spot, kind, B, A)`, then
+`JR+0x44.. = idx, frame, snapshot, flags`, `JR+0x68 = stored-warning minute` and **`JR+0x38` (`MI+0x158c`, the
+card) = level when kind 2**; kind 1 → 1, kind 3 → **3**, kind 4 → 1, others 0; online practice → 1
+(`0x4807beb4 ^ 0x4807beb5`). So `MI+0x158c`: **1 foul, 2 foul + warning, 3 yellow, 4 red**.
+Second yellow → red is applied downstream (scene `W` variants, `pes-re-foul-choreography.md` §1.3);
+`MI+0x15b8` is the intended persistent-infringement yellow (`FOUL_WARN_CARD_Y`), not "card after advantage"
+as the choreography report inferred; and the direct-foul kind is **2**, not 0.
+
+Foul type byte (`+0x55`, OBS from B's action in `FUN_1405b7470`; labels INF from the `PLAY_DATA_FOUL_*` list
+@0x142b42d60): 0 contact, 1 sliding (0xb/0xc), 2 block (0xe), 3 tackle (sub-kind 2), 4 tackle sub-kind 3
+(INF shoulder), 5 kick (8/9/10), 6 keeper (0x38/0x3a/0x3c/0x3d), 7 "face" (A flag bit 29), 8 "force" (no ball).
+
+**Referee strictness:** none. The thresholds are immediates in protected code; no referee record or
+`RefereeAppearance.bin` field is read by any function in this pipeline (OBS: the only external inputs are
+the players, the spot, the clock and the flags listed). Confirms the EXT claim; corrects "every red is a
+second yellow" (straight reds exist, §2.5 steps 1 and 6).
+
+### 2.8 Simulation (dive) (OBS `FUN_1405b83b0`)
+
+When the ball player (or last toucher) is in action **DIVE 0xf** outside his own box:
+- if the nearest opponent (`ctx+0x22e4c` table) really made contact — opponent sliding/tackling with the clip's
+  contact frame reached, timing window `+0x1c + 3·gs/54 (+12·gs/54 for slides)` and distance < **1.25 m**, or a
+  moving opponent within 1.0 m — the dive is a **real foul** by that opponent: kind 2, level 1, no advantage
+  (`+0x48 = 1`), FK/PK by the spot;
+- otherwise a roll `r < 5` (10 for action-property bit 15; halved in the box) would also give the foul. The
+  RNG object is constructed on the stack with fixed seeds `0x2f3d0..0x2f3d3` on every call (`FUN_140a923f0`),
+  so the first draw is always `r = ⌊(0x7e3b73a3 / 2³¹)·100⌋ = 98` → **never**: the diver gets **kind 3
+  (indirect FK) + yellow** (`level 3`), victim 0xff, spot = diver's position.
+- skipped in online-practice and when card suppression is on.
+
+---
+
+## 3. Advantage (OBS: Judge update `FUN_14050b490`, decision `FUN_14050ff50`, conditions `FUN_1405103e0`, continuation `FUN_1405105c0`, whistle gate `FUN_14050dd10`)
+
+Judge state: `+0x08` pending foul, record at `+0x14` (§2.7); `+0x0c` advantage timer; `+0x10` whistle hold;
+advantage foul copy at `+0x58` (`0x143f52820` copies `+0x14 → +0x58`); `+0xcc` ball-out code from the event
+handler (event 10).
+
+Per frame while the ball is in play (`+0xcc == 0`):
+
+```
+if pending:
+    if adv_timer == 0:
+        if ShouldPlayAdvantage():                       # FUN_14050ff50
+            adv_timer = 4·gs; copy pending → +0x58; hold = 0; pending = 0
+    else:                                                # a new foul during an advantage
+        adv_timer = 0; hold = 0; pending = 1             # advantage dropped, new foul whistled at once
+if adv_timer == 0 and pending:
+    if hold > 0: hold -= 1
+    if hold == 0 and not DelayWhistle(pending):          # FUN_14050dd10
+        Commit(pending); MI+0x15a4 = 0                   # JR+0x50
+elif adv_timer > 0:
+    adv_timer -= 1
+    if ball owner is on the fouled team: adv_timer -= 1  # time runs double while the fouled team has it
+    if the newest event (types 1..5) happened 1 frame ago by the fouled team: adv_timer -= gs  # each pass/shot burns 1 s
+    if not AdvantageStillOn():                           # FUN_1405105c0
+        if not DelayWhistle(adv): Commit(adv); MI+0x15a4 = 1; JR+0xd08 = 1      # called back
+    elif adv_timer == 0: clear (advantage completed, no free kick)
+```
+
+- **Whistle hold** (`+0x10`) = `⌊0.8·gs + 0.5⌋` frames for contact fouls and dives, `gs/2` for offside.
+- **ShouldPlayAdvantage** (`FUN_14050ff50`): only while `hold ≤ ⌊0.8·gs+0.5⌋/3` (i.e. after ≈ 0.53 s of the
+  0.8 s hold); never for foul kind 3 (simulation), kind 1 (offside), or a dive-foul (`+0x48`); for kind 2 not
+  when the victim is a goalkeeper in state 3; never for restart 6 (**no advantage on a penalty**);
+  level 4 → never; level 3 → only if the fouler holds no booking and the attack-chance test
+  `FUN_14050f7e0(…,1)` > 0 (then the card is remembered, below); levels 1–2 → yes unless the victim is
+  staggering/falling (0x10/0x11) or in actions 0x50/0x52/0x57, in which case `FUN_14050f7e0(…,0)` > 0 decides.
+  Then the "candidate" players are compared: `c_v` = fouled team's ball candidate, `c_f` = fouling team's
+  (`FUN_14050f580`: the team's key player `team+0x78` unless offside-flagged, else the first on-pitch player of
+  the nearest-to-ball list who is not offside-flagged and in a ball-seeking AI state). No `c_v` → no advantage;
+  no `c_f` → advantage; `c_v` fallen/disabled → no; otherwise **advantage iff `|c_v − ball| ≤ |c_f − ball|`**
+  (distances to the ball's predicted point when the ball is ≥ 3 m from it) — the fouled team must be closer.
+- **AdvantageStillOn** (`FUN_1405105c0`): false (→ call back) as soon as the **fouling team owns the ball**
+  (`judge+0xc4 = 1`) or makes a ball event (types 1..7); false when `FUN_1405103e0` no longer holds;
+  false when the fouling team's candidate is closer to the ball than the fouled team's and the newest event
+  is not a 1..3/5..7 event (with extra slack +10 m / +5 m on the two distance tests, and when ≤ 5 frames
+  remain); true otherwise.
+- **DelayWhistle** (`FUN_14050dd10`): for contact fouls (kind 2) and offside category 2, the whistle is held
+  while the ball event is < 5 frames old or while the fouled team's key player is in SHOOT (10) / AI state
+  0x19 — the referee lets a shot finish before blowing.
+- **Late card** (OBS `FUN_1405103e0` + `FUN_14050de50`; link via the Flow demo code `FUN_14047b460` INF(med)):
+  when a yellow-level foul is let go, `judge+0xa8 = 1`, `+0xac` fouler, `+0xb0` victim, `+0xc0` frame and a
+  snapshot are stored; at the next stoppage `FUN_14050de50` writes `JR+0x3c = fouler`, `JR+0x38 = 3` (yellow),
+  `JR+0x44`, `JR+0x4c` — this is the `FOUL_CMN_CARD_Y_B` late-card scene of the choreography report §4.5
+  (`MI+0x1690` window < 16 time units). **`MI+0x15b8` is not involved** (§2.5 step 4).
+- Rule-faithfulness: waiting ≈ 0.8 s before deciding, letting a shot finish, calling back when the expected
+  advantage does not ensue, no advantage on a penalty, and cautioning at the next stoppage are all
+  rule-faithful (Law 5/12); the 4.0 s window, the double-speed timer and the "1 s per pass" are game abstractions.
+
+---
+
+## 4. Handball
+
+**Not modelled as an offence** (INF hi). Evidence (OBS):
+- every writer of the pending foul `FUN_14050ee40` is one of: contact judge `FUN_1405b8000`, offside
+  `FUN_1405b6660`, dive judge `FUN_1405b83b0` (rel32 scan of the image and of the whole on-disk protected
+  region; no other caller);
+- every writer of `JR+0x34` (foul kind) goes through `FUN_14050e770`, whose 7 callers are listed in §2.1; none
+  carries a hand/arm kind;
+- outfield players have no hand/forearm ball capsules (only the keeper's 15-capsule set does,
+  `pes-re-collision.md` §2.1/§5), and the hand branch of the body-touch scan (`FUN_1406edce0`, bones 14/18)
+  is gated by the keeper flag `ap+0x2460` bit 8.
+- Keeper handling outside the box: no judge path found (INF: keeper catch actions are simply not entered
+  outside the area).
+
+---
+
+## 5. Offside
+
+### 5.1 Call path (OBS)
+
+Every frame with no pending foul, the Judge runs `FUN_14050df20` → `FUN_1405b6490` (find a flagged player who
+is now involved) → `FUN_1405b6660` (SetPending). With a pending kind-1 foul it instead cancels it when
+`FUN_140a53f90` reports the situation resolved.
+
+- **Flags** live in the match-analysis object `MA = *( *(ctx) + 0x18 )`: per team `t` four u32 bit sets
+  `MA+0x253c4 + 0x10·t + 4·c` (bit = player id, `c` = category 0..3), the flag frame `MA+0x253bc[t]`, a float
+  `MA+0x254ec[t]` and a snapshot `MA+0x254fc`. Only categories **0..2 are punishable** (`FUN_1405b6490` scans
+  `c < 3`; the AI helpers `FUN_14050f580`/`FUN_14045e0d0` treat `c < 3`/`c < 2` as "offside, do not chase").
+  INF(med): category 3 = "in an offside position but not punishable".
+- Per-side enable: `*(G+0x2c0)+0x6e+t` (match settings; same block as the card-suppression flag `+0x76`).
+- `FUN_1405b6490` requires a reference player (ball owner, else the pass target `MA+0x2483c`, else the
+  nearer of the two line players `MA+0x2470c`/`+0x24764`), then scans team 0 then team 1 (categories 0..2,
+  player order) and returns the first flagged player for whom `FUN_1405b5a00` (involvement) is true.
+- **Pending offside** (`FUN_1405b6660` → `FUN_14050ee40`): fouler = offside player, victim 0xff, restart **5**
+  (free kick), **foul kind 1**, level 1 (card value 1), points 0, spot = the offside player's **current**
+  position (`player+0x55c`, i.e. where he became involved), whistle hold `gs/2` frames (0.5 s), frame
+  `MA+0x253bc[t]` (→ `MI+0x15a0`: the frame the flag was raised), category `c` (→ `MI+0x15b4`), `MA+0x254ec[t]`
+  (→ `MI+0x15a8`, INF: the offside-line x at that moment), snapshot (→ `MI+0x15ac`).
+- Commit as §2.7: `MI+0x1554 = 5`, `MI+0x1558` = defending team, `MI+0x1574 = 5`, **`MI+0x1588 = 1`**,
+  `MI+0x158c = 1`, `MI+0x1590` = offside player. Never advantage (`FUN_14050ff50` returns 0 for kind 1).
+  Category 2 also goes through `DelayWhistle` (a shot in progress is allowed to finish first).
+
+### 5.2 Involvement ("active play") test `FUN_1405b5a00(judge, p)` (OBS; constants from the image)
+
+1. Not in play → no.
+2. **p made the newest ball event → yes** (receives / plays the ball).
+3. Ball free or at p's feet and the newest event is not of type 5/10/13/14: **interfering with the keeper** —
+   when the opposing keeper is in a save/dive action (0x38–0x3a, 0x3c/0x3d) or the ball is heading for the
+   goal, the ball and both bodies are stepped forward 2 frames at a time (frames < 250) with
+   `FUN_140a907c0`/`FUN_140a90d80`; if the ball path meets p, p is within **3 m** of the keeper, and the
+   keeper→p and keeper→ball bearings differ by < **15°** → yes (debug tag `RetryAuto_OFFSIDE_DISTURB_KEEPER`).
+4. Less than `gs/2` frames since the newest ball event → not yet.
+5. If p is not his team's key player (`team+0x78`): only when the ball is ≤ **3.0 m** high and p is within
+   **8 m** of it (**20 m** when the ball is above 0.5 m) (`FUN_14044e0d0`), else no.
+6. Walk the team's nearest-to-ball list (`MA+0x24840`, 11 × {id, dist}): a non-flagged team-mate nearer by
+   more than **2 m** → no (he plays it; p stays passive); p must be heading for the ball (bearing < **30°**);
+   then a race against the nearest opponent (or the keeper unless in state 0x3e): for a high ball (≥ 3 m):
+   yes if the opponent's value exceeds p's by > **25** and p's is < **60**; for a lower ball: no if
+   `√opp ≤ √p + 4` and `√p ≥ 5`, else yes (units of the `MA+0x24710` entries: INF time/distance squared).
+
+### 5.3 Detection — OPEN
+
+The code that **sets** the bit sets (the moment the line is evaluated, the second-last-defender rule and the
+level tolerance) was not found. Tried (all negative): every instruction with displacement 0x253bc/0x253c4/
+0x254ec/0x254fc or with the index form 0x94ef/0x94f1/0x94f5 in the image (only readers: `FUN_14050f580`,
+`FUN_14045e0d0`, `FUN_140457de0`, `FUN_1404b43d0`, `FUN_1405afca0`, the stats observer `FUN_140a23c10`/
+`FUN_140a2e2c0`); the same displacements/immediates in the whole on-disk protected region (`xscan.py`,
+`xscan2.py`); `lea`/`add` of 0x25320–0x25520 bases (`+0x25378` is a 2×33 byte grid, `+0x25320` a ball-event
+list); the line-sort writer `FUN_14044e230`. INF(med): the bits are written through a pointer to a sub-object
+(base below 0x253bc) or by a bulk copy of the analysis object. Next: read-only live sampling of
+`MA+0x253b0..0x25510` around a pass that ends offside (gives the frame and category semantics), then a
+data-flow search for stores whose base register is `MA` plus a small displacement (e.g. a sub-object at
+`MA+0x25378` written as `[r+0x44]`/`[r+0x4c]`).
+GF recommendation (rule-faithful, unchanged from the choreography report): flag at the pass/touch frame,
+attacker strictly ahead of both the ball and the second-last opponent in the opponents' half; level = onside;
+call only on involvement per §5.2.
+
+---
+
+## 6. Live validation (read-only `/proc/<pid>/mem`; no input, no ptrace)
+
+Session 2026-10-13, the game in a match (`pes_state.py`: `STATE=OPEN_PLAY`, second half `MI+0x1168 = 3`).
+`MatchControl` found by scanning rw heap for its vtable 0x1425984c0 (`findvt.py`), `Flow = *(MC+0x38)`,
+**Judge at Flow+0x908 confirmed by its vtable 0x1425c50f0** (`jsnap.py`). The Judge still held the last two
+foul records of the match (OBS):
+
+| record | fouler → victim | restart | kind | level | points | type | spot (x, z) |
+|---|---|---|---|---|---|---|---|
+| pending `+0x14` (last whistle) | 12 → 10 | 5 FK | 2 | **3 (yellow)** | **88** | 1 sliding | (−31.94, 10.16) |
+| advantage copy `+0x58` | 14 → 10 | 5 FK | 2 | **1** | **48** | 0 contact | (32.80, −17.65) |
+
+Both levels agree with §2.4: 88 ∈ [80, 110) → 3 outside the box (|x| = 31.9 < 36.14); 48 < 60
+(= 40 + (80−40)/2) → 1. The warning memory (`+0xe0`, 44 bytes) was all zero (no level-2 foul stored);
+`+0x50 = 4`, `+0x54 = 0`, `+0xa8 = 0`. The second record proves an advantage was played for that foul.
+`judge+0x3b8/+0x3c0` are 0 between frames (the context is bound per call by `FUN_14050b2b0`), so the
+match-analysis object for the offside bits could not be reached from the Judge at rest.
+
+---
+
+## 7. Open items (what was tried)
+
+1. **Offside flag writer** (detection instant, second-last-defender rule, level tolerance): §5.3.
+2. **Meaning of the event types** used by the judge switch (1..5 passes/touches, 5, 6/7, 8, 10..14) and of
+   `human+8` bits 16/29/30/34, `ai(B)+0x134` (intent), `ai(B)+0x148c` (fair-challenge flag), tackle sub-kinds
+   1/2/3: semantics INF from usage only. Next: trace the writers of `human+0x44` in the Tackle action.
+3. **`FUN_14050f7e0`** (attack-chance test for advantage) and **`FUN_140a63da0`** ("B played the ball"):
+   called, not decoded.
+4. **`FUN_140a639a0(ctx, B, A)`** (contact rule for no-ball fouls): decompiled, not summarised. It returns 0 for
+   exempt action pairs (B in pass/shot 8–10 against a staggering A within reach; B in 0x15/0x48/0x50/0x52/0x57;
+   A in TACKLE; A staggering/falling with cause byte `+0x47` in mask 0x10600c or 0x48) and otherwise compares
+   each clip's frame with its contact frame + `⌊0.5·gs + 0.5⌋`.
+5. **Duel stat tables not traced:** Ball Control / Dribbling consumers in the dribble/trap actions;
+   `pes15Test.o` (`moveContact`, `paraDiff margin`, `speedDiff`, `tackleResultSetAnime`, `protectAuto1..5`)
+   and `contact.o`, `tackle.o`, `sliding.o`, `pairAnime.o` blobs were dumped (`constant_*.bin`, `ctbl.py`)
+   but not mapped to keys (nested objects; the key strings are at 0x142b4ec00..0x142b4f040).
+6. **Live foul/offside capture** with `MI+0x1588..0x15b8` changing: `watch.py` (20 min) — result in §6.1 when
+   available.
+7. `JR+0xd08` (set on an advantage call-back; outside the MI copy range) consumer: not traced.
+
+---
+
+## 8. GodotFootball / GF: what to implement
+
+- Replace GF's foul decision with the §2 pipeline: on every opponent body contact (GF already detects
+  contacts), compute `points = P_angle + P_speed + P_action` (§2.3), apply §2.5, map with 40/80/110
+  (60/80/110 in the box) to level 0–4, card = level (1 foul, 2 foul + warning, 3 yellow, 4 red).
+  Deterministic: no RNG anywhere in the decision (the one roll, the dive, always fails).
+- PK when the 6-cm-biased spot is inside the box; no card for a penalty unless DOGSO; DOGSO red → yellow
+  in the box; DOGSO = beyond the defending line and within ±20.12 m laterally.
+- Hold the whistle 0.8 s; offer advantage in its last third if the fouled team's candidate is nearer the ball;
+  4.0 s window (double-speed while the fouled team has it, −1 s per fouled-team pass/shot); call back when the
+  fouling team gets the ball; never on a penalty or for a straight-red-level foul; a yellow-level advantage
+  books the fouler at the next stoppage.
+- Dives (if GF ever produces them): real contact → direct foul, else yellow + indirect FK.
+- No handball. Offside = kind 1, IFK at the player's position when he becomes involved (§5.2), 0.5 s hold,
+  never advantage.
+- Keep GF's possession resolution geometric; use §1.2 only for push shares, jostle rotation/shoulder-through
+  and tackle/slide gating. Label every non-PES approximation `RE-APPROX` in code.
+
