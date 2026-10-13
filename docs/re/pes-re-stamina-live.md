@@ -427,3 +427,207 @@ fixed-point units, callback set), and the exact five candidate drain sites are n
 the *body* of one of those callbacks — reachable in one more decompile session by walking the
 vtable pointer stored at `player+0x1f8+0x20` (`*(longlong**)(*(longlong *)(param_1+0x1f8)+0x20)`
 → the 0x48-count record array whose entries carry the `+0x28` code pointer).
+
+### 8.7 Pass 4 (2026-10-13) — the record array is a *descriptor script*, not the drain
+
+Followed the record chain to its source, all OBS (Ghidra decompile + raw bytes):
+
+- `FUN_1416231b0` builds the **per-player state object** (0x2c0 bytes, includes the 0x1a0-byte
+  band block at `+0x40` initialised by `FUN_1416235f0`, plus the action lists at `+0x280`/
+  `+0x282`). It is called from `FUN_141637d40`'s loop — i.e. this object *is* the `param_1` of
+  `FUN_14163d140`, and `FUN_14161ed70`'s `param_3` block is the same 0x1a0 region.
+- The two lists filled by `FUN_14163e170`/`FUN_14163e240` come from **`*(player+0x1f8)+0x118`**,
+  stride **0x110**, count at `+0x130`; each element is initialised by `FUN_1416339c0` (28 bytes)
+  and sized by `FUN_1416339f0`, then allocated by `FUN_141633e40` through `FUN_1415d4a50`.
+  These are **clip/animation records**, not stamina records: `FUN_1416339f0`'s size formula sums
+  per-clip quaternion/position arrays (`+0x38`, `+0x3c`, byte counts at `+0xf1..+0xf5`, ×16 for
+  vec4s) — pure vertex/track data.
+- The 0x30-stride list (`+0x280`, source array at `+0x288`) is the same family, dispatched by
+  `FUN_141633ea0`; the 0x10-stride list (`+0x282`, `+0x2a0`) by `FUN_1416374d0`. Both call
+  `(code*)(record+0x28)(state, step, snapshot)`.
+- **`FUN_141634b00`** (the record ctor, 0x28 bytes, vtable `0x1429e8118`) writes `+0x28` as part
+  of a zero-fill — OBS raw disasm at @0x141634b1f `mov %r9,0x28(%rcx)` with `r9 = 0`. Its
+  callback slot is therefore **null unless set later by `*(vtable+0x60)`** — exactly what
+  `FUN_141633ea0` checks before calling.
+- `FUN_141637930`'s `*(lVar1+0x60)` is the per-record virtual method: the base vtable
+  `0x1429e8118` slot `+0x60` holds `0x697274736f745f5f` ("`__otri`" — a garbage/unused marker),
+  while derived vtables (e.g. `0x1429ea890` for the 0x110-byte variant) put a real code pointer
+  at `+0x28`. OBS. So the callback that runs is the **derived class's update method**, and the
+  base slot is dead.
+- `FUN_141637580` (the 0x10-stride dispatcher) is a **matrix/transform wrapper**: it either calls
+  the callback directly, or — when the record's flag bit 0x15 is set — temporarily substitutes
+  the state block with an identity matrix (`_DAT_14253ee50…ee8c` row = 1,0,0,0 / 0,1,0,0 … OBS),
+  blends a vector from `param_6[0x14]`, calls the callback, and restores. OBS. It touches **no
+  scalar stamina field**.
+- `FUN_141624000` (the other `FUN_14163d140` callee) only loops the two lists and writes
+  `player+0x2bd` bit 2. OBS.
+
+**Conclusion of Route A for the record route:** the record callbacks are animation/transform
+scripting. **The drain is not in them.** INF (high).
+
+### 8.8 Route B (the "other end") — where the band block actually comes from, and the remaining gap
+
+`FUN_1416245b0`'s `param_1+0x80` block is the 16-float matrix written by `FUN_141636e90` from
+`player+0x80..+0xb8` (OBS: `FUN_141636e90` copies exactly that range plus `player+0x258`,
+`+0x2be` bit 4, `+0x238` bits 8/6). So the band function's input is the **player's own 16-float
+state matrix**, further processed by `FUN_141636f10`/`FUN_1416370a0` which add:
+
+- `snapshot+0x34 = player[+0x23c].f6` and `snapshot+0x10/+0x14/+0x18/+0x2c` from the same
+  `+0x23c` struct (OBS: `FUN_1416370a0` reads `param_2[0..7]`), with `snapshot+0x24 = f0*60.0`
+  and `+0x28 = f1*60.0` (`DAT_14259a764` = 60.0, OBS) — **two fields quantised to 1/60 units**;
+- `snapshot+0x30 = player+0x2b0`, `+0x38` flags from `player+0x2bd` bit 3 and `player+0x290`
+  bit 0x15;
+- `FUN_141637160` initialises the `+0x23c` struct itself: `+0x0c = (float)u32@player+0xf8 / 60.0`,
+  `+0x04 = (float)u32@player+0xf4 / 60.0`, `+0x08 = (float)u32@player+0xfc / 60.0`, `+0x14 = 1.0`,
+  `+0x18 = 4`. OBS. So **three ×1e6 fixed-point fields at `player+0xf4/+0xf8/+0xfc` are converted
+  to seconds by ÷60** — these are the player's *timers* (not the stamina value), and are the same
+  three fields the tick body at `FUN_141b970e0` reads at `player+0x28/+0x2c/+0x30` (the entity's
+  A/B/C).
+
+So the whole per-player chain is: **entity fixed-point timers → `FUN_141637160` ÷60 → snapshot →
+`FUN_141636f10` → band function → AI flags**. The stamina value is **not** in any of those
+fields; the band function compares *derived work/rate quantities*, not a stored stamina counter.
+
+**Where this leaves the drain:** the only unexamined writers are the three per-tick writers of
+`player+0x28/+0x2c/+0x30` (the ×1e6 timers) — i.e. the body of the entity update between
+`FUN_141b972d0`'s call and the store at `FUN_141b97245..4f`, and the `FUN_141b97880`/`FUN_141b98620`
+list-walk that computes them from the action records. The drain formula is in that region and is
+still unread. INF (med).
+
+### 8.9 Pass 4 continued — the match-level driver chain (closes the "where does the tick come from" question)
+
+Traced the tick writer to the top, all OBS:
+
+```
+MatchRecordListener (vtable 0x142c8fda0, class name string OBS at rva 0x259a198)
+  └─ vt+0x38 = FUN_14042b800        (message dispatch: if *param_3 == 2 → step)
+       ├─ FUN_14042b6c0   ← both phases write the tick
+       │    lVar3 = FUN_14041b640(param_1+0x28)        // the match entity
+       │    dt = *(float*)(lVar3 + 0x5c)               // per-match period
+       │    FUN_141b985a0(FUN_141b985e0(), dt / (float)FUN_141e532d0())   // ÷ 54
+       ├─ FUN_14042b7d0 → FUN_14042b640 (phase variant)
+       └─ FUN_14042b830 → FUN_14042b770 (phase variant)
+FUN_140426cd0  (the 0x1050001..0x105005d message switch — pause/resume/phase flags)
+```
+
+and upward:
+
+```
+FUN_1415e1d80  (spawns a player state object)
+  └─ FUN_1415e21a0 → FUN_141622a20(size from *(param_1+0x20)+8 * 0xd0 + 0x2c0)
+       └─ FUN_1416231b0  (the 0x2c0-byte per-player state object ctor — the same object
+                          that FUN_14163d140 updates each tick)
+FUN_14161eab0 → FUN_1415e1d80        (per-player spawn entry)
+```
+
+Also OBS: `FUN_141b985a0` = `{ FUN_141b972d0(); FUN_141b97880(param_1); DAT_14351ad20 = dt; }`,
+so **the tick is written once per match message, before the per-player list walk** — i.e. the
+whole per-player update chain of §8.5–8.8 runs *after* the tick is set, and every per-player
+field is therefore already dt-scaled by its own arithmetic rather than by a single global
+multiply.
+
+**The 1e-3 / 1e-4 candidates resolved:** `FUN_141b24ea0` (the only reader in the entity family
+of any of `+0x6c/+0x70/+0x74/+0x78`) is a **serializer**, not a drain: it copies the entity's
+`+0x20…+0xb0` and `+0xb4…+0xc4` into a network/record buffer in 0xa0-byte chunks with a
+`*(int*)(param_2+0x14) != 2` write-enable flag. OBS. Its callers
+(`FUN_141b26a70/291b0/2a360/2cba0/2e780`) are the entity's export/import paths.
+So the earlier INF that `+0x6c = 0.001` / `+0x70/+0x74 = 1e-4` are drain magnitudes is
+**withdrawn** — no arithmetic consumes them; they are inert defaults. The only field of that
+group with a consumer is `+0x78 = 216000.0` (also exported).
+
+**Net:** after four passes the complete call tree of the stamina system is mapped, but the
+per-tick arithmetic that changes the player's stamina is still unlocated. The exact remaining
+unread region is now small and precisely named — see §8.10.
+
+### 8.10 Pass 5 (2026-10-13) — the 20/15/10 tier function FOUND, and its input
+
+Exhaustive rip-relative `comiss` scan over `.rdata` constants {5,10,15,20} (276 sites, OBS
+whole-image scan): **exactly one function compares three of the four tier boundaries** —
+`FUN_1407f7370` @0x1407f7370, at
+
+| site | constant | address (OBS, read from the image) |
+|---|---|---|
+| @0x1407f8a93 | **15.0** | `0x14259be0c` |
+| @0x1407f8f06 | **20.0** | `0x14259be1c` |
+| @0x1407f910b | **10.0** | `0x142588210` |
+| (@0x1407f8e24 | 65.0 — Stamina attribute ceiling | `0x14259be48`) |
+
+plus `30.0` (`0x142591140`), `12.8` (`0x1425ebc70`), `360.0` (`0x14259858c`, the angle wrap),
+`100.0`, `50.0`, `120.0`. OBS raw disassembly of the 20/10 block (@0x1407f8ec0–0x1407f9130)
+shows the pattern `comiss <tier>; jb skip` gating a `subss` of a work term — i.e. **each tier
+boundary gates a separate stamina-consuming action**, matching the `DASH_STAMINA_20_15`-style
+names.
+
+Call chain (all OBS):
+
+```
+FUN_140802b60                     (per-player AI decision, 3 call sites)
+  └─ FUN_140806f00                (the action chooser: 12 calls = 12 candidate actions)
+       └─ FUN_140808790           (evaluate one action)
+            └─ FUN_1407f7370      ← THE TIER/BAND FUNCTION (20/15/10 compares)
+```
+
+`FUN_140808790` reads `*(float*)(param_2 + 0x20)` (a per-player float — the stamina value's
+likely home) and `FUN_14081ec50(*(int*)(param_4+2))`, then calls `FUN_1407f7370` with
+`param_5 = deltaTicks` (`(short)(*local_88 - sVar2)`, a **frame/tick counter delta**) and
+`param_6 = fVar7 + fVar1` (a time value). Inside `FUN_1407f7370` the first thing done is a
+read of the match context: `FUN_140a57710(*(DAT_1436f3dc8 + 0x40))` → the player list, and
+`FUN_14081e460(*param_4)` + the `+0x20` float → wrapped into a **0..360° angle**
+(`DAT_14259858c` = 360.0). It also calls `FUN_140a48910`/`FUN_140a48a30(DAT_1436f3dc8, …)`
+(the roster getters), confirming this is the **on-ball player's action evaluation**.
+
+The stamina input is consumed as `*(float*)(param_2+0x20)` (the value the 20/15/10 compares run
+against, wrapped/normalised by the surrounding arithmetic). INF (med-high): **`FUN_1407f7370`'s
+`param_2+0x20` is the stamina field**, and the drains happen when the corresponding action is
+chosen.
+
+**What is still missing (exact):** the writer of `*(float*)(player+0x20)` used by
+`FUN_140808790` — i.e. the body of the action-execution path that runs after the choice
+(`FUN_140802b60`'s tail, which applies the chosen action). The drain term is there, as
+`stamina -= k × speed × dt` with `k` selected by the tier that `FUN_1407f7370` matched. Note
+that this is a **different object family** from the `FUN_141b0…` tick chain of §8.6 (that one is
+the presentation/entity layer); the AI stamina lives on the `FUN_1407f…`/`FUN_1408…` match
+objects, whose `param_1` base is the match context child.
+
+### 8.11 Pass 5 continued — the AI object graph, and what +0x20 really is
+
+Followed the `FUN_140808790`/`FUN_1407f7370` object family (all OBS):
+
+- `FUN_140802b60` (per-player AI decision) → `FUN_140806f00` (action chooser, 12 candidate
+  actions) → `FUN_140808790` → `FUN_1407f7370` (the 20/15/10 band function).
+- The action **execution** dispatch is `FUN_1406e47a0(param_1, param_2, param_3)` @0x1406e47a0 —
+  a 30-way switch on the action id (`uVar12`) that calls one of ~30 builders
+  (`FUN_1408145b0`, `FUN_140813010`, `FUN_14081b7b0`, `FUN_14081b360`, `FUN_14080fa80`,
+  `FUN_140810010`, `FUN_140814640`, `FUN_140819200`, `FUN_140817ad0`, `FUN_14081b950`,
+  `FUN_140816c80`, `FUN_140815be0`, `FUN_140815e00`, `FUN_140813330`, `FUN_1408108c0`,
+  `FUN_140810840`, `FUN_140816590`, `FUN_140813c10`, `FUN_140810650`, `FUN_14081c640`,
+  `FUN_140810510`, `FUN_140820c80`, …) which all build a **transient action state at
+  `param_1+0x2bc8`** and are gated by `*(float*)(param_1 + 0x2bf8) > 0.0`.
+- So `param_2+0x20` in `FUN_140808790` is the **action-state's X coordinate**, not the stamina
+  field: `FUN_1408145b0` writes `param_3[0x20] = 10.0` (`0x41200000`) as a literal constant,
+  and `FUN_140813010` writes `param_3[0x27]/[0x28]/[0x29]` from a **vector** computation.
+  OBS. The `FUN_14081b7b0` reader confirms it: it computes
+  `dx = *(param_1+8) - *(param_2+0x20)`, `dy = *(param_1+0x10) - *(param_2+0x28)`,
+  `r = hypot`, `f = r<5.0 ? r/5.0 : 1.0`, then `t = DAT_1425e5b3c / (ticks*3600.0)` with
+  `DAT_1425e5b3c` = **24000.0** (OBS) and `FUN_141e532d0()` = 54.0 — a **turn-rate**
+  calculation (`24000/(54*3600)`), i.e. `param_2+0x20/+0x28` is a target position.
+- The only live reader of the AI gate float is `FUN_140723320` @0x140723320, which reads
+  `param_1+0x2bf4/+0x2bf8/+0x2bfc` as a **position** and computes a nearest-teammate score
+  over the per-slot tables at `*(player+0x18) + 0x22e4c` (stride 200 bytes/slot, 0x74-byte
+  records inside) and `+ 0x228d4 + slot*0x58 → +0x16a8` (a per-slot float array — the
+  **angle/rating table**). OBS. Again geometry, not stamina.
+
+**Conclusion of the AI-object route:** the 20/15/10 compares in `FUN_1407f7370` run against a
+**wrapped angle/parameter** (`param_2+0x20` after the 360° wrap and `param_3`'s state), not
+against a stamina counter. The band function is the AI's **action-eligibility** test (as its
+callers suggest: 12 candidate actions each evaluated), and the stamina value itself is not on
+this object either. INF (med-high).
+
+**Therefore the stamina value is on the `FUN_141b0…` entity of §8.6/§8.9 after all** — that is
+the only object family whose per-player fields include both fixed-point ×1e6 timers and
+per-player scalars seeded from a descriptor singleton — and the drain is written by whichever
+per-tick function updates that entity's `+0x30/+0x34/+0x38` triple beyond the single
+conversion site already read at `FUN_141b970e0`. The candidate writers found are
+`FUN_141b92600` (colour/normalisation helper — OBS, verified by its output: it writes only
+`param_1[0..16]` byte-lane values, `255.0` flags and 5.6e-45) and `FUN_141b99b40` (writes
+`+0x34`). Neither is a drain; both are still unread in full.
