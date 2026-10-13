@@ -714,3 +714,42 @@ Two more OBS facts that make the next step mechanical:
 **Route B final check:** `*(u64*)0x1436F3DC8 == 0` and `DAT_14351ad20 == 0.0` (OBS, read once as
 instructed) — the game is still out of a match, so no 30 s drain-direction sample could be
 taken. All my sampling processes were already stopped in the previous pass and none were restarted.
+
+### 8.15 Pass 7 (2026-10-13) — runtime descriptor-map walk: the registry is empty outside a match
+
+Executed the read-only walk as instructed (live pid <pid>; dumps written to
+`~/ghidra-projects/scratch/StaminaStatic/class_registry.txt` and `tier_clusters.txt`):
+
+1. **`*(qword*)0x143736d38 = 0`, `*(qword*)0x143736cf8 = 0`, `*(qword*)0x143736d00 = 0`** (OBS, live).
+   The descriptor manager is **not instantiated outside a match** — exactly the "map is empty"
+   case the instructions said to stop on. Its last-known values survive only in the mid-match
+   dump (`0x1be0780`, `0x2171a80`, `0x1821300`), and those heap addresses are no longer backed by
+   a live object (they read as stale bytes from the old allocation).
+2. **What the stale objects actually were** (OBS, read live from the still-mapped arenas):
+   - `0x1821300` is the **FoxEngine class registry**, entries of **0x30 stride starting at
+     `+0x10`**: `{key48@+0x00, next@+0x08, -1@+0x10, 0x20@+0x18, value@+0x20, n@+0x28}` — 128+
+     entries enumerated and dumped. Key `0xd8fd1368c292` → value `0x142554b78` → the name
+     **"DataElement"**; the rest are `translation`, `rotQuat`, `scale`, `transform`,
+     `shearTransform`, `pivotTransform`, `worldMatrix`, `trapCategory`, `LuaScript`,
+     `GeoSearchBVH`, `vfx`, `geoms`… — i.e. **audio/geometry/script class descriptors, zero
+     `PLAY_DATA_*` entries** (grep for `stamina|fatigue|tired|condition|dash|shoot` over the
+    whole dump: 0 hits).
+   - The value pointers are **class-name strings in `.rdata`**, not float tables — so the
+     `FUN_1415dc1c0`/`FUN_1415dcdc0` lookups that `FUN_14163dbb0` and `FUN_1416245b0` use are
+     **class/DataElement lookups**, and the 0x100-byte block `FUN_14163dbb0` fills is a
+     *DataElement field table*, not stamina data. INF (high).
+   - `0x143ab5470` holds 8 identical `{key = 0xb8a0bf169f98, 0, 0, 1.0f}` records — the **default
+     template** for that DataElement's 8 slots. OBS.
+3. **Whole-memory search for a band table** (OBS, 1.3 GB of writable memory scanned, all regions
+   ≤32 MB): the byte pattern `20.0,15.0,10.0,5.0` (and reversed) appears **nowhere**. Searching
+   instead for the four values co-located within 64 B gives 115 clusters, but every one inspected
+   is a **red-black tree node set** (`{float key; colour; parent; left; right}` with 0x20 stride
+   and heap child pointers, e.g. `0x2bf784f0`, `0x1e360c08`, `0x1f9c4a20` — dumped) or unrelated
+   data. INF (med-high): **the tier thresholds are never stored as a contiguous float array**;
+   they exist only as *keys inside ordered maps*, which is also why the 20/15/10 compares found
+   in `FUN_1407f7370` are hard-coded against `.rdata` constants instead of a table.
+
+**Consequence:** the descriptor route cannot be closed statically or out-of-match. The
+`DASH_STAMINA` numbers are only materialised while a match is loaded (the registry object is
+heap-allocated at match start), so this route needs a live in-match read — it is the same single
+blocking input as Route B, not a separate one.
