@@ -23,6 +23,7 @@ constexpr uint64_t SPOT_BIAS_VA = 0x1425cc238;          // 0.06
 constexpr uint64_t SLIDE_GATE_RAMP_VA = 0x14259222c;    // 5.0
 constexpr uint64_t SLIDE_ALIGN_KNEE_VA = 0x14259be30;   // 45.0
 constexpr uint64_t SLIDE_ALIGN_RAMP_VA = 0x14259be84;   // -10.0
+constexpr uint64_t WHISTLE_HOLD_VA = 0x142572348;       // 0.8 (FUN_14050cd70's mulss)
 
 // Instructions whose immediates carry integer weights: {VA, opcode bytes,
 // immediate offset}. The opcode bytes are checked before the immediate is read,
@@ -45,6 +46,7 @@ constexpr Imm FALLEN_MIN_LOAD{0x143fa8557, {0x8b, 0x35}, 2};          // mov esi
 constexpr Imm FALLEN_MIN_KEY{0x143fa855d, {0x81, 0xf6}, 2};           // xor esi, key
 constexpr Imm JOSTLE_MAGIC{0x143fa857c, {0xb8}, 1};                   // mov eax, 2^(32+s)/20
 constexpr Imm JOSTLE_SHIFT{0x143fa8583, {0xc1, 0xea}, 2};             // shr edx, s
+constexpr Imm ADVANTAGE_SHIFT{0x14050b4fe, {0xc1, 0xe0}, 2};          // shl eax, s (gs << s)
 
 bool ReadFloat(const PeImage& exe, uint64_t va, float* out) {
   return exe.ReadVa(va, sizeof *out, reinterpret_cast<uint8_t*>(out));
@@ -101,7 +103,8 @@ std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string
                          {SPOT_BIAS_VA, &k.spotBias_m},
                          {SLIDE_GATE_RAMP_VA, &k.slideGateRamp_deg},
                          {SLIDE_ALIGN_KNEE_VA, &k.slideAlignKnee_deg},
-                         {SLIDE_ALIGN_RAMP_VA, &k.slideAlignRamp_deg}})
+                         {SLIDE_ALIGN_RAMP_VA, &k.slideAlignRamp_deg},
+                         {WHISTLE_HOLD_VA, &k.whistleHold_s}})
     ok &= ReadFloat(exe, va, out);
   if (!ok) {
     *error = "judge constant: .rdata float unreadable";
@@ -131,6 +134,10 @@ std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string
   k.fallenMinSpeedPoints = static_cast<int>(u32);
   if (!ReadImm(exe, JOSTLE_MAGIC, &magic, error) || !ReadImm(exe, JOSTLE_SHIFT, &shift, error))
     return std::nullopt;
+  uint8_t advantageShift = 0;
+  if (!ReadImm(exe, ADVANTAGE_SHIFT, &advantageShift, error)) return std::nullopt;
+  // gs << s frames at gs frames per second is 2^s seconds.
+  k.advantageWindow_s = std::ldexp(1.0f, advantageShift);
   // `mul magic; shr edx, s` divides by round(2^(32+s) / magic).
   k.jostleSpeedDivisor =
       static_cast<int>(std::lround(std::ldexp(1.0, 32 + shift) / static_cast<double>(magic)));
@@ -211,6 +218,30 @@ int JudgeLevel(const JudgeContact& c, const JudgeConstants& k) {
     if (c.dogso && level == RED) level = YELLOW;
   }
   return level;
+}
+
+bool InAdvantageDecisionWindow(float sinceContact_s, const JudgeConstants& k) {
+  constexpr float LAST_THIRD = 2.0f / 3.0f;
+  return sinceContact_s >= k.whistleHold_s * LAST_THIRD && sinceContact_s < k.whistleHold_s;
+}
+
+bool ShouldPlayAdvantage(int level, bool penalty, bool foulerBooked, float fouledNearest_m,
+                         float foulingNearest_m) {
+  constexpr int YELLOW = 3, RED = 4;
+  if (penalty || level >= RED) return false;
+  if (level == YELLOW && foulerBooked) return false;
+  // ponytail: PES also runs an attack-chance test (FUN_14050f7e0) for
+  // yellow-level fouls and fallen victims; not ported, the distance test alone
+  // decides.
+  return fouledNearest_m <= foulingNearest_m;
+}
+
+float AdvanceAdvantage(float remaining_s, float dt_s, bool fouledTeamHasBall,
+                       bool fouledTeamPassed) {
+  constexpr float PASS_COST_S = 1.0f;  // `adv_timer -= gs`: one second of frames
+  remaining_s -= fouledTeamHasBall ? 2.0f * dt_s : dt_s;
+  if (fouledTeamPassed) remaining_s -= PASS_COST_S;
+  return std::max(remaining_s, 0.0f);
 }
 
 }  // namespace pes

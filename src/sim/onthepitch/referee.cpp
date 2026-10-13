@@ -5,6 +5,8 @@
 
 #include "referee.hpp"
 
+#include <limits>
+
 #include "../data/playerskills.hpp"
 #include "simcontext.hpp"
 #include "AIsupport/AIfunctions.hpp"
@@ -15,7 +17,6 @@
 #include "matchprogression.hpp"
 #include "offsiderule.hpp"
 #include "setpiecelaws.hpp"
-#include "refereeprofile.hpp"
 
 // How long a match may sit with play off, nothing armed and the ball out of
 // play before the referee takes the ball's own position and restarts it. Long
@@ -59,7 +60,6 @@ Referee::Referee(Match* match) : match(match) {
 
   // Referee temperament, configurable per match; "standard" reproduces the
   // historical thresholds.
-  profile = RefereeProfile::Parse(GetConfiguration()->Get("referee_profile", "standard"));
 
   foul.foulPlayer = nullptr;
   foul.foulType = 0;
@@ -238,7 +238,7 @@ void Referee::Process() {
       }
     }
 
-    CheckFoul();
+    CheckFoul(true);
 
   } else {  // not in play, maybe something needs to happen?
 
@@ -686,9 +686,20 @@ int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction acti
   return FOUL_TYPE_FOR_LEVEL[level];
 }
 
+float Referee::NearestToBall_m(Team* team) const {
+  const Vector3 ball = match->GetBall()->Predict(0).Get2D();
+  float best = std::numeric_limits<float>::max();
+  for (const auto& p : team->GetAllPlayers())
+    if (p->IsActive()) best = std::min(best, (p->GetPosition() - ball).GetLength());
+  return best;
+}
+
 void Referee::RecordFoul(Player* tripee, Player* tripper, int foulType) {
   foul.foulType = foulType;
-  foul.advantage = CardBook::ShouldPlayAdvantage(tripper->GetCards(), foulType);
+  foul.advantage = false;
+  foul.advantageDecided = false;
+  foul.advantageRemaining_s = 0.0f;
+  foul.advantageLastToucher = nullptr;
   foul.foulPlayer = tripper;
   foul.foulVictim = tripee;
   foul.foulTime = match->GetActualTime_ms();
@@ -735,7 +746,7 @@ void Referee::CancelSetPiece() {
   match->StopSetPiece();
 }
 
-bool Referee::CheckFoul() {
+bool Referee::CheckFoul(bool heldWhistle) {
   bool penalty = false;
   if (foul.foulType != 0) {
     if (fabs(foul.foulPosition.coords[1]) < 20.15 - lineHalfW &&
@@ -744,26 +755,48 @@ bool Referee::CheckFoul() {
       penalty = true;
   }
 
-  if (foul.advantage) {
-    if (penalty) {
-      foul.advantage = false;
+  if (heldWhistle && foul.foulType != 0 && !foul.hasBeenProcessed) {
+    // PES 2021's advantage (docs/re/pes-re-duels-fouls.md 3).
+    const pes::JudgeConstants& k = match->GetPesJudgeConstants();
+    const float since_s = (match->GetActualTime_ms() - foul.foulTime) / 1000.0f;
+    Team* fouled = foul.foulVictim->GetTeam();
+    Team* fouling = foul.foulPlayer->GetTeam();
+    if (!foul.advantage) {
+      if (!foul.advantageDecided && pes::InAdvantageDecisionWindow(since_s, k)) {
+        foul.advantageDecided = true;
+        constexpr int LEVEL_FOR_FOUL_TYPE[] = {0, 1, 3, 4};
+        if (pes::ShouldPlayAdvantage(LEVEL_FOR_FOUL_TYPE[foul.foulType], penalty,
+                                     foul.foulPlayer->GetCards() > 0, NearestToBall_m(fouled),
+                                     NearestToBall_m(fouling))) {
+          foul.advantage = true;
+          foul.advantageRemaining_s = k.advantageWindow_s;
+          foul.advantageLastToucher = match->GetLastTouchPlayer();
+        }
+      }
+      // The whistle waits out the hold.
+      if (!foul.advantage && since_s < k.whistleHold_s) return false;
     } else {
-      if (match->GetActualTime_ms() - 600 > foul.foulTime) {
-        if (match->GetActualTime_ms() - RefereeProfile::GetAdvantageWindow_ms(profile) >
-            foul.foulTime) {
-          // The advantage ran its course: the free kick is waived, but Law 5
-          // keeps the sanction - a card-worthy foul is booked at the next
-          // stoppage.
+      Player* toucher = match->GetLastTouchPlayer();
+      const bool newTouch = toucher && toucher != foul.advantageLastToucher;
+      foul.advantageLastToucher = toucher;
+      if (newTouch && toucher->GetTeam() == fouling) {
+        foul.advantage = false;  // called back: the fouling team won the ball
+      } else {
+        // ponytail: every new fouled-team toucher counts as a pass or shot;
+        // PES counts its ball events of types 1..5.
+        foul.advantageRemaining_s = pes::AdvanceAdvantage(
+            foul.advantageRemaining_s, Match::kTick_ms / 1000.0f,
+            match->GetLastTouchTeam() == fouled, newTouch && toucher->GetTeam() == fouled);
+        if (foul.advantageRemaining_s <= 0.0f) {
+          // Advantage completed: no free kick, but a card is still owed and
+          // shown at the next stoppage.
           CardBook::OnAdvantageExpired(cardBook, foul.foulPlayer, foul.foulType, foul.foulTime);
           foul.foulPlayer = 0;
           foul.foulType = 0;
           foul.advantage = false;
-        } else {
-          // calculate if there's advantage still
-          if (foul.foulVictim->GetTeam()->GetFadingTeamPossessionAmount() < 1.0) {
-            foul.advantage = false;
-          }
+          return false;
         }
+        return false;
       }
     }
   }

@@ -10,11 +10,11 @@
 #include "cardbook.hpp"
 #include "defines.hpp"
 #include "pesjudge.hpp"
-#include "refereeprofile.hpp"
 
 using namespace blunted;
 
 class Match;
+class Team;
 
 struct RefereeBuffer {
   bool active;
@@ -41,6 +41,11 @@ struct Foul {
   Player* foulVictim;
   int foulType;  // 0: nothing, 1: foul, 2: yellow, 3: red
   bool advantage;
+  // PES's advantage (docs/re/pes-re-duels-fouls.md 3): decided once, in the
+  // last third of the whistle hold, then a clock that runs out or is called back.
+  bool advantageDecided = false;
+  float advantageRemaining_s = 0.0f;
+  Player* advantageLastToucher = nullptr;
   unsigned long foulTime;
   Vector3 foulPosition;
   bool hasBeenProcessed;
@@ -63,7 +68,9 @@ public:
   void TripNotice(Player* tripee, Player* tripper,
                   int tackleType);  // 1 == standing tackle resulting in little trip, 2 == standing
                                     // tackle resulting in fall, 3 == sliding tackle
-  bool CheckFoul();
+  // `heldWhistle`: the per-tick call in open play, which holds the whistle and
+  // runs the advantage; the out-of-play paths whistle a pending foul at once.
+  bool CheckFoul(bool heldWhistle = false);
 
   // Drops any queued restart. Used when the shootout takes over the pitch, so
   // no kick-off or goal kick is staged underneath it.
@@ -102,8 +109,7 @@ protected:
   // PES 2021's foul decision for one contact: this engine's foul type 0..3.
   int JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action);
   void RecordFoul(Player* tripee, Player* tripper, int foulType);
-
-  RefereeProfile::e_Profile profile;
+  float NearestToBall_m(Team* team) const;
 
   // Which period's added time has been announced already.
   e_MatchPhase addedTimeAnnouncedPhase;

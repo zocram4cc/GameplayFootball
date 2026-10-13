@@ -36,6 +36,8 @@ pes::JudgeConstants Synthetic() {
   k.cautionThreshold = 70;
   k.redThreshold = 100;
   k.spotBias_m = 0.05f;
+  k.whistleHold_s = 0.9f;
+  k.advantageWindow_s = 3.0f;
   return k;
 }
 
@@ -139,6 +141,30 @@ TEST(PesJudge, PenaltyAreaNeedsAFallAndCardsOnlyForDogso) {
   EXPECT_EQ(pes::JudgeLevel(c, k), 4);
 }
 
+TEST(PesJudgeAdvantage, DecisionOnlyInTheLastThirdOfTheHold) {
+  const auto k = Synthetic();
+  EXPECT_FALSE(pes::InAdvantageDecisionWindow(0.5f, k));
+  EXPECT_TRUE(pes::InAdvantageDecisionWindow(0.6f, k));
+  EXPECT_FALSE(pes::InAdvantageDecisionWindow(0.9f, k)) << "the hold is over: whistle";
+}
+
+TEST(PesJudgeAdvantage, NeverOnAPenaltyOrARedAndNotForABookedMansYellow) {
+  EXPECT_TRUE(pes::ShouldPlayAdvantage(1, false, false, 3.0f, 5.0f));
+  EXPECT_FALSE(pes::ShouldPlayAdvantage(1, true, false, 3.0f, 5.0f));
+  EXPECT_FALSE(pes::ShouldPlayAdvantage(4, false, false, 3.0f, 5.0f));
+  EXPECT_TRUE(pes::ShouldPlayAdvantage(3, false, false, 3.0f, 5.0f));
+  EXPECT_FALSE(pes::ShouldPlayAdvantage(3, false, true, 3.0f, 5.0f));
+  EXPECT_FALSE(pes::ShouldPlayAdvantage(1, false, false, 5.0f, 3.0f))
+      << "the fouling team is nearer the ball";
+}
+
+TEST(PesJudgeAdvantage, ClockRunsDoubleWithTheBallAndPassesBurnASecond) {
+  EXPECT_FLOAT_EQ(pes::AdvanceAdvantage(3.0f, 0.01f, false, false), 2.99f);
+  EXPECT_FLOAT_EQ(pes::AdvanceAdvantage(3.0f, 0.01f, true, false), 2.98f);
+  EXPECT_FLOAT_EQ(pes::AdvanceAdvantage(3.0f, 0.01f, true, true), 1.98f);
+  EXPECT_FLOAT_EQ(pes::AdvanceAdvantage(0.5f, 0.01f, false, true), 0.0f);
+}
+
 TEST(PesJudgeInstall, LoadsFromTheExe) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
@@ -155,6 +181,8 @@ TEST(PesJudgeInstall, LoadsFromTheExe) {
   EXPECT_GT(k->speedSpan_kmh, 0.0f);
   EXPECT_GT(k->jostleSpeedDivisor, 1);
   EXPECT_GT(k->spotBias_m, 0.0f);
+  EXPECT_GT(k->whistleHold_s, 0.0f);
+  EXPECT_GT(k->advantageWindow_s, k->whistleHold_s);
   // A from-behind slide at sprint speed that brings the man down is a card.
   pes::JudgeContact c;
   c.action = pes::JudgeAction::Slide;

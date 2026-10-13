@@ -51,6 +51,11 @@ struct JudgeConstants {
   // The spot bias of FUN_1405b6870: 6 cm towards the victim's own goal and the
   // touchline, so a contact on the box line is judged outside.
   float spotBias_m;            // 0.06
+  // Advantage (report 3): the whistle is held this long after a contact
+  // (FUN_14050cd70: floor(0.8*gs + 0.5) frames), and an advantage, once played,
+  // runs for this long (FUN_14050b490: GameSpeed << 2 frames).
+  float whistleHold_s;         // 0.8
+  float advantageWindow_s;     // 4
 };
 
 std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string* error);
@@ -82,5 +87,24 @@ int JudgeLevelFromPoints(int points, bool inAttackingBox, const JudgeConstants& 
 // The full decision: points, thresholds and the penalty-area overrides of
 // report 2.5 step 6. Returns the level 0..4.
 int JudgeLevel(const JudgeContact& c, const JudgeConstants& k);
+
+// --- Advantage (report 3) ---
+
+// The referee may only wave play on in the last third of the whistle hold
+// (FUN_14050ff50: hold <= holdFrames/3).
+bool InAdvantageDecisionWindow(float sinceContact_s, const JudgeConstants& k);
+
+// ShouldPlayAdvantage (FUN_14050ff50): never for a penalty or a red-level foul;
+// a yellow-level foul only when the fouler is not already booked; then the
+// fouled team's nearest man must be at least as close to the ball as the
+// fouling team's.
+bool ShouldPlayAdvantage(int level, bool penalty, bool foulerBooked, float fouledNearest_m,
+                         float foulingNearest_m);
+
+// One step of the advantage clock: it runs at double speed while the fouled
+// team has the ball, and every pass or shot of theirs burns a whole second
+// (gs frames, i.e. one second by construction).
+float AdvanceAdvantage(float remaining_s, float dt_s, bool fouledTeamHasBall,
+                       bool fouledTeamPassed);
 
 }  // namespace pes
