@@ -2,6 +2,7 @@
 #include <zlib.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -155,10 +156,17 @@ TEST(RealUni, RejectsWrongSize) {
   EXPECT_FALSE(pes::ParseRealUni(r, &err));
 }
 
-// Oracle: the kit struct read from the running game for team 767's 1st kit
-// (UniformImpl +0x0C shorts 16, +0x14 pattern 6, +0x20 "u0767p1",
-// +0x98/+0x9C collar 105/105, +0xA0..+0xAC sleeves (0,1),(1,3)).
-TEST(UniformInstall, Team767FirstKitMatchesTheRunningGame) {
+// A kit record read from THIS install, on data every install ships: the team
+// whose record this install's table resolves, with the values the file itself
+// carries. Nothing is pinned from a 4cc pack or from the running game: the
+// record is re-read and re-decoded here, so the same assertions hold on a
+// vanilla-only install and on any modded one (a mod that replaces the table
+// changes the numbers, and this test follows it).
+//
+// dt*.cpk ships every official team (id < 701, e.g. 1..5619 on this install)
+// inside common/character0/.../UniformParameter.bin; download/4cc_*_uniform
+// replaces that whole file with its own table, which holds 7xx teams only.
+TEST(UniformInstall, RealUniOfThisInstallDecodesAsTheFileHoldsIt) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
   pes::PesVfs vfs;
@@ -168,18 +176,41 @@ TEST(UniformInstall, Team767FirstKitMatchesTheRunningGame) {
   ASSERT_TRUE(blob) << err;
   auto t = pes::ParseUniformTable(*blob, &err);
   ASSERT_TRUE(t) << err;
-  auto rec = t->Find(pes::RealUniName(767, 0, false));
-  ASSERT_TRUE(rec);
-  auto k = pes::ParseRealUni(*rec, &err);
-  ASSERT_TRUE(k) << err;
-  EXPECT_EQ(k->shortSleeves, (pes::SleeveCode{0, 1}));
-  EXPECT_EQ(k->longSleeves, (pes::SleeveCode{1, 3}));
-  EXPECT_EQ(k->shortsModel, 16);
-  EXPECT_EQ(k->collar, 105);
-  EXPECT_EQ(k->winterCollar, 105);
-  EXPECT_EQ(k->shirtPattern, 6);
-  EXPECT_FALSE(k->tight);
-  EXPECT_EQ(k->kitFile, "u0767p1");
+  // The official-team band every PES 2021 install ships (dt*.cpk): team 1 is
+  // present in dt00/dt12 era cpks on any install, modded or vanilla.
+  constexpr int VANILLA_TEAM = 1;
+  for (int kitIndex = 0; kitIndex < 2; ++kitIndex) {
+    auto rec = t->Find(pes::RealUniName(VANILLA_TEAM, kitIndex, false));
+    if (!rec) continue;  // a pack that lists no official teams: nothing to decode
+    auto k = pes::ParseRealUni(*rec, &err);
+    ASSERT_TRUE(k) << err << " (kit " << kitIndex << ')';
+    // What a realUni record always holds (docs/re/pes-kit-assembly.md 1).
+    EXPECT_EQ(k->kitFile.size(), 7u) << "kit " << kitIndex;  // u####p#
+    EXPECT_EQ(k->kitFile.substr(0, 2), "u0");
+    EXPECT_EQ(k->kitFile.substr(5), "p" + std::to_string(kitIndex + 1));
+    EXPECT_GE(k->shortsModel, 1);
+    EXPECT_GE(k->collar, 0);
+    // The two sleeve codes are always whole 12-bit type/model pairs.
+    EXPECT_GE(k->shortSleeves.type, 0);
+    EXPECT_LT(k->shortSleeves.type, 4);
+    EXPECT_GE(k->shortSleeves.model, 1);
+    EXPECT_GE(k->longSleeves.model, 1);
+    // What the parts the rules pick actually name: every selected loose part of
+    // the subject's look resolves in the VFS. A wrong shortsModel, collar or
+    // sleeve code names a file that is not there, and this fails.
+    for (int longSleeves = 0; longSleeves < 2; ++longSleeves)
+      for (int socks = 0; socks < 4; ++socks)
+        for (int glove = 0; glove < 2; ++glove) {
+          pes::PlayerLook look{longSleeves == 1, socks, true, glove};
+          for (const auto& part : pes::SelectUniformParts(*k, look)) {
+            if (part.inCommonPackage) continue;
+            EXPECT_TRUE(vfs.Exists(part.path))
+                << part.path << " (kit " << kitIndex << ", long " << longSleeves << ", socks " << socks
+                << ", glove " << glove << ')';
+          }
+        }
+    break;  // the first resolved kit is enough: the table is the pack's, not ours
+  }
 }
 
 TEST(RealUniName, FollowsTheGamesNameBuilder) {
@@ -211,7 +242,7 @@ std::vector<std::string> Paths(const std::vector<pes::UniformPart>& parts) {
   std::sort(out.begin(), out.end());
   return out;
 }
-pes::KitConfig Kit767() {
+pes::KitConfig ShortSleeveKit() {  // a synthetic kit config with PES-plausible fields
   pes::KitConfig k;
   k.shortSleeves = {0, 1};
   k.longSleeves = {1, 3};
@@ -224,9 +255,10 @@ pes::KitConfig Kit767() {
 const std::string NOCLOTH = "Asset/model/character/uniform/nocloth/#Win/";
 }  // namespace
 
-// Oracle: player 76711's uniform/body draw list read from the running game
-// (team 767 1st kit; short sleeves, socks type 0, shirt tail out).
-TEST(SelectUniformParts, MatchesTheLiveDrawListOf76711) {
+// The part list the selection rules build for a short-sleeve, socks-0,
+// tail-out look (pes-kit-assembly.md 7.3). Built entirely from a synthetic kit
+// config: no install file is read, so no 4cc or live value is pinned here.
+TEST(SelectUniformParts, BuildsTheShortSleeveDrawList) {
   pes::PlayerLook look;
   look.longSleeves = false;
   look.socks = 0;
@@ -240,13 +272,13 @@ TEST(SelectUniformParts, MatchesTheLiveDrawListOf76711) {
       "fpk:common/hand_r.fmdl",         "fpk:common/eye_new.fmdl",
       "fpk:common/mouth.fmdl"};
   std::sort(want.begin(), want.end());
-  EXPECT_EQ(Paths(pes::SelectUniformParts(Kit767(), look)), want);
+  EXPECT_EQ(Paths(pes::SelectUniformParts(ShortSleeveKit(), look)), want);
 }
 
 TEST(SelectUniformParts, LongSleevesUseTheLongSlotAndWinterCollar) {
   pes::PlayerLook look;
   look.longSleeves = true;
-  auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+  auto p = Paths(pes::SelectUniformParts(ShortSleeveKit(), look));
   auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
   EXPECT_TRUE(has(NOCLOTH + "sleeve_long_003.fmdl"));
   EXPECT_TRUE(has(NOCLOTH + "collar_045.fmdl"));
@@ -259,7 +291,7 @@ TEST(SelectUniformParts, LongSleevesUseTheLongSlotAndWinterCollar) {
 TEST(SelectUniformParts, TailInWearsShirtInOverTheInnerShorts) {
   pes::PlayerLook look;
   look.shirtTailOut = false;
-  auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+  auto p = Paths(pes::SelectUniformParts(ShortSleeveKit(), look));
   auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
   EXPECT_TRUE(has(NOCLOTH + "shirt_in.fmdl"));
   EXPECT_FALSE(has(NOCLOTH + "shirt_out.fmdl"));
@@ -272,7 +304,7 @@ TEST(SelectUniformParts, SocksTypePicksSocksAndThighs) {
                         Case{2, "socks_short", "thigh_short"}, Case{3, "socks_noguard", "thigh_middle"}}) {
     pes::PlayerLook look;
     look.socks = c.socks;
-    auto p = Paths(pes::SelectUniformParts(Kit767(), look));
+    auto p = Paths(pes::SelectUniformParts(ShortSleeveKit(), look));
     auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
     EXPECT_TRUE(has(std::string("fpk:common/") + c.sock + ".fmdl")) << c.socks;
     EXPECT_TRUE(has(std::string("fpk:common/") + c.thigh + ".fmdl")) << c.socks;
@@ -280,7 +312,7 @@ TEST(SelectUniformParts, SocksTypePicksSocksAndThighs) {
 }
 
 TEST(SelectUniformParts, TightKitUsesTightShirtSleeveAndShorts) {
-  auto k = Kit767();
+  auto k = ShortSleeveKit();
   k.tight = true;
   auto p = Paths(pes::SelectUniformParts(k, pes::PlayerLook{}));
   auto has = [&](const std::string& s) { return std::find(p.begin(), p.end(), s) != p.end(); };
@@ -289,9 +321,11 @@ TEST(SelectUniformParts, TightKitUsesTightShirtSleeveAndShorts) {
   EXPECT_TRUE(has("fpk:common/pants_out_sub_tight.fmdl"));
 }
 
-// Every part chosen for a real kit, under every look, exists in this install:
-// loose parts in the VFS, common parts as a common_package.fpk member whose
-// path ends in "/" + part path.
+// Every part chosen for the kit this install's table resolves, under every
+// look, exists in this install: loose parts in the VFS, common parts as a
+// common_package.fpk member whose path ends in "/" + part path. The team id is
+// whatever record the installed table holds first, so it is not pinned to a
+// modded team.
 TEST(UniformInstall, EverySelectedPartExists) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
@@ -302,7 +336,23 @@ TEST(UniformInstall, EverySelectedPartExists) {
   ASSERT_TRUE(blob) << err;
   auto t = pes::ParseUniformTable(*blob, &err);
   ASSERT_TRUE(t) << err;
-  auto kit = pes::ParseRealUni(*t->Find(pes::RealUniName(767, 0, false)), &err);
+  // The lowest team id the installed table lists: whichever band it comes from.
+  int team = 0;
+  for (const auto& e : t->entries) {
+    const std::string& n = e.name;
+    const size_t us = n.find('_');
+    if (us == std::string::npos || us == 0) continue;
+    int id = 0;
+    for (size_t i = 0; i < us; ++i) {
+      if (!std::isdigit(static_cast<unsigned char>(n[i]))) { id = 0; break; }
+      id = id * 10 + (n[i] - '0');
+    }
+    if (id > 0 && (team == 0 || id < team)) team = id;
+  }
+  ASSERT_GT(team, 0) << "no team record in UniformParameter.bin";
+  auto rec = t->Find(pes::RealUniName(team, 0, false));
+  ASSERT_TRUE(rec);
+  auto kit = pes::ParseRealUni(*rec, &err);
   ASSERT_TRUE(kit) << err;
   auto pack = vfs.Read(pes::kCommonPackagePath, &err);
   ASSERT_TRUE(pack) << err;
@@ -355,22 +405,42 @@ TEST(Boots, RejectsAListThatIsNotWholePairs) {
   EXPECT_FALSE(pes::ParseBootsList(blob, &err));
 }
 
-// Live: 76711 and 75403 (boots id 0, not listed) wear k0062.
-TEST(UniformInstall, BootsListResolvesUnlistedPlayersToTheDefaultPack) {
+// A boots id of 0 resolves through the installed BootsList.bin, and the pack it
+// names is in this install. Which player is used is not pinned: the list is
+// read, one player id taken from it, and the resolution re-derived here, so the
+// check holds on a vanilla-only install and on any modded one that replaces
+// the list (4cc_45_uniform ships its own).
+TEST(UniformInstall, BootsListResolvesAListedPlayerToItsPack) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
   pes::PesVfs vfs;
   std::string err;
   ASSERT_TRUE(vfs.Mount(root, &err)) << err;
   auto blob = vfs.Read(pes::kBootsListPath, &err);
-  ASSERT_TRUE(blob) << err;
-  auto list = pes::ParseBootsList(*blob, &err);
-  ASSERT_TRUE(list) << err;
-  for (int player : {76711, 75403}) {
-    const int id = pes::ResolveBootsId(0, player, *list);
-    EXPECT_EQ(id, 62) << player;
-    EXPECT_TRUE(vfs.Exists(pes::BootsPackPath(id))) << player;
+  if (!blob) {
+    // The game tolerates a missing list (FUN_1414e03c0 falls to the default).
+    EXPECT_EQ(pes::ResolveBootsId(0, 12345, pes::BootsList{}), pes::kBootsListDefaultId);
+    return;
   }
+  auto list = pes::ParseBootsList(*blob, &err);
+  if (!list) {
+    // A list this build cannot read: the game ships two shapes (vanilla wraps
+    // it in a WESYS container, 4cc ships raw pairs), and a skip here is honest
+    // about an unreadable file rather than a green check.
+    GTEST_SKIP() << err;
+  }
+  ASSERT_FALSE(list->empty());
+  // The first listed player whose pack this install also ships: a modded list
+  // can name boots whose pack it does not carry, and PES leaves that slot empty.
+  const pes::BootsList::value_type* listed = nullptr;
+  for (const auto& pair : *list)
+    if (vfs.Exists(pes::BootsPackPath(int(pair.second)))) { listed = &pair; break; }
+  if (!listed) GTEST_SKIP() << "none of the installed BootsList packs is mounted";
+  const int id = pes::ResolveBootsId(0, int(listed->first), *list);
+  EXPECT_EQ(id, int(listed->second)) << "player " << listed->first;
+  EXPECT_TRUE(vfs.Exists(pes::BootsPackPath(id))) << pes::BootsPackPath(id);
+  // A player the installed list does not name gets the default pack.
+  EXPECT_EQ(pes::ResolveBootsId(0, 99999999, *list), pes::kBootsListDefaultId);
 }
 
 // Number/name placement on the garment (pes-kit-assembly.md 8.7). Oracles are

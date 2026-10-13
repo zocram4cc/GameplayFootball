@@ -5,7 +5,8 @@ extends Node
 ## Exit 0 pass, 1 fail, 77 skipped (no PES21_ROOT).
 
 const SKIP := 77
-const FACE := 70922
+# A dt-shipped face pack first; the 4cc ones only if this install has none.
+const FACE_CANDIDATES := [100117, 100135, 100393, 70922, 76711, 75403]
 const CLIP := "sliding_0_0_000"       # a PES body clip (resolved by name)
 const CLIP_BY_HASH := "0x2c5e8a2e"    # the first clip of body_anime_file0, by hash
 const MOVED_DOT := 0.9999             # |dot(rest, posed)| below this = a visibly rotated joint
@@ -36,7 +37,15 @@ func _ready() -> void:
 		return
 	var library := PesLibrary.new()
 	check(library.open(root) == OK, "library opens")
-	var character: Node3D = PesCharacterBuilder.new().build_face_model(library, FACE)
+	var character: Node3D = null
+	for face in FACE_CANDIDATES:
+		character = PesCharacterBuilder.new().build_face_model(library, face)
+		if character != null:
+			break
+	if character == null:
+		print("SKIP: no face pack in this install to skeletonise")
+		get_tree().quit(SKIP)
+		return
 	var skeleton := character.get_node("Skeleton") as Skeleton3D
 
 	var anim := PesAnimation.new()

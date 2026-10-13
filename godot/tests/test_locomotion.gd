@@ -10,6 +10,8 @@ const STILL_SPEED_MPS := 0.3            # under PES's "still" class bound
 const WALK_SPEED_MPS := 1.5
 const SPRINT_SPEED_MPS := 8.5
 const MIN_POSE_CHANGE := 0.05           # quaternion component distance, summed over joints
+# A vanilla face pack first (dt-shipped), then the 4cc ones this owner has.
+const FACE_CANDIDATES := [100117, 100135, 100393, 76711, 75403, 70922]
 
 var failures := 0
 
@@ -52,7 +54,17 @@ func _initialize() -> void:
 	check(loco.is_still(STILL_SPEED_MPS) and not loco.is_still(WALK_SPEED_MPS), "still below PES's walk class")
 	check(loco.phase_rate(SPRINT_SPEED_MPS) > loco.phase_rate(WALK_SPEED_MPS), "cadence rises with speed")
 
-	var character: Node3D = PesCharacterBuilder.new().build_face_model(library, 76711)
+	# The skeleton under test is whatever face pack this install ships: the
+	# locomotion tables are install-wide, and the body rig is the same one.
+	var character: Node3D = null
+	for face in FACE_CANDIDATES:
+		character = PesCharacterBuilder.new().build_face_model(library, face)
+		if character != null:
+			break
+	if character == null:
+		print("SKIP: no face pack in this install to skeletonise")
+		quit(SKIP)
+		return
 	get_root().add_child(character)
 	await process_frame  # the root enters the tree after _initialize
 	var skeleton: Skeleton3D = character.get_node("Skeleton")

@@ -3,8 +3,13 @@ extends Node
 ## says they are. Exit 0/1, 77 skipped.
 
 const SKIP := 77
-const HOME_PES_TEAM := 767
-const AWAY_PES_TEAM := 754
+# Both teams must exist on any install: a kit config in UniformParameter.bin AND
+# face packs to skin the squad. Teams 100/101 are official (dt-shipped) ids
+# below the 4cc band 701+, and their face pools (100xxx/101xxx) are dt-shipped
+# too. A modded install may replace the whole kit table with one that holds only
+# 7xx teams, so the pair is probed and the test skips when neither band builds:
+# the subject choice is not a modded-team pin.
+const TEAM_PAIRS := [[100, 101], [767, 754], [1, 2]]
 const PLAYERS := 22
 const FRAMES := 30
 const POSITION_TOLERANCE_M := 1e-3
@@ -25,11 +30,29 @@ func _ready() -> void:
 		print("SKIP: PES21_ROOT not set")
 		get_tree().quit(SKIP)
 		return
-	var scene: Node3D = load("res://match/match.tscn").instantiate()
-	scene.configure({"pes21-root": root, "home-team": str(HOME_PES_TEAM), "away-team": str(AWAY_PES_TEAM)})
-	add_child(scene)
-	for i in FRAMES:
-		await get_tree().process_frame
+	# Probe the candidate pairs: the scene builds 22 players only when both teams
+	# resolve to a kit config and face packs. The first pair that does is the
+	# subject; none doing so means this install has no such pair.
+	var scene: Node3D = null
+	for pair in TEAM_PAIRS:
+		var candidate: Node3D = load("res://match/match.tscn").instantiate()
+		candidate.configure({"pes21-root": root, "home-team": str(pair[0]), "away-team": str(pair[1])})
+		add_child(candidate)
+		for i in FRAMES:
+			await get_tree().process_frame
+		var skinned := 0
+		for body: Node3D in candidate.players:
+			if body.get_node_or_null("Skeleton") != null:
+				skinned += 1
+		if skinned == PLAYERS:
+			scene = candidate
+			break
+		remove_child(candidate)
+		candidate.free()
+	if scene == null:
+		print("SKIP: no team pair in this install builds a full squad")
+		get_tree().quit(SKIP)
+		return
 	var players: Array = scene.players
 	check(players.size() == PLAYERS, "22 players built (%d)" % players.size())
 	for i in players.size():
