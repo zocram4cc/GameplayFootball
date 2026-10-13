@@ -23,6 +23,7 @@ address given.
 |`pes-re-marking-pixels.md`|texel-exact marking rasterisation: digit cells, name layout, the leg-number transform, armband and badges|
 |`pes-re-markings.md`|numbers, names, captain armband, badges, GK and referee kits|
 |`pes-re-collision.md`|`.frig` format (incl. the hand unit map), ball/player capsules, contact data|
+|`pes-re-face-rig.md`|the face rig (face_anim_skel.ask and its repair), the 181 face clips and their channels, and the edit-face composition|
 |`pes-re-face.md`|real-face and edit-face heads, `face_diff.bin`|
 |`pes-re-camera-target.md`|Dynamic Wide camera internals: focus and its lead, target.y lift, the k spring, clamp blend, the zoom/height sliders, mode ids|
 |`pes-re-pitch-grass.md`|the pitch, line and turf shaders as port-ready formulas, verified numerically against the compiled DXBC|
