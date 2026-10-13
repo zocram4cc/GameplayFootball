@@ -71,8 +71,8 @@ Names used below:
 
 `FUN_1405027a0(ctx, team, side, …, p5, p6, p7)` loops over the 11 players of `team` and writes a frame
 count into `team+0x6a4[i]` and `team+0xb860[i]` (both as int). It runs only in play (`MI+0x116c == 1`).
-Per player, the start value is `⌊0.6·gs⌋ − (⌊0.2·gs⌋ + base)` scaled by two factors from `FUN_140503430`
-(INF: a distance/role term), then:
+Per player the start value is `(⌊0.6·gs⌋ − ⌊0.2·gs⌋ − base)·k1·k2 + base` with `base, k1, k2` from
+`FUN_140503430` (INF: distance/role terms), then:
 
 ```
 stat  = (attacking side) ? ability[+0x14] : ability[+0x15]      # record = FUN_14124dad0(ai(i));  0x14 OA, 0x15 DA (INF hi, matchlogic §1.3)
@@ -80,14 +80,14 @@ t    += (int)( (99 − clamp(stat, 50, 99)) / (49 / (float)(int)(gsInt · 0.2)) 
 ```
 
 i.e. up to **0.2 s of extra delay for a 50-rated player, 0 for 99**. There is **no random term** (the EXT
-"49 / rand" is wrong: the divisor is `⌊0.2·gs⌋` frames). The other multipliers named by the EXT
-(`×0.5`, `×0.4/0.5`, `×0.2/0.8`, …) are the constants 0.5 (0x142565600), 0.4 (0x14259b89c), 0.2, 0.8
-(0x142572348), 0.3 (0x142590d98) applied to the same delay in this function by situation (non-pass
-trigger ×0.5; event 3 with sub-kind 3/4 ×0.5; team tactic flags 0xb/0xc ×0.3; player type 0x33 ×0.5 or ×0.4;
-distance-based ×0.2 / ×0.8; a 10/15/25/32-frame-per-second addition by formation role for the defending
-side). **INF(hi): this is the "who reacts first" decision latency of every AI player, not a duel
-resolution.** The final value is clamped to `≥ team+0x6a4[i]` (never shortens a running delay) and
-`+0.5` frame.
+"49 / rand" is wrong: the divisor is `⌊0.2·gs⌋` frames). The other multipliers named by the EXT are the
+constants 0.5 (0x142565600), 0.4 (0x14259b89c), 0.2 (0x142598578), 0.8 (0x142572348), 0.3 (0x142590d98),
+applied to the same delay in this function by situation (`p5 == 0` ×0.5; newest event 3 with sub-kind 3/4
+×0.5; team-situation flags 0xb/0xc (`FUN_140a63950`) ×0.3; AI state 0x33 ×0.5 (`p5 == 0`) or ×0.4;
+marking-target cases ×0.2; a range-ratio term `t −= 0.2·t·r`; plus `(gs/48)·{30, 25, 15, 10, per-player}`
+frames by formation role for the side without the ball). **INF(hi): this is the "who reacts first"
+decision latency of every AI player, not a duel resolution.** Values in (0, 1) become 1, others get +0.5,
+and the result never drops below the running value `team+0x6a4[i]`.
 
 ### 1.2 How a ball duel is actually resolved (OBS + INF)
 
@@ -166,7 +166,8 @@ and B to `MI+0x1590`.
 
 `points = P_angle(A,B) + P_speed(A,B) + P_action(A,B)` (u8 sum).
 
-**P_angle** — protected `0x143f738a0` (thunk `0x14050b…`; read live, = disk). `θ` = `ai(B)+0x12a0` (B's approach
+**P_angle** — protected `0x143f738a0` (reached through a 5-byte `jmp` thunk from `FUN_1405b7470`; read live,
+identical on disk). `θ` = `ai(B)+0x12a0` (B's approach
 angle to A, degrees) when B targeted A, else 0. `W = 40` (max points) except: B in JOSTLE (0x48) with flag
 bit 34 → `W = 2`; B tackling (0xd or flag bit 16) with sub-kind 2 → `W = 20`.
 - default / jostle / tackle sub-kind ≠ 3: `p = clamp((θ − 40)/140, 0, 1)` (θ ≥ 180 ⇒ 1, θ ≤ 40 ⇒ 0);
@@ -295,11 +296,12 @@ second yellow" (straight reds exist, §2.5 steps 1 and 6).
 ### 2.8 Simulation (dive) (OBS `FUN_1405b83b0`)
 
 When the ball player (or last toucher) is in action **DIVE 0xf** outside his own box:
-- if the nearest opponent (`ctx+0x22e4c` table) really made contact — opponent sliding/tackling with the clip's
-  contact frame reached, timing window `+0x1c + 3·gs/54 (+12·gs/54 for slides)` and distance < **1.25 m**, or a
-  moving opponent within 1.0 m — the dive is a **real foul** by that opponent: kind 2, level 1, no advantage
-  (`+0x48 = 1`), FK/PK by the spot;
-- otherwise a roll `r < 5` (10 for action-property bit 15; halved in the box) would also give the foul. The
+- if the nearest opponent (`ctx+0x22e4c` table) is sliding (0xb/0xc) or tackling (0xd), his clip has reached
+  its contact frame, the frame is within `+0x1c + 3·gs/54` (+`12·gs/54` more for slides) and the distance is
+  < **1.25 m**, the dive is a **real foul** by that opponent: kind 2, level 1, no advantage (`+0x48 = 1`),
+  FK, or PK in the opponent's box;
+- otherwise (opponent in another action and moving within 1.0 m → threshold 5; diver's action-property bit 15
+  → threshold 10; halved in the box) a roll `r < threshold` would also give the foul. The
   RNG object is constructed on the stack with fixed seeds `0x2f3d0..0x2f3d3` on every call (`FUN_140a923f0`),
   so the first draw is always `r = ⌊(0x7e3b73a3 / 2³¹)·100⌋ = 98` → **never**: the diver gets **kind 3
   (indirect FK) + yellow** (`level 3`), victim 0xff, spot = diver's position.
@@ -353,8 +355,9 @@ elif adv_timer > 0:
   is not a 1..3/5..7 event (with extra slack +10 m / +5 m on the two distance tests, and when ≤ 5 frames
   remain); true otherwise.
 - **DelayWhistle** (`FUN_14050dd10`): for contact fouls (kind 2) and offside category 2, the whistle is held
-  while the ball event is < 5 frames old or while the fouled team's key player is in SHOOT (10) / AI state
-  0x19 — the referee lets a shot finish before blowing.
+  while the newest ball event is < 5 frames old, while it is of type 5 (INF: a shot) or `FUN_14050d7f0` holds,
+  or while the fouled team's ball player / key player is in SHOOT (10) or AI state 0x19 — the referee lets a
+  shot finish before blowing.
 - **Late card** (OBS `FUN_1405103e0` + `FUN_14050de50`; link via the Flow demo code `FUN_14047b460` INF(med)):
   when a yellow-level foul is let go, `judge+0xa8 = 1`, `+0xac` fouler, `+0xb0` victim, `+0xc0` frame and a
   snapshot are stored; at the next stoppage `FUN_14050de50` writes `JR+0x3c = fouler`, `JR+0x38 = 3` (yellow),
@@ -413,10 +416,10 @@ is now involved) → `FUN_1405b6660` (SetPending). With a pending kind-1 foul it
 1. Not in play → no.
 2. **p made the newest ball event → yes** (receives / plays the ball).
 3. Ball free or at p's feet and the newest event is not of type 5/10/13/14: **interfering with the keeper** —
-   when the opposing keeper is in a save/dive action (0x38–0x3a, 0x3c/0x3d) or the ball is heading for the
-   goal, the ball and both bodies are stepped forward 2 frames at a time (frames < 250) with
-   `FUN_140a907c0`/`FUN_140a90d80`; if the ball path meets p, p is within **3 m** of the keeper, and the
-   keeper→p and keeper→ball bearings differ by < **15°** → yes (debug tag `RetryAuto_OFFSIDE_DISTURB_KEEPER`).
+   when the opposing keeper (`FUN_140a62690(other team)`) is in a save action (0x38–0x3a, 0x3c/0x3d) and the
+   ball is within 2 m of him or its velocity is within 120° of the ball–keeper line, the save is simulated forward in 2-frame steps
+   (≤ 250 clip frames; `FUN_140a75740`, `FUN_140a907c0`, `FUN_140a90d80`); then **p within 3 m of the keeper
+   and keeper→p vs keeper→ball bearings < 15° apart → yes** (debug tag `RetryAuto_OFFSIDE_DISTURB_KEEPER`).
 4. Less than `gs/2` frames since the newest ball event → not yet.
 5. If p is not his team's key player (`team+0x78`): only when the ball is ≤ **3.0 m** high and p is within
    **8 m** of it (**20 m** when the ball is above 0.5 m) (`FUN_14044e0d0`), else no.
@@ -434,11 +437,15 @@ level tolerance) was not found. Tried (all negative): every instruction with dis
 `FUN_14045e0d0`, `FUN_140457de0`, `FUN_1404b43d0`, `FUN_1405afca0`, the stats observer `FUN_140a23c10`/
 `FUN_140a2e2c0`); the same displacements/immediates in the whole on-disk protected region (`xscan.py`,
 `xscan2.py`); `lea`/`add` of 0x25320–0x25520 bases (`+0x25378` is a 2×33 byte grid, `+0x25320` a ball-event
-list); the line-sort writer `FUN_14044e230`. INF(med): the bits are written through a pointer to a sub-object
-(base below 0x253bc) or by a bulk copy of the analysis object. Next: read-only live sampling of
-`MA+0x253b0..0x25510` around a pass that ends offside (gives the frame and category semantics), then a
-data-flow search for stores whose base register is `MA` plus a small displacement (e.g. a sub-object at
-`MA+0x25378` written as `[r+0x44]`/`[r+0x4c]`).
+list); the line-sort writer `FUN_14044e230`; the staged analysis job `FUN_1404b2800` (writes `MA+0x24fe8/
+0x250f0/0x2594c..`, not the flags); a robust byte search for the 32-bit values 0x253b4..0x253d4/0x254ec in
+`.text` (`immfind.py`, catches index-only and immediate forms: readers only). INF(med): the block is a
+sub-object `S = MA+0x25378` (`+0x00` 2×33-byte grid filled by `FUN_140462470`, `+0x44` flag frame[2], `+0x4c`
+bits[2][4], `+0x174` float[2], `+0x184` snapshot) whose writer uses `this`-relative displacements, or it is
+bulk-copied. Next: read-only live sampling of `MA+0x253b0..0x25510` around a pass that ends offside (`MA`
+is reachable only while the Judge runs: `*( **(Flow+0x17860) + 0x18 )` is null at rest — sample
+`MA` via the analysis job object `*(job+8)` instead), then a search for `[r+0x44]`/`[r+0x4c]` stores in
+functions whose `this` is `S`.
 GF recommendation (rule-faithful, unchanged from the choreography report): flag at the pass/touch frame,
 attacker strictly ahead of both the ball and the second-last opponent in the opponents' half; level = onside;
 call only on involvement per §5.2.
@@ -463,6 +470,25 @@ Both levels agree with §2.4: 88 ∈ [80, 110) → 3 outside the box (|x| = 31.9
 `judge+0x3b8/+0x3c0` are 0 between frames (the context is bound per call by `FUN_14050b2b0`), so the
 match-analysis object for the offside bits could not be reached from the Judge at rest.
 
+### 6.1 MI fields across real stoppages (`watch.py`, 20 min at 20 Hz, `watch_log.txt`; OBS)
+
+Two fouls (no offside occurred in the window):
+
+| t (s) | period | MI frame | `0x1554` restart | `0x1558` side | spot `0x155c/0x1564` | `0x1574` | **`0x1588` kind** | **`0x158c` card** | `0x1590` fouler | `0x1594` victim | `0x15a4` | `0x15b4` | `0x15b8` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 210.6 | 3 | 35816 | 5 FK | 0 | (−31.94, 10.16) | 5 | **2** | **3 yellow** | 12 | 10 | 0 | 4 | 0 |
+| 938.1 | 1 | 14641 | 5 FK | 0 | (32.16, 16.08) | 5 | **2** | **1** | 18 | 5 | **1** | 4 | 0 |
+
+- The first stop is the Judge record of §6 (same players, spot to the last digit, level 3 = card 3, 88 points):
+  **the whistle came 61 frames after the foul stamp** (`+0x40` = 35755 → stop 35816; 1.13 s at the 1/54 s
+  tick that `pes_state.py` reports as `step=0.018519`), i.e. the 43-frame hold `⌊0.8·54+0.5⌋` plus 18 frames of
+  DelayWhistle / advantage evaluation.
+- The second stop has `MI+0x15a4 = 1`: an **advantage that was called back** (§3), card 1 (plain foul).
+- Confirms: direct-foul kind = 2; card = level; side = the fouled team (0 here; fouler ids 12/18 are team 1);
+  `MI+0x15b4 = 4` for contact fouls; `MI+0x15b8 = 0` (§2.5 step 4).
+- Other stops in the log follow `FUN_14050e770`'s callers: corner `(4, reason 4)` at (−51.78, −33.61), throw-in
+  `(2, reason 4)` on the touch line z = 34.31, goal → kick-off `(1, reason 3)`, period end `(7, reason 1)`.
+
 ---
 
 ## 7. Open items (what was tried)
@@ -481,8 +507,8 @@ match-analysis object for the offside bits could not be reached from the Judge a
    `pes15Test.o` (`moveContact`, `paraDiff margin`, `speedDiff`, `tackleResultSetAnime`, `protectAuto1..5`)
    and `contact.o`, `tackle.o`, `sliding.o`, `pairAnime.o` blobs were dumped (`constant_*.bin`, `ctbl.py`)
    but not mapped to keys (nested objects; the key strings are at 0x142b4ec00..0x142b4f040).
-6. **Live foul/offside capture** with `MI+0x1588..0x15b8` changing: `watch.py` (20 min) — result in §6.1 when
-   available.
+6. **Live offside capture**: none in 20 min of `watch.py`; rerun with `watch.py` + `jsnap.py` (judge record
+   `+0x14` will show kind 1 and the category in `+0x50`).
 7. `JR+0xd08` (set on an advantage call-back; outside the MI copy range) consumer: not traced.
 
 ---
