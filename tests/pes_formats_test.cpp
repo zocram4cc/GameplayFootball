@@ -217,7 +217,10 @@ TEST(PackRules, TextureStemDropsDirectoryAndExtension) {
 // ---- against the user's install ----
 namespace {
 
-constexpr int NICO_FACE = 70922;  // a head pack: face_high.fmdl with a kit-slot cap
+// A face id present in vanilla dt data (dt36_g4), and the ids this install's
+// download packs add on top of it: content no download folder ships.
+constexpr int VANILLA_FACE = 100117;  // 303.0K pack, 7 mesh materials, all skins
+constexpr int DOWNLOAD_FACE = 70922;  // a 4cc head: face_high.fmdl with a kit-slot cap
 
 const pes::PesVfs* Install() {
   static pes::PesVfs vfs;
@@ -244,13 +247,40 @@ std::optional<pes::Fmdl> FaceHigh(const pes::PesVfs& vfs, int face) {
   return std::nullopt;
 }
 
+// The head pack's own skins, checked on data every install ships. The 4cc face
+// packs replace the whole material set (player/kit/outline, fox_3ddf_constant),
+// so what they cover is checked separately below.
+const std::vector<std::string>& HeadPackMaterials() {
+  static const std::vector<std::string> kMaterials = {"fox_skin_mat", "eyeline_SG", "collar_ao",
+                                                      "fox_eyeOcclusion_mat", "fox_eyelash_mat"};
+  return kMaterials;
+}
+
+// The mount report names each source "download <name>  <n> entries" for a cpk
+// that mounted and "download  no DpFileList.bin, skipped" when the install has
+// no download folder, so the marker "download " followed by a file name tells
+// the two apart.
+bool HasDownloadMounts(const std::string& report) {
+  const std::string skipped = "download  no DpFileList.bin";
+  std::string::size_type at = report.find("download ");
+  while (at != std::string::npos) {
+    const std::string::size_type end = report.find('\n', at);
+    const std::string line = report.substr(at, end == std::string::npos ? std::string::npos : end - at);
+    if (line.rfind(skipped, 0) != 0) return true;
+    at = report.find("download ", end == std::string::npos ? std::string::npos : end);
+  }
+  return false;
+}
+
 }  // namespace
 
 TEST(FmdlInstall, MeshesAreConsistent) {
   REQUIRE_INSTALL();
-  auto m = FaceHigh(*vfs, NICO_FACE);
-  ASSERT_TRUE(m);
-  ASSERT_EQ(m->meshes.size(), 4u);
+  auto m = FaceHigh(*vfs, VANILLA_FACE);
+  ASSERT_TRUE(m) << pes::FacePackPath(VANILLA_FACE);
+  ASSERT_EQ(m->materials.size(), HeadPackMaterials().size());
+  for (size_t i = 0; i < m->materials.size(); ++i)
+    EXPECT_EQ(m->materials[i].name, HeadPackMaterials()[i]) << "material " << i;
   constexpr float UNORM8_WEIGHT_SUM_TOLERANCE = 4.0f / 255.0f;  // four rounded unorm8 weights
   for (const auto& mesh : m->meshes) {
     ASSERT_FALSE(mesh.pos.empty());
@@ -263,40 +293,76 @@ TEST(FmdlInstall, MeshesAreConsistent) {
   }
 }
 
-// The pack is a head: every vertex sits between neck and crown height.
+// The pack is a head: every vertex sits between the collar shell and the
+// crown. The collar AO mesh (collar_ao, a neck-blend decal) is the lowest
+// part of the pack, measured at y = 1.38537 on face 100117; the crown limit
+// is generous enough for long hair (skin itself stops at 1.80).
 TEST(FmdlInstall, HeadPackSpansNeckToCrown) {
   REQUIRE_INSTALL();
-  auto m = FaceHigh(*vfs, NICO_FACE);
-  ASSERT_TRUE(m);
-  constexpr float NECK_Y_M = 1.4f, CROWN_Y_M = 2.0f;
+  auto m = FaceHigh(*vfs, VANILLA_FACE);
+  ASSERT_TRUE(m) << pes::FacePackPath(VANILLA_FACE);
+  constexpr float COLLAR_Y_M = 1.38f, CROWN_Y_M = 2.0f;
   for (const auto& mesh : m->meshes)
     for (const auto& p : mesh.pos) {
-      ASSERT_GT(p.y, NECK_Y_M);
+      ASSERT_GT(p.y, COLLAR_Y_M);
       ASSERT_LT(p.y, CROWN_Y_M);
     }
-  EXPECT_EQ(m->materials[0].name, "player");
+  EXPECT_EQ(m->materials[0].name, "fox_skin_mat");
+  EXPECT_EQ(m->materials[0].technique, "pes3DDF_Skin_Face");
+  EXPECT_NE(m->materials[0].shader.find("skin"), std::string::npos);
+}
+
+// A 4cc head pack: cubemap-free constant-shader skin, and the kit slot the
+// material table names but the pack never textures. Only a download/ install
+// ships this content, so it skips when the pack is absent.
+TEST(FmdlInstall, DownloadHeadPackUsesTheConstantShader) {
+  REQUIRE_INSTALL();
+  auto m = FaceHigh(*vfs, DOWNLOAD_FACE);
+  if (!m) GTEST_SKIP() << "no download face pack " << pes::FacePackPath(DOWNLOAD_FACE);
+  ASSERT_EQ(m->materials[0].name, "player");
+  EXPECT_EQ(m->materials[0].technique, "fox3DFW_ConstantSRGB_Plain");
   EXPECT_NE(m->materials[0].shader.find("constant"), std::string::npos);
 }
 
+// The stored directory of every official face texture maps into the VFS:
+// /Assets/pes16/ -> Asset/, #windx11/ before the file name, .dds -> .ftex.
+// This is a vanilla mapping: dt data stores the same /Assets/pes16/ prefix.
 TEST(TextureResolverInstall, StoredDirectoryMapsIntoVfs) {
   REQUIRE_INSTALL();
-  pes::TextureResolver r(*vfs, NICO_FACE);
-  EXPECT_EQ(r.Resolve({"/Assets/pes16/model/character/face/real/70922/sourceimages/", "nico.dds"}),
-            "Asset/model/character/face/real/70922/sourceimages/#windx11/nico.ftex");
+  pes::TextureResolver r(*vfs, VANILLA_FACE);
+  const std::string dir = "/Assets/pes16/model/character/face/real/" + std::to_string(VANILLA_FACE) + "/sourceimages/";
+  EXPECT_EQ(r.Resolve({dir, "face_nrm.dds"}),
+            "Asset/model/character/face/real/" + std::to_string(VANILLA_FACE) + "/sourceimages/#windx11/face_nrm.ftex");
   EXPECT_EQ(r.Resolve({"/Assets/pes16/nowhere/", "no_such_texture_anywhere.dds"}), "");
+}
+
+// A texture stored in a directory that has no #windx11 twin still resolves from
+// its own pack folder: common/sourceimages holds .tga paths in vanilla. The kit
+// atlas a0150p1.ftex lives in uniform/texture/#windx11/ and its stem appears
+// nowhere else, so the stem-scan fallback cannot stand in: only the mapping
+// produces this exact path.
+TEST(TextureResolverInstall, PlainDirectoryResolvesThroughThePlatformSuffix) {
+  REQUIRE_INSTALL();
+  pes::TextureResolver r(*vfs, VANILLA_FACE);
+  EXPECT_EQ(r.Resolve({"/Assets/pes16/model/character/common/sourceimages/", "face_eyelash_nrm.tga"}),
+            "Asset/model/character/common/sourceimages/#windx11/face_eyelash_nrm.ftex");
+  EXPECT_EQ(r.Resolve({"/Assets/pes16/model/character/uniform/texture/", "a0150p1.dds"}),
+            "Asset/model/character/uniform/texture/#windx11/a0150p1.ftex");
 }
 
 TEST(FtexInstall, DecodesFullMipChain) {
   REQUIRE_INSTALL();
   std::string err;
-  auto bytes = vfs->Read("Asset/model/character/face/real/70922/sourceimages/#windx11/nico.ftex", &err);
+  const std::string path = pes::FaceTextureDir(VANILLA_FACE) + "face_nrm.ftex";
+  auto bytes = vfs->Read(path, &err);
   ASSERT_TRUE(bytes) << err;
   auto img = pes::ParseFtex(*bytes, &err);
   ASSERT_TRUE(img) << err;
-  EXPECT_GT(img->width, 0);
-  EXPECT_GT(img->height, 0);
-  ASSERT_EQ(int(img->mips.size()), img->mipCount);
-  for (size_t i = 1; i < img->mips.size(); ++i) EXPECT_LE(img->mips[i].size(), img->mips[i - 1].size());
+  EXPECT_EQ(img->width, 1024);
+  EXPECT_EQ(img->height, 1024);
+  EXPECT_GT(img->mipCount, 1) << path;
+  ASSERT_EQ(int(img->mips.size()), img->mipCount) << path;
+  for (size_t i = 1; i < img->mips.size(); ++i) EXPECT_LE(img->mips[i].size(), img->mips[i - 1].size()) << path;
 }
 
 namespace {
@@ -357,10 +423,10 @@ TEST(FtexInstall, KitTexturesCubeAndArrayDecodeExactly) {
 
 // Data/dt30_g4.cpk holds whole cpks (Asset/model/bg/stNNN.cpk, common.cpk).
 // Their contents are part of the file system the game reads: stadiums, goals,
-// pitch (docs/re/pes-re-stadium-camera.md 1.1). They mount at their parent's
-// precedence, so download overrides still win, as the 4cc packs rely on.
+// pitch (docs/re/pes-re-stadium-camera.md 1.1).
 TEST(VfsInstall, SeesInsideNestedCpksBelowDownloadOverrides) {
   REQUIRE_INSTALL();
+  // Content that exists only inside the nested cpk: not in dt30's own TOC.
   constexpr const char* NESTED_ONLY = "Asset/model/bg/st002/audi/sourceimages/au_seat.png";
   ASSERT_TRUE(vfs->Exists(NESTED_ONLY)) << "content inside st002.cpk is not mounted";
   std::string err;
@@ -369,11 +435,27 @@ TEST(VfsInstall, SeesInsideNestedCpksBelowDownloadOverrides) {
   constexpr uint8_t PNG_MAGIC[] = {0x89, 'P', 'N', 'G'};
   ASSERT_GE(blob->size(), sizeof PNG_MAGIC);
   EXPECT_EQ(std::memcmp(blob->data(), PNG_MAGIC, sizeof PNG_MAGIC), 0);
-  // In both: nested original 48,342,208 B; the 4cc download override wins.
+  // The nested cpk mounts below its parent, so a same-named nested entry never
+  // shadows one the outer cpk has, and below every download/ mount, so an
+  // override still wins. Without download/ cpks there is nothing to override
+  // with, so that half skips cleanly.
+  constexpr uint64_t NESTED_ORIGINAL_BYTES = 48342208;
+  auto size = vfs->Size("Asset/model/bg/st002/#Win/st002.fpk");
+  ASSERT_TRUE(size) << "the outer dt30 entry lost to its own nested cpk";
+  if (!HasDownloadMounts(vfs->MountReport())) GTEST_SKIP() << "no download/ cpks: no override to test";
+  EXPECT_NE(*size, NESTED_ORIGINAL_BYTES) << "a download/ cpk must override the nested original";
+}
+
+// Without download/ the nested original is what the game reads: the same path,
+// the outer cpk's entry, and the nested cpk's own contents under it.
+TEST(VfsInstall, NestedOriginalsSurviveWithoutDownloads) {
+  REQUIRE_INSTALL();
+  if (HasDownloadMounts(vfs->MountReport()))
+    GTEST_SKIP() << "this install has download/ cpks: override precedence is tested above";
   constexpr uint64_t NESTED_ORIGINAL_BYTES = 48342208;
   auto size = vfs->Size("Asset/model/bg/st002/#Win/st002.fpk");
   ASSERT_TRUE(size);
-  EXPECT_NE(*size, NESTED_ORIGINAL_BYTES);
+  EXPECT_EQ(*size, NESTED_ORIGINAL_BYTES) << "the outer dt30 entry must win with no download/ cpks";
 }
 
 // Uniform shaders sample wrinkle normals and the fabric weave on UV1

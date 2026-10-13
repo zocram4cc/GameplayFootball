@@ -154,21 +154,48 @@ TEST(PesRig, PartSkeletonNamesThePoseItWasAuthoredOn) {
             pesrig::PartPose::Render);
 }
 
-// Every boots pack ships a boots.skl, and each one is authored on one of the two
-// PES skeletons, never neither. Both occur: most on the render pose, some
-// (k0062 among them) on the anim pose, so the pose must be read per pack.
+// Every boots pack ships a boots.skl, and each one is authored on one of the
+// two PES skeletons, never neither. Which of the two depends on the pack: the
+// anim pose is the default (PES's own common boots.skl is on it, matching the
+// .ask to 2e-7 m), and this install's download packs also ship render-pose
+// ones. So the anim branch is asserted everywhere; the render branch only
+// where such a pack exists, and reported when it does.
 TEST(PesRig, EveryBootsPackIsAuthoredOnOneOfTheTwoSkeletons) {
   REQUIRE_RIG();
-  int render = 0, anim = 0;
+  int render = 0, anim = 0, unknown = 0;
+  std::string neither;
   for (const std::string& path : SharedVfs().List("Asset/model/character/boots/"))
     if (path.ends_with("/#Win/boots.fpk")) {
       const pesrig::PartPose pose = pesrig::ClassifyPartPose(*rig, PackSkeleton(path, "boots.skl"));
-      EXPECT_NE(pose, pesrig::PartPose::Unknown) << path;
-      (pose == pesrig::PartPose::Render ? render : anim) += pose != pesrig::PartPose::Unknown;
+      if (pose == pesrig::PartPose::Unknown) neither = neither.empty() ? path : neither + ", " + path;
+      (pose == pesrig::PartPose::Render ? render : pose == pesrig::PartPose::Anim ? anim : unknown) += 1;
     }
-  EXPECT_GT(render, 0);
-  EXPECT_GT(anim, 0);
-  std::printf("boots packs: %d render pose, %d anim pose\n", render, anim);
+  EXPECT_EQ(unknown, 0) << "a boots pack sits on neither PES skeleton: " << neither;
+  EXPECT_GT(anim, 0) << "no boots pack authored on the anim skeleton";
+  std::printf("boots packs: %d render pose, %d anim pose, %d on neither\n", render, anim, unknown);
+}
+
+// PES's own boots skeleton, the one a boots pack with no record falls back to
+// (docs/re/pes-kit-assembly.md 8.3: BootsList default), sits on the anim pose.
+TEST(PesRig, PessOwnBootsSkeletonIsOnTheAnimPose) {
+  REQUIRE_RIG();
+  EXPECT_EQ(pesrig::ClassifyPartPose(*rig, PackSkeleton("Asset/model/character/#Win/common_package.fpk", "/common/boots.skl")),
+            pesrig::PartPose::Anim);
+}
+
+// A pack on the render pose is a real case, not a curiosity: this install's
+// download packs ship some. The assertion is conditional so a vanilla install
+// without them still passes.
+TEST(PesRig, RenderPoseBootsPacksAreRecognisedWhenPresent) {
+  REQUIRE_RIG();
+  bool sawRender = false;
+  for (const std::string& path : SharedVfs().List("Asset/model/character/boots/"))
+    if (path.ends_with("/#Win/boots.fpk")) {
+      if (pesrig::ClassifyPartPose(*rig, PackSkeleton(path, "boots.skl")) == pesrig::PartPose::Render)
+        sawRender = true;
+    }
+  if (!sawRender) GTEST_SKIP() << "no render-pose boots pack in this install";
+  std::printf("render-pose boots packs are authored on body.skl's pose\n");
 }
 
 TEST(PesRig, PartSkeletonOnNeitherPoseIsUnknown) {
