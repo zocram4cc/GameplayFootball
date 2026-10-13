@@ -7,10 +7,14 @@
 
 namespace godot {
 namespace {
-// Owner's Dynamic Wide sliders, fitted to two live poses (report 4.6).
-// ponytail: provisional until the stored/default slider values are read
-// (CameraTargetRE item 5).
-constexpr float LIVE_FIT_ZOOM = 0.79f, LIVE_FIT_HEIGHT = 0.20f;
+// The owner's live Dynamic Wide sliders, read off the plugin object
+// ([InplayCamera+0x0C/+0x10], docs/re/pes-re-camera-live.md 2). These are the
+// user's settings, not PES defaults: the plugin ctor initialises both to 1.0
+// (report item 7, 0x14087e965) and the persisted CAMERASETTINGS defaults sit
+// behind the mutation-obfuscated serializer (report item 5, still open), so no
+// default is readable at runtime. Height matches the old fit; zoom 0.80 is the
+// live-observed user value (the 0.79 fit predates the u x100 correction).
+constexpr float LIVE_ZOOM = 0.80f, LIVE_HEIGHT = 0.20f;
 constexpr float ZOOM_GOAL = 1.0f;          // k goal in open play (report 4.3)
 constexpr double NEAR_PLANE_M = 0.9;       // InplayCamera::update, modes other than 2/3/4
 constexpr double FAR_PLANE_M = 4000.0f;    // report 7 recipe
@@ -35,8 +39,8 @@ Error PesBroadcastCamera::load(const Ref<PesLibrary>& library, double field_half
   params_ = *params;
   halfWidth_ = float(field_half_width);
   halfLength_ = float(field_half_length);
-  zoom_ = LIVE_FIT_ZOOM;
-  height_ = LIVE_FIT_HEIGHT;
+  zoom_ = LIVE_ZOOM;
+  height_ = LIVE_HEIGHT;
   smoothing_ = pes::TargetSmoothing(*params_);
   spring_ = pes::ZoomSpring(ZOOM_GOAL, 0.0f, params_->kSpringGain, params_->kSpringStepLimit);
   // PES steps the camera once per rendered frame at this reference rate

@@ -145,6 +145,37 @@ TEST(DynamicWideInstall, ReproducesTheLiveCamera) {
   EXPECT_NEAR(pose.cy, 19.16f, 0.1f);
   EXPECT_NEAR(pose.cz, 36.96f, 0.1f);
 }
+// Live broadcast sample (docs/re/pes-re-camera-live.md 3, t = 741.3): mode 5,
+// sliders zoom 0.80 / height 0.20 read live off the plugin object, target
+// (-41.05, 0, -8.00) at the Z_min clamp, k = 1. The converged pose matches the
+// settled live row (t = 691.4, +0x68 = 1.0) to the centimetre; the +0x68 = 1.005
+// row is mid-spring (stored target in flight -34 -> -41), so only the FOV end
+// of that row constrains the converged pose.
+TEST(DynamicWideInstall, MatchesTheLiveBroadcastSample) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  pes::PesVfs vfs;
+  std::string err;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto pe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err);
+  ASSERT_TRUE(pe) << err;
+  auto p = pes::LoadDynamicWide(*pe, vfs, &err);
+  ASSERT_TRUE(p) << err;
+  constexpr float LIVE_ZOOM = 0.80f, LIVE_HEIGHT = 0.20f;
+  constexpr float FIELD_HALF_WIDTH_M = 34.06f;   // FieldInfo +0x08, live
+  constexpr float FIELD_HALF_LENGTH_M = 52.56f;  // FieldInfo +0x00, live
+  auto shot = pes::DynamicWideShot(*p, LIVE_ZOOM, LIVE_HEIGHT, -8.00f, FIELD_HALF_WIDTH_M, p->liftNumerator / p->fpsRef);
+  // The ball-height lift sees the raw focus y; the live ball is on the ground
+  // with the focus at/below -4 m, so the lift clamps to 0 (report item 1).
+  auto pose = pes::FramePose(shot, -41.05f, -8.00f, -4.0f, 1.0f, FIELD_HALF_LENGTH_M, FIELD_HALF_WIDTH_M);
+  const float dx = pose.cx - pose.tx, dy = pose.cy - pose.ty, dz = pose.cz - pose.tz;
+  const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+  EXPECT_NEAR(pose.cx, -38.49f, 0.05f);
+  EXPECT_NEAR(pose.cy, 19.13f, 0.1f);
+  EXPECT_NEAR(pose.cz, 36.90f, 0.1f);
+  EXPECT_NEAR(dist, 48.68f, 0.49f);  // within 1% of the converged live distance
+  EXPECT_NEAR(pose.vfovDeg, 23.31f, 0.5f);
+}
 
 // Item 1: per-frame rate. PES's reference FPS is .rdata 0x14259d624's
 // initializer source, read through the .data 54 holder at 0x14351ae54

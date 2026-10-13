@@ -9,9 +9,9 @@ const FIELD_HALF_LENGTH_M := 52.56  # FieldInfo +0x00 (live)
 const STEP_S := 1.0 / 54.0          # PES's frame-rate reference, read from the exe
 const SETTLE_STEPS := 600
 const POSITION_TOLERANCE_M := 0.05
-const LIVE_ZOOM := 0.79            # owner's sliders, fitted live (report 4.6)
-const LIVE_HEIGHT := 0.20
-const LIVE_VFOV_DEG := 23.26       # live sample 20:39, target z clamped to -8
+const LIVE_ZOOM := 0.80            # owner's sliders, read live off the plugin object (camera-live.md 2)
+const LIVE_HEIGHT := 0.20          # (the 0.79 fit predates the u x100 correction)
+const LIVE_VFOV_DEG := 23.29       # settled live row, target z at the -8 clamp (camera-live.md 3)
 const VFOV_TOLERANCE_DEG := 0.1
 const NEAR_PLANE_M := 0.9          # InplayCamera::update, modes other than 2/3/4
 
