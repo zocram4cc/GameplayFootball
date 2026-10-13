@@ -36,6 +36,7 @@ address given.
 |`pes-re-hud-ui.md`|the match HUD as a Flash/AS3 system: every overlay element with its region, trigger and data, plus the layout and scaling rules|
 |`pes-re-foul-choreography.md`|fouls, cards and offside on screen: scene choice (FUN_14047f170), table_foul.bin fully decoded, the stoppage step list and holds, per-player reaction roles, referee gestures, the linesman flag; slot-1 remap and offside detection open|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
+|`pes-re-camera-live.md`|the live in-play camera: Dynamic Wide mode 5, slider values and offsets, camera distance (52.7 m) and vFOV (23.68°) for a known target, the PosY model check|
 |`pes-re-stamina-live.md`|live match structures (match context, roster and player blocks) and the stamina field search, partial|
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
 |`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
