@@ -10,6 +10,7 @@
 
 #include "simcontext.hpp"
 #include "ballphysics.hpp"
+#include "pesballcollision.hpp"
 #include "match.hpp"
 #include "pesballphysics.hpp"
 
@@ -125,7 +126,15 @@ void Ball::SetRotation(const Vector3& rot, float bias) {  // radians per second 
   SetRotation(rot.coords[0], rot.coords[1], rot.coords[2], bias);
 }
 
+namespace {
+// PES's FieldInfo goal values, from this engine's Law-1 constants.
+const pesball::GoalFrame kGoalFrame{pitchHalfW + lineHalfW, goalInnerHalfWidth,
+                                        goalInnerHeight, goalFrameThickness,
+                                        goalFrameThickness};
+}  // namespace
+
 BallSpatialInfo Ball::CalculatePrediction() {
+  float recentHitPredict = recentHit;
   Vector3 newMomentum;
   Quaternion newRotation_ms;
 
@@ -137,7 +146,6 @@ BallSpatialInfo Ball::CalculatePrediction() {
 
   predictions[0] = nextPos;
 
-  bool woodwork_enabled = true;
   bool netting_enabled = true;
 
   // GF's tick: Match::kTick_ms = 10 ms, this loop's fixed step.
@@ -182,7 +190,7 @@ BallSpatialInfo Ball::CalculatePrediction() {
 
   for (unsigned int predictTime_ms = int(timeStep * 1000.0f);
        predictTime_ms < ballPredictionSize_ms; predictTime_ms += int(timeStep * 1000.0f)) {
-    const bool firstTime = (predictTime_ms == 10);
+    const pes::Vec3 stepStart = fox.position;
 
     if (pesball::IsResting(pc, fox)) {
       // Report 2.1: a resting ball skips the flight function entirely. Nothing
@@ -211,99 +219,26 @@ BallSpatialInfo Ball::CalculatePrediction() {
     nextPos = Vector3(fox.position.x, -fox.position.z, fox.position.y);
     momentumPredict = Vector3(fox.velocity.x, -fox.velocity.z, fox.velocity.y);
 
-    float ballRadius = pc.image.ballRadius;
-    float postRadius = 0.07f;
-
-    // woodwork
-
-    if (firstTime && woodwork_enabled) {
-      // posts
-
-      if (nextPos.coords[2] < goalHeight + ballRadius + postRadius &&
-          (nextPos.Get2D().GetAbsolute() - Vector3(pitchHalfW, goalHalfWidth, 0)).GetLength() <
-              ballRadius + postRadius) {
-        Vector3 normal;
-
-        if (nextPos.coords[0] < 0) {
-          // left side of pitch
-          if (nextPos.coords[1] < 0) {
-            // 'lower' side of pitch
-            normal = (nextPos.Get2D() - Vector3(-pitchHalfW, -goalHalfWidth, 0))
-                         .GetNormalized(Vector3(1, 0, 0));
-            float nextPosZ = nextPos.coords[2];
-            nextPos = Vector3(-pitchHalfW, -goalHalfWidth, 0) + normal * (postRadius + ballRadius);
-            nextPos.coords[2] = nextPosZ;
-
-          } else {
-            // 'upper' side of pitch
-            normal = (nextPos.Get2D() - Vector3(-pitchHalfW, goalHalfWidth, 0))
-                         .GetNormalized(Vector3(1, 0, 0));
-            float nextPosZ = nextPos.coords[2];
-            nextPos = Vector3(-pitchHalfW, goalHalfWidth, 0) + normal * (postRadius + ballRadius);
-            nextPos.coords[2] = nextPosZ;
-          }
-        } else {
-          // right side of pitch
-          if (nextPos.coords[1] < 0) {
-            // 'lower' side of pitch
-            normal = (nextPos.Get2D() - Vector3(pitchHalfW, -goalHalfWidth, 0))
-                         .GetNormalized(Vector3(-1, 0, 0));
-            float nextPosZ = nextPos.coords[2];
-            nextPos = Vector3(pitchHalfW, -goalHalfWidth, 0) + normal * (postRadius + ballRadius);
-            nextPos.coords[2] = nextPosZ;
-
-          } else {
-            // 'upper' side of pitch
-            normal = (nextPos.Get2D() - Vector3(pitchHalfW, goalHalfWidth, 0))
-                         .GetNormalized(Vector3(-1, 0, 0));
-            float nextPosZ = nextPos.coords[2];
-            nextPos = Vector3(pitchHalfW, goalHalfWidth, 0) + normal * (postRadius + ballRadius);
-            nextPos.coords[2] = nextPosZ;
-          }
-        }
-
-        momentumPredict =
-            (momentumPredict.Get2D().GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
-                momentumPredict.Get2D().GetLength() * 0.8f +
-            (Vector3(0, 0, 1) * momentumPredict.coords[2]);
-        fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
-                                 -momentumPredict.coords[1]);
-      }
-
-      // crossbar
-
-      Vector3 nextPosXZ = nextPos * Vector3(1, 0, 1);
-      if ((nextPosXZ.GetAbsolute() - Vector3(pitchHalfW, 0, goalHeight)).GetLength() <
-              ballRadius + postRadius &&
-          fabs(nextPos.coords[1]) < goalHalfWidth + ballRadius + postRadius) {
-        Vector3 normal;
-
-        if (nextPos.coords[0] < 0) {
-          // left side of pitch
-          normal =
-              (nextPosXZ - Vector3(-pitchHalfW, 0, goalHeight)).GetNormalized(Vector3(0, 0, 1));
-          float nextPosY = nextPos.coords[1];
-          nextPos = Vector3(-pitchHalfW, 0, goalHeight) + normal * (postRadius + ballRadius);
-          nextPos.coords[1] = nextPosY;
-
-        } else {
-          // right side of pitch
-          normal =
-              (nextPosXZ - Vector3(pitchHalfW, 0, goalHeight)).GetNormalized(Vector3(0, 0, -1));
-          float nextPosY = nextPos.coords[1];
-          nextPos = Vector3(pitchHalfW, 0, goalHeight) + normal * (postRadius + ballRadius);
-          nextPos.coords[1] = nextPosY;
-        }
-
-        Vector3 momentumPredictXZ = momentumPredict * Vector3(1, 0, 1);
-        momentumPredict =
-            (momentumPredictXZ.GetNormalized(normal) + (normal * 1.1f)).GetNormalized() *
-                momentumPredictXZ.GetLength() * 0.8f +
-            (Vector3(0, 1, 0) * momentumPredict.coords[1]);
-        fox.velocity = pes::Vec3(momentumPredict.coords[0], momentumPredict.coords[2],
-                                 -momentumPredict.coords[1]);
-      }
+    // Report docs/re/pes-re-ball-collision.md 3.2/5: the goal frame is
+    // analytic cylinders, tested on the segment this step travelled. PES's
+    // response function runs every tick, so it runs at every predicted step
+    // and the AI's prediction sees the woodwork too.
+    const float speedInSq = fox.velocity.x * fox.velocity.x +
+                            fox.velocity.y * fox.velocity.y + fox.velocity.z * fox.velocity.z;
+    if (const auto hit =
+            pesball::GoalFrameHit(kGoalFrame, pc.image.ballRadius, stepStart, fox.position,
+                                  fox.velocity)) {
+      pesball::FrameContact(pc, *hit, recentHitPredict, &fox);
+      nextPos = Vector3(fox.position.x, -fox.position.z, fox.position.y);
+      momentumPredict = Vector3(fox.velocity.x, -fox.velocity.z, fox.velocity.y);
     }
+    recentHitPredict = pesball::RecentHitAfter(
+        pc, recentHitPredict, speedInSq,
+        fox.velocity.x * fox.velocity.x + fox.velocity.y * fox.velocity.y +
+            fox.velocity.z * fox.velocity.z,
+        timeStep);
+    if (predictTime_ms == 10) recentHitNext = recentHitPredict;
+    const float ballRadius = pc.image.ballRadius;
 
     // netting
 
@@ -376,6 +311,7 @@ void Ball::Process() {
   BallSpatialInfo spatialInfo = CalculatePrediction();
   momentum = spatialInfo.momentum;
   rotation_ms = spatialInfo.rotation_ms;
+  recentHit = recentHitNext;
 
   positionBuffer = Predict(10);
   orientationBuffer = orientPrediction;

@@ -68,6 +68,21 @@ std::optional<BallImageConstants> LoadBallImageConstants(const PeImage& exe, std
   f(TICK_HZ_VA, &c.tickHz);
   f(NON_SPIN_TOP_MAX_VA, &c.nonSpinTopMax);
   f(NON_SPIN_TOP_PLATEAU_VA, &c.nonSpinTopPlateau);
+  f(STATIC_RESTITUTION_VA, &c.staticRestitution);
+  f(STATIC_RETENTION_VA, &c.staticRetention);
+  f(FRAME_TILT_VA, &c.frameTilt);
+  f(DEGREES_PER_RADIAN_VA, &c.degreesPerRadian);
+  f(PUSH_GAIN_VA, &c.pushGain);
+  f(RECENT_HIT_DECAY_VA, &c.recentHitDecayPerS);
+  f(SPEED_UP_GATE_SQ_VA, &c.speedUpGateSq);
+  f(SPEED_CAP_VA, &c.speedCap_mps);
+  f(VERTICAL_CAP_VA, &c.verticalCap_mps);
+  f(SPIN_BLEND_BASE_VA, &c.spinBlendBase);
+  f(STATIC_RESTITUTION_VA, &c.spinBlendSpan);
+  f(SPIN_BLEND_FLOOR_VA, &c.spinBlendFloor_kmh);
+  f(SPIN_BLEND_RAMP_VA, &c.spinBlendRampPerKmh);
+  f(SPIN_CAP_VA, &c.spinCap_revPerS);
+  f(SNAP_SPEED_CHANGE_SQ_VA, &c.snapSpeedChangeSq_kmh2);
   if (!ok) {
     *error = "PES2021.exe: ball image constants unmapped";
     return std::nullopt;

@@ -100,6 +100,10 @@ protected:
   // The ball's own contact-tick counter, the input the grounder kick's
   // `int(|x|*1000) mod gounnderprob[mode]` gate runs on.
   unsigned contactTicks = 0;
+  // PES's recent-hit memory b (simBall+0x50, docs/re/pes-re-ball-collision.md
+  // 3.1), and the value the last prediction's first step left for Process.
+  float recentHit = 0.0f;
+  float recentHitNext = 0.0f;
 
   Vector3 weatherWind;
   float weatherWetness;

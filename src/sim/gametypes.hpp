@@ -82,5 +82,11 @@ const float goalHalfWidth = 3.7f;
 // Law 1: the goal area runs 5.5 m beyond the inside of each post of a 7.32 m
 // goal; PES's FieldInfo +0x18 holds the same 9.16.
 const float goalAreaHalfWidth = 9.16f;
+// Law 1's goal: 7.32 x 2.44 m inside the frame, posts and bar 12 cm thick.
+// PES's FieldInfo F2/F3/F15/F16 hold exactly these; the ball's frame
+// collision (pesballcollision.hpp) is built from them.
+const float goalInnerHalfWidth = 3.66f;
+const float goalInnerHeight = 2.44f;
+const float goalFrameThickness = 0.12f;
 
 #endif

@@ -42,3 +42,7 @@ gtest_discover_tests(pes_judge_test)
 add_executable(pes_random_test pes_random_test.cpp)
 target_link_libraries(pes_random_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_random_test)
+
+add_executable(pes_ball_collision_test pes_ball_collision_test.cpp)
+target_link_libraries(pes_ball_collision_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_ball_collision_test)

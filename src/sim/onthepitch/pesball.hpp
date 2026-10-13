@@ -83,6 +83,21 @@ inline constexpr uint64_t MILLI_VA = 0x14256ae34;                 // .rdata 1000
 inline constexpr uint64_t TICK_HZ_VA = 0x14259d624;                // .rdata 54.0
 inline constexpr uint64_t NON_SPIN_TOP_MAX_VA = 0x142608c04;      // .rdata 23.6111107
 inline constexpr uint64_t NON_SPIN_TOP_PLATEAU_VA = 0x142608c08;  // .rdata 48.22531
+// Static-object contact, docs/re/pes-re-ball-collision.md 3 and 5 (.rdata floats).
+inline constexpr uint64_t STATIC_RESTITUTION_VA = 0x14257a190;    // 0.6, also the spin-blend span
+inline constexpr uint64_t STATIC_RETENTION_VA = 0x14258c260;      // 0.9
+inline constexpr uint64_t FRAME_TILT_VA = 0x142588200;            // 0.1
+inline constexpr uint64_t DEGREES_PER_RADIAN_VA = 0x14259be40;    // 57.2957764
+inline constexpr uint64_t PUSH_GAIN_VA = 0x1425a3590;             // 1.1
+inline constexpr uint64_t RECENT_HIT_DECAY_VA = 0x14259222c;      // 5.0
+inline constexpr uint64_t SPEED_UP_GATE_SQ_VA = 0x1425f1f24;      // 69.444458
+inline constexpr uint64_t SPEED_CAP_VA = 0x1425c48bc;             // 19.444445
+inline constexpr uint64_t VERTICAL_CAP_VA = 0x14260883c;          // 13.888889
+inline constexpr uint64_t SPIN_BLEND_BASE_VA = 0x1425c4bf4;       // 0.24
+inline constexpr uint64_t SPIN_BLEND_FLOOR_VA = 0x142565604;      // 2.0
+inline constexpr uint64_t SPIN_BLEND_RAMP_VA = 0x142592228;       // 0.25
+inline constexpr uint64_t SPIN_CAP_VA = 0x14259bdf4;              // 8.0
+inline constexpr uint64_t SNAP_SPEED_CHANGE_SQ_VA = 0x14253ee30;  // 100.0
 // The 3x3 contact-mode table FUN_1408723d0 reads (docs/re/pes-re-ball-contact-2.md
 // 3.1): `mode = table[pitch*3 + weather]`, pitch = i32[cfg+0x78] and
 // weather = i32[cfg+0x7c], with any out-of-range index falling back to 1. The
@@ -124,6 +139,22 @@ struct BallImageConstants {
   float nonSpinTopPlateau = 0.0f;     // 48.22531, m/s
   float spinScale = 0.0f;             // 492.181, raw -> rad/s (report 4.1)
   float invSpinScale = 0.0f;          // 1/492.181
+  // Static-object contact (docs/re/pes-re-ball-collision.md 3 and 5).
+  float staticRestitution = 0.0f;       // E0 0.6
+  float staticRetention = 0.0f;         // T0 0.9
+  float frameTilt = 0.0f;               // c 0.1, kinds 6/9/10/11
+  float degreesPerRadian = 0.0f;        // 57.2957764
+  float pushGain = 0.0f;                // k 1.1
+  float recentHitDecayPerS = 0.0f;      // 5: b falls 5/54 per tick
+  float speedUpGateSq = 0.0f;           // 69.444458 (m/s)^2 = (30 km/h)^2
+  float speedCap_mps = 0.0f;            // 19.444445, 70 km/h
+  float verticalCap_mps = 0.0f;         // 13.888889, 50 km/h
+  float spinBlendBase = 0.0f;           // 0.24
+  float spinBlendSpan = 0.0f;           // 0.6
+  float spinBlendFloor_kmh = 0.0f;      // 2
+  float spinBlendRampPerKmh = 0.0f;     // 0.25
+  float spinCap_revPerS = 0.0f;         // 8
+  float snapSpeedChangeSq_kmh2 = 0.0f;  // 100 = (10 km/h)^2
   // The 3x3 pitch/weather to contact-mode table of report 3.1, as shipped in
   // the exe's .data. `modeTable[pitch*kWeatherCount + weather]`.
   std::array<std::array<int, kWeatherCount>, kPitchCount> modeTable{};
