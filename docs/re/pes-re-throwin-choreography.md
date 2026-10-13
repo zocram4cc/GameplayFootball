@@ -37,25 +37,32 @@ Conventions used throughout (OBS unless stated):
 ball wholly over touchline  (judge event 10 → judge+0xcc = 3)            frame F0
   MI+0x116c 1→2 (stopped), MODE(MI+0x1554)=2, side = team that did NOT touch last,
   restart point R = (ball.x clamped to |x|≤F[0]-1, 0, ±(F[1]+0.25))
-F0+1      taker chosen (MI+0x173c): seamless path = fastest ball-arrival of the 4 top-ranked team-mates;
-          ceremony path = same-flank full-back with a 20 m bonus (role-biased distance)
-          taker runs (ANIME MOVE) to the ball wherever it stopped
-+36..+120 SEAMLESS_THROWIN: pick the ball up (throwin_pickupball_000/090/180)
-+30       ball in hands → MI+0x116c 2→3 (set-play ready)
-          carry one-handed (throwin_run_3_3_000_onehand) to a spot 0.7 m outside the line,
-          within ±2 m of R.x; lift (throwin_seamless_liftupball) facing the pitch
-          THROWIN_LOOP: aim loop (parametric turn group 94)
-ready+18  set-play counter MI+0x11ac starts (0,1,2,…)
-counter=83 (ready+101 frames = 1.87 s) the AI throw command lands → THROWIN / THROWIN_LONG
+F0+1      taker published (MI+0x173c)
+
+PATH A  "seamless" (ball slow and reachable, §3.1)            PATH B  "out-of-play scene" (otherwise)
+  taker = fastest-arriving of 4 ranked team-mates                taker = same-flank full-back (−20 m bias)
+  taker runs (MOVE) to the ball wherever it stopped              F0+2..22: the taker plays DEMO_MOVE (74) →
+  SEAMLESS_THROWIN (29): pick up (pickupball_000/090/180)          DEMO_OUTOFPLAY (79) walk clips (dm_oop_*,
+  ball held → MI+0x116c 2→3 (set-play ready)                      dm_move_*) — the broadcast out-of-play scene
+  carry one-handed to S (0.7 m outside, R.x±2 m), lift,         F0+162 (= 54·3): taker placed at the stand
+  turn to face the pitch → THROWIN_LOOP (26)                      point (ball over R at release, 1.02 m outside),
+                                                                   THROWIN_LOOP; ready (2→3) 16 frames later
+restart allowed: sequencer reaches step 0x1a → set-play counter MI+0x11ac starts (0,1,2,…)
+          (path A: ready+18; path B: F0+246 = ready+68, after the camera/fade steps, §6.4)
+counter≥81 and a receiver passes the course test → AI throw command (lands 2 frames later) → THROWIN(_LONG)
           release clip chosen by target distance (≤13 short, ≤25 mid, else long; run variants
           if thrown straight out of the carry)
-release   at the clip's release event (short 18, mid 27, long 99, run-mid 36 frames)
+release   at the clip's release event (short 18 at rate 1, 24 at rate 0.75; mid 27; long 99; run-mid 36)
           → MI+0x116c 3→1 (in play), ball launched toward the target with a flight time
 ```
 
-Measured live (OBS, `live1.jsonl`, 5 AI throw-ins): from ball-out F0 to in-play **185–288 frames
-(3.4–5.3 s)**; from set-play-ready to the throw command **101 frames every time**; release 18/27/36 frames
-after the throw clip starts, exactly the clip's release event.
+Measured live (OBS; 11 AI throw-ins in 4 matches): path A (6, `live1.jsonl`, `live4.jsonl`) ball-out → in
+play **185–288 frames (3.4–5.3 s)**; path B (5, `live3.jsonl`, `live4.jsonl`; sequencer trace `seq2.jsonl`)
+ball-out → THROWIN_LOOP **+162** (4 of 5; the fifth first tried path A for 87 frames), ready **+178**, restart
+allowed **+246**, in play **+351…357** (6.5 s). The throw command came at set-play counter **83** in 10 of 11
+(138 once, when no receiver passed earlier); release 18–28 frames after the throw clip starts = the clip's
+release event at its rate. Two releases measured with the ball (§5.4): 51.5 km/h at +5°, 42.9 km/h at +20°,
+from 1.90–1.95 m height.
 
 ---
 
@@ -158,7 +165,15 @@ The stop-program builder `FUN_1404500c0` pushes sequencer step **0x33** (seamles
 Step 0x33 sub-state 0 publishes the candidate as kicker; while `FUN_140450ac0` keeps holding it continues;
 if it fails it falls back to the normal program `[0x10, 0x45, 0x46, 0x16, 0x12, 0x13]`; when the taker has the
 ball in a throw-in action it appends `[0x15, 0x34, 0x19, 0x1a]` (restart).
-OBS live: all 5 observed AI throw-ins used the seamless pickup (no ball boy, no teleport).
+OBS live: path A (seamless pickup) in all 5 throw-ins of one match; path B in all 4 of two later matches — the
+taker plays `DEMO_MOVE` (74) then `DEMO_OUTOFPLAY` (79, class `OutofPlay`, Update 0x1407e1c60) with the
+out-of-play scene clips (`dm_move_runShort_3_1_walk` 0x148, `dm_oop_walk_1_1_walk_045` 0x1e4,
+`dm_oop_idle_0_1_walk_045_head` 0x1a9, `dm_move_runStop_3_1_walk_135_sweat` 0x150) and at **F0+162 = 54·3**
+(3 of 4) is **placed** on the stand point already in `THROWIN_LOOP` (position jumps from the scene position, e.g.
+(19.1, −17.9) → (−23.31, −35.08), within one frame; first logged frame of the loop reads (0,0,0)). In the fourth
+the taker first ran for 87 frames (path A candidate), then the scene started (+89) and the loop came at +256.
+No ball boy in either path: path A picks the ball up; in path B the taker is placed with the ball (INF) and
+`MI+0x155c` stays equal to R for the whole stop (OBS live, 4 of 4), unlike path A where it follows the ball.
 
 ### 3.2 `SeamlessThrowin` (id 29) — `Update` 0x140791ec0 (OBS decompile)
 | phase | what happens |
@@ -180,10 +195,12 @@ within 90° of straight into the pitch. Then the run-up release rows are used (�
 - Standing line: **0.7 m outside the touchline** (S.z). OBS live: taker root z = 34.74–34.76 while
   F[1] = 34.06.
 - Standing x: within ±2 m of R.x (OBS live offsets −0.5 … +2.5 m: the carry stops ~0.6 m short of S).
-- `ThrowinLoop::SetKick` (slot 12 `0x140794280`, used when the flow places the taker itself, i.e. the
-  non-seamless program): stand point = `req.pos − Rot(yaw)·(−ballAtRelease.xz)` with the release offset read
-  from clip 0xcfa's ball key (`FUN_1406e8cc0` → `(0.022, 1.847, 0.795) m · bodyScale`, bodyScale = `ap+0x3b18`
-  clamped [0.9166, 1.0833] for xz) — the taker stands so the ball at release is over the point.
+- `ThrowinLoop::SetKick` (slot 12 `0x140794280`, used by the kicker dispatch `FUN_14092e7e0` for path B):
+  stand point = `req.pos − Rot(yaw)·(−ballAtRelease.xz)` with the release offset read from clip 0xcfa's ball
+  key (`FUN_1406e8cc0` → `(0.022, 1.847, 0.795) m · bodyScale`, bodyScale = `ap+0x3b18` clamped
+  [0.9166, 1.0833] for xz) — the taker stands so the ball at release is over R.
+  **OBS live (path B, 4 of 4)**: |z| = 35.083 = R.z + 0.773 (= 0.795 · 0.972) and x = R.x − 0.022 exactly as the
+  formula gives; yaw 0° on the −Z line, 180° on the +Z line.
 - Facing: 180° on the +Z line, 0° on the −Z line, i.e. perpendicular into the pitch; the aim loop then turns
   up to ±80° (§4.1).
 
@@ -297,7 +314,23 @@ Implied flight time (frames) and mean horizontal speed D/time, computed from thi
 re-time (INF arithmetic, not measured): 5 m 28 f / 35 km/h · 10 m 56 f / 35 · 12 m 63 f / 37 · 15 m 68 f / 43
 (Long Throw 65 f / 45) · 20 m 72 f / 54 (65 f / 60) · 25 m 90 f / 54 (81 f / 60) · 30 m 108 f / 54 (97 f / 60).
 
-### 5.3 Attributes
+### 5.3 Live release measurements (OBS `live4.jsonl`; ball = `*(G+0x40)`, position `B+0x88`, velocity
+`B+0x2948` (m/s), 250 predicted samples of 40 B from `B+0x88`, `FUN_140a6cf70`/`FUN_140a57720`)
+
+| # | path, clip | taker root, yaw at release | ball at first in-play frame | launch velocity (m/s) | horiz. speed, elevation |
+|---|---|---|---|---|---|
+| L1 | B, `idle_000_short` | (−47.69, 34.99), 126° (entered at 176°, yaw-warped 50° onto the target) | (−46.13, 1.95, 33.87) | (11.56, 1.24, −8.42) | 14.30 m/s = 51.5 km/h, +5.0° |
+| L2 | A, `idle_000_short` | (40.68, 34.58), 202° (entered 182°) | (40.35, 1.90, 33.81) | (−4.48, 4.44, −11.06) | 11.93 m/s = 42.9 km/h, +20.4° |
+
+- Release height 1.90–1.95 m (clip key: 1.85 m hands at the event, ball centre a frame later).
+- Flight (predicted samples, OBS): L1 reaches y = 0.5 m after ≈ 38 frames, ≈ 9.2 m from the release, first
+  bounce at 42 frames / 9.8 m; L2 apex 2.83 m at 24 frames, y = 0.8 m at 60 frames, 11.5 m out.
+- Per-frame decay: vertical −0.17…−0.19 m/s per frame (≈ 9.5–10.5 m/s² incl. drag), horizontal ≈ −0.6 %/frame.
+- Cross-check with §5.2 (INF): L1's mean speed to y = 0.5 m is ≈ 13 m/s ≈ 47 km/h — the `vFast` end
+  (`35 + 15·0.8`) of the D ≤ 10 m band, i.e. the receiver re-time clamped the flight to `framesFast`.
+- Spin at release was not read (the ball spin field of this object is not located).
+
+### 5.4 Attributes
 OBS only the Long Throw skill bit (reach 30→37 m receiver / 25→32 m free aim; speed weight 80→100 %) and the
 receiver's height (target height). No ability stat (kicking power, etc.) is read in `FUN_14081c640`,
 `FUN_1409bb360`, `FUN_1409bb450` or `FUN_1409bbf10` (OBS absence in these bodies).
@@ -318,8 +351,9 @@ else: for teammates in the team's order list: first unexcluded, unmarked one →
       none → after 3.0 s: command 2 with no receiver (free throw)
 (3.0 becomes 2.0 s in the G+0x400 mode)
 ```
-OBS live: the throw action starts when the set-play counter `MI+0x11ac` reads **83** in all 5 cases (= 81 + 2
-frames of command latency), i.e. **ready + 18 + 83 = ready + 101 frames (1.87 s)**.
+OBS live: the throw action starts when the set-play counter `MI+0x11ac` reads **83** in 10 of 11 cases (= 81 + 2
+frames of command latency) and 138 once (path A, `live4` L2; INF: no receiver passed the course test earlier) —
+counted from the frame the sequencer reached step 0x1a (§6.4).
 
 Receiver search `FUN_142135700` @0x142135700 (constant `ballplayerSetplay`, id 0x25, live values):
 for team-mates in the team's ordering (`FUN_140a714a0`), skip excluded/inactive ones; distance `d` to the thrower
@@ -336,8 +370,8 @@ chosen by distance (§4.2), not by the id.
 ### 6.2 Set-play counter and countdown (OBS)
 - `MI+0x116c` play state: 1 in play, 2 stopped (ball out, before pickup), 3 set-play ready (ball in the taker's
   hands). OBS live transitions for every throw-in.
-- `MI+0x11ac` set-play elapsed counter (published from `match+0x724`): 0 at ready, starts counting **18 frames
-  after ready** (OBS live), +1 per frame.
+- `MI+0x11ac` set-play elapsed counter (published from `match+0x724`): 0 until the sequencer reaches its final
+  step 0x1a (restart allowed), then +1 per frame (OBS live: path A ready+18, path B F0+246 = ready+68).
 - Three clocks read this counter (OBS; `S17` = the singleton query `PTR_PTR_1434a2d40` slot 17 (+0x88),
   INF: an online/time-limit mode flag):
   - `FUN_140a61ed0` remaining = `54·15 − counter` (`FUN_140a3bdf0`), or `54·30 − counter`
@@ -353,6 +387,8 @@ chosen by distance (§4.2), not by the id.
 
 ### 6.3 Whole-stop timeline (OBS live, frames after the out frame F0)
 
+Path A (seamless, `live1.jsonl`):
+
 | # | taker slot | pickup start (id 29) | ready (116c=3) | carry→loop | throw start (counter) | clip | in play |
 |---|---|---|---|---|---|---|---|
 | 1 | 3 | +112 | +142 | loop +217 | +243 (83) | idle_short, id 28 | +261 |
@@ -361,8 +397,40 @@ chosen by distance (§4.2), not by the id.
 | 4 | 5 | +36 | +66 | loop +104 | +167 (83) | idle_short, id 28 | +185 |
 | 5 | 5 | +118 | +148 | loop +198 | +249 (83) | idle_short, id 27 | +267 |
 
-The variable part is the taker's run to the ball (36–120 frames); everything after the pickup is fixed by
-the clip lengths, the 18-frame counter delay and the 81-frame AI wait.
+Path B (out-of-play scene, `live3.jsonl`):
+
+| # | taker slot | scene (74→79) | placed in loop | ready | throw start (counter) | clip | in play |
+|---|---|---|---|---|---|---|---|
+| 6 | 3 | +2 → +22 | +162 | +178 | +329 (83) | idle_short, id 28 | +353 (24 f, rate 0.75) |
+| 7 | 14 | +2 → +5 | +162 | +178 | +329 (83) | idle_mid, id 28 | +357 (28 f) |
+| 8 | 5 | +6 → +10 | +162 | +178 | +329 (83) | idle_mid, id 28 | +357 (28 f) |
+| 9 | 3 | ran +1…+87, +87 → +89 | +256 | +272 | +423 (83) | idle_short, id 27 | +449 (26 f) |
+
+Path A's variable part is the taker's run to the ball (36–120 frames); path B is fixed (scene to +141, placement
+at +162, ready +178, restart allowed +246, AI wait 83). From "restart allowed" on, both paths are identical.
+
+### 6.4 The stop program (OBS live `seq2.jsonl`, Flow found as `*(MatchControl+0x38)`, MatchControl vtable
+0x1425984C0; program `u32[30]` at Flow+0x878, read index +0x8f0, sub-state +0x8f2)
+
+Path B throw-in program, built on the out frame by `FUN_1404500c0`:
+`[0x3, 0xb, 0x45, 0x10, 0x46, 0x23, 0x16, 0x12, 0x13, 0x14, 0x15, 0xd, 0x34, 0x19, 0x1a]`, then `[0x1c]` in play.
+
+| step | handler (`FUN_14044c880` switch) | live start (F0+) | held |
+|---|---|---|---|
+| 0x3 | `FUN_140447230` stop/whistle | 0 | 3 f |
+| 0xb | `FUN_140447690` stop without foul scene — the out-of-play scene | +3 | 138 f |
+| 0x45, 0x10, 0x46, 0x23 | `FUN_140446350`, fade `FUN_1404488e0` (kind 2, 0.1 s), `FUN_14044c6e0`, `FUN_140448e50` | +141 | 6 f |
+| 0x16 | `FUN_140449d20` | +147 | 4 f |
+| 0x12, 0x13 | `FUN_140448760`/`FUN_1404485f0`, `FUN_140447b50` | +151 | 5 f |
+| 0x14 | `FUN_14044a2a0` — taker placed in THROWIN_LOOP at +162, ready (116c=3) at +178 | +156 | 20 f |
+| 0x15 | `FUN_14044bb40` | +176 | 20 f |
+| 0xd | `FUN_1404488e0` transition, 5 + ⌊54·0.5⌋ = 32 f | +196 | 33 f |
+| 0x34, 0x19 | `FUN_14044a3e0`, `FUN_14044bfb0` | +229 | 17 f |
+| 0x1a | `FUN_14044d2e0` restart allowed — set-play counter runs | +246 | until the throw |
+| 0x1c | in play | +351 | — |
+
+Path A: the stop builder instead pushes `[0x33]` (§3.1); after the pickup step 0x33 appends
+`[0x15, 0x34, 0x19, 0x1a]`, and `0x1a` is reached 18 frames after ready (OBS from the counter).
 
 ---
 
@@ -492,13 +560,16 @@ and values read from the live object (identical to the shipped blob, OBS):
 2. Taker: if the ball is slow (≤ 12 km/h, ≤ 1.5 m high) and a team-mate can get to it in < 4 s → the fastest
    arrival among the 4 best-ranked, with an 18-frame bias to rank 0; else same-flank full-back with a −20 m
    bonus (DMF/AMF +10 m, CB/GK/FW excluded except as fallback).
-3. No ball boy: the taker runs to the ball, picks it up with `throwin_pickupball_{000,090,180}` (angle class,
-   ≤ 5 m reach), play state → 3 ("ready") at the pickup, carries it one-handed (`throwin_run_3_3_000_onehand`) to
-   S = (R.x ± 2 m, halfWidth + 0.7), lifts it (`throwin_seamless_liftupball`, 14 frames) turning to face straight
-   into the pitch, then idles in the group-94 aim loop (blend 0.5 ± 0.5·aim/80°, ease 0.12/frame).
-4. AI wait: set-play counter starts 18 frames after ready; the CPU taker throws when the counter reaches ≈ 81
-   (+2 latency) if it has a receiver (2–25 m, safe course), else holds up to 3 s and throws to the first
-   unmarked team-mate or blind.
+3. No ball boy. Path A (ball slow/reachable): the taker runs to the ball, picks it up with
+   `throwin_pickupball_{000,090,180}` (angle class, ≤ 5 m reach), play state → 3 ("ready") at the pickup, carries it
+   one-handed (`throwin_run_3_3_000_onehand`) to S = (R.x ± 2 m, halfWidth + 0.7), lifts it
+   (`throwin_seamless_liftupball`, 14 frames) turning to face straight into the pitch. Path B (otherwise): a 2.6 s
+   out-of-play scene (taker in `DEMO_MOVE`/`DEMO_OUTOFPLAY` walk clips), then at F0+162 the taker is placed with the
+   ball so the release point is over R (≈ halfWidth + 1.02 m), facing the pitch; ready at F0+178. Both then idle
+   in the group-94 aim loop (blend 0.5 ± 0.5·aim/80°, ease 0.12/frame).
+4. Restart allowed when the stop program reaches step 0x1a (path A ready+18; path B F0+246 after fades); the CPU
+   taker throws when the set-play counter reaches ≈ 81 (+2 latency) if it has a receiver (2–25 m, safe course),
+   else holds up to 3 s and throws to the first unmarked team-mate or blind.
 5. Release clip by target distance (≤ 13 short, ≤ 25 mid, > 25 long; run variants straight from the carry);
    release at the clip's event (18/27/99 frames; run 27/36); hands kept ≥ 0.1 m outside the line.
 6. Ball: target = receiver lead point (54 or 108 frames ahead) clamped to 30 m (37 m Long Throw); flight time
@@ -509,8 +580,9 @@ and values read from the live object (identical to the shipped blob, OBS):
 8. No foul throws; no opponent distance rule; set-play clock 30 s offline (countdown shown in the last 5 s),
    15 s and a forced throw after 18 s only in the `S17`-gated mode.
 
-Labels for GF code: items 1–6 rule-faithful/engine behaviour (OBS); the 18-frame counter delay, the 81-frame
-wait, the 13/25 m clip thresholds and the 0.7 m stand line are PES game-specific abstractions (OBS values).
+Labels for GF code: items 1–6 rule-faithful/engine behaviour (OBS); the out-of-play scene and placement, the
+program step durations, the 81-frame wait, the 13/25 m clip thresholds and the 0.7 m / 1.02 m stand lines are
+PES game-specific abstractions (OBS values).
 
 ---
 
@@ -526,10 +598,11 @@ wait, the 13/25 m clip thresholds and the 0.7 m stand line are PES game-specific
 3. **Tactics throw-in values and consumers.** Offsets verified (§7.1); only `throwinWidthZ` has a located
    consumer. Tried: displacement scans for `+0x340/+0x2c8/+0xe8/+0x2c` loads in 0x140400000–0x141000000 (noise from
    unrelated structs; no consumer in throw-in context). Values are per-team runtime data (not in the VFS).
-4. **Which stop program ran** (seamless step 0x33 vs. the whistle program) was not logged live (the Flow object
-   pointer `match+0x38` is not yet located from `G`). All 5 observed throw-ins used `SEAMLESS_THROWIN` for the
-   pickup, which both programs can reach (the kicker dispatch `FUN_14092e7e0` → `ThrowinLoop::SetKick` is the
-   ceremony placement); INF(med) that slow balls take step 0x33.
+4. **Path A program trace.** The path B program is traced live (§6.4, Flow = `*(MatchControl+0x38)`); a path A
+   (step 0x33) trace was not captured yet (the sequencer watcher ran during path-B matches only). Path A's
+   program content is from the decompile of `FUN_14044b8a0`; its live timing comes from `live1.jsonl`.
+   Which of the eligibility tests in `FUN_140444f00` sent the live3 throw-ins down path B was not logged (ball
+   speed at the out frame needs the ball reader of `tiwatch3.py`).
 5. **Protected code**: the AI's no-receiver fallback `thunk_EXT_FUN_15b6efa70`, the foul-award
    `thunk_EXT_FUN_143f546f0`, the flow notifier `thunk_EXT_FUN_144232210` and `SeamlessThrowin` slot 23
    (`0x140794340` → `.impdata`) were not read (outside the dump; obfuscated thunks).
@@ -559,7 +632,10 @@ wait, the 13/25 m clip thresholds and the 0.7 m stand line are PES game-specific
 | EV-TI-0013 | Throw request: kind 0x10, flight frames from 35/50(+10) km/h band, Long Throw 80→100 % | Confirmed | 0x14081c640 |
 | EV-TI-0014 | Reach 30 m / 37 m (Long Throw, skill bit 19); free-aim distance 5/15/25(32) by gauge | Confirmed (code) / High (bit 19 = Long Throw) | 0x1409bb450, 0x1409bb360 |
 | EV-TI-0015 | AI throws when the set-play counter ≈ 81 (+2) with a receiver; receiver 2–25 m + course test | Confirmed | 0x142137460, 0x142135700; live counter = 83 ×5 |
-| EV-TI-0016 | Set-play counter starts 18 frames after ready; 30 s offline clock (15 s with S17), countdown in the last 5 s, forced throw at 18 s (S17 only) | Confirmed (code, live start offset) / Tentative (S17 meaning) | 0x140a61ed0, 0x14044ce80, 0x140791e30; live |
+| EV-TI-0016 | Set-play counter runs from stop-program step 0x1a (path A ready+18, path B F0+246); 30 s offline clock (15 s with S17), countdown in the last 5 s, forced throw at 18 s (S17 only) | Confirmed (code, live) / Tentative (S17 meaning) | 0x140a61ed0, 0x14044ce80, 0x140791e30; live1/live3/seq2 |
+| EV-TI-0020 | Path B: out-of-play scene (step 0xb, 138 f), taker placed by ThrowinLoop::SetKick at F0+162, ready F0+178, restart allowed F0+246 | Confirmed | live3 + seq2 traces; 0x140794280, 0x14092e7e0 |
 | EV-TI-0017 | Throw-in block width = throwinWidthZ, 3 m margin | Confirmed | 0x140680980 |
 | EV-TI-0018 | Officials walk to the ball point; referee + same-side assistant signal the awarded direction | Confirmed | 0x140a3a290/930/870, 0x140a3a690 |
 | EV-TI-0019 | throwin.o layout/values (supersedes setpiece-referee §1.3) | Confirmed | deserializer 0x141e6ff10, live object, shipped blob |
+
+> **Orchestrator note 2026-10-13:** §12 open item 2 ("launch velocity never measured") is superseded by the live measurements in §5.3. Ledger row EV-TI-0015's counter is 83 in 10 of 11 observed throw-ins (once 138), not "83 ×5".
