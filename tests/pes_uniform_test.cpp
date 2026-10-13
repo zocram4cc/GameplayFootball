@@ -399,6 +399,33 @@ TEST(Boots, ZeroIdFallsBackToTheListThenItsDefault) {
   EXPECT_EQ(pes::GlovePackPath(1), "Asset/model/character/glove/g0001/#Win/glove.fpk");
 }
 
+// The same list as above wrapped in the WESYS container vanilla BootsList.bin
+// ships: u8 type, 0x10, u8 flags, "WESYS" at +3, u32 zlib size at +8, u32 raw
+// size at +12, zlib from +0x10 (header "\x05\x10\x01WESYS"). 4cc packs ship
+// the list raw, which is why the 4cc copy masks the vanilla one.
+TEST(Boots, InflatesWesysWrappedList) {
+  std::vector<uint8_t> raw;
+  Put<uint32_t>(raw, 0, 100);
+  Put<uint32_t>(raw, 4, 7011);
+  Put<uint32_t>(raw, 8, 200);
+  Put<uint32_t>(raw, 12, 1386);
+  for (const auto& magic : {std::vector<uint8_t>{0x05, 0x10, 0x01, 'W', 'E', 'S', 'Y', 'S'},
+                            std::vector<uint8_t>{0xff, 0x10, 0x51, 'W', 'E', 'S', 'Y', 'S'}}) {
+    uLongf zlen = compressBound(raw.size());
+    std::vector<uint8_t> blob(16 + zlen);
+    std::memcpy(blob.data(), magic.data(), magic.size());
+    ASSERT_EQ(compress(blob.data() + 16, &zlen, raw.data(), raw.size()), Z_OK);
+    blob.resize(16 + zlen);
+    std::string err;
+    auto list = pes::ParseBootsList(blob, &err);
+    ASSERT_TRUE(list) << err;
+    ASSERT_EQ(list->size(), 2u);
+    EXPECT_EQ((*list)[0], std::make_pair(uint32_t(100), uint32_t(7011)));
+    EXPECT_EQ((*list)[1], std::make_pair(uint32_t(200), uint32_t(1386)));
+    EXPECT_EQ(pes::ResolveBootsId(0, 200, *list), 1386);
+  }
+}
+
 TEST(Boots, RejectsAListThatIsNotWholePairs) {
   std::vector<uint8_t> blob(12, 0);
   std::string err;
@@ -409,7 +436,7 @@ TEST(Boots, RejectsAListThatIsNotWholePairs) {
 // names is in this install. Which player is used is not pinned: the list is
 // read, one player id taken from it, and the resolution re-derived here, so the
 // check holds on a vanilla-only install and on any modded one that replaces
-// the list (4cc_45_uniform ships its own).
+// the list (4cc_03_stockkit ships its own, raw, copy).
 TEST(UniformInstall, BootsListResolvesAListedPlayerToItsPack) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
@@ -424,9 +451,8 @@ TEST(UniformInstall, BootsListResolvesAListedPlayerToItsPack) {
   }
   auto list = pes::ParseBootsList(*blob, &err);
   if (!list) {
-    // A list this build cannot read: the game ships two shapes (vanilla wraps
-    // it in a WESYS container, 4cc ships raw pairs), and a skip here is honest
-    // about an unreadable file rather than a green check.
+    // Both shapes the game ships are read (vanilla wraps the list in a WESYS
+    // container, 4cc ships raw pairs), so reaching here is a real defect.
     GTEST_SKIP() << err;
   }
   ASSERT_FALSE(list->empty());

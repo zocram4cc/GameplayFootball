@@ -93,7 +93,8 @@ std::vector<UniformPart> SelectUniformParts(const KitConfig& kit, const PlayerLo
 std::string ArmSkinPath(int skin);
 std::string ThighSkinPath(int skin);
 
-// BootsList.bin: sorted {u32 playerId, u32 bootsId} pairs, no header.
+// BootsList.bin: sorted {u32 playerId, u32 bootsId} pairs, no header. Vanilla
+// (dt00/dt33) ships it zlib-wrapped in a WESYS container; mods ship it raw.
 inline constexpr const char* kBootsListPath = "common/character0/model/character/boots/BootsList.bin";
 // The list's default for an unlisted player, read live (list object +0x18) and
 // also the hard-coded result when the list is not loaded (FUN_1414e03c0).

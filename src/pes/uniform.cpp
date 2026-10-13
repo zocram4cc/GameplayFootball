@@ -34,6 +34,26 @@ enum SleeveLimits { ROUTE_SHORT_A_LONG_B = 0, ROUTE_BOTH_B = 1, ROUTE_BOTH_A = 2
 template <typename T>
 T Load(const uint8_t* p) { T v; std::memcpy(&v, p, sizeof v); return v; }
 
+// Vanilla WESYS containers (UniformParameter.bin, BootsList.bin, the constant
+// bins, ...) hold the raw payload zlib-inflated; mods ship that payload raw.
+// Unwrap only when the tag is at +3, so a raw payload is never touched.
+std::optional<std::vector<uint8_t>> UnwrapWesys(std::span<const uint8_t> blob, const char* what,
+                                               std::string* error) {
+  if (blob.size() < WESYS_TAG_OFFSET + sizeof WESYS_TAG ||
+      std::memcmp(blob.data() + WESYS_TAG_OFFSET, WESYS_TAG, sizeof WESYS_TAG) != 0)
+    return std::vector<uint8_t>(blob.begin(), blob.end());
+  if (blob.size() < WESYS_ZLIB_START) {
+    *error = std::string(what) + ": truncated WESYS header";
+    return std::nullopt;
+  }
+  std::vector<uint8_t> data;
+  if (!Inflate(blob.data() + WESYS_ZLIB_START, blob.size() - WESYS_ZLIB_START, &data)) {
+    *error = std::string(what) + ": corrupt WESYS zlib stream";
+    return std::nullopt;
+  }
+  return data;
+}
+
 std::string Numbered(const char* format, int n) {
   char s[96];
   std::snprintf(s, sizeof s, format, n);
@@ -63,11 +83,9 @@ std::optional<UniformTable> ParseUniformTable(std::span<const uint8_t> blob, std
   UniformTable t;
   if (blob.size() >= WESYS_TAG_OFFSET + sizeof WESYS_TAG &&
       std::memcmp(blob.data() + WESYS_TAG_OFFSET, WESYS_TAG, sizeof WESYS_TAG) == 0) {
-    if (blob.size() < WESYS_ZLIB_START ||
-        !Inflate(blob.data() + WESYS_ZLIB_START, blob.size() - WESYS_ZLIB_START, &t.data)) {
-      *error = "UniformParameter: corrupt WESYS zlib stream";
-      return std::nullopt;
-    }
+    auto data = UnwrapWesys(blob, "UniformParameter", error);
+    if (!data) return std::nullopt;
+    t.data = std::move(*data);
   } else {
     t.data.assign(blob.begin(), blob.end());
   }
@@ -196,14 +214,16 @@ std::string ArmSkinPath(int skin) { return Numbered("Asset/model/character/commo
 std::string ThighSkinPath(int skin) { return Numbered("Asset/model/character/common/sourceimages/#windx11/thigh_%d_bsm.ftex", skin); }
 
 std::optional<BootsList> ParseBootsList(std::span<const uint8_t> blob, std::string* error) {
+  auto data = UnwrapWesys(blob, "BootsList", error);
+  if (!data) return std::nullopt;
   constexpr size_t PAIR_BYTES = 8;
-  if (blob.size() % PAIR_BYTES != 0) {
+  if (data->size() % PAIR_BYTES != 0) {
     *error = "BootsList: size is not whole {playerId, bootsId} pairs";
     return std::nullopt;
   }
-  BootsList list(blob.size() / PAIR_BYTES);
+  BootsList list(data->size() / PAIR_BYTES);
   for (size_t i = 0; i < list.size(); ++i)
-    list[i] = {Load<uint32_t>(&blob[PAIR_BYTES * i]), Load<uint32_t>(&blob[PAIR_BYTES * i + 4])};
+    list[i] = {Load<uint32_t>(&(*data)[PAIR_BYTES * i]), Load<uint32_t>(&(*data)[PAIR_BYTES * i + 4])};
   return list;
 }
 
