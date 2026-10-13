@@ -10,6 +10,8 @@
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchreport.hpp"
 #include "onthepitch/matchsetup.hpp"
+#include "onthepitch/pesclock.hpp"
+#include "pes/exe.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 #include "simcontext.hpp"
@@ -39,6 +41,30 @@ const pesrig::Rig* SharedRig() {
   return rig ? &*rig : nullptr;
 }
 
+// PES 2021's match-clock constants, read from the install's own exe by the same
+// rule the rig is (docs/re/pes-re-tactics-clock.md 7.2). Required by every Match.
+const pes::PesClockConstants* SharedClockConstants() {
+  static std::optional<pes::PesClockConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      pes::PesVfs vfs;
+      std::string err;
+      if (vfs.Mount(root, &err)) {
+        if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+          constants = pes::LoadPesClockConstants(*exe, &err);
+      }
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
+#define REQUIRE_PES_INSTALL()                                          \
+  if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
+  if (!SharedClockConstants())                                                          \
+    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable"
+
 struct Outcome {
   bool finished = false;
   uint64_t hash = 0;
@@ -57,6 +83,7 @@ Outcome Play(unsigned int seed, int minutes) {
   setup.durationMinutes = minutes;
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
+  setup.pesClockConstants = SharedClockConstants();
 
   Outcome out;
   {
@@ -80,7 +107,9 @@ Outcome Play(unsigned int seed, int minutes) {
 }
 
 #define REQUIRE_RIG() \
-  if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"
+  if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
+  if (!SharedClockConstants())                                                  \
+    GTEST_SKIP() << "PES2021.exe: match-clock constants unavailable"
 
 }  // namespace
 
@@ -99,6 +128,7 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   setup.durationMinutes = SHORT_MATCH_MINUTES;
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
+  setup.pesClockConstants = SharedClockConstants();
   for (int match = 0; match < 2; ++match) {
     Match m(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     std::vector<Player*> players;
@@ -122,6 +152,7 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   setup.durationMinutes = 1;
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
+  setup.pesClockConstants = SharedClockConstants();
   setup.aiManagerRuns[0] = aiManagerRunsHome;
   bool pressed = false;
   {

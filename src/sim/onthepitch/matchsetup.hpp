@@ -10,6 +10,10 @@ namespace pesrig {
 struct Rig;
 }
 
+// PES 2021's match clock (docs/re/pes-re-tactics-clock.md): its constants are
+// read from the install's PES2021.exe by the caller and handed to the Match.
+#include "pesclock.hpp"
+
 struct MatchSetup {
   int homeTeamDbId = 0;
   int awayTeamDbId = 0;
@@ -23,6 +27,12 @@ struct MatchSetup {
   // The player skeleton, built from the user's PES install. Not owned; must
   // outlive the Match.
   const pesrig::Rig* rig = nullptr;
+  // PES 2021's match clock (docs/re/pes-re-tactics-clock.md): the constants the
+  // clock uses, every one read from the install's PES2021.exe by the caller.
+  // Required: the sim cannot run without the user's PES install (the player
+  // skeleton is built from it, and there is no fallback rig), so a match built
+  // without them is a caller error and the Match construction refuses it.
+  const pes::PesClockConstants* pesClockConstants = nullptr;
 };
 
 #endif

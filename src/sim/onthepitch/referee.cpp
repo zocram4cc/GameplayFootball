@@ -31,6 +31,17 @@ static constexpr unsigned long kDeadBallRestart_ms = 4000;
 // deferral from the referee's special animation held a goal kick for 107 s.
 static constexpr unsigned long kMaxRestartDeferral_ms = 30000;
 
+namespace {
+
+// PES reads the on-pitch performer's "perf tier" out of its own team slice
+// (TeamSlice + 0x4C00 + playerIndex*4, docs/re/pes-re-tactics-clock.md 2.4/3.2)
+// to gate the added-time bonus. This engine carries no such field: the tier is
+// therefore an explicit input with no default, and until a caller supplies one
+// the added time is the plain per-match-second term only.
+constexpr int kPesNoPerfTier = 0;
+
+}  // namespace
+
 Referee::Referee(Match* match) : match(match) {
   buffer.desiredSetPiece = e_SetPiece_KickOff;
   buffer.teamID = 0;
@@ -72,25 +83,31 @@ void Referee::Process() {
 
     // some phase is over :[
 
-    // The fourth official's board: announce the allowance once, as the period
-    // reaches its scheduled end.
-    const unsigned long scheduledEnd_ms =
-        MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase());
-    if (scheduledEnd_ms > 0 && match->GetMatchTime_ms() >= scheduledEnd_ms &&
-        addedTimeAnnouncedPhase != match->GetMatchPhase()) {
+    // PES 2021's period end (docs/re/pes-re-tactics-clock.md 2.1/3.2): the
+    // period length comes from the phase table, and the allowance is the linear
+    // formula evaluated once at the end of the period - no per-event accrual.
+    //
+    // The fourth official's board, announced once per period from that formula
+    // as the period reaches its length.
+    if (match->GetPesClock().IsPeriodDue() && addedTimeAnnouncedPhase != match->GetMatchPhase()) {
       addedTimeAnnouncedPhase = match->GetMatchPhase();
-      const int addedMinutes = MatchProgression::GetAnnouncedAddedMinutes(match->GetStoppage());
-      if (addedMinutes > 0 && Verbose())
-        printf("referee: added time +%i min\n", addedMinutes);
+      // The on-pitch performer's perf tier, which PES reads out of its team slice
+      // at TeamSlice + 0x4C00 and this engine has no equivalent for: an explicit
+      // input with no default, so the plain per-match-second term is announced
+      // until a caller supplies a tier.
+      const int addedMinutes = match->GetPesClock().AddedMinutes(kPesNoPerfTier);
+      if (addedMinutes > 0 && Verbose()) printf("referee: added time +%i min\n", addedMinutes);
     }
 
     // Blow for the end of the period at a neutral moment - no earlier than the
-    // scheduled end plus the Law 7 allowance for time lost - but never let a
-    // period run away waiting for one.
-    if (MatchProgression::ShouldEndPeriod(
-            match->GetMatchTime_ms(),
-            MatchProgression::GetPeriodEndTime_ms(match->GetMatchPhase(), match->GetStoppage()),
-            ballPos.coords[0])) {
+    // period's length plus the formula's allowance, PES's period end plus its
+    // added time - but never let a period run away waiting for one. Both sides
+    // are period-relative: PES's half length is per period (45, not 90).
+    const pes::PesClock& clock = match->GetPesClock();
+    const auto periodEnd_ms =
+        static_cast<unsigned long>(clock.PeriodEndWithAdded(kPesNoPerfTier) * 60000.0f);
+    const auto periodElapsed_ms = static_cast<unsigned long>(clock.PeriodElapsedSeconds() * 1000.0f);
+    if (MatchProgression::ShouldEndPeriod(periodElapsed_ms, periodEnd_ms, ballPos.coords[0])) {
       foul.advantage = false;
       if (!CheckFoul()) {
         match->StopPlay();
@@ -149,7 +166,6 @@ void Referee::Process() {
         lastSide = lastTouchTeam->GetSide();
 
         if (match->IsGoalScored()) {
-          match->AddLostTime(MatchProgression::e_Stoppage_Goal);
           buffer.desiredSetPiece = e_SetPiece_KickOff;
           buffer.stopTime = match->GetActualTime_ms();
           // Preparing the restart calls Match::ResetSituation, which clears the
@@ -481,7 +497,6 @@ void Referee::IssueDeferredCards() {
       card.player->GiveRedCard(match->GetActualTime_ms() + 4000);
     if (Verbose())
       printf("referee: deferred card issued (type %i)\n", card.foulType);
-    match->AddLostTime(MatchProgression::e_Stoppage_Card);
     anyCardShown = true;
   }
 
@@ -825,7 +840,7 @@ bool Referee::CheckFoul() {
       foul.foulPlayer->GiveRedCard(match->GetActualTime_ms() +
                                    6000);  // need to find out proper moment
     }
-    if (foul.foulType >= 2) match->AddLostTime(MatchProgression::e_Stoppage_Card);
+
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.
     match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());

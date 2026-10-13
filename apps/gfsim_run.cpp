@@ -9,6 +9,8 @@
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchreport.hpp"
 #include "onthepitch/matchsetup.hpp"
+#include "onthepitch/pesclock.hpp"
+#include "pes/exe.hpp"
 #include "pes/vfs.hpp"
 #include "rig/rig.hpp"
 #include "simcontext.hpp"
@@ -64,6 +66,13 @@ int main(int argc, char** argv) {
   if (!vfs.Mount(root, &err)) return std::fprintf(stderr, "PES21 mount failed: %s\n", err.c_str()), 1;
   auto rig = pesrig::BuildRig(vfs, &err);
   if (!rig) return std::fprintf(stderr, "PES21 rig failed: %s\n", err.c_str()), 1;
+  // PES 2021's match-clock constants, read from the install's own exe
+  // (docs/re/pes-re-tactics-clock.md 7.2: every clock value lives in the image,
+  // none in a WESYS object).
+  auto exe = pes::PeImage::Open(root + "/PES2021.exe", &err);
+  if (!exe) return std::fprintf(stderr, "PES2021.exe: %s\n", err.c_str()), 1;
+  auto clockConstants = pes::LoadPesClockConstants(*exe, &err);
+  if (!clockConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -77,6 +86,7 @@ int main(int argc, char** argv) {
   setup.timeScale = timeScale;
   setup.animationDir = anims;
   setup.rig = &*rig;
+  setup.pesClockConstants = &*clockConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

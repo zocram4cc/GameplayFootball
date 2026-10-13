@@ -16,8 +16,8 @@
 #include "AIsupport/mentalimage.hpp"
 #include "ball.hpp"
 #include "gameplaytuning.hpp"
-#include "matchprogression.hpp"
 #include "matchsetup.hpp"
+#include "matchprogression.hpp"
 #include "officials.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
@@ -171,6 +171,16 @@ public:
     return possessionSideHistory->GetAverage(time_ms);
   }
 
+  // PES 2021's match clock (docs/re/pes-re-tactics-clock.md): a u32 percentage
+  // of the running period's game-minutes, at 960 ticks per game-minute. The
+  // Match always has one: the constants are exe-derived and required.
+  const pes::PesClockConstants& GetPesClockConstants() const { return *pesClockConstants; }
+  const pes::PesClock& GetPesClock() const { return *pesClock; }
+  pes::PesClock& GetPesClock() { return *pesClock; }
+  // Advances the match clock by elapsed game-seconds, frozen while play is
+  // stopped (report 3.3: a stoppage adds no time).
+  void AdvanceMatchSeconds(float gameSeconds);
+
   unsigned long GetMatchTime_ms() const { return matchTime_ms; }
   unsigned long GetActualTime_ms() const { return actualTime_ms; }
   // The simulation clock: ticks processed so far times kTick_ms. Everything
@@ -190,13 +200,6 @@ public:
   boost::intrusive_ptr<Node> GetDynamicNode() { return dynamicNode; }
 
   MatchData* GetMatchData() { return matchData; }
-
-  // Law 7 allowance for time lost, accrued per event and reset at every phase
-  // change. The referee extends the period by it.
-  void AddLostTime(MatchProgression::e_StoppageReason reason) {
-    MatchProgression::AddStoppage(stoppage, reason);
-  }
-  const MatchProgression::Stoppage& GetStoppage() const { return stoppage; }
 
   MatchAnalytics::ShotTally& GetShotTally() { return shotTally; }
   const MatchAnalytics::ShotTally& GetShotTally() const { return shotTally; }
@@ -276,7 +279,6 @@ protected:
   bool goalLineCrossingOpen = false;
 
   Substitutions::State substitutionState;
-  MatchProgression::Stoppage stoppage;
   struct PendingSubstitution {
     int teamID;
     Player* playerOut;
@@ -341,6 +343,11 @@ protected:
   float matchDurationMinutes;
   float matchDurationFactor;
   float matchTimeScale;
+
+  // PES 2021's match clock: its exe-derived constants, owned here, and the
+  // clock itself.
+  std::unique_ptr<pes::PesClockConstants> pesClockConstants;
+  std::unique_ptr<pes::PesClock> pesClock;
 
   std::map<Animation*, std::vector<Vector3>> animPositionCache;
 

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <stdexcept>
 
 #include "../data/playerskills.hpp"
 #include "AIsupport/AIfunctions.hpp"
@@ -60,6 +61,17 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
   matchDurationFactor = MatchDurationFactorFromMinutes(matchDurationMinutes);
   matchTimeScale = std::max(1.0f, setup.timeScale);
   matchDifficulty = GetConfiguration()->GetReal("match_difficulty", _default_Difficulty);
+
+  // PES 2021's clock (docs/re/pes-re-tactics-clock.md 7.2): every constant is
+  // read from the install's own PES2021.exe by the caller. Required, like the
+  // rig - there is no fallback rig either - so a match without them cannot be
+  // built and this refuses rather than running on invented numbers.
+  if (setup.pesClockConstants == nullptr)
+    throw std::runtime_error(
+        "PES match-clock constants missing: read them from the install's PES2021.exe with "
+        "pes::LoadPesClockConstants into MatchSetup::pesClockConstants");
+  pesClockConstants = std::make_unique<pes::PesClockConstants>(*setup.pesClockConstants);
+  pesClock = std::make_unique<pes::PesClock>(*pesClockConstants);
 
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);
@@ -237,6 +249,14 @@ void Match::InvalidateCachedMentalImages() {
   }
 }
 
+void Match::AdvanceMatchSeconds(float gameSeconds) {
+  if (!pesClock) return;
+  // Report 3.3: the ClockFSM does not run while the state byte is a frozen
+  // one, so a stoppage stops the clock instead of adding to it.
+  pesClock->SetFrozen(!IsInPlay() || IsInSetPiece());
+  pesClock->Advance(gameSeconds);
+}
+
 void Match::ResetSituation(const Vector3& focusPos) {
   SetBallRetainer(nullptr);
   SetGoalScored(false);
@@ -266,6 +286,9 @@ void Match::ResetSituation(const Vector3& focusPos) {
 void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
   matchPhase = newMatchPhase;
   matchData->RecordPassRestart();
+  // PES's clock is one counter over the whole match, so a phase change never
+  // rewinds it - only the denominator (the phase's own period end) changes.
+  if (pesClock) pesClock->SetPhase(newMatchPhase);
   if (matchPhase == e_MatchPhase_1stHalf)
     matchTime_ms = 0;
   else if (matchPhase == e_MatchPhase_2ndHalf)
@@ -279,8 +302,6 @@ void Match::SetMatchPhase(e_MatchPhase newMatchPhase) {
 
   matchTimeExact_ms = static_cast<double>(matchTime_ms);
 
-  // A fresh period starts with a clean added-time slate.
-  stoppage = MatchProgression::Stoppage();
 
   if (matchPhase == e_MatchPhase_2ndHalf) {
     teams[0]->RelaxFatigue(0.05f);
@@ -363,7 +384,6 @@ void Match::ExecutePendingSubstitutions() {
     if (!team->Substitute(sub.playerOut, sub.playerIn))
       continue;
     Substitutions::Commit(substitutionState, sub.teamID);
-    AddLostTime(MatchProgression::e_Stoppage_Substitution);
     matchData->AddEvent(
         MatchData::Event::Substitution, sub.teamID, GetMatchMinute(),
         (sub.playerOut && sub.playerOut->GetPlayerData() ? sub.playerOut->GetPlayerData()->GetLastName() : "") +
@@ -567,9 +587,13 @@ void Match::Process() {
   // time
 
   if (IsInPlay() && !IsInSetPiece()) {
-    matchTimeExact_ms += MatchDurationGameTimeFromRealMilliseconds(
+    const double gameTick_ms = MatchDurationGameTimeFromRealMilliseconds(
         static_cast<double>(kTick_ms), matchDurationMinutes, matchTimeScale);
+    matchTimeExact_ms += gameTick_ms;
     matchTime_ms = static_cast<unsigned long>(matchTimeExact_ms);
+    // PES 2021's clock (docs/re/pes-re-tactics-clock.md) counts the same game
+    // time, so a period ends on both clocks together.
+    AdvanceMatchSeconds(static_cast<float>(gameTick_ms / 1000.0));
   }
   actualTime_ms += kTick_ms;
   if (IsGoalScored())
@@ -1182,8 +1206,6 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
           // foul statistics are counted by the referee at the whistle
           const bool p1WasFit = p1->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
           p1->Injure(tripType * 0.04f);
-          if (p1WasFit && p1->GetInjuryLevel() >= AIManager::substitutionInjuryLevel)
-            AddLostTime(MatchProgression::e_Stoppage_Injury);
         }
       }
       if (p2sensitivity > trip0threshold) {
@@ -1200,8 +1222,6 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
           // foul statistics are counted by the referee at the whistle
           const bool p2WasFit = p2->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
           p2->Injure(tripType * 0.04f);
-          if (p2WasFit && p2->GetInjuryLevel() >= AIManager::substitutionInjuryLevel)
-            AddLostTime(MatchProgression::e_Stoppage_Injury);
         }
       }
 

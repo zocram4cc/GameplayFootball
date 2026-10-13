@@ -11,6 +11,10 @@ add_executable(pes_rig_test pes_rig_test.cpp)
 target_link_libraries(pes_rig_test PRIVATE pesrig GTest::gtest_main)
 gtest_discover_tests(pes_rig_test)
 
+add_executable(pes_clock_test pes_clock_test.cpp)
+target_link_libraries(pes_clock_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_clock_test)
+
 add_executable(pes_formats_test pes_formats_test.cpp)
 target_link_libraries(pes_formats_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_formats_test)

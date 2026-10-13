@@ -44,6 +44,13 @@ Error PesLibrary::open(const String& root) {
   if (!handPoses_) UtilityFunctions::push_warning("PES21 hand rig unavailable, hands stay at rest: ", ToGd(err));
   if (exe) speedClasses_ = pes::SpeedClassLimits(*exe);
   if (exe) cameraParams_ = pes::LoadDynamicWide(*exe, vfs_, &err);
+  // PES 2021's match-clock constants, from the same exe (docs/re/pes-re-tactics-clock.md
+  // 7.2: every clock value lives in the image). Required by every GfMatch.
+  if (exe) clockConstants_ = pes::LoadPesClockConstants(*exe, &err);
+  if (!clockConstants_) {
+    UtilityFunctions::push_error("PES21 match-clock constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);
