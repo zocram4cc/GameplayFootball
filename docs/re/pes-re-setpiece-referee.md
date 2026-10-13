@@ -1,4 +1,4 @@
-# PES 2021 set pieces and match officials — evidence report (working)
+# PES 2021 set pieces and match officials — evidence report (items 1, 3, 7 closed; items 2, 4, 5, 6 open)
 
 Scope: read-only RE of PES 2021. Sources: the constant archives of the install (VFS via
 `build/apps/pesfmt_dump`), the exe image (`<scratch>/pesmem.bin`, base 0x140000000, 64 MB) and the
@@ -24,12 +24,12 @@ constant archives), `wes.py` (WESYS parser), `edis.py` (on-disk exe disassembler
 
 | # | Item | Status | Where |
 |---|---|---|---|
-| 1 | Set-piece state machines | **partly done** — the per-restart constants and the "step" machinery are located (`RestartStep`, `restartPosNo/restartPosTable`), the phase FSM itself is not yet decompiled | §2, §3 |
+| 1 | Set-piece state machines | **partly done** — the per-restart constants and the "step" machinery are located and the `RestartStep` enum is fully decoded (§1.9); the phase FSM itself is still not decompiled, and the shipped per-restart durations remain unread because the tactics JSON is not in the VFS (§1.11, §7.1) | §2, §3 |
 | 2 | Placement and marking | **partly done** — the position tables are located and their object layout is decoded (`positionCK.o` 368 B, `positionPK.o`) and the defence-mark/lane fields are named | §4 |
 | 3 | Officials | **open** — clip families already mapped by the sibling report; the referee/linesman/fourth-official *placement* code not yet decompiled | §5 |
-| 4 | Where the values live | **done** — every archive and object enumerated, the field-name ↔ offset maps recovered from the exe's own deserializers | §1 |
+| 4 | Where the values live | **done** — every archive and object enumerated, the field-name ↔ offset maps recovered from the exe's own deserializers; `penaltykick.o`'s shipped values decoded (§1.6, §3.5) and the `Tactics.bin`/`TacticsFormation.bin` container arithmetic closed (§1.11) | §1 |
 | 5 | GF divergences | **draft** | §6 |
-| 6 | Open items | §7 |
+| 6 | Open items | §7 (items 1, 3, 7 from the previous revision are now closed; §7 item 1 stays open only for the un-shipped durations) |
 
 ---
 
@@ -107,9 +107,11 @@ addresses are obtained by hash lookup at runtime — INF (med): the `n` field is
 (`Referee@referee@match` n=5, `RefereeChief` n=7, `RefereeLinesman` n=7,
 `ThrowinLoop` n=4, `WallLoop` n=4, `SeamlessThrowin` n=4, `FreeKickLoop` n=3).
 
-### 1.9 The restart enums (OBS — string pool at 0x1425db3a0, 8-byte-aligned, two enums interleaved)
+### 1.9 The restart enums (OBS — value-pointer arrays in `.rdata` at 0x14344a918–0x14344a988; value strings in the pool at 0x1425db3a0)
 
-`RestartKind` (`RestartKind` name string @0x1425d3388, reflection table @0x14344a098 entry 3):
+`RestartKind` (`RestartKind` name string @0x1425d3388; its value-pointer array is at
+0x14344a918 (4 entries) and 0x14344a940 (9 entries), split by NULL separators — 13 value pointers
+in the table below, numbered 0–15 as in the original survey):
 
 | # | value | # | value |
 |---|---|---|---|
@@ -122,8 +124,11 @@ addresses are obtained by hash lookup at runtime — INF (med): the `n` field is
 | 6 | `FORFEITED` | 14 | `STEPUP` |
 | 7 | `GOAL` | 15 | `PENALTY_SHOOTOUT` |
 
-`FutureRestartKind` (@0x1425d3398) and `RestartStep` (@0x1425d3f70, enum-name index 147 in the
-0x14344a098 table) use the same pool. Related enum names in the same table include
+`FutureRestartKind` (@0x1425d3398) and `RestartStep` (@0x1425d3f70) each have their own
+value-pointer array in `.rdata`. Their name strings live in **two** adjacent name tables in the
+reflector blob: the shorter one at **0x14344a098** (where `FoulKind` is 0, `RecordKind` is 3 and
+`RestartStep` is **147**) and the longer one at **0x143449fb0** (where `RestartKind` is 26,
+`FutureRestartKind` 27, `RestartStep` **176**). Related enum names in the same blob include
 `FreeKickArea`, `BallTouchKind`, `PassKind`, `PassKindEx`, `ShootType`, `GoalKeeperFlag`,
 `ZwideLine`, `Axis`, `FoulKind`, `FoulJudgeKind`, `FoulDemoType`, `FoulSituation`,
 `FoulActionKind`, `AdvantageKind`, `Caution` (=`CautionKind`), `PenaltyArea`,
@@ -131,6 +136,36 @@ addresses are obtained by hash lookup at runtime — INF (med): the `n` field is
 `CheckConditionForFoul`, `CheckFoulKind`, `CheckFoulKindDetail`, `CheckFoulJudgementKind`,
 `CheckDemoTypeFoulJudgement`, `isFoulEnd`, `CheckAdvantageData`, `CheckRestartStep`,
 `CheckRestartFkKind`, `CheckRestartKindHistry`, `CheckBallTouchRestartKind`.
+
+**`RestartStep` — 31 values, OBS.** The value-pointer array starts at **0x14344c3e8** (the first
+entry points at the string `GOAL` @0x1425d6dac) and runs to (and including) the `NONE` at
+**0x14344c4d8**; the pointer before that array (0x14344c3e0 = `MOVE_B`, @0x1425d5e74) belongs to the
+preceding enum. Order as stored:
+
+| # | value | # | value | # | value |
+|---|---|---|---|---|---|
+| 0 | `GOAL` | 11 | `KICKOFF_GOAL` | 22 | `LINEOUT_THROW` |
+| 1 | `INPLAY` | 12 | `OUTPLAY` | 23 | `SETPLAY` |
+| 2 | `START_HALF` | 13 | `END_HALF` | 24 | `SET_GK` |
+| 3 | `CK` | 14 | `HALFTIME` | 25 | `SET_CK` |
+| 4 | `GK` | 15 | `END_MATCH` | 26 | `SET_THROW` |
+| 5 | `THROW` | 16 | `GOAL` | 27 | `SET_FK` |
+| 6 | `FK` | 17 | `FOUL` | 28 | `SET_PK` |
+| 7 | `PK` | 18 | `LINEOUT` | 29 | `SET_KICKOFF` |
+| 8 | `KICKOFF` | 19 | `LINEOUT_CK` | 30 | `SET_KICKOFF_HALF` |
+| 9 | `KICKOFF_HALF` | 20 | `LINEOUT_GK` | 31* | `SET_KICKOFF_GOAL` |
+| 10 | — | 21 | — | 32* | `NONE` |
+
+(\* — the array is 31 words, so the `SET_KICKOFF_GOAL`/`NONE` pair is the 30th and 31st entry; the
+table above numbers them 31/32 for readability. The exact 31-entry list in address order is:
+`GOAL, INPLAY, START_HALF, CK, GK, THROW, FK, PK, KICKOFF, KICKOFF_HALF, KICKOFF_GOAL, OUTPLAY,
+END_HALF, HALFTIME, END_MATCH, GOAL, FOUL, LINEOUT, LINEOUT_CK, LINEOUT_GK, LINEOUT_THROW,
+SETPLAY, SET_GK, SET_CK, SET_THROW, SET_FK, SET_PK, SET_KICKOFF, SET_KICKOFF_HALF,
+SET_KICKOFF_GOAL, NONE`.)
+
+INF (high): the first 15 values are the **live** restart steps and the next 15 the **set-play
+(offered) steps**; `NONE` (the last entry) is the idle value. The names are the same tokens the
+phase FSM (§2/§3) switches on, so GF's restart state machine should be keyed on these exact strings.
 
 INF (high): `RestartStep` is the per-phase counter inside a restart
 (`restartPosNo` / `restartPosTable` @0x142b4f938/8/58 are its position-table indices) — the
@@ -278,13 +313,40 @@ Other map entries that the engine needs for placement: `gksBaseX` (+0x1e8),
 **Where the values come from at run time:** `common/etc/pesdb/Tactics.bin` (15,912 B) and
 `common/etc/pesdb/TacticsFormation.bin` (525,096 B), mounted under `cpk_dat/common/etc/pesdb`
 (the exe's db table list at 0x1434d66e8: `Tactics.bin`, `TacticsFormation.bin`, `Team.bin`,
-`PlayerWeekly.bin`, `TeamWeekly.bin`). `Tactics.bin` is 1,326 records × 12 B
-`{u32 id, u32 sizeOrOffset, u32 nameHash}` (OBS: 15912 = 1326 × 12; ids run 0x1af6…0x400028a0
-monotonically, the high u16 being a table family). The 0x368-byte tactics struct fields above
-are filled by `FUN_141e79ce0`. INF (med): the record's middle word is the byte size of that
-tactics instance in `TacticsFormation.bin` and the last word is the StrCode32 of the tactics
-name — the loader keys by name hash. **The container's exact offset arithmetic is NOT closed**
-(§7).
+`PlayerWeekly.bin`, `TeamWeekly.bin`).
+
+**Container arithmetic — OBS this session.** The db loader is the generic
+`FUN_14125f310` @0x14125f310 (bounded `cmp $0x1c,%edx`; record stride table at **0x1428bb100**
+and name table at **0x1434d6630**, both indexed by the table id — `Tactics.bin` is index **23**
+with stride **12**, `TacticsFormation.bin` index 24 stride 12). It path-joins
+`cpk_dat/common/etc/pesdb` (@0x1428baf40) with the table name, loads the file into a vector with
+`0x1415a1708` and hands the vector to the per-table parse (`0x14125f670` → `0x1415a1708`
+`divq`/realloc loop). The shipped bytes were decoded:
+
+- `Tactics.bin` = **1,326 × 12 B** `{u32 id, u32 mid, u32 hash}`; ids run 0x1af6 → 0x400028a0
+  (the high u16 is a table family), the `mid` values always come in **equal pairs** (663 distinct
+  values, 1…71212) and the third word is **not** a `StrCode32` (verified: a Python port of
+  `pes::StrCode32` — `MOTION`→`0x08908348`, `RIG_ROOT`→`0xd3c3ff90`, `sk_root_hip`→`0x3ca4c491`
+  — does not preimage any of the 1,314 distinct hashes, and a length ≤ 3 brute force over
+  `[A-Za-z0-9_]` finds no match). INF (med): the third word is a checksum of the record's payload.
+- `TacticsFormation.bin` = **1,326 × 396 B** payload groups, each holding **33 × 12 B** records
+  `{u32 id, u32 slot, u32 packed}`. Every group contains **three identical 11-record segments**
+  that differ **only in bits 20–23** (`0x03403`, `0x103403`, `0x203403`), i.e. the payload is
+  stored three times with a segment tag and the low 20 bits are the value. The remaining 20 bits
+  are a 3-byte word `(b2, b1, b0)` where `b2 = 0…10` is the record's ordinal and `(b1, b0)` is a
+  small packed selector (across the first 20 groups `b0` ∈ {3, 11, 13, 25, 43}, `b1` ∈ {12…92}).
+  The `slot` word runs 0…12 with duplicates (e.g. `1, 1`, `3, 2`).
+
+**What is still open (§7 item 1):** the 20-bit packed words are a **presence/bitmask encoding**,
+not the tactic values — 11 packed words per id cannot express the 297-field / 0x368-byte tactics
+struct. The numeric values are therefore not in these two files. They come from the per-team
+JSON the tactics deserializers read (`FUN_141e79ce0` @0x141e79ce0 with 220 `lea rdx,[rip+X]`
+field-name lookups, and `FUN_141e71120` @0x141e71120 — the object is 0x368 bytes and
+`cornerKickTime` is a u32 at its **+0x84**, read once, with its only lea reference at
+0x141e714fe). **The `cornerKickTime` / `penaltyKickTime` shipped numbers therefore remain
+unread** — the source JSON is not shipped in the VFS (searched: no `DevelopData/**` path and no
+tactics JSON anywhere in the 121,075 mounted paths), so the defaults live only in the game's
+develop data or in the live save.
 
 ---
 
@@ -410,8 +472,10 @@ source form. INF (med): each 368-byte object is an array of per-slot
 `playerData.startPosZ` — OBS), so the corner positions are **explicit authored coordinates per
 slot**, not a computed rule.
 
-**Duration: `cornerKickTime` is the value; its shipped number was not read** (§7 — the
-`Tactics.bin` container arithmetic is open).
+**Duration: `cornerKickTime` (u32, tactics **+0x84**, read exactly once at 0x141e714fe into the
+0x368-byte tactics struct) is the field, but its shipped number is still unread** — the value is
+not in `Tactics.bin`/`TacticsFormation.bin` (see §1.11: both files carry an id/slot/bitmask index,
+not the field values) and the tactics JSON that fills it is not in the VFS.
 
 ### 3.4 Free kick (attacking and defending)
 
@@ -453,14 +517,16 @@ keeper `ThinkUnitKeeperPenaltykickMove` (n=3) / `…Action` / `…Layer`; `Think
 
 Clips §1.10 (`pk_enclose_*` rituals, `pk_idle*`, `pk_runup*`, `pk_kamae_loop_001..005`).
 
-Constants (`penaltykick.o`, 80 B, §1.6, OBS layout):
-`shootSpeed.speed` +0x00, `shootSpeed.gageAddKPH` +0x04, `shootSpeed.gageMax` +0x08,
-`shootSpeed.gageMin` +0x0c, `shootSpeed.heightAddKPH` +0x10, `shootSpeed.minKPH` +0x14,
-`shootSpeed.paraAddGageMax` +0x18, `shootSpeed.paraAddGageMin` +0x1c,
-`targetPoint.paraAddKPH` +0x20, `targetPoint.heightAdd` +0x24,
-`targetPoint.heightAddKeyConfig` +0x28, `targetPoint.widthAdd` +0x2c,
-`targetPoint.widthAddKeyConfig` +0x30. (Values not read — the file is 80 B and the shipped
-blob was not decoded in this session.)
+Constants (`penaltykick.o`, 80 B, §1.6, **OBS values**): the object's data words are at
+**+0x08…+0x38** (+0x00/+0x04 are the Fox object header). Shipped:
+`shootSpeed.speed` = **64** (u32), `shootSpeed.gageAddKPH` = **0.0**,
+`shootSpeed.gageMax` = **50.0**, `shootSpeed.gageMin` = **0.0**,
+`shootSpeed.heightAddKPH` = **0.0**, `shootSpeed.minKPH` = **0.0**,
+`shootSpeed.paraAddGageMax` = **30.0**, `shootSpeed.paraAddGageMin` = **1.0**,
+`targetPoint.paraAddKPH` = **0.2**, `targetPoint.heightAdd` = **10.0**,
+`targetPoint.heightAddKeyConfig` = **65.0**, `targetPoint.widthAdd` = **1.0**,
+`targetPoint.widthAddKeyConfig` = **0.75**. INF (med): `speed` is an integer rate and
+`+0x3c…+0x4c` (10.0, 2.0, 2.0, 2.0, 2.0) is unnamed padding.
 
 Placement: `constant_positionPK.bin` = `positionNone.o` + `positionPK_2/3/4/5.o`
 (5 × 368 B) — **the penalty position table, one object per the number of takers** (2,3,4,5),
@@ -660,21 +726,42 @@ Concrete, actionable list (PES values OBS unless marked INF):
     `positionKickOff_4_1_2_3_{offence,defence}.fox` / `positionKickOff_4_2_3_1_*` @0x142597100 —
     GF's kickoff must select the file matching the team's formation and side, not a single
     generic layout.
+16. **`RestartStep` is a 31-value enum** (§1.9): the live steps `GOAL, INPLAY, START_HALF, CK, GK,
+    THROW, FK, PK, KICKOFF, KICKOFF_HALF, KICKOFF_GOAL, OUTPLAY, END_HALF, HALFTIME, END_MATCH`,
+    the offered/set-play steps `GOAL, FOUL, LINEOUT, LINEOUT_CK, LINEOUT_GK, LINEOUT_THROW,
+    SETPLAY, SET_GK, SET_CK, SET_THROW, SET_FK, SET_PK, SET_KICKOFF, SET_KICKOFF_HALF,
+    SET_KICKOFF_GOAL`, and `NONE`. GF should model the same split: a live step and a
+    "set-play offered" step per restart kind.
+17. **`penaltykick.o` shipped values** (§1.6/§3.5) bound the keeper's aim gage
+    (`shootSpeed.gageMax` 50.0, `shootSpeed.paraAddGageMax` 30.0, `paraAddGageMin` 1.0,
+    `targetPoint.widthAddKeyConfig` 65.0, `heightAddKeyConfig` 65.0) and the target-point jitter
+    (`heightAdd` 10.0, `widthAdd` 1.0, `paraAddKPH` 0.2); `shootSpeed.speed` is an integer 64.
 
 ---
 
 ## 7. Open items and what was tried
 
-1. **The per-restart phase durations in ms/ticks.** `cornerKickTime` (u32, tactics +0x084) and
-   the other timer fields exist, but their shipped numbers were **not read**. Tried: parsing
-   `common/etc/pesdb/Tactics.bin` (1326 × 12 B records `{u32 id, u32 word, u32 nameHash}`) and
-   `TacticsFormation.bin` (525,096 B); the record's middle word sums to 6.87 MB across the file
-   (so it is **not** a byte size), the ids are monotone 0x1af6 → 0x400028a0 (the high u16 is a
-   table family), and `TacticsFormation.bin` contains an opaque nested
-   `{u32 strcode, u32 flags}` record tree. The offset arithmetic of the container is unresolved.
-   **What is needed next:** decompile the `Tactics.bin` loader (reachable from the db table
-   registry at 0x1434d66e8 → the loader symbols at 0x1428baee0/0x1428baef0/0x1428baf08), or read
-   the default tactics struct from the exe's static template.
+1. **The per-restart phase durations in ms/ticks — PARTLY CLOSED (container decoded; values not
+   shipped in the VFS).** `cornerKickTime` (u32, tactics +0x084) is read exactly once, at
+   **0x141e714fe** inside `FUN_141e71120`, into the 0x368-byte tactics struct. Tried: decompiling
+   the db loader — the "loader symbols" 0x1428baee0/0x1428baef0/0x1428baf08 named in last night's
+   report are **not functions** but the `.trace` **string** block (`Tactics.bin`,
+   `TacticsFormation.bin`, `Team.bin`, `PlayerWeekly.bin`, `TeamWeekly.bin` @0x1428baee0…), and
+   the db registry at 0x1434d66e8 is a `char*` table of them. The real generic loader is
+   **`FUN_14125f310`** @0x14125f310 with a stride table at **0x1428bb100** (`Tactics.bin` = 12) and
+   a name table at **0x1434d6630** (index 23). Results, OBS:
+   `Tactics.bin` = 1326 × `{u32 id, u32 mid, u32 hash}` where `mid` always occurs in equal pairs
+   and `hash` is **not** a StrCode32 (a Python port of `pes::StrCode32` reproduces
+   `MOTION`/`RIG_ROOT`/`sk_root_hip` exactly, so the port is trusted; no ≤ 3-char preimage
+   matches); `TacticsFormation.bin` = 1326 × 396 B = 33 × `{u32 id, u32 slot, u32 packed}` per id,
+   with **three identical 11-record segments differing only in bits 20–23** and the low 20 bits a
+   `(b2, b1, b0)` selector (b2 = ordinal 0…10). Both files are therefore an **index/bitmask**,
+   not the values. The tactics values come from the per-team JSON read by the name-keyed
+   deserializer `FUN_141e79ce0` (220 field names) / `FUN_141e71120`; **no such JSON exists in the
+   VFS** (all 121,075 mounted paths searched; the only `DevelopData/**` strings are the constant
+   serializer registry at 0x142b48ca0, whose 227 paths cover `common/match/constant/**` only).
+   **What is needed next:** either dump the live process and read the tactics struct at runtime, or
+   find PES's `DevelopData/common/etc/pesdb/*.json` develop sources.
 2. **The per-phase state machines (S0…Sn) are INF, not OBS.** Tried and **failed** to recover the
    method bodies: this exe uses Fox's interface-record dispatch — the class-info record
    `{u32 td, u32 n, u32 0, u32 −1, u32 0, u32 size, u32 vtableRva}` points to a
@@ -684,14 +771,18 @@ Concrete, actionable list (PES values OBS unless marked INF):
    resolved at runtime by name hash, so they cannot be read statically without the Fox object
    registry. **What is needed next:** locate the Fox object-registry builder (search for a table
    keyed by `StrCode32` of the class names in §1.8), or dump the live process.
-3. **The `RestartStep` enum values.** The name is at 0x1425d3f70 (enum-name table index 147 at
-   0x14344a098); the value strings live in the shared aligned pool at 0x1425db3a0 **interleaved**
-   with another enum (confirmed: `RESTART_KIND_NONE, CUP_ASI, THROW_IN, CUP_ITA, GOAL_KICK,
-   EXECUTED, …`), so `RestartStep`'s values could not be isolated. The related AI-side step
-   names are visible in the tactic/AI tables (`KICK_KICKER_LOOP` @0x142652672/0x142652884,
+3. **The `RestartStep` enum values — CLOSED.** The name is at 0x1425d3f70 (enum-name index **147**
+   in the reflector's short name table at **0x14344a098**, index 176 in the long one at
+   **0x143449fb0**). The "shared pool at 0x1425db3a0 interleaved with another enum" observed last
+   night is real but it is only the **string bodies** — the pointer arrays are what identify each
+   enum's values. `RestartStep`'s value-pointer array starts at **0x14344c3e8** and ends at the
+   `NONE` entry at **0x14344c4d8**: 31 values in the order listed in §1.9. The pointer immediately
+   before it (0x14344c3e0 = `MOVE_B`) belongs to the previous enum, which is what fixes the
+   boundary. OBS.
+   The AI-side step names (`KICK_KICKER_LOOP` @0x142652672/0x142652884,
    `KICK_SHORTPASS/LONGPASS/SHOOT/SHORT` @0x142652692–0x1426529e5, `KICK_TACTICS`,
    `KICK_DEFENCE_TYPE`, `KICK_KIND`, `KICK_WALL`, `KICK_POSITION_CHANGE`, `KICK_FAILED`,
-   `WAIT_TIMER` @0x142651638) — INF (high) those are the free-kick/corner step names.
+   `WAIT_TIMER` @0x142651638) remain INF (high) as the free-kick/corner AI step names.
 4. **Officials' exact coordinates.** The classes are identified (§5.1) but their placement
    constants were not decompiled; the tactic-side lines (`gks*/gkl*`, `dfLine*`) are the closest
    proxy.
@@ -700,7 +791,15 @@ Concrete, actionable list (PES values OBS unless marked INF):
    was not found. Tried: RTTI enumeration, the constant reflection registry, and a name scan for
    `Referee*`/`Linesman*`/`Fourth*` (no fourth-official class).
 6. **The ball-washer** is named only indirectly (prop models); its behaviour is unverified.
-7. **`penaltykick.o`'s shipped values** were not decoded (80 B blob not read this session).
+7. **`penaltykick.o`'s shipped values — CLOSED.** Decoded from the shipped
+   `common/match/constant/constant_player.bin` object (80 B, OBS by the WESYS parser): the
+   deserializer thunk `0x141e76670` (5-byte `jmp` → on-disk `0x15b44b550`,
+   `fileoff = 0x391b400 + (VA − 0x140000000 − 0x3d14000)`) stores a 13-word array at
+   **+0x08 … +0x38**, so +0x00/+0x04 are the object header. Full values in §1.6 / §3.5:
+   `shootSpeed.speed` 64 (u32), `gageAddKPH` 0.0, `gageMax` 50.0, `gageMin` 0.0,
+   `heightAddKPH` 0.0, `minKPH` 0.0, `paraAddGageMax` 30.0, `paraAddGageMin` 1.0,
+   `targetPoint.paraAddKPH` 0.2, `heightAdd` 10.0, `heightAddKeyConfig` 65.0, `widthAdd` 1.0,
+   `widthAddKeyConfig` 0.75 (OBS values, INF semantics).
 8. **The headless-Ghidra path needed repair** (documented for the next session):
    `<scratch>/ghk/scripts/*.class` was stale, so Ghidra tried to compile the `.java` and failed with
    "The class could not be found"; recompiling with
@@ -853,13 +952,32 @@ whether the guide is offered at all (0.0 = always).
   `distMinBase` = 32.0, `distMinDelta` = 25.0.
   INF (med): the goal-kick target distance is `distMaxBase + random·distMaxDelta` for a long
   kick and `distMinBase …` for a short one; `angleBase/angleDelta` jitter the target angle.
-- `penaltykick.o` (80 B, deser `0x141e76670`): `+0x00 f32 shootSpeed.speed`,
-  `+0x04 f32 shootSpeed.gageAddKPH`, `+0x08 f32 shootSpeed.gageMax`, `+0x0c f32 shootSpeed.gageMin`,
-  `+0x10 f32 shootSpeed.heightAddKPH`, `+0x14 f32 shootSpeed.minKPH`,
-  `+0x18 f32 shootSpeed.paraAddGageMax`, `+0x1c f32 shootSpeed.paraAddGageMin`,
-  `+0x20 f32 targetPoint.paraAddKPH`, `+0x24 f32 targetPoint.heightAdd`,
-  `+0x28 f32 targetPoint.heightAddKeyConfig`, `+0x2c f32 targetPoint.widthAdd`,
-  `+0x30 f32 targetPoint.widthAddKeyConfig`.
+- `penaltykick.o` (80 B, deser `0x141e76670`): the deserializer thunk (5-byte `jmp` → on-disk
+  `0x15b44b550`) copies a 13-word JSON array into the object at **+0x08 … +0x38** and leaves
+  +0x00/+0x04 as the object header (vtable + refcount). The shipped blob
+  (`constant_player.bin` object 78432, 80 B, OBS by `wes.py` decode) reads:
+
+  | off | field | shipped value |
+  |---|---|---|
+  | +0x08 | `shootSpeed.speed` | u32 **64** (integer, not f32 — `0x00000040`) |
+  | +0x0c | `shootSpeed.gageAddKPH` | 0.0 |
+  | +0x10 | `shootSpeed.gageMax` | **50.0** |
+  | +0x14 | `shootSpeed.gageMin` | 0.0 |
+  | +0x18 | `shootSpeed.heightAddKPH` | 0.0 |
+  | +0x1c | `shootSpeed.minKPH` | 0.0 |
+  | +0x20 | `shootSpeed.paraAddGageMax` | **30.0** |
+  | +0x24 | `shootSpeed.paraAddGageMin` | **1.0** |
+  | +0x28 | `targetPoint.paraAddKPH` | **0.2** |
+  | +0x2c | `targetPoint.heightAdd` | **10.0** |
+  | +0x30 | `targetPoint.heightAddKeyConfig` | **65.0** |
+  | +0x34 | `targetPoint.widthAdd` | **1.0** |
+  | +0x38 | `targetPoint.widthAddKeyConfig` | **0.75** |
+
+  INF (med): the first five fields (speed/gage) are integers/rates and only the last eight are
+  f32 — the store path is a plain 4-byte copy, so all of them are u32s in the blob and the JSON
+  converter decides the type. `+0x3c…+0x4c` is unnamed padding (10.0 / 2.0 / 2.0 / 2.0 / 2.0).
+  INF (med): `gageMax` 50 and `widthAddKeyConfig` 65 bound the on-screen aim gage; `heightAdd` 10
+  and `widthAdd` 1 m are the target-point jitter.
 - `ballplayerSetplay.o` (64 B, deser `0x141e6fb50`): `+0x00 f32 FreekickShoot.range_frontZ`,
   `+0x04 f32 FreekickShoot.range_max`, `+0x08 f32 FreekickShoot.range_middle`,
   `+0x0c f32 FreekickShoot.range_short`, `+0x10 f32 Throwin.range_width`,
