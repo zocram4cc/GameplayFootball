@@ -29,12 +29,14 @@ address given.
 |`pes-re-pitch-grass.md`|the pitch, line and turf shaders as port-ready formulas, verified numerically against the compiled DXBC|
 |`pes-re-stadium-camera.md`|nested stadium cpks, pitch dimensions, crowd, the in-play camera|
 |`pes-re-effects-particles.md`|the Tpp Effect system: the runtime path, the particle update rule, weather, the post chain, and the negative result on in-play emitters|
+|`pes-re-audio.md`|the audio system (in-exe CRIWARE ADX2), the match sound inventory, the trigger-to-cue condition trees, and the crowd|
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
 |`pes-re-hud-ui.md`|the match HUD as a Flash/AS3 system: every overlay element with its region, trigger and data, plus the layout and scaling rules|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
 |`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
 |`pes-re-matchlogic.md`|player and team records, tuning files, ball parameters, formations, AI map|
+|`pes-re-ball-constants.md`|where PES ball physics constants live: ball.o in constant_match.bin, the named field map, and the runtime-written spin scale|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
 |`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
