@@ -1,5 +1,27 @@
 # PES 2021: player physique (height, weight, body-shape sliders)
 
+> **Corrections applied 2026-10-13** by an independent re-derivation (see
+> `docs/re/pes-re-physique-helpers.md`, the companion "helpers" report). Five items changed:
+> 1. **Table A/B evaluated entry counts are 16 and 21, not 22** — the headers physically
+>    contain 22 slots but the evaluators (`FUN_14195c710` `lVar10=0x10`,
+>    `FUN_14195c830` `lVar10=0x15`) only iterate 16 and 21, so A e16–e21 are dead data.
+> 2. **Clavicle roll signs are reversed**: `dsk_clavicle_l = −8·s`, `dsk_clavicle_r = +8·s`
+>    (constants ±8.0 at 0x14259bdf4 / 0x1425c7ba4).
+> 3. **Collar offsets**: `_l = (s≥0) ? −0.005·s : +0.01·|s|`;
+>    `_r = (s≥0) ? +0.005·s : −0.01·|s|` (constants 0x14256ae18, 0x14260a24c, 0x1425b8708,
+>    0x1425e6820). The lane the offset lands in (y vs z) is still unverified.
+> 4. **Table B e17's two unresolved helper bones are `dsk_thigh_l` / `dsk_thigh_r`**
+>    (StrCode64 low 32 = 0x1849553c / 0x6115f8af; exhaustive string scan, 0 records unresolved
+>    across all 295 A+B+C records).
+> 5. **playbackSpeed is physics-independent** — the single store in the image is at
+>    0x1406f4e60 (`FUN_1406f19f0`) and has no physique input; the old "not traced" is now a
+>    confirmed negative.
+> Also added: the exact bone lists the Appendix truncated (Appendix A below was completed),
+> the `G` consumers (`FUN_141f7f080`, `FUN_1423ea330`), the `BAC+0x2B4 = 1/G` link to the
+> graph-node writer `FUN_141af4480`, and the 5 extra `BAC+0x2A0[i]` scales.
+> Everything else below stands as observed.
+
+
 Scope: how height, weight and the 14 body/head sliders change the animated skeleton and the rendered body.
 
 Method: static analysis of the unpacked image dump `pesmem.bin` (base 0x140000000), using headless Ghidra decompiles and capstone. Live reads of the running `PES2021.exe` went only through `/proc/<pid>/mem`; nothing was written. The game was in a match: 24 `match::AnimePlayer` (21 players + 3 officials) and 25 `cobra::rd::SceneCharacterNode`. The EDIT save was decrypted in memory with the save cipher from kit report §8.1. Only numeric fields were used; no names appear here.
@@ -31,7 +53,7 @@ Tags: **OBS** = observed (decompile, memory or data); **INF** = inferred, with c
 5. **Render side.**
    - The model matrix is scaled uniformly by G (`SceneCharacterNode+0x108`, OBS).
    - Each render bone gets a non-uniform local scale (table B, xyz in bone-local axes). OBS: exact for the 18 `sk_*` bones + `dsk_hip` on 25 nodes.
-   - The shoulder-height slider additionally rotates `dsk_clavicle_l/r` by ±8° and offsets `dsk_collar_l/r` by up to 1 cm (OBS code; live survival not confirmed, §5.3).
+   - The shoulder-height slider additionally rotates `dsk_clavicle_l` by −8·s° and `dsk_clavicle_r` by +8·s° (signs corrected 2026-10-13: was ±8° swapped) and offsets `dsk_collar_l/r` by up to 1 cm (OBS code; live survival not confirmed, §5.3).
 6. **Weight** is normalised against a height-indexed table `{Wmin, Wstd, Wmax}` to −1..1 (OBS, exact rationals live). It thickens or thins the trunk and limbs (table B entry 1). It does **not** change G or the animation bone lengths.
 
 ---
@@ -136,8 +158,8 @@ The sliders sit in the 72-byte appearance record. Offsets below are appearance-r
   - record.scale = **B(bone)** (all 4 components);
   - entry+0x28..0x30 = **C(bone)** xyz;
   - shoulder height `s = obj+0x10`:
-    - `dsk_clavicle_l`: quat about local Y by `8·s`°; `dsk_clavicle_r` by `−8·s`°. The quat is (0, sin θ/2, 0, cos θ/2); INF high on the component placement (sincos-polynomial select).
-    - `dsk_collar_l` translation = (0, 0, s ≥ 0 ? 0.01·s : 0.005·s); `dsk_collar_r` = (0, 0, s ≥ 0 ? −0.01·s : −0.005·s). Units are metres (INF high). Constants are at 0x14259bdf4 / 0x1425c7ba4 / 0x14256ae18 / 0x14260a24c / 0x1425b8708 / 0x1425e6820.
+    - `dsk_clavicle_l`: quat about local Y by `−8·s`°; `dsk_clavicle_r` by `+8·s`°. **(corrected 2026-10-13, OBS asm: the ±8.0 constants at 0x14259bdf4/0x1425c7ba4 are handed to `l` negative and `r` positive; the old text had them swapped.)** The quat is (0, sin θ/2, 0, cos θ/2); INF high on the component placement (sincos-polynomial select).
+    - `dsk_collar_l` translation, lane unverified, magnitude `(s ≥ 0) ? −0.005·s : +0.01·|s|`; `dsk_collar_r` = `(s ≥ 0) ? +0.005·s : −0.01·|s|`. **(corrected 2026-10-13: the old text had `_l` positive above zero and both magnitudes mirrored; the asm hands −0.005/+0.01 to `_l` and +0.005/−0.01 to `_r`.)** Units are metres (INF high). Constants are at 0x14259bdf4 / 0x1425c7ba4 / 0x14256ae18 / 0x14260a24c / 0x1425b8708 / 0x1425e6820.
   - Then `node+0x108 = G`, `node+0x10C = 1/G`.
 - `FUN_141a21670` builds the node's model matrix with rows 0–2 × G (uniform scale; translation unscaled). The cull/shadow radius is also × G.
 
@@ -165,7 +187,7 @@ Edit preview: `FUN_141ee33f0` → `FUN_141e586f0` (decode sliders) + height/weig
 - G (`FUN_14195ca70`): constants at .rdata 0x142a83530 = {0.018, 0.019, 0.223, 0.277}, 0x142a83540 = {132, 220}.
 
 **Where the per-bone records live (OBS):**
-- They are in **runtime-initialised .data** (0x1437c92d0…0x1437caf90, beyond the on-disk raw size).
+- They are in **runtime-initialised .data** (0x1437c92d0…0x1437caf90, beyond the on-disk raw size). Only 16 of A's 22 header slots and 21 of B's are evaluated (§3); the tail slots are dead data.
 - 23 static initialisers at 0x14020c130…0x14020dbd0 build them. Each record is `StrCode(name)` (name string in .rdata) + two vec4 constants loaded from .rdata.
 - The PES2021.exe `.text` is packed on disk (raw size 0x600), so the name↔vector pairing exists only in unpacked code.
 - An automatic source map (`initdec.py`, capstone pattern-tracker) resolved 250/750 record fields to their .rdata source, with 0 mismatches. The rest use store patterns it does not follow.
@@ -191,7 +213,7 @@ The full tables are in Appendix A. Values are verbatim from `pesmem.bin`; vector
   - INF (medium-high): the gani root (RIG_ROOT/MOTION) position track is scaled by G, and 1/G is used to normalise back to model units.
   - Practical rule: **multiply sampled root positions by G**.
 - **Weight and the other sliders** do not touch animation bone lengths except through table A entries (arm length, leg length, shoulder width, neck length, head) and G (leg length).
-- **Not traced.** `playbackSpeed` (≈ 0.9–1.15, animselect report) is not set by any physique function seen here.
+- **Closed negative (2026-10-13).** `playbackSpeed` (≈ 0.9–1.15, animselect report) has exactly one store in the whole image — 0x1406f4e60 in `FUN_1406f19f0` — and its inputs are the action layer (`+0x3b54`, `+0x3b88`, …), never the physique object. Cadence does not scale with body size.
 
 ---
 

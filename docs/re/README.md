@@ -18,6 +18,7 @@ address given.
 |`pes-re-shaders.md`|shader packs, the deferred G-buffer and lighting model, per-shader texture roles and formulas, a Godot recipe|
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
 |`pes-re-animselect.md`|motion ids, 30 fps clips, 1/16384 root scale, situation tables, locomotion graph, blends, the hand rig|
+|`pes-re-physique-helpers.md`|the physique helpers: slider decode and normalisers, the per-bone scale tables, the global scale and how it reaches the skeleton and animation|
 |`pes-re-physique.md`|height/weight/sliders to per-bone scale, global scale and stride|
 |`pes-re-marking-pixels.md`|texel-exact marking rasterisation: digit cells, name layout, the leg-number transform, armband and badges|
 |`pes-re-markings.md`|numbers, names, captain armband, badges, GK and referee kits|
