@@ -762,7 +762,7 @@ Concrete, actionable list (PES values OBS unless marked INF):
    serializer registry at 0x142b48ca0, whose 227 paths cover `common/match/constant/**` only).
    **What is needed next:** either dump the live process and read the tactics struct at runtime, or
    find PES's `DevelopData/common/etc/pesdb/*.json` develop sources.
-2. **The per-phase state machines (S0…Sn) are INF, not OBS.** Tried and **failed** to recover the
+2. **[SUPERSEDED 2026-10-13 by pes-re-fox-registry.md: the records are MSVC RTTI and the vtables are static; the state machines are resolvable.]** **The per-phase state machines (S0…Sn) are INF, not OBS.** Tried and **failed** to recover the
    method bodies: this exe uses Fox's interface-record dispatch — the class-info record
    `{u32 td, u32 n, u32 0, u32 −1, u32 0, u32 size, u32 vtableRva}` points to a
    `{u32 0, u32 1, u32 count, u32 entriesRva}` block whose entries are RVAs of further
