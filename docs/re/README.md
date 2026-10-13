@@ -19,6 +19,7 @@ address given.
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
 |`pes-re-animselect.md`|motion ids, 30 fps clips, 1/16384 root scale, situation tables, locomotion graph, blends, the hand rig|
 |`pes-re-physique.md`|height/weight/sliders to per-bone scale, global scale and stride|
+|`pes-re-marking-pixels.md`|texel-exact marking rasterisation: digit cells, name layout, the leg-number transform, armband and badges|
 |`pes-re-markings.md`|numbers, names, captain armband, badges, GK and referee kits|
 |`pes-re-collision.md`|`.frig` format (incl. the hand unit map), ball/player capsules, contact data|
 |`pes-re-face.md`|real-face and edit-face heads, `face_diff.bin`|
