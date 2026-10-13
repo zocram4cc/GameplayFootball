@@ -36,6 +36,7 @@ address given.
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
 |`pes-re-hud-ui.md`|the match HUD as a Flash/AS3 system: every overlay element with its region, trigger and data, plus the layout and scaling rules|
 |`pes-re-duels-fouls.md`|duels (no stat roll; contact frames and capsules decide, abilities gate), the Judge foul points and 40/80/110 thresholds to card levels, the penalty-area rules, advantage (0.8 s hold, 4 s window), dives, offside involvement; the offside line evaluation still open|
+|`pes-re-setpiece-choreography.md`|kick-off, corner, free kick and wall, goal kick, penalty: the post-wipe step program, the 20-tick teleport placement, kicker selection, positions (positionCK tables, wall at 9.15 m), holds and kick waits, validated on ten live restarts|
 |`pes-re-foul-choreography.md`|fouls, cards and offside on screen: scene choice (FUN_14047f170), table_foul.bin fully decoded, the stoppage step list and holds, per-player reaction roles, referee gestures, the linesman flag; slot-1 remap and offside detection open|
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
 |`pes-re-camera-live.md`|the live in-play camera: Dynamic Wide mode 5, slider values and offsets, camera distance (52.7 m) and vFOV (23.68°) for a known target, the PosY model check|
