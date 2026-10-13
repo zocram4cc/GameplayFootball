@@ -61,6 +61,7 @@ address given.
 |`pes-re-fox2-stadium.md`|stadium assembly: Stadium.bin, the scene/pitch/goal/net/corner-flag placements, goal and corner-flag transforms|
 |`pes-re-fox2-format.md`|the binary fox2 (FoxDataFile) layout: header, string table, entity and property blocks, containers, value types|
 |`pes-re-goalkeeper.md`|goalkeeper: base position and sweeper rush, the shot-response timing window and Reflexes/Reach weight, dive urgency, catch/punch/block gates, crosses, throw distribution, penalty phases; deflect side and distribution choice in packed code|
+|`pes-re-keeper-port.md`|the keeper's deflect point (2 m at the requested angle inside 120 degrees of his heading, else 1 m at heading -/+60), the after-catch carry and step, the throw/kick request switch; ported in 703ad29|
 |`pes-re-carrier-ai.md`|the ball carrier: plan choice, first-surviving-unit adoption with vetoes (no score competition), the 5-frame think cadence, difficulty reaction delays, shoot zone and shot choice, pass receivers and the openness formula (live-validated), pass choosers, pressure and clearance, the 72-direction dribble search, the skill/style bit order|
 |`pes-re-team-plans.md`|team AI: the team-brain class inventory, formation slot to target position, advanced-instruction enums, off-ball run selector gates, the press trigger/target/count, ZoneDefenceManager marking, pass/shoot/dribble scoring skeletons|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|

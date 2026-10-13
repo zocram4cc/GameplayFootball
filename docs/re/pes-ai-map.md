@@ -34,8 +34,8 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Attribute, skill and style bindings in decisions|partial|`pes-re-carrier-ai.md` §6; `pes-re-attack-decisions.md` §4|`playerskills.*`|
 |Difficulty → AI capability table|OBS|`pes-re-carrier-ai.md` §7|none|
 |Fatigue effect on AI work rate|OBS|`pes-re-stamina-drain.md`|none (port running: StaminaPort)|
-|Goalkeeper: positioning, shot response, catch/punch/parry|partial|`pes-re-goalkeeper.md` §1–3|`elizacontroller.cpp` keeper branches (port running: KeeperPort)|
-|Goalkeeper: crosses, distribution, one-on-ones|partial|`pes-re-goalkeeper.md` §4–6|same|
+|Goalkeeper: positioning, shot response, catch/punch/parry|partial; **deflect point ported**|`pes-re-goalkeeper.md` §1–3; `pes-re-keeper-port.md`|`elizacontroller.cpp` keeper branches; `peskeeper.cpp`|
+|Goalkeeper: crosses, distribution, one-on-ones|partial; **after-catch carry/step ported**, per-keeper 11-entry table (`team+0x22e4c`) open|`pes-re-goalkeeper.md` §4–6; `pes-re-keeper-port.md`|`peskeeper.cpp` (GF nearest-player pick stands in)|
 |Defensive individual decisions (tackle choice, jockey, intent flag `ai(B)+0x134`)|**open**|`pes-re-duels-fouls.md` §2|`elizacontroller.cpp` tackle/duel|
 |Advantage attack-chance test (`FUN_14050f7e0`)|partial (structure OBS, three tables INF)|`pes-re-duels-fouls.md` §3.1|`pesjudge.cpp` distance-only shortcut|
 
