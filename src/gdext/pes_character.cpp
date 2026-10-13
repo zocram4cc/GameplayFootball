@@ -522,19 +522,29 @@ Node3D* Build::RunFace() {
 }
 
 // The kit config comes from UniformParameter.bin, the parts from the PES
-// selection rules, the head from the face pack.
+// selection rules, the head from the face pack. When the winning table has no
+// record for the team, PES's own loader keeps looking: the loose file of the
+// same name, then the 96-byte edit-mode kit, then the default team's kit
+// (FUN_141ea29c0, team 0). ResolveKitConfig walks that exact chain, so a team
+// the install's table does not cover still wears its own kit instead of failing.
 Node3D* Build::RunPlayer(int teamId, int kitIndex) {
   std::string err;
   auto table = vfs_.Read(pes::kUniformParameterPath, &err);
   std::optional<pes::UniformTable> uniforms;
   if (table) uniforms = pes::ParseUniformTable(*table, &err);
-  const std::string kitName = pes::RealUniName(teamId, kitIndex, false);
-  auto record = uniforms ? uniforms->Find(kitName) : std::nullopt;
-  auto kit = record ? pes::ParseRealUni(*record, &err) : std::nullopt;
-  if (!kit) {
-    UtilityFunctions::push_error("PES kit config missing: ", ToGd(kitName), " (", ToGd(err), ")");
+  if (!uniforms) {
+    UtilityFunctions::push_error("PES kit table unreadable: ", ToGd(err));
     return nullptr;
   }
+  auto resolved = pes::ResolveKitConfig(vfs_, *uniforms, teamId, kitIndex, false, &err);
+  if (!resolved) {
+    UtilityFunctions::push_error("PES kit config missing: ", ToGd(pes::RealUniName(teamId, kitIndex, false)), " (",
+                                 ToGd(err), ")");
+    return nullptr;
+  }
+  if (!resolved->fromUniformTable)
+    UtilityFunctions::print("  kit ", ToGd(resolved->source), ": not in UniformParameter.bin, loaded from the VFS");
+  const pes::KitConfig* kit = &resolved->kit;
   kitAtlasPath_ = std::string(KIT_TEXTURE_DIR) + kit->kitFile + TEXTURE_EXT;
   kitPattern_ = kit->shirtPattern;
   kit_ = *kit;

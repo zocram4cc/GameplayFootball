@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "pes/inflate.hpp"
+#include "pes/vfs.hpp"
 
 namespace pes {
 namespace {
@@ -125,6 +126,64 @@ std::optional<KitConfig> ParseRealUni(std::span<const uint8_t> r, std::string* e
 std::string RealUniName(int teamId, int kitIndex, bool goalkeeper) {
   static constexpr const char* ORDINALS[] = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"};
   return std::to_string(teamId) + "_DEF_" + (goalkeeper ? "GK" : "") + ORDINALS[kitIndex] + "_realUni.bin";
+}
+
+std::string EditKitName(int teamId, int kitIndex, bool goalkeeper) {
+  static constexpr const char* ORDINALS[] = {"1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"};
+  // FUN_141ea2400 with real=0 appends ".bin" instead of "_realUni.bin".
+  return std::to_string(teamId) + "_DEF_" + (goalkeeper ? "GK" : "") + ORDINALS[kitIndex] + ".bin";
+}
+
+std::vector<std::string> KitConfigCandidates(int teamId, int kitIndex, bool goalkeeper) {
+  // FUN_141ea1600 / FUN_141ea54a0: real=1 first, and only when that file is not
+  // on disk does the loader switch to the .bin form. Both are then looked up in
+  // UniformParameter.bin by name, and a miss renames to the default team (team
+  // 0) in FUN_141ea29c0. Ordering below is the game's own.
+  // The default team's kit index comes from DAT_1437f4870 (0 in every process
+  // checked, and nothing in the image writes it), so its own first kit, plus
+  // the GK form when the caller asked for a goalkeeper (shl $7 on the flag).
+  std::vector<std::string> out;
+  out.push_back(RealUniName(teamId, kitIndex, goalkeeper));
+  out.push_back(EditKitName(teamId, kitIndex, goalkeeper));
+  out.push_back(EditKitName(kPesDefaultTeamId, 0, goalkeeper));
+  return out;
+}
+
+std::optional<ResolvedKit> ResolveKitConfig(const PesVfs& vfs, const UniformTable& table, int teamId, int kitIndex,
+                                           bool goalkeeper, std::string* error) {
+  const std::string teamDir = std::string(kTeamUniformDir) + std::to_string(teamId) + "/";
+  for (const std::string& name : KitConfigCandidates(teamId, kitIndex, goalkeeper)) {
+    const std::string at = teamDir + name;
+    const bool inTable = table.Find(name).has_value();
+    std::span<const uint8_t> record;
+    std::optional<std::vector<uint8_t>> loose;
+    if (inTable) {
+      record = *table.Find(name);
+    } else {
+      // The loose file only gates existence for PES, but its bytes are the
+      // record: in vanilla every table entry equals the loose file (0.2).
+      loose = vfs.Read(at, error);
+      if (!loose) continue;
+      record = std::span<const uint8_t>(*loose);
+    }
+    if (record.size() != REAL_UNI_BYTES) {
+      // The 96-byte edit-mode kit: no parser in this repo. Say so, and keep
+      // walking the chain rather than dropping the player.
+      if (error && error->empty())
+        *error = "kit config " + name + " is " + std::to_string(record.size()) +
+                 " bytes: the 96-byte edit-mode parser is not implemented";
+      continue;
+    }
+    auto kit = ParseRealUni(record, error);
+    if (!kit) continue;
+    ResolvedKit r;
+    r.kit = *kit;
+    r.source = at;
+    r.fromUniformTable = inTable;
+    return r;
+  }
+  if (error && error->empty()) *error = "no kit config resolved for team " + std::to_string(teamId);
+  return std::nullopt;
 }
 
 std::string SleeveModelName(SleeveCode code, bool glove, bool cap, bool tight) {

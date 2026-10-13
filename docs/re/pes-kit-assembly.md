@@ -109,6 +109,23 @@ The 12 files with b1 = 255 (A = 3841) are all `7xx_DEF_GK1st` from 4cc packs, i.
   - INF (medium): it is the "edit-mode" kit, drawn from `uniform/edit/#windx11/{sh,pa,so,ca}_NNN.ftex` templates instead of a real kit texture.
 - **Answer:** when both exist, PES uses the **realUni** name; `.bin` is the fallback when the loose realUni is absent. In both cases the bytes come from `UniformParameter.bin` (vanilla: identical to the loose file).
 
+### 2.1 The missing-kit chain (OBS 2026-10-13, KitFallback agent; live disassembly + GhidraMCP)
+
+The per-kit loader is `FUN_141ea1600` / `FUN_141ea54a0`; `FUN_141ea3190` is only its "load" step.
+1. `FUN_141ea2400(kitId, real=1)` → `<team>_DEF_<n>_realUni.bin`; if the loose file exists (`FUN_1414a8d60`), load it.
+2. Else, unless the kit is user-edited (`FUN_141ea2e40` flag), `FUN_141ea2400(kitId, real=0)` → `<team>_DEF_<n>.bin` (the 96-byte edit-mode kit) and load that.
+3. Else build from the 0x84-byte EDIT record (`FUN_141ea18c0`).
+- "Load" (`FUN_141ea3190`) takes the bytes **only** from `UniformParameter.bin` (`FUN_141ea2c90` size, `FUN_141ea2ad0` data; linear scans of the 12-byte records). The loose file only gates existence.
+- On a table miss, `FUN_141ea3190` makes one unconditional call to `FUN_141ea29c0(out, name, isGK)` (call site `0x141ea32e9`):
+  - The kit offset comes from the name: `strstr(name,"2nd")` → 1, `"3rd"` → 2, otherwise 0 (literals `DAT_142b6531c` / `DAT_142b65338`).
+  - A GK kit adds `0x80`.
+  - The replacement id is `(DAT_1437f4870 & 0xffffc000) + offset + GK·0x80`, retried once.
+  - `DAT_1437f4870` is read nowhere else in the image (scanned) and is 0 live, so the replacement is **team 0**.
+- If the retry misses too, the loader returns with no kit config (`0x141ea3380`) and the body is drawn with engine defaults (not reverse engineered).
+- No branch on this path rewrites colours.
+- Vanilla: team 0 ships `0_DEF_{1st,2nd,3rd,GK1st}.bin` as 96-byte records, so the fallback lands there. This install's 4cc table (teams 701–910 only) has no team 0, so PES's own fallback ends at engine defaults for, e.g., team 100.
+- GodotFootball (`pes::ResolveKitConfig`) goes table → loose file of the same name → edit-mode `.bin` (reported, no parser yet) → team 0. The loose-file step is a marked divergence (`ponytail:` in `uniform.hpp`) that stands in for the unknown engine defaults. The 96-byte branch of `FUN_141ea3190` is mapped (colour bytes `<<2`, `FUN_141966da0` layers 0–4, collar `(b0x33 & 0xF) + 0x385`, templates `uniform/edit/#windx11/{sh,pa,so,ca}_NNN.ftex`) but not implemented.
+
 ---
 
 ## 3. Config → part model files

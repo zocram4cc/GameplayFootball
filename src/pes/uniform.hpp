@@ -16,6 +16,9 @@ namespace pes {
 inline constexpr const char* kUniformParameterPath =
     "common/character0/model/character/uniform/team/UniformParameter.bin";
 
+// The loose per-team kit files, next to UniformParameter.bin (VFS paths).
+inline constexpr const char* kTeamUniformDir = "common/character0/model/character/uniform/team/";
+
 // u32 count, u32 tableOff, then {u32 dataOff, u32 size, u32 nameOff} records.
 // Vanilla ships it zlib-wrapped in a WESYS container; mods ship it raw.
 struct UniformTable {
@@ -60,6 +63,39 @@ Vec4 NameScale(const KitConfig& kit, float glyphWidthSum);
 // always _DEF_: ponytail: FUN_1414bda30's other tags (_LB_, _JL_ ...) belong to
 // licensed leagues absent from this install; add them when one is needed.
 std::string RealUniName(int teamId, int kitIndex, bool goalkeeper);
+
+// FUN_141ea2400 with real=0: the 96-byte edit-mode kit, which PES loads when the
+// realUni file does not exist (FUN_141ea1600 / FUN_141ea54a0, stage 2).
+std::string EditKitName(int teamId, int kitIndex, bool goalkeeper);
+
+// PES's default team: FUN_141ea29c0 renames a missing kit with the kit id of
+// DAT_1437f4870 (read live; 0 in every process observed, and nothing in the
+// image writes it), so a team whose kit the table does not hold is replaced by
+// team 0's. Team 0 ships only the 96-byte .bin form.
+inline constexpr int kPesDefaultTeamId = 0;
+
+// Every VFS path the kit loader may take a kit config from, in PES's own order:
+// the config passed to FUN_141ea3190 comes from UniformParameter.bin, and the
+// loose file only gates existence (docs/re/pes-kit-assembly.md 0.1).
+std::vector<std::string> KitConfigCandidates(int teamId, int kitIndex, bool goalkeeper);
+
+// The winning UniformParameter.bin entry first, then the loose VFS file of the
+// same name. On a vanilla install that is the bytes PES loads (the table's
+// records equal the loose files, docs/re/pes-kit-assembly.md 0.2).
+// ponytail: on a modded table that lacks the team, PES retries team 0 in the
+// table and, failing that, draws engine defaults, which are not reverse
+// engineered. We take the team's own loose kit instead of an empty pitch.
+// Replace this step once the engine-default kit is known. A 96-byte record is
+// not a realUni: parsing one needs the edit-mode parser the repo does not have,
+// so it is reported as unparsed and never silently dropped.
+struct ResolvedKit {
+  KitConfig kit;
+  std::string source;        // the VFS path the record came from
+  bool fromUniformTable = false;
+};
+class PesVfs;
+std::optional<ResolvedKit> ResolveKitConfig(const PesVfs& vfs, const UniformTable& table, int teamId, int kitIndex,
+                                           bool goalkeeper, std::string* error);
 
 // Per-player appearance the part choice depends on. Defaults are the record
 // every 4cc player carries in PlayerAppearance.bin (short sleeves, socks 0,

@@ -56,6 +56,23 @@ const SUBJECTS := [
 	[1, 0, 100117], [1, 0, 100135], [1, 1, 100117], [2, 0, 508112],
 	[767, 0, 76711], [754, 1, 75403],
 ]
+# A candidate resolves only when every part it needs is actually in the install.
+# PES leaves a slot empty when the pack is missing (pes-kit-assembly.md 8.4), so
+# a subject whose boots pack the install does not ship is not this install's
+# subject: trying the next one is what keeps this check meaningful everywhere.
+func buildable(library: PesLibrary, team: int, kit: int, face: int) -> Node3D:
+	var body: Node3D = PesCharacterBuilder.new().build_player(library, team, kit, face)
+	if body == null:
+		return null
+	var parts := {}
+	for m in (body.get_node("Skeleton") as Skeleton3D).get_children():
+		if m is MeshInstance3D:
+			parts[str(m.get_meta("part"))] = true
+	for p in DRAWN_PARTS:
+		if not parts.keys().any(func(k): return k == p or k.begins_with(p + "_")):
+			body.free()
+			return null
+	return body
 
 
 # The first candidate this install actually builds. PES21_PLAYER_TEAM/_KIT/_FACE
@@ -65,7 +82,7 @@ func resolve_subject(library: PesLibrary) -> Dictionary:
 	if not forced[0].is_empty() and not forced[2].is_empty():
 		return {"team": int(forced[0]), "kit": int(forced[1]), "face": int(forced[2]), "forced": true}
 	for s in SUBJECTS:
-		var body: Node3D = PesCharacterBuilder.new().build_player(library, s[0], s[1], s[2])
+		var body := buildable(library, s[0], s[1], s[2])
 		if body != null:
 			body.free()
 			return {"team": s[0], "kit": s[1], "face": s[2], "forced": false}

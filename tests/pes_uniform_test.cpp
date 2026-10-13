@@ -222,6 +222,60 @@ TEST(RealUniName, FollowsTheGamesNameBuilder) {
   EXPECT_EQ(pes::RealUniName(767, 0, true), "767_DEF_GK1st_realUni.bin");
 }
 
+TEST(EditKitName, FollowsTheGamesNameBuilder) {
+  // FUN_141ea2400 with real=0: the ".bin" suffix, same team and ordinal.
+  EXPECT_EQ(pes::EditKitName(767, 0, false), "767_DEF_1st.bin");
+  EXPECT_EQ(pes::EditKitName(767, 1, false), "767_DEF_2nd.bin");
+  EXPECT_EQ(pes::EditKitName(767, 0, true), "767_DEF_GK1st.bin");
+}
+
+// FUN_141ea1600 / FUN_141ea54a0 ask for real=1 first and only fall back to the
+// .bin form when the realUni file is not on disk; then FUN_141ea3190 looks the
+// name up in UniformParameter.bin and, on a miss, FUN_141ea29c0 renames to the
+// default team (team 0, from DAT_1437f4870, which is 0 in every process checked
+// and nothing in the image writes). The default team ships only .bin files.
+TEST(KitConfigCandidates, FollowsTheGamesMissingKitChain) {
+  // The default team's kit index is the fallback's (1 or 2) clamped to the
+  // 1st..3rd band the default team actually ships. A GK request names the
+  // default team's GK kit explicitly.
+  EXPECT_EQ(pes::KitConfigCandidates(100, 0, false),
+            (std::vector<std::string>{"100_DEF_1st_realUni.bin", "100_DEF_1st.bin", "0_DEF_1st.bin"}));
+  EXPECT_EQ(pes::KitConfigCandidates(101, 1, false),
+            (std::vector<std::string>{"101_DEF_2nd_realUni.bin", "101_DEF_2nd.bin", "0_DEF_1st.bin"}));
+  EXPECT_EQ(pes::KitConfigCandidates(100, 0, true),
+            (std::vector<std::string>{"100_DEF_GK1st_realUni.bin", "100_DEF_GK1st.bin", "0_DEF_GK1st.bin"}));
+}
+
+// The observable bug this fixes: an install whose winning UniformParameter.bin
+// lists no record for a team still renders that team, because PES's loader also
+// accepts the loose file. This install's 4cc table covers 7xx teams only, so
+// official teams resolve through the loose VFS file.
+TEST(KitFallbackInstall, TeamMissingFromTableUsesItsLooseKitFile) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  pes::PesVfs vfs;
+  std::string err;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto blob = vfs.Read(pes::kUniformParameterPath, &err);
+  ASSERT_TRUE(blob) << err;
+  auto t = pes::ParseUniformTable(*blob, &err);
+  ASSERT_TRUE(t) << err;
+  // An official team the table does not hold: the whole point of the fallback.
+  // Verified against the table itself, so the test holds on any install and
+  // skips when the table happens to carry the team.
+  constexpr int MISSING_TEAM = 100;
+  const std::string wanted = pes::RealUniName(MISSING_TEAM, 0, false);
+  if (t->Find(wanted)) GTEST_SKIP() << "table holds " << wanted << "; nothing to fall back from";
+  auto resolved = pes::ResolveKitConfig(vfs, *t, MISSING_TEAM, 0, false, &err);
+  ASSERT_TRUE(resolved) << err;
+  EXPECT_FALSE(resolved->fromUniformTable) << resolved->source;
+  EXPECT_EQ(resolved->source, std::string(pes::kTeamUniformDir) + "100/" + wanted);
+  // The kit the fallback selects is a real kit: its own atlas must resolve.
+  const std::string atlas =
+      std::string("Asset/model/character/uniform/texture/#windx11/") + resolved->kit.kitFile + ".ftex";
+  EXPECT_TRUE(vfs.Exists(atlas)) << atlas;
+}
+
 // FUN_1419637c0: "sleeve" ("s" for type 3) + type suffix unless long + glove,
 // then _glove (never for types 0/2), _cap, _tight, then _%03d unless long + glove.
 TEST(SleeveModelName, FollowsTheGamesNameBuilder) {
