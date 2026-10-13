@@ -536,3 +536,36 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 | EV-SPC-0012 | Kicker selection rules per MODE (`FUN_1404a7d60` + `FUN_1404a8620/8ad0/90d0`) | High | decompile |
 | EV-SPC-0013 | MODE 7 = kick-off after a goal | Confirmed | live (goal stop → MODE 7); `FUN_1404a7d60` case 1/7 |
 | EV-SPC-0014 | Wall jump requested ~2 frames before contact, random 1–5-frame start delay | Confirmed (live ×2) / High (delay, code) | live; `FUN_1407400d0` |
+
+
+### 9.2 Set-play take timing (SetplayWaitRE, 2026-10-13; archived by the orchestrator)
+
+- **`waitTimerMin` is at `+0x28`, not `+0x1c`** (OBS deserializer `0x141e6fbd0`, live read). `constant::BallplayerSetplay`
+  (`ballplayerSetplay.o`, table id 0x25, vtable 0x142b55918): +0x08 FreekickShoot.range_frontZ 12, +0x0c range_max 40,
+  +0x10 range_middle 30, +0x14 range_short 23, +0x18 range_width 50, +0x1c Throwin.range_long 35 (metres),
+  +0x20 Throwin.range_min 2, +0x24 Throwin.range_short 25, **+0x28 waitTimerMin 0.5**.
+- **`ThinkUnitSetPlay` (vtable slot 2 = 0x142135c50), per frame for the kicker `MI+0x173c`** (OBS decompile; gate
+  arithmetic OBS from raw bytes): `elapsed = MI+0x1198 − ctx[+8]` in frames, `ctx = FUN_140a3e940(teamAI+0xe0, 0x10)`.
+  ```
+  0: mark; no eligible team-mates → 5; else 1
+  1: (uint)(fps+0.5) <= elapsed → mark, 2            (54-frame gate)
+  2: elapsed < (uint)(r*0.5+0.5) → emit pass target FUN_142132660(pc,0)
+     else MI+0x14c4==1 && tactics[+0x18] <= 0.3 → mark, 3; else 4
+  3: online → return; MI+0x14c4==1 → cmd 0xb; elapsed < (uint)(r*3+0.5) → return; else mark, 4
+  4: (uint)(r*0.5+0.5) <= elapsed → mark, 5; else t = FUN_142135230(...), t <= 0x15 → kick request cmd 2, player t
+  5: cmd 2, player 0xff, arg 1
+  ```
+  `r` is not `math::Random`: it is `0x141e532e0`, a plain global int at `_DAT_14351ae50` (static 54, reset by
+  `FUN_141e532f0`/`0x141e53300`), INF(med) a cheap frame-indexed value, which is why delays repeat exactly.
+- **Kick-off is not driven by this timer** (OBS live, 3 kick-offs): armed → pass action took exactly **28 frames** each time
+  (40840→40868, 43312→43340, 45732→45760). The 28 frames come from `KickoffReceiver` (id 23, Update 0x140781fc0): the pass
+  request fires when `FUN_1407816b0` gives the ball to the receiver; a separate `0x141e532e0()>>1 < (param_1+8)` counter is
+  the 27-frame leave-loop guard. The corner/FK counters (164/191/246/84/380) are therefore not this timer's either.
+- INF(med): corners/FKs run `CornerKickLoop`/`FreekickLoop` until `CanEnter` sees command 0x31; the AI emits cmd 2 at state 4
+  and the action requests 0x31 through `kickRequest` at `AnimePlayer+0xab8`. Writers of `[rax+0x28] = 0x31` found at
+  0x142081190 (pad-command dispatcher) and 0x142083930; which one fires for corners is open.
+- Killed: "the set-piece release is the `waitTimerMin` field at +0x1c" (it is Throwin.range_long); "the kick-off delay is
+  ThinkUnitSetPlay's 54-frame gate" (it is KickoffReceiver's own 28 frames).
+- Open, next: capture one corner and one FK (MODE 4/5) and compare the action enter frame with state 4's gate (expected 0–27
+  frames after counter 1); confirm `FUN_142132660`'s emitted player is the kicker for MODE 4; attribute the 0x31 writer.
+  The live capture `live2.jsonl` was lost (orchestrator deleted the scratch dir by mistake); the table above preserves it.
