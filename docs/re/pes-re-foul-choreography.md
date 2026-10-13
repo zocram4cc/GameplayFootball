@@ -484,3 +484,217 @@ Not possible in this session. `pes_state.py` at the start of the pass: `STATE=MA
 - Offside has no scene: whistle + raised arm (indirect gesture), linesman flag near/mid/far, 3.0 s hold, wipe.
 - One EXCITE scene per match at most; late-match leading-team pinch fouls only.
 - Second yellow = red via the `W` scenes; booked-player no-card fouls use the BEJUDGED → ONCOMING (hard cut) intro.
+
+---
+
+## 9. Stoppage timings and reaction roles (FoulChoreographyRE-2, 2026-10-13)
+
+Extends §4/§5/§7. Where this section contradicts §0.2, §4.2, §5.3 step 3 or §8, **this section wins** (see 9.9).
+Evidence: decompiles `~/ghidra-projects/scratch/FoulChoreographyRE2/out/{a,b,c}.c` (+ `FoulChoreographyRE/dec/`),
+raw floats `rf.py` and disassembly `pd.py` on `pes_full.bin`, live step durations from `steps.py` over the sibling
+captures `SetPieceChoreoRE/live.jsonl`, `live_match1.jsonl`, `ThrowInRE/seq.jsonl`, `seq2.jsonl` (`fr` = 54 Hz frame).
+
+### 9.1 Tick model of the step program (OBS)
+
+- `FUN_140445e90` calls the runner `FUN_14044c880` once; the runner re-enters the current step once per call and,
+  on advance, zeroes `Flow+0x900` (frame counter), `+0x8f2` (sub-state), `+0x8f4`, `+0x8f8`. Live: fade-in `0xe`
+  lasts exactly 5 + 54 = 59 frames (n = 8), so **one step call = one 1/54 s logic frame** — the same tick as
+  `pes-re-tactics-clock.md` §2.5 (gs = `GetGameSpeed()` 54.0 @0x141E532D0, fps = `GetFps()` 54 @0x141E532E0).
+- Three timer shapes, all in seconds × 54, none read the match clock or `match_time`:
+  1. **holds** `FUN_1404534f0`: `++Flow+0x900; done = gs·hold_s < counter` (float) → `hold_s·54 + 1` frames;
+  2. **fades** `FUN_1404489d0` / `FUN_140448c90`: byte counter `(char)(fps·dur_s)` (truncated): 0.1 s → 5, 0.5 s → 27,
+     1.0 s → 54; a fade-**in** first waits a literal 5 frames (`Flow+0x8f3 = 5` in sub-state 0);
+  3. **scene start gate** `req+8 = (int)(fps·3 / env+0x5c)` (×6 for injury scenes), counted down by `FUN_14047eb00` —
+     the only stoppage timer divided by the speed float `*(gCtx+0x2C0)+0x5c` (tactics-clock §2.5). The ×3 / ×6 are
+     `lea` address arithmetic (OBS @0x14047ff23, @0x14047ff57), not data: **not readable at runtime**, code-structural.
+- GF conversion: PES frames → ms = `f·1000/54`; every value below is seconds, so GF (10 ms tick) takes seconds.
+
+### 9.2 Step 5 — the foul hold (OBS @0x140446960, @0x14047c2d0 case 0, @0x14047eb00, @0x140480910)
+
+```
+sub0: FUN_14047d5d0(Flow)            Flow+0 = 0 (OBS 0x14047d5e7 mov [rcx],edi), demo Flow+0x1e0 freed
+      FUN_14047feb0 → FUN_140480910(req=Flow+0x6d8, …, r9=Flow)   scene id → req+0; ONLY if id != 0x20022:
+            Flow+0 = id and FUN_14047c500 builds the FixDemoMatch (Flow+0x1e0)
+      Flow+0x868 = FUN_14044e460(MI+0x1588==1 ? 2 : 1)              table[1] 5.0 s / table[2] 3.0 s
+      if Flow+0 == 0x20022: Flow+0x868 = 2.0                         DEAD STORE: Flow+0 is 0 when no scene
+sub1 (per frame): FUN_14047c2d0(Flow, skip, 0), case 0:
+      no demo → FUN_1404534f0(Flow, Flow+0x868)  → sub2 when elapsed
+      demo    → returns 0 (unless skip); step then runs FUN_14047eb00 (start gate) and sets Flow+0x868 = 0
+sub2: demo == null → step done
+```
+- **No scene: 5.0 s** (`0x14259ce60` table index 1, OBS raw `0x40a00000`) = 271 frames + 2 sub-state frames.
+  Live: FK at fr 14286, step 5 = **272 frames** (OBS). Static, except the `FUN_14044e460` overrides in 9.3.
+- **Scene: start gate + scene**, the 5.0 s is unused (zeroed while the demo exists; after the demo clears, the hold
+  is 0 → 1 frame). Live: 619 and 746 frames (two scene fouls).
+- The kind-2 (3.0 s) branch is unreachable from the builders read: `FUN_140452260` sends `MI+0x1588 == 1` to step
+  0xb, never 5 (OBS @0x140452260). INF(high).
+- **Scene start gate** (`FUN_14047eb00`, OBS): counter 162 (324 injury) − 1/frame; waits while counter > fps
+  (≥ 2.0 s; injury ≥ 5.0 s), then starts (`req+0xc = 1`) when
+  - ordinary foul/card scenes: referee (human 22) within **5.0 m** (`0x14259222c`) of the fouler `MI+0x1590`;
+  - EXCITE 0x20015..0x20018: fouler within **2.0 m** (`0x142565604`) of the victim `MI+0x1594`;
+  - injury (`FUN_140a3fe70`: 0x20019..0x20020): victim player bit 10 of `+8` set;
+  - unconditionally when the counter reaches 0 (3.0 s / 6.0 s).
+  ⇒ a card scene starts **2.0–3.0 s** after step 5 entry (**5.0–6.0 s** injury). Dynamic (referee approach).
+- Scene length = Σ cut `maxTime` (§1.5, 1/60 s ticks) + 0.5 s step fades; variant by the 0x43 roll (§1.4). Dynamic.
+
+### 9.3 Step 0xb — out-of-play hold: ball out, offside, generic (OBS @0x140447690, disasm 0x1404477e3..0x140447a2f)
+
+```
+sub0: Flow+0x868 = FUN_14044e460(5) = 2.5 s ; if MI+0x1588 == 1: Flow+0x868 = 3.0 (imm 0x40400000 @0x140447a25)
+sub1: → sub2
+sub2: if FUN_1404441d0()   (any of players 0..21 has byte player+0x34 set, FUN_140a73f10 = "down")
+          Flow+0x5730 = 1 ; Flow+0x868 += 2.5 (0x14259bde4) ; Flow+0x5732 = rand(fps·100)/100 + 10
+          (rand = FUN_140a92530, LCG x = x·0xd2dd4d1d + 0x4513 on Flow+0x5708+0xc)
+sub3 (per frame): hold = Flow+0x5730 ? Flow+0x868 : FUN_14044e460(5)        ← re-read every frame
+          done = counter > gs·hold ; if MI+0x137c: also done at once when no downed player
+          downed-player branch: recovery test on his record (action byte 'O', u16 +0x1a vs Flow+0x5732) can clear
+          Flow+0x5730 and reset Flow+0x868 = 2.5 ; after 0.5 s (0x142565600) Flow+0x29a4 = 1 and
+          FUN_141aea140(FUN_141ae8950(0), 1, 0)  (INF med: medical/injury presentation request)
+sub4: Flow+0x868 = 0, DC out-of-play kind 9, done
+```
+- **2.5 s for every 0xb stop, offside included** (OBS code: sub3 ignores `Flow+0x868` unless a player is down).
+  Live: 30+ ball-out holds at 135–140 frames; three stop-kind-5 holds through 0xb (seq2 fr 31505/37691/40233 =
+  139/140/138 frames) — the builder routes a stop-5 to 0xb only when `MI+0x1588 == 1`, so INF(high) these are
+  offsides. One offside-class stop measured end to end: stop fr 31502 → armed 31777 (275 frames, 5.09 s) → in play 32035.
+- **Someone down: base + 2.5 s** = 5.0 s (5.5 s offside). Live: 274-frame holds ×2 (live_match1 corner 46272,
+  seq2 goal kick 15866) = 5.0 s + 4 sub-state frames (OBS).
+- `FUN_14044e460(kind)` (OBS disasm 0x14044e460) also returns **0 s** when the DC subject (`DC+4` < 22) has
+  player-object byte `+0x1400` set (meaning open), and, if any XI player is in state 0x14 (`FUN_140a73e40(p,1)`)
+  with sub-state `+8 ≤ 2`, **that player's u16 `playerDB+0x24` seconds** when `DB[+1] == 'O'`, else 5.0 s
+  (`0x14259222c`). Shared by steps 5, 6, 9, 0xb.
+
+### 9.4 Wipe, fade-in and the restart tail (OBS)
+
+| step | timing | static? | evidence |
+|---|---|---|---|
+| 0x11 wipe (fade type 4) | 0.1 s (`0x142588200`) → 5 frames | static | code + live 5 frames (every stop) |
+| 0x10 wipe (type 2) | 0.1 s → 5 frames | static | throw-ins/goal kicks; abandon path of the foul builder |
+| 0xe fade-in | 5-frame literal + 1.0 s (`0x14256ae1c`) → 59 frames | static | foul/offside builder always passes 0xe (`FUN_1404524e0(…,0xe)` @0x14044eb10) |
+| 0xd / 0xc fade-in | 5 + 0.5 s (`0x142565600`) → 32 frames | static | abandon path (`MI+0x1574 == 10` or `MI+0x1775`) → 0xd |
+| 0x1d, 0x16, 0x13 (+0x17) | 1 + 4 + 6 = 11 frames offline | UI-dependent | live FK ×2; substitution UI can extend |
+| 0x14 + 0x15 teleport | 20 + 20 frames | static | live (setpiece-choreography §1.2) |
+| 0x34, 0x19 | 2 + 16 frames (0.25 s `0x142592228`, +2.0 s with a caption) | caption-dependent | live |
+
+- `MI+0x177f` (`FUN_140a3c020`) set ⇒ every fade completes on its first frame and the builder omits 0x1d/0x1f
+  (OBS @0x1404489d0, @0x140448c90, @0x14044eb10). INF(med): presentation-skip mode.
+- Wipe start → teleport start ≈ 16 frames; teleport start → armed (0x1a) = **117 frames (2.17 s)**.
+- After armed the CPU taker decides. FK action at set-play counter **164 ×2** = `freekick.o.suspendTime` 3.0 s ×54
+  = 162 + the same +2 latency as the throw-in's 81 + 2 → INF(high): `suspendTime` is the CPU FK taker's wait after
+  armed (the code reading it was not decompiled).
+
+### 9.5 Late card, step 6 (OBS @0x140446520, @0x140444060, @0x14044eb10)
+
+- Built only in the offside branch of `FUN_14044eb10`: `FUN_140452260(Flow, 1, 1)` with r9 = 0 (OBS @0x14044ed50)
+  → `[3, 6, 0x45]` after `0x1d [9] 0x1f`; the ball-out (stop kind 4) builder was not read.
+- Window `FUN_140444060`: `MI+0x1690 ∈ 7..0x13` with mask 0x883ff, stop kind 4 or offside, and
+  `(int)(FUN_140a3c050(MI+0x1168) − MI+0x17a4) / 60 / 60 < 16` (`FUN_140a6bd60` = two `/60`, OBS). Outside the
+  window it clears the pending card (`Flow+0x57f8 = 0`, card fields reset, UI event 0x1050039).
+- Step 6: scene `FOUL_CMN_CARD_Y_B` (= `foul_cmn_card_y02`, 340 ticks = 5.67 s) starts on its 2nd frame (`Flow+0x1d4`
+  set directly, **no referee-approach gate**); step = **max(2.5 s, scene)** (`FUN_14047c2d0` case 1 with the 2.5 s
+  timeout as `param_3`).
+
+### 9.6 Whole stop, one ordinary foul without a scene (live FK fr 14286, every phase OBS)
+
+| phase | frames | s |
+|---|---|---|
+| whistle hold before the stop (duels §3) | ⌊0.8·gs + 0.5⌋ = 43 (offside gs/2 = 27) + DelayWhistle | 0.80 |
+| step 3 stop stamp | 2 | 0.04 |
+| step 5 hold | 272 | 5.04 |
+| 0x11 wipe + UI windows | 5 + 11 | 0.30 |
+| 0x14/0x15 teleport | 40 | 0.74 |
+| 0xe fade-in | 59 | 1.09 |
+| 0x34 + 0x19 | 18 | 0.33 |
+| **stop → armed** | **407** (14286 → 14693) | **7.54** |
+| armed → FK action | 164 | 3.04 |
+
+### 9.7 Reaction roles of the officials (OBS)
+
+Officials are indices 22 (referee), 23, 24 (assistants); `FUN_141e53520(i) = i − 22` for 22..24 else 4 (OBS).
+The official's record byte `+1` (`FUN_140a48910`) is his current action id: 0x5a LINESMAN, 0x5c JUDGE, 'O' = 0x4f.
+
+**Who is involved** — `FUN_140a3a690(official)`:
+
+| state | referee | assistant |
+|---|---|---|
+| already in LINESMAN (0x5a) | — | false |
+| in JUDGE (0x5c) | true iff `MI+0x116c == 3` (set-play ready) and `MI+0x11b2` (set-play active) | — |
+| in play (`116c == 1`) | `MI+0x154c != 0` | (`MI+0x1548` or `MI+0x154c`) and `FUN_140a3a500(a, MI+0x1544 == 1)` |
+| stopped (`116c == 2`) | always | stop kind 4: **throw-in → `sign(a.z) == sign(MI+0x1564)`** (same touchline; 0 counts +); goal kick / corner → `sign(a.x) == sign(MI+0x155c)` (same half); other modes false. Stop kind 5 → `FUN_140a3a500(a, MI+0x1588 == 1)`. Other kinds false |
+
+`FUN_140a3a500` (OBS): reference point = ball predicted ⌊gs·4.0/60⌋ = 3 frames ahead in play (`0x1425656c0`,
+`0x14259a764`), the spot `MI+0x155c/0x1564` when stopped. Offside: the assistant in the **half of the offence**
+(`sign(spot.x) == sign(a.x)`). Foul: same half **and** same touchline side **and** `|spot.z − a.z| < 14.0 m`
+(`0x1425c48b8`) — an assistant flags a foul only near his touchline.
+
+**At the stop** — `RefereeActionOutofPlay` (vtable 0x142642738), slot 6 `FUN_140a3a930` picks the action; latch
+`+0x30` cleared on enter (slot 3 `0x1409e46b0`, OBS `mov byte [rcx+0x30],0`), set by slot 2 `FUN_140a3a220` the first
+time the official's action byte is 0x5a/0x5c:
+- referee, foul (stop kind 5, not offside): action 2 (approach) until within **4 m** (d² < 16.0 `0x14259be10`) of
+  the target, then **JUDGE only if `MI+0x158c == 1`** (INF med: foul without card; cards are shown by the scene);
+  referee, offside or any other stop: JUDGE at once; assistant involved: LINESMAN; uninvolved: 3, or 2/3 by
+  distance at stop kind 3. Speed class while stopped: card `MI+0x158c ∈ {2,3,4}` → 3 beyond 4 m, else 2; 1 within.
+- slot 18 `FUN_140a3a870`, first JUDGE/LINESMAN request only: gesture param **1 restart / 2 foul / 3 offside**
+  (`MI+0x1574 == 5` → 2 + (`MI+0x1588 == 1`)), direction = attack direction `team(MI+0x1558; 2→1)+0x254` of the
+  awarded side.
+- ⇒ **each official signals at most once per stop** (latch), INF(high).
+
+**At the restart** — `RefereeActionBasePosition` (vtable 0x142642558) Update `FUN_140a39a80` writes the command
+`+0x30` (INF med: the `cmd+0x85c` that `FUN_1407a1ac0` reads; same 1–9 values). Enter (slot 3 `0x140a39cd0`, OBS):
+cmd 9, `+0x34` 0, latch `+0x38` 0, indirect `+0x39` 0.
+- `116c == 3`: at MODE 5 `+0x39 = FUN_140a63940(MI+0x1588)` (kind 1 or 3 = indirect, OBS); involved referee:
+  **cmd 5 if the latch is clear or the restart is indirect**, latch = 1; else cmd 9.
+- Chooser, cmd 5: MODE 1 → 185 kickoff; arm-raised sub-states 3/4 → 191, or 192 rotate when the angle to the
+  restart point > 45° (`0x14259be30`); **direct → 188 `judge_whistle_0_0` if v < 11.0 (`0x14259bdfc`) else 189**;
+  **indirect → 190 start (sub-state 1) → 191 loop**. A new row is entered only after the current clip's blend point
+  `FUN_1407a1d40 = ⌊(2N/rate)·(gs/60) + 0.5⌋` frames (N = 10-bit motion-header field, INF frames at 30 fps).
+- `116c == 1`: indirect arm (state 5) → cmd 9 when the newest record of event ring 0 has `+0x1c == 0` (INF: the
+  first touch after the kick) → chooser 193 `fk_indirect_down`; idle referee + `MI+0x154c` rising edge (`+0x34` =
+  last frame's value) → **cmd 4 advantage** (183/184 by v ≥ 16); involved assistant → cmd 2, or 7 when
+  `MI+0x1544 == 1` (flag); 2 → 6 and 7 → 8 once `MI+0x1548 == MI+0x154c == 0`.
+- ⇒ **direct restart: one whistle gesture per BasePosition entry; indirect: cmd 5 re-asserted every frame, arm held
+  until the first touch.** Live: `referee_stand_0_whistle` (row 188) at set-play counter 2, once (setpiece §5.1).
+- Assistants never get cmd 5; the restart whistle is the referee's alone.
+
+### 9.8 PES timing → GF field (for implementation; no code changed)
+
+| PES timing | value (source, read at runtime) | static / dynamic | GF field that will hold it |
+|---|---|---|---|
+| whistle hold | ⌊0.8·gs + 0.5⌋ frames, offside gs/2 (duels §3) | static + DelayWhistle | `pes::JudgeConstants::whistleHold_s` (already ported, referee.cpp:798) |
+| stop stamp (step 3) | 2 frames | static | `buffer.stopTime` |
+| foul hold, no scene | table[1] @0x14259ce60 = 5.0 s | static (9.3 overrides) | `FoulSequence::kWarningCutscene_ms` (6000 → 5.0 s; rename: it is a hold, not a cutscene) |
+| scene start gate | fps·3/env+0x5c, open at fps remaining; referee ≤ 5.0 m @0x14259222c; EXCITE 2.0 m @0x142565604 | dynamic 2.0–3.0 s (5–6 s injury) | new offset inside `FoulSequence::CutsceneLength_ms` (card) |
+| card scene | Σ fdc `maxTime` + 0.5 s fades | dynamic (variant roll) | `FoulSequence::kCardCutscene_ms` → per-scene from the fdc |
+| card on screen | gate + intro (240 ticks for `_Y_`) + `REF_CARD_Y/R` start tick (5–411 /60 s) | dynamic | `GiveYellowCard/GiveRedCard(now + 6000)` (referee.cpp:853/857) |
+| out-of-play hold | table[5] @0x14259ce54 = 2.5 s | static | corner / goal kick / throw-in `buffer.prepareTime = stop + 2000` (referee.cpp:186, 200, 227) and `SetPieceLaws::kOffsideCutscene_ms` (7000 → 2.5 s) |
+| player down | + 2.5 s @0x14259bde4; offside base 3.0 s (imm @0x140447a25) → 5.0 / 5.5 s | dynamic (`FUN_1404441d0`) | new condition on the same prepare sites |
+| wipe + UI | 0.1 s @0x142588200 → 5 frames, + 11 frames | static offline | `kRestartPrepareAfterReplay_ms`, `kOffsidePrepareAfterCutscene_ms` (1500 → ≈ 0.30 s) |
+| teleport → armed | 40 + (5 + fps·1.0 @0x14256ae1c) + 2 + fps·0.25 @0x142592228 = 117 frames (+2.0 s caption) | static | `kTakeAfterPrepare_ms`, `kOffsideTakeAfterPrepare_ms`, `startTime = prepareTime + 2000` (2000 → 2.17 s) |
+| CPU FK wait after armed | `freekick.o.suspendTime` 3.0 s (+2 frames) | static (INF) | taker delay after `buffer.started` (no GF field yet) |
+| late card (step 6) | max(2.5 s, 340 ticks), at the next ball-out/offside stop inside the `MI+0x1690` window | dynamic | `IssueDeferredCards` (stop + 300, prepare + 6000) |
+| restart deferral cap | **none** in the step program; set-play clock 54·30 frames after armed (54·15 with S17) for human pads only (throw-in §6.2) | — | `kMaxRestartDeferral_ms` stays a GF safety net: mark `RE-SHIM`, not PES |
+| referee gesture holding the restart | **none** (no step waits on JUDGE; cards live in the scene) | — | `kRefereeSpecialHold_ms` (match.cpp:41) has no PES counterpart |
+| replay between whistle and restart | **none** in any foul/offside program read or captured | — | `FoulSequence::kReplayLeadIn_ms` has no PES counterpart (`Flow+0x5e14`, set for some scenes, open) |
+
+### 9.9 Killed hypotheses
+
+1. **"No-scene foul hold = 2.0 s"** (§0.2, §4.2, §8; setpiece-choreography §5.1/§8.1): killed. The 0x20022 test reads
+   `Flow+0`, which `FUN_14047d5d0` zeroes and only the scene branch of `FUN_140480910` writes (OBS); live 272 frames = 5.0 s.
+2. **"Offside hold = 3.0 s"** (§0.2, §4.2, §5.3 step 3, §8): killed for the normal case. Sub-state 3 uses
+   `FUN_14044e460(5)` = 2.5 s unless a player is down (OBS disasm 0x1404478d9..0x1404478fc); live 138–140 frames.
+3. **"With a scene, the 5.0/3.0 s base is a minimum hold"** (§4.2): killed. The hold is zeroed while the demo
+   exists; the step is gate + scene.
+4. **"`MI+0x1588 == 0` is the direct foul"** (§1.2, INF hi): weakened — both live direct-FK fouls read `MI+0x1588 = 2`
+   (`SetPieceChoreoRE/live.jsonl` `fk`). Kind 0 never observed.
+5. **"The referee's gesture delays the restart"** (GF `kRefereeSpecialHold_ms`): no PES step waits on it.
+6. **"PES caps restart deferral like GF's 30 s"**: no cap in the step program; the only 30 s clock runs after armed.
+
+### 9.10 Still open
+
+- `FUN_14044e460` zero-hold flag (subject player-object `+0x1400`) and `MI+0x137c` (end 0xb at once): meanings.
+- Downed-player recovery test in 0xb sub3 (`'O'` action, u16 `+0x1a` vs `rand(fps·100)/100 + 10`) and what
+  `FUN_141aea140(…,1,0)` shows.
+- Late-card window unit: `FUN_140a6bd60` divides by 3600; whether the clock float is game seconds (→ hours, window
+  always open) or 1/60 s (→ 16 game-minutes) needs one live read of `MI+0x17a4` against the clock. INF(low): minutes.
+- `MI+0x158c == 1` as "foul without card" (gates the referee's on-the-spot JUDGE): one live foul read resolves it.
+- How the JUDGE action's `cmd+0x85c` is fed from `RefereeActionBasePosition+0x30` (copy site not located).
+- Late card on ball-out stops: the stop-kind-4 program builder was not read.
