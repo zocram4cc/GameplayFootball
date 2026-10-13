@@ -202,7 +202,10 @@ read it from anywhere.**
 
 ### 2.2 The AI's stamina tiering is literal (OBS)
 
-The AI's "play data" name pool (image 0x142b407a8 … 0x142b40ae0, contiguous NUL-terminated strings)
+The AI's "play data" name pool (image **0x142b407a8 … 0x142b40ad8**, contiguous NUL-terminated
+strings — CORRECTED 2026-10-13 (second pass); the first pass quoted 0x142b411a8 …, a 0xA00 error from
+a wrong file-offset rule: **file offset = VA − 0x140000000** throughout this image, there is no
+`.rdata` shift)
 contains exactly **20 stamina-keyed names**, five action families × four tiers:
 
 ```
@@ -224,7 +227,9 @@ class, only by the action + the dash flag.
 
 ### 2.2b The condition display is graded 0..9 (OBS)
 
-The player-card UI registers a condition icon with **ten grades**: `cmnIconCondition` with
+The player-card UI registers a condition icon with **ten grades**: `cmnIconCondition` (string at
+**0x1427befc8**, a second copy at 0x1427bb998 — CORRECTED 2026-10-13 (second pass), the first pass
+quoted 0x1427bb9b0 for this string, which is the *position* pool) with
 `condition_0` … `condition_9` at **0x1427bb9b0 … 0x1427bba40** (OBS, contiguous name pool). The
 match/team UI also has `BL_condition_0..4` + `BL_condition_rapid` at 0x142730938..0x142730988 (OBS).
 INF (med): a 0..20 in-match stamina maps onto the 10 display grades at 2 units per grade, which is
@@ -377,6 +382,79 @@ Sample durations (OBS, same source): `fall_upbody_3_0_000_hold` 230 f, `fall_upb
 
 ---
 
+## 4b. Stamina — second pass (2026-10-13, decompiler working)
+
+**Status: the formula is still OPEN.** This section records what the second pass proved (all of it
+negative for the drain itself, all of it reusable), plus two corrections.
+
+### 4b.1 The tick/step chain (OBS)
+
+The sim step is a runtime-initialised `.data` float, not a compiled-in `1/54`:
+
+| step | what | address |
+|---|---|---|
+| divisor | `FUN_141e532d0()` returns the global `DAT_14351ae54` | @0x141e532d0 |
+| `DAT_14351ae54` | initialised from the rodata constant **54.0** @0x14259d624 by `FUN_141e532f0`, which also writes int `54` (0x36) into `DAT_14351ae50` | @0x141e532f0 |
+| period | `*(float*)(entObj + 0x5c)` — a per-match period on an entity object | — |
+| writer | `FUN_14042b6c0`: `dt = *(float*)(lVar3 + 0x5c) / (float)FUN_141e532d0()` then `FUN_141b985a0(uVar4, xmm6)` | @0x14042b6c0 |
+| store | `FUN_141b985a0` → `movss %xmm6,[rip+0x198275a]` = `DAT_14351ad20` | @0x141b985a0 / @0x141b985be |
+
+So any drain must be expressed as `rate × DAT_14351ad20`, and the *only* writer of `DAT_14351ad20`
+is this chain (@0x141b985be, single site).
+
+### 4b.2 Live-process observation (OBS, title screen only)
+
+Read read-only from `/proc/<pid>/mem` of the running `PES2021.exe` (game **not** driven into a
+match; image base 0x140000000, `r--p`/`r-xp`/`rw-p` regions):
+
+- `DAT_14351ad20` on disk = `0.0185185` (= 1/54); **live = `0.0208333` (= 1/48)**.
+- `DAT_14351ae54` = 54.0 on disk **and** live — unchanged.
+- therefore the live period at `entObj+0x5c` is `0.0208333 × 54 = 1.125`.
+
+**This is a title-screen reading.** Whether the match itself runs at 1/48 or 1/54 is
+**UNVERIFIED** until the slot is read during a match; the value may be re-derived at match start
+(and the ball-spin-scale case in this report shows `.data` slots do get re-initialised). GF should
+read the period from its own match setup, not assume either number.
+
+### 4b.3 Why the tier names have no xrefs (OBS)
+
+The 20 `PLAY_DATA_*_DASH_STAMINA_*` strings at 0x142b407a8 … 0x142b40ad8 (corrected, §2.2) have
+**zero code references of any kind**: no rip-relative `lea`/`mov`, no u64/u32/RVA pointer in the
+dump, no `strcode32`/`strcode`/`gz_hash` of any name anywhere in the image, Ghidra
+`getReferencesTo` returns nothing, and **no pointer to any of them exists in the live process**
+(scan of all image regions `0x140000000–0x143d14000`). They sit in a compiled-in descriptor table
+at **0x14161e000** whose 8-byte entries are obfuscated on disk (e.g. the entry at 0x14161efc0 reads
+`aa 41 0f 59 c1 0f c6 d2`) and are rewritten by an initializer at load — i.e. an at-rest encrypted
+name table. This is why string-mining the tier names cannot reach the consumer: the consumer walks
+the table, it never embeds the strings.
+
+### 4b.4 The condition-display chain (OBS) — a grade, not the stamina value
+
+- `FUN_140e5b200` ctor: `vtable 0x1427bbb08`, resolves `cmnIconCondition` through vtbl+8, and stores
+  the icon index as an **int at object+0x98**; the 10 `condition_*` names are reached through the
+  pointer table at **0x1434c3370** (`0x1427bb9b0…0x1427bba40`).
+- `FUN_140e5b280` (vtbl+0x10) selects `conditionN` by index; `FUN_140e5b2c0` reads it back.
+- Callers: `FUN_140e6bb20` maps only `param_2 ∈ {0,2,4}` → `condition_4 / condition_2 / condition_0`;
+  its sole caller `FUN_140ddd540` is a UI card updater whose switch also drives
+  `FUN_140e6d450` (`switch_condition`) and `FUN_140e6ba50` (`cmnIconRatingUpdate`).
+- Downstream producers are UI plumbing only (`FUN_140e8a4a0` → `FUN_140e8ad80` → `FUN_140e9363c` →
+  `FUN_140e94230`, all vector/list code).
+
+So the 0..9 display is an *already-graded integer* handed to the UI; the function that grades it
+out of the stamina value was **not** located.
+
+### 4b.5 Recommended next step (single actionable item)
+
+Recover the initializer of the descriptor table at 0x14161e000: no rip-relative store to it exists,
+so it is filled through a computed base (a `.bss` pointer or a page of relocated pointers dumped by
+the loader). Find the writer (a `memset`-like or element-by-element store loop covering
+0x14161e000…), then run Ghidra `getReferencesTo` on the *decrypted* entry for
+`PLAY_DATA_SHOOT_DASH_STAMINA_20_15` to land directly on the band function. That function's caller
+chain is where the stamina field is read, and its own update site is the drain (which must be scaled
+by `DAT_14351ad20`).
+
+---
+
 ## 5. GF behaviours that differ from PES
 
 Each row: GF's current rule (file:line in the GF tree) → the PES rule that replaces it.
@@ -397,7 +475,9 @@ Each row: GF's current rule (file:line in the GF tree) → the PES rule that rep
 
 ## 6. Open items, and what was tried
 
-1. **The stamina drain / regeneration formula** — OPEN. Tried:
+1. **The stamina drain / regeneration formula** — OPEN. Still open after the second pass (§4b): the
+   **stamina field offset**, the **drain expression**, the **regeneration**, the **0..20 tier
+   mapping** and the **Stamina-attribute (Player.bin 0x22, 40..99) input** are all unrecovered. Tried:
    - exhaustive string mining for `stamina/tiredness/fatigue/condition` (only the ability name, the HUD
      gauge, the mail/Lua `m_stamina`/`tiredness`, and the 20 AI tier names exist — §2.1);
    - the SD enum-name table at 0x14344a000 (213 entries, no stamina/fatigue entry) and the SD value-name
@@ -415,8 +495,30 @@ Each row: GF's current rule (file:line in the GF tree) → the PES rule that rep
      dispatch and a 25-tick bookkeeping call, no stamina write;
    - the condition/familiarity/super-sub `.rdata` tables @0x142632CC0 / @0x142632EB0 / @0x142632F74 —
      these are ability-index lists (ids 20,21,22,34,35,36,37 …), i.e. rating modifiers, not drain rates.
-   Next: read the player game object (`GetPlayerGameObject` @0x141B59E20) layout, then find writers of
-   its stamina byte/float; the `InplayDemoFatigueInjury` class (TD 0x14361be10) is the other entry point.
+   **Added in the second pass (2026-10-13):**
+   - hash lookups — `strcode32`/`strcode`/`gz_hash` of all 20 tier names and of every
+     `PLAY_DATA_*` name: **0 hits** in the image (§4b.3);
+   - pointer scans — rip-relative `lea`/`mov`, u64/u32/RVA forms, and a full live-memory scan of
+     `0x140000000–0x143d14000` for pointers to the tier names: **0 hits**; the names live in the
+     obfuscated descriptor table at 0x14161e000 (§4b.3);
+   - tier-boundary integer clusters — 168 `cmp …,0x14` sites, 7 with a 15/10 compare within 0x30
+     bytes; 4 decompiled (0x140102ad0, 0x1402ebeb0, 0x1402ed340, 0x1405ae940) — set-piece/category
+     predicates, not stamina;
+   - tier-boundary float clusters — 600 `comiss/ja` sites against 20.0/15.0/10.0/5.0, 26 clusters with
+     ≥2 constants, **0 with all four**;
+   - scale constants — `imul …,0x14` (40 sites, 4 decompiled: vector/manager code), a `/5`
+     (`0xcccccccd`) within 16 bytes of a 20-compare (0 sites), `1/48` and `1/108` (absent);
+   - the tick route (§4b.1) — followed the only writer of the step float; it computes `dt`, it does
+     not touch stamina;
+   - the condition-icon route (§4b.4) — reached the card widget and its 0..9 grade index at
+     object+0x98, but only through UI plumbing; the grader was not located;
+   - live-process `.data` diff — the step slot `DAT_14351ad20` is the only live-changed float in its
+     page, and its live value 1/48 is derived from a match-period field, not from a stamina constant
+     (§4b.2).
+   Next: recover the initializer of the descriptor table at 0x14161e000, then
+   `getReferencesTo` the decrypted `PLAY_DATA_SHOOT_DASH_STAMINA_20_15` entry (§4b.5). Reading the
+   player game object (`GetPlayerGameObject` @0x141B59E20) layout and the `InplayDemoFatigueInjury`
+   class (TD 0x14361be10) remain the other entry points.
 2. **`injury.o` field semantics** — OPEN (§1.3). The loader chain was followed to the file-cache
    (`FUN_141e5bc40 → FUN_141e5bee0 → FUN_141e5d700/FUN_141e5d8c0`, all decompiled OBS), but the
    per-class field reader could not be located: the image contains the class RTTI TypeDescriptors but
