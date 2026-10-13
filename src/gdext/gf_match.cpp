@@ -40,6 +40,7 @@ void GfMatch::_bind_methods() {
   ClassDB::bind_method(D_METHOD("match_time_ms"), &GfMatch::match_time_ms);
   ClassDB::bind_method(D_METHOD("score", "team"), &GfMatch::score);
   ClassDB::bind_method(D_METHOD("field_half_width"), &GfMatch::field_half_width);
+  ClassDB::bind_method(D_METHOD("field_half_length"), &GfMatch::field_half_length);
 }
 
 Error GfMatch::start(const Ref<PesLibrary>& library, const String& db_sql, const String& anims_dir, int home,
@@ -112,5 +113,6 @@ int GfMatch::match_time_ms() const { return match_ ? int(match_->GetMatchTime_ms
 int GfMatch::score(int team) const { return match_ && (team == 0 || team == 1) ? match_->GetScore(team) : 0; }
 
 double GfMatch::field_half_width() const { return pitchHalfH + lineHalfW; }
+double GfMatch::field_half_length() const { return pitchHalfW + lineHalfW; }
 
 }  // namespace godot

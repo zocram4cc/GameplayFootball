@@ -1,10 +1,12 @@
 extends SceneTree
 ## PesBroadcastCamera films play like PES's Dynamic Wide camera
-## (docs/re/pes-re-stadium-camera.md 4.3-4.6). Exit 0/1, 77 skipped.
+## (docs/re/pes-re-stadium-camera.md 4.3-4.6, docs/re/pes-re-camera-target.md).
+## Exit 0/1, 77 skipped.
 
 const SKIP := 77
 const FIELD_HALF_WIDTH_M := 34.06  # FieldInfo +0x08 (live); the match takes it from the sim
-const STEP_S := 1.0 / 60.0
+const FIELD_HALF_LENGTH_M := 52.56  # FieldInfo +0x00 (live)
+const STEP_S := 1.0 / 54.0          # PES's frame-rate reference, read from the exe
 const SETTLE_STEPS := 600
 const POSITION_TOLERANCE_M := 0.05
 const LIVE_ZOOM := 0.79            # owner's sliders, fitted live (report 4.6)
@@ -31,7 +33,7 @@ func _initialize() -> void:
 	var library := PesLibrary.new()
 	check(library.open(root) == OK, "library opens")
 	var cam := PesBroadcastCamera.new()
-	check(cam.load(library, FIELD_HALF_WIDTH_M) == OK, "camera loads")
+	check(cam.load(library, FIELD_HALF_WIDTH_M, FIELD_HALF_LENGTH_M) == OK, "camera loads")
 	cam.set_sliders(LIVE_ZOOM, LIVE_HEIGHT)
 	var camera := Camera3D.new()
 	get_root().add_child(camera)

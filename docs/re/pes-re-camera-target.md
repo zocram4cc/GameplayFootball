@@ -203,7 +203,13 @@ numerator of a ratio, not a tick rate.
 **Target smoothing (OBS, `0x1408a3cd1`–`0x1408a3d41`):**
 
 ```
-tgt.x = (prev.x + w·dx) / (1 + w)      dx = raw.x − prev.x    (likewise y, z)
+tgt.x = (prev.x + w·raw.x) / (1 + w)                          (likewise y, z)
+# CORRECTED 2026-10-13 (orchestrator, raw asm): the weight multiplies raw, not raw − prev.
+#   1408a3cf8 mulss (%rsi),%xmm2   ; w·raw.x   (rsi = raw focus)
+#   1408a3d0e addss %xmm2,%xmm3    ; prev.x + w·raw.x
+#   1408a3d17 addss %xmm7,%xmm14   ; w + 1
+#   1408a3d24 divss %xmm14,%xmm3   ; ÷ (1 + w)
+# The earlier dx form has its fixed point at raw/2 and stalls the camera halfway.
 ```
 
 with a **running** weight `w` at `.data 0x1434a00b0` (image default `1.0`, OBS read from the file),
@@ -262,7 +268,7 @@ else
 # and w is forced to 1.0 on the reset path (0x1408a3a39) and when [this+0x24] != 0 (0x1408a3a5c)
 
 # 2. target smoothing, per axis (0x1408a3cd1 … 0x1408a3d41)
-tgt = (prev + w·(raw − prev)) / (1 + w)
+tgt = (prev + w·raw) / (1 + w)        # CORRECTED 2026-10-13: w multiplies raw (0x1408a3cf8), fixed point = raw
 #    with w = 1 (settled):  tgt = (prev + raw)/2   — half the remaining distance per frame
 
 # 3. k spring (0x1408a3ec8 … 0x1408a3f11)

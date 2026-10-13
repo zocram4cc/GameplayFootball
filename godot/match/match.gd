@@ -17,6 +17,8 @@ const DEFAULT_BALL_ID := 1
 const BALL_PACK_FORMAT := "Asset/model/ball/ball%03d/#Win/ball.fpk"
 const PITCH_SURROUND_M := 120.0
 const PITCH_ALBEDO := Color(0.22, 0.42, 0.18)
+# FieldInfo +0x00 / +0x08 live (PES 52.56 / 34.06 to the outer line edge);
+# the sim exposes the width, the length is the pitch constant in src/sim.
 const SUN_ROTATION_DEG := Vector3(-55.0, 35.0, 0.0)
 const FACE_DIR := "Asset/model/character/face/real/"
 const FOLLOW_OFFSET := Vector3(4.0, 2.2, 6.0)  # inspection camera, metres from the followed player
@@ -67,7 +69,8 @@ func _ready() -> void:
 		push_warning("PES locomotion unavailable")
 	_build_players()
 	_broadcast = PesBroadcastCamera.new()
-	if _broadcast.load(library, sim.field_half_width()) != OK:
+	# FieldInfo +0x00 (52.56) and +0x08 (34.06) live; the sim exposes the width.
+	if _broadcast.load(library, sim.field_half_width(), sim.field_half_length()) != OK:
 		get_tree().quit(1)
 		return
 	_broadcast.reset(sim.ball_position())
