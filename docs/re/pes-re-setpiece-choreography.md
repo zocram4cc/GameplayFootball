@@ -500,17 +500,22 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 2. **The AI kick-command timing** (counter 164/191/246/84/380): the set-play AI (`ThinkUnit*` / `ballplayerSetplay.o`
    `waitTimerMin`) was not decompiled. Next: watch the AI command struct for the kicker during the wait, or find writers of
    the kick request consumed by `CornerKick::CanEnter` (thunk 0x143fb8d40, protected).
-3. **Defensive marking at corners/FKs** (who marks whom, the zone-template constants x = F[8], z = 2.0/0.5/5.99/−6.0,
-   the line at 40.05 in the FK): seen live only; `ThinkUnitCornerKickDefenceType` and the FK line code not decompiled.
-4. **Attackers outside the CK table** ((dir·32.21, 7.8 / −12.6) and the rest defence) and the corner-variant choice
-   (`cornerKickType` vs a roll).
-5. **Wall spacing and the jump decision** (`ThinkUnitFreekickWallJump/NotJump/Press`): only the request timing is
-   observed (2 frames before contact, ×2). Multi-man walls were not observed (both live FKs had d ≥ 35 m).
+3. **Defensive marking at corners/FKs**: partly CLOSED — §11.6. Near-post man = the corner-side slots 2–4 man with
+   the lowest height + byte `0x2c` + byte `0x1d`; a far-post man is added at attack level 0; outlets are kept upfield.
+   The zone template (`T+0x4b4c` writer, `T+0x26c` marker spots), who marks whom (`FUN_1405346e0`'s seven sub-passes),
+   and the FK line at 40.05 stay open.
+4. **Attackers outside the CK table**: partly CLOSED — §11.7. Box-attacker count is `4 + min(attack level, 2)`
+   (`FUN_1404f6680`); `FUN_14051b8b0` ranks who goes in. Which corner variant runs, and the pair at (dir·32.21, …),
+   stay open.
+5. **Wall spacing and the jump decision**: CLOSED — §11.5. Wall men stand 0.5 m apart. The CPU picks
+   press/jump/not-jump in `FUN_140525ec0` once `FUN_140525900` hits zero: `r = |(f%100 − s²)·(idx·s + f%100)| % 100`,
+   at most one presser, jump if `r > 24` or the not-jump slots (`(n−1)/2`) run out.
 6. **Penalty in a match**: no live sample; `positionPK` in-match use unproven.
-7. **Where the 20-tick placement writer lives** (the match-side consumer of `MI+0x11b0`): handshake and order are
-   observed; the writer was not located (tried: `FUN_14044bb40` → `FUN_140453370`, not decompiled).
-8. **Kick-off two-player path** (`KickoffKicker`/`KickoffKickerLoop`) is decompiled but never ran in the AI kick-off;
-   when it is used (user control, INF) is open.
+7. **Where the 20-tick placement writer lives**: CLOSED — §11.2. `MI+0x11b0` is a sync stage byte, not a writer:
+   players move in `FUN_140926b00` (only caller 0x1409256eb), officials in `FUN_140a364f0`, all ending in the
+   `FUN_1409232c0` teleport.
+8. **Kick-off two-player path**: mechanism decoded, trigger INF(high) — §11.8. Only the human kick-off-change
+   pad command `0x1e` (`ThinkUnitKickOffChange` 0x140f472e0) selects it.
 9. **A goalkeeper took corners and free kicks** in the second capture (the same AnimePlayer that took the goal kicks and
    stood in goal at the kick-off); while he was up, one team-mate's AnimePlayer sat at (0, 0, 0). INF(med): the team's
    designated takers (`T+0x8e08`) in this modded install point at the keeper; the (0,0) player is an unfilled
@@ -569,3 +574,229 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 - Open, next: capture one corner and one FK (MODE 4/5) and compare the action enter frame with state 4's gate (expected 0–27
   frames after counter 1); confirm `FUN_142132660`'s emitted player is the kicker for MODE 4; attribute the 0x31 writer.
   The live capture `live2.jsonl` was lost (orchestrator deleted the scratch dir by mistake); the table above preserves it.
+
+---
+
+## 11. Placement, marking and the run between marks (SetpiecePlacementRE, 2026-10-13)
+
+Static only: the game sat in the menu for the whole session (`pes_state.py` → `STATE=MENU`), so there are no new live
+restart captures. Image reads: `~/ghidra-projects/scratch/Unpacker` (`dec.sh`/`annot.py`, `pes_full.bin`, `emu.py`);
+the live process was read once, read-only, for the constant registry. Scratch: the SetpiecePlacementRE scratch dir.
+(`*.c` decompiles, `scan.py` displacement scanner, `fn.py` .pdata resolver, `strenum.py`, `xref.py`, `emu_fi*.txt`).
+Players: `idx` 0..21, `slot = idx % 11`, `T = FUN_140a48a30(G, side)` team record, `dir = (s8)T+0x254`, `R = MI+0x155c` (x,y,z).
+
+### 11.1 Two enums that every rule below uses (OBS, string-pointer tables)
+
+- **Player AI action state** `T+0xa2a0 + 4·slot` (set by `FUN_140a42940(T, slot, state)`): names at **0x1434A4D50**, value =
+  index from `NOTHING` (0x1434a4cb8 + 19 entries). Used here: 0x23 `PASS_SUPPORT_THROWIN`, 0x36 **`MARK`**, 0x69 `WALL_JUMP`,
+  0x6a `WALL_NOT_JUMP`, 0x6b `WALL_PRESS`, 0x6d **`POST_MAN`**. Cross-check (OBS): the team-plans chase gate {1, 0x32, 0x36, 0x3d}
+  reads BASE_POSITION, COVER, MARK, PASS_COURSE_CUT.
+- **Pad command** (human input) `PAD_COMMAND_KIND_*` at **0x1434a5d80**: 0x1e `KICK_OFF_CHANGE`, 0x31 `WALL`, 0x6d
+  `CORNERKICK_TACTICS`, 0x6e `CORNERKICK_DEFENCE_TYPE`, 0x6f `FREEKICK_TACTICS`, 0x70 `SHORT_CORNER_TACTICS`.
+  (§9.2 calls the corner/FK `CanEnter` command "0x31"; in this enum 0x31 is `WALL` — the two may be different enums; flagged.)
+- **OBS: every `ThinkUnit*@pad@match` named in §9 items 3/5/8 is a human-pad translator, not CPU AI.** Each reads pad buttons
+  (`FUN_140a5d2e0` pressed / `FUN_140a5f4f0` held on `param_2+8`) and returns a pad command: `ThinkUnitCornerKickDefenceType`
+  slot 8 `0x1408bc3f0` → 0x6e with type byte `+0x19` = 1/2/3; `ThinkUnitCornerKickTactics` `0x1408bc600` → 0x70/0x6d with 1..4;
+  `ThinkUnitFreeKickTactics` `0x1408b7b20` → 0x6f; `ThinkUnitFreekickWallJump/Press` slot 12 `0x1408aef00`/`0x1408aef20` →
+  0x31 with `+0x19` = 0 / 2 (`WallNotJump` slot 12 is a protected thunk → INF 1); `ThinkUnitKickOffChange` `0x140f472e0` → 0x1e,
+  gate `0x1408b9720` = held(10) && pressed(4); `ThinkUnitKickoff` `0x140f46b50` → 0x52 `SHORT_PASS`.
+
+### 11.2 The 20-tick placement writer (§9 item 7) — CLOSED (OBS)
+
+- `MI+0x11b0` is the **stage byte of a sync block** (inited by `func_0x140a3c430(MI+0x11b0)` in `FUN_140a3ba90`/`FUN_140a3c560`);
+  `Flow+0x27d8` is the same block type on the Flow side (`FUN_14044a2a0` sets it to 1 and `inc`s it each tick until
+  `MI+0x11b0 == 0x14`; `FUN_140a3c890(Flow+0x27d8)` resets it). INF(high): MI receives a copy of the Flow block each tick; the copy
+  routine itself was not located.
+- **Player side: `FUN_140926b00(unit, MI, T, ·)`** (only caller `0x1409256eb` in `FUN_140925470`, the per-player stoppage update)
+  switches on the stage:
+
+  | stage | handler | who | what (OBS) |
+  |---|---|---|---|
+  | 1 | `FUN_140927360` | all | snapshot position `unit+0x624 → unit+0xacac` (the "start" of every later move); throw-in AI reset |
+  | 5, 9 | `FUN_140926e40` | restarting side (`MI+0x1558` == own side) | teleport to the unit's AI target `unit+0xaca0`, no limit |
+  | 7 | `FUN_140926e40` | other side | same (this is the "+7 zone template") |
+  | 10 | `FUN_140926ef0` | restarting side | budget move (§11.3) to `T+0x26c+0x40·slot` if MODE 4 and state `MARK`, else to `unit+0xaca0`; throw-in taker yaw 180°/0° by `R.z` |
+  | 12, 15 | `FUN_140926690` | all | AI/anime refresh, no move |
+  | 13, 16 | `FUN_140926c90` | other side | MODE 1: copy `unit+0xaca0`; else state `MARK` (and not an FK wall man) → budget move to `T+0x26c+0x40·slot`; stage 13 non-markers → budget move to `unit+0xaca0`; stage 16 non-markers stay |
+  | 17 | `FUN_1409266e0` | all | online / training variants only |
+  | 20–22 | `FUN_1409270f0` | all | finish; players not on the pitch go to the bench row `(slot·5 − 30, 0, 40 + 5·away)` (5 `0x14259222c`, 30 `0x142591140`, 40 `0x14259be2c`) |
+
+  Every move ends in **`FUN_1409232c0(unit, pos|NULL, yaw)`** — the teleport (NULL → `unit+0xaca0`; yaw < 0 → facing from
+  `FUN_140922590`), which also writes the AnimePlayer position/yaw (`FUN_141eb5b30`/`FUN_141eb56d0`).
+- **Officials:** `FUN_140a364f0` (caller `0x140a36779`): stage 0x13 → `FUN_140a374c0` + `FUN_140a37470` compute the spots,
+  stages 0x14–0x16 apply them. This is the "+19" row of §1.2.
+- **The target `unit+0xaca0`** is refreshed by `FUN_14092e7e0(unit,1)` after every move = `FUN_1409f5530` = the team's per-slot
+  target `T+0x4b4c + 12·slot`, passed through **`FUN_1409f5840`** while stopped (`MI+0x116c` ∈ {2,3}) (§11.4).
+
+### 11.3 How far a player gets: the 16 km/h budget (OBS `FUN_140929610`, `FUN_140927ab0`)
+
+```
+P0  = stage-1 position clamped to |x| ≤ F[0], |z| ≤ F[1]
+n   = |T − P0|_xz / (16000 / (fps·3600))          // frames needed at 16 km/h (16000 0x14259d638, 3600 0x142598590)
+pos = n ≤ B ? T : P0 + (T − P0)·(B/n)              // x,z only; y = 0   (100 0x14253ee30 is only a % scale)
+B   = fps · k  (k in seconds, FUN_140927ab0(·, T, MI, idx); constants raw-checked at 0x140927bf2–0x140927cf6):
+  kicker / 2nd kicker / FK wall man / own keeper / MI+0x1775 ≠ 0 / MODE 1,6,7 → no limit (FLT_MAX)
+  MODE 2 throw-in : own side state PASS_SUPPORT_THROWIN → 3 (0x14258c264), other own → 2 (0x142565604);
+                    other side T+0x87d0[slot] == 2 → 2, else 3
+  MODE 4 corner   : state POST_MAN → 300 (0x1425a266c), else 20 (0x14259be1c)
+  MODE 3 GK / 5 FK: own side role T+0x4c00[slot] ≤ 2 → 7 (0x14259bdf0), 3..5 → 10 (0x142588210), ≥ 6 → 13 (0x1425c5948);
+                    other side T+0x87d0[slot] == 2 → 8 (0x14259bdf4), else 12 (0x14259be04)
+  slot == T+0x89d4 or T+0x89d8 → B · 1.5 (0x14259bddc)
+```
+Then (OBS, raw 0x1409297df–0x1409298de): in MODE 3, and in MODE 5 when `FUN_140a72e70(F, R.x, R.z, dir)` has bit 10, every
+player except the kicker and the restarting side's roles 0/1 is pushed so that `dir_r·x ≥ −F[6]` (`dir_r` = restarting team):
+**outside the restarting team's own penalty area** (Law 16; PES applies it to team-mates too). Then `FUN_14051c030` and, for
+non-kickers, `FUN_140a544d0(F, pos, 0)` (INF: overlap / pitch clamps).
+INF(high): corners are effectively exact (20 s ≈ 89 m); throw-in re-forms only 9–13 m (2–3 s); FK/GK 31–58 m.
+
+### 11.4 Stoppage targets — `FUN_1409f5840` (OBS)
+
+- **Kick-off (MODE 1)**: two-man flag `MI+0x14c8 + 4·side` (§11.9). Two-man: kicker `(−0.25·dir, 0.45·dir)` (0x1425c48ec,
+  0x14256b140), second `(0.1·dir, −1.5·dir)` (0x142588200, 0x14259d650). One-man: kicker `(0.55·dir, ±0.25·dir)` (0x1425a358c,
+  0x142592228), sign by the in-match block byte `+0x34` (live (0.55, −0.25) ✓ §3.1).
+- **Kicker otherwise**, and the FK second kicker: target = `param_6` (the caller's stand point). Special training modes
+  (`MI+0x1775` 3/8/9/0xc/0x17/0x18) have fixed spots — ignore in a match.
+- **FK wall man** (`FUN_140a3c9b0`): `k` = his index in `MI+0x1488[]` (`FUN_140a3c1c0`), `k−1` if byte `MI+0x14b1`;
+  `pos = C + 0.5·k·(f(θ), −f(θ+90°))`, `C = MI+0x14a4/0x14ac` (wall centre), `θ = MI+0x14b4` (wall yaw), `f` = table trig
+  `FUN_140a92c80`; 0.5 at 0x142565600 (raw 0x1409f5c87–0x1409f5d08). **Wall spacing = 0.5 m**, first man on the centre.
+- **FK defending keeper** (role 0, CPU team `T+0x255 == 0`), `g = −dir·F[0]` (own goal line):
+  `|R.x| > F[4] + 2`: `x = −dir·(F[0] − 0.5)` plus, for the kicker's foot side, `dir·0.5·(|R.x| − F[6])/(F[0] − F[6])`; `z = 0`.
+  Else, if there is no wall, the last wall man is > 21, `|R.x| < 20` or the ball is wide (`|R.z| > F[7]`): `(g + dir·0.3, 0)`,
+  and `z = ±1` toward the ball when `|R − (g,0)| < 36` (0x1425a9464) and `|R.z| > F[7]`. **Live FK §5.1 (52.26, −1.0) ✓**
+  (d = 35.3 < 36, |z| 30.7 > 20.12). Else (central FK with a wall): a spot from the wall's last man and the goal geometry
+  (0.5·n, 0.3, 1.5, 20 m constants; not reduced further).
+- **Corner, second `POST_MAN`** (state 0x6d, `idx ≠ T+0x88d8`): target = his current position (the anime places him, §11.5).
+
+### 11.5 Corner / FK defence (§9 item 3) — mechanism OBS, zone template still open
+
+- **Near-post man** `FUN_14057cbc0` (stop start `116c == 2`, MODE 4, defending side, no `POST_MAN` yet): candidates = on-pitch
+  slots with role `T+0x4c00` ∈ [2, 4] whose base side `sign(base.z·dir)` (`T+0x46e4+12·slot+8`) equals `sign(R.z)`
+  (xmm11 = `MI+0x1564`, raw 0x14057ccb1–0x14057cd97); none → roles [2, 6], any side. **Pick the minimum of
+  `b[0x31] + b[0x2c] + b[0x1d]`** of the in-match block (`FUN_14124dad0`; matchlogic §1.3: +0x31 height OBS, +0x2c Jump,
+  +0x1d Heading INF) → `POST_MAN`.
+- **Far-post man** `FUN_14057cf40` (called by `FUN_14057d240`): only when `T+0xb8a3` (= attack level < 1) and `T+0x88d8` unset;
+  candidates any role ≠ 0 not already `POST_MAN`, same minimum → `POST_MAN`, `T+0x88d8 = idx`.
+  Spots (OBS `FUN_14092e7e0`): `T+0x88d8` man → request point `(sign(R.x)(F[0] − 0.5), −sign(R.z)(F[2] − 0.7))` (0.5 0x142565600,
+  0.7 0x14257a194); other `POST_MAN` → `(sign(R.x)F[0], sign(R.z)F[2])`; both handed to `FUN_1406b4470` → `PostManLoop`
+  root-offset placement. Live near-post man `(±(F[0] − 0.5), sign(R.z)·3.35)` = `(F[0], F[2])` + clip offset, INF(high).
+  Release rules `FUN_14057c8c0` (in play, 5 s, ball near, line/forward checks) not reduced.
+- **Outlets kept up** `FUN_140a41cc0(T+0xc48, AI, idx)` (also the wall's skip test, §5.3): count
+  `n = 0 / 1 / 2` for attack level `T+0xb8a4` `< 1 / 1–2 / ≥ 3`, `3` if level 4 (`T+0xb8a2`); FK with > 5 wall men → `min(n,1)`;
+  capped at on-pitch − 6. Ranking `base.x + {role 5: 8, 6: 10, 7: 15, 8: 18, 9: 20}` (0x14259bdf4, 0x142588210, 0x14259be0c,
+  0x14259be18, 0x14259be1c) `+ 200` (0x1425a2668) for slot `T+0x4b40` or flag `FUN_140a63950(·,0xf,·)`; below level 4 only
+  slots with `T+0x87d0[slot] == 2` or that flag compete; sorted descending. Live: the defending slot-10 man stayed up ✓.
+- **Who marks whom**: the open-play man-marking runs through the stoppage: `FUN_140534a20` is active while stopped only if
+  `MI+0x11b0 − 1 < 0x15` (stages 1–21); it builds an opponent list keyed by `−dir·(x + vx·fps/6)` (most advanced first; throw-in
+  supporters `10000 − x·dir`), **except MODE 4, where the key is the opponent slot index**; sorts descending (`FUN_141e53540`,
+  comparator `0x140533c70`), assigns with `FUN_1405346e0` (seven passes `FUN_140531810/531260/5325e0/52f4f0/530320/52f720/
+  532f70`, not decoded; kick-off keeps a pair for `(1 − (r−10)/−40)·60` frames, 10/50/60/−40 at 0x142588210/0x14259be34/
+  0x14259a764/0x1425c6604) and sets `MARK` where `FUN_140a40000(·, 0x36, ·)` allows. The marker's spot is `T+0x26c + 0x40·slot`
+  (written by the `MARK` action, not decoded) and is applied at stage 13 under the 20 s budget.
+- **Zone template (stage 7) and the FK line at 40.05** = the team targets `T+0x4b4c` at that tick. Their writer was not found:
+  no direct store to `+0x4b4c/50/54` exists (all 60 displacement hits are reads/`lea`); the readers checked were `FUN_140578930`,
+  `FUN_14057fde0`, `FUN_1405a2590`, `FUN_140630e60`, `FUN_14062d9a0`, `FUN_14062e240`, `FUN_1404a8ad0`, `FUN_14063a490`,
+  `FUN_140a23c10`. INF(med): the corner line `z ∈ [−6.0, 6.0]` at `x = F[8]` is **`dfLineWidth_Corner` = 6.0** (§11.7).
+
+### 11.6 Corner attack (§9 item 4) — count OBS, ordinals OBS, variant open
+
+- **Attack level** `T+0xb8a4` ∈ 0..4 (`FUN_1404f8350`): from the team strategy `T+0x134` (0→0, 1→1, 3→3, 4→4, else 2) and a
+  manual target `T+0x210`, stepped ±1 by plan commands; debug strings `@----` … `----@` at 0x1425c3b64–0x1425c3b84
+  (INF(high): the in-game 5-level attacking/defensive level).
+- **Men in the box** `T+0x6d0 = 4 + min(level, 2)` (`FUN_1404f6680`, run when MODE ∈ {4,5} and own side restarts). Live corners
+  used `positionCK_6_*` → level ≥ 2 (consistent).
+- **Ordinal → slot** `FUN_14051b8b0` (callers 0x14051dd16/0x14051dda0): ordinals filled from 10 downward: (1) the designated list
+  (human team: team-sheet kinds 0–2 `FUN_1408c5060(T+0x8e08,k)`; CPU: flag `FUN_140a64030(idx, 0xf)`), (2) the keeper if
+  `FUN_140509890` (INF: chasing a late goal — matches §9 item 9), (3) the rest by `b[0x31] + b[0x2c] + b[0x1d]` with role
+  0/1 → −100, role 2 and ≥ 10 → 0, roles 3–9 keep it, role > 5 → +1000; until `min(T+0x6d0, eligible)` are in. Remaining
+  ordinals come from the list `T+0x7d08` (count `T+0x7cdc`) downward; ordinal 0 = the keeper slot.
+- The two players at `(dir·32.21, 7.8 / −12.6)` and the rest defence `(dir·6.65, −7.0 / 2.98)` are **not** in `positionCK.o`
+  (ordinals 0–4 there: (−18.23, 0.66), (1.87, −5.41), (7.49, 5.30), (23.86, 23.73), (18.39, −15.84)). INF(med): the rest
+  defence is in state `MARK` and is moved at stage 10 to its marking spot (`FUN_140926ef0` MODE-4 branch) on the opponents'
+  outlets; the 32.21 pair is unexplained.
+- **Variant `V`**: open. Not `cornerKickType` (global constant 2, while one team showed V = 1 and V = 2). The `positionCK` reader
+  was not found: registry indices 0x3f–0x48 never appear as an immediate, `lea edx,[r+imm]`, `r·3` or index table before the two
+  getters `FUN_141e5ca20`/`FUN_141e5d4c0`.
+
+### 11.7 `basePosition.o` is the 0x368-byte "tactics" struct, and it is shipped (OBS)
+
+Registry index **183** (`DevelopData/.../team/basePosition.json`, record 0x142b49810, factory `0x141e792e0` allocates 0x368 B,
+vtable 0x142b5a328); getter `FUN_141e5d4c0(·, 0xb7)` (ten call sites, e.g. the team tick `0x1404f6c83`). The live object (read
+once, read-only) equals `basePosition.o` in the VFS `common/match/constant/constant_team.bin` (1513 B, entry `{0x19c, 864}`)
+word for word except the padding bytes of four u8 fields; **struct offset = file offset + 8** (vtable). So the setpiece-referee
+field map is right and the values are readable at runtime: `cornerKickOffencePlayerNumber` 5, `cornerKickType` 2,
+`cornerkickDefenceMFSide` 100.0, `cornerkickDefenceMFWidth` 10.0, **`dfLineWidth_Corner` 6.0**, `cornerKickTime` bits
+0x41100000 (9.0 as f32; INF the field is f32, not u32), `adjustX_FreeKick` 9.0, `adjustZ_FreeKick` 15.0, `baseDist_FreeKick`
+30.0, `kickoffDfLineX` −12.0, `maxWaitTime` 0. The 1354-B `SetPieceRefRE/bin/constant_team.bin` is an older file (different
+values) — use the VFS winner.
+
+### 11.8 Wall jump decision (§9 item 5) — CLOSED for the CPU (OBS)
+
+`FUN_140525b50` (caller 0x14053608e; defending team, MODE 5 ready): clears wall states, reads a human `PAD_COMMAND_KIND_WALL`
+(0x31) from the pad slots `G+0x180 + 0x74·k` (param → `T+0xb6e4`), else runs the CPU rule `FUN_140525ec0`:
+- **When**: only when `FUN_140525900 == 0`, i.e. `(clip evt − clip cur)` of the taker (`rec+0x1c − rec+0x1a`) equals
+  `lead = ⌊fps·22/60 + 0.5⌋ − ⌊9.15 / v⌋`, `v = kmh·1000/(fps·3600)` (`FUN_1404c8dc0`), `kmh = 80 + 30·clamp((d − 20)/8, 0, 1)`,
+  d = ball distance (INF: to the goal); ≥ 4 when the taker's action is 35 (`'#'`). Constants: 22 0x1425c48c0, 60 0x14259a764,
+  9.15 0x1425a945c, 20/28/0.125/30/80 at 0x14259be1c/0x1425a2004/0x14259bdcc/0x142591140/0x142596e6c. Both live FKs (d ≥ 28):
+  `lead = 20 − 16 = 4` frames before the event; live request was 2 frames before contact (INF: AI-tick vs request latency; open).
+- **What**, per wall man in slot order, `f = MI+0x1198`, `r = |(f%100 − s²)·(idx·s + f%100)| % 100`:
+  `((f ^ s) & 1) == 0 && r ≤ 2 && no presser yet` → `WALL_PRESS` (one at most); else `notJumpLeft == 0 || r > 24` → `WALL_JUMP`;
+  else `WALL_NOT_JUMP` (`notJumpLeft` starts `(n−1)/2`, n = wall size). Taker action 35: at most `(n > 4) + 1` jumpers.
+  No RNG draw: the "random" is frame-counter arithmetic.
+- Human directives (`FUN_140525b50` switch): 0 → all `WALL_JUMP` (`FUN_140525df0`), 1 → all `WALL_NOT_JUMP` (`FUN_140526270`),
+  2 → even slots jump / odd press (`FUN_1405260c0`), 3 → all `WALL_PRESS` (`FUN_1405261a0`); 0/2 are delayed by the same timer.
+  The anime-side random 1–5-frame start delay of §5.6 comes after this.
+
+### 11.9 Kick-off two-player path (§9 item 8) — mechanism OBS, trigger INF(high)
+
+`FUN_1404a7d60` MODE 1/7 assigns the second kicker (2nd in the distance sort) **only if `kickoffType[side] == 1`**
+(`param_5` = `Flow+0x2afc` ↔ `MI+0x14c8/+0x14cc`; else `0xff`, decompile lines 239/303/323/335). Then §11.4 places the pair and
+`KickoffKickerLoop`/`KickoffKicker` run. The only producer found is the human `PAD_COMMAND_KIND_KICK_OFF_CHANGE` (§11.1); the
+store into `Flow+0x2afc` was not found (no direct displacement store). Live: every AI kick-off (4) was one-man.
+
+### 11.10 Extension — pitch length "from the lines" (`FieldInfo`)
+
+(`pes-re-marking-pixels.md` covers kit markings only; this answers the pitch-length question it was pointed at.)
+`FieldInfo` (`G+0x2aa8`) lives in a 0x4c-byte block `{refcount, FieldInfo}` made by `FUN_140873ca0` (from `FUN_140a59700`, the
+`Pointer<FieldInfo>` ctor, vtable 0x142608770). Its constructor **`0x140a85f40` → `0x144295920` (.impdata) is a Denuvo VM
+entry**, which is why no literal exists in `.trace`. Emulated (`emu.py 0x140a85f40 --rcx 0x10000000`, no live state, no inputs
+read): it writes `52.56, 34.06, 3.66, 2.44, 47.06, 9.16, 36.14, 20.12, 41.56, 2.5, 1.109375` (bits 0x42523d70 … 0x3f8e0000) to
++0x00…+0x28, then derails (30 M instructions); +0x2c…+0x44 (2.34, 51.17, 54.32, 54.43, 0.12, 0.12, 9.15) stay live-only (§0).
+**OBS: the gameplay pitch is a VM constant, not derived from stadium line data.** INF(high): 52.56 = 52.5 + 0.12/2 and
+34.06 = 34 + 0.06, i.e. the outer edges of 0.12-m lines on a 105 × 68 pitch.
+
+### 11.11 Status of the five items
+
+| item | status | next step |
+|---|---|---|
+| 1 CK/FK defensive marking | **partly OBS**: post man(s), outlets, mark assignment entry, budget, wall exclusion, FK keeper; **open**: zone template / FK line (`T+0x4b4c` writer), mark-spot formula (`MARK` action), `FUN_1405346e0` passes | read-only poll of `T+0x4b4c` and `T+0x26c+0x40·slot` every frame of one corner and one FK, then search for the producer of the matching values; decompile the seven `FUN_1405346e0` passes |
+| 2 attackers outside the CK table, variant | count + ordinals **OBS**; variant **open**; 32.21 pair **open**; rest defence INF(med) `MARK` | live capture of one corner with `T+0xa2a0[]`; find the `positionCK` reader by a read-only scan of who holds pointers to registry objects 0x3f–0x48 |
+| 3 wall spacing, jump decision | **CLOSED OBS** (0.5 m; CPU rule; human directives) | live: confirm the 4-frame lead vs the 2-frame request |
+| 4 placement writer | **CLOSED OBS** (`FUN_140926b00` stage table, `FUN_140a364f0`) | locate the Flow→MI copy of the stage block (cosmetic) |
+| 5 two-player kick-off | mechanism **OBS**, trigger **INF(high)** human `KICK_OFF_CHANGE` | find the consumer of pad command 0x1e that writes `Flow+0x2afc` |
+
+### 11.12 Killed hypotheses
+
+- "`ThinkUnitCornerKickDefenceType` / `ThinkUnitFreekickWall*` / `ThinkUnitKickOffChange` decide the CPU's marking, wall jumps,
+  kick-off" — they translate human pad buttons into pad commands (§11.1).
+- "Corner variant = `cornerKickType`" — global constant 2; variants 1 and 2 seen for one team.
+- "Men in the box = `cornerKickOffencePlayerNumber`" — it is 5; the code uses `4 + min(level, 2)`; live used 6.
+- "The 0x368-byte tactics values are not shipped" (referee report §1.11/§7.1) — they are `basePosition.o` in `constant_team.bin`.
+- "`FieldInfo` is computed at runtime from other values" — a VM constructor writes constants (§11.10).
+- "Players are teleported to exact marks" — they get as far as 16 km/h × budget from where they stood at stage 1 (§11.3).
+- "Wall spacing is decided when positions are written, unknown" — 0.5 m per member index (§11.4).
+
+### 11.13 Ledger entries
+
+| ID | Claim | Conf. | Evidence |
+|---|---|---|---|
+| EV-SPC-0015 | Stage switch `FUN_140926b00` on `MI+0x11b0`: 1 snapshot, 5/9 restarting side, 7 other side, 10 restarting budget, 13/16 other side markers, 20–22 finish; officials 0x13 | Confirmed (code) / matches live tick order | decompiles 0x140926b00, 0x140926e40, 0x140926ef0, 0x140926c90, 0x140a364f0 |
+| EV-SPC-0016 | Final spots limited to 16 km/h × budget (k s per MODE/role) from the stage-1 position | High (code; constants raw-checked) | `FUN_140929610`, `FUN_140927ab0` raw 0x140927bf2–0x140927cf6 |
+| EV-SPC-0017 | GK kick / own-box FK: all but kicker and restarting roles 0/1 kept outside the restarting team's box | High (code) | raw 0x1409297df–0x1409298de |
+| EV-SPC-0018 | Wall men 0.5 m apart along the wall yaw, first on the centre | High (code) | raw 0x1409f5c87–0x1409f5d08 |
+| EV-SPC-0019 | CPU wall jump/not-jump/press rule and its lead-frame timer | High (code) | `FUN_140525ec0`, `FUN_140525900`, `FUN_140525b50` |
+| EV-SPC-0020 | Near-post man = min(height + b[0x2c] + b[0x1d]) among corner-side roles 2–4; far-post man at attack level 0 | High (code) | `FUN_14057cbc0`, `FUN_14057cf40`, `FUN_14092e7e0` |
+| EV-SPC-0021 | Corner men in box = 4 + min(attack level, 2); ordinal ranking | High (code) / consistent live | `FUN_1404f6680`, `FUN_14051b8b0` |
+| EV-SPC-0022 | Two-man kick-off only when `kickoffType[side] == 1` | High (code) | `FUN_1404a7d60`, `FUN_1409f5840` |
+| EV-SPC-0023 | `basePosition.o` (constant_team.bin) = registry 183 object, offset +8; `dfLineWidth_Corner` 6.0 | Confirmed (live == VFS) | read-only live read; VFS decode |
+| EV-SPC-0024 | FieldInfo values emitted by VM ctor 0x140a85f40 | Confirmed (emulation, 11 of 18 fields) | `emu.py` log `emu_fi_full.txt` |
+| EV-SPC-0025 | FK keeper 0.3 m off the line, ±1 m to the ball side when d < 36 and wide | High (code) / Confirmed (live ×1) | `FUN_1409f5840`; §5.1 |
