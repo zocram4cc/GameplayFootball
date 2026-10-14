@@ -119,7 +119,7 @@ float ShapeRamp(float x, float at0, float value0, float at1, float value1) {
 }
 
 float TargetLineCushionFactor(const DefensiveShapeConstants& k, const LineFacts& ball,
-                              bool hasCarrier, bool carrierIsOpponent, float previousLineDepth_m,
+                              bool carrierIsOpponent, float previousLineDepth_m,
                               float lineDepth_m) {
   // FUN_1405f7a00. `away` is the ball travelling out of our half at speed; the
   // carrier's facing then takes over and the cushion shrinks as he turns his
@@ -127,7 +127,6 @@ float TargetLineCushionFactor(const DefensiveShapeConstants& k, const LineFacts&
   const bool away =
       std::fabs(ball.ballHeadingFromGoal_deg) > k.cushionAwayAngle_deg &&
       ball.ballSpeed_mps * k.cushionFps * k.speedPerHour_s > k.cushionSpeedDenominator;
-  if (!hasCarrier) return away ? 0.0f : 1.0f;
   if (!carrierIsOpponent) return 0.0f;
   if (previousLineDepth_m < lineDepth_m) return away ? k.cushionHalfFactor : 1.0f;
   const float facing = ball.carrierFacingFromGoal_deg;
@@ -137,12 +136,12 @@ float TargetLineCushionFactor(const DefensiveShapeConstants& k, const LineFacts&
 }
 
 bool DefensiveLineStepUp(const DefensiveShapeConstants& k, const ShapeField& field,
-                         const LineFacts& ball, float lineDepth_m, bool hasCarrier) {
+                         const LineFacts& ball, float lineDepth_m, bool carrierIsOpponent) {
   // FUN_1405ef910. Only a line deeper than the box line steps up, and only when
   // the ball is in front of it.
   if (lineDepth_m >= 1.0f - field.ownBox_m) return false;
   if (ball.ballDepth_m <= lineDepth_m + k.stepUpDistance_m) return false;
-  if (!hasCarrier) return false;
+  if (!carrierIsOpponent) return false;
   if (std::fabs(ball.ballHeadingFromGoal_deg) > k.stepUpHeading_deg &&
       ball.ballSpeed_mps > k.stepUpSpeed_mps)
     return true;  // the ball is being played away from us
@@ -153,16 +152,17 @@ bool DefensiveLineStepUp(const DefensiveShapeConstants& k, const ShapeField& fie
 
 float DefensiveLineHeight(const DefensiveShapeConstants& k, const ShapeField& field,
                           const LineFacts& ball, float lineSlider, int style, int attackLevel,
-                          bool inPlay, float cushionFactor) {
+                          bool inPlay, bool carrierIsOpponent, float previousLineDepth_m) {
   // FUN_1405f9eb0, own frame: a ramp of the ball's depth between two line-height
-  // offsets, then the step-up when deep, the cushion behind the ball, and the
+  // offsets, then the cushion behind the ball, the step-up when deep, and the
   // two hard clamps. No smoothing: the target is rebuilt from this tick's ball.
   const float slider = std::clamp(lineSlider, 1.0f, 10.0f);
   float a = 0.0f;
   if (style == 0) {
-    a = -k.foreCheck_m - k.foreCheckSlider_m * ShapeRamp(slider, 1.0f, 0.0f, 10.0f, 1.0f);
+    a = k.foreCheck_m - k.foreCheckSlider_m * ShapeRamp(slider, 1.0f, 0.0f, 10.0f, 1.0f);
   } else if (style == 1) {
-    const float t = ShapeRamp(slider, 10.0f, 1.0f, 1.0f, 0.0f);
+    // t = 1 with the slider at its bottom, 0 at its top (report 14.0).
+    const float t = ShapeRamp(slider, 1.0f, 1.0f, 10.0f, 0.0f);
     a = 5.0f * std::sin(k.retreatAngle_deg * t * blunted::pi / 180.0f) - 11.0f;
   }
   float hi = k.rampHighFactor * field.halfLength_m + k.dfLineCenterAdjustMax_m + a;
@@ -186,8 +186,12 @@ float DefensiveLineHeight(const DefensiveShapeConstants& k, const ShapeField& fi
     x = std::max(x, -field.ownBox_m);
   }
 
-  // Never less than the cushion behind the ball, then the step-up when deep.
-  x = std::min(x, ball.ballDepth_m + k.marginTargetLineX_m * cushionFactor);
+  // FUN_1405f7a00's cushion: never less than 10 m behind the ball, scaled by how
+  // far the carrier is from having his back to our goal.
+  const float cushion = TargetLineCushionFactor(k, ball, carrierIsOpponent, previousLineDepth_m, x);
+  x = std::min(x, ball.ballDepth_m + k.marginTargetLineX_m * cushion);
+  // FUN_1405ef910's step-up, only for a line deeper than the box line.
+  if (DefensiveLineStepUp(k, field, ball, x, carrierIsOpponent)) x = ball.ballDepth_m - k.stepUpDistance_m;
   // Never past halfway, never deeper than the goal-area line.
   x = std::min(x, 0.0f);
   return std::max(x, -field.ownGoalArea_m);
@@ -233,10 +237,12 @@ float LineHalfWidth_m(const DefensiveShapeConstants& k, const ShapeField& field,
   return half + (closeRate * half - half) * squeeze * (1.0f - 0.6f * lateral);
 }
 
-float OpponentOrderKey(float dir, float depth_m, float depthVelocity_mps) {
-  // FUN_140534a20's comparator: most advanced opponent first, projected one
-  // sixth of a second ahead (the report's per-frame velocity times fps/6).
-  return -dir * (depth_m + depthVelocity_mps / 6.0f);
+float OpponentOrderKey(float depth_m, float depthVelocity_mps) {
+  // FUN_140534a20's comparator: the opponent projected a sixth of a second ahead,
+  // handed the larger key the closer he is to our own goal. (Written here in the
+  // own frame rather than the report's `-dir * (...)`, whose sign for a team
+  // attacking the -x half is not resolvable from the report.)
+  return -(depth_m + depthVelocity_mps / 6.0f);
 }
 
 int MarkHandOffFrames(const DefensiveShapeConstants& k, int organiserByte) {
@@ -246,7 +252,7 @@ int MarkHandOffFrames(const DefensiveShapeConstants& k, int organiserByte) {
   const float w = organiserByte <= static_cast<int>(k.handOffOrganiserFloor)
                       ? 1.0f
                   : organiserByte < static_cast<int>(k.handOffOrganiserTop)
-                      ? (k.handOffOrganiserTop - static_cast<float>(organiserByte)) /
+                      ? (static_cast<float>(organiserByte) - k.handOffOrganiserTop) /
                             k.handOffOrganiserSpan
                       : 0.0f;
   if (w <= 0.0f) return 0;
