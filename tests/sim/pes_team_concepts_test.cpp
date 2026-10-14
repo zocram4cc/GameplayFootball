@@ -39,6 +39,10 @@ pes::TeamConceptConstants Synthetic() {
   k.lineDownBallDivisor = -2.5f, k.lineDownBallMax_m = 27, k.lineDownGap_m = 3, k.lineDownLongPassFacing_deg = 70;
   k.retreatGap_m = 5, k.retreatBackFront_m = 8, k.retreatMidFront_m = 18;
   k.pushUpBehind_m = -4, k.pushUpBallGap_m = 6, k.pushUpCap_m = -5, k.measuredLineClamp_m = 4;
+  k.pressLaneRadius_m = 6.5f, k.pressLaneBonus_m = 5;
+  k.uncoveredLineMargin_m = 12, k.uncoveredNearSq_m2 = 9, k.uncoveredFacing_deg = 90;
+  k.uncoveredRampFrom_m = 5, k.uncoveredRampTo_m = 20, k.uncoveredRampSpan_m = 15;
+  k.uncoveredRadiusRamp_m = 3, k.uncoveredRadius_m = 4, k.uncoveredCone_deg = 80;
   return k;
 }
 
@@ -121,6 +125,34 @@ TEST(PesForeCheck, PushUpLiftsTheBandsToFourMetresBehindTheMenCapped) {
   EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, -20, -22, -30), 2);  // ball - 6 = -28
   EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, 10, 30, -30), 25);   // capped at -5
   EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, -20, 10, -20), 0);   // never down
+}
+
+TEST(PesForeCheck, GoalSidePresserWidensTheWideAngleRadiiByFive) {
+  const auto k = Synthetic();
+  auto in = PressScene();
+  in.mates[2] = Vector3(25, 0, 0);  // behind the ball at 15 m: r 12, 17 with the bonus
+  EXPECT_FALSE(pes::ForeCheckPressCount(k, in));
+  in.presser = 0;                   // (5, 0): 5 m from the ball, goal-side
+  EXPECT_TRUE(pes::ForeCheckPressCount(k, in));
+  in.mates[0] = Vector3(10, -5, 0); // presser no longer goal-side: no bonus (and no close man)
+  EXPECT_FALSE(pes::ForeCheckPressCount(k, in));
+}
+
+TEST(PesForeCheck, LineDownStartsOnAnUncoveredCarrierFacingOurGoal) {
+  const auto k = Synthetic();
+  pes::DefenceConceptInput in;
+  in.inPlay = true;
+  in.ball = Vector3(0, 0, 0);
+  in.measuredBack = -20, in.backBand = -25;
+  in.ownLine = -30;
+  in.holderOpponent = true, in.holderHeading_deg = 270;
+  in.allMen = {Vector3(-10, 0, 0)};  // 10 m away: outside the 7 m radius
+  EXPECT_TRUE(pes::ForeCheckLineDownStart(k, in));
+  in.allMen.push_back(Vector3(-5, 1, 0));  // in the cone, inside 7 m
+  EXPECT_FALSE(pes::ForeCheckLineDownStart(k, in));
+  in.allMen.pop_back();
+  in.holderHeading_deg = 90;  // facing away from our goal
+  EXPECT_FALSE(pes::ForeCheckLineDownStart(k, in));
 }
 
 TEST(PesTeamSheet, GatesFollowTheToggles) {

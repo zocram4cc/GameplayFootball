@@ -111,6 +111,8 @@ struct TeamConceptConstants {
   float pressRadiusRamp_m = 0;       // 4
   float pressBonusAbove = 0;         // 0.2
   int pressCount = 0;                // 3
+  float pressLaneRadius_m = 0;       // 6.5, FUN_140a53da0's radius
+  float pressLaneBonus_m = 0;        // 5
   // ForeCheckLineDown (start FUN_140574ea0, end FUN_140574b00) and its helpers
   float lineDownBallDivisor = 0;     // -2.5: F0 / this is the deep end
   float lineDownBallMax_m = 0;       // 27
@@ -126,6 +128,16 @@ struct TeamConceptConstants {
   float pushUpCap_m = 0;             // -5 own frame
   // FUN_140687820: a man counts toward his measured line clamped to +-4 m of it
   float measuredLineClamp_m = 0;     // 4
+  // FUN_140574bb0, the uncovered carrier (LineDown trigger)
+  float uncoveredLineMargin_m = 0;   // 12: ball beyond our line + this, or wide, needs nobody near
+  float uncoveredNearSq_m2 = 0;      // 9
+  float uncoveredFacing_deg = 0;     // 90: the holder faces our goal
+  float uncoveredRampFrom_m = 0;     // 5
+  float uncoveredRampTo_m = 0;       // 20
+  float uncoveredRampSpan_m = 0;     // 15
+  float uncoveredRadiusRamp_m = 0;   // 3
+  float uncoveredRadius_m = 0;       // 4
+  float uncoveredCone_deg = 0;       // 80
 };
 
 // The defending concepts' inputs. Own frame: +x toward the opponents' goal.
@@ -139,7 +151,11 @@ struct DefenceConceptInput {
   bool attackLevelZero = false; // T+0xb8a3
   bool holderLongPass = false;  // the opponent on the ball in LONG_PASS (anime 8)
   float holderHeading_deg = 0;
+  bool holderOpponent = false;  // an opponent holds the ball (carrier or MA holder)
+  float ownLine = 0;            // MA+0x40+0x14*side, world x
   std::vector<Vector3> mates;   // our outfield men, world
+  std::vector<Vector3> allMen;  // all our men on the pitch, keeper included
+  int presser = -1;             // the MATCH_UP man, index into mates
   // T+0x89a0 / T+0x89a4 (FUN_140687820): measured back and midfield line, world x.
   float measuredBack = 0, measuredMid = 0;
   // T+0x875c / T+0x8770: back and midfield band, own frame.

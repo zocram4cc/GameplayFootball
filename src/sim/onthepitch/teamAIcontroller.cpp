@@ -1895,11 +1895,20 @@ pes::DefenceConceptInput TeamAIController::DefenceInput() {
     const e_FunctionType f = retainer->GetCurrentFunctionType();
     in.holderLongPass = f == e_FunctionType_LongPass || f == e_FunctionType_HighPass;
     in.holderHeading_deg = HeadingOf(retainer->GetDirectionVec());
+    in.holderOpponent = true;
   }
+  // MA+0x40+0x14*side: our own line. ponytail: GF's own offside line stands in
+  // (MA+0x40's writer is the analysis object's line pass, INF the same line).
+  in.ownLine = AI_GetOffsideLine(match, match->GetMentalImage(0), team->GetID());
+  Player* presser = team->GetDesignatedTeamPossessionPlayer();
   std::vector<Player*> men;
   team->GetActivePlayers(men);
-  for (Player* p : men)
-    if (p->GetFormationEntry().role != e_PlayerRole_GK) in.mates.push_back(p->GetPosition());
+  for (Player* p : men) {
+    in.allMen.push_back(p->GetPosition());
+    if (p->GetFormationEntry().role == e_PlayerRole_GK) continue;
+    if (p == presser) in.presser = static_cast<int>(in.mates.size());
+    in.mates.push_back(p->GetPosition());
+  }
   in.measuredBack = measuredBackLine, in.measuredMid = measuredMidLine;
   in.backBand = backBand, in.midBand = midBand;
   return in;

@@ -130,6 +130,19 @@ constexpr uint64_t PUSHUP_BEHIND_VA = 0x1425c7678;     // -4
 constexpr uint64_t PUSHUP_BALL_VA = 0x14259bdec;       // 6
 constexpr uint64_t PUSHUP_CAP_VA = 0x14259be7c;        // -5
 constexpr uint64_t MEASURED_CLAMP_VA = 0x1425656c0;    // 4
+// The press count's lane bonus FUN_140a53da0 (call 0x14057436d).
+constexpr uint64_t PRESS_LANE_RADIUS_VA = 0x1425a2828; // 6.5
+constexpr uint64_t PRESS_LANE_BONUS_VA = 0x14259222c;  // 5
+// The uncovered carrier FUN_140574bb0.
+constexpr uint64_t UNCOVERED_MARGIN_VA = 0x14259be04;  // 12
+constexpr uint64_t UNCOVERED_NEAR_VA = 0x14259d60c;    // 9
+constexpr uint64_t UNCOVERED_FACING_VA = 0x14259be5c;  // 90
+constexpr uint64_t UNCOVERED_FROM_VA = 0x14259222c;    // 5
+constexpr uint64_t UNCOVERED_TO_VA = 0x14259be1c;      // 20
+constexpr uint64_t UNCOVERED_SPAN_VA = 0x14259be0c;    // 15
+constexpr uint64_t UNCOVERED_RAMP_VA = 0x14258c264;    // 3
+constexpr uint64_t UNCOVERED_RADIUS_VA = 0x1425656c0;  // 4
+constexpr uint64_t UNCOVERED_CONE_VA = 0x142596e6c;    // 80
 
 // constant_team.bin's subConcept.o (constant-team 2.3): blob u32 0 = the offset
 // of the 48-entry i32 list.
@@ -220,6 +233,20 @@ float DistSq(const Vector3& a, const Vector3& b) {
 // in the team's attack frame.
 bool Beyond(float a, float b, float dir, float c) { return (dir * c + a) * dir < dir * b; }
 
+// FUN_140a4fea0 -> FUN_140a4fbc0 (run-targets-h1 4), frames 0: men with
+// minDist^2 < d^2 < radius^2 from `pos` whose bearing lies strictly within
+// width/2 of `center`.
+int PlayersInCone(const std::vector<Vector3>& men, const Vector3& pos, float center_deg, float width_deg,
+                  float radius, float minDist) {
+  int count = 0;
+  for (const Vector3& m : men) {
+    const float d2 = DistSq(m, pos);
+    if (d2 <= minDist * minDist || d2 >= radius * radius) continue;
+    if (AngleDiff(center_deg, Bearing(pos, m)) < width_deg * 0.5f) ++count;
+  }
+  return count;
+}
+
 }  // namespace
 
 std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe, const PesVfs& vfs,
@@ -292,6 +319,17 @@ std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe,
       {PUSHUP_BALL_VA, &k.pushUpBallGap_m},
       {PUSHUP_CAP_VA, &k.pushUpCap_m},
       {MEASURED_CLAMP_VA, &k.measuredLineClamp_m},
+      {PRESS_LANE_RADIUS_VA, &k.pressLaneRadius_m},
+      {PRESS_LANE_BONUS_VA, &k.pressLaneBonus_m},
+      {UNCOVERED_MARGIN_VA, &k.uncoveredLineMargin_m},
+      {UNCOVERED_NEAR_VA, &k.uncoveredNearSq_m2},
+      {UNCOVERED_FACING_VA, &k.uncoveredFacing_deg},
+      {UNCOVERED_FROM_VA, &k.uncoveredRampFrom_m},
+      {UNCOVERED_TO_VA, &k.uncoveredRampTo_m},
+      {UNCOVERED_SPAN_VA, &k.uncoveredRampSpan_m},
+      {UNCOVERED_RAMP_VA, &k.uncoveredRadiusRamp_m},
+      {UNCOVERED_RADIUS_VA, &k.uncoveredRadius_m},
+      {UNCOVERED_CONE_VA, &k.uncoveredCone_deg},
   };
   for (const auto& [va, out] : floats)
     if (!ReadF32(exe, va, out, error)) return std::nullopt;
@@ -331,11 +369,23 @@ bool ForeCheckPressCount(const TeamConceptConstants& k, const DefenceConceptInpu
   // FUN_140574200(ctx, 0): the ball not held by the opponents -> press on.
   if (!in.opponentsHoldBall) return true;
   // Bearings from the ball, against the heading toward our own goal
-  // (FUN_140a4db20). ponytail: the candidate filter FUN_140639830 /
-  // FUN_140639a20 (637 + 519 insns of per-slot state tests) is not reduced:
-  // every outfield man is a candidate; the +5 m lane bonus (FUN_140a53da0 ->
-  // FUN_140a53df0) is not applied.
+  // (FUN_140a4db20). Candidates (FUN_140639830 / FUN_140639a20, decoded): own
+  // outfield men on the pitch within 21.5 m of the ball or inside the
+  // 18..25 m sector-assignment radius; both exceed the count's largest radius
+  // (12 + 5 m), so distance alone never excludes a counted man. ponytail: the
+  // one-man-per-sector rule of FUN_140639600 is not applied.
   const float toOwnGoal = AttackHeading(-in.dir);
+  // FUN_140a53da0 -> FUN_140a53df0: the MATCH_UP man within 6.5 m of the ball
+  // and goal-side of it (bearing ball->him within 35 deg of our goal) earns
+  // the +5 m on the wide-angle radii.
+  float bonus = 0.0f;
+  if (in.presser >= 0 && in.presser < static_cast<int>(in.mates.size())) {
+    const Vector3& u = in.mates[in.presser];
+    const float d2 = DistSq(u, in.ball);
+    if (d2 < k.pressLaneRadius_m * k.pressLaneRadius_m && d2 > 0.0f &&
+        AngleDiff(toOwnGoal, Bearing(in.ball, u)) < k.pressGoalSide_deg * 0.5f)
+      bonus = k.pressLaneBonus_m;
+  }
   int count = 0;
   bool close = false;
   for (const Vector3& m : in.mates) {
@@ -343,7 +393,8 @@ bool ForeCheckPressCount(const TeamConceptConstants& k, const DefenceConceptInpu
     const float w = ang <= k.pressRampFrom_deg ? 0.0f
                     : ang >= k.pressRampTo_deg ? 1.0f
                                                : (ang - k.pressRampFrom_deg) / k.pressGoalSide_deg;
-    const float r = w * k.pressRadiusRamp_m + k.pressRadius_m;
+    float r = w * k.pressRadiusRamp_m + k.pressRadius_m;
+    if (w > k.pressBonusAbove) r += bonus;
     if (DistSq(m, in.ball) > r * r) continue;
     if (ang < k.pressGoalSide_deg) close = true;
     if (++count >= k.pressCount && close) return true;
@@ -369,17 +420,38 @@ bool ForeCheckPressEnd(const TeamConceptConstants& k, const DefenceConceptInput&
 
 namespace {
 // FUN_140574a30 + FUN_140574ab0 + the trigger ORs, shared by start and end.
+// FUN_140574bb0: an opponent on the ball, facing our goal, with none of our
+// men in the 80 deg cone toward our goal within 4..7 m of the ball.
+bool UncoveredCarrier(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  if (!in.holderOpponent) return false;
+  const float toOwnGoal = AttackHeading(-in.dir);
+  // Far from our line (beyond it + 12 m) or wide: nobody of ours within 3 m of
+  // the ball (PES checks the ball and the holder lists; GF's holder is on it).
+  const bool beyond = Beyond(in.ownLine, in.ball.coords[0], in.dir, k.uncoveredLineMargin_m);
+  if (beyond || std::fabs(in.ball.coords[1]) > pesPenaltyAreaHalfWidth)
+    for (const Vector3& m : in.allMen)
+      if (DistSq(m, in.ball) < k.uncoveredNearSq_m2) return false;
+  if (AngleDiff(toOwnGoal, in.holderHeading_deg) > k.uncoveredFacing_deg) return false;
+  float w = 0.0f;
+  if (in.dir * in.ball.coords[0] > in.dir * in.ownLine) {
+    const float d = std::fabs(in.ball.coords[0] - in.ownLine);
+    w = d <= k.uncoveredRampFrom_m ? 0.0f
+        : d >= k.uncoveredRampTo_m ? 1.0f
+                                   : (d - k.uncoveredRampFrom_m) / k.uncoveredRampSpan_m;
+  }
+  const float radius = w * k.uncoveredRadiusRamp_m + k.uncoveredRadius_m;
+  return PlayersInCone(in.allMen, in.ball, toOwnGoal, k.uncoveredCone_deg, radius, 0.0f) == 0;
+}
+
 bool LineDownHolds(const TeamConceptConstants& k, const DefenceConceptInput& in) {
   const float b = in.dir * in.ball.coords[0];
   if (pitchHalfW / k.lineDownBallDivisor > b || b > k.lineDownBallMax_m) return false;
   // |T+0x89a0 - T+0x875c|: a world x against an own-frame band, as written.
   if (std::fabs(in.measuredBack - in.backBand) < k.lineDownGap_m) return false;
-  // FUN_140574940: the holder in LONG_PASS facing within 70 deg of our attack
-  // heading. ponytail: FUN_140574bb0 (the uncovered-carrier test) ends in
-  // FUN_140a4fea0 -> FUN_140a4fbc0, a cone-occupancy walk not reduced; false.
+  // FUN_140574940: the holder in LONG_PASS facing within 70 deg of our attack heading.
   const bool longPass = in.holderLongPass &&
                         AngleDiff(in.holderHeading_deg, AttackHeading(in.dir)) <= k.lineDownLongPassFacing_deg;
-  return in.attackLevelZero || longPass;
+  return in.attackLevelZero || UncoveredCarrier(k, in) || longPass;
 }
 }  // namespace
 
