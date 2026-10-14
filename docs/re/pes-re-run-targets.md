@@ -403,3 +403,99 @@ Lane search (§2, §4, §5, b1–b4, h1) and stop test (§3, s1–s3) are decode
 68efc0 sign test (raw); 5a7960 tautology (raw); ~25 second-level helpers named in the companion files' open lists
 (5a4790, a580a0, a53da0, 655660, 594a10, 59b630, 5a2850, 598350, 694ee0, 593430, 68cb80, 44e020, path API).
 Per-leaf raw cross-checks were done for arguments/constants the decompile dropped, not for every branch.
+
+## 9. Pass 5: raw checks (done by RunTargetsRE directly)
+- **5a7960 (OBS raw 0x1405a7b3d–0x1405a7bb4):** after the ≥ 95° table test, both squared distances are built from the
+  *runner* (`r12+0x55c` − C) — the nearest-teammate lookup result is discarded — and `setbe` on equal values. So the
+  function returns **true whenever the 65° and ≥ 95° angle tests pass** (game bug; port literally, NaN aside).
+- **68efc0 (OBS raw 0x14068f2b7–0x14068f37c):** both folded angles are `xmm6 = bearing(P→ball)` (0x14068f249) minus
+  `dA = [rsp+0xf8]`; the target bearing `ta` (xmm9, 0x14068f28f) is computed but never used in the comparison. The sign
+  test is a tautology → the `a > 4` branch always proceeds to `R = max(5, |P−A|)` and the a4f720/cone test. Port literally.
+- **643a30 (OBS raw 0x140643ca4–0x140643cfc):** the a4c720 call is `a4c720(MA+0x44+0x14·(team==0), ball.x, s, −15)` —
+  first argument is the **opponents' line x**, not the F pointer (`rcx = F` is only used for the `|ball.z| > F5` test at
+  0x140643cdc). Corrected line 203 of `-b1.md`: `if k && |ball.z| > F5 && !a4c720(oppLine, ball.x, s, −15) && s·ball.x < F6−10`.
+- **66bde0 (OBS raw cone calls 0x14066c0dc–0x14066c75d):** every `dev()` there goes through `FUN_14043a0a0` and is
+  only used as `|·|`, so argument order does not matter. The "strong" flag: with the a4c720(ball.x, P.x, s, 0) test true,
+  `cone(k, T.dir(+0x250), 90°, 5 m)` empty and then `cone(k, T.dir, 140°, 1 m)` → strong = that second result
+  (0x14066c105 / 0x14066c13d; minDist arg byte = 0). Later cones: `cone(id, T.dir, 140°, 6.5)` at 0x14066c432;
+  `cone(id, cx.brgP→C, 40°, |P−C|+5)` at 0x14066c478; `676410(id, C, −1.5, R)` gated by dev < 75 or !strong and
+  (cx[6] < 900 or cx[5] < 900) (0x14066c4c1–0x14066c4f0); final `cone(id, cx[1], 80°, 100)` at 0x14066c75d after the
+  30° T.dir test. near/mask branch (decompile 527–545, raw 0x14066c637 = 55): if near: reject when n > 2; when the
+  runner's bit is set in the a4f230 mask, accept if dev(carrier facing, cx[2]) < 55 or dev(carrier facing,
+  bearing(ball→P)) < 55. Entry 19 of `-b1.md` is otherwise confirmed.
+
+### 9.1 `FUN_1405a3080` radius-widening branch — closed (OBS raw 0x1405a3a15–0x1405a3cd3)
+Per teammate t (pos `Pt`, predicted `t' = 596c30(t)`, run state `st`, AI class `cl`), after `r2` is set
+(`R2`, or 144 under the 0x30 rule, then `min(r2, 25)` when C and t' are on opposite z sides of the ball):
+```
+enter = (st ∈ 0x1d..0x1f and cl == 1) or (st ∉ 0x1d..0x1f and (st ≠ 0x26 or cl ≥ 9))      # 0x1405a3a15–0x1405a3a2d, 0x1405a3af5
+if enter and dist²(id, t) < 144 (FUN_1404c8ea0, 0x1405a3b15):
+    s1 = sign(ad(T.dir, bearing(id→t)))                    # 439fe0 + 43a0a0, sign via comiss 0 (0x1405a3b40)
+    sR = sign(ad(T.dir, bR))          # bR = [rsp+0x7c] = bearing(P → route point Rp from 5976d0/596560), FUN_1404f6700 = sign
+    if sR == s1:
+        D = FUN_140a76240(t) (t's run destination);  require a4c720(lineX, D.x, s, 1)          # 0x1405a3baa
+        bt = bearing(Pt → D);  d3 = ad(T.dir, bt)
+        go = (sign(d3) ≠ sR and sign(t'.z − P.z) == sign(C.z − P.z))  or |d3| > 10  or |ad(T.dir, bR)| > 10   # 0x1405a3be6–0x1405a3c63
+        if go:
+            d = |ad(bR, bt)|;  u = d ≤ 24 → 0; d ≥ 70 → 1; else (d − 24)/46               # 24/70/46 @0x1425c48c4/0x14259be4c/0x1425cb478
+            r2 = max(r2, (5u + 6)²)                                                        # 5/6 @0x14259222c/0x14259bdec
+```
+(T.dir = `T+0x250`, reloaded into xmm8 every iteration at 0x1405a4027.) So a teammate who is running on the runner's side
+and whose run heading diverges 24→70° from the runner's route gets a claim radius of up to 11 m (121 m²).
+
+## 10. Pass 5: second-level helpers (OBS decompile hh2.c, RunTargetsRE scratch; small bodies, constants as annotated)
+Angle primitives (all degrees, atan2 via FUN_140a92d40(dx, dz)):
+- `439ef0(a, b)` = bearing a→b in [0, 360) (0 if a == b). `439e50(out, a, b)` same, written to out. `458740(p, dt)` = heading
+  of p's sampled velocity (`a6c6d0(p, dt)`), 0 if still. `43a0a0(a, b)` = signed fold(wrap(b) − wrap(a)) ∈ (−180, 180].
+  `43a020(a, &b)` = |fold(b − wrap(a))|. `481b00(&a, b)` = |fold(wrap(b) − a)|. `4f6700(x)` = x < 0 ? −1 : 1.
+Role / class:
+- `a580a0(ai)` = `ai+0xc0` (the AI class read everywhere as `cls`).
+- `5a4790(_, state, _, f4, cls)`: true for run states 0x1d–0x21, 0x24, 0x25, 0x2c; 0x27 → f4; 0x2f → cls ∈ {6, 7}; else false.
+  (`5a4830` forwards to it — "is on an attacking run".)
+- `a3b110(T, k)` / `a3af90(T, id)`: index tables T+4+4k (≤ 0x27 → T + idx·0x128 + 0xe0) and per-team role records
+  (stride 0x4a dwords, +0x2a). `a3e7d0(G, out, n)`: n-th most recent entry of an 8-deep ring at G+0x1908 (stride 800,
+  count G+0x3208, head G+0x320c); kind 0x37 → a60500(). `44e020(list, id)` = second dword of the sorted entry for id in a
+  22-entry list (index byte at +0xb2+id; `0` for id > 21) — i.e. the {id, value} lists like MA+0x22e4c.
+- `a79640(list, f)`: sorts a two-team {id, key} list (11 per team, counts at +0xb0/+0xb1) by key (FUN_140a79440 /
+  a79240 merge; f ≠ 0 → FUN_141e53540 with comparator 0x140602040) and rebuilds the +0xb2 rank bytes (default 10).
+Geometry:
+- `a900e0(A, B, C, D)` = segments AB and CD properly cross in x/z (both orientation products < 0).
+- `a53da0(ctx, p, X, dir, w, R, r)` = r < |p − X| < R and |fold(dir − bearing(X→p))| < w/2.
+- `599ff0(out, ctx, id, C)`: out = C, then if |P − C| ≤ 10 + 8·ramp(|P − ball|, 15→40): push out along T.dir by
+  (limit − |P − C|), x capped at s·x ≤ F4.
+- `596560(ctx, id, &C, ang)`: re-aim C 7 m from P: if ang < 0 or ang == attack dir A: keep bearing(P→C) unless it is
+  > 18° off A; then, if C and ball are on the same z side of P, blend toward A by 0.4·dev (FUN_140a928c0), else clamp to
+  A ± 18°; if ang ≥ 0 and C on the ball side, use ang when it is closer to A than bearing(P→C); else use ang. Then
+  `C = P + 7 m · dir` and pitch-clamp (FUN_140a544d0).
+- `5976d0(ctx, id, P, C, &dir, d, out)`: needs s·(C.x − P.x) ≥ 1; blend weight w = 0 (T+0x294+0x40slot == 2), 1 (dir ≠
+  T.dir and C/ball on the same side of P and |C bearing − T.dir| < |dir − T.dir|) or 0.7 + 0.3·k (k = 1 near; ramp
+  |ball.z − P.z| 7→18 → 0; 0.3·… when FUN_1405ac610 / 5ac500 / 59fc10 fire); route bearing = lerp(bearing(P→C), dir, w)
+  (FUN_140a92950), refined by FUN_140591d70; out = intersection of that ray (1000 m) with x = lineX(599d90) + s·d
+  (FUN_140a90be0), else (lineX + s·d, C.z); pitch-clamped.
+Timing / threat:
+- `655660(ctx, id, X, mode, f)` = frames for id to reach X: speed |a6c6d0 sample|, path via FUN_140a75740, then
+  FUN_140654e60 (open).
+- `59b630(ctx, id, C)` → w ∈ [0, 1] (multiplier of `sec`): over two defenders — the one marking id (a62850) and the
+  nearest opponent to C that marks nobody or marks id — with predicted x (22-f) at least the runner's: `dt = frames_def −
+  frames_id + 11` (+16 when 5a0d20 and |Δx| < 1.2 and |Δz| < 3.5); `w = min over both of ramp(dt, 0 → 22)` (frames from
+  FUN_140655760, open). 1 when no such defender.
+- `594a10(ctx, id, path, mode, lim)`: steps id along `path` for `n = 5997f0 + 0.15·fps·ramp(dev, 65→180)` frames
+  (≤ 10·fps), speed tiers 100/(fps·{12.9, 22.5, 32.7, 72}) by mode 4/3/2/other, accelerating per step, then returns
+  `a4c720(X_line(599e90), endpoint.x, s, k)` with k = max(lim-clamped, −597bd0, −0.5 if 5a5400): "the run ends beyond
+  the defensive line by more than k" (5aaba0's veto).
+- `5a2850(ctx, id, C, t)` true = teammate t is better placed for C: neither beyond the line (a4c9a0 0); id's route Rp
+  (5976d0 or 596c30); needs id's route and t's run (t → a76240) to diverge ≥ 20° on opposite sides of A; then crossing
+  point X of the two routes (a90d80, or the 100 m rays) not beyond the line+7; if routes cross: |P−X| ≤ |P−Rp|+8 and
+  |Pt−X| ≤ |Pt−Dt|+8 → compare `|Pt−X| (−5 if t marked)` < `|P−X| (−5 if id marked)`; if not: |P−X|² ≤ 144 and
+  |Δtime| ≤ fps/3 at 12.9 km/h-equivalent speed, same comparison.
+- `598350(ctx, id, t, C)` = 0 when t is beyond id (a4c720(t.x, P.x, s, 1)), class(t) ≤ class(id) and |C.z − z(T+0x47f4+12·slot(id))| ≤ 10 (z = +8 of that 12-byte point; INF(med): the runner's home position); else 5.
+- `694ee0(ctx, team, f)`: receiver valid, |ball.z| ≥ F7, receiver heading (22-f) and facing within 85° of T.dir, and
+  no opponent cones (90+2f°, 40+0.8f), (160+2f°, 4.5+0.8f), (120+2f°, 6+0.8f) around the receiver.
+- `593430(ctx, …, id, run)`: not carrier, !FUN_1405c1620, style 8 clear; if on a run (5a4830) needs state 0x2f for ≥ 2·fps;
+  class ≠ 0; !a53460, flag bit 37 clear, !5951b0, T+0xb748 == 0x30; style-6 deep-ball veto (rank > 2 and ball 8 m short
+  of the line); then (s·P.x ≤ F6−3 or |P.z| ≥ F5+1.5 or a4e250) and FUN_140592cf0 and line/ball tests and !5a7d10 and
+  s·P.x ≤ F4 → FUN_140596240.
+- `68cb80(ctx, id)` = s·P.x ≥ F6 − 15 and a4c720(ball.x, …) (second operands dropped by the decompile; raw not walked).
+Still open (third level): FUN_140655760, FUN_140654e60, FUN_140a75740, FUN_140591d70, FUN_140a90be0, FUN_140a928c0,
+FUN_140a92950, FUN_140a544d0, FUN_1405ac610/5ac500/59fc10, FUN_1405a5400, FUN_140597bd0, FUN_1405997f0, FUN_140592cf0,
+FUN_1405c1620, FUN_1404587b0. Raw not re-walked for this batch except where noted in §9.

@@ -53,6 +53,12 @@ const char* KickStat(e_FunctionType type, bool header) {
 // power (shots only); `cross` a high ball in from the flank.
 Vector3 ApplyPesKickError(Match* match, Player* player, const Vector3& launch,
                           e_FunctionType type, bool header, bool cross, float shotPower) {
+  // A throw-in is PES's throw action, not a Kick: the scatter lives in the
+  // Kick action's launch (FUN_1408398d5), and the throw has its own release
+  // band (docs/re/pes-re-throwin-choreography.md) with no execution error.
+  if (match->IsInSetPiece() &&
+      match->GetReferee()->GetBuffer().desiredSetPiece == e_SetPiece_ThrowIn)
+    return launch;
   const pes::KickErrorConstants& k = match->GetPesKickErrorConstants();
   const PlayerSkills::Mask skills = player->GetPlayerData()->GetSkills();
   const bool shot = type == e_FunctionType_Shot;
@@ -3553,10 +3559,15 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   // PES's execution error (docs/re/pes-re-kick-scatter.md 3) replaces the
   // stat x anim-difficulty rotation and loft this engine had: Low Pass or
   // Lofted Pass (Heading off the head) through the scatter records.
+  // A cross: a high ball from wide of the box in the attacking third, played
+  // across. ponytail: PES knows a cross by its kick byte (0x13); GF guesses it
+  // from where the ball is played - outside the box's width (FieldInfo F7), in
+  // the attacking third.
+  constexpr float kAttackingThirdShare = 1.0f / 3.0f;
   const Vector3 from = CastPlayer()->GetPosition();
   const bool isCross = functionType == e_FunctionType_HighPass &&
-                       std::fabs(from.coords[1]) > 20.0f &&
-                       from.coords[0] * -team->GetSide() > pitchHalfW * 0.33f &&
+                       std::fabs(from.coords[1]) > pesPenaltyAreaHalfWidth &&
+                       from.coords[0] * -team->GetSide() > pitchHalfW * kAttackingThirdShare &&
                        desiredTouch.coords[1] * from.coords[1] < 0.0f;
   resultTouch = ApplyPesKickError(match, CastPlayer(), resultTouch, functionType,
                                   IsHeader(currentAnim->anim->GetVariable("touch_bodypart")),
