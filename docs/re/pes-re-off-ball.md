@@ -1,7 +1,7 @@
 # PES 2021 off-ball attacking movement: run arbitration, run timing, support positioning (OffBallRE)
 
 Read-only RE of the PESLive image (`~/ghidra-projects/scratch/Unpacker/`, `dec.sh` + `annot.py`, disk `pdis.py`). Scratch:
-`/mnt/Extra4/gf-OffBallRE-scratch` (`b1a..b5a.c` decompiles, `scan.py`, `callers.py`, `regsites.py`, `statesites.py`,
+the OffBallRE scratch dir (`b1a..b5a.c` decompiles, `scan.py`, `callers.py`, `regsites.py`, `statesites.py`,
 `ripv.py`, `o_*.o` constant blobs). Tags: **OBS** = decompile/raw bytes/data read; **INF(x)** = inference with confidence.
 "fps" = `FUN_141e532d0()` = `[0x14351ae54]` = **54.0** (OBS; it is the game speed, **not** an RNG; every "rng" in
 `pes-re-attack-decisions.md` §3 that was decoded from `141e532d0`/`141e532e0` is this constant).

@@ -21,7 +21,9 @@ host=$(hostname 2>/dev/null || true)
 email='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
 pes_ext='\.(cpk|fpk|fpkd|fmdl|ftex|gani|mtar|ask|skl|frig|dds)$'
 
-mapfile -d '' files < <(git ls-files -z)
+# Tracked files plus untracked ones that are not ignored, so a file about to be
+# added is scanned whether this runs before or after `git add` (418266f).
+mapfile -d '' files < <(git ls-files -z --cached --others --exclude-standard)
 [ "${#files[@]}" -eq 0 ] && exit 0
 
 for f in "${files[@]}"; do
