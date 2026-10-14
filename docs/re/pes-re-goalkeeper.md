@@ -330,3 +330,225 @@ mapping is pinned by the request-kind gates:
    solvers): decompiled (`gk_core.a.c:1379+`, `:2817+`), not reduced —
    single-use tails, low value.
 6. Defensive-GK (bit 20) live: both keepers still Offensive; caps static-only.
+
+## 12. Live sweep (OBS unless marked; match live clk ~9000→38000, mode 1)
+
+Samplers in the KeeperLiveRE scratch dir (`snap.py`, `kevent.py`/`k12a.jsonl`,
+`kdist2.py`/`k12b.jsonl`, `kdist3.py`/`k12c.jsonl`, `benum2/3/4.py`,
+`flagpoll.py`/`flag.jsonl`, `skill3.py`, `stylebit.py`). Decompiles in the
+Unpacker out dir: `gk_skill.c` (`FUN_140a489f0`/`FUN_14124dad0`),
+`gk_a62d90.c` (`FUN_140a62d90`), `gk_3b2a0.c` (`FUN_140a3b2a0`/`3af90`/
+`141b59e20`), `gk_489d0.c` (`FUN_140a489d0`), `gk_48910.c`
+(`FUN_140a48a10`), `gk_writer1404.c` (`FUN_1404ad8a1` chunk),
+`gk_ac320.c` (`FUN_1404ac320`), `gk_writerfunc.c` (`FUN_1404ad860`).
+MA stable at one address the whole sweep (OBS: `find_ma7` chain re-resolved
+3×, same MA).
+
+### 12.1 Punch/deflect still unobserved; BLOCK_LATE ×3 (OBS, item 2 open)
+
+~10 min of per-tick watch (`k12b` 200 rows clk 17531→25542, `k12c` 48 rows
+clk 23152→25146) caught **no `0x44`/`0x46`/`0x43`/`0x47` aid** on either
+keeper — item 2 stays open (needs a fast shot; this match produced only
+slow balls at the keeper). What it did catch, three times:
+
+- Ep. A, k0, clk 17630: `0x11 → 0x48` (kf 42, `a1308 = -1`), ball
+  `(-48.67, 1.04, 0.17)` ~1 m high at the keeper, record point
+  `(-49.48, 1.02, -0.09)` on the goal line → base next tick.
+- Ep. B, k11, clk 21453: `0x3f → 0x48` (kf 34, `a1308 = -1`), ball
+  `(-48.8, 2.0, -5.29)` ~2 m high, record `(49.57, 0.92, 0.98)` → `0x11`
+  at 21455 → base at 21467.
+- Ep. C, k11, clk 25142→25148: full chain `0x11 → 0x4d SAVING_MOVE`
+  (kf 71, ball `(-44.61, 1.23, -3.44)` rising to 1.26 m) → `0x48` at 25146
+  (ball `(-46.53, 1.26, -3.6)`) → base at 25148 → `0x11` → `0x5` (aid 5,
+  one tick, kf 32) → `0x15 CLEAR` at 25328 (kf 30, ball
+  `(-49.15, 0.11, -0.86)` at his feet) → base at 25330.
+
+INF(high): the `0x48` firings on balls at 1–2 m height with `a1308 = -1`
+(arrived) are the late-block arm (`FUN_140588b60 → 0x48`) firing when the
+catch byte is clear — consistent with §11.1's tail order and §11.8's
+session-2 episode. Ep. C additionally OBS-links `0x4d → 0x48` and shows the
+post-save clear chain `0x5 → 0x15` (aid 5 = the pre-clear gather one tick
+before CLEAR).
+A 6.5-min trap (`ktrap.jsonl`) caught one further aid: `0x50 KP_SEEN_OFF`,
+k11 at clk 42266 (kf 74, `a1308 = -1`), ball `(-61.85, 0.11, -5.56)` —
+behind the goal line — record point `(-52.46, 3.97, -5.25)`. OBS: `0x50`
+fires on a ball already out of play (seen-off), matching §11.1's seen-off
+routing (`FUN_140506ba0 → 0x50`).
+
+### 12.2 Distribution kind/target still open (OBS, item 1 open)
+
+No `0x40`/`0x41`/`0x4e` aid in the whole sweep — no catch completed, so no
+distribution. A 6.5-min trap poller (`ktrap.py`: aids
+`0x40/41/43/44/46/47/4b/4e/4c/49/4a/50/57` + wide P/A snapshot,
+`ktrap.jsonl`) trapped only the `0x50` above — no `0x40`/`0x41`/`0x44`/`0x46`
+in ~16 min of combined watch. Two static pins landed meanwhile:
+
+- Skill-block chain OBS closed: punt-type bits come from
+  `D = FUN_140a489f0(G,id) + 0x70` (`FUN_14124dad0`), word `D+0x40` (OBS
+  `gk_skill.c`). Live: both keepers `D+0x40 = 0x840000000` → bit 35 = 1,
+  bits 18/20 = 0 (OBS `skill3.py`, clk 12067). So both keepers have the
+  bit-35 punt type (§11.6: no-power punt → type 3 when `ai+0x1399/0x139a`
+  clear); the bit-18 (power-punt) variant is unobservable on these keepers.
+- Action-object hunt failed (OBS): `P+0x5c8/0x5d8/0x5e0/0x58/0x60`
+  candidates are not action pointers (`P+0x5d8 = 0x500000005`, the
+  aid-adjacent dword). The `+0x20/+0x24/+0x28` request slots live on the
+  action object whose address is still unknown — next step is vtable-anchored
+  discovery (`ActionKeeperThrow::CanEnter 0x1409d0950` in the vtable), then
+  re-run the trap.
+
+### 12.3 `MA+0x251fa` writer narrowed, not closed (item 3 half-open)
+
+- Static OBS (image byte-search + disassembly, no Ghidra analysis): all 28
+  `0x251fa`-displacement sites in `.text` are **`cmp` reads** (keeper bands
+  `0x14058xxxx`/`0x14210xxxx`/`0x14211xxxx` = the known gates; plus
+  `0x1408a8aa8/a8ab4/afbd3`, `0x140932823`, `0x1409330a1`,
+  `0x14097a482`, `0x1409d4d4a/d522d`, `0x1409f3e15/f7c3a/fa4b9/fb921`,
+  `0x142105162/105f31/10e560/10e56a/112ea2/11480f/116888`). **No direct
+  `mov` store to `[...0x251fa]` exists** — the byte is written via wider
+  stores.
+- The wider store is OBS: `FUN_1404ad860` (match-flow controller band,
+  OBS `gk_writerfunc.c`) runs a `+0x1c` state machine (0 → probe
+  `FUN_1404ae050` → 1 → probe `FUN_1404ad980` → history-push
+  `FUN_1404ac320(MA+0x251f8, ctrl+0xec)` + reset → 0) and unconditionally
+  block-copies scratch `+0xec..+0x13b` to `MA+0x25280..` with 8-byte
+  stores; `FUN_1404ac320` (OBS `gk_ac320.c`) is a 2-deep shift-register
+  over an `0x88`-byte block at `MA+0x251f8`. So the `0x251fa` value is
+  produced upstream of this pipeline (the per-tick computer feeding
+  `ctrl+0xec..`, likely `FUN_1404ad980`'s callees) — exact store
+  instruction still unpinned.
+- Live OBS (`flag.jsonl`, 70 s at ~300 Hz): `MA+0x251fa..fd` =
+  `00010000` steady; byte3 (`+0x251fd`) toggled 0→1 at clk 27415, back to
+  0 at clk 27517 (~102 ticks ≈ 2 s, mode 1 throughout). Byte0 = 1 most of
+  the sweep (`01000000`), 0 in dead-ball phases (`00010000` at mode 3,
+  clk 27152) — INF(med): byte0 = keeper-may-claim enable per §11.7,
+  byte3 = a ~2 s pulse (claim-attempt window or danger flag).
+- Hardware watchpoint **not armed** (OBS): `perf record -e
+  mem:0x7ffffd475212:w` fails `No space left on device` — all 4 debug
+  registers held by peer agents (retried 2×, `flock`-wrapped, <60 s each,
+  nothing left running). Next step: retry when registers free, or trace
+  `FUN_1404ad980`'s callees statically.
+
+### 12.4 `0x81a1` enum: 22 values seen, `0x81a1` absent (OBS, item 4 open)
+
+- Reader chain OBS (`gk_a62d90.c`, `gk_3b2a0.c`): `FUN_140a62d90(slot)` =
+  `*(u16*)(entry + 0xa8 + 0x30 + 0xe8)` where `entry` comes from
+  `FUN_140a3af90(R, slot)` (`R = FUN_140a489d0(G, slot>10)`; `slot%0xb`
+  + `R[slot+1]`-indexed stride when `*R == (slot>10)`).
+- Live (`benum4.jsonl`, 55 rows clk 27785→36180, 44 side×slot cells):
+  **22 distinct values, `0x81a1` never appears; every cell constant over
+  the full 8395-tick window** (zero transitions). Dominant: `0x1239`
+  (12 cells) / `0x16e9` (12 cells); per-side singletons
+  `0x123b/c/40/41/43/4b/c/d/e/f`, `0x16ea/b/c/d/f0/f1/f3/f5/f7/fc`.
+  INF(high): the sampled field is per-player static assignment state, not
+  the ball-flight word — the side/slot→entry selection is wrong somewhere
+  (or `0x81a1` is transient and needs 54 Hz sampling across a possession
+  change). Next step: 54 Hz full-cell sample across one
+  owned→loose-ball transition + cross-check against the
+  `gk_pos.a.c:1291` branch outcome. (An earlier run with a bad base
+  resolve, `benum3.jsonl`, is void — `R = 0,0`, all words 0.)
+
+### 12.5 Defensive-GK: static caps only (OBS, item 6 stays open)
+
+Live style words (`D+0x48`, OBS `stylebit.py`, clk 22109): both keepers
+`0x00080000` → **bit 19 = 1 (Offensive), bit 20 = 0**. The bit-20 reader
+is OBS in three positioning functions (`gk_help.a.c:820`,
+`gk_pos.a.c:1437/1720`, `gk_rush.a.c:692`): bit 20 set → reach factor
+`×0.25` and lane term `0.0` (stay home); clear, with bit 19 selecting the
+`×0.6/1.5 m` vs `+1.1/2.5 m` arm underneath. No Defensive keeper in this
+match, so the caps remain static-only as in §11.10 item 6.
+
+### 12.6 Second match (OBS; new MA, same keeper styles)
+
+New match epochs clk ~31000→46000 (new MA re-resolved via the `find_ma7`
+chain; G base unchanged). Both keepers again `D+0x40 = 0x840000000`
+(bit 35 = 1) and `D+0x48 = 0x00080000` (bit 19 = 1 Offensive, bit 20 = 0).
+Watch `k13a.jsonl` (154 rows clk 36858→42714) caught no `0x44`/`0x46`
+either, but two new chains:
+
+- **Pickup chain** (k0, twice): `0x11 → 0x5` (gather, `a1399 = 000001`
+  = urgency set) → `0x4` (one tick, kf 34/24) → `0x3` → `0x16`
+  (clk 38287→38358 and 39553→39624; ball within 1 m at his feet both
+  times). INF(high): `0x5 → 0x4 → 0x3 → 0x16` is the collect-to-carry
+  sequence (gather, pickup, rise, carry); the urgency byte `A+0x1399`
+  is set through it and clears at `0x3`.
+- **Catch-to-carry chain** (`kact.jsonl`, k11, MA resolve failed so ball
+  null): `0x3e PRESS` (clk 42823, kf 117, `a1399 = 000001`,
+  `a1308 = -1`, kp `(-49.52, -0.2)`) → **`0x43 KP_CATCH`** (42912, kf 28,
+  `a1308 = 32`, kp `(-42.41, -3.56)` — 7 m out, claim walked down) →
+  `0x4e AfterCatchMove` (42944, `a1308 = 1`) → **`0x40` carry** (43215,
+  kf 94, kp `(-38.13, -2.7)` — ~11 m up-field of the rush start, inside
+  the box). OBS: the §10.6.2 carry rule live (min(x+4, box−1 m) direction
+  of travel); the think answer routed to the **short/throw carry
+  (`0x40`)**, consistent with §11.6's sub-0 → `KP_THROWING` routing —
+  but the kind byte and target triple still unsampled (item 1 open:
+  the vtable hunt scanned `P+0x0..0x700` for the Throw/Punt vtables
+  — statically confirmed at `0x142631de8`/`0x142631da0`, entry[0] =
+  `ActionKeeperThrow::CanEnter 0x1409d0950` /
+  `ActionKeeperPuntKick::CanEnter 0x1409cef10`, entry[3] = the variant
+  fns `0x1409d04a0`/`0x1409ce630` — and found **no hit**: the action
+  object is not inside the player object; next step is scanning the
+  think object `A+0x0..0x400` at the `0x40` tick).
+- `0x34` (k0, clk 42433, one tick `0x11 → 0x34 → 0x3f`, `a1308 = -1`,
+  ball 19 m out) and `0x51` (k11, clk 40704 from `0x0`, dead ball at
+  `(-10.94, 0, 20.69)`) and `0x12` goal-kick (k11, clk 37818 between two
+  `0x5`s) round out the aid sightings. `0x51` after `0x0` with the ball
+  dead is INF(med) a restart-positioning aid.
+
+Match 2 ended (G null at menu, clk 46450). The `0x40` release tick (kind
+byte + target) and any `0x44`/`0x46` fast-shot sample remain the two live
+gaps; ready samplers: `kact.py` (extend the vtable scan to the think
+object) and `kdist2.py`.
+
+### 12.7 Third match: deflect `0x46` and punch-variant `0x4a` closed live
+  (OBS, item 2 closed)
+
+Watch `k14a.jsonl` (218 rows clk 6707→15673) caught both missing arms:
+
+- **`0x46` deflect**, k0 at clk 15579: `0x11 → 0x46` for exactly one tick
+  → base at 15580. Ball `(-39.27, 1.07, -2.99)` — 10 m out, ~1 m high;
+  record point `(-49.11, 0.78, -3.27)` low at the near post; `a1308 = -1`.
+  INF(high): the too-fast-to-punch parry arm (§11.2's `v ≥ 80+30c` band)
+  firing and releasing in one tick — the claim solver routed to deflect
+  and the ball never arrived (10 m out at sample time). One-tick
+  `0x46` matches the `FUN_140586a10 → 0x46` wait/deflect output being
+  consumed without a sustained action.
+- **`0x4a` punch variant**, k11 at clk 13326: `0x11 → 0x4a`, single tick,
+  ball `(48.59, 1.24, -2.99)` chest-high 1.3 m away, record
+  `(50.39, 1.26, -2.86)` — then `0x3e` rush (8 samples clk 13358→13370,
+  `a1399 = 000001`, keeper closing `(50.17, -2.14) → (50.13, -2.29)`
+  while the ball rose to `(52.42, 2.17, -5.78)`). INF(high): `0x4a` is
+  the punch-fallback arm of `FUN_142113390` (ball-y ≤ 0.5 branch per
+  §11.1 order — here ball-y 1.24 at 1.3 m, i.e. the close-range punch
+  eval `FUN_1405879e0 → 0x4a` firing before the rush re-engaged).
+- Also: `0x4d SAVING_MOVE` (k0, clk 10380, `a1308 = 18` counting down,
+  ball `(-44.74, 1.21, -0.69)` → base at 10383) — the claim-walk
+  consuming `a1308`, as §11.8 predicts.
+
+Item 2 is closed: `0x44` (session 2) + `0x4a` + `0x46` all observed live;
+only the exact ball-speed values at the firing ticks (needs 54 Hz speed
+sampling) remain unmeasured. Item 1 (kind byte + target at release)
+remains the last live gap (see §12.8 for the follow-up trap result).
+
+### 12.8 Window close-out (OBS)
+
+Usable window: state-1 frames throughout, ~4 h of combined watch over
+three matches (match 1: clk ~9000→38000; match 2: ~31000→46450;
+match 3: ~6700→28000). The `k14a` watch ended at clk 15673; the kact2
+trap's `0x40` at clk 17336 (carry at `(38.06, -5.14)`, second
+`0x3e → 0x4e → 0x40` chain of the sweep) came after — its kind byte and
+target triple are unsampled. The follow-up full-dump trap (`kact3.py`:
+traps `0x40`/`0x41` entry, dumps `P+0x800` + `A+0x1600` for offline
+vtable/kind-byte mining) ran 490 s with 0 traps; no new catch completed
+in that span.
+
+Final tally: item 2 (punch/deflect arms) **closed** — `0x44` (session 2),
+`0x4a` (§12.7), `0x46` (§12.7) all observed live. Item 5 (block-late /
+second-punch solvers) stays static-only, low value. Item 6
+(Defensive-GK) stays static-only — all four keepers seen were Offensive
+bit-19/bit-35. Item 3 (writer) narrowed to the `FUN_1404ad860` pipeline;
+watchpoint never armed (registers held by peers all sweep). Item 4
+(`0x81a1` enum) open — 22 static values, `0x81a1` absent. Item 1 (kind
+byte + target at release) open — two `0x40` carries caught without the
+request slots; ready sampler is `kact3.py`, plus the vtable bases
+`0x142631de8` (Throw) / `0x142631da0` (Punt) for anchoring the
+action-object hunt.

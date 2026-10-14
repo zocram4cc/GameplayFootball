@@ -693,3 +693,39 @@ model miss (INF(med)). Category 2 = the mid band per the §4 replay
 (OBS code meaning; this live row is consistent: flag raised, FK given).
 GF: `offsiderule.cpp` needs no change (flag → FK path already the
 behaviour; the 170-frame root lag is a sampler artefact, not PES).
+
+## 8. Abnormal-window sweep (DefenceLiveRE — match end window)
+
+- Window usability (OBS): `abnorm1.jsonl` (sampler `abnorm.py`: logs only
+  on `MI+0x1748` byte ≠ 1 or `m1588` ≠ 0): 52 rows over ~6 min to match
+  end. All rows `st` 2/3, all `m1554 = 5` (free kick). No state-1 frames
+  in this sweep (match was in stoppages).
+- **Fewer-than-two: still OPEN — and narrowed.** `act` bytes are 1 in all
+  52 rows (OBS): no sent-off/injured/off-pitch window occurred all match.
+  `count < 2` needs a dismissal/injury while defending; the ready sampler
+  is `abnorm.py` (extend window: run it across a full match, not just the
+  end). The root-based line formula already handles the case when it
+  comes (`L = s·(−half)`); only the live isolation is missing.
+- **Second whistle (OBS).** Flag 34871, line −45.994, cat 2, at frame
+  34974 (`st = 2`, FK, `m1588 = 1`), ball (−53.26, 3.391, 2.886) — deep
+  in team 1's end (team 1 `dir = +1`, rears down to −51.74 own-frame).
+  Attacking team 0 (`dir = −1`): own-frame rears
+  [−36.76, −0.46, 0.27, …] → second-rearmost −0.46, i.e. essentially ON
+  halfway; `s·ball.x = +53.26` → halfway cap `L = 0` at the flag frame
+  (INF(med): roots ~100 frames stale). Whistle line −45.994 (world) vs
+  halfway 0: ~46 m gap — again stoppage-stale roots (defence stepped up
+  ~100 frames post-flag), same sampler artefact as §7.4 (INF(med)).
+  Category 2 both whistles (OBS, 3/3 with §7.4).
+- Third distinct row (flag 36014, line 0.0, cat 4, `m1588 = 2`,
+  ball (0, 0.109, 100) = dugout park position): a non-offside whistle
+  (cat 4, flag value 2 — likely full-time or a different offence,
+  INF(low)); roots already parked. Noted for the Judge owner, no claim.
+
+### Open items and their samplers (final)
+
+1. Fewer-than-two line case: `abnorm.py` across a full match (needs a
+   red card / injury); formula ready, isolation missing.
+2. `pitch+0x18` + `S+0x7b38`/`bp+0x364` refits: MA/`X` relocation via a
+   free perf watchpoint (`flock` on the gf-perf lock); `ko60c.py` is the
+   ready row sampler (sheet + press timer + `MI+0x1748` included).
+3. Everything else in §5.4/§6 is closed or superseded by §7.

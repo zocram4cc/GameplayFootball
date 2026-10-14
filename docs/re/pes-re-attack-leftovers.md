@@ -907,5 +907,27 @@ fingerprint + `[X+0xba8]==P` back-pointer + `X+0x2d4` support read in ONE
 MI-hit) ran ~10 min + ~6 min with zero wins — partly sampler bug (first
 version re-read MI between phases so the tick lapsed; fixed version
 `sup_atomic2.py` was killed when the match ended). No support values logged.
-The match ended again before a third window; O8 waits for the next live
-match with `sup_atomic2.py` ready.
+
+Third window (fresh `G`, mode 1 frames ~1,980 → 28,184, usable ~9 min):
+`sup_atomic2.py` ran 15,771 rounds, 0 wins. Diagnostics + new samplers:
+
+- P fingerprint (`+0x7e24` per-slot u32s + `+0x81b8` byte) yields NO hits in
+  the new match's heap; old P addresses keep stale-stable content (role
+  tables, not per-tick data). No referrer to P at any offset in T±0x4000.
+- Breakthrough hypothesis (OBS disasm, untested live): `0x1405eb980`..`0x1405
+  ebc95` is ONE function (`rcx` = support → `rbp`, `r8` = P → `r15`); its
+  `0x1405ecc2a` call passes `rcx = r15 = P` as the `0x14067b640` shape
+  argument — i.e. **shape rsi = P and support S = P+0x2d4 directly, no
+  back-pointer needed**. Spot check inconclusive (fingerprint likely matches
+  wrong objects: one cand has mapped `[P+0xba8]` but garbage S words).
+- Joint P scan (`sup_p.py`: `[P+0xba8]` mapped AND `P+0x2d4` support-shaped
+  with frame-fresh `+0x7b8`; 0 wins in ~6.5 min) and cells-first scan
+  (`sup_cells.py`) both negative. The `+0x4ec`-zone fingerprint is unusable
+  as framed (stride 0x14 = 5 floats/slot per `0x1405ea896`; live zones
+  scanned all-zero — zones may be setup-static, not per-tick).
+
+O8 stays OPEN; this window produced zero support rows. Next step: test
+`S = P+0x2d4` with a CORRECT P fingerprint (truest mark: `[P+0xba8]` mapping
+to the slot-side object PLUS `+0x7e24` arrays in the same tick; `sup_p.py`
+ready but needs a live mode-1 match). Fallback: debugger breakpoint at the
+`0x14067b8ee` family (needs a writable-debug session, not read-only pread).

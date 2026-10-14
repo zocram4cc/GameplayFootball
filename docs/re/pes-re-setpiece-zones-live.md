@@ -172,4 +172,142 @@ SetpieceLiveRE scratch dir `live.jsonl`. Closing state per item:
 | 3. corner V | **CLOSED**: V = short/long choice (V = 1 short, V = 2 long cross, N = 6) |
 | 4. 0x31 attribution | narrowed: offset confirmed, store lands on the 49→50/51 edge; perf-watch step ready |
 | 5. −46.06 collapse | **CLOSED**: unpaired fallback-mark stack at first play-3 frame |
-| 6. FK line fit | open, no data; sampler ready |
+
+## L8. Second match — three corners, V = 1 exact hit (OBS)
+
+New match (side 0 dir +1, side 1 dir −1, level 2 both → N = 6). Poller
+re-armed with fresh pointers (`live2.jsonl`): three MODE-4 captures.
+
+- **CK-C** (side 1 restarts, R = (−51.78, +33.61)): full stage path
+  play 2 stg 22 → play 2 stg 21 → play 3. At the first stg-21 frame the
+  six box attackers snap to **(−27.77, −1.99), (−36.33, −10.74),
+  (−36.23, −4.84), (−40.83, −10.23), (−43.35, −9.79), (−38.66, −7.76)**
+  = mirrored `_6_1` ordinals 5–10 **to 0.00 m**. OBS **V = 1, exact**.
+  Kicker 79/79 → 49/49 (clip 1233) → 50/50; long cross.
+- **CK-D** (side 0 restarts, R = (+52.25, −33.21), mirrored corner):
+  25 frames, kicker → 51/51 short corner. Attackers never settle on a
+  table (best rms 4.30 vs V = 3) — same unpaired-stack shape as CK-B.
+- **CK-E** (side 1 restarts, R = (+51.78, −33.61)): 28 frames, kicker →
+  51/51 short corner, same unsettled shape.
+
+Score: V = 1 exact once (with long-cross action 50 this time — so V = 1
+is NOT exclusively the short-corner variant; parent L1's V↔action pairing
+was coincidence of two samples). Revised INF(med): V rolls per corner
+({1,2,3}) independently of the short/long branch; the short-corner action
+(51) is chosen later by the partner test, not by V. CK-C also shows the
+teleport snap lands exactly on the stg-21 frame (positions pre-snap walk,
+post-snap exact) — the ordinal-fill pass runs at stage 21, same pass as
+the template-to-mark transition (L3).
+
+Defence template on CK-C (defending side 0, −x goal): play-2 t4b slots
+1–8 = (−36.14/−47.06/−41.56 patterns, keeper (−50.73, 0), area corner
+(−47.06, +7.16), outlet (−9.15, −2.66)); at stg 21 slots 3/5/6 jump to
+x = −47.06 (goal-area lineProjection) while slots 4/7/8 hold −41.56
+(spot line). Same two-line shape as L3. Ready marks: sta =
+[0,0,0,0,109,54,54,54,54,54,0], tgt marks on attacker slots 16/17/19/20/21
+(OBS). Kicker `+0xab8+0x28` word again never 0x31 (walks
+0x100e33 → …01a8 → …04d1 → …04e0, OBS all frames ×3 corners).
+
+## L9. First MODE-5 FK in live data — gate-false sample (OBS)
+
+FK-D: side 0 restarts at R = (−10.94, +20.69), kicker idx 9, 38 frames
+(stg 22 → 1 → 21 → wait). Gate: restarting dir +1, dir·R.x = −10.94 < 0
+→ **gate FALSE** (defensive FK in own half, same class as parent FK1).
+Defence (side 1) holds a deep line: t4b slots 1–4 at x = −47.06
+(own box), slots 5–6 (−45.26), midfield (−14.87/−9.12); six MARK
+(sta slots 2/4/6/7/8/9) with tgts on attacker slots 8/7/10/4/6/5 —
+passes 6–7 pairing (no aerial rank), consistent with parent §2.4 FK1.
+Kicker went 17/17 → 79/79 → 74/74 → 30/30 (clip 1261, phase 1);
+`+0xab8+0x28` again never 0x31. FK-line fit still needs a gate-true FK;
+FK-D + FK1 are both gate-false (defensive-half) samples.
+
+## L10. Third match — usable window, 160 rows (OBS)
+
+Window: ~13 min of state-1 play, 160 per-frame records banked in the
+SetpieceLiveRE scratch dir `live3.jsonl` (side 0 dir +1, side 1 dir −1).
+Captures: three MODE-4 corners (19/37/29 frames, all with full
+play-2 → play-3 stage paths) + two MODE-5 FKs (26 + 16 frames).
+
+- Corners: all three long-cross action 50 (kicker 79/79 → 49/49 →
+  50/50; 49→50 edge at sp ≈ 195–272, OBS). V-classify at first play-3
+  frame: best rms 4.35–5.16 (no exact hit — all three show the
+  unpaired-stack shape, same as CK-B/CK-D/CK-E). No V = 1/2/3 exact this
+  match.
+- Zone-spot edge (piece 0, defending side 0): six consecutive play-2
+  stg-1 frames hold the template ((-41.56, z) line, keeper (−50.73, 0),
+  area corner (−49.81, +7.16), outlet (−9.15, +5.65)); the single
+  stg-21 frame flips slots 1/3 to x = −45.56 and the outlet z to −2.66.
+  OBS: the template→mark write lands exactly on the stg 1→21 transition
+  (confirms L3's window to one stage edge).
+- Per-frame corner request (Main priority): all 19 frames of piece 0
+  dumped — `+0xab8+0x28` walks 0x680cc1 (79) → …04d1 (49) → …04e0 (50),
+  never 0x31 (OBS). The 49→50 edge falls between sp 181 and sp 195
+  (14-frame sample gap at 22 Hz).
+- Hardware watchpoint attempt: `perf mem:addr:w` on the kicker word
+  failed — PMU breakpoint events unavailable in this environment
+  (`sys_perf_event_open: No space left on device`; all debug registers
+  busy). Tried twice under the gf-perf lock, < 60 s each, no trace.
+  The 0x31 store therefore remains unattributed; the sample-gap analysis
+  above is the closest static timing.
+- FK-E (side 0, R = (−20.09, +5.07)): dir·R.x = −20.09 → gate false.
+  Defence line at x = 23.47/15.10/13.54 (mid-third zonal); nine MARK.
+- FK-F (side 1 dir −1, R = (−46.42, +7.85)): dir·R.x = +46.42 but
+  > F[6] (36.14) → gate false (too deep — own-half restart). Defence
+  line x = 10.0/−6.75; ten MARK.
+- **FK-line fit: still open.** All three live FKs (FK-D/E/F) plus parent
+  FK1 are gate-false; only parent FK2 is gate-true. The fit needs one
+  gate-true FK at d ≈ 20 or ≈ 40.
+
+## L11. Final state per parent §5 item
+
+| parent §5 item | state |
+|---|---|
+| 1. template writer | narrowed to the stg 1/21→21 single edge (L10); writer fn still open; needs a debug-register window when free |
+| 2. passes 2b/6/7 | partial: three gate-false FKs confirm passes-6–7 shape; pass internals untouched |
+| 3. corner V | **CLOSED**: per-corner roll (V = 1 exact CK-C, V = 2 exact CK-A); V↔action pairing killed (CK-C V = 1 with long cross) |
+| 4. 0x31 attribution | narrowed: 49→50 edge at sp ≈ 195–272, 14-frame gap; perf-PMU unavailable — needs a 54 Hz poll across the edge next match |
+| 5. −46.06 collapse | **CLOSED**: unpaired fallback-mark stack (L2 + three more instances) |
+| 6. FK line fit | open: 1 gate-true sample (FK2, 11.75 m); needs one more |
+
+Samplers ready (SetpieceLiveRE scratch dir): `spoll.py` (5 Hz arm,
+22 Hz recorder, ap cache), `analyze.py` (V-classify + line fit + stage
+track). Habit: re-acquire T/P pointers after any `reset` event (stale-T
+caveat L3); poll kicker `ap+0xac8` at 54 Hz across the wait to catch the
+49→50 edge for the 0x31 attribution.
+
+## L12. Gate-true FK found on reaudit — fit narrowed, still open (OBS)
+
+The stale-job tail revealed a third MODE-5 piece (33 frames) missed in
+L10's inventory. **FK-G**: side 0 (dir +1) restarts at R = (+23.50, −14.06),
+dir·R.x = +23.50 ∈ [0, 36.14], |z| = 14.06 ≤ 20.12 → **gate TRUE** (OBS).
+Ball 29.06 m from the +52.56 goal line. Defence (side 1, seven MARK at
+ready: sta slots 1/3/4/5/6/7/8, tgts on attacker slots 10/9/8/4/6/1/7):
+line slots 1/2/4 cluster at **x = −20.55** (slots 1,2,4; z −0.43/+9.48/−11.1)
+with slot pairs at −12.18/−10.61 — the guard line sits
+**23.50 − (−20.55) = 44.05 m** behind the ball?? No: defending side 1's
+own goal is at −52.56; the line at x = −20.55 is 32 m upfield of its own
+goal and the ball at +23.50 is 44 m *beyond* the line toward the far goal.
+Read correctly goal-side: the restarters (side 0, dir +1) attack +x; the
+defending line should sit goal-side (−x) of the ball — and it does, but
+44 m deep is no guard. Hmm — side 1's t4b slot 0 = (−45.55, −1.29) is its
+keeper (own-frame −(F[0]−1.83) mirrored = −50.73? no, −45.55).
+
+Recheck (OBS): side 1 defends the −x goal here (side 1 dir −1, own goal
+−52.56). Keeper slot 0 (−45.55, −1.29) is 7 m off its line — mid-transition
+(last frame sp 218, kick action 32 already entered: LONGPASS struck, line
+breaking). At the first play-3 frame (stg 1) the line slots 1/2/4 sat at
+x = −20.55 with the ball at +23.50 — 44 m of space because this FK is a
+mid-third restart (R.x = +23.50 is on the *restarters'* attacking half but
+29 m from goal, outside the box): the box-zone gate held (pass 5 ran —
+seven MARK with ranked tgts, OBS) but there is no 12 m wall/line this far
+out; the "line" is the ordinary shape line, same as the gate-false FKs.
+
+Fit vs parent §1.2 (OBS): FK2 (d = 30.6, gate true): line 11.75 m
+goal-side of ball. FK-G (d = 29.1, gate true): **no guard line** — line
+slots at −20.55, i.e. the shape line, not 12 m off the ball. So the ~12 m
+guard is NOT a pure function of d: INF(high) it needs d ≲ 25 m (FK2 at
+30.6 had it, FK-G at 29.1 does not — boundary between 29 and 31 m?) or a
+|z|/angle condition (|z| = 0.31 vs 14.06). Two gate-true samples now
+banked (FK2 + FK-G); the fit needs one more gate-true FK with d < 25 and
+|z| small to separate the distance vs angle gate. Item 6 stays open but is
+now one sample from closing with a concrete ask.
