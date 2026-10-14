@@ -131,6 +131,15 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES carrier constants missing: read them from the install with "
         "pes::LoadCarrierConstants into MatchSetup::pesCarrierConstants");
   pesCarrierConstants = *setup.pesCarrierConstants;
+  // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6,
+  // 7, 14): the line ramp's offsets, the 46/42/32 m lengths, the 15/19/23 m line
+  // half-widths and the mark arithmetic. Required like the carrier's: a
+  // defending team's whole shape comes out of these.
+  if (setup.pesDefensiveShapeConstants == nullptr)
+    throw std::runtime_error(
+        "PES defensive shape constants missing: read them from the install with "
+        "pes::LoadDefensiveShapeConstants into MatchSetup::pesDefensiveShapeConstants");
+  pesDefensiveShapeConstants = *setup.pesDefensiveShapeConstants;
   if (setup.pesStaminaConstants == nullptr)
     throw std::runtime_error(
         "PES stamina constants missing: read them from the install with "

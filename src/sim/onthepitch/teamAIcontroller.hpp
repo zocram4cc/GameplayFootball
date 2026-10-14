@@ -19,11 +19,15 @@
 #ifndef _HPP_TEAM_AICONTROLLER
 #define _HPP_TEAM_AICONTROLLER
 
+#include <string>
+#include <vector>
+
 #include "../data/formations.hpp"
 #include "../data/setpiececonfig.hpp"
 #include "../gamedefines.hpp"
 #include "base/properties.hpp"
 #include "matchmentality.hpp"
+#include "pesdefshape.hpp"
 #include "teaminstructions.hpp"
 #include "teamphilosophy.hpp"
 
@@ -46,8 +50,19 @@ public:
 
   Vector3 GetAdaptedFormationPosition(Player* player, bool useDynamicFormationPosition = true);
   void CalculateDynamicRoles();
-  float CalculateMarkingQuality(Player* player, Player* opp);
   void CalculateManMarking();
+  // FUN_140623750's mark spot (report 14.3): where a marker stands, goal-side of
+  // his opponent.
+  Vector3 GetMarkSpot(Player* defender, Player* opp);
+  // PES 2021's open-play defensive line (docs/re/pes-re-defensive-shape.md 6,
+  // 14.1), rebuilt every tick in Process(): the back line's height in world x,
+  // and the metres of length the team covers from it.
+  float GetDefensiveLineHeight() const { return defensiveLineHeight; }
+  float GetDefensiveTeamLength() const { return defensiveTeamLength; }
+  // PES arms the offside trap only on a team instruction (its `T+0xe4` flag,
+  // report 14.4). GF has no such instruction: this reads the tactic that stands
+  // in for it and defaults to off, PES's live value for both teams.
+  bool IsOffsideTrapArmed() const;
   void ApplyOffsideTrap(Vector3& position) const;
   float GetOffsideTrapX() const { return offsideTrapX; }
   void PrepareSetPiece(e_SetPiece setPiece, int takerTeamID = -1);
@@ -62,6 +77,9 @@ public:
   void ApplyZonePressure();
   void ApplyKeeperRush();
   void CalculateSituation();
+
+  // PES 2021's open-play defensive line, rebuilt every tick (report 6, 14.1).
+  void CalculateDefensiveShape();
 
   void UpdateTactics();
 
@@ -143,6 +161,30 @@ protected:
   float width;
 
   float offsideTrapX;
+
+  // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6, 7,
+  // 14.1): the pitch facts the chain reads, the line height it produces this
+  // tick and the length the team covers, all in world terms.
+  pes::ShapeField defensiveShapeField;
+  float defensiveLineHeight;
+  float defensiveTeamLength;
+  // The PES slider readings the shape uses this tick (report 14.6), mapped from
+  // GF's live tactics; the band code reads them so the line and its width come
+  // from one place.
+  int defensiveStyle;
+  int defensiveAttackLevel;
+  float defensiveLineSlider;
+  float defensiveCompactSlider;
+  // PES's Pressuring option (team-sheet option byte 6, report 14.3): the marker
+  // keeps 2 m more room.
+  bool defensivePressing;
+  // Last tick's own-frame line height, PES's f7a00 input (`prevFinal`).
+  float previousLineHeight;
+  // PES's per-slot mark state (report 3.3): the opponent a defender is switching
+  // to and the tick that switch started pending, so a hand-off commits only
+  // after the organiser's delay.
+  std::vector<int> markPendingOpponent;
+  std::vector<unsigned long> markPendingSinceTick;
 
   unsigned long endApplyAttackingRun_ms;
   Player* attackingRunPlayer;
