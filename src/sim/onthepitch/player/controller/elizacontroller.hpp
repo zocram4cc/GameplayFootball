@@ -79,6 +79,7 @@ protected:
   bool _HasCover(float towardsDeg);
   // Whether any team mate is already sliding.
   bool _AnyTeammateSliding();
+  void _PassGetApproach(PlayerCommandQueue& commandQueue);
   void _PushChallenge(PlayerCommandQueue& commandQueue, const Vector3& contact,
                       e_FunctionType type);
 

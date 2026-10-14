@@ -374,13 +374,11 @@ float Heading(const Vector3& v) { return pes::HeadingDeg(v.coords[0], v.coords[1
 // The reaction table's receive entry (pes-re-receiving.md §1, §3): a predicate
 // so the walk can stop at the first true one.
 bool PlayerController::_ReceiveCandidate() {
-  // GF routing: a slow ball is _BallControlCommand's, and the 200 ms reach
-  // gate stands in for PES's ball-distance table (MA+0x24710 <= 100).
-  // ponytail: GF reach gate, not the undecoded table.
-  if (match->GetBall()->GetMovement().Get2D().GetLength() < 2.0f) return false;
-  if (match->GetBall()->Predict(200).GetDistance(player->GetPosition()) >
-      ballDistanceOptimizeThreshold)
-    return false;
+  // FUN_1409fa400: his entry in the ball-distance table (squared metres).
+  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
+  const float ballDistance =
+      (match->GetBall()->Predict(0).Get2D() - player->GetPosition().Get2D()).GetLength();
+  if (!pes::WithinBallDistanceTable(k, ballDistance * ballDistance)) return false;
   if (match->GetBallRetainer() != 0) return false;
   if (hasPossession) return false;
   // Who goes: the PASS_GET receiver / the team's designated man
@@ -390,7 +388,6 @@ bool PlayerController::_ReceiveCandidate() {
     return false;
 
   // FUN_1409fa720: the re-touch lockout.
-  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
   const Match::BallEvent& ev = match->GetBallEvent(0);
   const Match::BallEvent& prev = match->GetBallEvent(1);
   const unsigned long now = match->GetActualTime_ms();
@@ -450,6 +447,9 @@ void PlayerController::_TrapCommand(PlayerCommandQueue& commandQueue) {
   in.posY = player->GetPosition().coords[1];
   in.halfLength = pitchHalfW;
   in.halfWidth = pitchHalfH;
+  // GF has no DELAY / PRESS movement state; the team's pressure man is its
+  // presser (the same stand-in the defender port uses).
+  in.pressOrDelay = team->GetController()->GetTeamPressurePlayer() == player;
   const pes::FirstTouch touch = pes::ChooseFirstTouch(k, in, kPesFps);
 
   PlayerCommand command;

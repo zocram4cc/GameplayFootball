@@ -117,6 +117,14 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
   f(0x142565600, &c.blockClipProgressHighScale, error);
   f(0x142565600, &c.blockHighBall_m, error);
   f(0x14259be4c, &c.blockLooseSpeedBall_kmh, error);
+  float lookFrames = 0.0f, perSecond = 0.0f;
+  f(0x14259be04, &lookFrames, error);
+  f(0x14259a764, &perSecond, error);
+  c.challengeLook_s = perSecond > 0.0f ? lookFrames / perSecond : 0.0f;
+  f(0x14256ae1c, &c.challengePathRadius_m, error);
+  f(0x142644500, &c.challengePressDistSq_m2, error);
+  f(0x1425c5940, &c.challengeCloserMarginSq_m2, error);
+  f(0x14259d610, &c.challengeNearDistSq_m2, error);
   if (!ok) {
     *error = "defender decisions: PES2021.exe .rdata constants unmapped";
     return std::nullopt;
@@ -143,6 +151,32 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
   if (!receive) return std::nullopt;
   c.receive = *receive;
   return c;
+}
+
+enum ChallengeCandidate ChallengeCandidate(ChallengeOwner owner, bool theirPassTargetValid) {
+  switch (owner) {
+    case ChallengeOwner::kOpponent: return ChallengeCandidate::kOwner;
+    case ChallengeOwner::kMyTeam: return ChallengeCandidate::kNone;
+    case ChallengeOwner::kNobody:
+      return theirPassTargetValid ? ChallengeCandidate::kTheirPassTarget : ChallengeCandidate::kNone;
+  }
+  return ChallengeCandidate::kNone;
+}
+
+bool ChallengeTargetValid(const DefenderDecisionConstants& c, const ChallengeCheck& in) {
+  const float rad = in.candHeading_deg * blunted::pi / 180.0f;
+  const float dx = std::cos(rad), dy = std::sin(rad);
+  const float length = in.candSpeed_mps * c.challengeLook_s;
+  const float bx = in.ballX - in.candX, by = in.ballY - in.candY;
+  float along = bx * dx + by * dy;
+  along = along < 0.0f ? 0.0f : (along > length ? length : along);
+  const float ox = bx - along * dx, oy = by - along * dy;
+  if (ox * ox + oy * oy <= c.challengePathRadius_m * c.challengePathRadius_m) return true;
+  const float hisSq = bx * bx + by * by;
+  if (in.pressing && hisSq < c.challengePressDistSq_m2) return true;
+  const float mx = in.ballX - in.myX, my = in.ballY - in.myY;
+  if (hisSq < mx * mx + my * my + c.challengeCloserMarginSq_m2) return true;
+  return hisSq < c.challengeNearDistSq_m2;
 }
 
 DefenderReaction ChooseReaction(const DefenderReactionInput& in) {

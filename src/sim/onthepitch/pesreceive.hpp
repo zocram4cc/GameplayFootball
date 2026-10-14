@@ -26,6 +26,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
@@ -73,6 +74,9 @@ struct ReceiveConstants {
   float arbitrationAngle_deg = 0.0f;  // 0x14259be60
   float arbitrationRadius_m = 0.0f;   // 0x14258c264
   float arbitrationLength_m = 0.0f;   // 0x14259222c
+  // --- who may touch (FUN_1409fa400) and where to meet it (ActionPassGet) ---
+  float ballDistanceTableMaxSq_m2 = 0.0f;  // 0x14253ee30, MA+0x24710 entries are squared metres
+  float receivingPointMargin_m = 0.0f;     // 0x1425e5ab8 (FUN_14094e3a0)
 };
 
 std::optional<ReceiveConstants> LoadReceiveConstants(const PeImage& exe, const PesVfs& vfs,
@@ -122,20 +126,21 @@ struct PassGetInput {
   bool newestEventIsMyKick = false;  // FUN_140a60530
   bool inKickBeforeContact = false;  // the anime-can-trap clause
   bool mateNearBallOwnsIt = false;   // the MA+0x24840 3-slot scan
+  bool arbitrationWins = false;      // ArbitrationWins: returns before the scan
 };
 
 bool PassGetSelected(const ReceiveConstants& c, const PassGetInput& in);
 
 struct ArbitrationInput {
-  bool otherTargetValid = false;        // the other team's T+0x78 < 0x16
-  float otherTargetHeading_deg = 0.0f;  // FUN_140439f50 for him
-  float ballHeading_deg = 0.0f;         // the ball's travel heading
+  bool otherTargetValid = false;  // the other team's T+0x78 < 0x16
+  float otherX = 0.0f, otherY = 0.0f;
+  float otherHeading_deg = 0.0f;  // FUN_140439f50 for him
+  float ballHeading_deg = 0.0f;   // the ball's travel heading
   float myX = 0.0f, myY = 0.0f;
-  float ballX = 0.0f, ballY = 0.0f;
 };
 
-// The other team's receiver faces the oncoming ball (> 135 deg off its travel)
-// and the ball is inside the 3 m-radius, 5 m capsule from me along his facing.
+// The other team's pass target faces the oncoming ball (> 135 deg off its
+// travel) and I stand inside the 3 m-radius, 5 m capsule ahead of him.
 bool ArbitrationWins(const ReceiveConstants& c, const ArbitrationInput& in);
 
 // --- First touch (report §4) ---
@@ -159,6 +164,7 @@ struct FirstTouchInput {
   float ballHeading_deg = 0.0f;
   float posX = 0.0f, posY = 0.0f;
   float halfLength = 0.0f, halfWidth = 0.0f;
+  bool pressOrDelay = false;  // P+0x5d0 in {0x33 DELAY, 0x34 PRESS}
 };
 
 struct FirstTouch {
@@ -166,6 +172,18 @@ struct FirstTouch {
   float heading_deg = 0.0f;
   float distance_m = 0.0f;
 };
+
+// FUN_1409fa400's first gate: his squared distance to the ball.
+bool WithinBallDistanceTable(const ReceiveConstants& c, float ballDistanceSq_m2);
+
+struct Point2 {
+  float x = 0, y = 0;
+};
+// ActionPassGet's receiving point: the predicted ball point nearest the
+// receiver (FUN_140a4d340 over the prediction, one point per frame), clamped
+// onto the pitch along the line from him (FUN_14094e3a0).
+Point2 ReceivingPoint(const ReceiveConstants& c, const std::vector<Point2>& ballPath, Point2 me,
+                      float halfLength, float halfWidth);
 
 FirstTouch ChooseFirstTouch(const ReceiveConstants& c, const FirstTouchInput& in, float fps);
 

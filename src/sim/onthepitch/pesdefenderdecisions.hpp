@@ -118,6 +118,13 @@ struct DefenderDecisionConstants {
   float blockNormal_s = 0.0f;   // block.o +0x40
   float blockSpeedBall_s = 0.0f;  // block.o +0x44
 
+  // --- the challenge target FUN_140a50e00 (exe .rdata) ---
+  float challengeLook_s = 0.0f;  // 0x14259be04 / 0x14259a764 (frames = fps * 12 / 60 + 0.5)
+  float challengePathRadius_m = 0.0f;     // 0x14256ae1c, the capsule radius
+  float challengePressDistSq_m2 = 0.0f;   // 0x142644500, kept by a PRESSing defender
+  float challengeCloserMarginSq_m2 = 0.0f;  // 0x1425c5940
+  float challengeNearDistSq_m2 = 0.0f;    // 0x14259d610
+
   // --- receive (reaction entry 3, docs/re/pes-re-receiving.md) ---
   ReceiveConstants receive;
 };
@@ -125,6 +132,27 @@ struct DefenderDecisionConstants {
 
 std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     const PeImage& exe, const PesVfs& vfs, std::string* error);
+
+// --- The challenge target (FUN_140a50e00) ---
+
+// Who owns the newest ball event, seen from the defender.
+enum class ChallengeOwner { kMyTeam, kOpponent, kNobody };
+enum class ChallengeCandidate { kNone, kOwner, kTheirPassTarget };
+// The man every challenge is against: the event owner when he is an
+// opponent, nobody when it is my team's ball, else the other team's pass
+// target (T+0x78) when it has one.
+ChallengeCandidate ChallengeCandidate(ChallengeOwner owner, bool theirPassTargetValid);
+
+struct ChallengeCheck {
+  float candX = 0, candY = 0, candHeading_deg = 0, candSpeed_mps = 0;
+  float ballX = 0, ballY = 0;  // the ball challengeLook_s ahead
+  float myX = 0, myY = 0;
+  bool pressing = false;       // PES AI state 0x34 PRESS
+};
+// The candidate stands: the ball ahead on his own path (1 m capsule over the
+// look-ahead), or nearer him than me (+ margin), or inside the near radius, or
+// inside the press radius for a PRESSing defender.
+bool ChallengeTargetValid(const DefenderDecisionConstants& c, const ChallengeCheck& in);
 
 // --- The reaction chooser (report 1) ---
 

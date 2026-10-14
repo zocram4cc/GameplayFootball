@@ -367,60 +367,42 @@ void Team::SetLastTouchPlayer(Player* player, e_TouchType touchType) {
 }
 
 Player* Team::PassGetReceiver() {
+  // PES's movement selector state 2 (FUN_140931c60): only the team's own pass
+  // target goes to the ball as the receiver.
+  if (!passTarget || !passTarget->IsActive()) return nullptr;
   const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
   const Match::BallEvent& event = match->GetBallEvent(0);
   const bool passInFlight = event.kind == pes::BallEventKind::kPass ||
                             event.kind == pes::BallEventKind::kHighPass;
+  if (!passInFlight || event.teamID != id) return nullptr;
   const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
 
-  // The own receive (FUN_140931c60): the team's pass target, the newest event
-  // a team-mate's pass rather than his own kick, not in a kick clip himself,
-  // and none of the three team-mates nearest the ball already on it.
-  if (passTarget && passTarget->IsActive() && passInFlight && event.teamID == id) {
-    pes::PassGetInput in;
-    in.iAmPassTarget = true;
-    in.newestEventIsMyKick = event.player == passTarget;
-    in.inKickBeforeContact = IsKickFunction(passTarget->GetCurrentFunctionType());
-    std::vector<Player*> nearest;
-    AI_GetClosestPlayers(this, ballPos, nearest, kPassGetNearestSlots);
-    for (Player* mate : nearest) {
-      if (mate != passTarget && (mate->HasPossession() ||
-                                 mate->GetCurrentFunctionType() == e_FunctionType_Trap))
-        in.mateNearBallOwnsIt = true;
-    }
-    if (pes::PassGetSelected(k, in)) return passTarget;
+  pes::PassGetInput in;
+  in.iAmPassTarget = true;
+  in.newestEventIsMyKick = event.player == passTarget;
+  in.inKickBeforeContact = IsKickFunction(passTarget->GetCurrentFunctionType());
+  // The arbitration: the other team's stored pass target standing in front
+  // of mine, facing the ball.
+  Player* theirTarget = match->GetTeam(1 - id)->GetPassTarget();
+  pes::ArbitrationInput arb;
+  arb.otherTargetValid = theirTarget && theirTarget->IsActive();
+  if (arb.otherTargetValid) {
+    arb.otherX = theirTarget->GetPosition().coords[0];
+    arb.otherY = theirTarget->GetPosition().coords[1];
+    arb.otherHeading_deg = HeadingDeg(theirTarget->GetDirectionVec());
   }
-
-  // The arbitration against the other team's pass in flight. PES runs it for
-  // its own (persistent) T+0x78 only; GF has no writer that keeps a stale
-  // target meaningful (report §7.3), so every outfield man is tested and the
-  // one nearest the ball of those inside the capsule wins.
-  // ponytail: nearest-wins tie-break; PES has a single candidate by construction.
-  Team* other = match->GetTeam(1 - id);
-  Player* theirTarget = other->GetPassTarget();
-  if (!theirTarget || !theirTarget->IsActive() || !passInFlight || event.teamID != other->GetID())
-    return nullptr;
-  const Vector3 ballMove = match->GetBall()->GetMovement().Get2D();
-  pes::ArbitrationInput in;
-  in.otherTargetValid = true;
-  in.otherTargetHeading_deg = HeadingDeg(theirTarget->GetDirectionVec());
-  in.ballHeading_deg = HeadingDeg(ballMove);
-  in.ballX = ballPos.coords[0];
-  in.ballY = ballPos.coords[1];
-  Player* winner = nullptr;
-  float best = 0.0f;
-  for (auto& p : players) {
-    if (!p->IsActive() || p->GetFormationEntry().role == e_PlayerRole_GK) continue;
-    in.myX = p->GetPosition().coords[0];
-    in.myY = p->GetPosition().coords[1];
-    if (!pes::ArbitrationWins(k, in)) continue;
-    const float d = (p->GetPosition() - ballPos).GetLength();
-    if (!winner || d < best) {
-      winner = p.get();
-      best = d;
-    }
-  }
-  return winner;
+  arb.ballHeading_deg = HeadingDeg(match->GetBall()->GetMovement().Get2D());
+  arb.myX = passTarget->GetPosition().coords[0];
+  arb.myY = passTarget->GetPosition().coords[1];
+  in.arbitrationWins = pes::ArbitrationWins(k, arb);
+  // The MA+0x24840 scan: a team-mate among the three nearest the ball who
+  // already owns the trap.
+  std::vector<Player*> nearest;
+  AI_GetClosestPlayers(this, ballPos, nearest, kPassGetNearestSlots);
+  for (Player* mate : nearest)
+    if (mate != passTarget && mate->GetCurrentFunctionType() == e_FunctionType_Trap)
+      in.mateNearBallOwnsIt = true;
+  return pes::PassGetSelected(k, in) ? passTarget : nullptr;
 }
 
 void Team::ResetSituation(const Vector3& focusPos) {

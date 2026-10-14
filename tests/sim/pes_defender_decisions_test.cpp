@@ -55,6 +55,11 @@ pes::DefenderDecisionConstants Synthetic() {
   c.blockLooseSpeedBall_kmh = 70.0f;
   c.blockNormal_s = 0.9f;
   c.blockSpeedBall_s = 2.0f;
+  c.challengeLook_s = 12.0f / 60.0f;
+  c.challengePathRadius_m = 1.0f;
+  c.challengePressDistSq_m2 = 17.64f;
+  c.challengeCloserMarginSq_m2 = 0.64f;
+  c.challengeNearDistSq_m2 = 12.25f;
   return c;
 }
 
@@ -331,6 +336,52 @@ TEST(PesDefenderInstall, TheInstallCarriesTheGamesOwnGates) {
   EXPECT_GT(k->blockRadiusPressing_m, k->blockRadiusNormal_m);
   EXPECT_GT(k->blockRadiusLate_m, k->blockRadiusPressing_m);
   EXPECT_GT(k->blockLooseSpeedBall_kmh, 0.0f);
+  // The challenge target's look-ahead is a fraction of a second, and the
+  // PRESS radius reaches past the plain near radius.
+  EXPECT_GT(k->challengeLook_s, 0.0f);
+  EXPECT_LT(k->challengeLook_s, 1.0f);
+  EXPECT_GT(k->challengePathRadius_m, 0.0f);
+  EXPECT_GT(k->challengePressDistSq_m2, k->challengeNearDistSq_m2);
+  EXPECT_GT(k->challengeCloserMarginSq_m2, 0.0f);
+}
+
+// FUN_140a50e00: the man a defender may challenge. The newest ball event's
+// owner when he is an opponent; my own team's ball gives nobody (0xff); a
+// loose ball falls back to the other team's pass target.
+TEST(PesDefenderTarget, MyOwnTeamsBallHasNoChallengeTarget) {
+  EXPECT_EQ(pes::ChallengeCandidate(pes::ChallengeOwner::kMyTeam, true),
+            pes::ChallengeCandidate::kNone);
+  EXPECT_EQ(pes::ChallengeCandidate(pes::ChallengeOwner::kOpponent, false),
+            pes::ChallengeCandidate::kOwner);
+  EXPECT_EQ(pes::ChallengeCandidate(pes::ChallengeOwner::kNobody, true),
+            pes::ChallengeCandidate::kTheirPassTarget);
+  EXPECT_EQ(pes::ChallengeCandidate(pes::ChallengeOwner::kNobody, false),
+            pes::ChallengeCandidate::kNone);
+}
+
+TEST(PesDefenderTarget, TheCandidateMustBeOnTheBall) {
+  const auto c = Synthetic();
+  pes::ChallengeCheck in{};
+  // Ball 0.2 s ahead lands on his 1 m path.
+  in.candX = 0; in.candY = 0; in.candHeading_deg = 0; in.candSpeed_mps = 5;
+  in.ballX = 0.8f; in.ballY = 0.5f;
+  in.myX = 20; in.myY = 0;
+  EXPECT_TRUE(pes::ChallengeTargetValid(c, in));
+  // Off his path, 6 m away, and I am nearer: not his ball.
+  in.ballX = 14; in.ballY = 0;
+  EXPECT_FALSE(pes::ChallengeTargetValid(c, in));
+  // Within 3.5 m of him: still his.
+  in.ballX = 3.0f; in.ballY = 1.5f;
+  EXPECT_TRUE(pes::ChallengeTargetValid(c, in));
+  // 4 m off: only a PRESSing defender keeps him.
+  in.ballX = 0; in.ballY = 4.0f; in.myX = 0; in.myY = 6.0f;
+  EXPECT_FALSE(pes::ChallengeTargetValid(c, in));
+  in.pressing = true;
+  EXPECT_TRUE(pes::ChallengeTargetValid(c, in));
+  // Nearer to him than to me (within the 0.64 margin): his.
+  in.pressing = false;
+  in.myY = 8.0f;
+  EXPECT_TRUE(pes::ChallengeTargetValid(c, in));
 }
 
 }  // namespace

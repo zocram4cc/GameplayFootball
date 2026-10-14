@@ -43,6 +43,7 @@
 #include "onthepitch/goalcelebration.hpp"
 #include "onthepitch/goalsequence.hpp"
 #include "onthepitch/pescarrier.hpp"
+#include "onthepitch/pesballphysics.hpp"
 
 namespace {
 
@@ -682,7 +683,13 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
     inputVelocityFloat = RangeVelocity(inputVelocityFloat);  // emulate controller quantization
 
-    _MovementCommand(commandQueue, forceMagnet, extraHaste);
+    // PES's PASS_GET receiver runs ActionPassGet's approach (BallFollow): to
+    // the ball path's nearest point, clamped onto the pitch. GF's magnet
+    // approach is for everyone else.
+    if (team->PassGetReceiver() == player && !hasPossession)
+      _PassGetApproach(commandQueue);
+    else
+      _MovementCommand(commandQueue, forceMagnet, extraHaste);
 
   } else {  // keeper?
 
@@ -735,12 +742,40 @@ bool DeepDefensiveMode(const TeamInstructions::State& instructions) {
 }  // namespace
 
 Player* ElizaController::_Carrier() {
-  // PES's FUN_140a50e00: the ball owner when he is an opponent, else the
-  // opponent predicted to take it. GF's precomputed best-possession opponent
-  // stands in for the predicted one.
-  Player* retainer = match->GetBallRetainer();
-  if (retainer && retainer->GetTeamID() != team->GetID()) return retainer;
-  return _oppPlayer;
+  // PES's FUN_140a50e00 (docs/re/pes-re-receiving-port.md): the ball's owner
+  // when he is an opponent, nobody when my own team has it, and for a loose
+  // ball the other team's pass target - each only while the ball is on him.
+  const pes::DefenderDecisionConstants& k = match->GetPesDefenderDecisionConstants();
+  Player* owner = match->GetBallRetainer();
+  if (!owner) {
+    Player* last = match->GetBallEvent(0).player;
+    if (last && last->HasPossession()) owner = last;
+  }
+  Team* other = match->GetTeam(1 - team->GetID());
+  Player* theirTarget = other->GetPassTarget();
+  const pes::ChallengeOwner who = !owner ? pes::ChallengeOwner::kNobody
+                                  : owner->GetTeamID() == team->GetID() ? pes::ChallengeOwner::kMyTeam
+                                                                       : pes::ChallengeOwner::kOpponent;
+  Player* candidate = nullptr;
+  switch (pes::ChallengeCandidate(who, theirTarget && theirTarget->IsActive())) {
+    case pes::ChallengeCandidate::kOwner: candidate = owner; break;
+    case pes::ChallengeCandidate::kTheirPassTarget: candidate = theirTarget; break;
+    case pes::ChallengeCandidate::kNone: return nullptr;
+  }
+  const Vector3 ball =
+      _mentalImage->GetBallPrediction(static_cast<int>(k.challengeLook_s * 1000.0f)).Get2D();
+  pes::ChallengeCheck in;
+  in.candX = candidate->GetPosition().coords[0];
+  in.candY = candidate->GetPosition().coords[1];
+  in.candHeading_deg = HeadingDeg(candidate->GetMovement().Get2D().GetNormalized(candidate->GetDirectionVec()));
+  in.candSpeed_mps = candidate->GetMovement().Get2D().GetLength();
+  in.ballX = ball.coords[0];
+  in.ballY = ball.coords[1];
+  in.myX = CastPlayer()->GetPosition().coords[0];
+  in.myY = CastPlayer()->GetPosition().coords[1];
+  // GF has no PRESS movement state; the team's pressure man is its presser.
+  in.pressing = team->GetController()->GetTeamPressurePlayer() == player;
+  return pes::ChallengeTargetValid(k, in) ? candidate : nullptr;
 }
 
 int ElizaController::_TackleAggressionLevel() {
@@ -763,6 +798,34 @@ pes::SlideAggressionInput ElizaController::_SlideAggression() {
   in.deepDefensiveMode = DeepDefensiveMode(instructions);
   in.staminaUnder30 = CastPlayer()->GetStaminaPct() < 0.30f;
   return in;
+}
+
+void ElizaController::_PassGetApproach(PlayerCommandQueue& commandQueue) {
+  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
+  // FUN_140a4d340 searches the prediction one PES frame at a time, 0..0xf9.
+  constexpr int kPredictionFrames = 0xf9;
+  const float frame_ms = pesball::kPesTick_s * 1000.0f;
+  std::vector<pes::Point2> path;
+  path.reserve(kPredictionFrames);
+  for (int f = 0; f < kPredictionFrames; ++f) {
+    const Vector3 b = _mentalImage->GetBallPrediction(static_cast<int>(f * frame_ms));
+    path.push_back({b.coords[0], b.coords[1]});
+  }
+  const Vector3 me = CastPlayer()->GetPosition();
+  const pes::Point2 p =
+      pes::ReceivingPoint(k, path, {me.coords[0], me.coords[1]}, pitchHalfW, pitchHalfH);
+  const Vector3 target(p.x, p.y, 0);
+  PlayerCommand command;
+  command.desiredFunctionType = e_FunctionType_Movement;
+  command.useDesiredMovement = true;
+  command.desiredDirection = (target - me).Get2D().GetNormalized(CastPlayer()->GetDirectionVec());
+  // ponytail: the route's speed choice (BallFollow slots 0x58/0x60, not
+  // reduced) - GF's distance-to-velocity ramp stands in.
+  command.desiredVelocityFloat = RangeVelocity(
+      clamp((target - me).GetLength() * distanceToVelocityMultiplier, 0.0f, sprintVelocity));
+  command.useDesiredLookAt = true;
+  command.desiredLookAt = _mentalImage->GetBallPrediction(0).Get2D();
+  commandQueue.push_back(command);
 }
 
 bool ElizaController::_AnyTeammateSliding() {

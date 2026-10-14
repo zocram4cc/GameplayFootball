@@ -90,6 +90,8 @@ std::optional<ReceiveConstants> LoadReceiveConstants(const PeImage& exe, const P
   f(0x14259be60, &c.arbitrationAngle_deg);
   f(0x14258c264, &c.arbitrationRadius_m);
   f(0x14259222c, &c.arbitrationLength_m);
+  f(0x14253ee30, &c.ballDistanceTableMaxSq_m2);
+  f(0x1425e5ab8, &c.receivingPointMargin_m);
   if (!ok) {
     *error = "receive: PES2021.exe .rdata constants unmapped";
     return std::nullopt;
@@ -166,21 +168,48 @@ bool ShotRunsThrough(const ReceiveConstants& c, const ShotThroughInput& in) {
 }
 
 bool PassGetSelected(const ReceiveConstants&, const PassGetInput& in) {
-  return in.iAmPassTarget && !in.newestEventIsMyKick && !in.inKickBeforeContact &&
-         !in.mateNearBallOwnsIt;
+  if (!in.iAmPassTarget || in.newestEventIsMyKick || in.inKickBeforeContact) return false;
+  return in.arbitrationWins || !in.mateNearBallOwnsIt;
 }
 
 bool ArbitrationWins(const ReceiveConstants& c, const ArbitrationInput& in) {
   if (!in.otherTargetValid) return false;
-  if (AbsDiffDeg(in.ballHeading_deg, in.otherTargetHeading_deg) <= c.arbitrationAngle_deg)
-    return false;
-  // The capsule (FUN_140a8ff10): the segment from me along his facing, the
-  // ball within the radius of it.
-  const float dx = std::cos(in.otherTargetHeading_deg / kDegPerRad);
-  const float dy = std::sin(in.otherTargetHeading_deg / kDegPerRad);
-  const float bx = in.ballX - in.myX, by = in.ballY - in.myY;
-  const float along = std::clamp(bx * dx + by * dy, 0.0f, c.arbitrationLength_m);
-  return std::hypot(bx - along * dx, by - along * dy) <= c.arbitrationRadius_m;
+  if (AbsDiffDeg(in.ballHeading_deg, in.otherHeading_deg) <= c.arbitrationAngle_deg) return false;
+  // The capsule (FUN_140a8ff10): from him along his facing, me within the
+  // radius of that segment.
+  const float dx = std::cos(in.otherHeading_deg / kDegPerRad);
+  const float dy = std::sin(in.otherHeading_deg / kDegPerRad);
+  const float mx = in.myX - in.otherX, my = in.myY - in.otherY;
+  const float along = std::clamp(mx * dx + my * dy, 0.0f, c.arbitrationLength_m);
+  return std::hypot(mx - along * dx, my - along * dy) <= c.arbitrationRadius_m;
+}
+
+bool WithinBallDistanceTable(const ReceiveConstants& c, float ballDistanceSq_m2) {
+  return ballDistanceSq_m2 <= c.ballDistanceTableMaxSq_m2;
+}
+
+Point2 ReceivingPoint(const ReceiveConstants& c, const std::vector<Point2>& ballPath, Point2 me,
+                      float halfLength, float halfWidth) {
+  Point2 p = me;
+  float best = -1.0f;
+  for (const Point2& b : ballPath) {
+    const float d = (b.x - me.x) * (b.x - me.x) + (b.y - me.y) * (b.y - me.y);
+    if (best < 0.0f || d < best) {
+      best = d;
+      p = b;
+    }
+  }
+  if (std::fabs(p.x) > halfLength + c.receivingPointMargin_m) {
+    const float x = p.x < 0.0f ? -halfLength : halfLength;
+    p.y = p.y - (p.y - me.y) * (p.x - x) / (p.x - me.x);
+    p.x = x;
+  }
+  if (std::fabs(p.y) > halfWidth + c.receivingPointMargin_m) {
+    const float y = p.y < 0.0f ? -halfWidth : halfWidth;
+    p.x = p.x - (p.y - y) * (p.x - me.x) / (p.y - me.y);
+    p.y = y;
+  }
+  return p;
 }
 
 FirstTouch ChooseFirstTouch(const ReceiveConstants& c, const FirstTouchInput& in, float fps) {
@@ -193,6 +222,9 @@ FirstTouch ChooseFirstTouch(const ReceiveConstants& c, const FirstTouchInput& in
   if (!in.eventByMyTeam && ageFrames < interceptFrames &&
       in.ballSpeedSq_m2s2 > c.interceptSpeedSq_m2s2)
     return control;
+
+  // A DELAY / PRESS defender receiving just controls it.
+  if (in.pressOrDelay) return control;
 
   FirstTouch out = control;
   if (in.hasPlannedDirection)

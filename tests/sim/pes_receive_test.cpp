@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 #include "onthepitch/pesreceive.hpp"
 
@@ -49,6 +50,8 @@ pes::ReceiveConstants Synthetic() {
   c.arbitrationAngle_deg = 135.0f;
   c.arbitrationRadius_m = 3.0f;
   c.arbitrationLength_m = 5.0f;
+  c.ballDistanceTableMaxSq_m2 = 100.0f;
+  c.receivingPointMargin_m = 0.163f;
   return c;
 }
 
@@ -177,29 +180,45 @@ TEST(PesReceivePassGet, TheTeamsPassTargetGoesToTheBall) {
   EXPECT_FALSE(pes::PassGetSelected(c, in));
 }
 
-TEST(PesReceivePassGet, TheInterceptorInsideTheCapsuleWinsTheArbitration) {
+// FUN_140931c60's arbitration (raw 0x140931d98..0x140931e6b): when the other
+// team's (stored) pass target faces the oncoming ball and I stand inside the
+// 3 m x 5 m capsule ahead of him, I take the ball without the team-mate scan.
+TEST(PesReceivePassGet, ArbitrationCapsuleRunsFromTheirTargetToMe) {
   const auto c = Synthetic();
   pes::ArbitrationInput in{};
   in.otherTargetValid = true;
-  // Their receiver faces -x (towards the oncoming ball, which travels +x).
-  in.otherTargetHeading_deg = 180.0f;
+  in.otherX = 0.0f;
+  in.otherY = 0.0f;
+  in.otherHeading_deg = 180.0f;  // he faces -x, the ball travels +x
   in.ballHeading_deg = 0.0f;
-  in.myX = 0.0f;
-  in.myY = 0.0f;
-  in.ballX = -4.0f;  // 4 m in front of me along his facing
-  in.ballY = 1.0f;
+  in.myX = -4.0f;  // 4 m in front of him
+  in.myY = 1.0f;
   EXPECT_TRUE(pes::ArbitrationWins(c, in));
-  in.ballY = 3.5f;  // outside the 3 m radius
+  in.myY = 3.5f;  // outside the 3 m radius
   EXPECT_FALSE(pes::ArbitrationWins(c, in));
-  in.ballY = 1.0f;
-  in.ballX = -9.0f;  // beyond length + radius
+  in.myY = 1.0f;
+  in.myX = -9.0f;  // beyond length + radius
   EXPECT_FALSE(pes::ArbitrationWins(c, in));
-  in.ballX = -4.0f;
+  in.myX = 4.0f;  // behind him
+  EXPECT_FALSE(pes::ArbitrationWins(c, in));
+  in.myX = -4.0f;
   in.ballHeading_deg = 90.0f;  // only 90 deg off his facing
   EXPECT_FALSE(pes::ArbitrationWins(c, in));
   in.ballHeading_deg = 0.0f;
   in.otherTargetValid = false;
   EXPECT_FALSE(pes::ArbitrationWins(c, in));
+}
+
+TEST(PesReceivePassGet, ArbitrationSkipsTheTeamMateScan) {
+  const auto c = Synthetic();
+  pes::PassGetInput in{};
+  in.iAmPassTarget = true;
+  in.mateNearBallOwnsIt = true;
+  EXPECT_FALSE(pes::PassGetSelected(c, in));
+  in.arbitrationWins = true;
+  EXPECT_TRUE(pes::PassGetSelected(c, in));
+  in.newestEventIsMyKick = true;  // the first gates still apply
+  EXPECT_FALSE(pes::PassGetSelected(c, in));
 }
 
 // --- First touch (report §4, FUN_1409f8a50 / 1409fa0b0 / 1409fbce0) ---
@@ -296,6 +315,43 @@ TEST(PesReceiveFirstTouch, TouchLineGuardStopsATurnIntoTheLine) {
   EXPECT_EQ(pes::ChooseFirstTouch(c, in, kFps).kind, pes::TouchKind::kDirectional);
 }
 
+TEST(PesReceiveFirstTouch, APressingOrDelayingDefenderJustControlsIt) {
+  const auto c = Synthetic();
+  auto in = OwnPass();
+  in.pressOrDelay = true;
+  EXPECT_EQ(pes::ChooseFirstTouch(c, OwnPass(), kFps).kind, pes::TouchKind::kDirectional);
+  EXPECT_EQ(pes::ChooseFirstTouch(c, in, kFps).kind, pes::TouchKind::kControl);
+}
+
+// FUN_1409fa400: only a player within the ball-distance table's limit
+// (MA+0x24710, squared metres, <= 100) may receive.
+TEST(PesReceiveGate, BallDistanceTableLimitIsTenMetres) {
+  auto c = Synthetic();
+  EXPECT_TRUE(pes::WithinBallDistanceTable(c, 100.0f));
+  EXPECT_FALSE(pes::WithinBallDistanceTable(c, 100.1f));
+}
+
+// FUN_140a4d340 + FUN_14094e3a0: the receiving point is the ball path's
+// nearest point to the receiver, pulled back onto the pitch along the line
+// from him when it lies more than the margin outside.
+TEST(PesReceivePassGet, ReceivingPointIsTheNearestPathPointClampedIn) {
+  const auto c = Synthetic();
+  std::vector<pes::Point2> path = {{0, 0}, {5, 0}, {10, 0}, {15, 0}};
+  auto p = pes::ReceivingPoint(c, path, {9, 3}, 52.5f, 34.0f);
+  EXPECT_FLOAT_EQ(p.x, 10.0f);
+  EXPECT_FLOAT_EQ(p.y, 0.0f);
+  // A path running out over the touch line: the point is projected onto it.
+  path = {{0, 30}, {0, 35}, {0, 40}};
+  p = pes::ReceivingPoint(c, path, {2, 38}, 52.5f, 34.0f);
+  EXPECT_FLOAT_EQ(p.y, 34.0f);
+  // Along the line from him (2, 38) through (0, 40), back to y = 34.
+  EXPECT_NEAR(p.x, 6.0f, 1e-4f);
+  // Inside the 0.163 m margin: left alone.
+  path = {{0, 34.1f}};
+  p = pes::ReceivingPoint(c, path, {0, 30}, 52.5f, 34.0f);
+  EXPECT_FLOAT_EQ(p.y, 34.1f);
+}
+
 TEST(PesReceiveInstall, TheInstallCarriesTheGamesOwnReceive) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
@@ -328,6 +384,11 @@ TEST(PesReceiveInstall, TheInstallCarriesTheGamesOwnReceive) {
   EXPECT_LT(k->lineGuardBallAngle_deg, k->runningFacing_deg);
   EXPECT_GT(k->lineGuardBodyAngle_deg, 90.0f);
   EXPECT_GT(k->shootLockSpeed_kmh, k->shotThroughSpeed_kmh);
+  // The ball-distance table reaches further than the arbitration capsule, and
+  // the receiving point's margin is a ball's width, not metres.
+  EXPECT_GT(k->ballDistanceTableMaxSq_m2, k->arbitrationLength_m * k->arbitrationLength_m);
+  EXPECT_GT(k->receivingPointMargin_m, 0.0f);
+  EXPECT_LT(k->receivingPointMargin_m, 1.0f);
 }
 
 }  // namespace
