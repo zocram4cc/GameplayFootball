@@ -466,7 +466,7 @@ is now involved) → `FUN_1405b6660` (SetPending). With a pending kind-1 foul it
    yes if the opponent's value exceeds p's by > **25** and p's is < **60**; for a lower ball: no if
    `√opp ≤ √p + 4` and `√p ≥ 5`, else yes (units of the `MA+0x24710` entries: INF time/distance squared).
 
-### 5.3 Detection — OPEN
+### 5.3 Detection — CLOSED in `pes-re-offside.md` (writer `FUN_140a7b7a0`; category 3 = onside near-level, not "position-only")
 
 The code that **sets** the bit sets (the moment the line is evaluated, the second-last-defender rule and the
 level tolerance) was not found. Tried (all negative): every instruction with displacement 0x253bc/0x253c4/
