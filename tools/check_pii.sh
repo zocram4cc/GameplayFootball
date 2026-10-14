@@ -51,4 +51,10 @@ if [ -n "$emails" ]; then
   done <<<"$emails"
 fi
 
+# Agent worktrees replace the godot-cpp submodule with a symlink to the main
+# checkout. Committing that symlink (mode 120000) silently drops the submodule
+# and leaves a self-referencing link behind on cherry-pick (7e53c40).
+mode=$(git ls-files -s extern/godot-cpp | cut -d' ' -f1)
+[ "$mode" = "160000" ] || hit "extern/godot-cpp is not a submodule gitlink (mode ${mode:-missing})"
+
 exit "$fail"
