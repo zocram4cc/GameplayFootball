@@ -149,7 +149,11 @@ void GoalieDefaultStrategy::RequestInput(const MentalImage* mentalImage, Vector3
         defend,
         inPossession,
         dir * team->GetController()->GetOffsideTrapX(),
-        dir * AI_GetOffsideLine(match, mentalImage, team->GetID()),
+        // The CURRENT mental image, not this strategy's own snapshot: every
+        // other caller of the offside line reads it from `GetMentalImage(0)`.
+        // A per-controller snapshot is older, so it would disagree with what the
+        // rest of this tick already computed.
+        dir * AI_GetOffsideLine(match, match->GetMentalImage(0), team->GetID()),
         // PES's style word bits 19/20 are the Offensive/Defensive GK styles.
         CastPlayer()->GetPlayerData()->GetPlayingStyle() ==
             PlayingStyles::Player::OffensiveGoalkeeper,
