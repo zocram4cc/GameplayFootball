@@ -39,7 +39,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Fatigue effect on AI work rate|OBS, **ported**|`pes-re-stamina-drain.md`; `pesstamina.cpp`|`pesstamina.cpp` (tank/drain/breath/half-time/A5/injury; deletes GF fatigue)|
 |Goalkeeper: positioning, shot response, catch/punch/parry|partial; **deflect point ported**|`pes-re-goalkeeper.md` §1–3; `pes-re-keeper-port.md`|`elizacontroller.cpp` keeper branches; `peskeeper.cpp`|
 |Goalkeeper: crosses, distribution, one-on-ones|partial; **after-catch carry/step ported**, per-keeper 11-entry table (`team+0x22e4c`) open|`pes-re-goalkeeper.md` §4–6; `pes-re-keeper-port.md`|`peskeeper.cpp` (GF nearest-player pick stands in)|
-|Defensive individual decisions (tackle choice, jockey, intent flag `ai(B)+0x134`)|**open**|`pes-re-duels-fouls.md` §2|`elizacontroller.cpp` tackle/duel|
+|Defensive individual decisions (tackle, slide, block, intercept)|**OBS** structure: one 17-entry first-true reaction table `FUN_140a06dd0` per frame; tackle ≤3.0 m/22.5° into the carrier's touch, no tackle as last man; slide only COM ≥300, `4+0.8·L` m; block 1.3/3.0/7 m; no RNG; jockey = DELAY state; no AI shoulder/shirt-pull. Live tackle check open|`pes-re-defender-decisions.md`|`elizacontroller.cpp` tackle/duel branches, `AIsupport/`|
 |Advantage attack-chance test (`FUN_14050f7e0`)|partial (structure OBS, three tables INF)|`pes-re-duels-fouls.md` §3.1|`pesjudge.cpp` distance-only shortcut|
 |Receiving the ball (first touch, turn, let it run)|open|—|`elizacontroller.cpp`, humanoid touch|
 |Aerial duels and headers|open|—|`humanoid.cpp` jump/header|
