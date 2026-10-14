@@ -103,8 +103,10 @@ float PlayerBase::GetStat(const char* name) const {
 float PlayerBase::GetMaxVelocity() const {
   // Fatigue reduces sprint speed: PES's A5 factor is 1.0 at a full tank and
   // 0.8 when the tank empties (docs/re/pes-re-stamina-drain.md 4), so the
-  // rested-to-spent range is 100%..80% of the player's own top speed.
+  // rested-to-spent range is 100%..80% of the player's own top speed. A
+  // drained dash reserve caps it further (docs/re/pes-re-dash-reserve.md 3.1).
   return sprintVelocity * GetVelocityMultiplier() * GetFatigueFactor() *
+         pes::ReserveTopSpeedFactor(matchConstants, stamina, GetStat("physical_velocity")) *
          GetSlipFactor();
 }
 

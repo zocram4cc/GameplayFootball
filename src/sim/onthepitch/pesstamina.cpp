@@ -52,6 +52,22 @@ constexpr uint64_t INJ_CAP_VA = 0x14258b550;           // 255
 constexpr uint64_t INJ_KNOCK_VA = 0x14259be68;         // 150
 constexpr uint64_t INJ_INJURED_VA = 0x1425a2668;       // 200
 constexpr uint64_t INJ_JACKPOT_VA = 0x14259be58;       // 85
+// FUN_1406f9a2c's top-speed cap and FUN_1406eae00's physique ramp
+// (docs/re/pes-re-dash-reserve.md 3.1).
+constexpr uint64_t TOP_RATE_G_LO_VA = 0x1425ddf78;      // 0.9166
+constexpr uint64_t TOP_RATE_G_HI_VA = 0x1425ddf80;      // 1.0833
+constexpr uint64_t TOP_RATE_G_DROP_VA = 0x1425e4a0c;    // 0.085
+constexpr uint64_t TOP_RATE_STAT_FLOOR_VA = 0x14259be1c;  // 20
+constexpr uint64_t TOP_RATE_STAT_CEIL_VA = 0x1425c48cc;   // 99
+constexpr uint64_t TOP_RATE_STAT_SPAN_VA = 0x1425cb300;   // 79
+constexpr uint64_t TOP_RATE_STAT_DROP_VA = 0x1425e4a10;   // 0.1
+// The group-80 rate table: 16-byte segments (speed hi, speed lo, rate hi,
+// rate lo); the hi pair of each segment is its knot.
+constexpr uint64_t TOP_RATE_TABLE_VA = 0x1425de010;
+constexpr int TOP_RATE_TABLE_STRIDE = 16;
+constexpr int TOP_RATE_TABLE_RATE_OFFSET = 8;
+constexpr int TOP_RATE_TABLE_KNOTS = 10;  // the segment after the 9.16 m/s knot is zero
+static_assert(TOP_RATE_TABLE_KNOTS <= StaminaConstants::kTopRateMaxKnots);
 
 // Instruction immediates (OBS): each is checked against its opcode bytes before
 // its value is trusted, so a different build fails loudly.
@@ -190,9 +206,26 @@ std::optional<StaminaConstants> LoadStaminaConstants(const PeImage& exe, std::st
                            {INJ_CAP_VA, &k.injuryCap},
                            {INJ_KNOCK_VA, &k.injuryKnockAcc},
                            {INJ_INJURED_VA, &k.injuryInjuredAcc},
-                           {INJ_JACKPOT_VA, &k.injuryJackpotSev}})) {
+                           {INJ_JACKPOT_VA, &k.injuryJackpotSev},
+                           {TOP_RATE_G_LO_VA, &k.topRateGLo},
+                           {TOP_RATE_G_HI_VA, &k.topRateGHi},
+                           {TOP_RATE_G_DROP_VA, &k.topRateGDrop},
+                           {TOP_RATE_STAT_FLOOR_VA, &k.topRateStatFloor},
+                           {TOP_RATE_STAT_CEIL_VA, &k.topRateStatCeil},
+                           {TOP_RATE_STAT_SPAN_VA, &k.topRateStatSpan},
+                           {TOP_RATE_STAT_DROP_VA, &k.topRateStatDrop}})) {
     *error = "PES2021.exe: stamina .rdata constants unmapped";
     return std::nullopt;
+  }
+  k.topRateKnots = TOP_RATE_TABLE_KNOTS;
+  for (int i = 0; i < TOP_RATE_TABLE_KNOTS; ++i) {
+    const uint64_t seg = TOP_RATE_TABLE_VA + static_cast<uint64_t>(i) * TOP_RATE_TABLE_STRIDE;
+    if (!ReadFloatList(exe, {{seg, &k.topRateSpeed_mps[i]},
+                             {seg + TOP_RATE_TABLE_RATE_OFFSET, &k.topRateValue[i]}}) ||
+        (i > 0 && !(k.topRateValue[i] > k.topRateValue[i - 1]))) {
+      *error = "PES2021.exe: the group-80 rate table is unmapped or not monotone";
+      return std::nullopt;
+    }
   }
   // gsInt is a dword the image holds as 54, not a float: FUN_141e532e0 reads
   // it with `mov eax, dword ptr [rip+d]` and the drain divides by it.
@@ -448,12 +481,60 @@ float FatigueFactor(const StaminaConstants& k, const StaminaState& s) {
   return k.a5Base + k.a5Scale * t;
 }
 
+int BreathPct(const StaminaConstants& k, const StaminaState& s) {
+  // No tank (officials, players never dealt stamina): a full reserve, the
+  // way FatigueFactor treats them.
+  constexpr int kFullPct = 100;
+  if (s.max == 0) return kFullPct;
+  return s.breath * 100 / std::max(1, BreathCap(k, s));
+}
+
 int BreathPenalty(const StaminaConstants& k, const StaminaState& s) {
-  const int bp = s.breath;
+  const int bp = BreathPct(k, s);
   if (bp <= 0) return static_cast<int>(k.breathPenaltyScale);
   if (bp >= static_cast<int>(k.breathPenaltyFullPct)) return 0;
   return static_cast<int>((bp - k.breathPenaltyFullPct) / k.breathPenaltyDivisor *
                           k.breathPenaltyScale);
+}
+
+namespace {
+
+// FUN_1406f9a2c: the rate cap at physique scale G for a Speed stat (0..99)
+// with `penaltyShare` (0..1) of the reserve's 20 points taken off.
+float TopRate(const StaminaConstants& k, float speed, float penaltyShare, float g) {
+  const float u = Clamp01((g - k.topRateGLo) / (k.topRateGHi - k.topRateGLo));
+  const float base = 1.0f - k.topRateGDrop * u;
+  const float s = speed - k.topRateStatFloor * penaltyShare;
+  const float q = s <= k.topRateStatFloor ? 0.0f
+                  : s >= k.topRateStatCeil ? 1.0f
+                                           : (s - k.topRateStatFloor) / k.topRateStatSpan;
+  return base - k.topRateStatDrop * (1.0f - q * q);
+}
+
+// The group-80 table read backwards: the speed a playback rate produces.
+float SpeedForRate(const StaminaConstants& k, float rate) {
+  const int n = k.topRateKnots;
+  if (rate <= k.topRateValue[0]) return k.topRateSpeed_mps[0];
+  for (int i = 1; i < n; ++i) {
+    if (rate <= k.topRateValue[i]) {
+      const float t = (rate - k.topRateValue[i - 1]) / (k.topRateValue[i] - k.topRateValue[i - 1]);
+      return k.topRateSpeed_mps[i - 1] + t * (k.topRateSpeed_mps[i] - k.topRateSpeed_mps[i - 1]);
+    }
+  }
+  return k.topRateSpeed_mps[n - 1];
+}
+
+}  // namespace
+
+float ReserveTopSpeedFactor(const StaminaConstants& k, const StaminaState& s, float speedStat) {
+  const int bp = BreathPct(k, s);
+  if (bp >= static_cast<int>(k.breathPenaltyFullPct)) return 1.0f;
+  const float share = bp <= 0 ? 1.0f : (bp - k.breathPenaltyFullPct) / k.breathPenaltyDivisor;
+  constexpr float kNeutralPhysiqueScale = 1.0f;  // see the ponytail note in the header
+  constexpr float kStatPerUnit = 100.0f;         // GF stores PES's 40..99 as 0.40..0.99
+  const float speed = speedStat * kStatPerUnit;
+  return SpeedForRate(k, TopRate(k, speed, share, kNeutralPhysiqueScale)) /
+         SpeedForRate(k, TopRate(k, speed, 0.0f, kNeutralPhysiqueScale));
 }
 
 int BreakBonus(const StaminaConstants& k, const StaminaState& s, int period, int fitness,

@@ -481,23 +481,22 @@ void Player::Process() {
       previousDirectionVec = currentDirection;
     }
 
-    // PES 2021's per-tick stamina drain
-    // (docs/re/pes-re-stamina-drain.md 3.3), which only runs while the ball is
-    // in play: a dead ball freezes the tank. The GF distance-based drain it
-    // replaces is gone.
+    // PES 2021's stamina: the breath reserve updates every tick, dead balls
+    // included, which is how it refills through stoppages and half time
+    // (docs/re/pes-re-dash-reserve.md 4.1); the tank's drain only runs while
+    // the ball is in play (docs/re/pes-re-stamina-drain.md 3.3).
+    float speed_kmh = 0.0f;
+    // The movement the humanoid produced this tick, in km/h.
+    const float moved_m = (posAfter - posBefore).GetLength();
+    if (moved_m > 0.0f) speed_kmh = moved_m * 100.0f * 3.6f;
+    // The 3-D velocity PES tests against 22 km/h uses the same speed here.
+    pes::UpdateBreath(match->GetPesStaminaConstants(), stamina, speed_kmh, hasPossession,
+                      &stamina.breath);
     if (match->IsInPlay() && !match->IsInSetPiece()) {
-      float speed_kmh = 0.0f;
-      // The movement the humanoid produced this tick, in km/h.
-      const float moved_m = (posAfter - posBefore).GetLength();
-      if (moved_m > 0.0f) speed_kmh = moved_m * 100.0f * 3.6f;
-      // The 3-D velocity PES tests against 22 km/h uses the same speed here.
-      pes::UpdateBreath(match->GetPesStaminaConstants(), stamina, speed_kmh,
-                        hasPossession, &stamina.breath);
-      const int breathPct = stamina.breath * 100 /
-                            std::max(1, pes::BreathCap(match->GetPesStaminaConstants(), stamina));
       stamina.cur = pes::DrainTick(match->GetPesStaminaConstants(), stamina,
                                    pes::SpeedClass(match->GetPesStaminaConstants(), speed_kmh),
-                                   breathPct, team->HasPossession());
+                                   pes::BreathPct(match->GetPesStaminaConstants(), stamina),
+                                   team->HasPossession());
     }
 
     if (cards > 1 && cardEffectiveTime_ms <= match->GetActualTime_ms()) {

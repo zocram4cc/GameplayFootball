@@ -91,6 +91,20 @@ struct StaminaConstants {
   float breathPenaltyScale;       // 10
   float breathPenaltyFullPct;     // 20
   float breathPenaltyDivisor;     // -20
+  // The reserve's top-speed cap, FUN_1406f9a2c (dash-reserve report 3.1):
+  // rate = base(G) - drop * (1 - q^2), q from the Speed stat less the reserve
+  // penalty, then the group-80 rate -> m/s table inverted.
+  float topRateGLo;        // 0.9166: the physique ramp's floor
+  float topRateGHi;        // 1.0833: and its top
+  float topRateGDrop;      // 0.085: base = 1 - 0.085 * u
+  float topRateStatFloor;  // 20: q = 0 at or below
+  float topRateStatCeil;   // 99: q = 1 at or above
+  float topRateStatSpan;   // 79
+  float topRateStatDrop;   // 0.1
+  static constexpr int kTopRateMaxKnots = 16;
+  int topRateKnots;        // 10
+  float topRateSpeed_mps[kTopRateMaxKnots];
+  float topRateValue[kTopRateMaxKnots];
   // The injury roll (report 6).
   float injurySpeedScale_kmh;      // 25
   float injurySpeedFloor;          // 0.7
@@ -138,6 +152,10 @@ void InitStamina(const StaminaConstants& k, int staminaAbility, int conditionArr
 // The breath cap: max(pct, 20) * 1920 / 100, where pct is the tank percentage.
 int BreathCap(const StaminaConstants& k, const StaminaState& s);
 
+// The reserve as the percentage of its cap that every PES reader takes
+// (FUN_140a581c0, docs/re/pes-re-dash-reserve.md 2); `breath` itself is raw.
+int BreathPct(const StaminaConstants& k, const StaminaState& s);
+
 // The breath reserve update (report 3.2). `speed_kmh` is the 3-D speed, which
 // is not the same speed the drain's class reads.
 void UpdateBreath(const StaminaConstants& k, const StaminaState& s, float speed_kmh,
@@ -158,6 +176,13 @@ float FatigueFactor(const StaminaConstants& k, const StaminaState& s);
 // The breath penalty on the four breath-sensitive stats (report 4): integer
 // points subtracted from the live stat byte.
 int BreathPenalty(const StaminaConstants& k, const StaminaState& s);
+
+// The share of his rested top speed a player keeps at this reserve: 1 at or
+// above 20 %, falling to the speed a 20-point slower player would have when
+// it is empty (dash-reserve report 3.1). `speedStat` is GF's 0..1 Speed.
+// ponytail: PES's physique scale G is taken as 1 - GF has no per-player G;
+// it only moves the base rate, and the factor is a ratio of two rates.
+float ReserveTopSpeedFactor(const StaminaConstants& k, const StaminaState& s, float speedStat);
 
 // The half-time / extra-time break bonus (report 3.4), applied once at the
 // whistle. `period` is PES's MI+0x1168: 2 half time, 4 the extra-time break.

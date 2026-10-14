@@ -311,18 +311,60 @@ TEST(PesStamina, FatigueFactorCurve) {
 
 // --- the breath penalty (report 4) ---
 
-TEST(PesStamina, BreathPenaltySteps) {
+// `breath` holds the raw reserve B (0..BreathCap), but PES's penalty reads the
+// percentage FUN_140a581c0 returns, so the thresholds are 20 % and 0 % of the
+// cap, not 20 and 0 raw units (docs/re/pes-re-dash-reserve.md DR-12).
+TEST(PesStamina, BreathPenaltyReadsThePercentageNotTheRawReserve) {
   const pes::StaminaConstants k = Pes();
   pes::StaminaState s;
   pes::InitStamina(k, 80, 2, 1, F10, 100, &s);
-  s.breath = 1920;  // full
+  const int cap = pes::BreathCap(k, s);
+  s.breath = cap;
+  EXPECT_EQ(pes::BreathPct(k, s), 100);
   EXPECT_EQ(pes::BreathPenalty(k, s), 0);
-  s.breath = 20;
+  s.breath = cap * 20 / 100;
   EXPECT_EQ(pes::BreathPenalty(k, s), 0);
-  s.breath = 10;  // (10-20)/-20 * 10 = 5
+  s.breath = cap * 10 / 100;  // (10-20)/-20 * 10 = 5
   EXPECT_EQ(pes::BreathPenalty(k, s), 5);
+  s.breath = 20;  // a nearly empty reserve in raw units: ~1 %, not 20 %
+  EXPECT_GT(pes::BreathPenalty(k, s), 8);
   s.breath = 0;
   EXPECT_EQ(pes::BreathPenalty(k, s), 10);
+}
+
+// The reserve's top-speed cap (docs/re/pes-re-dash-reserve.md 3.1): a drained
+// reserve takes up to 20 Speed points off the animation rate cap, and the cap
+// reaches the pitch through the rate -> speed table. The table here is a
+// made-up monotone one: the test pins the relations, not PES's knots.
+TEST(PesStamina, DrainedReserveCapsTopSpeedAndAboveTwentyPercentItDoesNot) {
+  pes::StaminaConstants k = Pes();
+  k.topRateGLo = 0.9f;
+  k.topRateGHi = 1.1f;
+  k.topRateGDrop = 0.1f;
+  k.topRateStatFloor = 20.0f;
+  k.topRateStatCeil = 99.0f;
+  k.topRateStatSpan = 79.0f;
+  k.topRateStatDrop = 0.1f;
+  k.topRateKnots = 3;
+  k.topRateSpeed_mps[0] = 3.0f, k.topRateValue[0] = 0.3f;
+  k.topRateSpeed_mps[1] = 6.0f, k.topRateValue[1] = 0.7f;
+  k.topRateSpeed_mps[2] = 9.0f, k.topRateValue[2] = 1.0f;
+  pes::StaminaState s;
+  pes::InitStamina(k, 80, 2, 1, F10, 100, &s);
+  const int cap = pes::BreathCap(k, s);
+  const float fast = 0.99f, slow = 0.6f;
+  s.breath = cap;
+  EXPECT_FLOAT_EQ(pes::ReserveTopSpeedFactor(k, s, fast), 1.0f);
+  s.breath = cap * 20 / 100;
+  EXPECT_FLOAT_EQ(pes::ReserveTopSpeedFactor(k, s, fast), 1.0f);
+  s.breath = cap * 10 / 100;
+  const float half = pes::ReserveTopSpeedFactor(k, s, fast);
+  s.breath = 0;
+  const float empty = pes::ReserveTopSpeedFactor(k, s, fast);
+  EXPECT_LT(half, 1.0f);
+  EXPECT_LT(empty, half);
+  // The rate term is q^2, so the same 20 points cost a fast player more.
+  EXPECT_LT(empty, pes::ReserveTopSpeedFactor(k, s, slow));
 }
 
 // --- the injury roll (report 6) ---
