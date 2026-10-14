@@ -186,7 +186,7 @@ const pes::SetPieceTakerConstants* SharedSetPieceTakerConstants() {
   if (!SharedCarrierConstants())                                                 \
     GTEST_SKIP() << "PES2021.exe: carrier constants unavailable"; \
   if (!SharedSetPieceTakerConstants())                                         \
-    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
+    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable"
 
 // The report's clock constants, so the arithmetic is exercised against a Match.
 pes::PesClockConstants FakeConstants() {

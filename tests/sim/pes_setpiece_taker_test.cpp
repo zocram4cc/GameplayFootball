@@ -21,8 +21,8 @@
 
 #include <gtest/gtest.h>
 
-#include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/pessetpiecetaker.hpp"
+#include "onthepitch/setpiecelaws.hpp"
 
 #include <cstdlib>
 #include <memory>
@@ -43,8 +43,8 @@ int ElapsedAfterSeconds(float seconds) {
   return static_cast<int>(seconds * kFps);
 }
 
-// The gates as measured: 3.5 s corner, 3 s free kick, 1 s penalty. Synthetic
-// constants for the logic tests; the install's own are checked separately.
+// The measured gates, as synthetic constants: the logic tests pin the rule, the
+// install's own numbers are checked separately.
 pes::SetPieceTakerConstants MeasuredGates() {
   pes::SetPieceTakerConstants k;
   k.cornerGate_s = 3.5f;
@@ -61,25 +61,28 @@ const pes::SetPieceTakerConstants kGates = MeasuredGates();
 
 TEST(SetPieceTakerGate, HoldsUntilTheGatesElapse) {
   // Before the gate the kicker waits.
-  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(0.0f)), kGates);
-  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(2.0f)), kGates);
-  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, 188), kGates);
+  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(0.0f), kFps,
+                                           kGates));
+  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(2.0f), kFps,
+                                            kGates));
+  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, 188, kFps, kGates));
   // At the gate the kicker goes.
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, kCornerGateFrames), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(3.5f)), kGates);
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, kCornerGateFrames, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, ElapsedAfterSeconds(3.5f), kFps,
+                                           kGates));
   // And keeps going: the live 379-frame corner is the gate's second pass.
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, 379), kGates);
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, 379, kFps, kGates));
 }
 
 TEST(SetPieceTakerGate, FreeKickGatesEarlierThanACorner) {
-  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, 161), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, kFreeKickGateFrames), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, 163), kGates);
+  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, 161, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, kFreeKickGateFrames, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_FreeKick, 163, kFps, kGates));
 }
 
 TEST(SetPieceTakerGate, PenaltyGatesEarliest) {
-  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Penalty, 53), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Penalty, kPenaltyGateFrames), kGates);
+  EXPECT_FALSE(SetPieceLaws::MayTakeRestart(e_SetPiece_Penalty, 53, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Penalty, kPenaltyGateFrames, kFps, kGates));
 }
 
 TEST(SetPieceTakerGate, KickOffIsNotGatedByTheseNumbers) {
@@ -95,9 +98,9 @@ TEST(SetPieceTakerGate, ThrowInAndGoalKickUseTheirOwnWait) {
   // Both are governed by the taker's own arrival/readiness, not by a fixed
   // gate: a goal kick went at counter 83 in one match but is not fenced by
   // this number. Anything is permitted; nothing is forced.
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_ThrowIn, 0), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_GoalKick, 0), kGates);
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_GoalKick, 83), kGates);
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_ThrowIn, 0, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_GoalKick, 0, kFps, kGates));
+  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_GoalKick, 83, kFps, kGates));
 }
 
 TEST(SetPieceTakerGate, ShortCornerWindowIsABoundedWindow) {
@@ -120,7 +123,8 @@ TEST(SetPieceTakerGate, GatesScaleWithFrameRate) {
   const float gate60 = 3.5f * rate60;
   EXPECT_FALSE(
       SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, static_cast<int>(gate60) - 1, rate60, kGates));
-  EXPECT_TRUE(SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, static_cast<int>(gate60), rate60), kGates);
+  EXPECT_TRUE(
+      SetPieceLaws::MayTakeRestart(e_SetPiece_Corner, static_cast<int>(gate60), rate60, kGates));
 }
 
 // The gates read out of the install's exe, not transcribed into the source.

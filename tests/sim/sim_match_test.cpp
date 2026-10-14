@@ -259,9 +259,9 @@ Outcome Play(unsigned int seed, int minutes) {
   if (!SharedBallConstants())                                                   \
     GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"; \
   if (!SharedStoppageConstants())                                               \
-    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
+    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"; \
   if (!SharedSetPieceTakerConstants())                                         \
-    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
+    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable"
 
 }  // namespace
 

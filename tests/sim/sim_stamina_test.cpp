@@ -211,6 +211,8 @@ TEST(SimStamina, HalfTimeAppliesTheBreakBonusOnce) {
   if (!rng) GTEST_SKIP() << "PES2021.exe: rng constants unavailable";
   auto keeper = pes::LoadKeeperConstants(*exe, &err);
   if (!keeper) GTEST_SKIP() << "PES2021.exe: keeper constants unavailable";
+  auto taker = pes::LoadSetPieceTakerConstants(vfs, *exe, &err);
+  if (!taker) GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
 
   MatchSetup setup;
   setup.homeTeamDbId = HOME_TEAM;
