@@ -296,3 +296,184 @@ mod; the stock file is in `Data/dt18`). Values below are the live object (`const
    `constant_player.bin` in `Data/dt18` (`cpkls.py` extracts cpk members; the file is a `{nameOff, dataOff, size}`
    directory, struct packing differs from the live layout — map through the deserializer offsets).
 
+## 12. Live check + solver/slide-helper decode + stock-vs-mod constants (DefenderLiveRE)
+
+### 12.1 Live sampler, second half open play (OBS)
+`sudo python3 live_tk.py tkN.jsonl 900` in the DefenderLiveRE scratch dir, then `ana.py` / `ana2.py` / `ana3.py`
+(same reader). Sample: **13,247 logic frames, every frame contiguous** (frame-gap histogram: 1 for all 13,245
+consecutive pairs), 8,233 in open play (`ph == 1`, ≈ 152 s), 4,019 `ph == 2`, 994 `ph == 3`, 1 `ph == 0`; frame
+counter 29033 → restarts at 0 at the end. Combined with the earlier sample: **9,377 open-play frames (≈ 173 s)**.
+OBS: `ai+0x134 == 0` in all 181,126 player-frames (pad slots unbound) — §4 holds again.
+
+Challenge/block anime starts in open play (`hu+1 ∈ {0xb,0xc,0xd,0xe}`, contiguous detection):
+**1 standing tackle, 1 slide, 10 blocks, 0 SLIDING_KEEP (0xc)**.
+
+**Standing tackle** f=32012, CPU, `pl+0x5d0`: WAIT_TIMER 0x11 → 0x31 TACKLE, anime 0xd clip cur 0 / end 11:
+
+| gate (decoded) | measured | limit | agree |
+|---|---|---|---|
+| action ∉ {2,0x11,0x33,0x34,0x35} → strict branch | WAIT_TIMER 0x11 → branch taken | — | ✓ |
+| ball ≤ 0.25 s (13 f) ahead ≤ 3.0 m | 2.31 m (f+1: 1.76 m) | 3.0 | ✓ |
+| off predicted heading ≤ 22.5° | 3.0° (f+1: 14.6°) | 22.5 | ✓ |
+| engage ∠(heading, def→carrier) ≤ 112.5° | 42.2° | 112.5 | ✓ |
+| predicted gap ≤ 2.0 m | 1.17 m | 2.0 | ✓ |
+| from-behind (>135°) tolerance | carrier-facing ∠ 114.2° | ≤ 135 | ✓ not taken |
+| into the carrier's touch | carrier in a 14-f dribble-touch clip (cur 10/end 25 = 15 f to contact) | — | ✓ |
+| never as last man / no-cover veto, A level, BW cooldown, double-tackle, `p.y ≤ 3.0` | — | — | not in the sample (needs MA/team/registry state) |
+
+**Slide** f=32896, CPU, PRESS 0x34 (replaced a 0xe BLOCK anime that had run 32894–32895), anime 0xb clip cur 0 /
+end 22:
+
+| gate (decoded) | measured | limit | agree |
+|---|---|---|---|
+| open play | ph == 1 | — | ✓ |
+| ball height ≤ 0.5 m (10 f ahead) | 0.11 m (f+10: 0.20 m) | 0.5 | ✓ |
+| \|p − pos\| < 4.0 + 0.8·L | ball 1.42 m (L ≥ 0) | ≥ 4.0 | ✓ |
+| no teammate already sliding | none of the 10 teammates in 0xb/0xc | — | ✓ |
+| slide only on odd logic frames | anime starts f=32896 (**even**) | odd | consistent-with-lag: the command issued on odd 32895 lands in the anime one frame later (INF(high)); the block anime it replaced ran 32894–32895 |
+| capability 0x08 (level ≥ 300), L terms, own-box rule | — | — | not in the sample |
+
+**Blocks (10):** blocker action, ball distance, nearest-opponent ("owner") distance, ball height/speed:
+
+| f | action | ball d | owner d | owner clip | ball h | ball speed | verdict vs decoded radii (1.3 m / 3.0 m PRESS) |
+|---|---|---|---|---|---|---|---|
+| 29400 | PRESS | 1.92 | 1.52 | touch 2/14 | 0.11 | 4 km/h | ✓ ≤ 3.0 |
+| 32723 | PRESS | 3.34 | 3.27 | touch 2/14 | 0.11 | 3 km/h | ✗ 3.27 > 3.0 — open |
+| 32894 | PRESS | 1.51 | 1.70 | touch 2/14 | 0.11 | 3 km/h | ✓ ≤ 3.0 |
+| 32910 | MARK | 6.81 | 10.61 | PASS_GET | 0.75 | 97 km/h | ✓ loose ball ≥ 70 km/h → 2.0 s speedBall window |
+| 36011 | WAIT_TIMER | 5.60 | 8.21 | PASS_GET | 0.73 | 82 km/h | ✓ loose ball ≥ 70 km/h → 2.0 s window |
+| 36428 | PRESS | 2.63 | 1.48 | touch 5/25 | 0.11 | 5 km/h | ✓ ≤ 3.0 |
+| 38879 | WAIT_TIMER | 4.77 | 1.18 | touch 0/14 | 0.32 | 43 km/h | ✓ ≤ 1.3 |
+| 39427 | PRESS | 2.59 | 2.26 | touch 2/14 | 0.11 | 42 km/h | ✓ ≤ 3.0 |
+| 40269 | PRESS | 3.14 | 2.67 | touch 5/25 | 0.11 | 2 km/h | ✓ ≤ 3.0 |
+| 40435 | DELAY | 2.27 | 1.74 | touch 2/14 | 0.34 | 51 km/h | ✗ 1.74 > 1.3 — open |
+
+**Agreement: tackles 1/1, slides 1/1, blocks 8/10** (6 plain-radius, 2 loose-ball speedBall; f=32723 and f=40435
+sit 0.27 m / 0.44 m outside the decoded owner radius with the owner in a 14-frame touch clip 12 frames from
+contact — INF(med) a solver/predicted-point measurement, open). No tackle-as-last-man violation is observable
+here; the standing tackle was by a WAIT_TIMER defender, i.e. the strict branch of §2 step 5.
+
+### 12.2 `FUN_14096fda0` (tackle geometry) — full body, return path, behind-tolerance direction (OBS raw)
+`pdis.py 0x14096fda0` stops at the **first `ret` (0x1409706f5)** and hides the tail; the real function runs
+0x14096fda0–0x140970e32 (0x1409706f6 onwards, verified with a no-break disassembly). The previous
+"void return / split after 0x1409706c2" was that truncation.
+
+- **Return path:** true path `mov al,1` @0x140970e2c → `jmp 0x14097067b`; **every veto jumps to 0x140970679
+  `xor al,al`** → the same epilogue (`0x14097068..` register restores → stack-cookie check → `ret` @0x1409706f5
+  is inside the *epilogue* of the longer body). So the function returns bool exactly as the caller
+  `FUN_140970e40` (`test al,al` @0x14097139a) expects.
+- **Touch-timing gate** (0x1409709d5): `FUN_140a6e340(carrier anime)`; with `end ≠ 0` refuse when
+  `(end − cur) < (FUN_1406b3d60(anime, 0xd, dist-class) − x)` where `x = 0.075·gs` (A=0, 0x14259da90) /
+  `0.1·gs` (A=1, 0x142588200) / `0.125·gs` (A=2, 0x14259bdcc), dist-class = 2 when the carrier is > 1.5 m
+  (0x14259bddc) from the contact point else 0/1. (Report §2 confirmed.)
+- **No double tackle** (0x140970ad1..0x140970c4d): the 11 teammates via `MA+0x22e4c + 200·def_id`, skip if the
+  entry distance > 100.0 (0x14253ee30): a teammate in TACKLE (anime 0xd) with `end/2 ≤ carrier clip cur` →
+  refuse; a teammate in a ball-action class (`FUN_140a6e5e0`) whose distance to the point is 1.5× (0x14259bddc)
+  farther → refuse.
+- **Safety vetoes, raw** (0x140970869..0x1409709d5): applied only when `action − 0x34 > 1`, i.e. action ∉
+  {PRESS 0x34, SAND 0x35}; cover check `FUN_140a4fea0(ctx, id, &pos, 10.0, 60.0)` (0x142588210 / 0x14259a764);
+  with no cover and `FUN_140a4f1e0 == 2` and frames-since-event > `gs/9` (0x38e38e39/2 division trick) and
+  `tackle.json +0x78` (live 2.5) > sf → refuse; and `|MA + 20·id + 0x40 − defender x| < 10` with no cover and an
+  old event and `tackle.json +0x74` (live 2.6) > sf → refuse. (Matches §2.)
+- **Output struct** (0x140970c53..): {point, target id, variant, `+0xa0 = 1`} with the variant forced to 5 when
+  the defender's action is FREE_RUN 2, or WAIT_TIMER 0x11 and pad-controlled; `+0xa1 = 1` when the team order kind
+  ∈ 0x36..0x39.
+- **Anime feasibility** `FUN_1406b4580(anime, 0xd, …)` (0x140970d51): false → refuse.
+- **Human-only final angle** (0x140970d80..0x140970e26): pad-controlled and action ≠ PRESS: predicted heading
+  (0.6944/gs s ahead, 0x14259bdd0) vs the ball bearing must be ≤ `[rsp+0x48]` = **90°** (0x14259be5c), or **65°**
+  (0x14259be48) once the speed (`FUN_14042d470`) ≥ 8.0 (0x14259bdf4).
+- **From-behind branch — direction now OBS** (0x140970734..0x140970863): guard `FUN_140a6e3f0(carrier anime)`
+  (else the branch is skipped); `∠ = FUN_140481b00(carrier heading, bearing(carrier→defender))`; **if 135 < ∠**
+  (0x14259be60) the tackle is refused unless either (a) `|bearing(carrier→defender) − carrier heading| ≥ tol`
+  or (b) the same difference (re-wrapped) is > **25.0** (0x14259be20). `tol = 45°` (A=0, 0x14259be30),
+  **11.25°** (A=1, 0x1425cc680), **0°** (A=2, register zeroed). So the branch **refuses** when the defender is
+  directly behind AND within the tolerance — the report's INF(med) sense is confirmed, and ENFORCER+team-mode-3
+  (A=2) means "never tackle from behind".
+- The 135° test at 0x140970294–0x140970349 is a **different** gate: `|defender heading − wrap360(carrier analysis
+  bearing MA+0x247d4[id] + 180)| ≤ 135` (fail above) — not the from-behind tolerance.
+
+### 12.3 `FUN_1405bebd0` (contact-point solver) — meaning of `p.y ≤ 3.0` (OBS)
+`FUN_1405bebd0(ctx, id, clip, float *p, char f_in, char *p_real)`:
+- resolves the target: mode `m = FUN_140a627e0(ctx,0) < 0x16` → `(10 < id ? id : id)` team-side test, else
+  `FUN_140a50e00(ctx,id)` (the opponent to challenge / ball owner); 0xff = invalid → the table fallback.
+- with a valid target the point starts as `FUN_140a6cf70(AC, clip+1)` — the clip's **contact point**, a world
+  position from the global anime-context table; if the target is in a touch-clip class
+  (`FUN_140a6e150`/`FUN_140a6e5e0`) and `end ≠ 0`, with `iVar12 = end − cur` frames to contact and
+  `iVar12 ≥ 1 && clip ≥ iVar12`: a 22.5° (0x14259d618) ball-velocity-bearing test; if it fails, the
+  `tackle.json +0x80` ratio check (`(cur/end ≤ forecastHitRate, live 4.5) && !bVar11`) or `f_in == 0` keeps the
+  table point with `*p_real = 0`, otherwise the point becomes `FUN_140a6cf70(AC, iVar12+1)` — the contact point of
+  the **specific frame** — and `*p_real = 1`. `FUN_140a92d40(p − ball)` emits the bearing helper. Anime 5 has a
+  35° (0x14259a760) variant of the bearing test.
+- **`p.y ≤ 3.0` measures the contact point's HEIGHT**: the gate is in the caller `FUN_140970e40` @0x14097136f
+  (`comiss xmm0, [0x14258c264]` on `[rbp-0x55]`, the **second float** of the solver's out point at `rbp-0x59`)
+  → refuse when the ball-contact point is more than 3.0 m above the ground. The earlier INF(med) "reach distance"
+  reading is dead. (The record layout is (x, height, z): ball/player heights are the middle float.)
+
+### 12.4 `FUN_140972870` / `FUN_140973000` (slide follow-ups) (OBS decompile + constants)
+**`FUN_140972870(pc, p, target, L)`** — slide against a carrier:
+- veto when `*(G+0x2aa8)[team] / 3.0` (0x14258c264) `< (float)(int)aggr_byte · p.x` (the team-sheet flag term);
+- reaction delay: `FUN_1408caf60(&stat, player, 0x15)` + the stat at +0x15 → refuse while
+  `MI.frame − event.frame < gs·0.3 (0x142590d98) + gs·ratio·(scale 1.0, 0x14256ae1c)` — the per-player reaction
+  time in the slide predicate;
+- carrier in a touch clip: refuse when `end·0.7 (0x14257a194) < cur` and the angle ≥ 45° (0x14259be30);
+  refuse on `FUN_140a6e3c0` / anime 0x57;
+- an angle test whose limit is **L-dependent: 90° (L=0, 0x14259be5c) / 105° (L=1, 0x1425c48d0) / 120° (L=2,
+  0x14256ae30) / 135° (L≥3, 0x14259be60)** — operands INF;
+- the slide capsule: `1.7 − 0.2·L` (0x14259da9c, 0x142598578) reach, then an inner threshold
+  **1.4 (L=0) / 1.2 (L=1) / 1.1 (L=2) / 0.9 (L=3)** (0x14259d5d8 / 0x14259d5d4 / 0x1425a3590 / 0x14258c260),
+  a 135° bearing test with the perpendicular-distance check (`FUN_140581ce0`/`FUN_140591a10`), and the
+  "team-mate reaches the point" test `FUN_140a4f160(ctx, …, p, d, 60.0, 10 + 10·L)` (0x142588210) plus the
+  z-order comparison.
+
+**`FUN_140973000(pc, p, L)`** — slide on a loose ball:
+- refuse unless `FUN_1415a1780(table value at `(byte[`FUN_140a714a0`+0xb2+id]+team)·8) > 18` (0x14259be18);
+- `FUN_140a4ee40(ctx, side, p, 0)` (who reaches the point) and the distance to it ≤ 1.5 (0x14259bddc);
+- `p[1] ≤ 0.6` (0x14257a190), target = `FUN_140a50e00`;
+- refuse when `(float)(int)aggr_byte · p.x > 0` (slide direction) or the target anime is in `FUN_140a6e5e0` (L < 2)
+  or `L < 1`;
+- ball speed `·3.6 (0x14259ce38) ≥ 35 km/h` (0x14259a760) or the `1.5 + 0.5·clamp(L/3)` cap (0x142565600);
+  then a 60° (0x14259a764) bearing test, the anime class checks, a distance-difference test ≤ `L·0.5 + 1`
+  (0x14256ae1c), and for L < 3 a 120° (0x14256ae30) angle limit.
+
+### 12.5 Stock vs mod constants (OBS) — §11.7 closed
+Method: the two `constant_player.bin` files (stock `dt18_all.cpk` member, live gameplay cpk member) and the two
+`constant_match.bin` files are both `WESYS` containers — stock tag `\xff\x10Q`, mod tag `\x00\x10\x01`, zlib
+deflate, inflated `u32 count | table | names | payloads | "v4.0"` — decoded with the org's
+`tools/pes21_import/wesys_constant.py`. The mod's decoded objects are byte-identical to the live registry
+objects currently loaded in the process (checked field-by-field), so the live values in §5/§7 are the mod's.
+Values below are **stock → mod(live)**.
+
+**tackle.json (0x3c, 176 B):**
+`check_SaftyRate_Delay` 0.4 → 2.5 · `check_SaftyRate_Last_Line` 0.5 → 2.6 · `check_SaftyRate_No_Cover` 0.4 → 2.5
+· `failAfterStopTime` 0.5 → 4.0 · `forecastHitRate` 0.7 → 4.5 · `saftyRate_FarDist` 1.5 → 8.0 ·
+`saftyRate_NearDist` 0.2 → 3.0 · `tackleThinkDisableToTrap` 1.75 → 0.95 · `accelBackLimitSpeed` 1 → 3 ·
+`accelLimitSpeedIdle` 4 → 6 · `adjustLimitAngleIdle` 22.5 → 62.5 · `adjustLimitAngleMove` 11.25 → 42.5 ·
+`pressTackleEnableAngle` Idle 135 → 125, IdleAggressiveLv1 157.5 → 147.5, IdleAggressiveLv2 168.75 → 167.75,
+Move 105 → 99, MoveAggressiveLv1 135 → 122, MoveAggressiveLv2 157.5 → 142 · `playbackSpeedHighest` 1.2 → 1.84 ·
+`playbackSpeedLowest` 0.9 → 0.55 · `shoulderInterruptSlideLimit` 0.1 → 0.5 · `shoulderSlideLimit` 0.75 → 0.45 ·
+plus three boolean/dword fields 0→1, 0→1, 1→0 (candidates `autoSideStepEnable`, `stepMoveAutoTackleFarEnable`,
+`reactionStartFrame` — INF(med), the payload packs the byte fields).
+Unchanged: `accelLimitSpeedMove` 0, the four `autoShoulder*` bytes 1, `ballVisibleCheck` 1, `enterSpeed` 14,
+`farCutFrame` 0, `holdEnable` 1, `midCutFrame` 2, `nearCutFrame` 4, `shoulderCutFrame` 0, `shoulderOnly` 0,
+`freeMoveTackleMode` 2, `manualSideStepEnable` 0.
+
+**sliding.json (0x3b, 32 B):** all five anime fields changed — `animeAccelLimitSpeed` 2 → 4,
+`animeAdjustLimitAngle` 0.75 → 1, `animeEnterSpeed` 14 → 13, `playbackSpeedHighest` 1.2 → 2.2,
+`playbackSpeedLowest` 0.9 → 0.6.
+
+**block.json (0x27, 80 B):** `checkDist` 1.0 → 0.5 · `checkDistShoot` 3.0 → 0.9 · `normal` 0.2 → 0.9 ·
+`speedBall` 1.0 → 2.0 · one of the per-kick byte flags 0 → 1 (the packed group `01 01 01 00` → `01 01 01 01`;
+which of centering/longPass/shoot/shortPass is INF). Unchanged: `exec` 1, `checkArea` 0, `enable` 1, the other
+per-kick flags.
+
+**reaction.json (0x39, 16 B):** `thinkWaitTimer` 1 → 0 — with 0 the `flagA` skip on `cmd+0x874 == 0x11
+WAIT_TIMER` in the chooser (§1) never fires for a WAIT_TIMER player.
+
+**pes15Test.json (0xf, constant_match.bin, 128 B):** exactly one value changed, 0.3 → 0.3051 (field unnamed);
+`enable` 1 and `pressCheckStepMoveDistance` 2.0 are **stock values too** (the "code default 5.0" is the code's
+fallback when the key is absent, not a stock value).
+
+Mod objects in `constant_player.bin` that also differ but are outside this report's scope: `avoid`, `centering`,
+`contact`, `dribble`, `press`, `shoot`, `ballplayer*` (and in `constant_match.bin`: `ball`, `cpuLevel`, `cursor`,
+`pesSmart`, `animeAging*`, `setplayGuideGoalKick`).
+
