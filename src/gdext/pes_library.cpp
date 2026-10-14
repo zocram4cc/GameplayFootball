@@ -104,6 +104,11 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 strategy constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) substitutionConstants_ = pes::LoadSubstitutionConstants(*exe, &err);
+  if (!substitutionConstants_) {
+    UtilityFunctions::push_error("PES21 substitution constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) stoppageConstants_ = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants_) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));

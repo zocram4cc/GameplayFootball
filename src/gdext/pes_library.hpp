@@ -11,6 +11,7 @@
 #include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/pesstrategy.hpp"
+#include "onthepitch/pessubs.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
@@ -102,6 +103,10 @@ class PesLibrary : public RefCounted {
   const pes::StrategyConstants* strategy_constants() const {
     return strategyConstants_ ? &*strategyConstants_ : nullptr;
   }
+  // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
+  const pes::SubstitutionConstants* substitution_constants() const {
+    return substitutionConstants_ ? &*substitutionConstants_ : nullptr;
+  }
 
   // PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
   // item 2): the frame-rate multiples the AI holds a restart for.
@@ -139,6 +144,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::DefensiveShapeConstants> defensiveShapeConstants_;
   std::optional<pes::DefenderDecisionConstants> defenderDecisionConstants_;
   std::optional<pes::StrategyConstants> strategyConstants_;
+  std::optional<pes::SubstitutionConstants> substitutionConstants_;
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;
   std::optional<pes::StaminaConstants> staminaConstants_;

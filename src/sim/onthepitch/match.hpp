@@ -435,6 +435,7 @@ protected:
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::StrategyConstants pesStrategyConstants{};
+  pes::SubstitutionConstants pesSubstitutionConstants{};
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   pes::SetPieceTeamConstants pesSetPieceTeamConstants{};
   pes::DefensiveShapeConstants pesDefensiveShapeConstants{};

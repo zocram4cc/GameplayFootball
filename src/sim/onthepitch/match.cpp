@@ -12,7 +12,6 @@
 
 #include "../data/playerskills.hpp"
 #include "AIsupport/AIfunctions.hpp"
-#include "aimanager.hpp"
 #include "base/geometry/line.hpp"
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
@@ -153,6 +152,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES strategy constants missing: read them from the install with "
         "pes::LoadStrategyConstants into MatchSetup::pesStrategyConstants");
   pesStrategyConstants = *setup.pesStrategyConstants;
+  // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
+  if (setup.pesSubstitutionConstants == nullptr)
+    throw std::runtime_error(
+        "PES substitution constants missing: read them from the install with "
+        "pes::LoadSubstitutionConstants into MatchSetup::pesSubstitutionConstants");
+  pesSubstitutionConstants = *setup.pesSubstitutionConstants;
   if (setup.pesStaminaConstants == nullptr)
     throw std::runtime_error(
         "PES stamina constants missing: read them from the install with "
@@ -523,55 +528,75 @@ void Match::ProcessAutoSubstitutions() {
   if (matchPhase == e_MatchPhase_Penalties || gameOver)
     return;
 
+  // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md): an injured
+  // player is replaced at once by whoever is left (kind 2); stamina subs
+  // (FUN_140523b60, kind 3) take the tired below their role class's threshold,
+  // under a per-mode cap that opens up through the second half.
+  // ponytail: PES's mode comes from a settings byte GF does not carry (1 low
+  // .. 3 high, INF med); the middle mode stands in. PES's cap byte is the
+  // stamina-sub cap; GF's substitution limit stands in.
+  constexpr int kCpuSubMode = 2;
+  constexpr int kInjured = 3;  // StaminaState::injuryLevel: 3 = injured, 2 = a knock
+  constexpr unsigned long kHalfLength_ms = 45UL * 60000UL;
+  constexpr unsigned long kMsPerMinute = 60000UL;
+  const pes::SubstitutionConstants& k = pesSubstitutionConstants;
   for (int teamID = 0; teamID < 2; teamID++) {
     // A team without the CPU manager keeps its bench as it is.
-    if (!AIManagerRunsTeam(teamID))
-      continue;
-    if (Substitutions::GetRemaining(substitutionState, teamID) <= 0)
-      continue;
-
+    if (!AIManagerRunsTeam(teamID)) continue;
+    const int remaining = Substitutions::GetRemaining(substitutionState, teamID);
+    if (remaining <= 0) continue;
     Team* team = GetTeam(teamID);
-
     std::vector<Player*> squadPlayers;
     team->GetAllPlayers(squadPlayers);
-
-    std::vector<AIManager::SubstitutionCandidate> squad;
-    std::vector<Player*> considered;
-    squad.reserve(squadPlayers.size());
-    Player* goalie = team->GetGoalie();
+    std::vector<Player*> onPitch, benchPlayers;
+    std::vector<pes::BenchCandidate> bench;
+    const bool lateSession = matchPhase != e_MatchPhase_1stHalf;  // the super-sub's periods 3..7
+    constexpr float kStatPerUnit = 100.0f;
     for (Player* player : squadPlayers) {
-      if (!player->IsActive() && team->HasBeenSubstituted(player->GetID()))
-        continue;  // already used up
-      // Keepers only come off if they are actually injured.
-      if (player == goalie && player->GetInjuryLevel() < AIManager::substitutionInjuryLevel)
-        continue;
-
-      AIManager::SubstitutionCandidate candidate;
-      // The remaining stamina as a fraction of the tank, so the manager's
-      // threshold below reads on the same 0..1 scale it always did.
-      const pes::StaminaState& st = player->GetStamina();
-      candidate.fatigueFactorInv =
-          st.max == 0 ? 1.0f : clamp(static_cast<float>(st.cur) / st.max, 0.0f, 1.0f);
-      candidate.injuryLevel = static_cast<float>(st.injuryLevel) / 3.0f;
-      candidate.isOnPitch = player->IsActive();
-      // A super-sub is the bench's first choice, rating aside.
-      candidate.averageStat =
-          player->GetAverageStat() +
-          PlayerSkills::GetSubstituteBonus(player->GetPlayerData()->GetSkills(), player->IsActive());
-      squad.push_back(candidate);
-      considered.push_back(player);
+      if (player->IsActive()) {
+        onPitch.push_back(player);
+      } else if (!team->HasBeenSubstituted(player->GetID())) {
+        benchPlayers.push_back(player);
+        // ponytail: PES rates a bench player for the role from his position
+        // block (blk+0x88+role); GF has no per-role rating, his overall stands in.
+        bench.push_back({static_cast<int>(bench.size()), player->GetPlayerData()->GetRoles(),
+                         player->GetAverageStat() * kStatPerUnit,
+                         lateSession && PlayerSkills::Has(player->GetPlayerData()->GetSkills(),
+                                                          PlayerSkills::Skill::SuperSub)});
+      }
     }
-
-    AIManager::MatchSituation situation;
-    situation.matchTime_ms = matchTime_ms;
-
-    const AIManager::SubstitutionPlan plan = AIManager::PlanSubstitution(
-        squad, situation, Substitutions::GetRemaining(substitutionState, teamID));
-    if (!plan.wanted)
-      continue;
-
-    RequestSubstitution(teamID, considered.at(plan.playerOutIndex),
-                        considered.at(plan.playerInIndex));
+    auto replace = [&](Player* out, pes::SubKind kind) {
+      const int in = pes::PickReplacement(k, out->GetDynamicFormationEntry().role, kind, bench);
+      if (in < 0) return false;
+      RequestSubstitution(teamID, out, benchPlayers.at(in));
+      bench.erase(std::find_if(bench.begin(), bench.end(),
+                               [in](const pes::BenchCandidate& c) { return c.index == in; }));
+      return true;
+    };
+    int made = 0;
+    for (Player* player : onPitch) {
+      if (made >= remaining) break;
+      if (player->GetStamina().injuryLevel >= kInjured && replace(player, pes::SubKind::Injury)) ++made;
+    }
+    const bool firstHalf = matchPhase == e_MatchPhase_1stHalf;
+    const bool secondHalf = matchPhase == e_MatchPhase_2ndHalf;
+    const int minute = static_cast<int>(
+        (secondHalf && matchTime_ms >= kHalfLength_ms ? matchTime_ms - kHalfLength_ms : matchTime_ms) /
+        kMsPerMinute);
+    const int used = Substitutions::maxSubstitutions - remaining;
+    const int cap = pes::StaminaSubCap(k, kCpuSubMode, firstHalf, secondHalf, minute,
+                                       Substitutions::maxSubstitutions);
+    std::vector<pes::StaminaSubCandidate> tired;
+    for (size_t i = 0; i < onPitch.size(); ++i) {
+      const pes::StaminaState& st = onPitch[i]->GetStamina();
+      if (st.max == 0 || st.injuryLevel >= kInjured) continue;
+      tired.push_back({static_cast<int>(i), onPitch[i]->GetDynamicFormationEntry().role,
+                       static_cast<int>(static_cast<long long>(st.cur) * 100 / st.max)});
+    }
+    for (int i : pes::PickStaminaSubs(k, kCpuSubMode, tired)) {
+      if (used + made >= cap || made >= remaining) break;
+      if (replace(onPitch[i], pes::SubKind::Stamina)) ++made;
+    }
   }
 }
 
@@ -1352,8 +1377,6 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
                      tripType);
           referee->TripNotice(p1, p2, tripType);
           // foul statistics are counted by the referee at the whistle
-          const bool p1WasFit = p1->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
-          (void)p1WasFit;
           InjureFromContact(p1, p2);
         }
       }
@@ -1369,8 +1392,6 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
                      tripType);
           referee->TripNotice(p2, p1, tripType);
           // foul statistics are counted by the referee at the whistle
-          const bool p2WasFit = p2->GetInjuryLevel() < AIManager::substitutionInjuryLevel;
-          (void)p2WasFit;
           InjureFromContact(p2, p1);
         }
       }

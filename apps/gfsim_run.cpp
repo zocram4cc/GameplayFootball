@@ -117,6 +117,9 @@ int main(int argc, char** argv) {
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   auto strategyConstants = pes::LoadStrategyConstants(*exe, &err);
   if (!strategyConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
+  auto substitutionConstants = pes::LoadSubstitutionConstants(*exe, &err);
+  if (!substitutionConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -143,6 +146,7 @@ int main(int argc, char** argv) {
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
   setup.pesStrategyConstants = &*strategyConstants;
+  setup.pesSubstitutionConstants = &*substitutionConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

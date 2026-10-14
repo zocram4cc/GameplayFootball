@@ -106,10 +106,56 @@ Definitions:
   - `F2 = F1·(1 − (k·[rbp-0x60])·(1−…)·ramp)` (`0x14083eac1..0x14083eaf1`).
   - INF(low): the entity is the pass receiver or set-piece target. I did not resolve what `0x1406b0250` returns.
 
-### FUN_1408414a0 branch conditions
-Not traced this pass. This is the only reach-able leftover. Next step: run `pdis.py 0x1408414a0 0xe0` and map the two branches at decompile lines 47/56 to their compares.
+## 7. Third pass (all OBS raw unless tagged)
+### 7.1 `FUN_1408414a0(ap, Y=rdx→r15, P=r8→rbx, S=r9→rbp, …)`
+Correction to §1: only the **Y** record gets pSign written, and only at `0x1408417b6`. Everything else writes **P.pSign**.
+- `kind` = `ap+0x2752`. If it is −1, kind = 0x27, overridden by action 0x33 → 0x2a, 0x3f → 0x1c, 0x41 → 0x41. `sub = FUN_14071e520(kind)`. `st` = `ap+0x2755`.
+- **A. Non-kick action:** `!0x140a6e340(action)`, i.e. action ≥ 0x5e. Effect: `S.scale ×= 0.1`, `S.pSign = 0.5` (`0x140841539`). Go to Z.
+- **B. Header:** `0x1407246e0(ap)` is true when the action is 8..10, the Fox motion check `0x140724740` passes, and kick-kind table `0x14344e380` byte+0xc ≤ 1 (the header kinds).
+  - **B1:** `0x1407241a0(kind)` is true (kind ∈ {5, 6, 9, 0x48}). Effect: `Y.scale ×= 0.9`, `P.scale ×= 0.1`, `S.scale ×= 0.1` (`0x140841572`). Go to Z.
+  - **B2:** otherwise, switch on the motion id `m` = vtbl+0x18 word:
+    - `m == 0x1093`, or `m − 0x822` ∈ {0, 0x28, 0x29, 0x2f, 0x31, 0x32, 0x3f, 0x40, 0x58, 0x5e, 0x62, 0x6d}: `P.pSign = 1.0` (`0x140841747`).
+    - `m − 0x822` ∈ {0xa, 0xe, 0x1a, 0x1c, 0x1f, 0x21, 0x22, 0x25, 0x27, 0x2a, 0x34, 0x36, 0x41, 0x42, 0x49, 0x53, 0x54, 0x57, 0x5a, 0x5b, 0x61}: `P.pSign = (P.pSign + 1)·0.5` (`0x1408415ee`).
+    - otherwise, if `0x140726610(kind)` (kind ∈ 0xe..0x10) or kind == 0x16: `P.pSign = 1.0`.
+    - otherwise: `v = arg6²`, `t = 1` if v ≤ 0.2, `0` if v ≥ 1, else `(v−1)/−0.8`. Then `t' = 0.5t + 0.5` and `P.pSign = t'·P.pSign + (1 − t')` (`0x140841625..0x14084167f`). arg6 is `[rsp+0x78]`, the last float arg from cc30. Its meaning is open (INF(low): a normalised ball height).
+  - Then go to Z.
+- **C. Foot kick:**
+  - First, if sub ∈ {5, 6}: `P.pSign` = 1.0 if action byte 8 and skill 0x18; 0.7 if `0x140a6e340` and skill 9; else 0.9 (`0x140841689..0x1408416e8`).
+  - Then switch on `m − 0x97c` (`0x1408416fb`):
+    - {0, 8, 0x97}: `P.pSign = 1`.
+    - {0xa7}: `P.pSign = 0.25·P.pSign + 0.75`.
+    - {0x87, 0x88}: `P.pSign = 0.2·P.pSign + 0.8`.
+    - {0xa4, 0xa6}: `P.pSign = 0`.
+    - {0x7e}: `Y.pSign = vtbl+0x30() ? 1.0 : −1.0`.
+    - {0x2e, 0x31, 0xbd} with `st == 0xf`: `Y.pSign = vtbl+0x30() ? 1.0 : 0`.
+    - other values: no change.
+  - INF(med): `vtbl+0x30` is the kicking-foot side (left/right), so this forces the yaw error to the outside of the foot on these motions.
+- **Z:** `if (ap+0x2d14 & 1) Y.scale = 0` (`0x1408417bc`). The jostle/fall flag cancels the yaw scatter.
 
-## 7. Still open
-1. The exact Q sub-factor gates (`0x1407240f0`/`0x140724590`/`0x140726610`/`0x140726640` kind predicates), and what `0x1406b0250`==1 means.
-2. The branch conditions in `FUN_1408414a0` that pick the ×0.1/×0.9 scale cuts and the pSign values.
-3. `FUN_140470d60`'s exact maths. INF(high): it rotates the heading by `xmm2` degrees, with the pitch passed by pointer. Confirm by decompiling `0x140470d60`.
+### 7.2 Q kind predicates (argument = kick kind)
+| fn | true when |
+|---|---|
+| `0x1407240f0` | kind ∈ {0x1d, 0x1e, 0x23, 0x25, 0x28, 0x29, 0x36, 0x3e, 0x47, 0x8a, 0x8c, 0x8f, 0x92}, decoded from the jump table at `0x140724124` |
+| `0x140724590` | kind ∈ 0xa..0xd |
+| `0x140726610` | kind ∈ 0xe..0x10 |
+| `0x140726640` | kind ∈ {0x11, 0x13, 0x14, 0x1a} (mask `0x41a0000`) |
+| `0x1407241a0` | kind ∈ {5, 6, 9, 0x48} |
+| `0x140a6e340` | action < 0x5e |
+
+- The decompile gate (cc30 l.868) applies the class factor when: not `0x1407240f0`, and not bit 29 of `ap+0x2460`, and one of `0x140724590` / `0x140726610` / `0x140726640` is true, and motion ≠ 0x9f1.
+- **Open:** what those kind numbers mean (volley, first-time, etc.). Next step: name the entries of the kick-kind table `0x14344e380` (accuracy §2), using the kind ids above.
+
+### 7.3 `0x1406b0250(tbl = 0x1406b0ed0(), m, flag)`
+- It returns the byte at `tbl[m·0x390 + 1 + (flag != 0)]`, a per-motion descriptor byte. Ids 0xe42 and 0xf7c and ids ≥ 0x1125 have special paths (`0x1406b0253..0x1406b0296`).
+- The call passes flag 0, so `== 1` means **the current kick motion's descriptor byte[1] == 1**.
+- When it holds, F1/F2 use the entity returned by `0x140a57450(…, 1)`.
+- INF(low): this marks a motion that is aimed at a teammate or receiver. The byte's meaning is still open. Next step: dump byte 1 for known pass versus shot motion ids out of `0x1406b0ed0`'s table.
+
+### 7.4 `FUN_140470d60(&in, &out, deg)` (confirmed)
+- `out = wrap360(*in)`, then `out = wrap360(out + deg)`, with 360.0 at `0x14259858c` (`0x140470d60..0x140470da3`).
+- **Confirmed:** it adds `deg` (xmm2) to a heading in degrees and wraps the result to [0, 360). There is no pitch involvement.
+- In `FUN_1408398d5`, `in` = `[rbp-0x2c]` (heading from `FUN_14046f230`) and `out` = `[rbp-0x80]`. The result is copied to `[rbp-0x30]`.
+
+## 8. Still open
+1. The meaning of the kick kinds and motion ids in §7.1–7.2. They are numeric and port-usable as tables.
+2. arg6 of `FUN_1408414a0`, and the motion descriptor byte[1] (§7.3).

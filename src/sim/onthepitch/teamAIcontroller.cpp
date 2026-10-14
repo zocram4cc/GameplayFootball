@@ -29,7 +29,6 @@
 #include "simcontext.hpp"
 #include "../misc/hungarian.h"
 #include "AIsupport/AIfunctions.hpp"
-#include "aimanager.hpp"
 #include "aitactics.hpp"
 #include "match.hpp"
 #include "team.hpp"

@@ -35,6 +35,7 @@ struct Rig;
 // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
 #include "pesdefenderdecisions.hpp"
 #include "pesstrategy.hpp"
+#include "pessubs.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -109,6 +110,8 @@ struct MatchSetup {
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.
   const pes::StrategyConstants* pesStrategyConstants = nullptr;
+  // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
+  const pes::SubstitutionConstants* pesSubstitutionConstants = nullptr;
 };
 
 #endif
