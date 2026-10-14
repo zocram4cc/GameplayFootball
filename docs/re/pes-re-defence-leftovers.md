@@ -488,3 +488,133 @@ Open (exact next step each):
    which kick/trap action posts them; PRESS reason-7 live check vs `633350`.
 7. Live line cases (ball-limited / halfway / <2 defenders) + a whistled
    offside `MI+0x1588 = 1` with flag frame/category/line (§2.5 targets).
+
+---
+
+## 5. Live section (DefenceLiveRE, 2026-10-14 — match live all session)
+
+Tags: **OBS** = live pread at stated offsets; **INF(conf)** = inference.
+Samples in the DefenceLiveRE scratch dir: `ko_live.jsonl` (268 rows, ~11 Hz
+effective, frames 24440–25578, `k119c` 1674→2812 — corner restart, NOT a
+kick-off: `h = 0` throughout), `ko_fresh.jsonl` (395 rows gated, dt med
+0.089 s / p90 0.306 s, frames 27534–28148, `k119c` 148→762 — covers the
+`h = 1 → ramp → 0` zones), `press1.jsonl` (193 change/heartbeat rows over
+300 s, 34 with nonzero `T+0xb88c` words), `off1.jsonl` (11 rows),
+`flag1.jsonl` (long flag/kick-off watcher, still running at write time).
+Samplers: `ko60.py` (ungated — superseded), `ko60b.py` (gated: every row
+waits for `MI` valid; F/BallInfo/roots re-polled per row), `presswatch.py`,
+`offwatch.py`, `flagwatch.py`. `MI`/`F`/`G`-slots are null for part of every
+tick (OBS: `F` reads null ~19/20 polls): every row below is tick-gated
+(INF(high): same timing effect as the fieldinfo report's `G+0x2aa8` note).
+FieldInfo live: F = {52.56, 34.06, 3.66, 2.44, 47.06, 9.16, 36.14, 20.12}
+(= F0..F7, OBS via the `G+0x2a90 → +0x10 → +0x10` chain).
+Team dirs: side 0 `dir = −1`, side 1 `dir = +1` (OBS, all rows).
+
+### 5.1 Kick-off-straddling sample — PARTIALLY CLOSED (OBS rows; refit limited)
+
+- **Coverage (OBS).** `ko_fresh.jsonl`: 389 usable rows, all `st = 1`
+(in play), `m1554 = 0`, attack level 2 both teams throughout, ball x
+−43.6…−29.2 m in the `k > 378` zone. `h` zones (fps 54: `h = 1` for
+`k ≤ 270.5`, ramp 271…431, 0 above): 272 / 39 / 78 rows (team-0 frame).
+The `> 7 s since kick-off` (`k > 378`) zone needed by the `62ade0` refit
+has 91 rows (OBS).
+- **`h` effect (OBS, phase-0 edge only).** `T+0x875c` (lane 23 of the
+`T+0x8700` block = back-line lower edge per the defensive-shape notation)
+mean: team 0 −8.19 (`h = 1`) → −8.09 (`h = 0`); team 1 −29.85 → −35.13.
+The fb6f0 `x = base + span·w` model (base 12.0, span 31.14, `lo = −39.14 +
+20h`, `hi = 31.14`) predicts line-2 rear ≈ 43.0 / 12–14 in the same zones
+— i.e. the sampled `T+0x875c` is the **phase-0** back-line edge, NOT the
+fb6f0 phase-1 `S+0x7b38` rear, so no direct refit of `h`, `bp+0x84`,
+`bp+0x364` or MODE-2 −6 m is possible from this block (INF(high): `S`
+lives MA-side; MA was not relocated — perf watchpoints exhausted, §5.4).
+What the rows do give: the phase-0 edge moves ≤ 0.1 m (team 0) / ~5 m
+(team 1, ball-driven: bx range −33…−25 in `h = 1`) across the `h = 1 → 0`
+transition — the 20 m hold-back does NOT appear in the phase-0 edge,
+consistent with it living in the phase-1 builder only (INF(med)).
+- **`62ade0` (open).** Level is 2 in all rows (no ±30/±40 offsets active);
+the sheet bytes (`T+0x8e08` plan block: Defensive-Line slider k2,
+Defensive Style) and the press timer were not sampled, so the slider ramp
+is still unfitted — next step unchanged: re-run `ko60b.py` adding
+`T+0x8e08` (≥ 0x20 B), `T+0xa53c`, `T+0xa298`, then `linecheck2.py`.
+- **`pitch+0x18` (open, narrowed).** The offside `pitch` object (`*(X+0x10)`,
+`+0` half-length, `+4` half-width, `+0x18` depth) is NOT the FieldInfo
+global (OBS: exact-bit scan finds the {52.56, 34.06} pair only at the
+FieldInfo block `0x1cc5f024` plus one `.rdata` copy and stack scraps —
+no second live pitch-shaped block). `X` itself was not relocated (MI-value
+scan: 0 refs — MI is tick-gated like everything else). Next step: relocate
+`X` via the `FUN_14045cf30` perf breakpoint when a watchpoint frees up
+(`flock` on the gf-perf lock), then read `*(X+0x10)+0x18` directly.
+Note: the sampled `F` array above doubles as the FieldInfo ground truth.
+
+### 5.2 Offside line cases — PARTIALLY CLOSED (OBS root/ball geometry; MA line unread)
+
+Method: root-approximated line `L = s·min(0, second-rearmost root,
+`s·ball.x) per team-row (roots are the rear-surface anchor; body-point
+refinement unfitted — INF(med) per §2.4).
+- **Ball-limited line: OBS (2 samples).** `ko_live.jsonl` frame 25142:
+team 1 (`s = +1`), `s·ball.x = −41.46` < second-rearmost −38.31 →
+`L(world) = −41.46` (ball is the min by 3.2 m). `ko_fresh.jsonl`: 0/460
+team-rows (ball never the min — play was deep in team 0's end, ball x
+−43…−29 vs rearmost roots ≥ −49).
+- **Halfway cap: OBS (71 team-rows).** `ko_fresh.jsonl` frames ~27547+:
+e.g. frame 27547, team 0 (`s = −1`): own-frame rears
+[−0.01, 0.01, 26.01, …], `s·ball.x = +30.95` → both ≥ 0 → `L = 0`
+exactly (the §3 step-4/6 cap). All 71 are this shape (defenders fully
+behind halfway in their own frame while the ball is in the other half).
+- **Fewer-than-two: OPEN.** All rows have 11 roots per team and
+`MI+0x1748` was not sampled, so `count < 2` never isolates. Next step:
+add `MI+0x1748+22` bytes to the gated sampler and re-run; case = any row
+with `count < 2` → expect `L = s·(−half)`.
+- **Whistled offside `MI+0x1588 = 1`: OPEN (not observed).** `m1588 = 0`
+in all 395 + 268 + 11 rows and in final 16-row `flag1.jsonl` (5 kick-offs
+caught, §5.4 item 3). Next match: keep `flagwatch.py` running; on
+`m1588 = 1` capture `m15a0/m15a8/m15b4` (= flag frame/category/line).
+
+### 5.3 PRESS reason-7 — CLOSED (OBS live words + geometry)
+
+- **Word layout (OBS, corrects the u32 read).** `T+0xb88c+2·slot` is a u16
+reason array; the watcher read u32, so each reason code `c` appears as an
+adjacent-slot pair `(c·65536, c)`: (262144, 4) × 22, (327680, 5) × 10,
+(458752, 7) × 2, (65536, 1) × 1. I.e. **reason 4 (×22), reason 5 (×10),
+reason 7 (×2), reason 1 (×1)** over 300 s. Reason 4 dominates live; code 7
+is rare (≈ the §15.14 93/354 share, INF(med): same family, different
+match). No SAND/DELAY words seen (OBS).
+- **Reason-7 geometry (OBS).** Frame 30689 (team 1, `dir = +1`, slot 8):
+presser root (−28.80, 16.11), ball (−32.79, 19.99) → 5.57 m from the ball,
+ball low (y 0.20). Frame 33407 (team 1, slot 7): presser (−34.67, −13.76),
+ball (−37.65, −15.33) → 3.37 m, y 0.11. Both: the reason-7 man stands
+3–6 m from a low ball on the same flank (INF(med): the enrolled second
+presser at the receiver's point per `633350` — consistent with, not a
+proof of, the arrival-race enrolment; the `FUN_140a53da0` race itself
+needs the MA distance lists).
+- **GF note.** The port's PRESS writer should treat reason 7 as "second
+presser already at the point" (3–6 m), not sent from afar — same reading
+as the §15.14 PRESS-vs-MATCH_UP distances (medians 9.0/9.2 m).
+
+### 5.4 What stays open (exact next step each)
+
+1. `h`/`bp+0x84`/`bp+0x364`/MODE-2/`62ade0` refits: need MA-side `S+0x7b38`
+   (phase-1 rear) + `T+0x8e08` sheet bytes + `T+0xa53c` press timer in the
+   gated sample. MA relocation is blocked on perf watchpoints (all 4 held
+   by peers at sample time — `mem:0x14045cf30:x` → "No space left on
+   device"); retry under `flock` on the gf-perf lock when one frees.
+2. Fewer-than-two line case: add `MI+0x1748+22` to `ko60b.py`, re-run.
+3. Whistled offside: OPEN — `flag1.jsonl` final: 16 rows over ~7.7 min to
+   match end, 5 kick-offs caught (frames 35785, 38568, 41108, 42738, 45581),
+   `m1588 = 0` throughout (no offside call; also `m15a0/m15a8/m15b4`
+   never armed). Ready sampler: `flagwatch.py` (logs on flag/restart
+   transitions + kick-off + 5 s heartbeat); re-run next live match.
+4. `pitch+0x18`: read `*(X+0x10)+0x18` once `X` is relocated (see item 1).
+
+## 6. Second-match note (DefenceLiveRE — new match window)
+
+- A new match appeared (~frame 12891, `k119c` 884, OBS) but no kick-off
+  arrived in a 15-min 1 Hz-gated wait (OBS: `k119c` only grew, 1463 at
+  last state-1 read). By sampler time the game had left state 1 again
+  (OBS: `MI` null 15 s; `ko_new1.jsonl` v3 sample: 453 rows, 359 `st = 2`
+  + 94 `st = 0`, zero state-1 frames — no usable rows).
+- Ready sampler for the next window: `ko60c.py` (gated 20 Hz, 60 s; adds
+  `MI+0x1748` active flags, `T+0x8e08` sheet 64 B, `T+0xa53c` press timer,
+  `T+0xa298`) + `flagwatch.py` for the whistle. Per the orchestrator rule
+  (stop when no state-1 frames), sampling stops here; items in §5.4 stand
+  with these samplers named.
