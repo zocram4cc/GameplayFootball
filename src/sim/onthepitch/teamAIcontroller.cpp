@@ -20,9 +20,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 #include "../data/playerskills.hpp"
 #include "../data/playingstyles.hpp"
+#include "pessetpieceteam.hpp"
+#include "setpiecelaws.hpp"
 #include "simcontext.hpp"
 #include "../misc/hungarian.h"
 #include "AIsupport/AIfunctions.hpp"
@@ -937,33 +940,99 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
   if (setPieceType == e_SetPiece_None)
     return;
 
+  Match* match = team->GetMatch();
+  const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
+  const pes::SetPieceTeamConstants& spk = match->GetPesSetPieceTeamConstants();
+  // The counts that live in instruction immediates rather than in .rdata.
+  const pes::SetPieceTeamCounts& spc = pes::SetPieceTeamCounts();
+
+  const bool isTakerTeam = takerTeamID == team->GetID() ? true : false;
+  Team* takerTeam = isTakerTeam ? team : match->GetTeam(abs(team->GetID() - 1));
+  // The side whose box a restart may require everyone out of, and the direction
+  // that team attacks in - PES's `dir` (choreography §2).
+  const int restartingSide = takerTeam->GetSide();
+  const int dir = -restartingSide;
+  // PES's attack level (choreography 11.6) is the team's mentality rung.
+  const int attackLevel = pes::AttackLevel((int)GetInstructions().mentality);
+
   std::vector<Player*> players;
+  team->GetActivePlayers(players);
+  // Where everyone stood when play stopped. Every placement move starts there.
+  std::map<Player*, Vector3> started;
+  for (auto* player : players) started[player] = player->GetPosition();
+
+
+  // PES's placement is a jog (choreography 11.3): a player ends up as far as
+  // 16 km/h covers inside the kind's time budget, from where he stood at the
+  // stop - never a teleport across the pitch.
+  auto place = [this, &spk, &started, ballPos](Player* player, const Vector3& mark,
+                                               float budget_s) {
+    const Vector3 from = started[player];
+    const Vector3 delta = mark - from;
+    player->ResetPosition(from + delta * pes::JogFraction(budget_s, delta.GetLength(), spk),
+                          ballPos);
+  };
+
+  // Law 16, PES's way (choreography 11.3, raw 0x1409297df): at a goal kick, and
+  // at a free kick in the restarting team's own box, everyone except the kicker
+  // and that side's two back roles is pushed out of the box being kicked from.
+  // PES applies this to team-mates too, which is what keeps a striker from
+  // standing in the six-yard box waiting for his own goal kick.
+  auto pushOutOfBox = [this, ballPos, restartingSide](Player* player, const Vector3& mark,
+                                                     bool keepHim) {
+    Vector3 at = mark;
+    if (SetPieceLaws::IntrudesOnPenaltyArea(at.coords[0], at.coords[1], restartingSide,
+                                            pitchHalfW)) {
+      float outX = at.coords[0], outZ = at.coords[1];
+      SetPieceLaws::ClearingTarget(at.coords[0], at.coords[1], restartingSide, pitchHalfW, &outX,
+                                  &outZ);
+      at = Vector3(outX, outZ, 0);
+    }
+    if (!keepHim) return;  // the kicker and the two back roles stay put
+    player->ResetPosition(at, ballPos);
+  };
+
+  // Keepers are not in the placement list, but they are placed too, and PES
+  // gives the restarting side's own keeper an unlimited budget (choreography
+  // 11.3) while the other side's is a back-class one.
+  std::vector<Player*> keepers;
+  team->GetActivePlayers(keepers);
+  for (auto* player : keepers) {
+    if (player->GetFormationEntry().role != e_PlayerRole_GK) continue;
+    const float budget = pes::PlacementBudget_s(
+        spk, (int)setPiece, isTakerTeam, e_PlayerRole_GK, false, false, false, isTakerTeam, false,
+        false);
+    place(player, Vector3(pitchHalfW * team->GetSide() * 0.98, 0, 0), budget);
+  }
+  players.clear();
   team->GetActivePlayers(players);
   auto iter = players.begin();
   while (iter != players.end()) {
     if ((*iter)->GetFormationEntry().role == e_PlayerRole_GK) {
-      (*iter)->ResetPosition(Vector3(pitchHalfW * team->GetSide() * 0.98, 0, 0),
-                             match->GetBall()->Predict(0).Get2D());
       iter = players.erase(iter);
     } else {
       iter++;
     }
   }
-
-  Match* match = team->GetMatch();
-
-  bool isTakerTeam = takerTeamID == team->GetID() ? true : false;
-  Team* takerTeam = isTakerTeam ? team : match->GetTeam(abs(team->GetID() - 1));
+  started.clear();
+  for (auto* player : players) started[player] = player->GetPosition();
 
   if (isTakerTeam)
-    team->SetFadingTeamPossessionAmount(1.5);
+    team->SetFadingTeamPossessionAmount(1.5f);
   else
-    team->SetFadingTeamPossessionAmount(0.5);
+    team->SetFadingTeamPossessionAmount(0.5f);
 
   // Load custom set-piece formation parameters
   SetPieceParams spParams = SetPieceConfig::Load(team->GetTeamData()->GetDatabaseID(), setPiece);
   float depth = spParams.formation_depth;
   float width = spParams.formation_width;
+
+  // PES's per-kind budget (choreography 11.3, FUN_140927ab0).
+  auto budgetFor = [&](Player* player) {
+    const e_PlayerRole role = player->GetFormationEntry().role;
+    return pes::PlacementBudget_s(spk, (int)setPiece, isTakerTeam, role, false, false, false,
+                                  role == e_PlayerRole_GK, false, /*isMarking=*/false);
+  };
 
   switch (setPiece) {
     case e_SetPiece_KickOff:
@@ -981,17 +1050,7 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
           basePos.Normalize(Vector3(team->GetSide(), 0, 0));
           basePos *= 9.4;
         }
-        player->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
-
-        // supporting players
-        if (isTakerTeam) {
-          std::vector<Player*> result;
-          AI_GetClosestPlayers(team, Vector3(0), result, 2);
-          for (unsigned int i = 0; i < result.size(); i++) {
-            result.at(i)->ResetPosition(Vector3(0, i * 1.4 * team->GetSide(), 0),
-                                        match->GetBall()->Predict(0).Get2D());
-          }
-        }
+        place(player, basePos, budgetFor(player));
       }
       break;
 
@@ -1010,15 +1069,99 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
         Vector3 basePos =
             AI_GetAdaptedFormationPosition(match, player, backXBound, frontXBound, lowYBound,
                                            highYBound, 0, 0, 0, 0, 0, 0, 0, 0, false);
-        player->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(player, basePos, budgetFor(player));
       }
       break;
 
-    case e_SetPiece_Corner:
+    case e_SetPiece_Corner: {
+      // The defending side's post men (choreography 11.5): the near-post man is
+      // the corner-side role 2-4 player with the lowest height + jump + heading,
+      // and a far-post man joins him only when the defending team's attack level
+      // is 0. PES reads the three as b[0x31] + b[0x2c] + b[0x1d].
+      auto aerial = [](Player* player) {
+        return player->GetPlayerData()->GetHeight() + player->GetStat("physical_jump") +
+               player->GetStat("technical_header");
+      };
+      Player* nearPost = 0;
+      Player* farPost = 0;
+      if (!isTakerTeam) {
+        int bestIndex = -1;
+        float bestScore = 1e9f;
+        for (unsigned int i = 0; i < players.size(); i++) {
+          Player* player = players.at(i);
+          const e_PlayerRole role = player->GetFormationEntry().role;
+          const bool sameSide =
+              ballPos.coords[1] * player->GetFormationEntry().position.coords[1] > 0.0f;
+          const bool narrow = role == e_PlayerRole_LB || role == e_PlayerRole_RB ||
+                              role == e_PlayerRole_DM || role == e_PlayerRole_CM;
+          const bool wide = narrow || role == e_PlayerRole_LM || role == e_PlayerRole_RM ||
+                            role == e_PlayerRole_AM;
+          if (!sameSide ? !wide : !narrow) continue;
+          if (aerial(player) < bestScore) {
+            bestScore = aerial(player);
+            nearPost = player;
+            bestIndex = static_cast<int>(i);
+          }
+        }
+        (void)bestIndex;
+        if (attackLevel < 1) {
+          float bestFar = 1e9f;
+          for (unsigned int i = 0; i < players.size(); i++) {
+            Player* player = players.at(i);
+            if (player == nearPost || player->GetFormationEntry().role == e_PlayerRole_GK) continue;
+            if (aerial(player) < bestFar) {
+              bestFar = aerial(player);
+              farPost = player;
+            }
+          }
+        }
+      }
+      // The attacking side's men in the box: 4 + min(attack level, 2)
+      // (FUN_1404f6680). Who they are is PES's own ranking, which is the same
+      // aerial score with the defenders demoted.
+      std::vector<Player*> boxAttackers;
+      if (isTakerTeam) {
+        std::vector<Player*> outfield = players;
+        std::sort(outfield.begin(), outfield.end(), [&aerial](Player* a, Player* b) {
+          return aerial(a) > aerial(b);
+        });
+        const int count = std::min<int>(pes::BoxAttackerCount(attackLevel, spc),
+                                        static_cast<int>(outfield.size()));
+        boxAttackers.assign(outfield.begin(), outfield.begin() + count);
+      }
+      // The two post spots: 0.5 m off the goal line, the near post 0.31 m inside
+      // it and the far post 0.7 m wide of it (live, choreography 11.5).
+      const float goalSign = ballPos.coords[0] >= 0.0f ? 1.0f : -1.0f;
+      const float zSign = ballPos.coords[1] >= 0.0f ? 1.0f : -1.0f;
+      const Vector3 nearMark(goalSign * (pitchHalfW - 0.5f), zSign * 3.35f, 0);
+      const Vector3 farMark(goalSign * (pitchHalfW - 0.5f),
+                            zSign * -(goalInnerHalfWidth - 0.7f), 0);
+
       for (unsigned int i = 0; i < players.size(); i++) {
+        if (players.at(i) == nearPost) {
+          place(players.at(i), nearMark, spk.budgetPostMan_s);
+          continue;
+        }
+        if (players.at(i) == farPost) {
+          place(players.at(i), farMark, spk.budgetPostMan_s);
+          continue;
+        }
+        if (std::find(boxAttackers.begin(), boxAttackers.end(), players.at(i)) !=
+            boxAttackers.end()) {
+          const int rank = static_cast<int>(
+              std::find(boxAttackers.begin(), boxAttackers.end(), players.at(i)) -
+              boxAttackers.begin());
+          // ponytail: PES's authored positionCK_N_V spots are not shipped, so GF
+          // lays its own box men out inside the goal area: three across, two
+          // deep. The count is PES's; the geometry is this engine's.
+          place(players.at(i),
+                Vector3(goalSign * (pitchHalfW - 7.0f - 6.0f * static_cast<float>(rank / 3)),
+                        (static_cast<float>(rank % 3) - 1.0f) * 4.5f, 0),
+                budgetFor(players.at(i)));
+          continue;
+        }
         float backXBound, frontXBound, lowYBound, highYBound, xFocus, xFocusStrength, yFocus,
             yFocusStrength, midfieldFocus, midfieldFocusStrength;
-        Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
         if (isTakerTeam) {
           backXBound = -team->GetSide() * pitchHalfW * 0.2;
           frontXBound = -team->GetSide() * pitchHalfW * 0.96;
@@ -1045,9 +1188,10 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
             xFocusStrength, yFocus, yFocusStrength,
             Vector3(ballPos.coords[0] * 0.95f, ballPos.coords[1] * 0.1f, 0), 0.9, midfieldFocus,
             midfieldFocusStrength, false);
-        players.at(i)->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(players.at(i), basePos, budgetFor(players.at(i)));
       }
       break;
+    }
 
     case e_SetPiece_ThrowIn:
       for (unsigned int i = 0; i < players.size(); i++) {
@@ -1074,7 +1218,7 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
         Vector3 basePos = AI_GetAdaptedFormationPosition(
             match, players.at(i), backXBound, frontXBound, lowYBound, highYBound, xFocus,
             xFocusStrength, yFocus, yFocusStrength, ballPos, 0.7, 0, 0, false);
-        players.at(i)->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(players.at(i), basePos, budgetFor(players.at(i)));
       }
       break;
 
@@ -1125,23 +1269,40 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
           }
         }
 
-        players.at(i)->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(players.at(i), basePos, budgetFor(players.at(i)));
       }
 
-      // wall
-      if (!isTakerTeam &&
-          (match->GetBall()->Predict(0).Get2D() - Vector3(team->GetSide() * pitchHalfW, 0, 0))
-                  .GetLength() < 40.0) {
-        std::vector<Player*> result;
-        AI_GetClosestPlayers(team, match->GetBall()->Predict(0).Get2D(), result, 3);
-        for (unsigned int i = 0; i < result.size(); i++) {
-          Vector3 toGoal =
-              (Vector3(team->GetSide() * pitchHalfW, 0, 0) - match->GetBall()->Predict(0).Get2D())
-                  .GetNormalized(0);
-          toGoal += Vector3(0, 1.0 - i, 0) * 0.07;
-          toGoal.Normalize();
-          result.at(i)->ResetPosition(match->GetBall()->Predict(0).Get2D() + toGoal * 9.15f,
-                                      match->GetBall()->Predict(0).Get2D());
+      // The wall (choreography 5.3 and 11.4, kicker report 3.1): as many men as
+      // the size table wants, standing 9.15 m from the ball toward the aim point
+      // and half a metre apart along the wall line.
+      if (!isTakerTeam) {
+        const float goalX = dir * pitchHalfW;
+        const float goalDx = goalX - ballPos.coords[0], goalDz = -ballPos.coords[1];
+        const float goalD = std::sqrt(goalDx * goalDx + goalDz * goalDz);
+        const float ballAngle = std::atan2(std::fabs(ballPos.coords[1]), std::fabs(goalDx)) *
+                                180.0f / static_cast<float>(M_PI);
+        const int wallSize = pes::WallSize(goalD, ballAngle, ballPos.coords[0],
+                                          ballPos.coords[1], dir, pitchHalfW,
+                                          pitchHalfW - SetPieceLaws::kAreaDepth,
+                                          SetPieceLaws::kAreaHalfWidth, spk, spc);
+        // The aim point: the goal centre for a one-man wall, else 1.3 m outside
+        // the near post on the ball's side (0x14259bdd8).
+        const int ballSide = ballPos.coords[1] >= 0.0f ? 1 : -1;
+        Vector3 aim(goalX, 0, 0);
+        if (wallSize > 1) aim = Vector3(goalX, ballSide * (goalInnerHalfWidth + spk.wallNearPost_m), 0);
+        Vector3 toAim = aim - ballPos;
+        toAim.Normalize(0);
+        // The wall's yaw is perpendicular to the ball's bearing, and the members
+        // are spread 0.5 m apart about the centre with the first on it.
+        Vector3 along(-toAim.coords[1], toAim.coords[0], 0);
+        std::vector<Player*> closest;
+        AI_GetClosestPlayers(team, ballPos, closest, wallSize);
+        for (unsigned int i = 0; i < closest.size(); i++) {
+          const float offset = (static_cast<float>(i) - (closest.size() - 1) * 0.5f) * spk.wallSpacing_m;
+          place(closest.at(i),
+                ballPos + toAim * spk.wallDistance_m + along * offset,
+                // a wall man has no budget at all (PES passes FLT_MAX)
+                -1.0f);
         }
       }
 
@@ -1184,7 +1345,7 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
                     (basePos - match->GetBall()->Predict(0).Get2D()).GetNormalized() * (9.15 + 0.5);
         }
 
-        players.at(i)->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(players.at(i), basePos, budgetFor(players.at(i)));
       }
       break;
 
@@ -1194,42 +1355,150 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
             players.at(i)->GetFormationEntry().position *
             Vector3(-team->GetSide() * pitchHalfW * 0.7, -team->GetSide() * pitchHalfH * 0.7, 0);
 
-        players.at(i)->ResetPosition(basePos, match->GetBall()->Predict(0).Get2D());
+        place(players.at(i), basePos, budgetFor(players.at(i)));
       }
       break;
   }
 
   if (isTakerTeam) {
-    taker = AI_GetClosestPlayer(team, match->GetBall()->Predict(0).Get2D());
+    // Who takes it (kicker report 1): the team sheet's taker where GF has one,
+    // otherwise the best set-piece suitability. GF carries no sheet of
+    // designated takers (PES T+0x8e08) and no per-player set-piece ratings
+    // (playerdata+0x96), so the suitability below is this engine's nearest
+    // standing for it.
+    // ponytail: PES rates six kinds per player. GF's nearest stats stand in -
+    // long free kick -> curl, short -> short pass, the second kicker -> tight
+    // possession, both corners -> curl, penalty -> set piece - so a player who
+    // is a good long-range curler is also GF's best corner taker. The ceiling
+    // is that GF cannot tell a left-footed corner taker from a right-footed one.
+    auto suitability = [this](Player* player, e_SetPiece kind) {
+      if (kind == e_SetPiece_FreeKick) return player->GetStat("technical_curl");
+      if (kind == e_SetPiece_Penalty) return player->GetStat("technical_setpiece");
+      if (kind == e_SetPiece_Corner) return player->GetStat("technical_curl");
+      return player->GetStat("technical_setpiece");
+    };
+    std::vector<Player*> onPitch;
+    team->GetActivePlayers(onPitch);
+    std::vector<Player*>::const_iterator keep = onPitch.begin();
+    while (keep != onPitch.end()) {
+      if ((*keep)->GetFormationEntry().role == e_PlayerRole_GK)
+        keep = onPitch.erase(keep);
+      else
+        keep++;
+    }
+    // A corner never goes to a striker (kicker report 1.1: role != 9), and a
+    // penalty never to a keeper, which the list above already excludes.
+    if (setPiece == e_SetPiece_Corner) {
+      std::vector<Player*>::const_iterator drop = onPitch.begin();
+      while (drop != onPitch.end()) {
+        if ((*drop)->GetFormationEntry().role == e_PlayerRole_CF)
+          drop = onPitch.erase(drop);
+        else
+          drop++;
+      }
+    }
+
+    if (setPiece == e_SetPiece_FreeKick) {
+      // PES's waterfall, minus its designated branch: the keeper near his own
+      // goal, the nearest defender in our own half, the nearest outfield player
+      // from far out, and the rating fallback last.
+      std::vector<pes::SetPieceCandidate> candidates;
+      for (unsigned int i = 0; i < onPitch.size(); i++) {
+        pes::SetPieceCandidate c;
+        c.index = static_cast<int>(i);
+        c.role = onPitch.at(i)->GetFormationEntry().role;
+        c.isKeeper = c.role == e_PlayerRole_GK;
+        c.suitability = suitability(onPitch.at(i), setPiece);
+        c.distanceToBall_m = (onPitch.at(i)->GetPosition() - ballPos).GetLength();
+        candidates.push_back(c);
+      }
+      // PES's role filter for the far-out step is "role < 7", which is every
+      // role except the three forwards.
+      const int pick = pes::FreeKickTaker(candidates, ballPos.coords[0], ballPos.coords[1], dir,
+                                          dir * pitchHalfW, -dir * pitchHalfW,
+                                          pitchHalfW - SetPieceLaws::kAreaDepth,
+                                          SetPieceLaws::kAreaHalfWidth, spk);
+      if (pick >= 0 && pick < static_cast<int>(onPitch.size()))
+        taker = onPitch.at(pick);
+      else {
+        float best = -1.0f;
+        taker = onPitch.empty() ? 0 : onPitch.front();
+        for (unsigned int i = 0; i < onPitch.size(); i++) {
+          const float rating = suitability(onPitch.at(i), setPiece);
+          if (rating > best) {
+            best = rating;
+            taker = onPitch.at(i);
+          }
+        }
+      }
+    } else if (setPiece == e_SetPiece_GoalKick) {
+      // PES gives a goal kick to the keeper outright (choreography §2, the slot
+      // whose role is 0); the fallback below is only for a team with no keeper
+      // registered in goal.
+      std::vector<Player*> keepers2;
+      team->GetActivePlayers(keepers2);
+      for (unsigned int i = 0; i < keepers2.size(); i++) {
+        if (keepers2.at(i)->GetFormationEntry().role == e_PlayerRole_GK) {
+          taker = keepers2.at(i);
+          break;
+        }
+      }
+    } else {
+      // A corner, a penalty or anything else without a sheet: the best
+      // suitability, first on ties (FUN_140a621f0's shape).
+      float best = -1.0f;
+      taker = onPitch.empty() ? 0 : onPitch.front();
+      for (unsigned int i = 0; i < onPitch.size(); i++) {
+        const float rating = suitability(onPitch.at(i), setPiece);
+        if (rating > best) {
+          best = rating;
+          taker = onPitch.at(i);
+        }
+      }
+    }
+
+    if (taker == 0) taker = AI_GetClosestPlayer(team, ballPos);
+    // A keeper who ends up with a restart is placed where that restart wants
+    // him, not where the outfield placement put him.
+    if (taker && taker->GetFormationEntry().role == e_PlayerRole_GK &&
+        (setPiece == e_SetPiece_GoalKick || setPiece == e_SetPiece_FreeKick)) {
+      taker->ResetPosition(
+          Vector3(ballPos.coords[0] - team->GetSide() * 1.5f, ballPos.coords[1], 0), ballPos);
+    }
 
     if (setPiece == e_SetPiece_ThrowIn || setPiece == e_SetPiece_KickOff) {
-      taker->ResetPosition(
-          match->GetBall()->Predict(0).Get2D() +
-              match->GetBall()->Predict(0).Get2D().GetNormalized(Vector3(0, -team->GetSide(), 0)) *
-                  0.3f,
-          match->GetBall()->Predict(0).Get2D());
+      taker->ResetPosition(ballPos + ballPos.GetNormalized(Vector3(0, -team->GetSide(), 0)) * 0.3f,
+                           ballPos);
     } else if (setPiece == e_SetPiece_FreeKick) {
-      taker->ResetPosition(
-          match->GetBall()->Predict(0).Get2D() + Vector3(team->GetSide(), 0, 0) * 2.3f,
-          match->GetBall()->Predict(0).Get2D());
+      taker->ResetPosition(ballPos + Vector3(team->GetSide(), 0, 0) * 2.3f, ballPos);
     } else {
-      taker->ResetPosition(
-          match->GetBall()->Predict(0).Get2D() +
-              match->GetBall()->Predict(0).Get2D().GetNormalized(Vector3(0, -team->GetSide(), 0)) *
-                  2.3f,
-          match->GetBall()->Predict(0).Get2D());
+      taker->ResetPosition(ballPos + ballPos.GetNormalized(Vector3(0, -team->GetSide(), 0)) * 2.3f,
+                           ballPos);
     }
     if (setPiece == e_SetPiece_ThrowIn) {
       taker->SelectRetainAnim();
     }
     if (setPiece == e_SetPiece_Penalty) {
-      taker->ResetPosition(
-          match->GetBall()->Predict(0).Get2D() + Vector3(team->GetSide(), 0, 0) * 3.0,
-          match->GetBall()->Predict(0).Get2D());
+      taker->ResetPosition(ballPos + Vector3(team->GetSide(), 0, 0) * 3.0, ballPos);
     }
 
   } else
     taker = 0;
+
+  // Law 16, PES's way (choreography 11.3): at a goal kick, and at a free kick
+  // in the restarting team's own box, everyone but the kicker and that side's
+  // two back roles ends up outside the box being kicked from. This satisfies
+  // the referee's own clearing gate on both teams at once, which is what PES
+  // does - and what GF used to leave to a walk.
+  for (auto* player : players) {
+    const e_PlayerRole role = player->GetFormationEntry().role;
+    // PES's roles 0 and 1 are the keeper and the centre back; GF splits the
+    // full backs off the centre backs, and PES's role 2 (the full back) is
+    // pushed out, so only GF's GK and CB may stay in the box.
+    const bool keepHim = player == taker ||
+                         (isTakerTeam && (role == e_PlayerRole_GK || role == e_PlayerRole_CB));
+    pushOutOfBox(player, player->GetPosition(), keepHim);
+  }
 
   // keep distance from ball
   float minDistance = 2.0;
@@ -1237,11 +1506,10 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
     minDistance = 5.0;
   for (auto* player : players) {
     if (player != taker) {
-      Vector3 toBall = player->GetPosition() - match->GetBall()->Predict(0).Get2D();
+      Vector3 toBall = player->GetPosition() - ballPos;
       float ballDistance = (toBall).GetLength();
       if (ballDistance < minDistance)
-        player->ResetPosition(player->GetPosition() + toBall.GetNormalized(0) * minDistance,
-                              match->GetBall()->Predict(0).Get2D());
+        player->ResetPosition(player->GetPosition() + toBall.GetNormalized(0) * minDistance, ballPos);
     }
   }
 }
