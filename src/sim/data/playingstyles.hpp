@@ -128,11 +128,6 @@ float GetDribbleCenterPull(Player style, ComMask com, float baseCenterMagnet);
 // The pace he carries it at: a target man holds it up, a speeding bullet bursts.
 float GetDribbleVelocity(Player style, ComMask com, float desiredVelocity);
 
-// --- Keeper (GoalieDefaultStrategy::RequestInput) ---
-
-// Multiplier on how far out the keeper is willing to come.
-float GetKeeperComeOutBias(Player style);
-
 }  // namespace PlayingStyles
 
 #endif

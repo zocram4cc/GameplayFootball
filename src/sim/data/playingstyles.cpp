@@ -580,17 +580,4 @@ float GetDribbleVelocity(Player style, ComMask com, float desiredVelocity) {
   return velocity;
 }
 
-// --- Keeper ---
-
-float GetKeeperComeOutBias(Player style) {
-  switch (style) {
-    case Player::OffensiveGoalkeeper:
-      return 1.35f;
-    case Player::DefensiveGoalkeeper:
-      return 0.7f;
-    default:
-      return 1.0f;
-  }
-}
-
 }  // namespace PlayingStyles

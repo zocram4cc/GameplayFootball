@@ -66,6 +66,7 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "pes::LoadRngConstants into MatchSetup::pesRngConstants");
   rngSource = std::make_unique<RngSource>(*setup.pesRngConstants);
   pes::SeedAtKickoff(rngSource->rng, setup.seed);
+  matchSeed = setup.seed;
   SetRandomSource(rngSource.get());
   *GetConfiguration() = config;
 

@@ -203,6 +203,9 @@ public:
   // `rngSource` and is not shared: PES builds a throw-away generator for each
   // deterministic roll (the carrier's plan rolls, report 4.4).
   const pes::RngConstants& GetPesRngConstants() const { return rngSource->constants; }
+  // The seed this match was set up with: what any per-match generator derived
+  // from it must be seeded from (see `matchSeed`).
+  unsigned int GetMatchSeed() const { return matchSeed; }
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
@@ -365,6 +368,10 @@ protected:
 
   unsigned long iterations = 0;
   int nextPlayerID = 0;
+  // The seed this match was set up with (MatchSetup::seed). Kept so per-match
+  // generators can be seeded from it: a static or a surviving instance would
+  // make a second match in the same process replay the first one's stream.
+  unsigned int matchSeed = 0;
   unsigned long matchTime_ms = 0;
   // Stalemate recovery: how many ticks have forced the ball to go to the
   // nearest man because nobody was playing it, and when that was last printed.

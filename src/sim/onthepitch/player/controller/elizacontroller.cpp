@@ -525,8 +525,49 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
       _KeeperDeflectCommand(commandQueue, onlyPickupAnims);
     }
 
-    if (CastPlayer()->GetTimeNeededToGetToBall_ms() < 1000 &&
-        match->GetDesignatedPossessionPlayer() == player) {
+    // PES 2021's rush (docs/re/pes-re-goalkeeper.md 10.3, KP_PRESS decider
+    // FUN_142115100/1421162c0): he goes for a loose ball when he wins the race
+    // by the style factor - the opponent must need more than k times his own
+    // frames, and once he is rushing the 0.71 s hysteresis keeps him going. A
+    // ball more than 3.3 s away is never chased. This replaces the flat "within
+    // 1000 ms and designated" rule, which had no idea who else was going.
+    //
+    // PES's style bits 19/20 are GF's Offensive/Defensive GK playing styles.
+    // Where the style is neither, the no-style factors apply.
+    const pes::KeeperConstants& keeperConstants = match->GetPesKeeperConstants();
+    const PlayingStyles::Player gkStyle =
+        CastPlayer()->GetPlayerData()->GetPlayingStyle();
+    const bool offensiveStyle = gkStyle == PlayingStyles::Player::OffensiveGoalkeeper;
+    const bool defensiveStyle = gkStyle == PlayingStyles::Player::DefensiveGoalkeeper;
+    const float factor = pes::PesKeeperRushFactor(offensiveStyle, defensiveStyle, keeperConstants);
+    const bool rushing =
+        pes::PesKeeperRushRaceWins(CastPlayer()->GetTimeNeededToGetToBall_ms() * 0.001f,
+                                   oppTimeNeededToGetToBall * 0.001f, keeperRushing, factor,
+                                   keeperConstants);
+    // The lateral limit on the point where he meets the ball: F5 for a
+    // Defensive GK, F7 for an Offensive one, the midpoint for no style.
+    const pes::KeeperFieldMarks marks{pitchHalfW,
+                                      goalHalfWidth,
+                                      pitchHalfW - SetPieceLaws::kGoalAreaDepth,
+                                      SetPieceLaws::kGoalAreaHalfWidth,
+                                      pitchHalfW - SetPieceLaws::kAreaDepth,
+                                      SetPieceLaws::kAreaHalfWidth};
+    const float lateralLimit_m =
+        pes::PesKeeperRushLateralLimit_m(offensiveStyle, defensiveStyle, marks);
+    keeperRushing = rushing;
+    bool keeperChases = rushing;
+    // The meeting point is the ball where his own reach says he gets it; the
+    // lateral limit is on that point (10.3's limits on P(kf)).
+    const Vector3 meetPoint =
+        _mentalImage->GetBallPrediction(CastPlayer()->GetTimeNeededToGetToBall_ms()).Get2D();
+    if (std::fabs(meetPoint.coords[1]) > lateralLimit_m) keeperChases = false;
+    // And the area rule (10.3): a claim outside his own penalty area is an
+    // outfield presser, not a keeper's rush, so he leaves his box only through
+    // the outfield branch.
+    const float claimDepth = pitchHalfW - std::fabs(meetPoint.coords[0]);
+    if (claimDepth > SetPieceLaws::kAreaDepth) keeperChases = false;
+
+    if (keeperChases && match->GetDesignatedPossessionPlayer() == player) {
       GetOnTheBallCommands(commandQueue, rawInputDirection, rawInputVelocityFloat);
     }
   }
@@ -1126,6 +1167,7 @@ void ElizaController::Reset() {
   carrierPlan = 0;
   carrierPlanStamp = 0;
   carrierBusyStamp = 0;
+  keeperRushing = false;
 }
 
 void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQueue,

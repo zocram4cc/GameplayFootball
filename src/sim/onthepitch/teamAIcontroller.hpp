@@ -75,7 +75,6 @@ public:
   void ApplyAttackingRun(Player* manualPlayer = 0);
   void ApplyTeamPressure();
   void ApplyZonePressure();
-  void ApplyKeeperRush();
   void CalculateSituation();
 
   // PES 2021's open-play defensive line, rebuilt every tick (report 6, 14.1).
@@ -121,8 +120,6 @@ public:
   unsigned long GetZonePressureEndTime_ms() const { return zonePressureEndTime_ms; }
 
   Player* GetForwardSupportPlayer() { return forwardSupportPlayer; }
-
-  unsigned long GetEndApplyKeeperRush_ms() { return endApplyKeeperRush_ms; }
 
   const std::vector<TacticalOpponentInfo>& GetTacticalOpponentInfo() {
     return tacticalOpponentInfo;
@@ -190,7 +187,6 @@ protected:
   Player* attackingRunPlayer;
   unsigned long endApplyTeamPressure_ms;
   Player* teamPressurePlayer;
-  unsigned long endApplyKeeperRush_ms;
 
   bool zonePressureActive;
   unsigned long zonePressureEndTime_ms;

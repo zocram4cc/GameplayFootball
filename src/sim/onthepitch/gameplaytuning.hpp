@@ -428,15 +428,6 @@ inline float GetKeeperGoalMouthPanic(float awareness) {
   return 1.02f + (1.0f - Clamp01(awareness)) * 0.5f;
 }
 
-// GK Coverage (PES "GK Reach"): how far off his line he stands with the ball
-// in front of him, and how much of a head start on his own defenders an
-// attacker needs before he comes rushing out.
-inline float GetKeeperComeOutBias(float coverage) {
-  return 0.15f + Clamp01(coverage) * 0.25f;
-}
-inline float GetKeeperComeOutMargin_m(float coverage) {
-  return 1.6f - Clamp01(coverage);
-}
 
 // GK Coverage (PES "GK Reach"), as a distance: how far from his standing
 // position he still gets a hand to the ball. A dive, not a step - PES's own

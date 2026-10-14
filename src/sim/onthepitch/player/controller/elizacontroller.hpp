@@ -81,6 +81,12 @@ protected:
   Strategy* offenseStrategy;
   Strategy* goalieStrategy;
 
+  // PES 2021's keeper rush hysteresis (docs/re/pes-re-goalkeeper.md 10.3): a
+  // keeper already rushing keeps going through a tighter race. Reset with the
+  // rest of the controller, so a keeper who was chasing when play stopped does
+  // not carry it into the next passage.
+  bool keeperRushing = false;
+
   Vector3 lastDesiredDirection;
   float lastDesiredVelocity;
 };

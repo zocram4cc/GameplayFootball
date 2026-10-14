@@ -616,6 +616,8 @@ TEST(PesKeeper, LoadsTheRealValuesFromTheInstall) {
   EXPECT_EQ(k->positioningFloor_m, 2.0f);
   EXPECT_EQ(k->positioningMaxRadius_m, 15.0f);
   EXPECT_LT(k->positioningRampNear_m, k->positioningRampFar_m);
-  EXPECT_LT(k->rushDefensiveFactor, k->rushNoStyleFactor);
-  EXPECT_LT(k->rushNoStyleFactor, k->rushOffensiveFactor);
+  // The rush factors are monotone the other way round: a Defensive GK (1.3)
+  // needs the biggest win before he will go, an Offensive GK (1.1) the least.
+  EXPECT_LT(k->rushOffensiveFactor, k->rushNoStyleFactor);
+  EXPECT_LT(k->rushNoStyleFactor, k->rushDefensiveFactor);
 }

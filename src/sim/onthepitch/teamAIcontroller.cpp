@@ -68,7 +68,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   attackingRunPlayer = 0;
   endApplyTeamPressure_ms = 0;
   teamPressurePlayer = 0;
-  endApplyKeeperRush_ms = 0;
   forwardSupportPlayer = 0;
 
   zonePressureActive = false;
@@ -1801,10 +1800,6 @@ void TeamAIController::ApplyZonePressure() {
   nextZonePressureRefresh_ms = match->GetActualTime_ms() + 250;
 }
 
-void TeamAIController::ApplyKeeperRush() {
-  endApplyKeeperRush_ms = match->GetActualTime_ms() + 300;
-}
-
 void TeamAIController::CalculateSituation() {
   teamHasPossession = team->HasPossession();
   teamHasUniquePossession = team->HasUniquePossession();
@@ -1984,7 +1979,6 @@ void TeamAIController::Reset() {
   attackingRunPlayer = 0;
   endApplyTeamPressure_ms = 0;
   teamPressurePlayer = 0;
-  endApplyKeeperRush_ms = 0;
 
   zonePressureActive = false;
   zonePressureEndTime_ms = 0;

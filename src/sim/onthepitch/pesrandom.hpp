@@ -24,6 +24,10 @@ namespace pes {
 
 inline constexpr int kRandomSlots = 4;
 inline constexpr int kWeakSlot = 3;  // the 15-bit LCG slot
+// The slot Range0 draws (0x140a92530's slot path, pesrandom.cpp's MATCH_SLOT):
+// PES's per-system draw sites take their own slot (report 3), and this is the one
+// Range0 always uses.
+inline constexpr int kRange0Slot = 1;
 
 struct RngConstants {
   uint32_t lcgMul;

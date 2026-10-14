@@ -28,7 +28,7 @@ constexpr uint64_t MODULUS_TABLE_VA = 0x1426548b0;  // {100, 5000, 32768, 32768}
 constexpr uint64_t SCALE_VA = 0x1426550d8;          // 2^-31
 
 constexpr uint32_t BIT31_CLEAR = 0x7FFFFFFFu;  // `btr ecx, 0x1f`
-constexpr int MATCH_SLOT = 1;                  // Range0 draws slot 1
+constexpr int MATCH_SLOT = kRange0Slot;  // Range0 draws slot 1 (header)
 
 template <typename T>
 bool ReadImm(const PeImage& exe, const Imm& imm, T* out, std::string* error) {
