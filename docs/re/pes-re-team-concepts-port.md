@@ -81,12 +81,23 @@ Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz
   (Counter) / 5 s since the change), `FUN_14057a580` (latch set), `FUN_140576f60`, `FUN_1405773f0`, `FUN_140576a60` (`d1.c` in the
   scratch dir). Blocked by `FUN_14057a580`'s callees `FUN_1405a58b0`, `FUN_140599d90`, `FUN_140a540a0`, `FUN_1404c8e60`,
   `FUN_1404f6110` (not reduced) and the vetoes' bodies (decompiled, not reduced in this pass).
-- CounterAfterGkCatch: `FUN_14053f9f0` walks the free-area rectangles `MA+0x1cb10` (count `MA+0x1cb0c`), whose builder is not decoded.
+- CounterAfterGkCatch: `FUN_14053f9f0` walks the free-area rectangles `MA+0x1cb10` (u16 count `MA+0x1cb0c`). Pass 4 scanned the
+  whole `.text` for the displacements 0x1cb08/0x1cb0c/0x1cb10: only readers (`0x14053fa2a`, `0x140560688`, `0x140562919`,
+  `0x1405e4ffa`, `0x1406106c3`, `0x1409cf111`, `0x14060dd0e`); the builder writes through a sub-object pointer. Next step: a live
+  write watchpoint on `MA+0x1cb0c`.
 - RetreatPressBack/BlockForwardPass/CrossBlockCreate, NetDefenceCentralSurroundingPress, PassCut, DoublePress, FastCounter,
   SupportBackOneTwo, SideLongitudinalOneTwo, DiagonalPostPlay, PossessionMfJoinDefenceLine: dead in PES (start = `0x141863350`).
-- NetDefenceInducementIntoTheCenter, SealOffInducementToTheSides, SealOffSideSurroundingPress and the 20 live attacking patterns:
-  start/execute bodies (`0x1405781d0`, `0x140578ef0`, `0x1405794e0`, the 0x1405465b0…0x140572000 family) not decoded; not reached
-  in pass 3.
+- Containment concepts (pass 4, decoded, nothing for GF to run):
+  - Gates `0x1405788d0` (Containment = Middle) and `0x140579650` (Wide).
+  - NetDefenceInducementIntoTheCenter (0x29) and SealOffInducementToTheSides (0x2c): start `0x1405781d0`/`0x140578ef0`, end
+    `0x140578170`/`0x140578e90` = in play, no keeper hold, `T+0x6ec == 2`, `FUN_1405780d0` (ball |z| ≥ F7 − 5, own-frame ≥ 12 − F6,
+    `T+0xa50c` < 3) and the MATCH_UP man goal-side in a lane (`FUN_140578010`: 90°/8 m; `FUN_140578dd0`: 0x14259be64°/10 m). Execute is the
+    empty `0x141794410` and no instruction in `.text` reads their running flags `T+0xb711`/`T+0xb714`: in PES they change nothing.
+  - SealOffSideSurroundingPress (0x2d): start `0x1405794e0` (carrier not kicking, facing ≥ 0x1425a9bf0° off our goal,
+    `FUN_140579380` wide ball between −F6 − 5 and the press depth `FUN_14062acf0`, `FUN_140579270` two lane tests, `FUN_140578f80` press
+    candidates not on MARK_HARD). Its only effect is its flag `T+0xb715`, read at `0x140537278` (DELAY/PRESS writer `FUN_140536fc0`),
+    `0x140697703`, `0x140964745` — PES's per-player PRESS/DELAY action layer, which GF does not have. Blocked by that layer.
+- The 20 live attacking patterns (the 0x1405465b0…0x140572000 family): not started in pass 4.
 - Support Range §4.1's support-distance formula: OffBallPort (it reads `GetTeamSheet()`).
 - The 5-byte sliders k1/k4 (no AI effect in PES).
 
