@@ -672,3 +672,6 @@ Exact per-slot rule (lateral spacing, the line-1 depth choice) remains open.
 | EV-DEF-0021 | Sheet option 4 = Defensive Style, slider k2 = line height, k3 = compactness | Confirmed (effect, live both teams); labels INF(high) | `linecheck2.py`, forward-band check |
 | EV-DEF-0022 | Back-line slot targets sit on the line height | Confirmed (live 82 % < 5 cm) | `tgcheck.py` |
 | EV-DEF-0023 | DefenceMark constant table location and field names | High (alphabetical rule checked by meaning) | 0x1437f4808 registry id 0xbc, vtable 0x142b567d8 |
+
+
+> **Correction (TransitionsRE, live):** the "after a possession change" hold-back (5–8 s) and the >4 s cover-drop are **kick-off** timers: `FUN_140a74ec0` = in-play frames since the newest kick-off (`MI+0x119c`), reset at every restart, frozen while stopped. The possession timer `MI+0x11a0` is separate.

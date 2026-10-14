@@ -836,3 +836,6 @@ Kicking Power entry is the scale triple's writer (open list item 5).
 `1405cd540.c`, `1405cc390.c`, `1405cd0f0.c`, `constant_team.bin`,
 `constant_team.json`, `cg_teamai.json`, plus `<scratch>/dz.py`, `<scratch>/fnscan.py`,
 `<scratch>/scan2.py`, `<scratch>/xrefrip.py`, `<scratch>/live.py`, `<scratch>/live2.py`, `<scratch>/srch.py`.
+
+
+> **Correction (TransitionsRE, `pes-re-transitions.md`):** §4.1 has the fore-check branch inverted: the fore-check (and TransitionChase) needs instruction 0xd **not** armed (raw 0x1405748d0).

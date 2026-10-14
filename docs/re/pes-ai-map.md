@@ -22,7 +22,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Set-piece AI (placement, marking at corners/FKs, walls)|partial; taker/delivery/jog-to-marks/wall/post-men OBS; zone template, marker assignment, corner variant open|`pes-re-setpiece-choreography.md` §11, `pes-re-setpiece-kicker.md`, `pes-re-throwin-choreography.md`|`teamAIcontroller.cpp` `PrepareSetPiece`|
 |Set-piece take timing|OBS (fps multiples: corner 3.5, FK 3.0, penalty 1; kick-off by KickoffReceiver, 28 f); port in SetpiecePort|`pes-re-setpiece-choreography.md` §12|`referee.cpp` restart release|
 |Tactics sliders / advanced instructions → behaviour|**OBS** (see the row above); defensive instructions only out of possession, Gegenpress on 0–3 frames after a loss for 0.7–5.7 s|`pes-re-tactics.md`|`teaminstructions.cpp` (7-bit mask: 4 of its bits are toggles in PES)|
-|Transitions (counter-press, regroup, quick counter)|open|—|`teamAIcontroller.cpp`|
+|Transitions (counter-press, regroup, quick counter)|**partial, OBS live**: possession timer `MI+0x11a0`, kick-off timer `FUN_140a74ec0`, TransitionChase/fore-check (5 s limit), regroup concepts RetreatBlockCreate/ForeCheckLineDown hold the block deep; counter-attack trigger (`T+0xa508`) open|`pes-re-transitions.md`|`teamAIcontroller.cpp` `ShouldStartZonePressureOnLoss`, `ApplyZonePressure`, `ShouldLaunchCounter` (random)|
 |In-match management (mentality by score/clock, substitutions)|partial: attack level `T+0xb8a4` writer `FUN_1404f8350`, five levels map 1:1 to GF mentality, no 80′/85′ rules in PES; in watch mode a pad branch fixes it at 2; substitutions open|`pes-re-tactics.md`|`matchmentality.cpp`, `substitutions.cpp`|
 
 ## 2. Player AI (the individual brain)
@@ -41,7 +41,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Goalkeeper: crosses, distribution, one-on-ones|partial; **after-catch carry/step ported**, per-keeper 11-entry table (`team+0x22e4c`) open|`pes-re-goalkeeper.md` §4–6; `pes-re-keeper-port.md`|`peskeeper.cpp` (GF nearest-player pick stands in)|
 |Defensive individual decisions (tackle, slide, block, intercept)|**OBS** structure: one 17-entry first-true reaction table `FUN_140a06dd0` per frame; tackle ≤3.0 m/22.5° into the carrier's touch, no tackle as last man; slide only COM ≥300, `4+0.8·L` m; block 1.3/3.0/7 m; no RNG; jockey = DELAY state; no AI shoulder/shirt-pull. Live tackle check open|`pes-re-defender-decisions.md`|`elizacontroller.cpp` tackle/duel branches, `AIsupport/`|
 |Advantage attack-chance test (`FUN_14050f7e0`)|partial (structure OBS, three tables INF)|`pes-re-duels-fouls.md` §3.1|`pesjudge.cpp` distance-only shortcut|
-|Receiving the ball (first touch, turn, let it run)|open|—|`elizacontroller.cpp`, humanoid touch|
+|Receiving the ball (first touch, turn, let it run)|partial: 95 live first touches (directional, median 58° off the body); interception touch and re-touch lockouts need per-frame capture|`pes-re-transitions.md`|`ElizaController::_TrapCommand`, `humanoid.cpp` trap path, receiver lead|
 |Aerial duels and headers|open|—|`humanoid.cpp` jump/header|
 |Animation selection and blending (which clip per action)|partial (anim-blend, locomotion: clip-driven speed)|`pes-re-anim-blend.md`, `pes-re-locomotion.md`, `pes-re-sim-motion-mapping.md`|`animcollection.cpp`, `humanoid.cpp` SelectAnim|
 |Player-vs-player contact (shoulder, balance, falls)|open (only the foul judgement is ported)|`pes-re-duels-fouls.md` §2|`match.cpp` collision, `humanoid.cpp`|
