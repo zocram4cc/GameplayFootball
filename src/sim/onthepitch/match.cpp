@@ -125,6 +125,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
   // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): every number
   // lives in the image, so a match without the install's constants cannot be
   // built - there is no fallback fatigue to invent.
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+  if (setup.pesCarrierConstants == nullptr)
+    throw std::runtime_error(
+        "PES carrier constants missing: read them from the install with "
+        "pes::LoadCarrierConstants into MatchSetup::pesCarrierConstants");
+  pesCarrierConstants = *setup.pesCarrierConstants;
   if (setup.pesStaminaConstants == nullptr)
     throw std::runtime_error(
         "PES stamina constants missing: read them from the install with "

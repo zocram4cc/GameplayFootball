@@ -69,6 +69,20 @@ const pes::StaminaConstants* SharedStaminaConstants() {
   return constants ? &*constants : nullptr;
 }
 
+const pes::CarrierConstants* SharedCarrierConstants() {
+  static std::optional<pes::CarrierConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadCarrierConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 const pes::StoppageConstants* SharedStoppageConstants() {
   static std::optional<pes::StoppageConstants> constants;
   static bool tried = false;
@@ -158,7 +172,8 @@ const pes::KeeperConstants* SharedKeeperConstants() {
 
 #define REQUIRE_RIG()                                                                    \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
-  if (!SharedStoppageConstants()) GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"
+  if (!SharedStoppageConstants()) GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"; \
+  if (!SharedCarrierConstants()) GTEST_SKIP() << "PES2021.exe: carrier constants unavailable"
 
 // A synthetic set: the PES values in disguise, so the arithmetic is pinned
 // without the install. 5.0 foul hold, 2.5 out-of-play hold, +2.5 down.
@@ -298,6 +313,7 @@ std::vector<Stop> MeasureStops(int minutes) {
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
+  setup.pesCarrierConstants = SharedCarrierConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
 
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());

@@ -188,6 +188,8 @@ public:
   const pes::StoppageConstants& GetPesStoppageConstants() const {
     return pesStoppageConstants;
   }
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+  const pes::CarrierConstants& GetPesCarrierConstants() const { return pesCarrierConstants; }
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
@@ -390,6 +392,7 @@ protected:
   pes::JudgeConstants pesJudgeConstants{};
   pes::KeeperConstants pesKeeperConstants{};
   pes::StoppageConstants pesStoppageConstants{};
+  pes::CarrierConstants pesCarrierConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 

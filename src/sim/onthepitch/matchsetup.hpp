@@ -23,6 +23,8 @@ struct Rig;
 #include "pesstoppage.hpp"
 #include "pesrandom.hpp"
 #include "pesstamina.hpp"
+// PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+#include "pescarrier.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -67,6 +69,11 @@ struct MatchSetup {
   // break bonus and the injury roll's constants, read from the install's exe.
   // Required like the others: the model's every number lives in the image.
   const pes::StaminaConstants* pesStaminaConstants = nullptr;
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md):
+  // the shoot zone, the receiver openness formula, PassForward's tiers and
+  // the rolled plan probabilities. Required: every one of those numbers lives
+  // in the image, so a carrier with no constants would be guessing.
+  const pes::CarrierConstants* pesCarrierConstants = nullptr;
 };
 
 #endif

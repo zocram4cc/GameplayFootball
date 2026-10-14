@@ -80,6 +80,10 @@ class PesLibrary : public RefCounted {
   const pes::StaminaConstants* stamina_constants() const {
     return staminaConstants_ ? &*staminaConstants_ : nullptr;
   }
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+  const pes::CarrierConstants* carrier_constants() const {
+    return carrierConstants_ ? &*carrierConstants_ : nullptr;
+  }
 
   // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
   const pes::StoppageConstants* stoppage_constants() const {
@@ -102,6 +106,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::PesClockConstants> clockConstants_;
   std::optional<pes::PesBallConstants> ballConstants_;
   std::optional<pes::JudgeConstants> judgeConstants_;
+  std::optional<pes::CarrierConstants> carrierConstants_;
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;
   std::optional<pes::StaminaConstants> staminaConstants_;

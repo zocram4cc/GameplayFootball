@@ -82,6 +82,12 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 stamina constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+  if (exe) carrierConstants_ = pes::LoadCarrierConstants(*exe, &err);
+  if (!carrierConstants_) {
+    UtilityFunctions::push_error("PES21 carrier-decision constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) stoppageConstants_ = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants_) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));

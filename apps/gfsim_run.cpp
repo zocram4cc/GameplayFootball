@@ -93,6 +93,9 @@ int main(int argc, char** argv) {
   if (!keeperConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   auto stoppageConstants = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
+  auto carrierConstants = pes::LoadCarrierConstants(*exe, &err);
+  if (!carrierConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -113,6 +116,7 @@ int main(int argc, char** argv) {
   setup.pesRngConstants = &*rngConstants;
   setup.pesKeeperConstants = &*keeperConstants;
   setup.pesStoppageConstants = &*stoppageConstants;
+  setup.pesCarrierConstants = &*carrierConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

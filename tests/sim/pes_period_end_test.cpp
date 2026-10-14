@@ -95,6 +95,20 @@ const pes::RngConstants* SharedRngConstants() {
 // PES 2021's goalkeeper deflect point and post-catch distribution target
 // (docs/re/pes-re-keeper-port.md).
 // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+const pes::CarrierConstants* SharedCarrierConstants() {
+  static std::optional<pes::CarrierConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      std::string err;
+      if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+        constants = pes::LoadCarrierConstants(*exe, &err);
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 const pes::StoppageConstants* SharedStoppageConstants() {
   static std::optional<pes::StoppageConstants> constants;
   static bool tried = false;
@@ -144,7 +158,9 @@ const pes::StaminaConstants* SharedStaminaConstants() {
   if (!SharedBallConstants())                                                            \
     GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"; \
   if (!SharedStoppageConstants())                                               \
-    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
+    GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"; \
+  if (!SharedCarrierConstants())                                                 \
+    GTEST_SKIP() << "PES2021.exe: carrier constants unavailable";
 
 // A match in the given phase with PES's clock constants installed, and the
 // simulation clock driven to `seconds` of elapsed game time.
@@ -179,6 +195,7 @@ std::unique_ptr<Match> MatchAtPhase(e_MatchPhase phase, float seconds) {
   setup.pesKeeperConstants = SharedKeeperConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
+  setup.pesCarrierConstants = SharedCarrierConstants();
   if (!setup.pesBallConstants) return nullptr;
   auto match = std::make_unique<Match>(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   match->SetMatchPhase(phase);
