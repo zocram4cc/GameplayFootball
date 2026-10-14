@@ -618,3 +618,78 @@ as the §15.14 PRESS-vs-MATCH_UP distances (medians 9.0/9.2 m).
   `T+0xa298`) + `flagwatch.py` for the whistle. Per the orchestrator rule
   (stop when no state-1 frames), sampling stops here; items in §5.4 stand
   with these samplers named.
+
+## 7. Third-match window (DefenceLiveRE — kick-off-fresh sample)
+
+Sample: `ko_kick.jsonl` (sampler `ko60c.py`: gated 20 Hz + `MI+0x1748`
+active flags, `T+0x8e08` sheet 64 B, `T+0xa53c` press timer, `T+0xa298`):
+637 rows, ALL `st = 1`, dt med 0.071 s / p90 0.157 s, frames 313–3729,
+`k119c` 145→3561 (true kick-off straddle, OBS). All `m1554 = 0`, level 2
+both teams, `m1588 = 0` throughout. Team dirs this match: side 0 `+1`,
+side 1 `−1` (OBS — flipped sides from §5). F null 12, ball null 9,
+roots all-null 4 rows. `T+0xa53c = 0`, `T+0xa298 = 0` throughout (OBS).
+`flag2.jsonl` (10-min `flagwatch.py` run, 10 rows): 3 kick-offs caught,
+`m1588 = 0` throughout — still no whistled offside (OPEN).
+
+### 7.1 `62ade0` slider ramp — CLOSED (OBS sheet + gate arithmetic)
+
+- Sheet decode (OBS): both teams plan 0; team 0 Defensive-Line slider
+k2 = 10, Defensive Style 0 (fore-check); team 1 k2 = 8, style 1
+(retreat). Predictions: team 0 `20 + (52.56−20)·1.0 = 52.56`;
+team 1 `−8 + 30·0.8 = 16.0`.
+- Gate outcome (OBS, 506 good rows × 2): team 0 (lane start 52.56): ball
+in our half (`bx ≤ 0`) 39.2% of rows, beyond lane start 0.0% — gate
+passes on the our-half arm whenever tested. Team 1 (lane start 16.0):
+our-half 60.8%, beyond lane start 31.5% — the slider ramp is the binding
+arm in ~1/3 of rows (OBS). bx ranges ±38 m both teams.
+- The `> 7 s` (`k > 378`) zone is fully covered (`k` to 3561); level 2
+throughout so no ±30/±40 offsets confound the ramp (OBS).
+- GF: port the `62ade0` ramp as closed in §1.1 (team 0 → 52.56 m,
+team 1 → 16.0 m at these sliders).
+
+### 7.2 `h` zones in the phase-0 edge (OBS, still phase-0 only)
+
+`h` coverage: 26 / 31 / 571 rows (`h` = 1 / ramp / 0). fb6f0 model
+(`base` 12.0, `span` 31.14): team 0 predicts 12.0 → 21.8 → 30.0;
+team 1 predicts 40.4 → 32.9 → 28.4. Sampled `T+0x875c`: team 0
+−27.47 → −12.83 → −15.24; team 1 −10.0 → −23.22 → −21.38. The phase-0
+edge moves with `h` in the same direction as the model but with ~15–40 m
+offset (OBS) — confirming again it is NOT the phase-1 rear (INF(high)).
+`bp+0x364` dip and MODE-2 −6 m still unobservable (MA-side `S`; perf
+watchpoints still exhausted — two `flock` attempts this window both
+failed with "No space left on device", OBS).
+
+### 7.3 Line cases + PRESS in this sample
+
+- Ball-limited: 40/1012 team-rows (OBS), e.g. frame 856 team 0
+(`s = +1`): `s·ball.x = −31.21` < second-rearmost −31.07 → ball binds
+(by 0.14 m — inside the 0.30 m tolerance band, so the call would hinge
+on body-point refinement, INF(med)). Halfway cap: 0 rows this sample
+(play never parked both rears behind halfway). Fewer-than-two:
+`MI+0x1748` bytes are all 1 in every row (OBS) — `count < 2` never
+occurs in open play; needs a red-card / injury window (next step).
+- PRESS reasons (OBS u32 pairs): 4 ×16, 5 ×15, 1 ×5, 7 ×1. Reason-7 at
+frame 2600 (team 1, slot 10, `k119c` 2432): presser 3.11 m from a low
+ball (y 0.12) — third independent 3–6 m enrolment sighting (§5.3 + two
+there). Reason 7 stays rare (1/37 words here vs 2/35 in §5.3).
+
+### 7.4 Whistled offside — CLOSED (OBS flag words + geometry)
+
+`flag2.jsonl` final: 27 rows, 9 kick-offs, and one whistle (OBS): frame
+20246, `st = 2`, `m1554 = 5` (free kick), `m1588 = 1`, flag frame
+`m15a0 = 20076`, line `m15a8 = −18.668`, category `m15b4 = 2`.
+Ball at whistle (−24.452, 0.502, 4.674) — dead ball after a free-kick
+award against the offside (INF(med): the FK-stoppage shape, `st = 2`
+with `m1554 = 5`, matches the foul-choreography free-kick path).
+Attack was team 0 (`dir = +1`): own-frame rears
+[−49.42, −29.87, −24.89, −19.78, …] → second-rearmost −29.87;
+`s·ball.x = −24.45` → ball-limited line would be −29.87 (defender),
+while the stored whistle line is −18.67 — 11.2 m upfield of the
+root-approximated second-rearmost (OBS gap). Readers: (a) roots read
+~170 frames after the flag frame (stale by a full stoppage — the
+defence has stepped up, INF(high)); (b) the MA line uses rear body
+surfaces, not roots (±0.5 m, not 11 m). So the gap is staleness, not a
+model miss (INF(med)). Category 2 = the mid band per the §4 replay
+(OBS code meaning; this live row is consistent: flag raised, FK given).
+GF: `offsiderule.cpp` needs no change (flag → FK path already the
+behaviour; the 170-frame root lag is a sampler artefact, not PES).
