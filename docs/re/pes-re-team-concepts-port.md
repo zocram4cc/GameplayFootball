@@ -60,27 +60,33 @@ Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz
 - Selector: the registry-15 stop flag, the difficulty row 0x21 cap, `MI+0x116c == 2` early-out and the member-state stop
   (`FUN_14057a160`, states 0x25/0x2c) have no GF counterpart.
 - Times in seconds, not `⌊k·fps + 0.5⌋` frames.
-- ForeCheckPress: the "< 12 m and inside the corridor" veto reads `MA+0x3c+0x14·side`, a per-team float whose writer I did not
-  find (displacement search of the start test only). Press count: the candidate filter `FUN_140639830`/`FUN_140639a20`
-  (637 + 519 insns of per-slot state tests; disassembled, not reduced) → all outfield men; the +5 m lane bonus
-  `FUN_140a53da0` → `FUN_140a53df0` (geometry, not reduced) not applied.
-- ForeCheckLineDown: `FUN_140574bb0` (uncovered carrier) ends in `FUN_140a4fea0` → `FUN_140a4fbc0` (cone walk, not reduced) → false.
+- ForeCheckPress corridor veto (pass 3, decoded): `MA+0x3c+0x14·side` is written by `FUN_14045bfe0` = mean of the team's most
+  advanced man and its deepest outfielder (`+0x38`/`+0x40`); GF takes the extremes of positions instead of PES's depth list.
+- Press count (pass 3, decoded): candidates `FUN_140639830` (within 21.5 m, PRESS state or an assignment) and `FUN_140639a20`
+  (sector assignment within 18–25 m) both reach past the count's largest radius (17 m), so only their one-man-per-sector rule
+  (`FUN_140639600`) is left out. Lane bonus `FUN_140a53da0` → `FUN_140a53df0` ported: MATCH_UP man within 6.5 m, goal-side within 35°.
+- ForeCheckLineDown uncovered carrier (pass 3, ported): `FUN_140574bb0` with the `FUN_140a4fbc0` cone (80°, 4 + 3·ramp m, own men incl.
+  keeper). The holder's 4 m ball-list check is GF's ball retainer; PES's carrier→presser bearing table (`MA+0x228d4+0x16a8`) is a
+  live bearing.
 - Push-up: the −15 m variant behind `ctx+0x138` (writer not found) not taken; `FUN_14063fdc0`'s kick-prediction point = the ball.
 - Measured line: PES's slot line `T+0x7b88` = GF's role line, keeper excluded (INF).
 
 ## Not ported, and why (each with the blocking function)
 
-- ForeCheckLineUp (0x23): start/end decoded (`FUN_1405752a0`: LineDown not running, `FUN_140575210` ball |z| ≥ F7 − 5 and own-frame
-  −10…18, `FUN_140574f40` not containing); blocked by `FUN_140574f40`'s lane test `FUN_140a53da0` → `FUN_140a53df0`, and no reader of its
-  running flag `T+0xb70b` is known (execute slot is the empty `0x141794410`), so it would have no effect.
-- ReverseSideCounter: blocked by the latch clear `FUN_14057ab30` (window rule not reduced) and the two start vetoes
-  `FUN_140576f60`/`FUN_1405773f0` (constants known, logic only INF). Porting the start without its vetoes would fire it more than PES.
+- ForeCheckLineUp (pass 3): **ported**. Start `FUN_140575300` / end `FUN_1405752a0`, `FUN_140575210`, containment `FUN_140574f40`
+  (with the lane test), effect in `FUN_140682770` (after the push-up: back edge raised to min(ball + 5, B + 7, −5)). PES raises only
+  the back band's lower edge; GF's bands hang off the line height, so the block follows (ponytail). Its other reader 0x140958b07
+  skips `FUN_1409510d0` in PES's per-player action-candidate list, which GF does not have.
+- ReverseSideCounter: still out. Pass 3 decompiled `FUN_14057ab30` (latch clear: possession, no concept index 2 running, and > 6 s
+  (Counter) / 5 s since the change), `FUN_14057a580` (latch set), `FUN_140576f60`, `FUN_1405773f0`, `FUN_140576a60` (`d1.c` in the
+  scratch dir). Blocked by `FUN_14057a580`'s callees `FUN_1405a58b0`, `FUN_140599d90`, `FUN_140a540a0`, `FUN_1404c8e60`,
+  `FUN_1404f6110` (not reduced) and the vetoes' bodies (decompiled, not reduced in this pass).
 - CounterAfterGkCatch: `FUN_14053f9f0` walks the free-area rectangles `MA+0x1cb10` (count `MA+0x1cb0c`), whose builder is not decoded.
 - RetreatPressBack/BlockForwardPass/CrossBlockCreate, NetDefenceCentralSurroundingPress, PassCut, DoublePress, FastCounter,
   SupportBackOneTwo, SideLongitudinalOneTwo, DiagonalPostPlay, PossessionMfJoinDefenceLine: dead in PES (start = `0x141863350`).
 - NetDefenceInducementIntoTheCenter, SealOffInducementToTheSides, SealOffSideSurroundingPress and the 20 live attacking patterns:
-  their start/execute bodies (`0x1405781d0`, `0x140578ef0`, `0x1405794e0`, the 0x1405465b0…0x140572000 family) are not decoded in any report
-  and were not decoded in this pass.
+  start/execute bodies (`0x1405781d0`, `0x140578ef0`, `0x1405794e0`, the 0x1405465b0…0x140572000 family) not decoded; not reached
+  in pass 3.
 - Support Range §4.1's support-distance formula: OffBallPort (it reads `GetTeamSheet()`).
 - The 5-byte sliders k1/k4 (no AI effect in PES).
 
@@ -90,16 +96,16 @@ Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz
   supporters, end test, press count, fore-check start/continue, LineDown/Retreat gaps, push-up) + install relations. Mutations:
   removing the "inside" angle test fails `PesTransitionChase.EveryStartRuleVetoes`; removing the push-up −5 m cap fails
   `PesForeCheck.PushUpLiftsTheBandsToFourMetresBehindTheMenCapped`.
-- Full gate: 469/469, 2 standing skips; `SimMatch.SameSeedPlaysTheSameMatch` passes.
+- Full gate (pass 3): 472/472, 2 standing skips; `SimMatch.SameSeedPlaysTheSameMatch` passes.
 - Smoke, 20 min, seed 7, home 1 v away 2 (one seed, noisy):
 
-| | base (pre-port) | pass 1 (68fed8e) | pass 2 |
-|---|---|---|---|
-| score | 3-1 | 1-0 | 4-1 |
-| passes | 44-38 | 25-17 | 32-30 |
-| shots (on target) | 14 (7) - 6 (2) | 11 (4) - 2 (1) | 22 (13) - 3 (2) |
-| tackles / slides | 32-57 / 57-104 | 26-34 / 84-51 | 28-22 / 88-58 |
-| fouls | 19-28 | 8-18 | 13-20 |
-| possession | 42%-58% | 22%-78% | 34%-66% |
-| forced stalemate ticks | 72303 | 68285 | 63562 |
-| concept starts (probe, not committed) | — | SideCounter 5 | SideCounter 17, ForeCheckPress 134, TransitionChase 2, LineDown 0, Retreat 0 (both fixture sheets are Style 0) |
+| | base (pre-port) | pass 1 (68fed8e) | pass 2 | pass 3 |
+|---|---|---|---|---|
+| score | 3-1 | 1-0 | 4-1 | 1-0 |
+| passes | 44-38 | 25-17 | 32-30 | 29-26 |
+| shots (on target) | 14 (7) - 6 (2) | 11 (4) - 2 (1) | 22 (13) - 3 (2) | 13 (6) - 1 (0) |
+| tackles / slides | 32-57 / 57-104 | 26-34 / 84-51 | 28-22 / 88-58 | 44-29 / 40-62 |
+| fouls | 19-28 | 8-18 | 13-20 | 13-20 |
+| possession | 42%-58% | 22%-78% | 34%-66% | 30%-70% |
+| forced stalemate ticks | 72303 | 68285 | 63562 | 59640 |
+| concept starts (probe, not committed) | — | SideCounter 5 | SideCounter 17, ForeCheckPress 134, TransitionChase 2, LineDown 0, Retreat 0 (both fixture sheets are Style 0) | not probed |
