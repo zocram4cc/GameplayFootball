@@ -11,6 +11,7 @@
 #include <string>
 
 #include "base/properties.hpp"
+#include "gametypes.hpp"
 
 namespace TeamPhilosophy {
 
@@ -23,7 +24,7 @@ enum e_Philosophy {
 };
 
 // Distance from the goal line to the edge of the penalty box, in metres.
-const float penaltyBoxDepth = 16.5f;
+const float penaltyBoxDepth = pitchHalfW - pesPenaltyAreaLineX;  // FieldInfo F6
 
 // Case- and separator-insensitive lookup; unknown names yield Balanced.
 e_Philosophy Parse(const std::string& name);

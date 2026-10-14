@@ -15,8 +15,8 @@ using namespace blunted;
 
 namespace {
 
-// The penalty spot sits 11 metres out from the goal line.
-const float penaltySpotDistance = 11.0f;
+// The penalty spot: PES's FieldInfo F8, measured from GF's goal line.
+const float penaltySpotDistance = pitchHalfW - pesPenaltySpotX;
 // Below this speed the ball counts as having come to rest.
 const float ballAtRestSpeed = 0.6f;
 // The keeper counts as having the ball inside this radius.

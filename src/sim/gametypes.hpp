@@ -88,5 +88,14 @@ const float goalAreaHalfWidth = 9.16f;
 const float goalInnerHalfWidth = 3.66f;
 const float goalInnerHeight = 2.44f;
 const float goalFrameThickness = 0.12f;
+// PES 2021's FieldInfo marks (docs/re/pes-re-fieldinfo.md 2, 5), as x along
+// the pitch from the centre. FieldInfo is built at run time by the Denuvo VM
+// and no VA holds it (report 4), so these are named constants, read live.
+// The penalty area is 8 cm inside Law 1 on both axes in PES.
+const float pesGoalAreaLineX = 47.06f;         // F4
+const float pesPenaltyAreaLineX = 36.14f;      // F6
+const float pesPenaltyAreaHalfWidth = 20.12f;  // F7
+const float pesPenaltySpotX = 41.56f;          // F8
+const float pesCircleRadius = 9.15f;           // F17: centre circle and the box arc
 
 #endif

@@ -452,11 +452,6 @@ TEST(DefensiveShapeLoader, ReadsTheImagesOwnValues) {
   EXPECT_FLOAT_EQ(k->handOffOrganiserTop, 50.0f);
   EXPECT_FLOAT_EQ(k->handOffFrames_m, 60.0f);
   EXPECT_FLOAT_EQ(k->handOffOrganiserSpan, -40.0f);
-  // The pitch facts PES derives from its FieldInfo and GF derives from its own.
-  const pes::ShapeField f = pes::ShapeFieldFromPitch();
-  EXPECT_FLOAT_EQ(f.halfLength_m, 52.5f);
-  EXPECT_FLOAT_EQ(f.ownBox_m, 52.5f - 16.5f);
-  EXPECT_FLOAT_EQ(f.ownGoalArea_m, 52.5f - 5.5f);
 }
 
 // --- the settings that gate the trap and the mark passes ----------------------

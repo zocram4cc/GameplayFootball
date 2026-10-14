@@ -844,7 +844,7 @@ int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction acti
   // This engine's standing tackle (2) and slide (3) put the man down; the light
   // contact (1) does not.
   c.victimFell = action != pes::JudgeAction::Jostle;
-  const float boxHalfWidth = 20.15f - lineHalfW;
+  const float boxHalfWidth = pesPenaltyAreaHalfWidth;  // FieldInfo F7
   c.dogso = FoulSeverity::DeniesObviousChance(
       attackDirSign, a.coords[0], a.coords[1],
       AI_GetOffsideLine(match, match->GetMentalImage(0), tripper->GetTeam()->GetID()),
@@ -854,7 +854,7 @@ int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction acti
   const float spotX = a.coords[0] - attackDirSign * k.spotBias_m;
   const float spotY = a.coords[1] + (a.coords[1] < 0 ? -k.spotBias_m : k.spotBias_m);
   c.inAttackingBox =
-      fabs(spotY) < boxHalfWidth && spotX * attackDirSign > pitchHalfW - 16.5f + lineHalfW;
+      fabs(spotY) < boxHalfWidth && spotX * attackDirSign > pesPenaltyAreaLineX;
 
   // PES level 1 foul, 2 foul + warning, 3 yellow, 4 red; this engine's foul
   // types are 1 foul, 2 yellow, 3 red.

@@ -18,15 +18,12 @@
 // the players are given it as a destination and run there, and the taker waits.
 namespace SetPieceLaws {
 
-// The penalty area, as the pitch is actually painted (proceduralpitch.cpp): 16.5 m deep
-// and 20.15 m either side of the centre line.
-constexpr float kAreaDepth = 16.5f;
-constexpr float kAreaHalfWidth = 20.15f;
-
-// The goal area ("six-yard box", Law 1): 5.5 m deep and 9.16 m either side of the
-// centre line. PES's FieldInfo F4/F5 hold the same two surfaces.
-constexpr float kGoalAreaDepth = 5.5f;
-constexpr float kGoalAreaHalfWidth = 9.16f;
+// The penalty area and the goal area as PES's FieldInfo has them (F6/F7, F4/F5),
+// measured from GF's goal line.
+const float kAreaDepth = pitchHalfW - pesPenaltyAreaLineX;
+const float kAreaHalfWidth = pesPenaltyAreaHalfWidth;
+const float kGoalAreaDepth = pitchHalfW - pesGoalAreaLineX;
+const float kGoalAreaHalfWidth = goalAreaHalfWidth;  // F5
 
 // How far outside the line a cleared player is sent. Standing exactly on it is legal
 // and looks like cheating, and a man drifting a step back would be inside again.

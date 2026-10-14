@@ -28,13 +28,13 @@ ShapeField ShapeFieldFromPitch() {
   ShapeField f{};
   f.halfLength_m = pitchHalfW;
   f.halfWidth_m = pitchHalfH;
-  // F[6]: the own penalty-area line, 16.5 m up the pitch from the goal line.
-  f.ownBox_m = pitchHalfW - TeamPhilosophy::penaltyBoxDepth;
-  // F[4]: 5.5 m up - the deepest the line is ever allowed to sit.
-  f.ownGoalArea_m = pitchHalfW - 5.5f;
+  // F[6]: the own penalty-area line.
+  f.ownBox_m = pesPenaltyAreaLineX;
+  // F[4]: the goal-area line - the deepest the line is ever allowed to sit.
+  f.ownGoalArea_m = pesGoalAreaLineX;
   // F[8] and F[0x11] (report 6).
-  f.eleven_m = pitchHalfW - 11.0f;
-  f.goalAreaFloor_m = 9.15f;
+  f.eleven_m = pesPenaltySpotX;
+  f.goalAreaFloor_m = pesCircleRadius;
   return f;
 }
 
