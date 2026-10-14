@@ -75,6 +75,21 @@ std::optional<PressRoleTable> LoadPressRoleTable(const PeImage& exe, std::string
 // True when `role` (0..93) carries `bit`. Roles past the table give false (FUN_140a6e150 and friends).
 bool PressRoleHas(const PressRoleTable& t, int role, int bit);
 
+// FUN_140a40200's 4-deep ring of recent (id, time) stamps. `head` is the newest slot.
+struct PressStampRing {
+  struct Stamp {
+    int id = 0;
+    uint32_t first = 0;
+    uint32_t last = 0;
+  };
+  std::array<Stamp, 4> slots{};
+  int head = 0;
+};
+
+// FUN_140a40200: a new id stamps the head slot; it advances the head first when the
+// old head's first stamp is older than `t`. Same id as the head is a no-op.
+void PressStampPush(PressStampRing& ring, int id, uint32_t t);
+
 // True when the signed angle `deg` wraps to an |angle| outside [eps, halfTurn - eps]
 // (FUN_140a92b90 returns 1). Used for the boundary test on a bearing.
 bool PressAngleOutsideBand(const PressConstants& c, float deg, float eps);

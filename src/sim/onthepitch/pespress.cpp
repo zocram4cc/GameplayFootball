@@ -113,6 +113,14 @@ float PressSpeedKmh(const PressConstants& c, float perFrame) {
   return ((c.framesPerSec * c.secPerMinute * c.secPerMinute) / c.metresPerKm) * perFrame;
 }
 
+void PressStampPush(PressStampRing& ring, int id, uint32_t t) {
+  if (ring.slots[ring.head].id == id) return;
+  if (ring.slots[ring.head].first < t) {
+    ring.head = (ring.head + 1) % static_cast<int>(ring.slots.size());
+  }
+  ring.slots[ring.head] = {id, t, t};
+}
+
 constexpr uint64_t kRoleTableVa = 0x1426484f0;
 
 std::optional<PressRoleTable> LoadPressRoleTable(const PeImage& exe, std::string* error) {

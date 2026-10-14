@@ -324,6 +324,31 @@ TEST(PressExcludedMan, NoEligibleManGivesTheSentinel) {
   EXPECT_EQ(pes::PressExcludedMan(1, on, flag), pes::kPressNoMan);
 }
 
+TEST(PressStampRing, SameIdAsHeadIsANoOp) {
+  pes::PressStampRing r{};
+  pes::PressStampPush(r, 5, 10);  // slot 0 is empty (first 0 < 10): head -> 1
+  pes::PressStampPush(r, 5, 20);  // same id as head: no-op
+  EXPECT_EQ(r.head, 1);
+  EXPECT_EQ(r.slots[1].last, 10u);
+}
+
+TEST(PressStampRing, NewerHeadAdvancesAndWraps) {
+  pes::PressStampRing r{};
+  for (int i = 0; i < 5; ++i) pes::PressStampPush(r, i + 1, 10u * (i + 1));
+  EXPECT_EQ(r.head, 1);  // 5 pushes past an empty slot 0: wrapped, lands on slot 1
+  EXPECT_EQ(r.slots[1].id, 5);
+  EXPECT_EQ(r.slots[0].id, 4);
+}
+
+TEST(PressStampRing, EqualHeadTimeIsOverwrittenInPlace) {
+  pes::PressStampRing r{};
+  pes::PressStampPush(r, 1, 50);  // head -> 1
+  pes::PressStampPush(r, 2, 50);  // old first 50 is not < 50: overwrite slot 1
+  EXPECT_EQ(r.head, 1);
+  EXPECT_EQ(r.slots[1].id, 2);
+}
+
+
 TEST(PressRole, BitTestAndPastTheTableGivesFalse) {
   pes::PressRoleTable t{};
   t.bits[2] = (1u << pes::kRoleBitA) | (1u << pes::kRoleBitJostle);
