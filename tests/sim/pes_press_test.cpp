@@ -381,8 +381,65 @@ TEST(PressRoleTableLoader, LoadsNinetyFourEntriesFromTheImage) {
   EXPECT_EQ(t->bits.size(), static_cast<size_t>(pes::kRoleCount));
   EXPECT_FALSE(pes::PressRoleHas(*t, pes::kRoleCount, pes::kRoleBitA));
 }
+// Fill fixture: every man passes the gates unless a test breaks one.
+static pes::PressFillMan Passer(int code, float hook) {
+  pes::PressFillMan m;
+  m.onField = true;
+  m.inDistance = true;
+  m.carrierTagged = true;
+  m.teamFlagZero = true;
+  m.gate479470 = true;
+  m.angleCode = code;
+  m.hookValue = hook;
+  return m;
+}
 
-// Skips without PES21_ROOT, like the other install tests.
+TEST(PressCandidateFill, CountsPassersAndSetsFlags) {
+  pes::PressConstants c = Synthetic();
+  std::array<pes::PressFillMan, 11> mans{};
+  mans[2] = Passer(0, 9.0f);   // hook above 4.0: no flagA; code 0: flagB
+  mans[5] = Passer(2, 3.0f);   // hook below 4.0: flagA; code 2 marks slot 2
+  mans[6].onField = false;     // off field: rejected
+  mans[7] = Passer(1, 9.0f);
+  mans[7].excluded = true;     // the excluded man: rejected
+  pes::PressFillResult r = pes::PressCandidateFill(c, mans);
+  EXPECT_EQ(r.count, 2);
+  EXPECT_TRUE(r.flagA);
+  EXPECT_TRUE(r.flagB);
+  EXPECT_TRUE(r.slotSet[0]);
+  EXPECT_TRUE(r.slotSet[2]);
+  EXPECT_FALSE(r.slotSet[1]);
+}
+
+TEST(PressCandidateFill, LowIndexNeedsCarrierTagOrStampedSet) {
+  pes::PressConstants c = Synthetic();
+  std::array<pes::PressFillMan, 11> mans{};
+  mans[3] = Passer(1, 9.0f);
+  mans[3].carrierTagged = false;  // no carrier tag, and not in the stamped set: rejected
+  EXPECT_EQ(pes::PressCandidateFill(c, mans).count, 0);
+  mans[3].inStampedSet = true;    // stamped set and not the A558 man: passes
+  mans[3].notInA558 = true;
+  EXPECT_EQ(pes::PressCandidateFill(c, mans).count, 1);
+}
+
+TEST(PressCandidateFill, HighIndexNeedsNoTeamFlagOnlyInCarrierBranch) {
+  pes::PressConstants c = Synthetic();
+  std::array<pes::PressFillMan, 11> mans{};
+  // k = 10 is not > 10, so the carrier branch also needs the team flag to be zero.
+  mans[10] = Passer(1, 9.0f);
+  mans[10].teamFlagZero = false;
+  EXPECT_EQ(pes::PressCandidateFill(c, mans).count, 0);
+}
+
+TEST(PressCandidateFill, NothingPassesGivesZero) {
+  pes::PressConstants c = Synthetic();
+  std::array<pes::PressFillMan, 11> mans{};
+  pes::PressFillResult r = pes::PressCandidateFill(c, mans);
+  EXPECT_EQ(r.count, 0);
+  EXPECT_FALSE(r.flagA);
+  EXPECT_FALSE(r.flagB);
+}
+
 TEST(PressConstantsLoader, ImageRelationsHold) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";

@@ -303,4 +303,21 @@ std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const Pres
   return out;
 }
 
+PressFillResult PressCandidateFill(const PressConstants& c, const std::array<PressFillMan, 11>& mans) {
+  PressFillResult r;
+  for (int k = 0; k < 11; ++k) {
+    const PressFillMan& m = mans[k];
+    // The k>10 branch is the team-flag test; k<=10 always passes it.
+    const bool carrierOk = (m.carrierTagged && (k > 10 || m.teamFlagZero)) ||
+                           (m.inStampedSet && m.notInA558);
+    if (!(m.onField && !m.excluded && m.inDistance && carrierOk && m.gate479470)) continue;
+    r.count++;
+    // 4.0 (0x1425656c0) is the same float as pass2ActionAdd; read it from the constants.
+    if (m.hookValue < c.pass2ActionAdd) r.flagA = true;
+    if (m.angleCode == 0) r.flagB = true;
+    if (m.angleCode >= 0 && m.angleCode < 4) r.slotSet[m.angleCode] = true;
+  }
+  return r;
+}
+
 }  // namespace pes

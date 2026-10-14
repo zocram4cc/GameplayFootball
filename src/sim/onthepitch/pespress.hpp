@@ -182,4 +182,30 @@ std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const Pres
                                              const std::vector<PressCandidate>& pass1Bucket,
                                              PressPickState& state);
 
+// One man as the candidate fill (FUN_140639830) sees him. Every gate is
+// precomputed by the caller from match/team state; the fill only tallies.
+struct PressFillMan {
+  bool onField = false;        // team+0x1748[man] != 0
+  bool excluded = false;       // man == FUN_140a62690(team, side)
+  bool inDistance = false;     // carrier-to-man distSq <= 462.25 (0x1425cee20)
+  bool carrierTagged = false;  // carrier+0x5d0 == 0x34
+  bool inFirstTen = false;     // local index k <= 10
+  bool teamFlagZero = false;   // team+0xb88c[k] == 0 (the k>10 branch)
+  bool inStampedSet = false;   // FUN_140a41190(team, man) >= 0
+  bool notInA558 = false;      // team+0xa558 != man
+  bool gate479470 = false;     // FUN_140479470(team, man) != 0
+  int angleCode = -1;          // FUN_140639600 code, 0..3
+  float hookValue = 0;         // FUN_14044e0d0 (under the unresolved hook)
+};
+
+struct PressFillResult {
+  int count = 0;               // men that passed every gate
+  bool flagA = false;          // a passer has hookValue < 4.0 (0x1425656c0)
+  bool flagB = false;          // a passer has angleCode 0
+  std::array<bool, 4> slotSet{};  // angle codes used by passers
+};
+
+// Gate and tally for FUN_140639830 over the side's 11 men (local index k).
+PressFillResult PressCandidateFill(const PressConstants& c, const std::array<PressFillMan, 11>& mans);
+
 }  // namespace pes
