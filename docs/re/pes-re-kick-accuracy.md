@@ -89,3 +89,36 @@ Tool: scratch `kickcap2.py` (20 Hz poll of sim-ball `+0xc` speed, jump `prev<2.0
 5. **Scatter amp→angle mapping** (§4 `xmm1/xmm2` args): register flow from `[rbp±]` slots to degrees not traced. Next: static slice from each `Normal` call back to its amp load (all in `scatter_full.txt`).
 6. **Pressure / Balance**: no `stat(·,0x29)` consumer in kick path; nearest proxies are `+0x2d14` flag bits, AI-state mask `0x28005`, `+0x2bd0` gate. Next: live-diff those bytes on pressured vs free kicks (MA-ball capture above + AI-state sample).
 7. **Headers/clearances/keeper punt-throw/inplay-demo** (`0x140748b20`, `0x1407e7f20`, `FUN_1408397a0` tail from `0x14083b2d0`): not decoded. Next: `dec.sh` each + caller scan.
+
+## 10. Live (OBS — 10 ball-acceleration events, 2026-10-14 window; match since ended)
+
+Tool: scratch `kicklive.py` (read-only pread, ~18 Hz poll, no watchpoints, no decompile queue, nothing written): launch = sim-ball `+0xc` speed jump `prev<2.0 → ≥2.0`; per event, nearest-ap snapshot (idx, act, pos, `ap+0x2bc8` aim, `+0x2bcc` h, `+0x2bd0` pow, `+0x2bf4` tgt, `+0x2d04/+0x2d0c` curve, `+0x2752` kind, `+0x2754` cat, `+0x2d14` flags, hit floats `ap+0x68/+0x70`). **OBS**: sim ball only — the MA mirror was not used. Round-2 sampler `kicklive2.py` (adds roster-block + live-stat bytes per stamina-drain §1/matchlogic §1.3, and slot-2 state) acquired late and captured 0 events. Both samplers are ready for the next match. Slots only, no names.
+
+| n | fr | act | kind | kick d (m) | sp | launch az° | tgt | dist (m) | err° | pow | h | c1/c2 | f14 | hr8,hr10 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 28118 | 9 | 75 | 0.93 | 17.52 | −125.9 | (−41.79,0,24.59) | 15.0 | −0.2 | 0 | 0 | 0,0 | 0 | 0.013,−0.037 |
+| 2 | 28230 | 9 | 42 | 0.70 | 16.61 | 142.0 | (−34.00,0,13.36) | 14.8 | −8.6 | 0 | 0 | 0,0 | 0 | −0.016,0.030 |
+| 3 | 28485 | 4 | −1 | 0.86 | 5.91 | 67.1 | (0,−1,0)† | — | — | 0 | 0 | 0,0 | 0 | −0.028,0.016 |
+| 4 | 28534 | 4 | −1 | 0.66 | 3.61 | −95.2 | (0,−1,0)† | — | — | 0 | 0 | 0,0 | 0 | 0.066,−0.018 |
+| 5 | 28552 | 4 | −1 | 0.60 | 4.75 | −121.2 | (0,−1,0)† | — | — | 0 | 0 | 0,0 | 0 | −0.025,−0.005 |
+| 6 | 28876 | 4 | −1 | 0.62 | 6.33 | 26.4 | (0,−1,0)† | — | — | 0 | 0 | 0,0 | 0 | −0.022,0.024 |
+| 7 | 29096 | 4 | −1 | 0.67 | 7.25 | 79.4 | (0,−1,0)† | — | — | 0 | 0 | 0,0 | 0 | 0.028,0.017 |
+| 8 | 29280 | 9 | 129 | 0.84 | 2.09 | 73.7 | (36.30,0,4.26) | 7.2 | —‡ | 1.0 | 0 | 0,0 | 0 | −0.007,−0.018 |
+| 9 | 29284 | 9 | 63 | 0.82 | 2.20 | 78.5 | (34.91,0,3.11) | 7.8 | —‡ | 1.0 | 0 | 0,0 | 0 | 0.031,0.003 |
+| 10 | 29293 | 9 | 63 | 0.80 | 12.41 | 164.9 | (35.66,0,3.01) | 8.1 | +2.3 | 1.0 | 0 | 0,0 | 0 | 0.039,0.038 |
+
+(az = `atan2(vx,vz)`; req = bearing(launch pos→tgt); err wrapped. † = sentinel tgt, comparison meaningless. ‡ = pre-kick settle wobble, see OBS 5.)
+
+1. **OBS — `ap+0x2bf4` is the requested target.** On the 3 genuine kicks (act 9 + non-sentinel tgt + sp>10: n=1,2,10) the launch bearing matches the pos→tgt bearing within −0.2°, −8.6°, +2.3°. **INF(low)** the single-digit errors are consistent with the §3–4 predictor/scatter magnitude — a real check needs the kicker's stat bytes, which round 1 did not capture.
+2. **OBS — the aim field is not a unit vec3.** Pre-contact reads (n=8–10, same kicker, same value across 13 frames) give `ap+0x2bc8` = [117.54, 0, 1.0]; post-contact reads (n=1,2) give zeros. **INF(med)** the block is consumed/cleared at contact, so post-jump polls race the clear — the exact next step is to arm on kicker action-entry/strike phase and snapshot pre-contact. Aim/power units stay open; only tgt is confirmed live.
+3. **OBS — sentinel = no request.** All 5 act-4 events read tgt (0,−1,0) + kind −1 + cat 0xFFFF. Requested-vs-actual there is garbage (±70–130°) and must be gated out. **INF(med)** act-4 accelerations are traps/bounces/deflections, not kicks.
+4. **OBS — detector trips on pre-kick settle.** n=8,9 (sp 2.1–2.2, just over threshold) are the same kicker's ball 13/9 frames before the real kick n=10 — threshold-edge wobbles, not separate kicks. A "few dozen kicks" count must cluster events by kicker+window first.
+5. **OBS — constants on these kicks:** h=0/10 (ground balls, y≈0.11 ≈ contact radius); c1=c2=0/10 (no curl requested on short ground passes — Curl never enters here even as a request); f14 (`+0x2d14`)=0/10, so no jostle-flagged (pressured) kick was sampled — §9 item 6 still needs one.
+6. **OBS — pow is not monotonic in distance/speed:** 0 on both 15 m passes launched at ~17 m/s, 1.0 on the 8 m pass launched at 12.4 m/s. Power-field semantics stay open.
+7. **OBS — hit floats `ap+0x68/+0x70` read ±0.01–0.06, never launch speeds.** Either consumed before the poll or mis-scaled — open.
+8. **OBS — attribution is sane:** nearest kicker ≤0.93 m from the ball at every event; all 10 kickers idx ≥11 (one side's possession phase).
+9. **OBS — MA resolution failed this window:** the TacticsRE MC→Flow→MA chain's ap-scan took ~176 s under multi-agent load, and the re-acquired cached ball was a desynced shadow copy (frozen vel, teleporting pos). Next match: resolve MA first via the chain, then run `kicklive2.py` against the MA ball.
+
+Open deltas: §9 item 1 PARTIAL (3 attributed kicks, tgt confirmed, errors single-digit; full validation needs pre-contact snapshots + kicker stats + MA ball). Items 2 (Weak Foot Accuracy byte), 3 (Curl `0x21`/KP `0x2a`), 6 (pressure/Balance) still OPEN — `kicklive2.py` is ready and names the exact next step (run it live, gate on act∈{8,9,10} + non-sentinel tgt + `+0x2d14` bit 0 set for the pressured sample). Items 4, 5, 7 untouched live.
+
+Addendum — second window (new match, `kicklive2.py` with roster-block + live-stat + slot-2 snapshots): the sampler acquired (25 aps) but the match sat in stoppage and the 540 s window captured **0** events (`kicks_live3.jsonl`). Model-magnitude check on the 3 genuine kicks above: observed |err| = 0.2°/8.6°/2.3° (mean 3.7°) on ~15 m passes. Reference errScale (§0.3): S=70→0.426, 80→0.226, 90→0.103 — but errScale multiplies the exponential amps whose degree mapping is open (§9.5), and the kickers' stat bytes were never captured, so this is **INF(low)** consistency, not verification. **Settled: nothing beyond the §9-item-1 partial above.** Still open: Weak Foot Accuracy consumer (item 2), Curl `0x21`/KP `0x2a` (item 3 — note c1=c2=0 on all 10 events, so no curl was ever requested live), power-field semantics (§10 OBS 6), pressure/Balance (item 6 — no `+0x2d14`-flagged kick sampled), items 4/5/7 untouched. Exact next step: run `kicklive2.py` on a live in-play match, gate events on act∈{8,9,10} + non-sentinel tgt, and take one `+0x2d14`-bit-0 pressured sample.
