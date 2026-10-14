@@ -120,6 +120,13 @@ struct PressPickInput {
   std::array<int, 4> pressSlotMan{{-1, -1, -1, -1}};  // team+0xa548: man in each slot
 };
 
+// Pass 1 of FUN_140639a20 for one side (`side` is the 11-man block index).
+// Builds the side's pass-1 bucket: on-field men in the radius-independent
+// score, sorted ascending by score. Uses `in.role`, `in.pressSlotMan`, and
+// `in.onField` (the side's 11-man block). Ball and reference come from `in`.
+std::vector<PressCandidate> RunPresserPass1(const PressConstants& c, const PressPickInput& in,
+                                            int side);
+
 // Pass 2 of FUN_140639a20 for one side. `pass1Bucket` is the side's pass-1
 // bucket sorted ascending by score. Returns the side's output bucket, sorted
 // ascending by score.

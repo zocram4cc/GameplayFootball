@@ -172,6 +172,26 @@ int PressManAngleCode(const PressConstants& c, const PressPickInput& in, int man
 }
 
 }  // namespace
+std::vector<PressCandidate> RunPresserPass1(const PressConstants& c, const PressPickInput& in,
+                                            int side) {
+  std::vector<PressCandidate> out;
+  for (int slot = 0; slot < 11; ++slot) {
+    const int man = side * 11 + slot;
+    if (man >= 22 || !in.onField[man]) continue;
+    float dx = in.posX[man] - in.ballX;
+    float dz = in.posZ[man] - in.ballZ;
+    float distSq = dx * dx + dz * dz;
+    float angle = PressSideAngleDeg(
+        c, PressWrapDeg(c, PressBearingDeg(c, in.ballX, in.ballZ, in.posX[man], in.posZ[man])),
+        in.referenceDeg);
+    int pressSlot = PressSlotOf(in.pressSlotMan, man);
+    float score = PressManScore(c, distSq, angle, in.role[slot], pressSlot);
+    out.push_back({man, score});
+  }
+  SortPressBucket(out);
+  return out;
+}
+
 
 std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const PressPickInput& in,
                                              const std::vector<PressCandidate>& pass1Bucket,

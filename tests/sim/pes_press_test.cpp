@@ -255,6 +255,37 @@ TEST(PressPass2, ExcludedOffPitchAndOutsideTheRadiusAreDropped) {
   EXPECT_TRUE(pes::RunPresserPicker(f.c, f.in, {{9, 1.0f}, {10, 1.0f}, {8, 1.0f}}, f.st).empty());
 }
 
+TEST(PressPass1, BucketsOnlyTheSidesOnFieldMenSortedByScore) {
+  Pass2Fixture f;
+  f.in.onField.fill(false);
+  f.in.role.fill(pes::kPresserRole);
+  f.in.pressSlotMan = {{0, 1, 11, 12}};
+  f.Place(0, 0.0f, 3.0f);   // distSq 9 inside radius 4: score 9 + rampStart-cone 16 = 25
+  f.Place(1, 0.0f, 5.0f);   // distSq 25 outside radius: score 25 + rampStart 20 = 45
+  f.Place(11, 0.0f, 1.0f);  // the other side: not in this bucket
+  f.in.onField[0] = f.in.onField[1] = f.in.onField[11] = true;
+  auto b = pes::RunPresserPass1(f.c, f.in, 0);
+  ASSERT_EQ(b.size(), 2u);
+  EXPECT_EQ(b[0].man, 0);
+  EXPECT_NEAR(b[0].score, 25.0f, kEps);
+  EXPECT_EQ(b[1].man, 1);
+  EXPECT_NEAR(b[1].score, 45.0f, kEps);
+}
+
+TEST(PressPass1, NonPresserRoleAndNoSlotAddTheirPenalties) {
+  Pass2Fixture f;
+  f.in.onField.fill(false);
+  f.in.role.fill(pes::kPresserRole);
+  f.in.role[1] = 0;  // not the presser role: +notRolePenalty (5000)
+  f.Place(0, 0.0f, 3.0f);
+  f.Place(1, 0.0f, 5.0f);
+  f.in.onField[0] = f.in.onField[1] = true;
+  f.in.pressSlotMan = {{0, -1, -1, -1}};  // man 1 has no slot: +notSlotPenalty (1000)
+  auto b = pes::RunPresserPass1(f.c, f.in, 0);
+  ASSERT_EQ(b.size(), 2u);
+  EXPECT_NEAR(b[1].score, 45.0f + 5000.0f + 1000.0f, kEps);
+}
+
 
 
 // Install relation test: the image's constants are internally consistent.
