@@ -127,6 +127,10 @@ struct PressPickInput {
 std::vector<PressCandidate> RunPresserPass1(const PressConstants& c, const PressPickInput& in,
                                             int side);
 
+// FUN_140a62610 via FUN_140a62690: the first on-field man of `side` whose team
+// flag is zero, as a team index, or kPressNoMan.
+int PressExcludedMan(int side, const std::array<bool, 22>& onField, const std::array<int, 11>& flag);
+
 // Pass 2 of FUN_140639a20 for one side. `pass1Bucket` is the side's pass-1
 // bucket sorted ascending by score. Returns the side's output bucket, sorted
 // ascending by score.

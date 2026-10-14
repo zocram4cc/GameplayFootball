@@ -286,6 +286,26 @@ TEST(PressPass1, NonPresserRoleAndNoSlotAddTheirPenalties) {
   EXPECT_NEAR(b[1].score, 45.0f + 5000.0f + 1000.0f, kEps);
 }
 
+TEST(PressExcludedMan, FirstOnFieldManWithAZeroFlagOfTheSide) {
+  std::array<bool, 22> on{};
+  // man 11 (slot 0) is off the field: its zero flag must not make it eligible.
+  on[13] = true;  // slot 2, flag 0: returned
+  on[15] = true;
+  std::array<int, 11> flag{};
+  flag.fill(1);
+  flag[0] = 0;
+  flag[2] = 0;
+  EXPECT_EQ(pes::PressExcludedMan(1, on, flag), 13);
+}
+
+TEST(PressExcludedMan, NoEligibleManGivesTheSentinel) {
+  std::array<bool, 22> on{};
+  on[12] = true;
+  std::array<int, 11> flag{};
+  flag.fill(1);
+  EXPECT_EQ(pes::PressExcludedMan(1, on, flag), pes::kPressNoMan);
+}
+
 
 
 // Install relation test: the image's constants are internally consistent.

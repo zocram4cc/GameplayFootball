@@ -193,6 +193,14 @@ std::vector<PressCandidate> RunPresserPass1(const PressConstants& c, const Press
 }
 
 
+int PressExcludedMan(int side, const std::array<bool, 22>& onField, const std::array<int, 11>& flag) {
+  for (int i = 0; i < 11; ++i) {
+    const int man = side * 11 + i;
+    if (man < 22 && onField[man] && flag[i] == 0) return man;
+  }
+  return kPressNoMan;
+}
+
 std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const PressPickInput& in,
                                              const std::vector<PressCandidate>& pass1Bucket,
                                              PressPickState& state) {
