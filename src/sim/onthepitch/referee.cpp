@@ -511,7 +511,20 @@ void Referee::Process() {
         }
       }
 
-      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms()) {
+      if (!buffer.started && buffer.startTime <= match->GetActualTime_ms() &&
+          // PES's set-piece AI holds a restart for a frame-rate multiple before
+          // the kicker takes it (setpiecelaws.hpp): 189 frames for a corner, 162
+          // for a free kick, 54 for a penalty, all measured live. `startTime` is
+          // when the referee is ready for the kick; this adds PES's deliberate
+          // hold on top of it, so the placement and the wait cannot be confused
+          // for each other. The kick-off, throw-in and goal kick are released by
+          // their own rule and the gate returns true for them immediately.
+          SetPieceLaws::MayTakeRestart(
+              buffer.desiredSetPiece,
+              static_cast<int>((match->GetActualTime_ms() - buffer.startTime) /
+                               static_cast<float>(Match::kTick_ms)),
+              static_cast<float>(1000 / Match::kTick_ms),
+              match->GetPesSetPieceTakerConstants())) {
         buffer.started = true;
         if (clearingLogged) {
           // How long the taker actually waited, and how far the nearest opponent had

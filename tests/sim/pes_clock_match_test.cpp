@@ -158,6 +158,25 @@ const pes::StaminaConstants* SharedStaminaConstants() {
   return constants ? &*constants : nullptr;
 }
 
+// PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
+// item 2): the corner/free-kick/penalty gates read from the exe.
+const pes::SetPieceTakerConstants* SharedSetPieceTakerConstants() {
+  static std::optional<pes::SetPieceTakerConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      pes::PesVfs vfs;
+      std::string err;
+      if (vfs.Mount(root, &err)) {
+        if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+          constants = pes::LoadSetPieceTakerConstants(vfs, *exe, &err);
+      }
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 #define REQUIRE_RIG()                                                                    \
   if (!SharedRig()) GTEST_SKIP() << "PES21_ROOT not set: the player skeleton comes from PES"; \
   if (!SharedBallConstants())                                                            \
@@ -165,7 +184,9 @@ const pes::StaminaConstants* SharedStaminaConstants() {
   if (!SharedStoppageConstants())                                               \
     GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable"; \
   if (!SharedCarrierConstants())                                                 \
-    GTEST_SKIP() << "PES2021.exe: carrier constants unavailable";
+    GTEST_SKIP() << "PES2021.exe: carrier constants unavailable"; \
+  if (!SharedSetPieceTakerConstants())                                         \
+    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
 
 // The report's clock constants, so the arithmetic is exercised against a Match.
 pes::PesClockConstants FakeConstants() {
@@ -205,6 +226,7 @@ TEST(PesClockInMatch, ClockIsThePesPercentageForm) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -241,6 +263,7 @@ TEST(PesClockInMatch, ClockCountsTheMatchsGameTime) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -275,6 +298,7 @@ TEST(PesClockInMatch, HalfLengthComesFromThePhaseNotTheSetting) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -309,6 +333,7 @@ TEST(PesClockInMatch, AddedTimeIsOncePerHalfAndHasNoEventCounters) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -347,6 +372,7 @@ TEST(PesClockInMatch, AddedTimeTierIsAnExplicitInput) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -381,6 +407,7 @@ TEST(PesClockInMatch, ClockFreezesWhenPlayIsStopped) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -418,6 +445,7 @@ TEST(PesClockInMatch, ExtraTimeHasItsOwnPeriodEndAndRate) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -466,6 +494,7 @@ TEST(PesClockInMatch, ClockConstantsAreExeDerived) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -495,6 +524,7 @@ TEST(PesBallInMatch, BallConstantsAreRequiredAndInstallDerived) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -516,6 +546,7 @@ TEST(PesBallInMatch, BallConstantsAreRequiredAndInstallDerived) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();

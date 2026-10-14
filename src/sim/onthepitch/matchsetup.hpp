@@ -20,8 +20,9 @@ struct Rig;
 #include "pesball.hpp"
 #include "pesjudge.hpp"
 #include "peskeeper.hpp"
-#include "pesstoppage.hpp"
 #include "pesrandom.hpp"
+#include "pessetpiecetaker.hpp"
+#include "pesstoppage.hpp"
 #include "pesstamina.hpp"
 // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
 #include "pescarrier.hpp"
@@ -54,16 +55,22 @@ struct MatchSetup {
   // point weights and thresholds, read from the install's exe. Required: the
   // referee scores every contact with them.
   const pes::JudgeConstants* pesJudgeConstants = nullptr;
-  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9): the
-  // foul/offside holds and the beats between the stop and the kick. Required:
-  // they are the length of every stoppage.
-  const pes::StoppageConstants* pesStoppageConstants = nullptr;
   // PES 2021's generator (docs/re/pes-re-rng.md 1): every random draw of the
   // match comes from it, seeded at kick-off from `seed`. Required.
   const pes::RngConstants* pesRngConstants = nullptr;
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md). Required.
   const pes::KeeperConstants* pesKeeperConstants = nullptr;
+  // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9): the stop
+  // holds, the wipe, the fade-in and the tail. Read from the install's exe.
+  // Required.
+  const pes::StoppageConstants* pesStoppageConstants = nullptr;
+  // PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
+  // item 2): how long the AI holds a restart before the kicker takes it, as a
+  // frame-rate multiple read from the install's exe. Required like the rest:
+  // the gates decide when the kicker is free to kick, and a match without them
+  // would silently wait a different time from PES's.
+  const pes::SetPieceTakerConstants* pesSetPieceTakerConstants = nullptr;
   // PES 2021's stamina, fatigue and injury model
   // (docs/re/pes-re-stamina-drain.md): the tank, the drain, the breath, the
   // break bonus and the injury roll's constants, read from the install's exe.

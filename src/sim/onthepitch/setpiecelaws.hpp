@@ -5,6 +5,7 @@
 #include <cstdlib>
 
 #include "gametypes.hpp"
+#include "pessetpiecetaker.hpp"
 
 // The parts of the laws that say where players may stand at a restart.
 //
@@ -83,11 +84,42 @@ constexpr unsigned long kMaxWait_ms = 6000;
 
 bool MayRestart(int intruders, unsigned long waited_ms);
 
-// An offside is PES's 0xb out-of-play stop: the flag, the complaint, and only
-// then the restart. Its hold is table[5] = 2.5 s
-// (docs/re/pes-re-foul-choreography.md 9.3, live 138-140 frames); the referee
-// schedules it from her own constants (src/sim/onthepitch/foulsequence.hpp),
-// which are read from the install at runtime.
+// How long PES 2021's set-piece AI holds a restart before the kicker takes it
+// (docs/re/pes-re-setpiece-choreography.md 9 item 2).
+//
+// Its ThinkUnitSetPlay counts elapsed logic frames from the restart's arm
+// (`MI+0x1198` minus the AI context's stored base) and crosses once the count
+// reaches a frame-rate multiple: a corner at fps x 3.5, a free kick at fps x 3,
+// a penalty at fps. Measured live at 54 Hz, counted from the set-play counter's
+// first frame: a corner at 189, a free kick at 162, a penalty at 54, and the
+// 379-frame corner is the 189-frame window's second pass.
+//
+// The kick-off is deliberately not in this list: PES's AI passes it at counter
+// 29 of the receiver's loop, released by the receiver's own ball-ownership
+// test, and gating it on a wait would make it slower rather than faithful.
+// Throw-ins and goal kicks likewise have their own release - the taker's
+// arrival and readiness - so they are not fenced either.
+
+// Whether `elapsedFrames` logic frames of waiting have passed the gate. `fps`
+// is the logic frame rate (54 in PES); a non-positive rate is treated as 54.
+// `k` are the frame-rate multiples read from the install's exe.
+bool MayTakeRestart(e_SetPiece setPiece, int elapsedFrames, float fps,
+                    const pes::SetPieceTakerConstants& k);
+
+// Whether `elapsedFrames` is still inside the short-corner window: fps x 2
+// seconds (fps x 7 when a team-mate is already running the corner), inside
+// which PES may play the short corner instead once the partner check passes.
+// The two live short corners went at 57 and 78 frames, both inside it.
+bool InShortCornerWindow(int elapsedFrames, int windowFrames);
+
+// An offside is staged like a foul: the flag, the complaint, and only then the
+// restart. It kept upstream's two seconds to prepare and four to take while
+// starting a seven-second choreography over the top, so ResetSituation
+// teleported everyone into their restart positions two seconds in and the
+// whistle went at four - with three seconds of choreography still posing the
+// cast in live play. A cast opponent standing on the ball is then the nearest
+// man to it, so he is the taker the keeper is waiting for, and he cannot move
+// (Match::UpdateCutsceneChoreo feeds him until the clip ends).
 //
 // A player down adds PES's +2.5 s (9.3), which is what makes an offside during
 // a scramble cost 5 s rather than 2.5.

@@ -19,6 +19,7 @@
 #include "matchsetup.hpp"
 #include "matchprogression.hpp"
 #include "pesstamina.hpp"
+#include "pessetpiecetaker.hpp"
 #include "officials.hpp"
 #include "pesstoppage.hpp"
 #include "penaltyshootoutcontroller.hpp"
@@ -198,6 +199,12 @@ public:
   // PES 2021's goalkeeper deflect point and post-catch distribution target
   // (docs/re/pes-re-keeper-port.md).
   const pes::KeeperConstants& GetPesKeeperConstants() const { return pesKeeperConstants; }
+  // PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
+  // item 2): the frame-rate multiples the AI holds a restart for, read from the
+  // install's exe. Required like the rest.
+  const pes::SetPieceTakerConstants& GetPesSetPieceTakerConstants() const {
+    return pesSetPieceTakerConstants;
+  }
   const pes::PesClock& GetPesClock() const { return *pesClock; }
   pes::PesClock& GetPesClock() { return *pesClock; }
   // Advances the match clock by elapsed game-seconds, frozen while play is
@@ -398,6 +405,7 @@ protected:
   pes::KeeperConstants pesKeeperConstants{};
   pes::StoppageConstants pesStoppageConstants{};
   pes::CarrierConstants pesCarrierConstants{};
+  pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 

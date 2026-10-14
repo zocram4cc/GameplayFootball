@@ -159,6 +159,25 @@ const pes::KeeperConstants* SharedKeeperConstants() {
   }
   return constants ? &*constants : nullptr;
 }
+// PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
+// item 2): the corner/free-kick/penalty gates read from the exe.
+const pes::SetPieceTakerConstants* SharedSetPieceTakerConstants() {
+  static std::optional<pes::SetPieceTakerConstants> constants;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    if (const char* root = std::getenv("PES21_ROOT")) {
+      pes::PesVfs vfs;
+      std::string err;
+      if (vfs.Mount(root, &err)) {
+        if (auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err))
+          constants = pes::LoadSetPieceTakerConstants(vfs, *exe, &err);
+      }
+    }
+  }
+  return constants ? &*constants : nullptr;
+}
+
 
 // PES 2021's stamina model (docs/re/pes-re-stamina-drain.md): the tank, the
 // drain, the breath, the break bonus and the injury roll's constants.
@@ -207,6 +226,7 @@ Outcome Play(unsigned int seed, int minutes) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -240,6 +260,8 @@ Outcome Play(unsigned int seed, int minutes) {
     GTEST_SKIP() << "constant_match.bin/exe: ball physics constants unavailable"; \
   if (!SharedStoppageConstants())                                               \
     GTEST_SKIP() << "PES2021.exe: stoppage constants unavailable";
+  if (!SharedSetPieceTakerConstants())                                         \
+    GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
 
 }  // namespace
 
@@ -264,6 +286,7 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
@@ -295,6 +318,7 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   setup.pesJudgeConstants = SharedJudgeConstants();
   setup.pesRngConstants = SharedRngConstants();
   setup.pesKeeperConstants = SharedKeeperConstants();
+  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();

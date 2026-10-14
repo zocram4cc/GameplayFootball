@@ -109,4 +109,35 @@ bool MayRestart(int intruders, unsigned long waited_ms) {
   return waited_ms >= kMaxWait_ms;
 }
 
+bool MayTakeRestart(e_SetPiece setPiece, int elapsedFrames, float fps,
+                    const pes::SetPieceTakerConstants& k) {
+  const float rate = fps > 0.0f ? fps : 54.0f;
+  // The frame-rate multiples of ThinkUnitSetPlay, as seconds: corner 3.5, free
+  // kick 3, penalty 1. Everything else - kick-off, throw-in, goal kick - is
+  // released by its own rule and ungated here.
+  float gate = 0.0f;
+  switch (setPiece) {
+    case e_SetPiece_Corner:
+      gate = k.cornerGate_s;
+      break;
+    case e_SetPiece_FreeKick:
+      gate = k.freeKickGate_s;
+      break;
+    case e_SetPiece_Penalty:
+      gate = k.penaltyGate_s;
+      break;
+    default:
+      gate = 0.0f;
+      break;
+  }
+  if (gate <= 0.0f)
+    return true;  // kick-off, throw-in, goal kick: released by their own rule
+  return static_cast<float>(elapsedFrames) >= gate * rate;
+}
+
+bool InShortCornerWindow(int elapsedFrames, int windowFrames) {
+  // Strictly inside: the window closes when the long corner's own gate opens.
+  return elapsedFrames < windowFrames;
+}
+
 }  // namespace SetPieceLaws

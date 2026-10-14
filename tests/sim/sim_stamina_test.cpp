@@ -136,11 +136,14 @@ TEST(SimStamina, DrainsInPlayFreezesAtDeadBallsAndJumpsAtTheBreak) {
   if (!rng) GTEST_SKIP() << "PES2021.exe: rng constants unavailable";
   auto keeper = pes::LoadKeeperConstants(*exe, &err);
   if (!keeper) GTEST_SKIP() << "PES2021.exe: keeper constants unavailable";
+  auto taker = pes::LoadSetPieceTakerConstants(vfs, *exe, &err);
+  if (!taker) GTEST_SKIP() << "PES2021.exe: set-piece taker constants unavailable";
   setup.pesBallConstants = &*ball;
   setup.pesClockConstants = &*clock;
   setup.pesJudgeConstants = &*judge;
   setup.pesRngConstants = &*rng;
   setup.pesKeeperConstants = &*keeper;
+  setup.pesSetPieceTakerConstants = &*taker;
 
   blunted::Database db;
   ASSERT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
@@ -228,6 +231,7 @@ TEST(SimStamina, HalfTimeAppliesTheBreakBonusOnce) {
   setup.pesJudgeConstants = &*judge;
   setup.pesRngConstants = &*rng;
   setup.pesKeeperConstants = &*keeper;
+  setup.pesSetPieceTakerConstants = &*taker;
 
   blunted::Database db;
   ASSERT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
