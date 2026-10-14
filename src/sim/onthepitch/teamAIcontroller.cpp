@@ -524,11 +524,11 @@ void TeamAIController::CalculateDefensiveShape() {
                              180.0f / pi
                         : 180.0f;
 
-  Player* carrier = match->GetDesignatedPossessionPlayer();
+  Player* carrier = team->GetDesignatedTeamPossessionPlayer();
   const bool hasCarrier = carrier != nullptr;
   // The cushion and the step-up both key off the opponent on the ball; when our
   // own man carries it, PES's cushion collapses entirely.
-  const bool carrierIsOpponent = hasCarrier && carrier->GetTeam() != team;
+  const bool carrierIsOpponent = !teamHasPossession;
   facts.carrierDepth_m = hasCarrier ? carrier->GetPosition().coords[0] * dir : 0.0f;
   if (hasCarrier) {
     const Vector3 facing = carrier->GetDirectionVec();
@@ -567,9 +567,13 @@ void TeamAIController::CalculateDefensiveShape() {
   // real Pressuring option when the touchline instructions grow one.
   defensivePressing = TeamInstructions::Has(instructions, TeamInstructions::e_Instruction_AggressiveDefence);
 
-  float ownFrameLine =
-      pes::DefensiveLineHeight(k, field, facts, lineSlider, style, attackLevel, match->IsInPlay(),
-                               carrierIsOpponent, previousLineHeight);
+  float ownFrameLine = pes::DefensiveLineHeight(
+      k, field, facts, lineSlider, style, attackLevel, match->IsInPlay(),
+      pes::TargetLineCushionFactor(k, facts, hasCarrier, carrierIsOpponent, previousLineHeight,
+                                   defensiveLineHeight));
+  if (pes::DefensiveLineStepUp(k, field, facts, ownFrameLine, hasCarrier))
+    ownFrameLine = facts.ballDepth_m - k.stepUpDistance_m;
+  ownFrameLine = std::max(ownFrameLine, -field.ownGoalArea_m);
 
   // FUN_1405efbd0's catch-up: the back line steps a quarter of the gap to the
   // midfield band upfield when the midfield has been caught upfield of it.
@@ -1004,12 +1008,12 @@ void TeamAIController::CalculateManMarking() {
   order.reserve(opponents.size());
   for (Player* o : opponents)
     order.emplace_back(
-        pes::OpponentOrderKey(o->GetPosition().coords[0] * dir,
+        pes::OpponentOrderKey(dir, o->GetPosition().coords[0] * dir,
                               o->GetMovement().coords[0] * dir),
         o);
   std::sort(order.begin(), order.end(),
             [](const std::pair<float, Player*>& a, const std::pair<float, Player*>& b) {
-              return a.first > b.first;
+              return a.first < b.first;
             });
 
   // Pass 0: who may take a mark. The keeper never marks and the man carrying

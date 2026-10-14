@@ -119,29 +119,23 @@ struct LineFacts {
 };
 
 // FUN_1405f7a00: the factor on marginTargetLineX. 1 keeps the full cushion; it
-// shrinks as the opponent carrier turns his back to our goal or the ball
-// travels away.
+// shrinks as the carrier turns his back to our goal or the ball travels away.
 float TargetLineCushionFactor(const DefensiveShapeConstants& k, const LineFacts& ball,
-                              bool carrierIsOpponent, float previousLineDepth_m,
+                              bool hasCarrier, bool carrierIsOpponent, float previousLineDepth_m,
                               float lineDepth_m);
 
 // FUN_1405ef910: whether a deep line steps up to 4 m behind the ball.
 bool DefensiveLineStepUp(const DefensiveShapeConstants& k, const ShapeField& field,
-                         const LineFacts& ball, float lineDepth_m, bool carrierIsOpponent);
+                         const LineFacts& ball, float lineDepth_m, bool hasCarrier);
 
-// FUN_1405f9eb0 with FUN_1405f7a00's cushion and FUN_1405ef910's step-up
-// (report 6, 14.1): the back line's lower edge, own frame. The whole chain runs
-// from one tick's ball, so `previousLineDepth_m` is the previous tick's own-frame
-// line height (PES's `prevFinal`) and `carrierIsOpponent` whether the man on the
-// ball is one of theirs.
+// FUN_1405f9eb0 + f7a00 + ef910: the back line's lower edge, own frame.
 float DefensiveLineHeight(const DefensiveShapeConstants& k, const ShapeField& field,
                           const LineFacts& ball, float lineSlider, int style, int attackLevel,
-                          bool inPlay, bool carrierIsOpponent, float previousLineDepth_m);
+                          bool inPlay, float cushionFactor);
 
-// The opponent order key of report 3.1: the negated own-frame depth with a
-// sixth of a second of velocity added, so the most advanced opponent - the one
-// closest to our own goal - carries the largest key and sorts first.
-float OpponentOrderKey(float depth_m, float depthVelocity_mps);
+// The opponent order key of report 3.1: most advanced first, the opponent
+// projected one sixth of a second ahead.
+float OpponentOrderKey(float dir, float depth_m, float depthVelocity_mps);
 
 // FUN_140688300 + 63f230: a line's half-width in metres.
 float LineHalfWidth_m(const DefensiveShapeConstants& k, const ShapeField& field,

@@ -14,7 +14,6 @@
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pescarrier.hpp"
 #include "onthepitch/pesclock.hpp"
-#include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesrandom.hpp"
@@ -38,7 +37,6 @@ struct PesMatchConstants {
   std::optional<pes::SetPieceTeamConstants> setPieceTeam;
   std::optional<pes::StaminaConstants> stamina;
   std::optional<pes::CarrierConstants> carrier;
-  std::optional<pes::DefensiveShapeConstants> defensiveShape;
 };
 
 inline const PesMatchConstants& SharedPesMatchConstants() {
@@ -63,7 +61,6 @@ inline const PesMatchConstants& SharedPesMatchConstants() {
   c.setPieceTeam = pes::LoadSetPieceTeamConstants(*exe, &err);
   c.stamina = pes::LoadStaminaConstants(*exe, &err);
   c.carrier = pes::LoadCarrierConstants(*exe, &err);
-  c.defensiveShape = pes::LoadDefensiveShapeConstants(*exe, &err);
   return c;
 }
 
@@ -86,7 +83,6 @@ inline bool FillMissingPesConstants(MatchSetup* setup) {
   fill(setup->pesSetPieceTeamConstants, c.setPieceTeam);
   fill(setup->pesStaminaConstants, c.stamina);
   fill(setup->pesCarrierConstants, c.carrier);
-  fill(setup->pesDefensiveShapeConstants, c.defensiveShape);
   return ok;
 }
 
