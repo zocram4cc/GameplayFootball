@@ -93,6 +93,7 @@ address given.
 |`pes-re-attack-leftovers.md`|off-ball and carrier follow-ups: Chance dispatch and scorers, the full spaceRun.o key map (corrects chanceScore and others), stop-test tail, support flags; carrier lane and receiver bodies; corrects the dribble speed ramp to (30−spd)/15|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
+|`pes-re-clock-record.md`|the real match clock: plain f32 seconds at `*(G+0x2c0)+0xa0`; the old percentage clock model is the stamina tank; `match_time` scales stamina; a freeze is a 4-byte float store; GF's `pesclock.*` mapping|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
 
 Paths in the reports are placeholders: `$PES21_ROOT` is your install,

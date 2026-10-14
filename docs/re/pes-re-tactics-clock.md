@@ -564,3 +564,6 @@ python3 -c "import capstone;d=open('$D','rb').read();B=0x140000000;
 md=capstone.Cs(capstone.CS_ARCH_X86,capstone.CS_MODE_64);
 [print(f'{i.address:x}: {i.mnemonic} {i.op_str}') for i in md.disasm(d[0x140923060-B:0x140923060-B+0x200],0x140923060)]"
 ```
+
+
+> **Superseded (ClockRecordRE, `pes-re-clock-record.md`):** the "percentage of minutes×1920" clock model, `FUN_140922DD0` and the FNV-protected values are the **stamina tank**, not the clock. The displayed clock is a plain f32 in seconds at `*(G+0x2c0)+0xa0` (live half) / `+0x11c`, and `match_time` scales stamina through `*(E+0x58)`.
