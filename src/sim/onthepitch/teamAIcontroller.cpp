@@ -143,7 +143,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   Log(e_Notice, "TeamAIController", "TeamAIController",
       "team " + int_to_str(team->GetID()) + " lined up as " +
           Formations::ShapeName(formationShape));
-  mentality = MatchMentality::e_Mentality_Normal;
 
   UpdateTactics();
 }
@@ -1841,12 +1840,6 @@ void TeamAIController::ApplyFormationShape(const Formations::Shape& shape) {
   formationShape = Formations::IsValidShape(shape) ? shape : Formations::MakeShape(4, 4, 2);
 }
 
-MatchMentality::FormationShape TeamAIController::GetDesperationShape() const {
-  const int goalDifference = match->GetMatchData()->GetGoalCount(team->GetID()) -
-                             match->GetMatchData()->GetGoalCount(abs(team->GetID() - 1));
-  return MatchMentality::GetDesperationShape(goalDifference);
-}
-
 void TeamAIController::UpdateTactics() {
   const TeamTactics& teamTactics = team->GetTeamData()->GetTactics();
   TeamTactics& teamTacticsWritable = team->GetTeamData()->GetTacticsWritable();
@@ -1859,36 +1852,17 @@ void TeamAIController::UpdateTactics() {
   liveTeamTactics = baseTeamTactics;
 
   // The team's philosophy bundles the sliders into a style of play; the user's
-  // own tactic modifiers are then applied on top of that as offsets. A human
-  // manager's choice is respected as-is; for a CPU-managed team the AI manager
-  // adapts the style to the situation.
-  const TeamPhilosophy::e_Philosophy preferredPhilosophy =
-      TeamPhilosophy::Parse(teamTactics.userProperties.Get(
-          "philosophy", teamTactics.factoryProperties.Get("philosophy", "balanced")));
+  // own tactic modifiers are then applied on top of that as offsets. PES's CPU
+  // manager never switches style or shape on the clock or the score
+  // (docs/re/pes-re-match-management.md 3-4): it moves the attack level
+  // (UpdateStrategy) and nothing else, so the sheet's choices stand for both.
+  // ponytail: PES's reactive plan queue (report 3, kinds 1-9) is not ported.
+  philosophy = TeamPhilosophy::Parse(teamTactics.userProperties.Get(
+      "philosophy", teamTactics.factoryProperties.Get("philosophy", "balanced")));
   // Likewise the shape to hold: the lineup, not an unreadable property.
   const Formations::Shape preferredShape = TeamFormationShape();
-
-  // The set philosophy and shape stand unless the CPU manager runs this team
-  // (MatchSetup::aiManagerRuns).
-  if (!match->AIManagerRunsTeam(team->GetID())) {
-    philosophy = preferredPhilosophy;
-    // A human manager's shape is his own business, however strange it looks.
-    if (Formations::ShapeName(preferredShape) != Formations::ShapeName(formationShape))
-      ApplyFormationShape(preferredShape);
-  } else {
-    AIManager::MatchSituation situation;
-    situation.goalDifference = goals - oppGoals;
-    situation.matchTime_ms = match->GetMatchTime_ms();
-    situation.possessionShare =
-        1.0f - fabs(match->GetMatchData()->GetPossessionFactor_60seconds() - team->GetID());
-    philosophy = AIManager::ChoosePhilosophy(preferredPhilosophy, situation);
-
-    // The CPU manager reshapes the team to chase a game or see one out.
-    const Formations::Shape wantedShape = Formations::GetShape(
-        AIManager::ChooseFormation(Formations::FromShape(preferredShape), situation));
-    if (Formations::ShapeName(wantedShape) != Formations::ShapeName(formationShape))
-      ApplyFormationShape(wantedShape);
-  }
+  if (Formations::ShapeName(preferredShape) != Formations::ShapeName(formationShape))
+    ApplyFormationShape(preferredShape);
   TeamPhilosophy::ApplyPreset(philosophy, liveTeamTactics);
   const Properties philosophyTactics = liveTeamTactics;
 
@@ -1945,22 +1919,61 @@ void TeamAIController::UpdateTactics() {
   // The manager's own instructions from the touchline, on top of everything the
   // philosophy and his tactic sliders produced.
   TeamInstructions::Apply(instructions, liveTeamTactics);
+}
 
-  // Late-game mentality shift, summed onto whatever the manager's own tactics
-  // produced as momentum - it never takes them over.
-  mentality = MatchMentality::Decide(goals - oppGoals, match->GetMatchTime_ms());
-  if (mentality != MatchMentality::e_Mentality_Normal) {
-    offensivenessBias = MatchMentality::ApplyMomentum(offensivenessBias, mentality, 1.0f);
-    liveTeamTactics.Set(
-        "position_offense_depth_factor",
-        MatchMentality::ApplyMomentum(
-            liveTeamTactics.GetReal("position_offense_depth_factor", 0.9f), mentality, 1.0f));
-    // The defensive line follows the same swing, but more cautiously.
-    liveTeamTactics.Set(
-        "position_defense_depth_factor",
-        MatchMentality::ApplyMomentum(
-            liveTeamTactics.GetReal("position_defense_depth_factor", 0.75f), mentality, 0.5f));
+// PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1): the
+// strategy moves while the ball is dead, the attack level follows it only once
+// the ball is back in play. The level is GF's mentality rung (one-to-one, see
+// pes::AttackLevel), so every reader of the mentality sees PES's level.
+void TeamAIController::UpdateStrategy() {
+  if (!match->AIManagerRunsTeam(team->GetID())) return;
+  if (match->IsInPlay() && !match->IsInSetPiece()) {
+    instructions.mentality =
+        static_cast<TeamInstructions::e_Mentality>(pes::StrategyAttackLevel(strategy.strategy));
+    return;
   }
+  pes::StrategyInputs in;
+  switch (match->GetMatchPhase()) {
+    case e_MatchPhase_PreMatch:
+    case e_MatchPhase_1stHalf: in.period = pes::StrategyPeriod::FirstHalf; break;
+    case e_MatchPhase_2ndHalf: in.period = pes::StrategyPeriod::SecondHalf; break;
+    case e_MatchPhase_1stExtraTime:
+    case e_MatchPhase_2ndExtraTime: in.period = pes::StrategyPeriod::ExtraTime; break;
+    default: return;  // penalties: nothing left to manage
+  }
+  // The minute within the current half. INF(high), not observed: PES's clock
+  // getter takes the period (FUN_140a3c050(MI+0x1168)), and the second half's
+  // R[6] = 28..37 would be dead code if the minute ran on from 45.
+  constexpr unsigned long kMsPerMinute = 60000;
+  constexpr unsigned long kHalfLength_ms = 45 * kMsPerMinute;
+  const unsigned long elapsed = match->GetMatchTime_ms();
+  in.minute = static_cast<int>(
+      (in.period == pes::StrategyPeriod::SecondHalf && elapsed >= kHalfLength_ms
+           ? elapsed - kHalfLength_ms
+           : elapsed) /
+      kMsPerMinute);
+  const int own = team->GetID(), opp = 1 - own;
+  in.ownGoals = match->GetMatchData()->GetGoalCount(own);
+  in.oppGoals = match->GetMatchData()->GetGoalCount(opp);
+  // PES reads a per-team rating out of the match setup (G+0x2ad0+0xc404).
+  // ponytail: GF has none; the mean overall of the starting eleven on PES's
+  // 0..99 scale stands in. Its only use is the minute-0 row choice.
+  constexpr float kStatPerUnit = 100.0f;
+  auto rating = [&](int id) {
+    std::vector<Player*> players;
+    match->GetActiveTeamPlayers(id, players);
+    float sum = 0.0f;
+    for (Player* p : players) sum += p->GetPlayerData()->GetAverageStat();
+    return players.empty() ? 0.0f : sum * kStatPerUnit / players.size();
+  };
+  in.strengthDiff = rating(own) - rating(opp);
+  // PES seeds the decider's GameRandom once per match from the clock
+  // (0x14051e400); GF seeds it from the match seed so a replay replays.
+  if (!strategyRng) {
+    strategyRng.emplace(match->GetPesRngConstants());
+    strategyRng->SetSeed(match->GetPesStrategyConstants().rngSlot, match->GetMatchSeed() + own);
+  }
+  pes::StrategyStep(match->GetPesStrategyConstants(), in, *strategyRng, &strategy);
 }
 
 SetPieceParams TeamAIController::GetSetPieceParams(e_SetPiece setPiece) {

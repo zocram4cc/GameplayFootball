@@ -23,6 +23,7 @@
 #include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstamina.hpp"
 #include "onthepitch/pesstoppage.hpp"
+#include "onthepitch/pesstrategy.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
 
@@ -41,6 +42,7 @@ struct PesMatchConstants {
   std::optional<pes::CarrierConstants> carrier;
   std::optional<pes::DefensiveShapeConstants> defensiveShape;
   std::optional<pes::DefenderDecisionConstants> defenderDecisions;
+  std::optional<pes::StrategyConstants> strategy;
 };
 
 inline const PesMatchConstants& SharedPesMatchConstants() {
@@ -68,6 +70,7 @@ inline const PesMatchConstants& SharedPesMatchConstants() {
   c.defensiveShape = pes::LoadDefensiveShapeConstants(*exe, &err);
   if (mounted)
     c.defenderDecisions = pes::LoadDefenderDecisionConstants(*exe, vfs, &err);
+    c.strategy = pes::LoadStrategyConstants(*exe, &err);
   return c;
 }
 
@@ -92,6 +95,7 @@ inline bool FillMissingPesConstants(MatchSetup* setup) {
   fill(setup->pesCarrierConstants, c.carrier);
   fill(setup->pesDefensiveShapeConstants, c.defensiveShape);
   fill(setup->pesDefenderDecisionConstants, c.defenderDecisions);
+  fill(setup->pesStrategyConstants, c.strategy);
   return ok;
 }
 

@@ -27,7 +27,6 @@
 #include "../ball.hpp"
 #include "../gameplaytuning.hpp"
 #include "../match.hpp"
-#include "../matchmentality.hpp"
 #include "../offsiderule.hpp"
 #include "../player/humanoid/humanoid_utils.hpp"
 #include "../player/player.hpp"
@@ -515,14 +514,6 @@ void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage
                               // so much (probably because of no opponents :P)
   Vector3 oppGoalPos =
       Vector3(-side * pitchHalfW, myPos.coords[1] * (1.0f - centerMagnet) * centerModifierInv, 0);
-
-  // Killing the game off: take the ball into the corner instead of driving at
-  // the goal (proposal 2B).
-  if (MatchMentality::ShouldStayInCorner(team->GetController()->GetMentality(), true)) {
-    const MatchMentality::CornerTarget corner =
-        MatchMentality::GetCornerTarget(side, myPos.coords[1]);
-    oppGoalPos = Vector3(corner.x, corner.y, 0);
-  }
 
   std::vector<ForceSpot> forceField;
 

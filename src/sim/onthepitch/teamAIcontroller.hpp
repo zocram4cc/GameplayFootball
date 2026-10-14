@@ -26,7 +26,8 @@
 #include "../data/setpiececonfig.hpp"
 #include "../gamedefines.hpp"
 #include "base/properties.hpp"
-#include "matchmentality.hpp"
+#include "pesrandom.hpp"
+#include "pesstrategy.hpp"
 #include "pesdefshape.hpp"
 #include "teaminstructions.hpp"
 #include "teamphilosophy.hpp"
@@ -95,9 +96,9 @@ public:
   const TeamInstructions::State& GetInstructions() const { return instructions; }
 
   // The live value of a tactic slider after the whole pipeline - base
-  // defaults, philosophy preset, user modifiers, touchline instructions and
-  // reactive mentality. Every gameplay read of a tactic belongs here; the raw
-  // team data bypasses everything the manager is doing.
+  // defaults, philosophy preset, user modifiers and touchline instructions.
+  // Every gameplay read of a tactic belongs here; the raw team data bypasses
+  // everything the manager is doing.
   float GetLiveTacticReal(const char* name, float defaultValue) const {
     return liveTeamTactics.GetReal(name, defaultValue);
   }
@@ -106,9 +107,11 @@ public:
   const Properties& GetLiveTactics() const { return liveTeamTactics; }
 
   TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
-  MatchMentality::e_Mentality GetMentality() const { return mentality; }
-  // Outfield shape the team wants while chasing the game.
-  MatchMentality::FormationShape GetDesperationShape() const;
+  // PES's strategy word T+0x134 (docs/re/pes-re-match-management.md 1).
+  int GetStrategy() const { return strategy.strategy; }
+  // Every team tick, dead balls included: the decider moves the strategy while
+  // the ball is dead and the attack level follows it once play resumes.
+  void UpdateStrategy();
 
   unsigned long GetEndApplyAttackingRun_ms() { return endApplyAttackingRun_ms; }
   Player* GetAttackingRunPlayer() { return attackingRunPlayer; }
@@ -140,7 +143,10 @@ protected:
   Formations::Shape formationShape;
   TeamInstructions::State instructions;
   TeamPhilosophy::e_Philosophy philosophy;
-  MatchMentality::e_Mentality mentality;
+  // PES 2021's CPU strategy decider (pesstrategy.hpp): its state and its own
+  // generator.
+  pes::StrategyState strategy;
+  std::optional<pes::Random> strategyRng;
 
   float offensivenessBias;
 

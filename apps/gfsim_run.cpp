@@ -114,6 +114,9 @@ int main(int argc, char** argv) {
   // install's constant files.
   auto defenderDecisionConstants = pes::LoadDefenderDecisionConstants(*exe, vfs, &err);
   if (!defenderDecisionConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
+  auto strategyConstants = pes::LoadStrategyConstants(*exe, &err);
+  if (!strategyConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -139,6 +142,7 @@ int main(int argc, char** argv) {
   setup.pesCarrierConstants = &*carrierConstants;
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
+  setup.pesStrategyConstants = &*strategyConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

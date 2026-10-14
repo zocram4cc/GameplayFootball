@@ -99,6 +99,11 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 defender-decision constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) strategyConstants_ = pes::LoadStrategyConstants(*exe, &err);
+  if (!strategyConstants_) {
+    UtilityFunctions::push_error("PES21 strategy constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) stoppageConstants_ = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants_) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));

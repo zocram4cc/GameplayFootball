@@ -90,3 +90,7 @@ gtest_discover_tests(pes_setpiece_taker_test)
 add_executable(pes_setpiece_team_test pes_setpiece_team_test.cpp)
 target_link_libraries(pes_setpiece_team_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_setpiece_team_test)
+
+add_executable(pes_strategy_test pes_strategy_test.cpp)
+target_link_libraries(pes_strategy_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_strategy_test)

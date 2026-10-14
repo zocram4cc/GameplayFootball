@@ -16,7 +16,6 @@
 #include "base/geometry/line.hpp"
 #include "base/geometry/triangle.hpp"
 #include "base/log.hpp"
-#include "crowdmood.hpp"
 #include "matchduration.hpp"
 #include "matchreport.hpp"
 #include "pesstoppage.hpp"
@@ -148,6 +147,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "pes::LoadDefenderDecisionConstants into "
         "MatchSetup::pesDefenderDecisionConstants");
   pesDefenderDecisionConstants = *setup.pesDefenderDecisionConstants;
+  // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
+  if (setup.pesStrategyConstants == nullptr)
+    throw std::runtime_error(
+        "PES strategy constants missing: read them from the install with "
+        "pes::LoadStrategyConstants into MatchSetup::pesStrategyConstants");
+  pesStrategyConstants = *setup.pesStrategyConstants;
   if (setup.pesStaminaConstants == nullptr)
     throw std::runtime_error(
         "PES stamina constants missing: read them from the install with "
@@ -558,11 +563,7 @@ void Match::ProcessAutoSubstitutions() {
     }
 
     AIManager::MatchSituation situation;
-    situation.goalDifference =
-        matchData->GetGoalCount(teamID) - matchData->GetGoalCount(abs(teamID - 1));
     situation.matchTime_ms = matchTime_ms;
-    situation.possessionShare =
-        CrowdMood::GetHomeSupportFactor(matchData->GetPossessionFactor_60seconds(), teamID);
 
     const AIManager::SubstitutionPlan plan = AIManager::PlanSubstitution(
         squad, situation, Substitutions::GetRemaining(substitutionState, teamID));

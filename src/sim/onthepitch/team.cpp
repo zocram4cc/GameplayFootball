@@ -381,6 +381,9 @@ void Team::Process() {
     }
   }
 
+  // PES's strategy decider runs every team tick and acts on dead balls, so it
+  // sits outside the in-play gate below.
+  teamController->UpdateStrategy();
   if (match->IsInPlay() && !match->IsInSetPiece()) {
     teamController->Process();
 

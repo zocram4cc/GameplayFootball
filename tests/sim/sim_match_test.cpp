@@ -312,10 +312,12 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   SetDB(nullptr);
 }
 
-// Trailing late, the CPU manager makes a team press (AIManager::ChoosePhilosophy).
-// With it switched off for that team, the set philosophy stands all match. The
-// positive run keeps the negative one from passing vacuously.
-bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
+// Trailing by three, PES's CPU strategy decider (pesstrategy.hpp) must take
+// the team to an attacking level at the latest from the second half's switch
+// minute; the level is GF's mentality rung. With the CPU manager switched off
+// for that team, the sheet's own mentality stands all match. The positive run
+// keeps the negative one from passing vacuously.
+bool EverAttacksWhileTrailing(bool aiManagerRunsHome) {
   blunted::Database db;
   EXPECT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
   SetDB(&db);
@@ -326,42 +328,35 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   setup.durationMinutes = 1;
   setup.animationDir = GF_SOURCE_DIR "/assets/gf_anims";
   setup.rig = SharedRig();
-  setup.pesClockConstants = SharedClockConstants();
-  setup.pesBallConstants = SharedBallConstants();
-  setup.pesJudgeConstants = SharedJudgeConstants();
-  setup.pesRngConstants = SharedRngConstants();
-  setup.pesKeeperConstants = SharedKeeperConstants();
-  setup.pesSetPieceTakerConstants = SharedSetPieceTakerConstants();
-  setup.pesStaminaConstants = SharedStaminaConstants();
-  setup.pesStoppageConstants = SharedStoppageConstants();
-  setup.pesCarrierConstants = SharedCarrierConstants();
   setup.aiManagerRuns[0] = aiManagerRunsHome;
-  bool pressed = false;
+  bool attacking = false;
   {
     MatchData* data = new MatchData(HOME_TEAM, AWAY_TEAM);
     pestest::FillMissingPesConstants(&setup);
-    pestest::FillMissingPesConstants(&setup);
     Match match(data, setup, Properties());
-    // A deficit no 1-minute match can close: with PES's ball the home side scores
-    // in this window, and a one-goal deficit ended the "trailing" precondition.
+    const TeamInstructions::e_Mentality sheet =
+        match.GetTeam(0)->GetController()->GetInstructions().mentality;
+    // A deficit no 1-minute match can close.
     constexpr int kAwayLead = 3;
     data->SetGoalCount(1, kAwayLead);
-    while (!match.IsGameOver() && match.GetSimTime_ms() < kMaxSimTime_ms && !pressed) {
+    while (!match.IsGameOver() && match.GetSimTime_ms() < kMaxSimTime_ms && !attacking) {
       match.Process();
       if (data->GetGoalCount(0) >= data->GetGoalCount(1)) break;  // no longer trailing
-      pressed = match.GetTeam(0)->GetController()->GetPhilosophy() ==
-                TeamPhilosophy::e_Philosophy_Gegenpressing;
+      const TeamInstructions::e_Mentality now =
+          match.GetTeam(0)->GetController()->GetInstructions().mentality;
+      attacking = now >= TeamInstructions::e_Mentality_Attacking &&
+                  now != sheet;
     }
     EXPECT_LT(data->GetGoalCount(0), data->GetGoalCount(1)) << "home must still trail";
   }
   SetDB(nullptr);
-  return pressed;
+  return attacking;
 }
 
 TEST(SimMatch, AIManagerSwitchGovernsTactics) {
   REQUIRE_RIG();
-  EXPECT_TRUE(EverPressesWhileTrailing(true));
-  EXPECT_FALSE(EverPressesWhileTrailing(false));
+  EXPECT_TRUE(EverAttacksWhileTrailing(true));
+  EXPECT_FALSE(EverAttacksWhileTrailing(false));
 }
 
 // The offside port's end-to-end effect (docs/re/pes-re-offside-port.md 4): a

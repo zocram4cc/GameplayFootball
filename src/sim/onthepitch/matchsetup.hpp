@@ -34,6 +34,7 @@ struct Rig;
 #include "pesdefshape.hpp"
 // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
 #include "pesdefenderdecisions.hpp"
+#include "pesstrategy.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -104,6 +105,10 @@ struct MatchSetup {
   // the gates' numbers live in the image and in the install's constant files,
   // so a defender with no constants would be deciding on invented distances.
   const pes::DefenderDecisionConstants* pesDefenderDecisionConstants = nullptr;
+  // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1):
+  // the minute-0 draw's weights, holds and switch minute. Required: a CPU
+  // manager without them would be inventing when to attack.
+  const pes::StrategyConstants* pesStrategyConstants = nullptr;
 };
 
 #endif
