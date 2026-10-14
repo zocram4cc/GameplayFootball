@@ -89,6 +89,7 @@ address given.
 |`pes-re-receiving.md`|receiving the ball: the receive reaction, PASS_GET assignment and approach routes, first-touch kinds, interception touches; live 54 Hz capture; corrects defender-decisions entry 0|
 |`pes-re-counter-trigger.md`|the counter-attack enable field T+0xa508 (writer, gate, values) and the mark-spot blend arithmetic|
 |`pes-re-off-ball.md`|off-ball attacking movement: the run manager and its 11 selectors, caps per attack level, run timing, coordination, the 32-layer support grid and support cost; corrects attack-decisions §3|
+|`pes-re-attack-leftovers.md`|off-ball and carrier follow-ups: Chance dispatch and scorers, the full spaceRun.o key map (corrects chanceScore and others), stop-test tail, support flags; carrier lane and receiver bodies; corrects the dribble speed ramp to (30−spd)/15|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
