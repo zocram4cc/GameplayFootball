@@ -139,6 +139,19 @@ pes::CarrierConstants Synthetic() {
   k.longBaseMid = 60.0f;
   k.longBaseFree = 80.0f;
   k.longStatGain = 10.0f;
+  // The dribble search (report 1) and its threat term (report 1.1).
+  k.dribbleEdgeCost = 100.0f;
+  k.dribbleEdgeMargin_m = 0.5f;
+  k.dribblePrefGain = 0.6f;
+  k.dribbleRange_m = 10.0f;
+  k.dribbleStep_m = 2.0f / 3.0f;
+  k.dribbleDirections = 72.0f;
+  k.threatReachFloor_m = 5.0f;
+  k.threatReachScale = 2.0f;
+  k.threatKeeperScale = 2.0f;
+  k.threatFullDist_m = 5.0f;
+  k.threatFalloff = -0.25f;
+  k.threatPushSq_m2 = 0.444444f;
   return k;
 }
 
@@ -602,6 +615,63 @@ TEST(PesCarrierCadence, TheRethinkGateIsFivePesFrames) {
   EXPECT_TRUE(pes::RethinkDue(16, 10));
 }
 
+// --- the dribble direction search (report 1 and 1.1) ---
+
+constexpr float kRadPerDeg = 3.14159265f / 180.0f;
+
+// A carrier at the centre of a 105 x 68 pitch, wanting heading `desired`.
+pes::DribbleInput OpenPitch(float desired) {
+  pes::DribbleInput in;
+  in.ball = {0.0f, 0.0f};
+  in.desired_deg = desired;
+  in.weight = 1.0f;
+  in.halfLen_m = 52.5f;
+  in.halfWid_m = 34.0f;
+  return in;
+}
+
+// Unsigned angle between two headings, folded to [0, 180].
+float OffAxis(float deg, float desired) {
+  return std::fabs(std::remainder(deg - desired, 360.0f));
+}
+
+TEST(PesCarrierDribble, WithNoOpponentsItFollowsTheDesiredHeading) {
+  const pes::CarrierConstants k = Synthetic();
+  EXPECT_NEAR(pes::DribbleDirection(OpenPitch(90.0f), k), 90.0f, 1e-3f);
+}
+
+TEST(PesCarrierDribble, ATouchlineBandKeepsHimOffTheLine) {
+  // 0.8 m inside the +z touchline and wanting to run into it. Any heading that
+  // runs at the line pays the edge cost; running along the line does not.
+  const pes::CarrierConstants k = Synthetic();
+  pes::DribbleInput in = OpenPitch(90.0f);
+  in.ball = {0.0f, 33.2f};
+  const float ans = pes::DribbleDirection(in, k);
+  EXPECT_LT(std::sin(ans * kRadPerDeg), 0.45f);
+}
+
+TEST(PesCarrierDribble, AManAheadTurnsHimAway) {
+  // A man 2 m dead ahead: the cheapest heading leaves the desired line by more
+  // than 90 degrees (the reference model picks 160).
+  const pes::CarrierConstants k = Synthetic();
+  pes::DribbleInput in = OpenPitch(0.0f);
+  in.opponents.push_back({{2.0f, 0.0f}, {2.0f, 0.0f}, k.dribbleRange_m, false});
+  EXPECT_GT(OffAxis(pes::DribbleDirection(in, k), 0.0f), 90.0f);
+}
+
+TEST(PesCarrierThreat, ReachGateAndKeeperDoubling) {
+  const pes::CarrierConstants k = Synthetic();
+  const pes::CarrierPoint ball{0.0f, 0.0f};
+  // Reach is max(5, 2 R_o) = 20 m for R_o 10. At 4 m the term is (10 - 4)/10
+  // raised to 1 + w, with w = clamp01((5 - 4)/4) = 0.25.
+  const float near = pes::DribbleThreat(ball, ball, {{{4.0f, 0.0f}, {4.0f, 0.0f}, 10.0f, false}}, k);
+  EXPECT_NEAR(near, std::pow(0.6f, 1.25f), 1e-4f);
+  const float keeper = pes::DribbleThreat(ball, ball, {{{4.0f, 0.0f}, {4.0f, 0.0f}, 10.0f, true}}, k);
+  EXPECT_NEAR(keeper, 2.0f * near, 1e-4f);
+  const float far = pes::DribbleThreat(ball, ball, {{{25.0f, 0.0f}, {25.0f, 0.0f}, 10.0f, false}}, k);
+  EXPECT_EQ(far, 0.0f);
+}
+
 // --- the install: read the constants out of the user's own exe ---
 
 TEST(PesCarrierInstall, TheZonesAndLaddersAreTheGamesOwn) {
@@ -628,6 +698,13 @@ TEST(PesCarrierInstall, TheZonesAndLaddersAreTheGamesOwn) {
   EXPECT_LT(k->middleShotSeedK, k->crossSeedK);
   EXPECT_LT(k->crossSeedK, k->longSeedK);
   EXPECT_GE(k->planRollSlot, 0);
+  // The dribble search: a 72-heading circle, a positive edge band and range.
+  EXPECT_GT(k->dribbleEdgeCost, 0.0f);
+  EXPECT_GT(k->dribbleEdgeMargin_m, 0.0f);
+  EXPECT_GT(k->dribbleRange_m, k->dribbleStep_m);
+  EXPECT_FLOAT_EQ(std::fmod(360.0f, k->dribbleDirections), 0.0f);
+  EXPECT_LT(k->threatFalloff, 0.0f);
+  EXPECT_GT(k->threatReachFloor_m, 0.0f);
 }
 
 }  // namespace

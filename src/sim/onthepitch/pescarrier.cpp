@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
@@ -101,6 +102,95 @@ constexpr float kPi_deg = 3.14159265358979f;
 
 }  // namespace
 
+namespace {
+
+// Literals of the search the loader does not read. ponytail: the exponent curve
+// 3 + 3u is the prior report's (INF(med)); its raw call was not re-verified.
+constexpr int kDribbleSteps = 15;     // the radial steps per heading (report 1)
+constexpr float kWeightFloor = 0.5f;  // u = clamp01((W - 0.5) * 2), 0x142565600
+constexpr float kExpFloor = 3.0f;
+constexpr float kExpSpan = 3.0f;
+constexpr float kDegPerTurn = 360.0f;
+constexpr float kRadPerDeg = 3.14159265358979f / 180.0f;
+
+float Dist(CarrierPoint a, CarrierPoint b) { return std::hypot(a.x - b.x, a.z - b.z); }
+
+// The nearest point on the segment a..b to p.
+CarrierPoint ClosestOnSegment(CarrierPoint p, CarrierPoint a, CarrierPoint b) {
+  const float dx = b.x - a.x, dz = b.z - a.z;
+  const float len2 = dx * dx + dz * dz;
+  const float t = len2 == 0.0f ? 0.0f : Clamp01(((p.x - a.x) * dx + (p.z - a.z) * dz) / len2);
+  return {a.x + t * dx, a.z + t * dz};
+}
+
+}  // namespace
+
+float DribbleThreat(CarrierPoint ball, CarrierPoint p, const std::vector<DribbleOpponent>& opponents,
+                    const CarrierConstants& k) {
+  float total = 0.0f;
+  for (const DribbleOpponent& o : opponents) {
+    if (o.reachRo_m <= 0.0f) continue;
+    const float reach = std::max(k.threatReachFloor_m, k.threatReachScale * o.reachRo_m);
+    const float dx = p.x - o.pos.x, dz = p.z - o.pos.z;
+    if (dx * dx + dz * dz > reach * reach) continue;
+    // ponytail: o* is the nearest point on his path (pos to pred). The report's
+    // path parameter is not in GF; a static man's pred equals his pos.
+    CarrierPoint star = ClosestOnSegment(p, o.pos, o.pred);
+    // A man already on the ball is pushed out to the push radius along his bearing.
+    const float bx = star.x - ball.x, bz = star.z - ball.z;
+    const float bd2 = bx * bx + bz * bz;
+    if (bd2 < k.threatPushSq_m2) {
+      const float n = std::sqrt(bd2);
+      if (n > 0.0f) {
+        star = {ball.x + bx / n * k.dribbleStep_m, ball.z + bz / n * k.dribbleStep_m};
+      } else {
+        star = {ball.x + k.dribbleStep_m, ball.z};
+      }
+    }
+    // w = clamp01((d - 5) * -0.25): a man far from the carrier counts for less.
+    const float w = Clamp01((Dist(ball, o.pos) - k.threatFullDist_m) * k.threatFalloff);
+    float term = std::pow(std::max(o.reachRo_m - Dist(p, star), 0.0f) / o.reachRo_m, 1.0f + w);
+    // ponytail: the report's owned-opponent angle factor a_o is taken as 1.
+    if (o.keeper) term *= k.threatKeeperScale;
+    total += term;
+  }
+  return total;
+}
+
+float DribbleDirection(const DribbleInput& in, const CarrierConstants& k) {
+  const float u = Clamp01((in.weight - kWeightFloor) * 2.0f);
+  const float expo = kExpFloor + kExpSpan * u;
+  const int directions = static_cast<int>(k.dribbleDirections);
+  // ponytail: 72 headings and 15 radial steps per think, the cost's ceiling;
+  // a coarser step is the upgrade if the smoke runs slow.
+  float best = std::numeric_limits<float>::infinity();
+  float answer = 0.0f;
+  for (int i = 0; i < directions; ++i) {
+    const float heading = i * kDegPerTurn / k.dribbleDirections;
+    const float rad = heading * kRadPerDeg;
+    float cost = 0.0f;
+    for (int j = 1; j <= kDribbleSteps; ++j) {
+      const float r = j * k.dribbleStep_m;
+      const CarrierPoint p{in.ball.x + r * std::cos(rad), in.ball.z + r * std::sin(rad)};
+      const float margin = std::min(in.halfLen_m - std::fabs(p.x), in.halfWid_m - std::fabs(p.z));
+      const float edge = margin <= k.dribbleEdgeMargin_m ? k.dribbleEdgeCost : 0.0f;
+      float pref = 0.0f;
+      if (in.weight != 0.0f) {
+        const float delta = WrapDeg(heading - in.desired_deg) * kRadPerDeg;
+        pref = k.dribblePrefGain * in.weight * (1.0f - r * std::cos(delta) / k.dribbleRange_m);
+      }
+      const float threat = DribbleThreat(in.ball, p, in.opponents, k);
+      const float base = (k.dribbleRange_m - (r - k.dribbleStep_m)) / k.dribbleRange_m;
+      cost += std::max(edge, threat + pref) * std::pow(base, expo);
+    }
+    if (cost < best) {
+      best = cost;
+      answer = heading;
+    }
+  }
+  return answer;
+}
+
 std::optional<CarrierConstants> LoadCarrierConstants(const PeImage& exe, std::string* error) {
   CarrierConstants k{};
   bool ok = true;
@@ -164,6 +254,12 @@ std::optional<CarrierConstants> LoadCarrierConstants(const PeImage& exe, std::st
       {0x14260ba7c, &k.middleShotSeedK},      {0x14260b388, &k.curveShotSeedK},
       {0x1425e9094, &k.crossSeedK},           {0x14259ce40, &k.longSeedK},
       {0x14259be4c, &k.statFloor},            {0x1425a9460, &k.statSpan},
+      {0x14253ee30, &k.dribbleEdgeCost},     {0x142565600, &k.dribbleEdgeMargin_m},
+      {0x14257a190, &k.dribblePrefGain},     {0x142588210, &k.dribbleRange_m},
+      {0x14258d10c, &k.dribbleStep_m},       {0x1425cb47c, &k.dribbleDirections},
+      {0x14259222c, &k.threatReachFloor_m},  {0x142565604, &k.threatReachScale},
+      {0x142565604, &k.threatKeeperScale},   {0x14259222c, &k.threatFullDist_m},
+      {0x1425c48ec, &k.threatFalloff},       {0x142bf0a88, &k.threatPushSq_m2},
   };
   for (const auto& r : rdata) ok &= ReadVa(exe, r.first, r.second, error);
   // The turn term's span, from the same instruction that loads its 130 top.

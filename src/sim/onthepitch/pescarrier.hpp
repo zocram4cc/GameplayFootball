@@ -176,6 +176,20 @@ struct CarrierConstants {
   float longBaseMid = 0.0f;          // 60, 0x14211b2c5
   float longBaseFree = 0.0f;         // 80, 0x14211b2a9
   float longStatGain = 0.0f;         // 10, report 4.4
+  // --- the dribble direction search (report 1; addresses in the loader) ---
+  float dribbleEdgeCost = 0.0f;       // 100, 0x14253ee30: a band cell's cost
+  float dribbleEdgeMargin_m = 0.0f;   // 0.5, 0x142565600: the touchline band
+  float dribblePrefGain = 0.0f;       // 0.6, 0x14257a190: preference scale
+  float dribbleRange_m = 0.0f;        // 10, 0x142588210: the search radius and falloff
+  float dribbleStep_m = 0.0f;         // 2/3, 0x14258d10c: radial step, and the push-out
+  float dribbleDirections = 0.0f;     // 72, 0x1425cb47c: headings in the circle
+  // --- the threat term (report 1.1) ---
+  float threatReachFloor_m = 0.0f;    // 5, 0x14259222c: reach floor, and full-weight distance
+  float threatReachScale = 0.0f;      // 2, 0x142565604: reach = max(floor, scale * R_o)
+  float threatKeeperScale = 0.0f;     // 2, 0x142565604: a keeper's threat factor
+  float threatFullDist_m = 0.0f;      // 5, 0x14259222c: the carrier-opponent distance at w = 0
+  float threatFalloff = 0.0f;         // -0.25, 0x1425c48ec: w = (d - 5) * falloff
+  float threatPushSq_m2 = 0.0f;       // 0.444444, 0x142bf0a88: squared push-out radius
 
   bool operator==(const CarrierConstants&) const = default;
 };
@@ -200,6 +214,34 @@ struct ShootZone {
 ShootZone ComputeShootZone(float ballX, float ballZ, float attackSign, float finishing,
                            bool longShotSkill, float halfLen_m, float goalHalfWidth_m,
                            const CarrierConstants& k);
+
+// --- the dribble direction search (report 1) ---
+
+// One opponent as the threat sees him: his position, the point he is moving to
+// (equal to pos when static), his R_o reach figure and whether he is a keeper.
+struct DribbleOpponent {
+  CarrierPoint pos;
+  CarrierPoint pred;
+  float reachRo_m = 0.0f;
+  bool keeper = false;
+};
+
+struct DribbleInput {
+  CarrierPoint ball;
+  float desired_deg = 0.0f;   // the heading he wants, degrees, PES frame (x, z)
+  float weight = 0.0f;        // the image-state preference weight W, 0..1
+  float halfLen_m = 0.0f;     // pitch half-length along x (the goal axis)
+  float halfWid_m = 0.0f;     // pitch half-width along z (the touchlines)
+  std::vector<DribbleOpponent> opponents;
+};
+
+// The threat term at p for a carrier at `ball` (report 1.1).
+float DribbleThreat(CarrierPoint ball, CarrierPoint p, const std::vector<DribbleOpponent>& opponents,
+                    const CarrierConstants& k);
+
+// The heading (degrees, [0, 360)) the cheapest 15-step ray costs, out of
+// dribbleDirections equal headings (report 1).
+float DribbleDirection(const DribbleInput& in, const CarrierConstants& k);
 
 bool InShootRange(const ShootZone& z);   // 0x1406997e0
 bool IsCentral(const ShootZone& z);      // 0x140699710
