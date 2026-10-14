@@ -1,6 +1,6 @@
 # PES21 Chance-run lane commit leaves — batch b4
 
-Static, decompile `/mnt/Extra4/gf-RunTargetsRE-scratch/LeafB4/b4a.c` + raw `lin.py` spot checks. Conventions per
+Static, decompile `the RunTargetsRE scratch dir /LeafB4/b4a.c` + raw `lin.py` spot checks. Conventions per
 `pes-re-run-targets.md` §0/§5. Leaf return 1 = pass (lane kept) unless the commit negates it (`!` in §5 list).
 Common args: `ctx` (ctx+0x18 = MA), `cx` (FUN_140591b70 context), `id` runner, `C` lane point (C.z = +8).
 `T` = team(cx[0]) (`a48a30`), `T.dir` = T+0x250, `s` = T+0x254. `ad(a,b)` = FUN_14043a0a0 signed angle diff (deg);

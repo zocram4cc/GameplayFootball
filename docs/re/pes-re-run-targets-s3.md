@@ -1,6 +1,6 @@
 # PES 2021 run stop-test leaves — batch s3 (static, 2026-10-14)
 
-Source: decompile `/mnt/Extra4/gf-RunTargetsRE-scratch/s3/o2.c`; raw checks via `lin.py`. Conventions per `pes-re-run-targets.md` §0/§3.
+Source: decompile `the RunTargetsRE scratch dir /s3/o2.c`; raw checks via `lin.py`. Conventions per `pes-re-run-targets.md` §0/§3.
 Common shorthands: `T(id)` = team struct `a48a30(G, side(id))`, side = id∈[11,21]; `slot = id%11`; `s = T+0x254`; `P = pl(id)+0x55c` (x,y,z);
 `B = MA+0x2482c` (MA = ctx+0x18); `t(id)` = frames in current state = ring `a401c0(T+0xa2cc+0x34·slot,0)` → `[+8]−[+4]`;
 `st(id)` = `T+0xa2a0[slot]` (run state, 0x1e Chance etc); `sub(id)` = `T+0x28c+0x40·slot`; `cls(id)` = `a580a0(a489f0(id))`;

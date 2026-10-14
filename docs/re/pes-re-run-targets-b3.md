@@ -1,6 +1,6 @@
 # Run targets — leaf batch b3 (Chance-run lane commit leaves)
 
-Source: `/mnt/Extra4/gf-RunTargetsRE-scratch/LeafB3/b3a.c` (decomp, annot), raw via `lin.py`. All OBS unless tagged.
+Source: `the RunTargetsRE scratch dir /LeafB3/b3a.c` (decomp, annot), raw via `lin.py`. All OBS unless tagged.
 Conventions (§0/§4–5 of `pes-re-run-targets.md`): args `(ctx, cx, id, C, …)`; `cx[0]` team, `[1]` brg(P→C), `[2]` brg(ball→C),
 `[3]` brg(ball→599ff0 pt), `[4]` |P−C|², `[5]` |ball−C|², `[6]` |P−ball|², `[7]` arg. P = id pos, ball = MA+0x2482c,
 T = team block (a48a30), `T.dir` = T+0x250, s = T+0x254. `adiff(a,b)` = FUN_14043a0a0 (signed deg diff; always used as |·|
