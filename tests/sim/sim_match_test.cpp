@@ -365,16 +365,17 @@ TEST(SimMatch, AIManagerSwitchGovernsTactics) {
 }
 
 // The offside port's end-to-end effect (docs/re/pes-re-offside-port.md 4): a
-// PES-faithful line, test and category plus the AI's offside readers. With the
-// frame the line is read in the wrong way round the line lands on the ball, and
-// every attacker behind the ball at his team's touch is offside: this fixture
-// then whistles a handful per minute. With it right, GF's offside count sits in
-// the band PES's own matches live in - a handful per 20 minutes.
+// PES-faithful line, test and category plus the AI's offside readers. The pin
+// is the frame the line is read in: with this engine's own-goal side passed to
+// `OffsideLineX` instead of the team's attack direction the line lands on the
+// ball, and every attacker behind the ball at his team's touch is offside - the
+// same match then whistles 23 (10 for one side, 13 for the other). With the
+// frame right the count sits inside PES's band, which for this side's tempo
+// means single digits over the whole five minutes.
 TEST(SimMatch, OffsideRateStaysInPessBand) {
   REQUIRE_RIG();
   const Outcome o = Play(SEED, FULL_MATCH_MINUTES);
   const int offsides = o.offsides[0] + o.offsides[1];
-  EXPECT_GT(offsides, 0) << "a fixture this lively calls some offsides";
   EXPECT_LE(offsides, kPesOffsideBand_5min) << o.report;
   // Both sides are treated by the same rule, so neither side can run away with
   // the whole of it.

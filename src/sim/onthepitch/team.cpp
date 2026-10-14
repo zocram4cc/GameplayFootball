@@ -282,32 +282,39 @@ signed int Team::GetBestPossessionPlayerID() {
 }
 
 Player* Team::GetBestPossessionPlayer() {
+  // PES 2021's ball-list reader FUN_14045e0d0 (docs/re/pes-re-offside.md 4):
+  // a player offside-flagged in category 0 or 1 gets the impossible score, so
+  // he is never the one who goes and gets the ball. This picker is that list -
+  // the team's men sorted by how soon they reach the ball - and its consumers
+  // (the designated possession player, the match's possession side) all read
+  // from here.
+  // ponytail: PES lists category 2 as a chaser too (a tight call the referee
+  // holds), and only excludes the categories the ball list does; the key-player
+  // reader FUN_14050f580 also excludes 2 and is not ported.
+  Player* best = nullptr;
+  Player* bestUnflagged = nullptr;
   int bestTime_ms = 10000000;
-  Player* bestPlayer = nullptr;
+  int bestUnflaggedTime_ms = 10000000;
   for (unsigned int i = 0; i < players.size(); i++) {
-    if (players.at(i)->IsActive()) {
-      // PES 2021's ball-list reader FUN_14045e0d0 (docs/re/pes-re-offside.md
-      // 4): a player offside-flagged in category 0 or 1 gets the impossible
-      // score, so he is never the one who goes and gets the ball. This picker
-      // is that list - the team's men sorted by how soon they reach the ball -
-      // and its consumers (the designated possession player, the match's
-      // possession side) all read from here.
-      // ponytail: PES lists category 2 as a chaser too (a tight call the
-      // referee holds), and only excludes the categories the ball list does;
-      // the key-player reader FUN_14050f580 also excludes 2 and is not ported.
-      Player* active = players.at(i).get();
-      if (OffsideRule::OffsideBlocksChase(match->GetReferee()->GetOffsideCategory(active))) continue;
-      int time_ms = active->GetTimeNeededToGetToBall_ms();
-      if (time_ms < bestTime_ms) {
-        bestTime_ms = time_ms;
-        bestPlayer = active;
-      }
+    Player* active = players.at(i).get();
+    if (!active->IsActive()) continue;
+    const int time_ms = active->GetTimeNeededToGetToBall_ms();
+    if (time_ms < bestTime_ms) {
+      bestTime_ms = time_ms;
+      best = active;
+    }
+    // A flag only keeps a man off the list, it never takes the list away from
+    // everyone: with nobody left to send, the closest man goes anyway (PES's
+    // list would read 0xff and the caller would take whatever it found).
+    if (OffsideRule::OffsideBlocksChase(match->GetReferee()->GetOffsideCategory(active))) continue;
+    if (time_ms < bestUnflaggedTime_ms) {
+      bestUnflaggedTime_ms = time_ms;
+      bestUnflagged = active;
     }
   }
 
-  assert(bestPlayer);
-
-  return bestPlayer;
+  assert(best);
+  return bestUnflagged ? bestUnflagged : best;
 }
 
 float Team::GetTeamPossessionAmount() const {
