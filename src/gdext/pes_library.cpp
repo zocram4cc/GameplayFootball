@@ -88,6 +88,12 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 carrier-decision constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6, 7, 14).
+  if (exe) defensiveShapeConstants_ = pes::LoadDefensiveShapeConstants(*exe, &err);
+  if (!defensiveShapeConstants_) {
+    UtilityFunctions::push_error("PES21 defensive-shape constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) stoppageConstants_ = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants_) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));

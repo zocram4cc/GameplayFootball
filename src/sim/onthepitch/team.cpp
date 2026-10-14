@@ -384,14 +384,13 @@ void Team::Process() {
   if (match->IsInPlay() && !match->IsInSetPiece()) {
     teamController->Process();
 
+    // PES re-decides the whole man marking every frame (report 3, 14.2); GF
+    // rebuilt it every 400 ms, which let a run go unmarked for half a second.
+    teamController->CalculateManMarking();
+
     if ((match->GetActualTime_ms() + 200 * id) % 400 == 0) {
       teamController->CalculateDynamicRoles();
       // printf("dynamic roles calc team %i\n", id);
-    }
-
-    if ((match->GetActualTime_ms() + 200 * id + 100) % 400 == 0) {
-      teamController->CalculateManMarking();
-      // printf("man marking calc team %i\n", id);
     }
   }
 

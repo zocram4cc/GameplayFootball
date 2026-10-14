@@ -8,6 +8,7 @@
 
 #include "pes/camera.hpp"
 #include "onthepitch/pescarrier.hpp"
+#include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
@@ -87,6 +88,10 @@ class PesLibrary : public RefCounted {
   const pes::CarrierConstants* carrier_constants() const {
     return carrierConstants_ ? &*carrierConstants_ : nullptr;
   }
+  // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6, 7, 14).
+  const pes::DefensiveShapeConstants* defensive_shape_constants() const {
+    return defensiveShapeConstants_ ? &*defensiveShapeConstants_ : nullptr;
+  }
 
   // PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
   // item 2): the frame-rate multiples the AI holds a restart for.
@@ -121,6 +126,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::PesBallConstants> ballConstants_;
   std::optional<pes::JudgeConstants> judgeConstants_;
   std::optional<pes::CarrierConstants> carrierConstants_;
+  std::optional<pes::DefensiveShapeConstants> defensiveShapeConstants_;
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;
   std::optional<pes::StaminaConstants> staminaConstants_;

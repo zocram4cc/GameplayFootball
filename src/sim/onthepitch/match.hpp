@@ -193,6 +193,11 @@ public:
   }
   // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
   const pes::CarrierConstants& GetPesCarrierConstants() const { return pesCarrierConstants; }
+  // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6,
+  // 7, 14): the line ramp, the team length and width and the marking arithmetic.
+  const pes::DefensiveShapeConstants& GetPesDefensiveShapeConstants() const {
+    return pesDefensiveShapeConstants;
+  }
   // PES 2021's generator constants (docs/re/pes-re-rng.md 1): the values the
   // per-decision generators are built from. The match generator itself is
   // `rngSource` and is not shared: PES builds a throw-away generator for each
@@ -416,6 +421,7 @@ protected:
   pes::CarrierConstants pesCarrierConstants{};
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   pes::SetPieceTeamConstants pesSetPieceTeamConstants{};
+  pes::DefensiveShapeConstants pesDefensiveShapeConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 
