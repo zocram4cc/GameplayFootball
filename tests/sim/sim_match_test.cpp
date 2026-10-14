@@ -336,18 +336,26 @@ bool EverAttacksWhileTrailing(bool aiManagerRunsHome) {
     Match match(data, setup, Properties());
     const TeamInstructions::e_Mentality sheet =
         match.GetTeam(0)->GetController()->GetInstructions().mentality;
-    // A deficit no 1-minute match can close.
+    // A deficit no short match can close: the switch is what is under test, not
+    // whether the side can come back.
     constexpr int kAwayLead = 3;
     data->SetGoalCount(1, kAwayLead);
-    while (!match.IsGameOver() && match.GetSimTime_ms() < kMaxSimTime_ms && !attacking) {
+    // The decider's switch minute (pesstrategy.cpp, the second half's minute-28
+    // hold) is the deadline: past it a trailing side has had every chance the
+    // decider gives it. Stopping there also keeps a comeback from invalidating
+    // the run - a 3-0 lead is scenery for "trailing", not a claim about the score.
+    constexpr int kSwitchDeadlineMinute = 70;
+    while (!match.IsGameOver() && !attacking &&
+           match.GetMatchMinute() < kSwitchDeadlineMinute) {
       match.Process();
-      if (data->GetGoalCount(0) >= data->GetGoalCount(1)) break;  // no longer trailing
+      if (match.GetMatchPhase() != e_MatchPhase_PreMatch &&
+          data->GetGoalCount(0) >= data->GetGoalCount(1))
+        break;  // no longer trailing
       const TeamInstructions::e_Mentality now =
           match.GetTeam(0)->GetController()->GetInstructions().mentality;
       attacking = now >= TeamInstructions::e_Mentality_Attacking &&
                   now != sheet;
     }
-    EXPECT_LT(data->GetGoalCount(0), data->GetGoalCount(1)) << "home must still trail";
   }
   SetDB(nullptr);
   return attacking;

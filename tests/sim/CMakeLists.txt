@@ -91,6 +91,11 @@ target_link_libraries(sim_stamina_test PRIVATE gfsim pesfmt GTest::gtest_main)
 target_compile_definitions(sim_stamina_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gtest_discover_tests(sim_stamina_test PROPERTIES TIMEOUT 1800)
 
+add_executable(pes_restart_taking_test pes_restart_taking_test.cpp)
+target_link_libraries(pes_restart_taking_test PRIVATE gfsim pesfmt GTest::gtest_main)
+target_compile_definitions(pes_restart_taking_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(pes_restart_taking_test PROPERTIES TIMEOUT 900)
+
 add_executable(pes_setpiece_taker_test pes_setpiece_taker_test.cpp)
 target_link_libraries(pes_setpiece_taker_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_setpiece_taker_test)
