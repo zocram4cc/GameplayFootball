@@ -306,11 +306,13 @@ KeeperSpot PesKeeperBasePosition(const KeeperPositionInput& in, const KeeperFiel
                                      : k.positioningGoalLineMargin_m;
   if (dir * px < axis) px = dir * axis;
 
-  // The lateral shuffle (0x1409e0590): a Range0(6) draw on the PES generator,
-  // 0.1 m a step, scaled down by GK Awareness, and flipped when the ball's
-  // predicted bearing differs 90 degrees or more from the goal axis. Slot 1
-  // (the report leaves the instance open; the move reads Range0, whose only
-  // compiled call is on slot 1's generator).
+  // The lateral shuffle (0x1409e0590): a Range0(6) draw, 0.1 m a step, scaled
+  // down by GK Awareness, and flipped when the ball's predicted bearing differs
+  // 90 degrees or more from the goal axis. The draw is slot 1 of the per-clip
+  // generator at `anim+0x19c0` (rng-slots report 13), so `jitterDraw` is a whole
+  // 0..5 the caller draws; this arithmetic is pure and draws nothing itself.
+  // Everything else in the keeper's decisions - the save choosers, the catch
+  // window, the deflect and the distribution - is deterministic in PES: no RNG.
   float jitter_m = 0.0f;
   if (jitter) {
     const float awareness =

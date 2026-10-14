@@ -71,6 +71,7 @@ struct KeeperConstants {
   float positioningGoalLineMargin_m = 0.8f;   // 0.8 [0x142572348]
   // The lateral shuffle: a Range0(6) draw, 0.1 m a step, scaled down by GK
   // Awareness, and flipped when the predicted ball is 90 degrees off the axis.
+  // The keeper's only draw - his other decisions are deterministic in PES.
   float positioningJitterStep_m = 0.1f;        // 0.1 [0x142588200]
   float positioningAwarenessLow = 40.0f;       // 40 [0x14259be2c]
   float positioningAwarenessSpan = 59.0f;      // 59 [0x1425cb2fc] (40 -> 99)
@@ -191,7 +192,8 @@ struct KeeperPositionInput {
   bool offensiveStyle;   // playing-style word bit 19 (Offensive GK)
   bool defensiveStyle;   // playing-style word bit 20 (Defensive GK)
   float gkAwareness;     // 0..99
-  int jitterDraw;        // Range0(6) on the PES generator: the lateral shuffle
+  int jitterDraw;        // Range0(6), slot 1 of the per-clip generator:
+                         // the lateral shuffle (0x1409e0590); PES's only keeper draw
 };
 
 struct KeeperSpot {
