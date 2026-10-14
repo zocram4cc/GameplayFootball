@@ -62,6 +62,7 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   defensiveAttackLevel = 2;
   defensiveLineSlider = 4.0f;
   defensiveCompactSlider = 4.0f;
+  defensivePressing = false;
 
   endApplyAttackingRun_ms = 0;
   attackingRunPlayer = 0;
