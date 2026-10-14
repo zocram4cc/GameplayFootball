@@ -11,6 +11,7 @@
 #include "../../../utils/movementhistory.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "animcollection.hpp"
+#include "../../pesrandom.hpp"
 #include "base/math/vector3.hpp"
 #include "scene/scene3d/node.hpp"
 
@@ -223,6 +224,12 @@ public:
   virtual void ResetSituation(const Vector3& focusPos);
 
 protected:
+  // PES's per-clip generator (anim+0x19c0, docs/re/pes-re-rng-slots.md 13.2):
+  // every clip-variant and start-frame pick draws slot 1 of it. It keeps its
+  // constructor seeds and is never re-seeded, so it never touches the match
+  // stream. Built on first use from the match's generator constants.
+  pes::Random& AnimeRandom();
+  std::optional<pes::Random> animeRandom;
   bool _HighOrBouncyBall() const;
   void _KeepBestDirectionAnims(
       DataSet& dataset, const PlayerCommand& command, bool strict = true, radian allowedAngle = 0,

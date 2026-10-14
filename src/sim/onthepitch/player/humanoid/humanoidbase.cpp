@@ -473,7 +473,7 @@ void HumanoidBase::ResetPosition(const Vector3& newPos, const Vector3& focusPos)
   currentAnim->anim = anims->GetAnim(currentAnim->id);
   currentAnim->positions.clear();
   currentAnim->positions = match->GetAnimPositionCache(currentAnim->anim);
-  currentAnim->frameNum = random(0, currentAnim->anim->GetEffectiveFrameCount() - 1);
+  currentAnim->frameNum = AnimeRandom().Range0(currentAnim->anim->GetEffectiveFrameCount());
   currentAnim->radiusOffset = 0.0;
   currentAnim->touchFrame = -1;
   currentAnim->originatingInterrupt = e_InterruptAnim_None;
@@ -2397,4 +2397,9 @@ radian HumanoidBase::ForceIntoPreferredDirectionAngle(radian angle) const {
   }
 
   return preferredDirectionAngles.at(bestIndex);
+}
+
+pes::Random& HumanoidBase::AnimeRandom() {
+  if (!animeRandom) animeRandom.emplace(match->GetPesRngConstants());
+  return *animeRandom;
 }
