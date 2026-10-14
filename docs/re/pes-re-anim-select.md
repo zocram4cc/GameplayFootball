@@ -615,3 +615,6 @@ All in the AnimSelectRE-2 scratch dir:
 
 No player or team names. Small tables are quoted with their VAs as evidence; a port must read
 them from the exe at runtime (the `LoadJudgeConstants` pattern), not copy them.
+
+
+> **Correction (ContactRE):** the "kick kind 0x10" Balance rate is the **stagger** playback rate (`0.95 + 0.15·clamp((Balance−40)/59)²`, live 39/39).

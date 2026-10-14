@@ -650,3 +650,6 @@ Not measured live: per-class tick rates. Doing so would need breakpoints, which 
 | 6 Rules / time | Pitch and enums closed; referee closed (EXT). **Match-length → clock scaling and stoppage computation open** (tries listed in §6) |
 
 Scripts and intermediate files: `<scratch>/MatchLogicRE/` (`tbl.py`, `acc.py`, `acc_out.txt`, `fieldfind.py`, `bitfind.py`, `parsepm.py`, `cdis.py`, `ball_o.txt`, `cstrings.txt`, `rtti_match.txt`, `pbin_table.md`).
+
+
+> **Confirmed (ContactRE):** in-match stat indices 0x1a–0x1d are Finishing, Low Pass, Lofted Pass, Heading, by their use in code.

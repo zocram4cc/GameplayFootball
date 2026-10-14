@@ -571,3 +571,6 @@ Two fouls (no offside occurred in the window):
 
 
 > **Update (DefenderDecisionsRE, `pes-re-defender-decisions.md` §4):** `ai(B)+0x134` is "a pad-controlled (human) player made the challenge" (writer `FUN_140a596f0`). It is 0 for every CPU player (25,168 live player-frames), so the DOGSO +30 bonus and the professional-foul floor never fire in an AI-vs-AI match. GF's `JudgePoints` ponytail can drop the flag rather than emulate it.
+
+
+> **Correction (ContactRE):** the "live PC" read is the same ability byte as the base read.
