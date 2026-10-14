@@ -493,7 +493,7 @@ public:
   //
   // One challenge is one action start, so the counter is keyed on the last
   // challenge each player committed (player id, sliding flag) rather than on
-  // the contact: `TripNotice` can fire on every tick of a contact - a slide's
+  // the contact: `Referee::ContactEvent` can fire on every tick of a contact - a slide's
   // body is in the other man's way for a dozen frames and the tackle loop
   // reports each of them - and a challenge counted per contact reports
   // multiples of the actions actually taken.
@@ -507,7 +507,7 @@ public:
       tacklesAttempted[teamID]++;
   }
   // `GetTackles` above is PES's half-time ballot stat, counted by the ratings
-  // layer; these are the challenges that actually landed (TripNotice).
+  // layer; these are the challenges that actually landed (Referee::ContactEvent).
   int GetChallengesTackles(int teamID) const { return tacklesAttempted[teamID]; }
   int GetChallengesSlides(int teamID) const { return slidesAttempted[teamID]; }
   int GetYellowCards(int teamID) const { return yellowCards[teamID]; }

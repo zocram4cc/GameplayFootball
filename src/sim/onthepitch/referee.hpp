@@ -10,6 +10,7 @@
 
 #include "../gamedefines.hpp"
 #include "cardbook.hpp"
+#include "pescontact.hpp"
 #include "pesjudge.hpp"
 #include "pesstoppage.hpp"
 
@@ -88,8 +89,11 @@ public:
   void AlterSetPiecePrepareTime(unsigned long newTime_ms);
 
   void BallTouched();
-  void TripNotice(Player* tripee, Player* tripper,
-                  int tackleType);  // 1 == standing tackle resulting in little trip, 2 == standing
+  // PES's match event 0xf (a contact between A and B), judged when it passes
+  // the Judge's gate (docs/re/pes-re-duels-fouls.md 2.2).
+  void ContactEvent(Player* victim, Player* fouler, pes::ContactAction foulerAction,
+                    bool victimStaggered, bool victimFell, bool foulerTargetedVictim,
+                    bool foulerPlayedBall);  // 1 == standing tackle resulting in little trip, 2 == standing
                                     // tackle resulting in fall, 3 == sliding tackle
   // `heldWhistle`: the per-tick call in open play, which holds the whistle and
   // runs the advantage; the out-of-play paths whistle a pending foul at once.
@@ -151,7 +155,8 @@ protected:
 
   // Law 12 DOGSO: escalates a foul on a player who was through on goal.
   // PES 2021's foul decision for one contact: this engine's foul type 0..3.
-  int JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action);
+  int JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action, bool victimFell,
+                   bool targeted);
   void RecordFoul(Player* tripee, Player* tripper, int foulType);
   float NearestToBall_m(Team* team) const;
 

@@ -80,7 +80,7 @@ struct JudgeConstants {
   int recklessPoints;          // 35: slides and other reckless actions
   int tacklePoints;            // 25: a tackle of the general sub-kind
   int recklessFallenBonus;     // +15
-  int tackleFallenBonus;       // +10
+  int tackleFallenBonus;       // +10: also the plain/jostle "fell" bonus (FUN_1405b6d40 else-branch)
   int dogsoBonus;              // +30
   // Level thresholds (protected 0x143fa8760).
   int foulThreshold;           // T1 = 40
@@ -117,9 +117,10 @@ struct JudgeConstants {
 
 std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string* error);
 
-// What the fouler did (report 2.3, B's action). This engine's contacts are a
-// shoulder/jostle, a standing tackle that brought the man down, and a slide.
-enum class JudgeAction { Jostle, Tackle, Slide };
+// What the fouler did (report 2.3, B's action): a jostle, a standing tackle,
+// a slide, or any other action (running, dribbling, kicking) - the plain
+// contact FUN_1405b6d40 scores with no action points.
+enum class JudgeAction { Jostle, Tackle, Slide, Other };
 
 struct JudgeContact {
   JudgeAction action = JudgeAction::Tackle;

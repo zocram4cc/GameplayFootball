@@ -820,7 +820,8 @@ void Referee::CommitPendingOffside() {
   pendingOffside.player = nullptr;
 }
 
-int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action) {
+int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action,
+                          bool victimFell, bool targeted) {
   // PES 2021's foul decision (docs/re/pes-re-duels-fouls.md 2): points from the
   // approach angle, the closing speed and the challenge, then thresholds. The
   // victim attacks the goal at x = -side * pitchHalfW.
@@ -837,13 +838,14 @@ int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction acti
   pes::JudgeContact c;
   c.action = action;
   // 180 = B came in along A's own facing, i.e. from directly behind.
-  c.approachAngle_deg = HALF_TURN_DEG - angleBetween(a - b, tripee->GetDirectionVec());
+  // P_angle's theta is ai(B)+0x12a0, B's approach angle to A, only when B was
+  // targeting A; otherwise 0 (report 2.3).
+  c.approachAngle_deg =
+      targeted ? HALF_TURN_DEG - angleBetween(a - b, tripee->GetDirectionVec()) : 0.0f;
   c.slideOffLine_deg = angleBetween(tripper->GetDirectionVec(), a - b);
   c.headingsDelta_deg = angleBetween(tripee->GetDirectionVec(), tripper->GetDirectionVec());
   c.relativeSpeed_mps = (tripee->GetMovement() - tripper->GetMovement()).GetLength();
-  // This engine's standing tackle (2) and slide (3) put the man down; the light
-  // contact (1) does not.
-  c.victimFell = action != pes::JudgeAction::Jostle;
+  c.victimFell = victimFell;
   const float boxHalfWidth = pesPenaltyAreaHalfWidth;  // FieldInfo F7
   c.dogso = FoulSeverity::DeniesObviousChance(
       attackDirSign, a.coords[0], a.coords[1],
@@ -886,37 +888,28 @@ void Referee::RecordFoul(Player* tripee, Player* tripper, int foulType) {
   foul.hasBeenProcessed = false;
 }
 
-void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
-  if (buffer.active)
-    return;
-  if (tripper == foul.foulPlayer && foul.foulType != 0)
-    return;
-
-  // The challenge itself, counted whether or not it is a foul: the report's
-  // tackles and slides are the reaction table's output, and a clean win of the
-  // ball has to show up in them too. The key is the challenging player, so one
-  // challenge is counted once no matter how many ticks its contact lasts.
-  match->GetMatchData()->AddChallenge(tripper->GetTeamID(), tackleType == 3, tripper->GetID());
-
-  if (tackleType == 1 || tackleType == 2) {  // standing challenges
-    if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&
-        (tripper->GetCurrentFunctionType() == e_FunctionType_Interfere ||
-         tripper->GetCurrentFunctionType() == e_FunctionType_Sliding) &&
-        (tripee->GetPosition() - match->GetBall()->Predict(0).Get2D()).GetLength() < 2.0 &&
-        tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID()) {
-      const int foulType = JudgeContact(
-          tripee, tripper, tackleType == 1 ? pes::JudgeAction::Jostle : pes::JudgeAction::Tackle);
-      if (foulType > 0) RecordFoul(tripee, tripper, foulType);
-    }
-  } else if (tackleType == 3) {  // sliding tackle
-    if (match->GetActualTime_ms() - tripper->GetLastTouchTime_ms() > 600 &&
-        tripper->GetCurrentFunctionType() == e_FunctionType_Sliding &&
-        tripper->GetTeam()->GetID() != tripee->GetTeam()->GetID() &&
-        (match->GetBall()->Predict(0) - tripee->GetPosition()).GetLength() < 8.0) {
-      const int foulType = JudgeContact(tripee, tripper, pes::JudgeAction::Slide);
-      if (foulType > 0) RecordFoul(tripee, tripper, foulType);
-    }
-  }
+void Referee::ContactEvent(Player* victim, Player* fouler, pes::ContactAction foulerAction,
+                           bool victimStaggered, bool victimFell, bool foulerTargetedVictim,
+                           bool foulerPlayedBall) {
+  if (buffer.active) return;
+  if (fouler == foul.foulPlayer && foul.foulType != 0) return;
+  if (victim->GetTeamID() == fouler->GetTeamID()) return;
+  const bool slide = foulerAction == pes::ContactAction::kSlide;
+  // The challenge itself, counted where it lands whether or not it is a foul
+  // (one per challenging player, however many ticks the contact lasts).
+  if (slide || foulerAction == pes::ContactAction::kTackle)
+    match->GetMatchData()->AddChallenge(fouler->GetTeamID(), slide, fouler->GetID());
+  // The Judge's gate FUN_14050d6a0 (docs/re/pes-re-duels-fouls.md 2.2): B has
+  // played the ball, or B was targeting A, or A is staggering / down.
+  if (!(foulerPlayedBall || foulerTargetedVictim || victimStaggered || victimFell)) return;
+  const pes::JudgeAction action = slide ? pes::JudgeAction::Slide
+                                  : foulerAction == pes::ContactAction::kTackle
+                                      ? pes::JudgeAction::Tackle
+                                  : foulerAction == pes::ContactAction::kJostle
+                                      ? pes::JudgeAction::Jostle
+                                      : pes::JudgeAction::Other;
+  const int foulType = JudgeContact(victim, fouler, action, victimFell, foulerTargetedVictim);
+  if (foulType > 0) RecordFoul(victim, fouler, foulType);
 }
 
 void Referee::CancelSetPiece() {

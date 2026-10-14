@@ -360,6 +360,7 @@ protected:
   pes::ContactAction PesActionOf(Player* p) const;
   void ProcessPesContacts(const std::vector<Player*>& players);
   bool TripFromContact(Player* victim, Player* other, int tripType);
+  void ReportContact(Player* victim, Player* fouler, bool staggered, bool fell);
   std::map<int, PesContactState> pesContact;
   std::map<Animation*, int> pesRiseUpFrame;  // fall clip -> the body's lowest frame
   void CheckBallCollisions();

@@ -82,6 +82,26 @@ TEST(PesJudge, JostleScoresOnlyDividedSpeed) {
   EXPECT_EQ(pes::JudgePoints(c, k), 20 / 10);
 }
 
+TEST(PesJudge, APlainContactThatFellsTheManScoresAngleSpeedAndTheFallBonus) {
+  // FUN_1405b6d40: a fouler in no challenge class adds only the +10 "fell"
+  // bonus, and P_angle uses the default ramp (the live "contact" foul, 48 pts).
+  const auto k = Synthetic();
+  pes::JudgeContact c;
+  c.action = pes::JudgeAction::Other;
+  c.approachAngle_deg = 130.0f;
+  EXPECT_EQ(pes::JudgePoints(c, k), 25);  // staggered: x0.7 angle only
+  c.victimFell = true;
+  EXPECT_EQ(pes::JudgePoints(c, k), 50 + 7 + 9);
+}
+
+TEST(PesJudge, AFelledJostleVictimStillEarnsTheFallBonus) {
+  const auto k = Synthetic();
+  pes::JudgeContact c;
+  c.action = pes::JudgeAction::Jostle;
+  c.victimFell = true;
+  EXPECT_EQ(pes::JudgePoints(c, k), 7 / 10 + 9);
+}
+
 TEST(PesJudge, SlideAngleIsPulledBackOnlyWhenBothGatesOpen) {
   const auto k = Synthetic();
   pes::JudgeContact c;

@@ -1317,7 +1317,7 @@ constexpr float kPartBroadphase_m = 1.5f;
 constexpr float kAabbShrink_m = 0.1f;
 // The contact record's last touch keeps counting for gs/2 frames (FUN_1408440f0).
 constexpr float kTouchMemory_s = 0.5f;
-// Referee::TripNotice's trip types.
+// HumanoidBase::TripMe's trip types: 1 stagger clips, 2 falls, 3 falls against a slide.
 constexpr int kTripStagger = 1;
 constexpr int kTripFall = 2;
 constexpr int kTripSlide = 3;
@@ -1435,6 +1435,23 @@ pes::ContactAction Match::PesActionOf(Player* p) const {
   }
 }
 
+// PES's match event 0xf to the Judge. ponytail: the event's poster was not
+// found (searched FUN_1408c48c0, Contact::Start FUN_14072f3b0, the dispatcher
+// FUN_1404514f0); it is raised here on every accepted STAGGER / FALL, which
+// the Judge's gate admits through "A is staggering / down".
+void Match::ReportContact(Player* victim, Player* fouler, bool staggered, bool fell) {
+  const pes::ContactAction action = pesContact[fouler->GetID()].action;
+  // B targeting A: a defender's tackle / slide / jostle is aimed at the man on
+  // the ball (the reaction table's target, ai(B)+0x1478).
+  const bool targeted = victim->HasPossession() && (action == pes::ContactAction::kTackle ||
+                                                    action == pes::ContactAction::kSlide ||
+                                                    action == pes::ContactAction::kJostle);
+  // ponytail: FUN_140a63da0 ("B has played the ball") is taken as "B is the
+  // ball's last toucher"; its own window was not decoded.
+  const bool played = GetLastTouchPlayer() == fouler;
+  referee->ContactEvent(victim, fouler, action, staggered, fell, targeted, played);
+}
+
 bool Match::TripFromContact(Player* victim, Player* other, int tripType) {
   // One reaction per player per tick, and none while a trip is already queued
   // or playing at its level (FUN_140844cb0 head, veto 2).
@@ -1451,7 +1468,7 @@ bool Match::TripFromContact(Player* victim, Player* other, int tripType) {
                           .GetNormalized(victim->GetDirectionVec()),
                       tripType))
     return false;
-  referee->TripNotice(victim, other, tripType);
+  ReportContact(victim, other, tripType == kTripStagger, tripType != kTripStagger);
   // foul statistics are counted by the referee at the whistle
   InjureFromContact(victim, other);
   return true;
@@ -1694,6 +1711,14 @@ void Match::ProcessPesContacts(const std::vector<Player*>& players) {
       in.oppJostleContact_s = ps.jostleContact_s;
       in.selfOwnsBall = self->HasPossession();
       in.selfIsKeeper = self->GetFormationEntry().role == e_PlayerRole_GK;
+      auto shinTouches = [&](int bone) {
+        const AABB* shin = parts[i].Find(bone);
+        if (!shin) return false;
+        for (const auto& [ob, obox] : parts[pj].boxes)
+          if (Overlap(*shin, obox) > 0.0f) return true;
+        return false;
+      };
+      in.selfBothShinsTouching = shinTouches(pes::kBoneLegL) && shinTouches(pes::kBoneLegR);
 
       const pes::ContactReaction r = pes::ReactionForLevel(k, pes::ContactLevel(k, in));
       if (r != pes::ContactReaction::kNone) {

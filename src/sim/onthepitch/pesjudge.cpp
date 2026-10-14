@@ -236,7 +236,8 @@ int JudgePoints(const JudgeContact& c, const JudgeConstants& k) {
     float theta = c.approachAngle_deg;
     if (theta > k.slideAngleKnee_deg) theta += g1 * g2 * (k.slideAngleKnee_deg - theta);
     p = Clamp01((theta - k.angleFloor_deg) / k.slideAngleSpan_deg);
-  } else if (c.action == JudgeAction::Tackle) {
+  } else if (c.action != JudgeAction::Jostle) {
+    // The default ramp: tackles of the general sub-kind and plain contacts.
     p = Clamp01((c.approachAngle_deg - k.angleFloor_deg) / k.angleSpan_deg);
   }
   const float w = c.victimFell ? k.angleMaxPoints : k.angleMaxPoints * k.notFallenFactor;
@@ -257,6 +258,9 @@ int JudgePoints(const JudgeContact& c, const JudgeConstants& k) {
     pAction = k.recklessPoints + (c.victimFell ? k.recklessFallenBonus : 0);
   } else if (c.action == JudgeAction::Tackle) {
     pAction = k.tacklePoints + (c.victimFell ? k.tackleFallenBonus : 0);
+  } else if (c.victimFell) {
+    // A jostle or a plain contact that put the man down: the same +10.
+    pAction = k.tackleFallenBonus;
   }
   // DOGSO +30 when the victim fell and the challenge was in the reckless
   // class. PES also fires it on the deliberate-intent flag `ai(B)+0x134`, but
