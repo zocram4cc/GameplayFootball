@@ -675,3 +675,6 @@ Exact per-slot rule (lateral spacing, the line-1 depth choice) remains open.
 
 
 > **Correction (TransitionsRE, live):** the "after a possession change" hold-back (5–8 s) and the >4 s cover-drop are **kick-off** timers: `FUN_140a74ec0` = in-play frames since the newest kick-off (`MI+0x119c`), reset at every restart, frozen while stopped. The possession timer `MI+0x11a0` is separate.
+
+
+> **Closed (CounterTrigger2RE):** the mark-spot blend is an exact lerp `spot = base + (candidate − base)·rate/100` (and the mark distance `1 + (r−1)·rate/100`), then clamped; nothing in `.text` reads `T+0xb834` in the blend. Live refit reproduces 0.14/0.39/0.58/0.67; the rate steers direction, not displacement.

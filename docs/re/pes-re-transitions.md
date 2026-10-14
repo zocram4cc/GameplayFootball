@@ -453,3 +453,6 @@ Team sheets live: team 0 options `1,0,1,0,0,0,1` (Possession Game, Frontline Pre
 | EV-TRN-0012 | ForeCheckPress and TransitionChase both need instruction 0xd *not* armed | Confirmed (raw) | 0x1405748d0, 0x1405755df |
 | EV-TRN-0013 | RetreatBlockCreate (0x25) / ForeCheckLineDown (0x22) gate rules and the band push-up they suppress | High (code) / live episode counts | 0x140575ea0, 0x140575db0, 0x140574ea0, 0x140574b00, 0x140687fb0; `runflags.py` |
 | EV-TRN-0014 | Live transition episodes: 1 TransitionChase (conditions met), 2 ForeCheckPress (5.04 s), 18 RetreatBlockCreate, 23 ForeCheckLineDown, 0 counters | Confirmed (live, ~7 min of second half) | `runflags.txt`, `chk_c.txt` |
+
+
+> **Closed (CounterTrigger2RE, `pes-re-counter-trigger.md`):** `T+0xa508` is written by `FUN_140581980` each team-brain tick: 0 only when the possession/in-play gate fails, 1 otherwise, 2 for one of nine special situations (latched 48 ticks; disabled at attack level 0). Not a tactics toggle — the live 0 was the team being out of possession.
