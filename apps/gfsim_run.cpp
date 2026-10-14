@@ -11,6 +11,7 @@
 #include "onthepitch/matchsetup.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pessetpiecetaker.hpp"
+#include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstamina.hpp"
 #include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/pesclock.hpp"
@@ -103,6 +104,8 @@ int main(int argc, char** argv) {
   // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
   auto carrierConstants = pes::LoadCarrierConstants(*exe, &err);
   if (!carrierConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  auto setPieceTeamConstants = pes::LoadSetPieceTeamConstants(*exe, &err);
+  if (!setPieceTeamConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -122,6 +125,7 @@ int main(int argc, char** argv) {
   setup.pesRngConstants = &*rngConstants;
   setup.pesKeeperConstants = &*keeperConstants;
   setup.pesSetPieceTakerConstants = &*setPieceTakerConstants;
+  setup.pesSetPieceTeamConstants = &*setPieceTeamConstants;
   setup.pesStaminaConstants = &*staminaConstants;
   setup.pesStoppageConstants = &*stoppageConstants;
   setup.pesCarrierConstants = &*carrierConstants;

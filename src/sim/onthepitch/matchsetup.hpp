@@ -22,6 +22,8 @@ struct Rig;
 #include "peskeeper.hpp"
 #include "pesrandom.hpp"
 #include "pessetpiecetaker.hpp"
+#include "pessetpieceteam.hpp"
+#include "pessetpieceteam.hpp"
 #include "pesstoppage.hpp"
 #include "pesstamina.hpp"
 // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
@@ -71,6 +73,11 @@ struct MatchSetup {
   // the gates decide when the kicker is free to kick, and a match without them
   // would silently wait a different time from PES's.
   const pes::SetPieceTakerConstants* pesSetPieceTakerConstants = nullptr;
+  // PES 2021's set-piece team AI (docs/re/pes-re-setpiece-kicker.md 1,
+  // docs/re/pes-re-setpiece-choreography.md 11): the jog budget, the wall and
+  // the free-kick taker waterfall, read from the install's exe. Required like
+  // the rest: the placement rules are the numbers.
+  const pes::SetPieceTeamConstants* pesSetPieceTeamConstants = nullptr;
   // PES 2021's stamina, fatigue and injury model
   // (docs/re/pes-re-stamina-drain.md): the tank, the drain, the breath, the
   // break bonus and the injury roll's constants, read from the install's exe.

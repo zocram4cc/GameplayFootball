@@ -144,6 +144,14 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES set-piece taker constants missing: read them from the install with "
         "pes::LoadSetPieceTakerConstants into MatchSetup::pesSetPieceTakerConstants");
   pesSetPieceTakerConstants = *setup.pesSetPieceTakerConstants;
+  // PES 2021's set-piece team AI (docs/re/pes-re-setpiece-choreography.md 11):
+  // every number lives in the image, so a match without the install's constants
+  // cannot be built - there is no fallback to invent.
+  if (setup.pesSetPieceTeamConstants == nullptr)
+    throw std::runtime_error(
+        "PES set-piece team constants missing: read them from the install with "
+        "pes::LoadSetPieceTeamConstants into MatchSetup::pesSetPieceTeamConstants");
+  pesSetPieceTeamConstants = *setup.pesSetPieceTeamConstants;
 
   dynamicNode = boost::intrusive_ptr<Node>(new Node("dynamicNode"));
   scene3D->AddNode(dynamicNode);

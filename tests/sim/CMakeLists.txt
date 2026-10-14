@@ -68,3 +68,7 @@ gtest_discover_tests(sim_stamina_test PROPERTIES TIMEOUT 1800)
 add_executable(pes_setpiece_taker_test pes_setpiece_taker_test.cpp)
 target_link_libraries(pes_setpiece_taker_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_setpiece_taker_test)
+
+add_executable(pes_setpiece_team_test pes_setpiece_team_test.cpp)
+target_link_libraries(pes_setpiece_team_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_setpiece_team_test)

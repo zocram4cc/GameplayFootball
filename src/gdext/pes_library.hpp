@@ -13,6 +13,7 @@
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesstamina.hpp"
 #include "onthepitch/pessetpiecetaker.hpp"
+#include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
@@ -92,6 +93,11 @@ class PesLibrary : public RefCounted {
   const pes::SetPieceTakerConstants* setpiece_taker_constants() const {
     return setPieceTakerConstants_ ? &*setPieceTakerConstants_ : nullptr;
   }
+  // PES 2021's set-piece team AI (docs/re/pes-re-setpiece-choreography.md 11):
+  // the jog budget, the wall and the free-kick taker waterfall.
+  const pes::SetPieceTeamConstants* setpiece_team_constants() const {
+    return setPieceTeamConstants_ ? &*setPieceTeamConstants_ : nullptr;
+  }
 
   // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
   const pes::StoppageConstants* stoppage_constants() const {
@@ -120,6 +126,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::StaminaConstants> staminaConstants_;
   std::optional<pes::StoppageConstants> stoppageConstants_;
   std::optional<pes::SetPieceTakerConstants> setPieceTakerConstants_;
+  std::optional<pes::SetPieceTeamConstants> setPieceTeamConstants_;
 };
 
 inline String ToGd(const std::string& s) { return String::utf8(s.c_str()); }

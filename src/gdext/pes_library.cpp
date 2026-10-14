@@ -93,6 +93,20 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  // PES 2021's set-piece taker wait: the corner/free-kick/penalty gates
+  // (docs/re/pes-re-setpiece-choreography.md 9 item 2).
+  if (exe) setPieceTakerConstants_ = pes::LoadSetPieceTakerConstants(vfs_, *exe, &err);
+  if (!setPieceTakerConstants_) {
+    UtilityFunctions::push_error("PES21 set-piece taker constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
+  // PES 2021's set-piece team AI: the jog budget, the wall and the free-kick
+  // taker waterfall (docs/re/pes-re-setpiece-choreography.md 11).
+  if (exe) setPieceTeamConstants_ = pes::LoadSetPieceTeamConstants(*exe, &err);
+  if (!setPieceTeamConstants_) {
+    UtilityFunctions::push_error("PES21 set-piece team constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (!cameraParams_) UtilityFunctions::push_warning("PES21 broadcast camera tables unavailable: ", ToGd(err));
   auto glyphs = exe ? pes::ReadNameGlyphs(*exe, &err) : std::nullopt;
   auto nameFont = pes::LoadNameFontMap(vfs_, &err);

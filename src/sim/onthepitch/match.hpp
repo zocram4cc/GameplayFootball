@@ -20,6 +20,8 @@
 #include "matchprogression.hpp"
 #include "pesstamina.hpp"
 #include "pessetpiecetaker.hpp"
+#include "pessetpieceteam.hpp"
+#include "pessetpieceteam.hpp"
 #include "officials.hpp"
 #include "pesstoppage.hpp"
 #include "penaltyshootoutcontroller.hpp"
@@ -204,6 +206,11 @@ public:
   // install's exe. Required like the rest.
   const pes::SetPieceTakerConstants& GetPesSetPieceTakerConstants() const {
     return pesSetPieceTakerConstants;
+  }
+  // PES 2021's set-piece team AI (docs/re/pes-re-setpiece-choreography.md 11):
+  // the jog budget, the wall and the free-kick taker waterfall. Required.
+  const pes::SetPieceTeamConstants& GetPesSetPieceTeamConstants() const {
+    return pesSetPieceTeamConstants;
   }
   const pes::PesClock& GetPesClock() const { return *pesClock; }
   pes::PesClock& GetPesClock() { return *pesClock; }
@@ -406,6 +413,7 @@ protected:
   pes::StoppageConstants pesStoppageConstants{};
   pes::CarrierConstants pesCarrierConstants{};
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
+  pes::SetPieceTeamConstants pesSetPieceTeamConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 
