@@ -15,7 +15,7 @@ constexpr float FIXTURE_AGE = 25.0f;
 const e_PlayerRole kStartingRoles[STARTERS] = {e_PlayerRole_GK, e_PlayerRole_LB, e_PlayerRole_CB, e_PlayerRole_CB,
                                                e_PlayerRole_RB, e_PlayerRole_LM, e_PlayerRole_CM, e_PlayerRole_AM,
                                                e_PlayerRole_RM, e_PlayerRole_CF, e_PlayerRole_CF};
-// TeamAIController's baseTeamTactics: the 14 position sliders and the 5 others.
+// TeamAIController's baseTeamTactics: the 14 position sliders and the 2 dribble ones.
 const std::pair<const char*, float> kBaseSliders[] = {
     {"position_offense_depth_factor", 0.9f}, {"position_defense_depth_factor", 0.75f},
     {"position_offense_width_factor", 0.9f}, {"position_defense_width_factor", 0.8f},
@@ -24,7 +24,6 @@ const std::pair<const char*, float> kBaseSliders[] = {
     {"position_offense_midfieldfocus_strength", 0.35f}, {"position_defense_midfieldfocus_strength", 0.35f},
     {"position_offense_sidefocus_strength", 0.1f}, {"position_defense_sidefocus_strength", 0.4f},
     {"position_offense_microfocus_strength", 0.7f}, {"position_defense_microfocus_strength", 0.8f},
-    {"team_pressure", 0.5f}, {"counter_attack", 0.5f}, {"support_distance", 0.5f},
     {"dribble_offensiveness", 0.5f}, {"dribble_centermagnet", 0.5f},
 };
 

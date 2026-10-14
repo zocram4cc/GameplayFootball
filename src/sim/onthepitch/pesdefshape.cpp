@@ -7,8 +7,6 @@
 
 #include <cmath>
 
-#include "teamphilosophy.hpp"
-
 namespace pes {
 namespace {
 

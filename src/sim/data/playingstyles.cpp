@@ -392,27 +392,6 @@ float GetAttackingRunAffinity(Player style, ComMask com) {
   return std::max(0.0f, std::min(affinity, 1.0f));
 }
 
-float GetPressingDistanceBias(Player style) {
-  switch (style) {
-    case Player::TheDestroyer:
-      return -4.0f;
-    case Player::BoxToBox:
-      return -2.0f;
-    case Player::AnchorMan:
-      return 1.0f;  // protects the line rather than hunting
-    case Player::Orchestrator:
-    case Player::CreativePlaymaker:
-    case Player::TargetMan:
-      return 2.0f;
-    case Player::ClassicNo10:
-    case Player::FoxInTheBox:
-    case Player::GoalPoacher:
-      return 3.0f;
-    default:
-      return 0.0f;
-  }
-}
-
 // --- On the ball ---
 
 float GetShotAppetite(Player style, ComMask com) {

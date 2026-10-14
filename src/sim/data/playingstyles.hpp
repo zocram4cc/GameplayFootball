@@ -88,9 +88,6 @@ float GetPoacherTargetX(Player style, float defaultX, float opponentOffsideLineX
 // How keen this player is to be the one sent on the attacking run: 0.5 is
 // neutral, 0 never runs, 1 always volunteers.
 float GetAttackingRunAffinity(Player style, ComMask com);
-// Metres knocked off (negative) or added to his distance when picking the
-// second presser, so a destroyer hunts and a playmaker does not.
-float GetPressingDistanceBias(Player style);
 
 // --- On the ball (ElizaController::GetOnTheBallCommands) ---
 

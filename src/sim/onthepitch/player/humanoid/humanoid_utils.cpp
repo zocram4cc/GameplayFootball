@@ -236,8 +236,11 @@ void GetDifficultyFactors(Match* match, Player* player, const Vector3& positionO
   ballMovementFactor = clamp(ballMovementFactor, 0.0f, 1.0f);
   // Applied after the clamps: a saturated trap must still be eased, or the
   // assist is multiplied away exactly when tight-web passes need it most.
-  GameplayTuning::ApplyTrapPredictionAssist(distanceFactor, heightFactor, ballMovementFactor,
-      player->GetTeam()->GetController()->GetLiveTacticReal("support_distance", 0.5f));
+  // The support web it eases is scaled by the sheet's Support Range share.
+  constexpr float kSupportRangeSteps = 9.0f;  // (SR - 1) / 9, tactics 4.1
+  GameplayTuning::ApplyTrapPredictionAssist(
+      distanceFactor, heightFactor, ballMovementFactor,
+      (player->GetTeam()->GetController()->GetTeamSheet().supportRange - 1) / kSupportRangeSteps);
   if (Verbose())
     printf(
         "skill multiplier: %f.. makes for result: distancefactor: %f; heightfactor: %f; "

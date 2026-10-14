@@ -121,6 +121,9 @@ int main(int argc, char** argv) {
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   auto strategyConstants = pes::LoadStrategyConstants(*exe, &err);
   if (!strategyConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's team sheet defaults and transition concepts (docs/re/pes-re-tactics.md 2).
+  auto teamConceptConstants = pes::LoadTeamConceptConstants(*exe, vfs, &err);
+  if (!teamConceptConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
   auto substitutionConstants = pes::LoadSubstitutionConstants(*exe, &err);
   if (!substitutionConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
@@ -151,6 +154,7 @@ int main(int argc, char** argv) {
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
   setup.pesStrategyConstants = &*strategyConstants;
+  setup.pesTeamConceptConstants = &*teamConceptConstants;
   setup.pesSubstitutionConstants = &*substitutionConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData

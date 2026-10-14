@@ -210,6 +210,8 @@ public:
   }
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   const pes::StrategyConstants& GetPesStrategyConstants() const { return pesStrategyConstants; }
+  // PES 2021's team sheet defaults and concepts (docs/re/pes-re-tactics.md 2).
+  const pes::TeamConceptConstants& GetPesTeamConceptConstants() const { return pesTeamConceptConstants; }
   // PES 2021's generator constants (docs/re/pes-re-rng.md 1): the values the
   // per-decision generators are built from. The match generator itself is
   // `rngSource` and is not shared: PES builds a throw-away generator for each
@@ -441,6 +443,7 @@ protected:
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::StrategyConstants pesStrategyConstants{};
+  pes::TeamConceptConstants pesTeamConceptConstants{};
   pes::SubstitutionConstants pesSubstitutionConstants{};
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   pes::SetPieceTeamConstants pesSetPieceTeamConstants{};

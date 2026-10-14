@@ -36,6 +36,7 @@ struct Rig;
 // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
 #include "pesdefenderdecisions.hpp"
 #include "pesstrategy.hpp"
+#include "pesteamconcepts.hpp"
 #include "pessubs.hpp"
 
 struct MatchSetup {
@@ -113,6 +114,11 @@ struct MatchSetup {
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.
   const pes::StrategyConstants* pesStrategyConstants = nullptr;
+  // PES 2021's team concepts (docs/re/pes-re-tactics.md 1-2,
+  // pes-re-transitions.md 2-3): the sheet defaults, the per-concept enables and
+  // the transition concepts' gates. Required: the counter-press and the
+  // counter-attack are these concepts.
+  const pes::TeamConceptConstants* pesTeamConceptConstants = nullptr;
   // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
   const pes::SubstitutionConstants* pesSubstitutionConstants = nullptr;
 };

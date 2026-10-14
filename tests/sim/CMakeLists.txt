@@ -102,3 +102,7 @@ gtest_discover_tests(pes_subs_test)
 add_executable(pes_kick_error_test pes_kick_error_test.cpp)
 target_link_libraries(pes_kick_error_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_kick_error_test)
+
+add_executable(pes_team_concepts_test pes_team_concepts_test.cpp)
+target_link_libraries(pes_team_concepts_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_team_concepts_test)

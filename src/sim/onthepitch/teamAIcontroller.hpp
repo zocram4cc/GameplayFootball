@@ -19,6 +19,8 @@
 #ifndef _HPP_TEAM_AICONTROLLER
 #define _HPP_TEAM_AICONTROLLER
 
+#include <array>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -30,7 +32,7 @@
 #include "pesstrategy.hpp"
 #include "pesdefshape.hpp"
 #include "teaminstructions.hpp"
-#include "teamphilosophy.hpp"
+#include "pesteamconcepts.hpp"
 
 class Match;
 class Team;
@@ -74,8 +76,6 @@ public:
   void SetPieceTaker(Player* player) { taker = player; }
   e_SetPiece GetSetPieceType() { return setPieceType; }
   void ApplyAttackingRun(Player* manualPlayer = 0);
-  void ApplyTeamPressure();
-  void ApplyZonePressure();
   void CalculateSituation();
 
   // PES 2021's open-play defensive line, rebuilt every tick (report 6, 14.1).
@@ -96,7 +96,7 @@ public:
   const TeamInstructions::State& GetInstructions() const { return instructions; }
 
   // The live value of a tactic slider after the whole pipeline - base
-  // defaults, philosophy preset, user modifiers and touchline instructions.
+  // defaults and user modifiers.
   // Every gameplay read of a tactic belongs here; the raw team data bypasses
   // everything the manager is doing.
   float GetLiveTacticReal(const char* name, float defaultValue) const {
@@ -106,7 +106,16 @@ public:
   // debug overlays). Values only mutate on this thread's UpdateTactics.
   const Properties& GetLiveTactics() const { return liveTeamTactics; }
 
-  TeamPhilosophy::e_Philosophy GetPhilosophy() const { return philosophy; }
+  // PES's team sheet (docs/re/pes-re-tactics.md 1): the sliders and toggles
+  // the AI reads, from the team's tactics with the install's sheet defaults.
+  const pes::TeamSheet& GetTeamSheet() const { return teamSheet; }
+  // A team concept's order for one man (T+0xb748/b774/26c, transitions 2-3):
+  // the concept id and the point it sends him to. Null when he has none.
+  struct ConceptOrder {
+    int conceptId;
+    Vector3 target;
+  };
+  const ConceptOrder* GetConceptOrder(const Player* player) const;
   // PES's strategy word T+0x134 (docs/re/pes-re-match-management.md 1).
   int GetStrategy() const { return strategy.strategy; }
   // Every team tick, dead balls included: the decider moves the strategy while
@@ -115,12 +124,6 @@ public:
 
   unsigned long GetEndApplyAttackingRun_ms() { return endApplyAttackingRun_ms; }
   Player* GetAttackingRunPlayer() { return attackingRunPlayer; }
-
-  unsigned long GetEndApplyTeamPressure_ms() { return endApplyTeamPressure_ms; }
-  Player* GetTeamPressurePlayer() { return teamPressurePlayer; }
-
-  bool IsZonePressureActive() const { return zonePressureActive; }
-  unsigned long GetZonePressureEndTime_ms() const { return zonePressureEndTime_ms; }
 
   Player* GetForwardSupportPlayer() { return forwardSupportPlayer; }
 
@@ -142,7 +145,23 @@ protected:
 
   Formations::Shape formationShape;
   TeamInstructions::State instructions;
-  TeamPhilosophy::e_Philosophy philosophy;
+  pes::TeamSheet teamSheet;
+  // PES's concept selector state (FUN_140579840): running flag and start time
+  // per id, the men each concept has ordered, and its own record.
+  std::array<bool, pes::kConceptCount> conceptRunning{};
+  std::array<unsigned long, pes::kConceptCount> conceptStart_ms{};
+  std::map<const Player*, ConceptOrder> conceptOrders;
+  Player* chaseChaser = nullptr;
+  Player* chaseSecond = nullptr;
+  Player* chaseCarrier = nullptr;
+  Player* counterRunner = nullptr;
+  std::array<Player*, 3> counterSupporters{};
+  // MI+0x11a0 (frames since the possessing team changed) and FUN_140a74ec0
+  // (in-play time since a kick-off restart), in GF time.
+  unsigned long possessionChange_ms = 0;
+  bool lastRestartWasKickOff = false;
+  unsigned long inPlaySinceRestart_ms = 0;
+  unsigned long lastProcess_ms = 0;
   // PES 2021's CPU strategy decider (pesstrategy.hpp): its state and its own
   // generator.
   pes::StrategyState strategy;
@@ -191,14 +210,15 @@ protected:
 
   unsigned long endApplyAttackingRun_ms;
   Player* attackingRunPlayer;
-  unsigned long endApplyTeamPressure_ms;
-  Player* teamPressurePlayer;
-
-  bool zonePressureActive;
-  unsigned long zonePressureEndTime_ms;
-  unsigned long nextZonePressureRefresh_ms;
   bool prevTeamHasPossession;
 
+  void RunConcepts();
+  void StopConcept(int id);
+  bool StartConcept(int id);
+  bool ConceptEnded(int id);
+  void ExecuteConcept(int id);
+  pes::TransitionChaseInput ChaseInput(Player* carrier, std::vector<Player*>* men);
+  pes::SideCounterInput CounterInput(std::vector<Player*>* men);
   Player* forwardSupportPlayer;  // sort of like the attacking run player, but more for a forward
                                  // offset for a player close to the action, to support the player
                                  // in possession

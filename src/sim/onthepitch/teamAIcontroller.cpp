@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 
 #include "../data/playerskills.hpp"
@@ -45,6 +46,20 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   // defaults every match, so the only way to reach them was from the touchline once
   // play had begun - no use at all for a side nobody is shouting at.
   instructions = TeamInstructions::Load(team->GetTeamData()->GetTactics().userProperties);
+  // PES's team sheet: a team's tactics may set any sheet value; the rest are
+  // the install's sheet-ctor defaults (FUN_1408c5390).
+  {
+    const Properties& t = team->GetTeamData()->GetTactics().userProperties;
+    teamSheet = pes::DefaultTeamSheet(match->GetPesTeamConceptConstants());
+    teamSheet.supportRange = static_cast<int>(t.GetReal("support_range", teamSheet.supportRange));
+    teamSheet.defensiveLine = static_cast<int>(t.GetReal("defensive_line", teamSheet.defensiveLine));
+    teamSheet.compactness = static_cast<int>(t.GetReal("compactness", teamSheet.compactness));
+    static const char* kToggleKeys[pes::kSheetToggleCount] = {
+        "attacking_style", "build_up",        "attacking_area", "positioning",
+        "defensive_style", "containment_area", "pressuring"};
+    for (int k = 0; k < pes::kSheetToggleCount; ++k)
+      teamSheet.toggles[k] = static_cast<int>(t.GetReal(kToggleKeys[k], teamSheet.toggles[k]));
+  }
 
   depth = 0.45f;
   width = 0.95f;
@@ -65,13 +80,8 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
 
   endApplyAttackingRun_ms = 0;
   attackingRunPlayer = 0;
-  endApplyTeamPressure_ms = 0;
-  teamPressurePlayer = 0;
   forwardSupportPlayer = 0;
 
-  zonePressureActive = false;
-  zonePressureEndTime_ms = 0;
-  nextZonePressureRefresh_ms = 0;
   prevTeamHasPossession = false;
 
   baseTeamTactics.Set("position_offense_depth_factor", 0.9f);
@@ -91,10 +101,7 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   baseTeamTactics.Set("position_defense_microfocus_strength", 0.8f);
 
   // The non-positional sliders travel through the same pipeline. Their neutral
-  // base is 0.5; the philosophy preset moves it, the user's slider offsets it.
-  baseTeamTactics.Set("team_pressure", 0.5f);
-  baseTeamTactics.Set("counter_attack", 0.5f);
-  baseTeamTactics.Set("support_distance", 0.5f);
+  // base is 0.5; the user's slider offsets it.
   baseTeamTactics.Set("dribble_offensiveness", 0.5f);
   baseTeamTactics.Set("dribble_centermagnet", 0.5f);
   // PES 2021's offside-trap instruction (report 14.4's `T+0xe4`): it arms the
@@ -120,11 +127,7 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   teamTacticsModMultipliers.Set("position_offense_midfieldfocus_strength", 0.15f);
   teamTacticsModMultipliers.Set("position_defense_midfieldfocus_strength", 0.15f);
   // At 0.5 the offset formula (user - 0.5) * 2 * multiplier makes the user's
-  // slider land exactly as-is on the neutral 0.5 base, which is how these five
-  // were read before they travelled through the pipeline at all.
-  teamTacticsModMultipliers.Set("team_pressure", 0.5f);
-  teamTacticsModMultipliers.Set("counter_attack", 0.5f);
-  teamTacticsModMultipliers.Set("support_distance", 0.5f);
+  // slider land exactly as-is on the neutral 0.5 base.
   teamTacticsModMultipliers.Set("dribble_offensiveness", 0.5f);
   teamTacticsModMultipliers.Set("dribble_centermagnet", 0.5f);
   // The offside-trap instruction is a flag, not a slider: its whole [0, 1] range
@@ -132,7 +135,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   teamTacticsModMultipliers.Set("offside_trap", 1.0f);
 
   offensivenessBias = 0.5f;
-  philosophy = TeamPhilosophy::e_Philosophy_Balanced;
   // The shape the team is actually lined up in, read off the lineup. This used
   // to come from a "formation" string in the tactics properties, but tactics_xml
   // is parsed with atof, so that property can only ever hold a number - every
@@ -243,8 +245,6 @@ void TeamAIController::Process() {
   */
 
   offsideTrapX = deepestDanger;
-  // A side parking the bus never holds a line beyond its own box.
-  offsideTrapX = TeamPhilosophy::AdaptOffsideTrapX(philosophy, offsideTrapX, team->GetSide());
   // disable
   // offsideTrapX = pitchHalfW * team->GetSide();
 
@@ -280,90 +280,19 @@ void TeamAIController::Process() {
   std::sort(tacticalOpponentInfo.begin(), tacticalOpponentInfo.end(),
             ReverseSortTacticalOpponentInfo);
 
-  // team pressure
-
-  /* DISABLED, interferes with other defense AI code for now
-    if (team->GetHumanGamerCount() == 0) {
-      if (match->GetBestPossessionTeamID() != team->GetID()) {
-
-        bool opponentFreeRun = false;
-        Player *opp = match->GetTeam(abs(team->GetID() - 1))->GetDesignatedTeamPossessionPlayer();
-        Vector3 dangerPos = Vector3(pitchHalfW * team->GetSide(), opp->GetPosition().coords[1] *
-    0.5, 0); float oppDangerDistance = (opp->GetPosition() - dangerPos).GetLength(); Vector3
-    adaptedGoalPos = Vector3(pitchHalfW * team->GetSide(), 0, 0) * 0.5 + opp->GetPosition() * 0.5;
-        float oppGoalDistance = (opp->GetPosition() - adaptedGoalPos).GetLength();
-        Player *p = AI_GetClosestPlayer(team, adaptedGoalPos);
-        float usGoalDistance = (p->GetPosition() - adaptedGoalPos).GetLength();
-        if (usGoalDistance > oppGoalDistance - 3.2) opponentFreeRun = true;
-
-        bool closeEnemy = false;
-        if (oppDangerDistance < 20) closeEnemy = true;
-
-        if (opponentFreeRun || closeEnemy) {
-          ApplyTeamPressure();
-        }
-      }
-    }
-  */
-
-  // PES-style zone pressure: after a suitable turnover, the nearest defender
-  // engages normally and one additional defender closes down for a short,
-  // tactic-dependent period.
-  if (prevTeamHasPossession && !teamHasPossession) {
-    Player* primaryDefender = team->GetDesignatedTeamPossessionPlayer();
-    const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
-    const float primaryDistance =
-        primaryDefender ? (primaryDefender->GetPosition() - ballPos).GetLength() : 1000.0f;
-    const float pressureSetting =
-        liveTeamTactics.GetReal("team_pressure", 0.5f);
-    const float territory =
-        AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
-    // Gegenpressing counter-presses on the loss itself; ApplyTeamPressure
-    // then also keeps hunting longer via GetTeamPressureDurationBonus_ms.
-    if (AITactics::ShouldStartZonePressureOnLoss(
-            TeamPhilosophy::PressesOnPossessionLoss(philosophy), pressureSetting, territory,
-            primaryDistance))
-      ApplyZonePressure();
-  }
-
-  if (zonePressureActive) {
-    if (teamHasPossession || match->GetActualTime_ms() > zonePressureEndTime_ms) {
-      zonePressureActive = false;
-      endApplyTeamPressure_ms = match->GetActualTime_ms();
-      teamPressurePlayer = 0;
-    } else if (match->GetActualTime_ms() >= nextZonePressureRefresh_ms) {
-      ApplyTeamPressure();
-      nextZonePressureRefresh_ms = match->GetActualTime_ms() + 250;
-    }
-  }
-  // Counterattack: the moment the ball is won with the opponent committed
-  // upfield, spring a runner at once instead of waiting for the periodic check.
-  if (!prevTeamHasPossession && teamHasPossession) {
-    const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
-    const float territory =
-        AITactics::GetAttackingTerritory(ballPos.coords[0], team->GetSide(), pitchHalfW);
-
-    int opponentsInOwnHalf = 0;
-    std::vector<Player*> opponents;
-    match->GetActiveTeamPlayers(abs(team->GetID() - 1), opponents);
-    for (Player* opponent : opponents) {
-      if (opponent->GetPosition().coords[0] * team->GetSide() > 0.0f)
-        opponentsInOwnHalf++;
-    }
-
-    const float counterSetting =
-        liveTeamTactics.GetReal("counter_attack", 0.5f);
-    if (AITactics::ShouldLaunchCounter(counterSetting, opponentsInOwnHalf, territory,
-                                       random(0.0f, 1.0f))) {
-      ApplyAttackingRun();
-      endApplyAttackingRun_ms =
-          match->GetActualTime_ms() + AITactics::GetCounterWindow_ms(counterSetting);
-      if (Verbose())
-        printf("!!! counterattack sprung: %i opponents caught upfield !!!\n", opponentsInOwnHalf);
-    }
-  }
-
+  // MI+0x11a0: time since the possessing team changed. PES counts every frame,
+  // stoppages included (transitions 1.1).
+  const unsigned long now = match->GetActualTime_ms();
+  if (teamHasPossession != prevTeamHasPossession) possessionChange_ms = now;
   prevTeamHasPossession = teamHasPossession;
+  // FUN_140a74ec0: in-play time since the newest restart, meaningful only when
+  // that restart was a kick-off (transitions 1.2).
+  if (match->IsInPlay() && !match->IsInSetPiece()) inPlaySinceRestart_ms += now - lastProcess_ms;
+  lastProcess_ms = now;
+
+  // PES's team concepts (FUN_140579840): the counter-press trapper and the
+  // counter-attack replace GF's zone pressure and counter roll.
+  RunConcepts();
 
   // trigger attacking runs
 
@@ -542,28 +471,18 @@ void TeamAIController::CalculateDefensiveShape() {
   // ponytail: PES's attack level `T+0xb8a4` has no GF counterpart; PES's live
   // teams both sat on level 2, which is what the line ramp uses.
   const int attackLevel = 2;
-  // ponytail: PES's Defensive Style (team-sheet option byte 4) has no GF
-  // counterpart either; PES's live team 0 ran style 0, the forecheck branch.
-  const int style = 0;
-  // PES's Defensive Line runs 1..10 with 10 the deepest; GF's defensive depth
-  // factor is a 0..1 slider over the same direction, so it maps straight on.
-  const float lineSlider =
-      1.0f + 9.0f * AITactics::ClampSetting(GetLiveTacticReal("position_defense_depth_factor", 0.75f));
-  // Compactness is how tightly the block holds its length and width together.
-  // ponytail: GF has no compactness tactic, so its defensive width factor is
-  // read inversely (wider == looser). Add a real slider when the tactic pipeline
-  // grows one.
-  const float compactSlider =
-      11.0f - 10.0f * AITactics::ClampSetting(GetLiveTacticReal("position_defense_width_factor", 0.8f));
+  // The team sheet's own bytes (tactics 1, 4): Defensive Style, Defensive Line,
+  // Compactness, and Pressuring = Conservative, which gives the marker 2 m more
+  // room (FUN_140623750).
+  const int style = teamSheet.toggles[pes::kDefensiveStyle];
+  const float lineSlider = static_cast<float>(teamSheet.defensiveLine);
+  const float compactSlider = static_cast<float>(teamSheet.compactness);
 
   defensiveStyle = style;
   defensiveAttackLevel = attackLevel;
   defensiveLineSlider = lineSlider;
   defensiveCompactSlider = compactSlider;
-  // PES's Pressuring is team-sheet option byte 6; GF's nearest instruction is
-  // Aggressive Defence, which pushes the defender onto the ball. ponytail: add a
-  // real Pressuring option when the touchline instructions grow one.
-  defensivePressing = TeamInstructions::Has(instructions, TeamInstructions::e_Instruction_AggressiveDefence);
+  defensivePressing = teamSheet.toggles[pes::kPressuring] == 1;
 
   float ownFrameLine =
       pes::DefensiveLineHeight(k, field, facts, lineSlider, style, attackLevel, match->IsInPlay(),
@@ -1158,6 +1077,12 @@ void TeamAIController::ApplyOffsideTrap(Vector3& position) const {
 
 void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
   setPieceType = setPiece;
+  // Ring 5 records every restart but the throw-in (transitions 1.2): the
+  // kick-off timer runs only after a kick-off record.
+  if (setPiece != e_SetPiece_None && setPiece != e_SetPiece_ThrowIn) {
+    lastRestartWasKickOff = setPiece == e_SetPiece_KickOff;
+    inPlaySinceRestart_ms = 0;
+  }
 
   if (takerTeamID == -1)
     assert(setPieceType == e_SetPiece_None);
@@ -1747,55 +1672,257 @@ void TeamAIController::ApplyAttackingRun(Player* manualPlayer) {
   attackingRunPlayer = manualPlayer ? manualPlayer : SelectAttackingRunPlayer(team);
 }
 
-void TeamAIController::ApplyTeamPressure() {
-  // Gegenpressing keeps hunting the ball for several seconds longer.
-  endApplyTeamPressure_ms =
-      match->GetActualTime_ms() + 500 + TeamPhilosophy::GetTeamPressureDurationBonus_ms(philosophy);
+// --- PES's team concepts (docs/re/pes-re-tactics.md 2.1, pes-re-transitions.md 2-3)
 
-  Player* opp = match->GetTeam(abs(team->GetID() - 1))->GetBestPossessionPlayer();
-  if (!opp) {
-    teamPressurePlayer = 0;
-    return;
+namespace {
+
+constexpr float kMsPerSecond = 1000.0f;
+// FUN_140a74ec0 returns 0xffffffff frames when the newest restart was not a
+// kick-off; the caller reads it unsigned, i.e. "forever".
+constexpr float kNoKickOff_s = 1e9f;
+
+// The PES concept ids this port runs, in the selector's ascending walk.
+constexpr int kPortedConcepts[] = {pes::kConceptSideCounter, pes::kConceptTransitionChase};
+
+// P(c)+0x5d0 in {LONG_PASS, CENTERING, EARLY_CROSS, SHORT_PASS, THROUGH_PASS,
+// SHOOT}: GF's kick function types.
+bool IsKicking(Player* p) {
+  switch (p->GetCurrentFunctionType()) {
+    case e_FunctionType_ShortPass:
+    case e_FunctionType_LongPass:
+    case e_FunctionType_HighPass:
+    case e_FunctionType_Shot:
+      return true;
+    default:
+      return false;
   }
-  Vector3 opponentPos = opp->GetPosition() + opp->GetMovement() * 0.24f;
-
-  // Team pressure is assistance: keep the primary defender in place and send
-  // the nearest available AI-controlled outfield teammate.
-  Player* primaryDefender = team->GetDesignatedTeamPossessionPlayer();
-  teamPressurePlayer = 0;
-  std::vector<Player*> candidates;
-  const Vector3 pressureTarget = opponentPos + Vector3(team->GetSide() * 1.0f, 0, 0);
-  AI_GetClosestPlayers(team, pressureTarget, candidates, playerNum);
-  float bestPressureRating = 1000.0f;
-  for (Player* candidate : candidates) {
-    if (candidate != primaryDefender && candidate != team->GetGoalie()) {
-      const float distance = (candidate->GetPosition() - pressureTarget).GetLength();
-      const float rolePenalty = AITactics::GetSecondaryPressureRolePenalty(
-          AI_GetMindSet(candidate->GetDynamicFormationEntry().role));
-      // A destroyer hunts the ball; a number ten leaves that to others.
-      const float pressureRating =
-          distance + rolePenalty +
-          PlayingStyles::GetPressingDistanceBias(candidate->GetPlayerData()->GetPlayingStyle());
-      if (pressureRating < bestPressureRating) {
-        bestPressureRating = pressureRating;
-        teamPressurePlayer = candidate;
-      }
-    }
-  }
-
-  // Do not alter the player's persistent man-marking assignment here. The
-  // pressure override is intentionally temporary and is already identified by
-  // teamPressurePlayer/endApplyTeamPressure_ms in ElizaController.
 }
 
-void TeamAIController::ApplyZonePressure() {
-  const float pressureSetting =
-      liveTeamTactics.GetReal("team_pressure", 0.5f);
-  zonePressureActive = true;
-  zonePressureEndTime_ms =
-      match->GetActualTime_ms() + AITactics::GetZonePressureDuration_ms(pressureSetting);
-  ApplyTeamPressure();
-  nextZonePressureRefresh_ms = match->GetActualTime_ms() + 250;
+// PES's DIVE / STAGGER / FALL_DOWN anime ids. ponytail: GF's only on-the-ground
+// function is the slide; a stagger has no GF state to read.
+bool IsDown(Player* p) { return p->GetCurrentFunctionType() == e_FunctionType_Sliding; }
+
+// Heading in PES's convention (0 = +y, 90 = +x).
+float HeadingOf(const Vector3& v) { return std::atan2(v.coords[0], v.coords[1]) * 180.0f / pi; }
+
+// Position category T+0x4c00 (INF in the report): > 4 the wide and forward
+// roles, > 2 everything but keeper, centre backs and full backs.
+bool WideOrForward(e_PlayerRole r) {
+  return r == e_PlayerRole_LM || r == e_PlayerRole_RM || r == e_PlayerRole_LW || r == e_PlayerRole_RW ||
+         r == e_PlayerRole_AM || r == e_PlayerRole_CF || r == e_PlayerRole_SS;
+}
+bool BeyondBackLine(e_PlayerRole r) {
+  return r != e_PlayerRole_GK && r != e_PlayerRole_CB && r != e_PlayerRole_LB && r != e_PlayerRole_RB;
+}
+
+}  // namespace
+
+const TeamAIController::ConceptOrder* TeamAIController::GetConceptOrder(const Player* player) const {
+  auto it = conceptOrders.find(player);
+  return it == conceptOrders.end() ? nullptr : &it->second;
+}
+
+void TeamAIController::RunConcepts() {
+  // FUN_140579840. ponytail: the registry-15 stop flag, the difficulty row 0x21
+  // cap and the MI+0x116c == 2 early-out have no GF counterpart; every ported
+  // concept tests "in play" itself.
+  const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
+  const unsigned long now = match->GetActualTime_ms();
+  const bool own = teamHasPossession;
+  int runningAttack = -1;
+  if (own)
+    for (int id : kPortedConcepts)
+      if (id <= pes::kLastAttackingConcept && conceptRunning[id]) {
+        runningAttack = id;
+        break;
+      }
+  for (int id : kPortedConcepts) {
+    if (!k.enabled[id]) continue;
+    const bool attacking = id <= pes::kLastAttackingConcept;
+    if (own != attacking) {
+      StopConcept(id);
+      continue;
+    }
+    // One attacking concept at a time: every PES concept's slot 6
+    // (interruptible) is the false stub 0x141863350.
+    if (attacking && runningAttack >= 0 && runningAttack != id) continue;
+    if (!pes::ConceptGate(id, teamSheet)) {
+      StopConcept(id);
+      continue;
+    }
+    if (!conceptRunning[id]) {
+      if (!StartConcept(id)) continue;
+      conceptRunning[id] = true;
+      conceptStart_ms[id] = now;
+    } else if ((now - conceptStart_ms[id]) / kMsPerSecond > k.endTestAfter_s && ConceptEnded(id)) {
+      StopConcept(id);
+      continue;
+    }
+    ExecuteConcept(id);
+  }
+}
+
+void TeamAIController::StopConcept(int id) {
+  // FUN_14057a3e0: clear the flag and release every man on this concept's order.
+  conceptRunning[id] = false;
+  for (auto it = conceptOrders.begin(); it != conceptOrders.end();)
+    it = it->second.conceptId == id ? conceptOrders.erase(it) : std::next(it);
+  if (id == pes::kConceptTransitionChase) chaseChaser = chaseSecond = chaseCarrier = nullptr;
+  if (id == pes::kConceptSideCounter) counterRunner = nullptr, counterSupporters = {};
+}
+
+pes::TransitionChaseInput TeamAIController::ChaseInput(Player* carrier, std::vector<Player*>* men) {
+  pes::TransitionChaseInput in;
+  in.inPlay = match->IsInPlay() && !match->IsInSetPiece();
+  in.sincePossessionChange_s = (match->GetActualTime_ms() - possessionChange_ms) / kMsPerSecond;
+  in.dir = static_cast<float>(-team->GetSide());
+  if (!carrier) return in;
+  in.carrier = carrier->GetPosition();
+  in.carrierKicking = IsKicking(carrier);
+  // FUN_140575390: our MATCH_UP man, else the man nearest the carrier. GF's
+  // engaging defender is its designated possession player.
+  Player* chaser = team->GetDesignatedTeamPossessionPlayer();
+  team->GetActivePlayers(*men);
+  std::stable_sort(men->begin(), men->end(), [&](Player* a, Player* b) {
+    return (a->GetPosition() - in.carrier).GetLength() < (b->GetPosition() - in.carrier).GetLength();
+  });
+  for (Player* p : *men) {
+    pes::ChaseMan m;
+    m.pos = p->GetPosition();
+    m.falling = IsDown(p);
+    // BASE_POSITION / MARK / PASS_COURSE_CUT: not the keeper, not the engaging
+    // defender, not on another concept's order.
+    const ConceptOrder* order = GetConceptOrder(p);
+    m.available = p != chaser && p->GetFormationEntry().role != e_PlayerRole_GK &&
+                  (!order || order->conceptId == pes::kConceptTransitionChase);
+    if (p == chaser) in.chaser = static_cast<int>(in.men.size());
+    in.men.push_back(m);
+  }
+  return in;
+}
+
+pes::SideCounterInput TeamAIController::CounterInput(std::vector<Player*>* men) {
+  pes::SideCounterInput in;
+  const unsigned long now = match->GetActualTime_ms();
+  // T+0xa508 != 0 (counter-trigger 1.3): in play and in possession. ponytail:
+  // the stale-ball veto and the keeper-hold restart path are not modelled.
+  in.attackAllowed = match->IsInPlay() && !match->IsInSetPiece() && teamHasPossession;
+  in.sincePossessionChange_s = (now - possessionChange_ms) / kMsPerSecond;
+  in.sinceKickoff_s = lastRestartWasKickOff ? inPlaySinceRestart_ms / kMsPerSecond : kNoKickOff_s;
+  in.dir = static_cast<float>(-team->GetSide());
+  in.ball = match->GetBall()->Predict(0).Get2D();
+  Player* retainer = match->GetBallRetainer();
+  // FUN_140a53f90: a keeper holds the ball. ponytail: GF's keeper retaining the
+  // ball stands in for the hold.
+  in.keeperHolds = retainer && retainer->GetFormationEntry().role == e_PlayerRole_GK;
+  Player* holder = retainer && retainer->GetTeam() == team ? retainer : team->GetDesignatedTeamPossessionPlayer();
+  const int opp = abs(team->GetID() - 1);
+  in.oppLineX = AI_GetOffsideLine(match, match->GetMentalImage(0), opp);
+  std::vector<Player*> opponents;
+  match->GetActiveTeamPlayers(opp, opponents);
+  for (Player* o : opponents)
+    if (o->GetFormationEntry().role != e_PlayerRole_GK && std::fabs(o->GetPosition().coords[1]) <= pitchHalfH)
+      in.opponents.push_back(o->GetPosition());
+  in.attackingArea = teamSheet.toggles[pes::kAttackingArea];
+  team->GetActivePlayers(*men);
+  for (Player* p : *men) {
+    pes::CounterMan m;
+    m.pos = p->GetPosition();
+    const e_PlayerRole role = p->GetFormationEntry().role;
+    m.wideOrForward = WideOrForward(role);
+    m.supportEligible = BeyondBackLine(role);
+    float nearest = std::numeric_limits<float>::max();
+    for (Player* o : opponents) {
+      const Vector3 d = o->GetPosition() - m.pos;
+      nearest = std::min(nearest, d.coords[0] * d.coords[0] + d.coords[1] * d.coords[1]);
+    }
+    m.nearestOpponentSq_m2 = nearest;
+    if (p == holder) {
+      in.holder = static_cast<int>(in.men.size());
+      in.holderHeading_deg = HeadingOf(p->GetDirectionVec());
+    }
+    in.men.push_back(m);
+  }
+  return in;
+}
+
+bool TeamAIController::StartConcept(int id) {
+  const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
+  std::vector<Player*> men;
+  if (id == pes::kConceptTransitionChase) {
+    // The carrier: the opponent on the ball, else their designated man (T'+0x78).
+    Player* retainer = match->GetBallRetainer();
+    Player* carrier = retainer && retainer->GetTeam() != team
+                          ? retainer
+                          : match->GetTeam(abs(team->GetID() - 1))->GetDesignatedTeamPossessionPlayer();
+    const auto pick = pes::TransitionChaseStart(k, ChaseInput(carrier, &men));
+    if (!pick) return false;
+    chaseChaser = men[pick->chaser];
+    chaseSecond = men[pick->second];
+    chaseCarrier = carrier;
+    return true;
+  }
+  if (id == pes::kConceptSideCounter) {
+    const pes::SideCounterInput in = CounterInput(&men);
+    const auto runner = pes::SideCounterStart(k, in);
+    if (!runner) return false;
+    counterRunner = men[*runner];
+    conceptOrders[counterRunner] = {id, pes::SideCounterRunTarget(k, counterRunner->GetPosition(), in.oppLineX)};
+    return true;
+  }
+  return false;
+}
+
+bool TeamAIController::ConceptEnded(int id) {
+  const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
+  const bool inPlay = match->IsInPlay() && !match->IsInSetPiece();
+  if (id == pes::kConceptTransitionChase) {
+    // FUN_140575410: in play, the carrier unchanged (or loose), the chooser
+    // unchanged, the second man still off the ball.
+    Player* retainer = match->GetBallRetainer();
+    const bool carrierHeld = !retainer || retainer == chaseCarrier;
+    return !inPlay || !carrierHeld || team->GetDesignatedTeamPossessionPlayer() != chaseChaser ||
+           !chaseSecond->IsActive() || IsDown(chaseSecond) || chaseSecond == chaseChaser;
+  }
+  if (id == pes::kConceptSideCounter) {
+    // The runner is still on SPACE_RUN_CHANCE until he has the ball.
+    const bool running = counterRunner->IsActive() && match->GetBallRetainer() != counterRunner;
+    return pes::SideCounterEnd(k, inPlay, running,
+                               (match->GetActualTime_ms() - conceptStart_ms[id]) / kMsPerSecond,
+                               match->GetBall()->Predict(0).Get2D(), counterRunner->GetPosition());
+  }
+  return true;
+}
+
+void TeamAIController::ExecuteConcept(int id) {
+  const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
+  if (id == pes::kConceptTransitionChase) {
+    // FUN_140575b60: the second man to the trap point, every tick.
+    conceptOrders[chaseSecond] = {id, pes::TransitionChaseTarget(k, chaseChaser->GetPosition(),
+                                                                 chaseCarrier->GetPosition(),
+                                                                 static_cast<float>(-team->GetSide()))};
+    return;
+  }
+  if (id == pes::kConceptSideCounter) {
+    // FUN_1405415b0 re-picks the three PASS_SUPPORT men every tick.
+    // ponytail: its carrier pass plan (T+0x6f4) is not fed to GF's carrier.
+    std::vector<Player*> men;
+    const pes::SideCounterInput in = CounterInput(&men);
+    std::array<int, 3> previous{-1, -1, -1};
+    int runner = -1;
+    for (int i = 0; i < static_cast<int>(men.size()); ++i) {
+      if (men[i] == counterRunner) runner = i;
+      for (int s = 0; s < 3; ++s)
+        if (men[i] == counterSupporters[s]) previous[s] = i;
+    }
+    const pes::CounterSupport support = pes::SideCounterSupporters(k, in, runner, previous);
+    for (Player* p : counterSupporters)
+      if (p) conceptOrders.erase(p);
+    for (int s = 0; s < 3; ++s) {
+      counterSupporters[s] = support.men[s] >= 0 ? men[support.men[s]] : nullptr;
+      if (counterSupporters[s]) conceptOrders[counterSupporters[s]] = {id, support.points[s]};
+    }
+  }
 }
 
 void TeamAIController::CalculateSituation() {
@@ -1850,20 +1977,16 @@ void TeamAIController::UpdateTactics() {
 
   liveTeamTactics = baseTeamTactics;
 
-  // The team's philosophy bundles the sliders into a style of play; the user's
-  // own tactic modifiers are then applied on top of that as offsets. PES's CPU
-  // manager never switches style or shape on the clock or the score
+  // The user's own tactic modifiers are applied on top of the base as offsets.
+  // PES's CPU manager never switches style or shape on the clock or the score
   // (docs/re/pes-re-match-management.md 3-4): it moves the attack level
-  // (UpdateStrategy) and nothing else, so the sheet's choices stand for both.
+  // (UpdateStrategy) and nothing else, so the sheet's choices stand.
   // ponytail: PES's reactive plan queue (report 3, kinds 1-9) is not ported.
-  philosophy = TeamPhilosophy::Parse(teamTactics.userProperties.Get(
-      "philosophy", teamTactics.factoryProperties.Get("philosophy", "balanced")));
   // Likewise the shape to hold: the lineup, not an unreadable property.
   const Formations::Shape preferredShape = TeamFormationShape();
   if (Formations::ShapeName(preferredShape) != Formations::ShapeName(formationShape))
     ApplyFormationShape(preferredShape);
-  TeamPhilosophy::ApplyPreset(philosophy, liveTeamTactics);
-  const Properties philosophyTactics = liveTeamTactics;
+  const Properties baseTactics = liveTeamTactics;
 
   // when trailing, we need goals. when leading, defend lead
   float goalFactor = clamp(0.5 + (oppGoals - goals) * 0.25f, 0.0f, 1.0f);
@@ -1906,7 +2029,7 @@ void TeamAIController::UpdateTactics() {
 
     offset = (offset - 0.5f) * 2.0f * multiplier;
 
-    float baseValue = philosophyTactics.GetReal(iter->first.c_str(), -1.0f);
+    float baseValue = baseTactics.GetReal(iter->first.c_str(), -1.0f);
     // printf("value: %s\n", iter->first.c_str());
     if (baseValue >= 0.0f) {  // not all user mods from teamdata are used in this class (for
                               // example, individual settings like dribble stuff), ignore them
@@ -1914,10 +2037,6 @@ void TeamAIController::UpdateTactics() {
     }
     iter++;
   }
-
-  // The manager's own instructions from the touchline, on top of everything the
-  // philosophy and his tactic sliders produced.
-  TeamInstructions::Apply(instructions, liveTeamTactics);
 }
 
 // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1): the
@@ -1989,13 +2108,7 @@ void TeamAIController::Reset() {
 
   endApplyAttackingRun_ms = 0;
   attackingRunPlayer = 0;
-  endApplyTeamPressure_ms = 0;
-  teamPressurePlayer = 0;
-
-  zonePressureActive = false;
-  zonePressureEndTime_ms = 0;
-  nextZonePressureRefresh_ms = 0;
-  prevTeamHasPossession = false;
+  for (int id = 0; id < pes::kConceptCount; ++id) StopConcept(id);
 
   teamHasPossession = false;
   teamHasUniquePossession = false;

@@ -11,6 +11,7 @@
 #include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/pesstrategy.hpp"
+#include "onthepitch/pesteamconcepts.hpp"
 #include "onthepitch/pessubs.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
@@ -104,6 +105,10 @@ class PesLibrary : public RefCounted {
   const pes::StrategyConstants* strategy_constants() const {
     return strategyConstants_ ? &*strategyConstants_ : nullptr;
   }
+  // PES 2021's team sheet defaults and transition concepts (docs/re/pes-re-tactics.md 2).
+  const pes::TeamConceptConstants* team_concept_constants() const {
+    return teamConceptConstants_ ? &*teamConceptConstants_ : nullptr;
+  }
   // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
   const pes::SubstitutionConstants* substitution_constants() const {
     return substitutionConstants_ ? &*substitutionConstants_ : nullptr;
@@ -149,6 +154,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::DefensiveShapeConstants> defensiveShapeConstants_;
   std::optional<pes::DefenderDecisionConstants> defenderDecisionConstants_;
   std::optional<pes::StrategyConstants> strategyConstants_;
+  std::optional<pes::TeamConceptConstants> teamConceptConstants_;
   std::optional<pes::SubstitutionConstants> substitutionConstants_;
   std::optional<pes::RngConstants> rngConstants_;
   std::optional<pes::KeeperConstants> keeperConstants_;

@@ -157,6 +157,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES strategy constants missing: read them from the install with "
         "pes::LoadStrategyConstants into MatchSetup::pesStrategyConstants");
   pesStrategyConstants = *setup.pesStrategyConstants;
+  // PES 2021's team concepts (docs/re/pes-re-tactics.md 2).
+  if (setup.pesTeamConceptConstants == nullptr)
+    throw std::runtime_error(
+        "PES team concept constants missing: read them from the install with "
+        "pes::LoadTeamConceptConstants into MatchSetup::pesTeamConceptConstants");
+  pesTeamConceptConstants = *setup.pesTeamConceptConstants;
   // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
   if (setup.pesSubstitutionConstants == nullptr)
     throw std::runtime_error(

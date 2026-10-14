@@ -35,7 +35,6 @@
 #include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/penaltyshootoutcontroller.hpp"
 #include "onthepitch/teaminstructions.hpp"
-#include "onthepitch/teamphilosophy.hpp"
 #include "strategies/offtheball/default_def.hpp"
 #include "strategies/offtheball/default_mid.hpp"
 #include "strategies/offtheball/default_off.hpp"
@@ -576,17 +575,6 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
   bool forceMagnet = false;
 
-  // team pressure
-  float ballDistance =
-      _mentalImage->GetBallPrediction(0).Get2D().GetDistance(player->GetPosition());
-  if (match->IsInPlay() && !match->IsInSetPiece() &&
-      ((team->GetController()->GetEndApplyTeamPressure_ms() > match->GetActualTime_ms() && team->GetController()
-                                                                                                   ->GetTeamPressurePlayer() ==
-                                                                                               player) /*|| (player == team->GetDesignatedTeamPossessionPlayer() && ballDistance < 8.0f && CastPlayer()->GetManMarkingID() == -1) */) &&
-      !teamHasBestPossession && match->GetDesignatedPossessionPlayer() != player &&
-      CastPlayer()->GetFormationEntry().role != e_PlayerRole_GK) {
-    forceMagnet = true;
-  }
 
   _SetInput(rawInputDirection, rawInputVelocityFloat);
   if (rawInputDirection.GetLength() != 0)
@@ -627,6 +615,14 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
         inputDirection = Vector3(team->GetSide() * pitchHalfW, 0, 0) - CastPlayer()->GetPosition();
         inputVelocityFloat = idleVelocity;
         inputDirection.Normalize(CastPlayer()->GetDirectionVec());
+      } else if (const TeamAIController::ConceptOrder* order =
+                     team->GetController()->GetConceptOrder(CastPlayer())) {
+        // A team concept's order (T+0xb774 + the T+0x26c point, transitions
+        // 2.1/3.1): run to the concept's point.
+        const Vector3 toTarget = order->target - CastPlayer()->GetPosition();
+        inputDirection = toTarget.GetNormalized(inputDirection);
+        inputVelocityFloat =
+            clamp(toTarget.GetLength() * distanceToVelocityMultiplier, 0.0f, sprintVelocity);
 
       } else if (!teamHasBestPossession && CastPlayer()->GetManMarkingID() == -1 &&
                  ((opp->GetPosition() + opp->GetMovement() * 0.12f) -
@@ -763,7 +759,7 @@ pes::SlideAggressionInput ElizaController::_SlideAggression() {
       CastPlayer()->GetPlayerData()->GetPlayingStyle() == PlayingStyles::Player::TheDestroyer;
   // PES's FUN_140a62180(ctx, side, 6) == 0: the Pressuring sheet toggle is
   // Aggressive rather than Conservative (pes-re-tactics.md 2).
-  in.aggressiveTeamSheet = TeamInstructions::Has(instructions, TeamInstructions::e_Instruction_AggressiveDefence);
+  in.aggressiveTeamSheet = team->GetController()->GetTeamSheet().toggles[pes::kPressuring] == 0;
   in.deepDefensiveMode = DeepDefensiveMode(instructions);
   in.staminaUnder30 = CastPlayer()->GetStaminaPct() < 0.30f;
   return in;
@@ -993,7 +989,8 @@ bool ElizaController::_BlockCandidate(const pes::DefenderDecisionConstants& k) {
   Player* carrier = _Carrier();
   if (!carrier || carrier->GetTeamID() == team->GetID()) return false;
   if (match->GetBallRetainer() != carrier) return false;
-  const bool pressing = team->GetController()->GetTeamPressurePlayer() == player;
+  // PES's PRESS state (ActionPress) is not ported; nobody is in it.
+  const bool pressing = false;
   const float radius = pes::BlockRadius_m(k, pressing, false, false);
   if ((carrier->GetPosition() - CastPlayer()->GetPosition()).GetLength() > radius) return false;
   // A pass or a shot clip widens the radius to 7 m once it has passed its
@@ -1016,7 +1013,7 @@ bool ElizaController::_PassDuelCandidate(const pes::DefenderDecisionConstants& k
       static_cast<float>(match->GetActualTime_ms() - kicker->GetLastTouchTime_ms()) * 0.001f;
   if (age_s >= window) return false;
 
-  const bool pressing = team->GetController()->GetTeamPressurePlayer() == player;
+  const bool pressing = false;  // as above: no ActionPress in GF
   const float radius = pes::BlockRadius_m(k, pressing, false, false);
   const Vector3 ballPredict = _mentalImage->GetBallPrediction(200);
   return (ballPredict - CastPlayer()->GetPosition()).GetLength() <= radius;
@@ -1274,8 +1271,12 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
   float runWeight = 1.0f * overallWeight;
   float flockToPossessionPlayerWeight = 0.45f * overallWeight;
 
+  // Support Range 1..10 as the 0..1 share PES itself uses, (SR - 1) / 9
+  // (tactics 4.1). ponytail: it scales GF's support web; PES's own support
+  // distance formula belongs to the off-ball port.
+  constexpr float kSupportRangeSteps = 9.0f;  // 0x14259d60c
   const float webScale = AITactics::GetSupportWebScale(
-      team->GetController()->GetLiveTacticReal("support_distance", 0.5f));
+      (team->GetController()->GetTeamSheet().supportRange - 1) / kSupportRangeSteps);
 #ifndef NDEBUG
   // [pass-dist] instrumentation: the mean spread of this player's nearest
   // teammates is the width of the passing network he actually lives in.
@@ -1495,7 +1496,6 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
   const PlayerSkills::Mask skills = CastPlayer()->GetPlayerData()->GetSkills();
   const PlayingStyles::Player style = CastPlayer()->GetPlayerData()->GetPlayingStyle();
   const PlayingStyles::ComMask comStyles = CastPlayer()->GetPlayerData()->GetComStyles();
-  const TeamPhilosophy::e_Philosophy philosophy = team->GetController()->GetPhilosophy();
   // A one-touch passer does not pay the control penalty on a quick release.
   oneTouchIsHard = PlayerSkills::GetQuickReleaseAccuracyPenalty(
       skills, CastPlayer()->GetPossessionDuration_ms(), oneTouchIsHard);
