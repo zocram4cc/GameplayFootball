@@ -29,7 +29,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 
 |System|Status|Evidence|GF counterpart (to replace)|
 |---|---|---|---|
-|Carrier think units (25 kinds), cadence, adoption|OBS|`pes-re-carrier-ai.md` §1–5|`elizacontroller.cpp` ball-carrier branches|
+|Carrier think units (25 kinds), cadence, adoption|OBS; **partially ported**: cadence, shoot zone + just-shoot/box/header, openness ladder, PassForward tiers, plan order + Breakthrough/MiddleShot/Cross/Long rolls; 20 units, dribble cost search, shield branch, delay tables not; shoot-zone live sample off by 0.9 m (open)|`pes-re-carrier-ai.md` §1–5; `pes-re-carrier-port.md`|`pescarrier.cpp`; `elizacontroller.cpp` ball-carrier branches|
 |Perception layer (image units every unit reads)|OBS|`pes-re-carrier-ai.md` §4|`AIsupport/mentalimage*`|
 |Cross / early cross / through-ball units and choosers|OBS|`pes-re-attack-decisions.md` §2|`elizacontroller.cpp` pass selection|
 |Dribble sub-kind and shielding|OBS|`pes-re-attack-decisions.md` §2.7|`elizacontroller.cpp` dribble|
