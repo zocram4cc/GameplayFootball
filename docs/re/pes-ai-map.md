@@ -33,7 +33,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Perception layer (image units every unit reads)|OBS|`pes-re-carrier-ai.md` §4|`AIsupport/mentalimage*`|
 |Cross / early cross / through-ball units and choosers|OBS|`pes-re-attack-decisions.md` §2|`elizacontroller.cpp` pass selection|
 |Dribble sub-kind and shielding|OBS|`pes-re-attack-decisions.md` §2.7|`elizacontroller.cpp` dribble|
-|Off-ball run scorers (chance, counter, second line, diagonal, pull-away, overlap, post play)|OBS|`pes-re-attack-decisions.md` §3; `pes-re-team-plans.md` §3|`elizacontroller.cpp` support runs|
+|Off-ball runs and support positioning|**OBS**: one run manager, 11 selectors in fixed order on the team's alternate frame, caps from `selectorVision.o` by attack level (Tiki-Taka cuts some), no skill/style weighting, minimum run times, support grid (32 layers, cost search, designated supporter); live caps and cadence match. Chance target builders and support-target live check open|`pes-re-off-ball.md` (corrects attack-decisions §3); `pes-re-team-plans.md` §3|`elizacontroller.cpp` support runs, `AIsupport/`, `teamAIcontroller.cpp` attacking positioning|
 |Attribute, skill and style bindings in decisions|partial|`pes-re-carrier-ai.md` §6; `pes-re-attack-decisions.md` §4|`playerskills.*`|
 |Difficulty → AI capability table|OBS|`pes-re-carrier-ai.md` §7|none|
 |Fatigue effect on AI work rate|OBS, **ported**|`pes-re-stamina-drain.md`; `pesstamina.cpp`|`pesstamina.cpp` (tank/drain/breath/half-time/A5/injury; deletes GF fatigue)|

@@ -803,3 +803,6 @@ protection §1.2) awaiting live confirmation.
   "8.0 m Δx level tolerance"; "the 65.0 compare is in m²".
 - Live: a read-only watcher (`<scratch>/OffsideLive/watch_offside.py`) logs every live offside call's MI fields
   (duels-fouls §5.1) and all 22 positions from a ring buffer at the flag frame. Results appended below when in.
+
+
+> **Correction (OffBallRE, `pes-re-off-ball.md` §0):** §3's run "start gate" is the **stop** test and the "≈11-frame cooldown" is the minimum run time; `0x14061e810` is GoalGet's stop test, `0x14061a640` CenteringGet's, "Score" is the shared base class; every "rng" in §3 is the constant fps = 54.

@@ -73,6 +73,7 @@ address given.
 |`pes-re-team-plans.md`|team AI: the team-brain class inventory, formation slot to target position, advanced-instruction enums, off-ball run selector gates, the press trigger/target/count, ZoneDefenceManager marking, pass/shoot/dribble scoring skeletons|
 |`pes-re-tactics.md`|team tactics → behaviour: the team-sheet layout, slider formulas, toggles gating the team plans, the plan selector, the 17 advanced instructions and their timing, attack level/CPU strategy; live-checked|
 |`pes-re-transitions.md`|possession and kick-off timers, counter-press/fore-check/regroup concepts with live timings, the concept id map, first-touch sample; corrects team-plans §4.1 and defensive-shape's timer trigger|
+|`pes-re-off-ball.md`|off-ball attacking movement: the run manager and its 11 selectors, caps per attack level, run timing, coordination, the 32-layer support grid and support cost; corrects attack-decisions §3|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
