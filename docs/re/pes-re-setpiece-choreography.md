@@ -500,22 +500,17 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 2. **The AI kick-command timing** (counter 164/191/246/84/380): the set-play AI (`ThinkUnit*` / `ballplayerSetplay.o`
    `waitTimerMin`) was not decompiled. Next: watch the AI command struct for the kicker during the wait, or find writers of
    the kick request consumed by `CornerKick::CanEnter` (thunk 0x143fb8d40, protected).
-3. **Defensive marking at corners/FKs**: partly CLOSED — §11.6. Near-post man = the corner-side slots 2–4 man with
-   the lowest height + byte `0x2c` + byte `0x1d`; a far-post man is added at attack level 0; outlets are kept upfield.
-   The zone template (`T+0x4b4c` writer, `T+0x26c` marker spots), who marks whom (`FUN_1405346e0`'s seven sub-passes),
-   and the FK line at 40.05 stay open.
-4. **Attackers outside the CK table**: partly CLOSED — §11.7. Box-attacker count is `4 + min(attack level, 2)`
-   (`FUN_1404f6680`); `FUN_14051b8b0` ranks who goes in. Which corner variant runs, and the pair at (dir·32.21, …),
-   stay open.
-5. **Wall spacing and the jump decision**: CLOSED — §11.5. Wall men stand 0.5 m apart. The CPU picks
-   press/jump/not-jump in `FUN_140525ec0` once `FUN_140525900` hits zero: `r = |(f%100 − s²)·(idx·s + f%100)| % 100`,
-   at most one presser, jump if `r > 24` or the not-jump slots (`(n−1)/2`) run out.
+3. **Defensive marking at corners/FKs** (who marks whom, the zone-template constants x = F[8], z = 2.0/0.5/5.99/−6.0,
+   the line at 40.05 in the FK): seen live only; `ThinkUnitCornerKickDefenceType` and the FK line code not decompiled.
+4. **Attackers outside the CK table** ((dir·32.21, 7.8 / −12.6) and the rest defence) and the corner-variant choice
+   (`cornerKickType` vs a roll).
+5. **Wall spacing and the jump decision** (`ThinkUnitFreekickWallJump/NotJump/Press`): only the request timing is
+   observed (2 frames before contact, ×2). Multi-man walls were not observed (both live FKs had d ≥ 35 m).
 6. **Penalty in a match**: no live sample; `positionPK` in-match use unproven.
-7. **Where the 20-tick placement writer lives**: CLOSED — §11.2. `MI+0x11b0` is a sync stage byte, not a writer:
-   players move in `FUN_140926b00` (only caller 0x1409256eb), officials in `FUN_140a364f0`, all ending in the
-   `FUN_1409232c0` teleport.
-8. **Kick-off two-player path**: mechanism decoded, trigger INF(high) — §11.8. Only the human kick-off-change
-   pad command `0x1e` (`ThinkUnitKickOffChange` 0x140f472e0) selects it.
+7. **Where the 20-tick placement writer lives** (the match-side consumer of `MI+0x11b0`): handshake and order are
+   observed; the writer was not located (tried: `FUN_14044bb40` → `FUN_140453370`, not decompiled).
+8. **Kick-off two-player path** (`KickoffKicker`/`KickoffKickerLoop`) is decompiled but never ran in the AI kick-off;
+   when it is used (user control, INF) is open.
 9. **A goalkeeper took corners and free kicks** in the second capture (the same AnimePlayer that took the goal kicks and
    stood in goal at the kick-off); while he was up, one team-mate's AnimePlayer sat at (0, 0, 0). INF(med): the team's
    designated takers (`T+0x8e08`) in this modded install point at the keeper; the (0,0) player is an unfilled
@@ -543,7 +538,7 @@ capture. The referee's in-play diagonal resumes through `FUN_140a37910` once in 
 | EV-SPC-0014 | Wall jump requested ~2 frames before contact, random 1–5-frame start delay | Confirmed (live ×2) / High (delay, code) | live; `FUN_1407400d0` |
 
 
-### 9.2 Set-play take timing (SetplayWaitRE, 2026-10-13; archived by the orchestrator)
+### 9.2 Set-play take timing (SetplayWaitRE, 2026-10-13; archived by the orchestrator) — **superseded by §12** for the gate itself
 
 - **`waitTimerMin` is at `+0x28`, not `+0x1c`** (OBS deserializer `0x141e6fbd0`, live read). `constant::BallplayerSetplay`
   (`ballplayerSetplay.o`, table id 0x25, vtable 0x142b55918): +0x08 FreekickShoot.range_frontZ 12, +0x0c range_max 40,
@@ -800,3 +795,46 @@ read): it writes `52.56, 34.06, 3.66, 2.44, 47.06, 9.16, 36.14, 20.12, 41.56, 2.
 | EV-SPC-0023 | `basePosition.o` (constant_team.bin) = registry 183 object, offset +8; `dfLineWidth_Corner` 6.0 | Confirmed (live == VFS) | read-only live read; VFS decode |
 | EV-SPC-0024 | FieldInfo values emitted by VM ctor 0x140a85f40 | Confirmed (emulation, 11 of 18 fields) | `emu.py` log `emu_fi_full.txt` |
 | EV-SPC-0025 | FK keeper 0.3 m off the line, ±1 m to the ball side when d < 36 and wide | High (code) / Confirmed (live ×1) | `FUN_1409f5840`; §5.1 |
+
+---
+
+## 12. The AI kick-command timing — CLOSED (SetplayWaitRE)
+
+**The rule (OBS: decompile + live, two independent confirmations).**
+`ThinkUnitSetPlay` (`FUN_142135c50`) counts elapsed **logic frames** from the restart being armed
+(`elapsed = MI+0x1198 − AIctx[+8]`) and releases the kicker when the count reaches a **frame-rate
+multiple** — never a timer value from a JSON object:
+
+| restart | gate | kick action | live (armed counter → action) |
+|---|---|---|---|
+| corner, long cross | `elapsed ≥ fps·3.5` = 189 fr | `FUN_142134c20` aim → `CORNERKICK` (50) | 191 ×2, **379** |
+| corner, short | inside `fps·2` (108 fr; `fps·7` when a team-mate `+0x5d0 == 0x2d`) **and** the partner/receiver test passes | `CORNERKICK_SHORT` (51) | 57, 78 |
+| free kick | `elapsed ≥ fps·3.0` = 162 fr | `FREEKICK_LONGPASS` (32) | 164 ×2 |
+| goal kick | short window, then `fps·3` | `KP_GOALKICK` (63) | 83 |
+| penalty | `elapsed ≥ fps` | — | — |
+| kick-off | **not this gate** — `KickoffReceiver` (`0x140781fc0`) ball-ownership test | — | **28 exactly, ×3** |
+
+- The gate at `0x142136174` is `cmp eax,[r15+0x40]` (`eax` = `thr`) / `ja 0x1421362ff`; that target is
+  the function **epilogue**, so the tick does nothing while `thr > elapsed`, i.e. while
+  `elapsed < 189`. The corner aims and fires at `elapsed ≥ 189`.
+- `thr` uses the **int-fps** getter `0x141e532e0` (`mov eax,[0x14351ae50]`); `0x141e532d0` is its
+  float twin. Neither is a generator: an image-wide scan finds no writer of `0x14351ae50` other
+  than the reset constant 54, so the 379-frame corner is the 189-frame window's **second pass**, not
+  a random draw.
+- Aim-side randomness is a **separate** object, `*(G+0x360)` (int 0..32767, varied live): it picks the
+  penalty target (`% 7`) and gates the FK knuckle shot (byte at +4 `< 40`). The timing gates draw no
+  random numbers at all.
+
+**Killed hypotheses**
+- `waitTimerMin` (`constant::BallplayerSetplay`, **+0x28**, value 0.5 s) drives the wait. It does
+  not: nothing reads that field on any of these paths, and the gates are the fps multiples above.
+  Recorded so nobody ports it.
+- The counters are spread by a per-frame random (the 191 vs 380 gap). They are the same window seen
+  once and twice; the short corner's 57 vs 78 spread is the partner test passing, not a roll.
+- `fps·2` selects the short corner. It bounds the window the short corner lives in; the release
+  inside it is the partner/receiver test.
+
+**Port status:** implemented once (`SetPieceLaws::MayTakeRestart` on top of `buffer.startTime`, multipliers
+read from `.rdata` `0x14259bde8`, `0x14258c264`, `0x14256ae1c` through `pes::LoadSetPieceTakerConstants`;
+kick-off, throw-in and goal kick ungated), not merged: it fell back to hardcoded values without an exe. It is
+being integrated by the SetpiecePort agent with that fallback removed.

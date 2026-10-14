@@ -20,7 +20,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Attributes and playing styles in team decisions|partial|`pes-re-team-plans.md` §5|`teamphilosophy.cpp`|
 |Offside line keeping and detection|**open** (the earlier writer is **wrong**)|`pes-re-duels-fouls.md` §5.3; `pes-re-attack-decisions.md` §9|`offsiderule.cpp`|
 |Set-piece AI (placement, marking at corners/FKs, walls)|partial; taker/delivery/jog-to-marks/wall/post-men OBS; zone template, marker assignment, corner variant open|`pes-re-setpiece-choreography.md` §11, `pes-re-setpiece-kicker.md`, `pes-re-throwin-choreography.md`|`teamAIcontroller.cpp` `PrepareSetPiece`|
-|Set-piece take timing|partial (kick-off 28 f OBS, corners 3.5 s OBS; FK/corner writers open)|`pes-re-setpiece-choreography.md` §9.2; `pes-re-setpiece-kicker.md` §2|`referee.cpp` restart release|
+|Set-piece take timing|OBS (fps multiples: corner 3.5, FK 3.0, penalty 1; kick-off by KickoffReceiver, 28 f); port in SetpiecePort|`pes-re-setpiece-choreography.md` §12|`referee.cpp` restart release|
 
 ## 2. Player AI (the individual brain)
 
