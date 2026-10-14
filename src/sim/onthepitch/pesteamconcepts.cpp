@@ -105,6 +105,31 @@ constexpr Code COUNTER_MAX_LEA{0x140540609, {0x8d, 0x0c, 0x40}};  // lea ecx,[ra
 constexpr Code COUNTER_MAX_ADD{0x14054060c, {0x03, 0xc9}};        // add ecx,ecx: 6 x fps
 constexpr uint64_t COUNTER_FAR_VA = 0x1425c48e4;  // 1369
 constexpr uint64_t COUNTER_DX_VA = 0x142591140;   // 30
+// ForeCheckPress start FUN_1405747f0 / continue FUN_140574710 / count FUN_140574200.
+constexpr uint64_t FORECHECK_WINDOW_VA = 0x14259222c;  // 5 (x fps)
+constexpr uint64_t FORECHECK_HOLD_VA = 0x142565604;    // 2 (x fps)
+constexpr uint64_t FORECHECK_FLOOR_VA = 0x14259be84;   // -10
+constexpr uint64_t PRESS_GOAL_SIDE_VA = 0x14259be4c;   // 70
+constexpr uint64_t PRESS_RAMP_FROM_VA = 0x14253ee30;   // 100
+constexpr uint64_t PRESS_RAMP_TO_VA = 0x1425c964c;     // 170
+constexpr uint64_t PRESS_RADIUS_VA = 0x14259bdf4;      // 8
+constexpr uint64_t PRESS_RADIUS_RAMP_VA = 0x1425656c0; // 4
+constexpr uint64_t PRESS_BONUS_ABOVE_VA = 0x142598578; // 0.2
+constexpr Code PRESS_COUNT{0x140574654, {0x41, 0x80, 0xfc}};  // cmp r12b, imm8
+// ForeCheckLineDown FUN_140574a30 / FUN_140574ab0 / FUN_140574940.
+constexpr uint64_t LINEDOWN_DIVISOR_VA = 0x1425c74d0;  // -2.5
+constexpr uint64_t LINEDOWN_MAX_VA = 0x1425c50fc;      // 27
+constexpr uint64_t LINEDOWN_GAP_VA = 0x14258c264;      // 3
+constexpr uint64_t LINEDOWN_FACING_VA = 0x14259be4c;   // 70
+// RetreatBlockCreate end FUN_140575db0.
+constexpr uint64_t RETREAT_GAP_VA = 0x14259222c;       // 5
+constexpr uint64_t RETREAT_BACK_VA = 0x14259bdf4;      // 8
+constexpr uint64_t RETREAT_MID_VA = 0x14259be18;       // 18
+// Band push-up FUN_140687fb0 and the measured line FUN_140687820.
+constexpr uint64_t PUSHUP_BEHIND_VA = 0x1425c7678;     // -4
+constexpr uint64_t PUSHUP_BALL_VA = 0x14259bdec;       // 6
+constexpr uint64_t PUSHUP_CAP_VA = 0x14259be7c;        // -5
+constexpr uint64_t MEASURED_CLAMP_VA = 0x1425656c0;    // 4
 
 // constant_team.bin's subConcept.o (constant-team 2.3): blob u32 0 = the offset
 // of the 48-entry i32 list.
@@ -206,7 +231,7 @@ std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe,
             Matches(exe, SHEET_TOGGLES_ZERO, error) && Matches(exe, CHASE_WINDOW_LEA, error) &&
             ReadByteImm(exe, COUNTER_MAX_GOAL_SIDE, &k.counterMaxGoalSide, error) &&
             Matches(exe, COUNTER_GRACE_ADD, error) && Matches(exe, COUNTER_MAX_LEA, error) &&
-            Matches(exe, COUNTER_MAX_ADD, error);
+            Matches(exe, COUNTER_MAX_ADD, error) && ReadByteImm(exe, PRESS_COUNT, &k.pressCount, error);
   if (!ok) return std::nullopt;
   const float leaTriple = LeaMultiplier(*(CHASE_WINDOW_LEA.bytes.begin() + 2));
   constexpr float kAddDoubles = 2.0f;  // add r,r
@@ -247,6 +272,26 @@ std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe,
       {SUPPORT_HOLD_VA, &k.supportHoldBonus_m},
       {COUNTER_FAR_VA, &k.counterRunnerFarSq},
       {COUNTER_DX_VA, &k.counterRunnerMaxDx_m},
+      {FORECHECK_WINDOW_VA, &k.foreCheckWindow_s},
+      {FORECHECK_HOLD_VA, &k.foreCheckHold_s},
+      {FORECHECK_FLOOR_VA, &k.foreCheckBallFloor_m},
+      {PRESS_GOAL_SIDE_VA, &k.pressGoalSide_deg},
+      {PRESS_RAMP_FROM_VA, &k.pressRampFrom_deg},
+      {PRESS_RAMP_TO_VA, &k.pressRampTo_deg},
+      {PRESS_RADIUS_VA, &k.pressRadius_m},
+      {PRESS_RADIUS_RAMP_VA, &k.pressRadiusRamp_m},
+      {PRESS_BONUS_ABOVE_VA, &k.pressBonusAbove},
+      {LINEDOWN_DIVISOR_VA, &k.lineDownBallDivisor},
+      {LINEDOWN_MAX_VA, &k.lineDownBallMax_m},
+      {LINEDOWN_GAP_VA, &k.lineDownGap_m},
+      {LINEDOWN_FACING_VA, &k.lineDownLongPassFacing_deg},
+      {RETREAT_GAP_VA, &k.retreatGap_m},
+      {RETREAT_BACK_VA, &k.retreatBackFront_m},
+      {RETREAT_MID_VA, &k.retreatMidFront_m},
+      {PUSHUP_BEHIND_VA, &k.pushUpBehind_m},
+      {PUSHUP_BALL_VA, &k.pushUpBallGap_m},
+      {PUSHUP_CAP_VA, &k.pushUpCap_m},
+      {MEASURED_CLAMP_VA, &k.measuredLineClamp_m},
   };
   for (const auto& [va, out] : floats)
     if (!ReadF32(exe, va, out, error)) return std::nullopt;
@@ -271,11 +316,96 @@ bool ConceptGate(int id, const TeamSheet& sheet) {
   switch (id) {
     case kConceptSideCounter:  // 0x140543f40: Attacking Style == Counter Attack
       return sheet.toggles[kAttackingStyle] == 0;
-    case kConceptTransitionChase:  // 0x140574910: Defensive Style == Frontline Pressure
+    case kConceptForeCheckPress:  // 0x140574910: Defensive Style == Frontline Pressure
+    case kConceptForeCheckLineDown:
+    case kConceptTransitionChase:
       return sheet.toggles[kDefensiveStyle] == 0;
+    case kConceptRetreatBlockCreate:  // 0x1405767f0: All-out Defence
+      return sheet.toggles[kDefensiveStyle] == 1;
     default:
       return false;
   }
+}
+
+bool ForeCheckPressCount(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  // FUN_140574200(ctx, 0): the ball not held by the opponents -> press on.
+  if (!in.opponentsHoldBall) return true;
+  // Bearings from the ball, against the heading toward our own goal
+  // (FUN_140a4db20). ponytail: the candidate filter FUN_140639830 /
+  // FUN_140639a20 (637 + 519 insns of per-slot state tests) is not reduced:
+  // every outfield man is a candidate; the +5 m lane bonus (FUN_140a53da0 ->
+  // FUN_140a53df0) is not applied.
+  const float toOwnGoal = AttackHeading(-in.dir);
+  int count = 0;
+  bool close = false;
+  for (const Vector3& m : in.mates) {
+    const float ang = AngleDiff(Bearing(in.ball, m), toOwnGoal);
+    const float w = ang <= k.pressRampFrom_deg ? 0.0f
+                    : ang >= k.pressRampTo_deg ? 1.0f
+                                               : (ang - k.pressRampFrom_deg) / k.pressGoalSide_deg;
+    const float r = w * k.pressRadiusRamp_m + k.pressRadius_m;
+    if (DistSq(m, in.ball) > r * r) continue;
+    if (ang < k.pressGoalSide_deg) close = true;
+    if (++count >= k.pressCount && close) return true;
+  }
+  return false;
+}
+
+bool ForeCheckPressStart(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  if (!in.inPlay || in.sincePossessionChange_s > k.foreCheckWindow_s) return false;
+  // Ball in the opponents' half. ponytail: the "< 12 m and inside the
+  // corridor" veto reads MA+0x3c+0x14*side, a per-team float whose writer is
+  // not found (tried: its only displacement readers are this test).
+  if (in.dir * in.ball.coords[0] < 0.0f) return false;
+  return ForeCheckPressCount(k, in);  // instruction 0xd is never armed in GF
+}
+
+bool ForeCheckPressEnd(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  if (!in.inPlay || in.sincePossessionChange_s > k.foreCheckWindow_s) return true;
+  if (k.foreCheckBallFloor_m > in.dir * in.ball.coords[0]) return true;
+  if (in.sincePossessionChange_s <= k.foreCheckHold_s) return false;
+  return !ForeCheckPressCount(k, in);
+}
+
+namespace {
+// FUN_140574a30 + FUN_140574ab0 + the trigger ORs, shared by start and end.
+bool LineDownHolds(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  const float b = in.dir * in.ball.coords[0];
+  if (pitchHalfW / k.lineDownBallDivisor > b || b > k.lineDownBallMax_m) return false;
+  // |T+0x89a0 - T+0x875c|: a world x against an own-frame band, as written.
+  if (std::fabs(in.measuredBack - in.backBand) < k.lineDownGap_m) return false;
+  // FUN_140574940: the holder in LONG_PASS facing within 70 deg of our attack
+  // heading. ponytail: FUN_140574bb0 (the uncovered-carrier test) ends in
+  // FUN_140a4fea0 -> FUN_140a4fbc0, a cone-occupancy walk not reduced; false.
+  const bool longPass = in.holderLongPass &&
+                        AngleDiff(in.holderHeading_deg, AttackHeading(in.dir)) <= k.lineDownLongPassFacing_deg;
+  return in.attackLevelZero || longPass;
+}
+}  // namespace
+
+bool ForeCheckLineDownStart(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  return !in.keeperHolds && in.inPlay && LineDownHolds(k, in);
+}
+
+bool ForeCheckLineDownEnd(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  return !in.inPlay || !LineDownHolds(k, in);
+}
+
+bool RetreatBlockCreateEnd(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  if (!in.inPlay) return true;
+  const float a = in.dir * in.measuredBack, b = in.dir * in.measuredMid;
+  if (std::fabs(a - in.backBand) < k.retreatGap_m && std::fabs(b - in.midBand) < k.retreatGap_m) return true;
+  return k.retreatBackFront_m - pesPenaltyAreaLineX > a && k.retreatMidFront_m - pesPenaltyAreaLineX > b;
+}
+
+float BandPushUp_m(const TeamConceptConstants& k, float measuredBackOwn, float ballOwn, float backBand) {
+  // ponytail: the -15 m variant behind ctx+0x138 (a flag with no writer found
+  // in the shape pass) is not taken; FUN_14063fdc0's kick-prediction point is
+  // the current ball.
+  float x = measuredBackOwn + k.pushUpBehind_m;
+  x = std::min(x, ballOwn - k.pushUpBallGap_m);
+  x = std::min(x, k.pushUpCap_m);
+  return x > backBand ? x - backBand : 0.0f;
 }
 
 std::optional<ChasePick> TransitionChaseStart(const TeamConceptConstants& k, const TransitionChaseInput& in) {

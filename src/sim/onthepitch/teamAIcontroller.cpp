@@ -508,8 +508,39 @@ void TeamAIController::CalculateDefensiveShape() {
                   std::fabs(gap) / k.midCatchUpDivisor;
 
   previousLineHeight = ownFrameLine;
+
+  // FUN_140687820's measured lines and FUN_140687fb0's band push-up. The
+  // push-up edits the slot-target bands only, so prevFinal stays unshifted.
+  const pes::TeamConceptConstants& ck = match->GetPesTeamConceptConstants();
+  backBand = ownFrameLine;
+  midBand = ownFrameLine + gap;
+  measuredBackLine = MeasuredLine(0, AI_GetOffsideLine(match, match->GetMentalImage(0), team->GetID()));
+  measuredMidLine = MeasuredLine(1, measuredBackLine + dir * std::fabs(midBand - backBand));
+  if (match->IsInPlay() && !conceptRunning[pes::kConceptRetreatBlockCreate] &&
+      !conceptRunning[pes::kConceptForeCheckLineDown])
+    ownFrameLine += pes::BandPushUp_m(ck, measuredBackLine * dir, ball.coords[0] * dir, ownFrameLine);
+
   defensiveLineHeight = ownFrameLine * dir;
   defensiveTeamLength = pes::TeamLength_m(k, style, attackLevel, compactSlider);
+}
+
+float TeamAIController::MeasuredLine(int line, float ref) const {
+  // Mean world x of the line's men, each clamped to within 4 m of `ref`; none
+  // -> the band itself (an own-frame value returned as world x, as PES does).
+  // ponytail: PES's slot line T+0x7b88 is GF's role line; the keeper is left
+  // out (INF: PES gives him no outfield line).
+  const float clamp_m = match->GetPesTeamConceptConstants().measuredLineClamp_m;
+  std::vector<Player*> active;
+  team->GetActivePlayers(active);
+  float sum = 0.0f;
+  int n = 0;
+  for (Player* p : active) {
+    const e_PlayerRole role = p->GetFormationEntry().role;
+    if (role == e_PlayerRole_GK || PesLineIndexForRole(role) != line) continue;
+    sum += std::clamp(p->GetPosition().coords[0], ref - clamp_m, ref + clamp_m);
+    ++n;
+  }
+  return n ? sum / n : (line == 0 ? backBand : midBand);
 }
 
 bool TeamAIController::IsOffsideTrapArmed() const {
@@ -1682,7 +1713,9 @@ constexpr float kMsPerSecond = 1000.0f;
 constexpr float kNoKickOff_s = 1e9f;
 
 // The PES concept ids this port runs, in the selector's ascending walk.
-constexpr int kPortedConcepts[] = {pes::kConceptSideCounter, pes::kConceptTransitionChase};
+constexpr int kPortedConcepts[] = {pes::kConceptSideCounter, pes::kConceptForeCheckPress,
+                                   pes::kConceptForeCheckLineDown, pes::kConceptTransitionChase,
+                                   pes::kConceptRetreatBlockCreate};
 
 // P(c)+0x5d0 in {LONG_PASS, CENTERING, EARLY_CROSS, SHORT_PASS, THROUGH_PASS,
 // SHOOT}: GF's kick function types.
@@ -1846,9 +1879,47 @@ pes::SideCounterInput TeamAIController::CounterInput(std::vector<Player*>* men) 
   return in;
 }
 
+pes::DefenceConceptInput TeamAIController::DefenceInput() {
+  pes::DefenceConceptInput in;
+  in.inPlay = match->IsInPlay() && !match->IsInSetPiece();
+  in.sincePossessionChange_s = (match->GetActualTime_ms() - possessionChange_ms) / kMsPerSecond;
+  in.dir = static_cast<float>(-team->GetSide());
+  in.ball = match->GetBall()->Predict(0).Get2D();
+  Player* retainer = match->GetBallRetainer();
+  // FUN_140a55d40(ball, side, 2): the opponents own the ball.
+  in.opponentsHoldBall = retainer ? retainer->GetTeam() != team : oppTeamHasPossession;
+  in.keeperHolds = retainer && retainer->GetFormationEntry().role == e_PlayerRole_GK;
+  in.attackLevelZero = instructions.mentality == TeamInstructions::e_Mentality_AllOutDefence;
+  if (retainer && retainer->GetTeam() != team) {
+    // Anime 8 LONG_PASS: GF's long and high pass functions.
+    const e_FunctionType f = retainer->GetCurrentFunctionType();
+    in.holderLongPass = f == e_FunctionType_LongPass || f == e_FunctionType_HighPass;
+    in.holderHeading_deg = HeadingOf(retainer->GetDirectionVec());
+  }
+  std::vector<Player*> men;
+  team->GetActivePlayers(men);
+  for (Player* p : men)
+    if (p->GetFormationEntry().role != e_PlayerRole_GK) in.mates.push_back(p->GetPosition());
+  in.measuredBack = measuredBackLine, in.measuredMid = measuredMidLine;
+  in.backBand = backBand, in.midBand = midBand;
+  return in;
+}
+
+bool TeamAIController::IsPressing(const Player* player) const {
+  return conceptRunning[pes::kConceptForeCheckPress] && player == team->GetDesignatedTeamPossessionPlayer();
+}
+
 bool TeamAIController::StartConcept(int id) {
   const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
   std::vector<Player*> men;
+  // The four with an empty execute slot (0x141794410) act through their
+  // running flag only.
+  if (id == pes::kConceptForeCheckPress) return pes::ForeCheckPressStart(k, DefenceInput());
+  if (id == pes::kConceptForeCheckLineDown) return pes::ForeCheckLineDownStart(k, DefenceInput());
+  if (id == pes::kConceptRetreatBlockCreate) {
+    const pes::DefenceConceptInput in = DefenceInput();  // FUN_140575ea0
+    return in.inPlay && !pes::RetreatBlockCreateEnd(k, in);
+  }
   if (id == pes::kConceptTransitionChase) {
     // The carrier: the opponent on the ball, else their designated man (T'+0x78).
     Player* retainer = match->GetBallRetainer();
@@ -1876,6 +1947,9 @@ bool TeamAIController::StartConcept(int id) {
 bool TeamAIController::ConceptEnded(int id) {
   const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
   const bool inPlay = match->IsInPlay() && !match->IsInSetPiece();
+  if (id == pes::kConceptForeCheckPress) return pes::ForeCheckPressEnd(k, DefenceInput());
+  if (id == pes::kConceptForeCheckLineDown) return pes::ForeCheckLineDownEnd(k, DefenceInput());
+  if (id == pes::kConceptRetreatBlockCreate) return pes::RetreatBlockCreateEnd(k, DefenceInput());
   if (id == pes::kConceptTransitionChase) {
     // FUN_140575410: in play, the carrier unchanged (or loose), the chooser
     // unchanged, the second man still off the ball.

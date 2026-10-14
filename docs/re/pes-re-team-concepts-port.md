@@ -19,6 +19,11 @@ Tests: `tests/sim/pes_team_concepts_test.cpp`.
 | TransitionChase (0x24), gate Defensive Style 0 | start `FUN_140575510` (3·fps lea, F6−10, F7−2, d² ≤ 100, goal-side ≤ 100°, inside ≥ 90°), second man `FUN_140575930` (list walk to d² 400, widest beyond \|u.y\|−15), continue `FUN_140575410`, execute `FUN_140575b60`: **from the chaser** (record +0x1c, not the carrier as the report text says) 8 m along own attack heading ±160° | `pes::TransitionChaseStart/Target`; the order is a run to the point |
 | SideCounter (3), gate Attacking Style 0 | start `FUN_140540780` (a508, 3 s window, 6 s kick-off guard, facing ≤ 55°, ball own-frame −F6..−12 and \|z\| ≤ F7, goal-side count ≤ 2 (`cmp al,2`) with the −10/−14/F7−4 tests), runner target `FUN_14053f510` (opp line, ±(F7 + 50/100·(F1−F7))), supporters `FUN_140541010` (#0 ball+15 m ahead, ≥ 8 m upfield; #1 ball+12 m at 180°→A by ≤ 22°, men with y ≤ ball; #2 0°→A, men with y ≥ ball; −5 m keep bonus; re-picked every tick), end `FUN_1405404a0` (runner off the order, >2·fps: √d² > 1369 **as written** or \|Δx\| > 30; > 6·fps) | `pes::SideCounterStart/RunTarget/Supporters/End` |
 | `T+0xa508 != 0` | master gate `FUN_1405807d0`: in play and in possession | `attackAllowed` |
+| ForeCheckPress (0x21), Defensive Style 0 | start `FUN_1405747f0` (in play, ≤ 5·fps since the change, ball own-frame ≥ 0, 0xd not armed, press count); continue `FUN_140574710` (stop out of play, > 5 s, ball < −10; always on ≤ 2 s, then the press count); press count `FUN_140574200` decoded here: bearing ball→mate against the heading to our goal (`FUN_140a4db20`), radius 8 + 4·w, w = 0 ≤ 100°, 1 ≥ 170°, linear between; ≥ 3 (`cmp r12b,3`) inside with one within 70°; ball not held by the opponents → on | `pes::ForeCheckPress*`; it is PES's PRESS-state source: `IsPressing` (MATCH_UP man while it runs) feeds `BlockRadius_m` again |
+| ForeCheckLineDown (0x22), Style 0 | start `FUN_140574ea0` / end `FUN_140574b00`, decoded here: no keeper hold, ball own-frame in [F0/−2.5, 27] (`FUN_140574a30`), \|T+0x89a0 − T+0x875c\| ≥ 3 (`FUN_140574ab0`, world vs own frame **as written**), and (level 0 or `FUN_140574940`: holder in LONG_PASS facing within 70° of our attack heading) | `pes::ForeCheckLineDown*` |
+| RetreatBlockCreate (0x25), Style 1 | start `FUN_140575ea0` = in play and not end; end `FUN_140575db0` (both lines within 5 m of their bands, or back < 8 − F6 and mid < 18 − F6) | `pes::RetreatBlockCreateEnd` |
+| Measured lines `T+0x89a0/a4` | `FUN_140687820` decoded here: mean world x of the line's men, each clamped ±4 m about a reference (line 0: own offside line; line 1: measured back + dir·\|band gap\|); none → the band | `TeamAIController::MeasuredLine` |
+| Band push-up (built into GF's shape) | `FUN_140687fb0` decoded here: in play and neither 0x22 nor 0x25 running → x = min(measured back − 4, ball point − 6, −5) own frame; if x > back band B, every band += x − B (slot targets only) | `pes::BandPushUp_m` in `CalculateDefensiveShape`; `previousLineHeight` stays unshifted as PES's `T+0x875c` |
 
 Every number is read from the install (`LoadTeamConceptConstants`); the code holds VAs, opcode checks and names only.
 Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz), `FUN_140a8f7c0` = (sin, cos)).
@@ -31,7 +36,7 @@ Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz
   `Save`; only the mentality (= attack level) and `Load` remain.
 - `TeamAIController` zone pressure (`ApplyZonePressure`, `ApplyTeamPressure`, `teamPressurePlayer` and timers), the
   on-win counter roll (GF `random()`), the dead "DISABLED" team-pressure block, the philosophy preset step of
-  `UpdateTactics`, the ParkTheBus trap clamp.
+  `UpdateTactics`, the ParkTheBus trap clamp. The dead slider keys are gone from `assets/fixtures/teams.sql`.
 - `AITactics::ShouldStartZonePressure*`, `GetZonePressureDuration_ms`, `GetCounterTendency`, `ShouldLaunchCounter`,
   `GetCounterWindow_ms`, `GetSecondaryPressureRolePenalty`, `GetAttackingTerritory`; `PlayingStyles::GetPressingDistanceBias`.
 - The `team_pressure`, `counter_attack`, `support_distance` sliders (base, multipliers, `TeamData` injection, fixture test).
@@ -55,36 +60,46 @@ Heading convention as PES: 0 = +lateral, 90 = +x (`FUN_140a92d40` = atan2(dx, dz
 - Selector: the registry-15 stop flag, the difficulty row 0x21 cap, `MI+0x116c == 2` early-out and the member-state stop
   (`FUN_14057a160`, states 0x25/0x2c) have no GF counterpart.
 - Times in seconds, not `⌊k·fps + 0.5⌋` frames.
+- ForeCheckPress: the "< 12 m and inside the corridor" veto reads `MA+0x3c+0x14·side`, a per-team float whose writer I did not
+  find (displacement search of the start test only). Press count: the candidate filter `FUN_140639830`/`FUN_140639a20`
+  (637 + 519 insns of per-slot state tests; disassembled, not reduced) → all outfield men; the +5 m lane bonus
+  `FUN_140a53da0` → `FUN_140a53df0` (geometry, not reduced) not applied.
+- ForeCheckLineDown: `FUN_140574bb0` (uncovered carrier) ends in `FUN_140a4fea0` → `FUN_140a4fbc0` (cone walk, not reduced) → false.
+- Push-up: the −15 m variant behind `ctx+0x138` (writer not found) not taken; `FUN_14063fdc0`'s kick-prediction point = the ball.
+- Measured line: PES's slot line `T+0x7b88` = GF's role line, keeper excluded (INF).
 
-## Not ported, and why
+## Not ported, and why (each with the blocking function)
 
-- The 46 − 2 other SubConcepts (attack patterns, ForeCheck*, Retreat*, NetDefence*, SealOff*): ForeCheckPress's effect readers
-  (`FUN_140536fc0`, `FUN_1406350c0`) are not reduced; ForeCheckLineDown/RetreatBlockCreate act only through the band push-up of
-  `FUN_140687fb0`, which GF's shape does not have; the attack patterns belong to attack-decisions. 11 ids are dead in PES anyway.
-- CounterAfterGkCatch: its area search `FUN_14053f9f0` walks the analysis object's free-area rectangle list (`MA+0x1cb10`), which GF
-  does not build. ReverseSideCounter: its counter-window latch `FUN_14057a580`/`FUN_14057ab30` and vetoes are only partly reduced.
-- Support Range §4.1's PES support-distance formula: belongs to the off-ball port (agreed with OffBallPort; it reads `GetTeamSheet()`).
-- The ActionPress state: GF's `BlockRadius_m(pressing)` was fed by GF's zone-pressure man; with zone pressure gone it is `false`.
+- ForeCheckLineUp (0x23): start/end decoded (`FUN_1405752a0`: LineDown not running, `FUN_140575210` ball |z| ≥ F7 − 5 and own-frame
+  −10…18, `FUN_140574f40` not containing); blocked by `FUN_140574f40`'s lane test `FUN_140a53da0` → `FUN_140a53df0`, and no reader of its
+  running flag `T+0xb70b` is known (execute slot is the empty `0x141794410`), so it would have no effect.
+- ReverseSideCounter: blocked by the latch clear `FUN_14057ab30` (window rule not reduced) and the two start vetoes
+  `FUN_140576f60`/`FUN_1405773f0` (constants known, logic only INF). Porting the start without its vetoes would fire it more than PES.
+- CounterAfterGkCatch: `FUN_14053f9f0` walks the free-area rectangles `MA+0x1cb10` (count `MA+0x1cb0c`), whose builder is not decoded.
+- RetreatPressBack/BlockForwardPass/CrossBlockCreate, NetDefenceCentralSurroundingPress, PassCut, DoublePress, FastCounter,
+  SupportBackOneTwo, SideLongitudinalOneTwo, DiagonalPostPlay, PossessionMfJoinDefenceLine: dead in PES (start = `0x141863350`).
+- NetDefenceInducementIntoTheCenter, SealOffInducementToTheSides, SealOffSideSurroundingPress and the 20 live attacking patterns:
+  their start/execute bodies (`0x1405781d0`, `0x140578ef0`, `0x1405794e0`, the 0x1405465b0…0x140572000 family) are not decoded in any report
+  and were not decoded in this pass.
+- Support Range §4.1's support-distance formula: OffBallPort (it reads `GetTeamSheet()`).
 - The 5-byte sliders k1/k4 (no AI effect in PES).
-- `assets/fixtures/teams.sql` still carries inert `team_pressure`/`counter_attack`/`support_distance` keys (no reader).
 
 ## Verification
 
 - `pes_team_concepts_test`: synthetic rules (gates, every TransitionChase/SideCounter start veto, trap point both ends, run target,
-  supporters, end test) + install relations (loader against the user's exe and VFS). Mutation: removing the "inside" angle test fails
-  `PesTransitionChase.EveryStartRuleVetoes`.
-- Full gate: 465/465, 2 standing skips; `SimMatch.SameSeedPlaysTheSameMatch` passes.
-- Smoke, 20 min, seed 7, home 1 v away 2 (one seed; this sim is noisy and both runs show ~70k forced stalemate ticks):
+  supporters, end test, press count, fore-check start/continue, LineDown/Retreat gaps, push-up) + install relations. Mutations:
+  removing the "inside" angle test fails `PesTransitionChase.EveryStartRuleVetoes`; removing the push-up −5 m cap fails
+  `PesForeCheck.PushUpLiftsTheBandsToFourMetresBehindTheMenCapped`.
+- Full gate: 469/469, 2 standing skips; `SimMatch.SameSeedPlaysTheSameMatch` passes.
+- Smoke, 20 min, seed 7, home 1 v away 2 (one seed, noisy):
 
-| | before | after |
-|---|---|---|
-| score | 3-1 | 1-0 |
-| passes | 44-38 | 25-17 |
-| shots (on target) | 14 (7) - 6 (2) | 11 (4) - 2 (1) |
-| tackles / slides | 32-57 / 57-104 | 26-34 / 84-51 |
-| fouls | 19-28 | 8-18 |
-| possession | 42%-58% | 22%-78% |
-| forced stalemate ticks | 72303 | 68285 |
-| concept starts (probe, not committed) | — | SideCounter 4 (home), 1 (away); TransitionChase 0 |
-
-TransitionChase is narrow by design (wide carrier in our attacking third within 3 s); PES's live capture showed 1 episode in a half.
+| | base (pre-port) | pass 1 (68fed8e) | pass 2 |
+|---|---|---|---|
+| score | 3-1 | 1-0 | 4-1 |
+| passes | 44-38 | 25-17 | 32-30 |
+| shots (on target) | 14 (7) - 6 (2) | 11 (4) - 2 (1) | 22 (13) - 3 (2) |
+| tackles / slides | 32-57 / 57-104 | 26-34 / 84-51 | 28-22 / 88-58 |
+| fouls | 19-28 | 8-18 | 13-20 |
+| possession | 42%-58% | 22%-78% | 34%-66% |
+| forced stalemate ticks | 72303 | 68285 | 63562 |
+| concept starts (probe, not committed) | — | SideCounter 5 | SideCounter 17, ForeCheckPress 134, TransitionChase 2, LineDown 0, Retreat 0 (both fixture sheets are Style 0) |

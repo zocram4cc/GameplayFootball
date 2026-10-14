@@ -50,7 +50,10 @@ struct TeamSheet {
 inline constexpr int kConceptCount = 48;          // FUN_140579e10's ids 0..47
 inline constexpr int kLastAttackingConcept = 0x20;  // ids <= 0x20 run in possession
 inline constexpr int kConceptSideCounter = 0x03;
+inline constexpr int kConceptForeCheckPress = 0x21;
+inline constexpr int kConceptForeCheckLineDown = 0x22;
 inline constexpr int kConceptTransitionChase = 0x24;
+inline constexpr int kConceptRetreatBlockCreate = 0x25;
 
 struct TeamConceptConstants {
   // Sheet ctor FUN_1408c5390 defaults; the toggles default to 0 (xor esi,esi).
@@ -96,7 +99,62 @@ struct TeamConceptConstants {
   float counterMaxAge_s = 0;         // 6 (lea x3, add x2)
   float counterRunnerFarSq = 0;      // 1369, compared against sqrt(d^2) as written
   float counterRunnerMaxDx_m = 0;    // 30
+
+  // ForeCheckPress (start FUN_1405747f0, continue FUN_140574710, count FUN_140574200)
+  float foreCheckWindow_s = 0;       // 5
+  float foreCheckHold_s = 0;         // 2: always continues inside it
+  float foreCheckBallFloor_m = 0;    // -10 own frame
+  float pressGoalSide_deg = 0;       // 70: "close" mate, and the 100..170 ramp span
+  float pressRampFrom_deg = 0;       // 100
+  float pressRampTo_deg = 0;         // 170
+  float pressRadius_m = 0;           // 8
+  float pressRadiusRamp_m = 0;       // 4
+  float pressBonusAbove = 0;         // 0.2
+  int pressCount = 0;                // 3
+  // ForeCheckLineDown (start FUN_140574ea0, end FUN_140574b00) and its helpers
+  float lineDownBallDivisor = 0;     // -2.5: F0 / this is the deep end
+  float lineDownBallMax_m = 0;       // 27
+  float lineDownGap_m = 0;           // 3
+  float lineDownLongPassFacing_deg = 0;  // 70
+  // RetreatBlockCreate (end FUN_140575db0)
+  float retreatGap_m = 0;            // 5
+  float retreatBackFront_m = 0;      // 8 (- F6)
+  float retreatMidFront_m = 0;       // 18 (- F6)
+  // The slot-target band push-up FUN_140687fb0
+  float pushUpBehind_m = 0;          // -4 behind the measured back line
+  float pushUpBallGap_m = 0;         // 6 behind the ball point
+  float pushUpCap_m = 0;             // -5 own frame
+  // FUN_140687820: a man counts toward his measured line clamped to +-4 m of it
+  float measuredLineClamp_m = 0;     // 4
 };
+
+// The defending concepts' inputs. Own frame: +x toward the opponents' goal.
+struct DefenceConceptInput {
+  bool inPlay = false;
+  float sincePossessionChange_s = 0;
+  float dir = 1;                // world x -> own frame
+  Vector3 ball;                 // world
+  bool opponentsHoldBall = false;  // FUN_140a55d40(ball, side, 2)
+  bool keeperHolds = false;     // FUN_140a53f90
+  bool attackLevelZero = false; // T+0xb8a3
+  bool holderLongPass = false;  // the opponent on the ball in LONG_PASS (anime 8)
+  float holderHeading_deg = 0;
+  std::vector<Vector3> mates;   // our outfield men, world
+  // T+0x89a0 / T+0x89a4 (FUN_140687820): measured back and midfield line, world x.
+  float measuredBack = 0, measuredMid = 0;
+  // T+0x875c / T+0x8770: back and midfield band, own frame.
+  float backBand = 0, midBand = 0;
+};
+
+bool ForeCheckPressCount(const TeamConceptConstants& k, const DefenceConceptInput& in);
+bool ForeCheckPressStart(const TeamConceptConstants& k, const DefenceConceptInput& in);
+bool ForeCheckPressEnd(const TeamConceptConstants& k, const DefenceConceptInput& in);
+bool ForeCheckLineDownStart(const TeamConceptConstants& k, const DefenceConceptInput& in);
+bool ForeCheckLineDownEnd(const TeamConceptConstants& k, const DefenceConceptInput& in);
+bool RetreatBlockCreateEnd(const TeamConceptConstants& k, const DefenceConceptInput& in);
+// FUN_140687fb0: how far (>= 0) every band is pushed upfield while neither
+// RetreatBlockCreate nor ForeCheckLineDown runs. Own frame.
+float BandPushUp_m(const TeamConceptConstants& k, float measuredBackOwn, float ballOwn, float backBand);
 
 std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe, const PesVfs& vfs,
                                                              std::string* error);

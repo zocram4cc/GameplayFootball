@@ -989,8 +989,8 @@ bool ElizaController::_BlockCandidate(const pes::DefenderDecisionConstants& k) {
   Player* carrier = _Carrier();
   if (!carrier || carrier->GetTeamID() == team->GetID()) return false;
   if (match->GetBallRetainer() != carrier) return false;
-  // PES's PRESS state (ActionPress) is not ported; nobody is in it.
-  const bool pressing = false;
+  // PES's PRESS state: the MATCH_UP man while ForeCheckPress runs.
+  const bool pressing = team->GetController()->IsPressing(CastPlayer());
   const float radius = pes::BlockRadius_m(k, pressing, false, false);
   if ((carrier->GetPosition() - CastPlayer()->GetPosition()).GetLength() > radius) return false;
   // A pass or a shot clip widens the radius to 7 m once it has passed its
@@ -1013,7 +1013,7 @@ bool ElizaController::_PassDuelCandidate(const pes::DefenderDecisionConstants& k
       static_cast<float>(match->GetActualTime_ms() - kicker->GetLastTouchTime_ms()) * 0.001f;
   if (age_s >= window) return false;
 
-  const bool pressing = false;  // as above: no ActionPress in GF
+  const bool pressing = team->GetController()->IsPressing(CastPlayer());
   const float radius = pes::BlockRadius_m(k, pressing, false, false);
   const Vector3 ballPredict = _mentalImage->GetBallPrediction(200);
   return (ballPredict - CastPlayer()->GetPosition()).GetLength() <= radius;

@@ -33,7 +33,94 @@ pes::TeamConceptConstants Synthetic() {
   k.supportAhead_m = 15, k.supportSide_m = 12, k.supportTurn_deg = 22, k.supportMinAhead_m = 8;
   k.supportHoldBonus_m = -5;
   k.counterRunGrace_s = 2, k.counterMaxAge_s = 6, k.counterRunnerFarSq = 1369, k.counterRunnerMaxDx_m = 30;
+  k.foreCheckWindow_s = 5, k.foreCheckHold_s = 2, k.foreCheckBallFloor_m = -10;
+  k.pressGoalSide_deg = 70, k.pressRampFrom_deg = 100, k.pressRampTo_deg = 170;
+  k.pressRadius_m = 8, k.pressRadiusRamp_m = 4, k.pressBonusAbove = 0.2f, k.pressCount = 3;
+  k.lineDownBallDivisor = -2.5f, k.lineDownBallMax_m = 27, k.lineDownGap_m = 3, k.lineDownLongPassFacing_deg = 70;
+  k.retreatGap_m = 5, k.retreatBackFront_m = 8, k.retreatMidFront_m = 18;
+  k.pushUpBehind_m = -4, k.pushUpBallGap_m = 6, k.pushUpCap_m = -5, k.measuredLineClamp_m = 4;
   return k;
+}
+
+// Ball at (10, 0) in the opponents' half, three men round it, one goal-side.
+pes::DefenceConceptInput PressScene() {
+  pes::DefenceConceptInput in;
+  in.inPlay = true;
+  in.sincePossessionChange_s = 1;
+  in.dir = 1;
+  in.ball = Vector3(10, 0, 0);
+  in.opponentsHoldBall = true;
+  in.mates = {Vector3(5, 0, 0), Vector3(10, 7, 0), Vector3(20, 0, 0)};  // goal-side, side, behind (11 m)
+  return in;
+}
+
+TEST(PesForeCheck, PressCountNeedsThreeInsideTheirAngleRadiusAndOneGoalSide) {
+  const auto k = Synthetic();
+  auto in = PressScene();
+  EXPECT_TRUE(pes::ForeCheckPressCount(k, in));      // behind man: w = 1, r = 12
+  in.mates[2] = Vector3(10, -9, 0);                   // side man at 9 m: w = 0, r = 8
+  EXPECT_FALSE(pes::ForeCheckPressCount(k, in));
+  in = PressScene();
+  in.mates[0] = Vector3(10, -5, 0);                   // nobody goal-side
+  EXPECT_FALSE(pes::ForeCheckPressCount(k, in));
+  in = PressScene();
+  in.opponentsHoldBall = false;
+  in.mates.clear();
+  EXPECT_TRUE(pes::ForeCheckPressCount(k, in));
+}
+
+TEST(PesForeCheck, PressStartsInTheirHalfAndHoldsTwoSecondsThenRecounts) {
+  const auto k = Synthetic();
+  auto in = PressScene();
+  EXPECT_TRUE(pes::ForeCheckPressStart(k, in));
+  in.ball.coords[0] = -1;
+  EXPECT_FALSE(pes::ForeCheckPressStart(k, in));
+  in = PressScene();
+  in.sincePossessionChange_s = 5.5f;
+  EXPECT_FALSE(pes::ForeCheckPressStart(k, in));
+  EXPECT_TRUE(pes::ForeCheckPressEnd(k, in));
+  in = PressScene();
+  in.mates.pop_back();
+  in.sincePossessionChange_s = 1.5f;
+  EXPECT_FALSE(pes::ForeCheckPressEnd(k, in));  // inside the 2 s hold
+  in.sincePossessionChange_s = 3;
+  EXPECT_TRUE(pes::ForeCheckPressEnd(k, in));
+  in = PressScene();
+  in.ball.coords[0] = -12;
+  EXPECT_TRUE(pes::ForeCheckPressEnd(k, in));
+}
+
+TEST(PesForeCheck, LineDownAndRetreatFollowTheLineGaps) {
+  const auto k = Synthetic();
+  pes::DefenceConceptInput in;
+  in.inPlay = true;
+  in.ball = Vector3(0, 0, 0);
+  in.measuredBack = -20, in.backBand = -25;  // 5 m off its band
+  in.measuredMid = -10, in.midBand = -12;
+  EXPECT_FALSE(pes::ForeCheckLineDownStart(k, in));  // no trigger
+  in.attackLevelZero = true;
+  EXPECT_TRUE(pes::ForeCheckLineDownStart(k, in));
+  in.keeperHolds = true;
+  EXPECT_FALSE(pes::ForeCheckLineDownStart(k, in));
+  in.keeperHolds = false;
+  in.backBand = -22;  // within 3 m
+  EXPECT_TRUE(pes::ForeCheckLineDownEnd(k, in));
+  in.attackLevelZero = false, in.backBand = -25;
+  in.holderLongPass = true, in.holderHeading_deg = 100;  // within 70 of our attack heading (90)
+  EXPECT_FALSE(pes::ForeCheckLineDownEnd(k, in));
+  EXPECT_FALSE(pes::RetreatBlockCreateEnd(k, in));  // back line 5 m off and in front of the box
+  in.backBand = -21;
+  EXPECT_TRUE(pes::RetreatBlockCreateEnd(k, in));   // both lines within 5 m
+  in.backBand = -25, in.measuredBack = -30, in.measuredMid = -20;  // deep: behind 8 - F6 and 18 - F6
+  EXPECT_TRUE(pes::RetreatBlockCreateEnd(k, in));
+}
+
+TEST(PesForeCheck, PushUpLiftsTheBandsToFourMetresBehindTheMenCapped) {
+  const auto k = Synthetic();
+  EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, -20, 10, -30), 6);  // -24 vs band -30
+  EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, -20, -22, -30), 2);  // ball - 6 = -28
+  EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, 10, 30, -30), 25);   // capped at -5
+  EXPECT_FLOAT_EQ(pes::BandPushUp_m(k, -20, 10, -20), 0);   // never down
 }
 
 TEST(PesTeamSheet, GatesFollowTheToggles) {

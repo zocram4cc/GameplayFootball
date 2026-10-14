@@ -116,6 +116,9 @@ public:
     Vector3 target;
   };
   const ConceptOrder* GetConceptOrder(const Player* player) const;
+  // PES's PRESS state, the block-radius input (defender decisions): while the
+  // team's ForeCheckPress runs, its MATCH_UP man presses.
+  bool IsPressing(const Player* player) const;
   // PES's strategy word T+0x134 (docs/re/pes-re-match-management.md 1).
   int GetStrategy() const { return strategy.strategy; }
   // Every team tick, dead balls included: the decider moves the strategy while
@@ -162,6 +165,9 @@ protected:
   bool lastRestartWasKickOff = false;
   unsigned long inPlaySinceRestart_ms = 0;
   unsigned long lastProcess_ms = 0;
+  // FUN_140687820's measured back/midfield lines (T+0x89a0/a4, world x) and the
+  // bands they are compared with (T+0x875c/8770, own frame), this tick.
+  float measuredBackLine = 0, measuredMidLine = 0, backBand = 0, midBand = 0;
   // PES 2021's CPU strategy decider (pesstrategy.hpp): its state and its own
   // generator.
   pes::StrategyState strategy;
@@ -219,6 +225,8 @@ protected:
   void ExecuteConcept(int id);
   pes::TransitionChaseInput ChaseInput(Player* carrier, std::vector<Player*>* men);
   pes::SideCounterInput CounterInput(std::vector<Player*>* men);
+  pes::DefenceConceptInput DefenceInput();
+  float MeasuredLine(int line, float ref) const;
   Player* forwardSupportPlayer;  // sort of like the attacking run player, but more for a forward
                                  // offset for a player close to the action, to support the player
                                  // in possession
