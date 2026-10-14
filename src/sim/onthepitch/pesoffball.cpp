@@ -289,19 +289,6 @@ float ChanceScore(const OffBallConstants& k, float s, float runnerX) {
   return k.chanceScoreBase + s * runnerX;
 }
 
-float ChanceReach_m(const OffBallConstants& k, float dz_m, float awareness) {
-  // As written: no term at or under 12 m, then (dz - 30)/-18 unclamped.
-  const float dh = dz_m > k.reachDhFrom_m ? (dz_m - k.reachDhTo_m) / k.reachDhDiv_m : 0.0f;
-  float bonus = 0.0f;
-  if (awareness > k.awareTo)
-    bonus = k.awareBonus_m;
-  else if (awareness > k.awareFrom)
-    bonus = (awareness - k.awareFrom) / k.awareSpan * k.awareBonus_m;
-  // ponytail: the 24/26/22 floors need "runners needing service", FUN_1405a5b20
-  // and FUN_14060a100, none decoded; base 15 always (21 is the no-plan variant).
-  const float reach = std::min(k.reachBase_m + dh * k.reachDhGain_m + bonus, k.reachCap_m);
-  return reach + bonus;  // the accept test adds the bonus again
-}
 
 int DefenderPredictFrames(const OffBallConstants& k, float runnerBallDist2_m2) {
   // int(fps·x + 0.5) each, as the decompile truncates each term separately.
@@ -453,37 +440,1055 @@ std::optional<Vec2f> ChanceLaneTarget(const OffBallConstants& k, const LaneSearc
   return best;
 }
 
-bool RunStop(const StopInput& in) {
-  // Chance (0x140607a60): nothing stops the run inside its minimum time.
-  if (in.t_frames < kChanceMinFrames) return false;
-  if (in.humanControlled || in.becameCarrier) return true;
-  // Common test FUN_140688c00, head.
-  if (!in.openPlay || !in.teamInPossession) return true;
-  const float s = in.s;
-  if (Dist2(in.runner, in.target) < kTargetReached_m * kTargetReached_m &&
-      s * in.runner.x > s * in.oppLineX + kLineMarginEarly_m)
-    return true;
-  if (s * in.runner.x > kGoalAreaLineX_m + kGoalLineMargin_m) return true;
-  // Step 6/8: a far runner must be well behind the ball.
-  // ponytail: FUN_140596240 ("best wing option") is taken as true (its role
-  // count 8c51f0 is undecoded), and no run is pinned.
-  const float dx = std::fabs(in.runner.x - in.ball.x);
-  const float kk = dx <= kNearDx_m ? kNearK_m
-                   : dx < kNearDxFar_m ? kNearK_m * (kNearDxFar_m - dx) / (kNearDxFar_m - kNearDx_m)
-                                       : 0.0f;
-  const float behind = in.run == kCounter ? kFarBehindCounter_m : kFarBehind_m;
-  if (Dist2(in.runner, in.ball) > (kk + kFarBase_m) * (kk + kFarBase_m) &&
-      !(s * in.runner.x + behind < s * in.ball.x))
-    return true;
-  // Step 13 tail.
-  if (in.run != kCounter && std::fabs(in.runner.z - in.ball.z) > kWideDz_m) return true;
-  // Step 14: past the defending line by 1.5 m (0.7 m after 43 frames).
-  const float r = in.t_frames > kLateFrames ? kLineMarginLate_m : kLineMarginEarly_m;
-  if (s * in.runner.x > s * in.oppLineX + r) return true;
-  // ponytail: steps 2-5, 9-12, 15-19 (about 60 undecoded or world-heavy
-  // leaves) are not ported; the fallthrough keeps the run instead of PES's
-  // final STOP, which only fires after every keep leaf fails.
+// --- the stop test (FUN_140688c00 and its leaves; run-targets 3, -s1..-s3) ---
+//
+// Every angle below is a PES bearing (atan2(dx, dz), degrees, [0, 360)), so
+// the reports' literals apply unchanged. Inputs PES keeps that GF has no
+// counterpart for take one fixed value, named here once:
+//   - AI class a580a0 (`cls`) = 0, matching none of the class-gated branches;
+//   - run sub-kind T+0x28c (`sub`) = 0 and "pinned" = false (the target
+//     builder's special lanes are not ported);
+//   - mark count a58320 = 0; player flag bit 21, T+0x2a3, T+0xb8a2 = 0;
+//   - team concept slot T+0xb748 = 0x30 (no concept on a runner);
+//   - no advanced instruction (a63950) is set (teaminstructions.hpp).
+namespace {
+
+constexpr float kRad = 57.2957795f;
+// pred(p, n): n = int(fps·0.3+0.5) = 16 frames (0x14059bbe4).
+constexpr float kRunPredictFrames = 16.0f;
+constexpr int kNoId = -1;
+// Field marks F1, F2, F8 (pes-re-fieldinfo.md).
+constexpr float kF1 = kFieldHalfWidth_m;
+constexpr float kF2 = 3.66f;
+constexpr float kF8 = 41.56f;
+constexpr float kF0 = kFieldHalfLength_m, kF4 = kGoalAreaLineX_m, kF5 = kGoalAreaHalfWidth_m,
+                kF6 = kPenaltyAreaLineX_m, kF7 = kPenaltyAreaHalfWidth_m;
+// fps-derived frame counts int(fps·x + 0.5).
+constexpr float Frames(float sec) { return static_cast<float>(static_cast<int>(kPesFps * sec + 0.5f)); }
+// Speeds the reports give as 100/(fps·T) m/frame (T seconds per 100 m) or as
+// FUN_1404c8dc0(k) (INF km/h); here in m/s.
+constexpr float Per100(float sec) { return 100.0f / sec; }
+constexpr float Kmh(float k) { return k / 3.6f; }
+
+float Wrap360(float a) {
+  a = std::fmod(a, 360.0f);
+  return a < 0.0f ? a + 360.0f : a;
+}
+float PBrg(Vec2f a, Vec2f b) {
+  if (a.x == b.x && a.z == b.z) return 0.0f;
+  return Wrap360(std::atan2(b.x - a.x, b.z - a.z) * kRad);
+}
+float PVec(Vec2f v) { return (v.x == 0.0f && v.z == 0.0f) ? 0.0f : Wrap360(std::atan2(v.x, v.z) * kRad); }
+float Ad(float a, float b) { return std::fabs(Fold180(a - b)); }
+float Len(Vec2f v) { return std::sqrt(v.x * v.x + v.z * v.z); }
+float Sgn(float v) { return v < 0.0f ? -1.0f : 1.0f; }
+int TeamOf(int id) { return id >= kSlots ? 1 : 0; }
+bool Valid(int id) { return id >= 0 && id < 2 * kSlots; }
+// a4f210: the attack bearing, s == -1 -> 270, else 90.
+float TDir(const RunWorld& w, int t) { return w.s[t] < 0.0f ? 270.0f : 90.0f; }
+// a4c720(a, b, s, k): b is more than k ahead of a in the attack direction.
+bool A720(float a, float b, float s, float k) { return (s * k + a) * s < s * b; }
+// a4c9a0: past the opponents' line by k.
+bool Beyond(const RunWorld& w, int id, float k) {
+  const int t = TeamOf(id);
+  return A720(w.lineX[t ^ 1], w.p[id].pos.x, w.s[t], k);
+}
+// 599d90: that line, advanced to the ball when there is no carrier.
+float Line599(const RunWorld& w, int t) {
+  float x = w.lineX[t ^ 1];
+  if (w.carrier == kNoId && w.s[t] * w.ball.x > w.s[t] * x) x = w.ball.x;
+  return x;
+}
+bool Beyond2(const RunWorld& w, int id, float k) {
+  const int t = TeamOf(id);
+  return A720(Line599(w, t), w.p[id].pos.x, w.s[t], k);
+}
+// 5a4830(id, 0, 1) -> 5a4790: the slot is in a run state (0x27 only with c,
+// 0x2f only for AI class 6/7).
+bool IsRun(int st) {
+  switch (st) {
+    case 0x1d: case 0x1e: case 0x1f: case 0x20: case 0x21: case 0x24: case 0x25: case 0x2c:
+      return true;
+    default:
+      return false;
+  }
+}
+// a4e720 -> a4e3f0: opponents of `id` inside the cone (|dev| <= width/2,
+// minDist < d < radius), positions `frames` ahead.
+int ConeOpp(const RunWorld& w, int id, float center, float width, float radius,
+            float frames = 0.0f, float minDist = 0.0f) {
+  const PlayerFacts& me = w.p[id];
+  const Vec2f m{me.pos.x + frames / kPesFps * me.vel.x, me.pos.z + frames / kPesFps * me.vel.z};
+  const int o = (TeamOf(id) ^ 1) * kSlots;
+  int n = 0;
+  for (int i = o; i < o + kSlots; ++i) {
+    const PlayerFacts& q = w.p[i];
+    if (!q.active) continue;
+    const Vec2f qp{q.pos.x + frames / kPesFps * q.vel.x, q.pos.z + frames / kPesFps * q.vel.z};
+    const float d2 = Dist2(qp, m);
+    if (minDist * minDist < d2 && d2 < radius * radius && Ad(center, PBrg(m, qp)) <= width * 0.5f) ++n;
+  }
+  return n;
+}
+// a4fea0 -> a4fbc0: players of team `sel` (2 = both) in the cone around `pos`
+// (strict half-width).
+int ConeAt(const RunWorld& w, int sel, Vec2f pos, float center, float width, float radius,
+           float minDist) {
+  int n = 0;
+  for (int i = 0; i < 2 * kSlots; ++i) {
+    if (!w.p[i].active || (sel != 2 && TeamOf(i) != sel)) continue;
+    const float d2 = Dist2(w.p[i].pos, pos);
+    if (minDist * minDist < d2 && d2 < radius * radius &&
+        Ad(center, PBrg(pos, w.p[i].pos)) < width * 0.5f)
+      ++n;
+  }
+  return n;
+}
+// a4e250: an opponent within r.
+bool OppNear(const RunWorld& w, int id, float r) {
+  const int o = (TeamOf(id) ^ 1) * kSlots;
+  for (int i = o; i < o + kSlots; ++i)
+    if (Dist2(w.p[i].pos, w.p[id].pos) < r * r) return true;
   return false;
+}
+// a53da0: player j within (minD, maxD) of pt and within ang/2 of dir from it.
+bool A53da0(const RunWorld& w, int j, Vec2f pt, float dir, float ang, float maxD, float minD) {
+  const float d2 = Dist2(w.p[j].pos, pt);
+  return d2 < maxD * maxD && minD * minD < d2 && Ad(dir, PBrg(pt, w.p[j].pos)) < ang * 0.5f;
+}
+// Opponents of id sorted by distance (the MA+0x22e4c lists).
+std::vector<int> OppByDist(const RunWorld& w, int id) {
+  std::vector<int> v;
+  const int o = (TeamOf(id) ^ 1) * kSlots;
+  for (int i = o; i < o + kSlots; ++i)
+    if (w.p[i].active) v.push_back(i);
+  std::sort(v.begin(), v.end(), [&](int a, int b) {
+    return Dist2(w.p[a].pos, w.p[id].pos) < Dist2(w.p[b].pos, w.p[id].pos);
+  });
+  return v;
+}
+// 69cd40: a defender D's perpendicular gap to the lane A->B if he reaches it
+// before the ball (5.65·t + 0.6 m), else -1.
+float LaneIntercept(Vec2f A, Vec2f B, Vec2f C, Vec2f D, float speed, bool flag) {
+  Vec2f u{B.x - A.x, B.z - A.z};
+  const float l = Len(u);
+  if (l > 0.0f) u = {u.x / l, u.z / l};
+  auto along = [&](Vec2f p) { return (p.x - A.x) * u.x + (p.z - A.z) * u.z; };
+  auto lat = [&](Vec2f p) { return -u.z * (p.x - A.x) + u.x * (p.z - A.z); };
+  const float aD = along(D), lD = lat(D);
+  if (aD < 0.0f && std::fabs(aD) > 0.5f) return -1.0f;
+  if (flag) {
+    if (Dist2(A, B) < Dist2(D, A) && Dist2(B, C) < Dist2(B, D)) return -1.0f;
+    const float lC = lat(C);
+    const float da = Fold180(PBrg(A, B) - PBrg(A, C));
+    if ((std::fabs(da) < 20.0f || lC < 0.7f) && along(C) < aD) {
+      if (std::fabs(lD - lC) < 1.5f) return -1.0f;
+      if (std::fabs(lC) < std::fabs(lD)) return -1.0f;
+    }
+  }
+  if (std::fabs(lD) <= 0.5f) return std::fabs(lD);
+  const float thr = 100.0f / 17.7f * (aD / speed) + 0.6f;
+  return std::fabs(lD) > thr ? -1.0f : std::fabs(lD);
+}
+
+struct Ctx {
+  const RunWorld& w;
+  int id, t, opp, c, q;
+  float s, dir, tt;
+  Vec2f P, B;
+  const PlayerFacts& me;
+  Ctx(const RunWorld& w_, int id_)
+      : w(w_), id(id_), t(TeamOf(id_)), opp(TeamOf(id_) ^ 1), c(w_.carrier),
+        q(w_.receiver[TeamOf(id_)]), s(w_.s[TeamOf(id_)]), dir(TDir(w_, TeamOf(id_))),
+        tt(w_.p[id_].t), P(w_.p[id_].pos), B(w_.ball), me(w_.p[id_]) {}
+  float D2() const { return Dist2(P, B); }
+};
+
+bool EvKick(const BallEvent& e) {
+  return e.valid && (e.kind == 1 || e.kind == 2 || e.kind == 3 || e.kind == 0x10);
+}
+// Head H of 692810 / 692a00 / 692580: loose ball, kicked during this run and
+// at most a second ago.
+bool LooseKick(const Ctx& x) {
+  return x.c == kNoId && EvKick(x.w.ev) && x.w.ev.age <= x.tt && x.w.ev.age <= kPesFps;
+}
+
+// s1 #1, step 4.
+bool L68f600(const Ctx& x) {
+  if (x.s * x.P.x > kF4 + 1.5f) return true;
+  if (x.s * x.P.x < kF4 - 3.0f) return false;
+  if (!A720(x.B.x, x.P.x, x.s, 0.2f)) return false;
+  const float a = Ad(x.dir, PBrg(x.B, x.me.aim));
+  if (a < 22.0f || ConeOpp(x.w, x.id, x.dir, 50.0f, 20.0f)) return true;
+  if (A720(x.B.x, x.P.x, x.s, -0.1f)) return true;
+  const float wd = Ad(x.dir, PBrg(x.P, x.B));
+  std::vector<int> opps;
+  for (int i = x.opp * kSlots; i < x.opp * kSlots + kSlots; ++i)
+    if (x.w.p[i].active) opps.push_back(i);
+  std::sort(opps.begin(), opps.end(),
+            [&](int a, int b) { return x.s * x.w.p[a].pos.x > x.s * x.w.p[b].pos.x; });
+  for (int o : opps) {
+    const Vec2f op = x.w.p[o].pos;
+    if (x.s * op.x < x.s * x.P.x) break;
+    if (std::fabs(op.z - x.B.z) <= std::fabs(x.P.z - x.B.z) &&
+        A53da0(x.w, o, x.P, x.dir, 2.0f * wd, 30.0f, 0.0f))
+      return true;
+  }
+  return false;
+}
+// s1 #3 (step 8, run != Counter).
+bool L692810(const Ctx& x) {
+  if (!LooseKick(x)) return false;
+  if (x.s * x.B.x <= x.s * x.P.x) return Dist2(x.w.ev.pos, x.B) >= 400.0f;
+  return false;
+}
+// s1 #4 (step 9).
+bool L692a00(const Ctx& x) {
+  if (!LooseKick(x)) return false;
+  if (!A720(x.B.x, x.P.x, x.s, 8.0f)) return false;
+  const Vec2f e = x.w.ev.pos;
+  if (x.s * x.B.x > x.s * e.x) return false;
+  if (std::fabs(e.x - x.B.x) > 7.0f && Beyond(x.w, x.id, -4.0f)) return true;
+  return std::fabs(e.x - x.B.x) >= 12.0f;
+}
+// s1 #5 (step 9, run != Counter).
+bool L692580(const Ctx& x) {
+  if (!LooseKick(x)) return false;
+  if (Dist2(x.w.ev.pos, x.B) < 100.0f) return false;
+  if (Ad(x.dir, PVec(x.me.vel)) > 90.0f) return true;
+  return Len(x.me.vel) < Kmh(10.0f);
+}
+// s1 #6: exemption (the caller stops only when this is false).
+bool L68a730(const Ctx& x, int run) {
+  if (run < kSecondLine || run > kCounter || !Beyond(x.w, x.id, -7.0f)) return false;
+  const float dz = x.P.z - x.B.z, dx = x.P.x - x.B.x;
+  if (std::fabs(x.P.z) >= 15.0f) {
+    if (dx * dx + dz * dz > 484.0f) return false;
+  } else {
+    if (std::fabs(dz) > 25.0f) return false;
+    if (std::fabs(dx) > 12.0f && !A720(x.P.x, x.B.x, x.s, 0.0f)) return false;
+  }
+  if (OppNear(x.w, x.id, 3.2f)) return false;
+  return x.s * x.P.x <= kF6 + 2.0f;
+}
+// s1 #7: exemption.
+bool L68a8c0(const Ctx& x, bool intercept) {
+  if (intercept) return false;
+  if (std::fabs(x.P.z) > kF5 + 2.0f || !Beyond(x.w, x.id, -2.0f)) return false;
+  const Vec2f A = x.me.aim;
+  if (Dist2(A, x.B) > 729.0f) return false;
+  if (!Valid(x.q) || Dist2(x.w.p[x.q].pos, x.B) > 12.25f) return false;
+  if (ConeOpp(x.w, x.q, PBrg(x.B, A), 80.0f, 6.5f)) return false;
+  const std::vector<int> near = OppByDist(x.w, x.id);
+  for (size_t i = 0; i < near.size() && i < 4; ++i) {
+    const Vec2f o = x.w.p[near[i]].pos;
+    if (Dist2(x.P, o) > 10.24f) return true;
+    if (Ad(x.dir, PBrg(x.P, o)) <= 82.0f && Dist2(o, A) <= Dist2(x.P, A)) return false;
+  }
+  return true;
+}
+// s1 #9: blocks the step-12 stop.
+bool L694d10(const Ctx& x) {
+  if (!Valid(x.c)) return false;
+  const PlayerFacts& c = x.w.p[x.c];
+  if (std::fabs(x.P.x - c.pos.x) > 8.0f) return false;
+  const float a = Ad(x.dir, PBrg(c.pos, x.P));
+  if (a < 60.0f || a > 120.0f) return false;
+  const float side = x.P.z > c.pos.z ? 0.0f : 180.0f;
+  if (ConeOpp(x.w, x.c, side, 70.0f, 7.0f)) return false;
+  return std::fabs(x.P.z - c.pos.z) < 20.0f || !Beyond(x.w, x.id, -6.0f);
+}
+// s1 #10 (step 13).
+bool L68dba0(const Ctx& x) {
+  if (!Beyond(x.w, x.id, -3.0f) || !Valid(x.q)) return false;
+  if (x.D2() < 100.0f || !A720(x.B.x, x.P.x, x.s, 5.0f)) return false;
+  const PlayerFacts& q = x.w.p[x.q];
+  const float h = PVec(q.vel), f = q.facing, b = PBrg(x.B, x.P);
+  const float m = std::min(Ad(h, b), Ad(f, b));
+  if (m < 135.0f && (Ad(h, x.dir) < 90.0f || Ad(f, x.dir) < 90.0f) && Ad(b, x.dir) < 36.0f)
+    return false;
+  return m >= 120.0f;
+}
+// s1 #11 (step 13).
+bool L68de30(const Ctx& x) {
+  if (!Valid(x.c)) return false;
+  const PlayerFacts& c = x.w.p[x.c];
+  if (Dist2(x.P, c.pos) < 144.0f) return false;
+  const Vec2f A = x.me.aim;
+  const float b = PBrg(x.P, A);
+  const float fwd = x.P.z <= A.z ? 0.0f : 180.0f;
+  if (Ad(b, fwd) > 65.0f) return false;
+  if (!A720(c.pos.x, x.P.x, x.s, 3.0f) || !Beyond(x.w, x.id, -4.0f)) return false;
+  const float back = Wrap360(fwd + 180.0f);
+  if (Ad(PBrg(c.pos, x.P), back) < 85.0f) return false;
+  if (Ad(PVec(c.vel), back) > 65.0f) return false;
+  return Ad(c.facing, PBrg(c.pos, A)) >= 95.0f;
+}
+// s1 #12 (step 13).
+bool L68e300(const Ctx& x) {
+  if (!Valid(x.c) || !Beyond(x.w, x.id, -6.0f) || x.tt < Frames(0.1f)) return false;
+  const PlayerFacts& c = x.w.p[x.c];
+  const float side = x.P.z <= c.pos.z ? 0.0f : 180.0f;
+  if (Ad(side, PVec(c.vel)) > 25.0f || Ad(side, c.facing) > 25.0f) return false;
+  const Vec2f A2 = x.me.aim;  // ponytail: 599ff0's point taken as the run target
+  if (Dist2(c.pos, A2) < 144.0f || Dist2(c.pos, x.P) < 25.0f) return false;
+  return Ad(c.facing, PBrg(c.pos, A2)) >= 105.0f;
+}
+// s3 #19, step 6: false = stop. 8c51f0 is the role-class map.
+bool L596240(const Ctx& x) {
+  if (x.me.roleClass >= 3) return true;
+  const bool me = IsRun(x.me.state);
+  for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j) {
+    if (j == x.id || !x.w.p[j].active) continue;
+    const int nj = x.w.p[j].roleClass;
+    if (nj < 3 && nj != 0 && IsRun(x.w.p[j].state) &&
+        (!me || Dist2(x.w.p[j].pos, x.B) <= x.D2()))
+      return false;
+  }
+  return true;
+}
+// s1 #14 partial: 68efc0. ponytail: a4f720 and 695110 (grid-flag reader
+// a72180) are not ported; the branch that needs them keeps.
+bool L68efc0(const Ctx& x) {
+  const float a = Ad(x.dir, PBrg(x.B, x.P));
+  if (a > 22.0f || x.tt < 2.0f * kPesFps || !Beyond2(x.w, x.id, -3.0f)) return false;
+  if (a > 4.0f) return false;
+  if (std::fabs(x.P.x - x.B.x) > 8.0f && ConeAt(x.w, x.opp, x.B, x.dir, 90.0f, 3.0f, 0.0f))
+    return true;
+  const std::vector<int> near = OppByDist(x.w, x.id);
+  if (std::fabs(x.P.x - x.B.x) >= 15.0f && !near.empty()) {
+    const float d = Dist2(x.w.p[near[0]].pos, x.P);
+    return (std::fabs(x.P.x - x.B.x) > 15.0f && d < 12.25f) || d <= 25.0f;
+  }
+  return false;
+}
+// s1 #16.
+bool L68e900(const Ctx& x) {
+  const float bb = PBrg(x.B, x.P);
+  if (x.tt < kPesFps || Ad(bb, x.dir) > 22.0f || !Beyond(x.w, x.id, -0.8f) ||
+      std::fabs(x.P.x - x.B.x) < 8.5f)
+    return false;
+  const std::vector<int> near = OppByDist(x.w, x.id);
+  if (near.empty() || Dist2(x.w.p[near[0]].pos, x.P) > 16.0f) return false;
+  if (!Valid(x.q) || x.w.p[x.q].humanControlled) return true;
+  const PlayerFacts& q = x.w.p[x.q];
+  if (Ad(q.facing, bb) < 40.0f) return false;
+  return Ad(PBrg(q.pos, q.aim), bb) >= 40.0f;
+}
+// s1 #17.
+bool L68ec50(const Ctx& x) {
+  if (!Beyond(x.w, x.id, -3.0f) || !A720(x.B.x, x.P.x, x.s, 14.0f)) return false;
+  if (Ad(x.dir, PBrg(x.B, x.P)) > 22.0f || x.D2() < 144.0f) return false;
+  if (Ad(x.dir, PVec(x.me.vel)) > 22.0f || Ad(x.dir, PBrg(x.P, x.me.aim)) > 22.0f) return false;
+  const int m = x.me.marker;
+  if (!Valid(m)) return false;
+  const PlayerFacts& o = x.w.p[m];
+  if (!(x.s * x.P.x <= x.s * o.pos.x) || std::fabs(x.P.x - o.pos.x) < 0.5f ||
+      std::fabs(x.P.z - o.pos.z) > 2.0f)
+    return false;
+  if (Ad(x.dir, PVec(o.vel)) > 22.0f) return false;
+  const float vr = Len(x.me.vel), vo = Len(o.vel);
+  return vr <= vo || std::fabs(vr - vo) <= Kmh(10.0f);
+}
+// s1 #18: true -> skip the stop branch.
+bool L68d920(const Ctx& x) {
+  if (!Valid(x.q)) return false;
+  const PlayerFacts& q = x.w.p[x.q];
+  const float f = q.facing;
+  if (Ad(f, PBrg(q.pos, x.P)) < 90.0f) return false;
+  if (Ad(x.dir, f) < 100.0f || !ConeOpp(x.w, x.q, x.dir, 100.0f, 5.0f)) return false;
+  for (int m = x.t * kSlots; m < x.t * kSlots + kSlots; ++m) {
+    if (m == x.id || m == x.q || !x.w.p[m].active) continue;
+    if (Ad(f, PBrg(q.pos, x.w.p[m].pos)) <= 45.0f && Dist2(q.pos, x.w.p[m].pos) <= 100.0f)
+      return true;
+  }
+  return false;
+}
+// s1 #20.
+bool L68b070(const Ctx& x) {
+  if (x.s * x.B.x < kF4 - 3.0f) return false;
+  if (std::fabs(x.P.x - x.B.x) > 6.0f || std::fabs(x.P.z - x.B.z) > 7.0f) return false;
+  if (std::fabs(x.P.z) < kF5) return false;
+  return x.s * x.P.x >= kF8 + 1.5f;
+}
+// s1 #21. a57800's point taken as the opponents' goal centre (INF goal point).
+bool L692c50(const Ctx& x) {
+  if (Valid(x.c) || !EvKick(x.w.ev)) return false;
+  if (Dist2(x.P, x.me.aim) < 16.0f) return false;
+  const float a1 = Fold180(x.dir - PBrg(x.P, x.me.aim));
+  if (std::fabs(a1) < 75.0f) return false;
+  const Vec2f g{x.s * kF0, 0.0f};
+  const float a2 = Fold180(x.dir - PBrg(g, x.B));
+  if (std::fabs(a2) < 45.0f || std::fabs(a2) > 135.0f) return false;
+  if (Sgn(a1) == Sgn(a2)) return false;
+  if (std::fabs(x.B.z - g.z) >= 6.5f && Sgn(g.z - x.P.z) == Sgn(x.B.z - x.P.z)) return false;
+  return true;
+}
+// s1 #22. a72e70 bit 12 taken as "inside the penalty area".
+bool InBox(float s, Vec2f p) { return s * p.x >= kF6 && std::fabs(p.z) <= kF7; }
+bool L643f50(const RunWorld& w, int team);
+bool L68b920(const Ctx& x) {
+  if (!InBox(x.s, x.B) || !InBox(x.s, x.P)) return false;
+  if (x.D2() > 144.0f || x.s * x.B.x < kF6) return false;
+  if (A720(x.B.x, x.P.x, x.s, 3.0f)) return false;
+  return L643f50(x.w, x.t) || x.s * x.B.x >= kF8;
+}
+// s2 #1. marks = 0, cls = 0.
+bool L691ef0(const Ctx& x) {
+  if (!Valid(x.c)) return false;
+  if (Dist2(x.P, x.w.p[x.c].pos) > 121.0f) return false;
+  const Vec2f G{x.s * kF0, 0.0f};
+  if (Dist2(G, x.B) >= 1024.0f) return false;
+  const float gB = PBrg(x.B, G);
+  if (Ad(x.dir, gB) > 47.0f || ConeOpp(x.w, x.c, gB, 50.0f, 4.5f)) return false;
+  const std::vector<int> near = OppByDist(x.w, x.id);
+  if (x.D2() > 169.0f && !near.empty() && Dist2(x.w.p[near[0]].pos, x.P) > 25.0f) return false;
+  const Vec2f Q{x.P.x + x.me.vel.x, x.P.z + x.me.vel.z};  // a75740, 54 frames ahead
+  const float d = Fold180(x.dir - PBrg(x.P, Q));
+  if (std::fabs(d) > 35.0f && Dist2(x.B, Q) > 64.0f) {
+    const PlayerFacts& c = x.w.p[x.c];
+    const float bc = PBrg(c.pos, c.aim);
+    if (Ad(bc, x.dir) < 15.0f) return false;
+    if (Sgn(Fold180(x.dir - bc)) != Sgn(d)) return false;
+  }
+  const float bP = PBrg(x.B, x.P);
+  const float a1 = PBrg(x.B, {G.x, kF2 + 0.5f}), a2 = PBrg(x.B, {G.x, -(kF2 + 0.5f)});
+  auto within = [&](float a, float b) { return bP >= std::min(a, b) && bP <= std::max(a, b); };
+  return within(a1, gB) || within(a2, gB);
+}
+// s2 #2. Z = the slot point.
+bool L692fe0(const Ctx& x) {
+  if (std::fabs(x.B.z - x.P.z) < 13.0f || std::fabs(x.P.z) < kF7 - 5.0f) return false;
+  if (x.s * x.P.x < kF6 - 10.0f) return false;
+  if (!Valid(x.q)) return true;
+  const PlayerFacts& q = x.w.p[x.q];
+  const float b = PBrg(q.pos, x.P);
+  if (Ad(q.facing, b) < 55.0f || Ad(q.facing, x.dir) > 135.0f) return false;
+  const Vec2f Z = x.me.slotPoint;
+  if (std::fabs(Z.z) > kF5 || std::fabs(Z.z - x.B.z) > 12.0f) return false;
+  if (!A720(x.B.x, Z.x, x.s, 3.0f)) return false;
+  const std::vector<int> near = OppByDist(x.w, x.id);
+  if (!near.empty() && Dist2(x.w.p[near[0]].pos, x.P) > 196.0f) return false;
+  return ConeOpp(x.w, x.q, b, 80.0f, std::sqrt(Dist2(q.pos, x.P)) + 5.0f) > 0;
+}
+// s2 #3.
+bool L690b90(const Ctx& x) {
+  if (std::fabs(x.B.z) > kF5 || x.s * x.B.x < kF6 || std::fabs(x.P.z) < kF7) return false;
+  const float r = Ramp(std::fabs(x.P.x), kF6, kF8);
+  return std::fabs(x.B.z - x.P.z) >= 17.0f - 7.0f * r;
+}
+// s2 #4.
+bool L690630(const Ctx& x) {
+  if (x.s * x.B.x < kF8 || x.s * x.P.x < kF6) return false;
+  if (Sgn(x.P.z) == Sgn(x.B.z) && std::fabs(x.B.z) < std::fabs(x.P.z) && std::fabs(x.P.z) > kF5 &&
+      std::fabs(x.P.z - x.B.z) < 14.0f)
+    if (A720(x.s * kF4, x.P.x, x.s, -3.0f) || A720(x.s * kF4, x.B.x, x.s, -3.0f)) return true;
+  if (x.s * x.P.x < kF8 && !A720(x.B.x, x.P.x, x.s, -8.0f)) {
+    const float tz = x.me.aim.z;
+    if (std::fabs(tz) < kF5 && std::fabs(tz - x.B.z) < 22.0f) return false;
+  }
+  const float z = x.P.z;
+  return (std::fabs(z) >= kF7 || std::fabs(z - x.B.z) >= 20.0f) && std::fabs(x.B.z - z) >= 10.0f &&
+         Sgn(z) == Sgn(x.B.z);
+}
+// s2 #5. R = the run target.
+bool L690400(const Ctx& x) {
+  if (x.s * x.B.x < kF8 || std::fabs(x.B.z) < kF5 - 1.0f) return false;
+  if (Sgn(x.P.z) != Sgn(x.B.z) || std::fabs(x.P.z) > kF7) return false;
+  const Vec2f R = x.me.aim;
+  if (Sgn(x.B.z) == Sgn(R.z) && std::fabs(x.B.z) <= std::fabs(R.z) && std::fabs(x.P.z) <= std::fabs(R.z))
+    return std::fabs(R.z) >= kF5 + 3.0f;
+  return false;
+}
+// s2 #6.
+bool L690cf0(const Ctx& x) {
+  if (x.tt < Frames(1.8f) || x.s * x.P.x < kF6 - 2.0f) return false;
+  if (Len(x.me.vel) > 0.9f * Per100(22.5f)) return false;
+  if (x.D2() > 400.0f) return false;
+  for (int o : OppByDist(x.w, x.id))
+    if (std::fabs(x.w.p[o].pos.z - x.B.z) <= std::fabs(x.P.z - x.B.z) &&
+        A53da0(x.w, o, x.P, x.dir, 180.0f, 3.5f, 0.0f))
+      return true;
+  return false;
+}
+// s2 #7.
+bool L694650(const Ctx& x) {
+  if (x.s * x.P.x < kF6 || std::fabs(x.P.z) > kF2 + 2.0f) return false;
+  if (Ad(x.dir, PVec(x.me.vel)) > 32.0f) return false;
+  const float vMin = 0.8f * Per100(12.9f);
+  if (Len(x.me.vel) < vMin || !Valid(x.q)) return false;
+  if (Dist2(x.w.p[x.q].pos, x.B) > 9.0f) return false;
+  if (std::fabs(x.P.z - x.B.z) < 5.0f) return false;
+  if (x.s * x.B.x < kF8 - 2.5f || x.D2() > 400.0f) return false;
+  if (A720(x.B.x, x.P.x, x.s, 1.0f)) return false;
+  const int m = x.me.marker;
+  if (!Valid(m)) return false;
+  const PlayerFacts& o = x.w.p[m];
+  const float a = Ad(x.dir, PBrg(x.P, o.pos));
+  if (a > 70.0f) return false;
+  const float dm = Dist2(x.P, o.pos);
+  if ((Sgn(o.pos.z - x.P.z) == Sgn(x.B.z - x.P.z) || a >= 80.0f || dm <= 9.0f) &&
+      (a >= 30.0f || dm <= 7.29f))
+    if (Ad(x.dir, PVec(o.vel)) > 32.0f || Len(o.vel) < vMin) return false;
+  const float bb = PBrg(x.B, x.P), r = std::sqrt(x.D2());
+  if (ConeAt(x.w, x.opp, x.B, bb, 40.0f, r, 3.0f) && !A53da0(x.w, m, x.B, bb, 40.0f, r, 3.0f))
+    return false;
+  const float d = x.P.z < x.B.z ? 0.0f : 180.0f;
+  return !(ConeAt(x.w, x.opp, x.P, d, 180.0f, 3.0f, 0.0f) && !A53da0(x.w, m, x.P, d, 180.0f, 3.0f, 0.0f));
+}
+// s2 #8 / #9: 695110 (grid-flag reader) taken as false.
+bool L693a20(const Ctx& x) {
+  if (x.tt < Frames(1.2f) || !Beyond2(x.w, x.id, -3.5f)) return false;
+  const Vec2f R = x.me.aim;
+  if (std::fabs(x.P.z) < kF7 + 3.0f) {
+    if (std::fabs(x.P.z - x.B.z) > 4.0f || std::fabs(x.P.z) < kF7 - 1.0f) return false;
+    if (std::fabs(x.P.z - R.z) > 4.0f && Sgn(R.z - x.P.z) == Sgn(-x.P.z)) return false;
+  }
+  if (std::fabs(x.P.x - x.B.x) < 8.0f || !A720(x.B.x, x.P.x, x.s, 0.0f)) return false;
+  if (Ad(x.dir, PBrg(x.B, x.P)) > 36.0f || !OppNear(x.w, x.id, 8.0f)) return false;
+  const int m = x.me.marker;
+  if (!Valid(m) || !A53da0(x.w, m, x.P, x.dir, 200.0f, 8.0f, 0.0f)) return false;
+  const float dz = x.P.z - x.B.z, dm = x.w.p[m].pos.z - x.B.z;
+  if (Sgn(dz) == Sgn(dm) && std::fabs(dm) > std::fabs(dz)) return false;
+  const float n = Frames(0.5f) / kPesFps;
+  const Vec2f Pp{x.P.x + n * x.me.vel.x, x.P.z + n * x.me.vel.z};
+  return Ad(x.dir, PBrg(Pp, R)) <= 45.0f || std::fabs(R.z - x.w.p[m].pos.z) <= 5.0f;
+}
+bool L693730(const Ctx& x, bool flag) {
+  if (!flag || x.tt < Frames(2.2f) || !Beyond2(x.w, x.id, -2.5f)) return false;
+  if (x.D2() < 289.0f || std::fabs(x.P.z) < kF7 - 2.0f) return false;
+  if (std::fabs(x.P.x - x.B.x) < 10.0f || !A720(x.B.x, x.P.x, x.s, 0.0f)) return false;
+  const int m = x.me.marker;
+  if (!Valid(m) || !A53da0(x.w, m, x.P, x.dir, 200.0f, 8.0f, 0.0f)) return false;
+  const float dz = x.P.z - x.B.z, dm = x.w.p[m].pos.z - x.B.z;
+  return !(Sgn(dz) == Sgn(dm) && std::fabs(dm) > std::fabs(dz));
+}
+// s2 #12.
+bool L68e660(const Ctx& x, bool flag) {
+  if (!flag || !Valid(x.c)) return false;
+  const PlayerFacts& c = x.w.p[x.c];
+  if (std::fabs(x.P.z - c.pos.z) < 17.0f || Dist2(c.pos, c.aim) < 4.0f) return false;
+  const float bP = PBrg(c.pos, x.P);
+  if (Ad(c.facing, bP) < 145.0f) return false;
+  const float bt = PBrg(c.pos, c.aim);
+  if (Ad(bt, bP) < 125.0f || Len(c.vel) < Per100(32.7f) || Ad(x.dir, bt) < 100.0f) return false;
+  return std::fabs(x.P.x - x.B.x) >= 9.0f;
+}
+// s2 #13.
+bool L68b440(const Ctx& x, bool flag) {
+  if (!flag || x.tt < Frames(3.0f)) return false;
+  if (Ad(x.dir, PBrg(x.B, x.P)) > 45.0f || Ad(x.dir, PVec(x.me.vel)) < 95.0f) return false;
+  if (Ad(x.dir, PBrg(x.P, x.me.aim)) < 95.0f) return false;
+  if (!Beyond(x.w, x.id, 0.2f) || x.D2() < 400.0f) return false;
+  if (x.D2() <= 1369.0f && Valid(x.q))
+    return Ad(x.w.p[x.q].facing, PBrg(x.w.p[x.q].pos, x.P)) >= 65.0f;
+  return true;
+}
+// s2 #14: sqrt(D2) >= 1444 (raw) never holds on a pitch; kept as written.
+bool L68c050(const Ctx& x) { return x.tt >= Frames(2.5f) && std::sqrt(x.D2()) >= 1444.0f; }
+// s2 #16.
+bool L692ea0(const Ctx& x) {
+  const float bx = x.s * x.B.x;
+  if (bx < kF6 - 5.0f) return false;
+  const float r = Ramp(bx, kF6 - 5.0f, kF6 + 2.0f);
+  if (std::fabs(x.me.aim.z) < kF7 - (3.0f * r + 3.0f)) return false;
+  return std::fabs(x.B.z - x.P.z) >= 18.0f;
+}
+// s2 #18 / #19: SecondLine only.
+bool L691a80(const Ctx& x) {
+  if (x.tt < Frames(1.0f) || x.me.state != kSecondLine) return false;
+  if (A720(x.B.x, x.P.x, x.s, 8.0f) && Ad(PBrg(x.P, x.me.aim), PBrg(x.B, x.P)) < 45.0f) return true;
+  if (!A720(x.B.x, x.P.x, x.s, 13.0f) || Beyond(x.w, x.id, -5.0f)) return false;
+  return ConeOpp(x.w, x.id, x.dir, 70.0f, 20.0f) || ConeOpp(x.w, x.id, x.dir, 170.0f, 2.5f);
+}
+// s2 #21.
+bool L68d0b0(const Ctx& x, bool flag) {
+  if (!L643f50(x.w, x.t)) return false;
+  if (x.s * x.P.x < kF6 - 1.0f || std::fabs(x.P.z) < kF5 + 2.0f || std::fabs(x.me.aim.z) < kF5)
+    return false;
+  if (flag && (std::fabs(x.P.z) < kF7 || A720(x.B.x, x.P.x, x.s, 7.0f) || x.D2() > 144.0f))
+    return false;
+  if (std::fabs(x.P.z - x.B.z) < 3.0f || std::fabs(x.B.z) < std::fabs(x.P.z) ||
+      std::fabs(x.B.z) < kF7 + 1.5f || x.s * x.B.x > kF8)
+    return true;
+  // ponytail: 44e020 (the T+0xc060 per-player value) is undecoded; taken as
+  // 60, so this test passes on.
+  const int r = x.q;
+  if (!Valid(r)) return true;
+  const Vec2f rp = x.w.p[r].pos;
+  for (int o : OppByDist(x.w, x.id)) {
+    const Vec2f op = x.w.p[o].pos;
+    if (Dist2(op, x.P) > 64.0f) return true;
+    if (std::fabs(op.z) <= std::fabs(rp.z) && A720(rp.x, op.x, x.s, -1.5f) &&
+        Ad(x.dir, PBrg(rp, op)) <= 95.0f) {
+      if (x.s * rp.x < x.s * x.P.x && std::fabs(rp.x - x.P.x) > 6.0f) return true;
+      if (ConeOpp(x.w, x.id, x.dir, 50.0f, 50.0f)) return true;
+      for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j) {
+        if (j == x.id || j == r || !x.w.p[j].active) continue;
+        const Vec2f jp = x.w.p[j].pos;
+        if (x.s * jp.x < kF6 - 5.0f) return true;
+        if (Sgn(x.P.z - x.B.z) == Sgn(jp.z - x.B.z) &&
+            (x.w.p[j].state == kCenteringGet || (x.s * jp.x > kF6 && std::fabs(jp.z) < kF5)))
+          return false;
+      }
+      return true;
+    }
+  }
+  return true;
+}
+// s3 #2 (Chance only). 594a10 (path test) and 695110 not ported: that tail
+// keeps.
+bool L690960(const Ctx& x) {
+  if (x.me.state != kChance || x.tt < Frames(0.6f) || !Beyond(x.w, x.id, -7.0f)) return false;
+  const float L = x.w.lineX[x.opp];
+  float k = -16.0f;
+  if (Valid(x.c)) {
+    if (!Beyond(x.w, x.id, -3.0f)) return false;
+    k = -20.0f;
+  }
+  if (x.D2() < 484.0f) return false;
+  if (A720(L, x.B.x, x.s, k)) return false;
+  return Beyond(x.w, x.id, 0.0f);
+}
+// s3 #8 (cls != 0x13).
+bool L693ef0(const Ctx& x) {
+  if (x.s * x.P.x < kF8 || std::fabs(x.P.z) < kF2 + 1.5f) return false;
+  if (std::fabs(x.B.z) > std::fabs(x.P.z) || std::fabs(x.P.z - x.B.z) < 6.0f) return false;
+  std::vector<int> mates;
+  for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j)
+    if (x.w.p[j].active) mates.push_back(j);
+  std::sort(mates.begin(), mates.end(),
+            [&](int a, int b) { return x.s * x.w.p[a].pos.x > x.s * x.w.p[b].pos.x; });
+  for (int j : mates) {
+    const Vec2f jp = x.w.p[j].pos;
+    if (x.s * jp.x < x.s * x.P.x) break;
+    if (std::fabs(jp.z - x.B.z) <= std::fabs(x.P.z - x.B.z)) return true;
+  }
+  return false;
+}
+// s3 #10.
+bool L68d730(const Ctx& x) {
+  if (x.s * x.B.x < kF8 || std::fabs(x.B.z) < kF5 || std::fabs(x.B.z) > kF7) return false;
+  const float n = Frames(0.3f) / kPesFps;
+  const Vec2f Q{x.P.x + n * x.me.vel.x, x.P.z + n * x.me.vel.z};
+  if (Sgn(Q.z) != Sgn(x.B.z)) return false;
+  auto inChannel = [&](Vec2f v) {
+    return x.s * v.x > kF8 && std::fabs(v.z) > kF5 && std::fabs(v.z) < kF7;
+  };
+  return inChannel(Q) || inChannel(x.me.aim);
+}
+// s3 #11.
+bool L68fc70(const Ctx& x) {
+  if (x.s * x.B.x < kF8) return false;
+  const Vec2f A = x.me.aim;
+  if (Sgn(A.z) == Sgn(x.B.z)) return false;
+  return std::fabs(A.z) >= kF5 && std::fabs(x.B.z - A.z) >= 8.0f;
+}
+// s3 #12: the c064 value taken as 0 (passes).
+bool L68cde0(const Ctx& x) {
+  const Vec2f A = x.me.aim;
+  if (std::fabs(A.z) < kF7 - 2.0f) return false;
+  for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j) {
+    if (j == x.id || !x.w.p[j].active || x.w.p[j].state != kOverlap) continue;
+    const Vec2f jp = x.w.p[j].pos;
+    if (Sgn(jp.z) == Sgn(A.z)) {
+      if (std::fabs(jp.x - x.P.x) >= 6.0f && !Beyond(x.w, j, -7.0f))
+        return kF6 - 10.0f < x.s * jp.x;
+      return true;
+    }
+  }
+  return false;
+}
+// s3 #13 (marks 0).
+bool L68cc40(const Ctx& x) {
+  if (x.tt < Frames(0.3f) || x.s * x.P.x < kF6) return false;
+  if (!A720(x.B.x, x.P.x, x.s, 3.0f) || x.D2() < 144.0f) return false;
+  return Beyond(x.w, x.id, -1.0f);
+}
+// b4 #15 -> 694ee0 (decompiled for this port).
+bool L694ee0(const Ctx& x, bool flag) {
+  if (!Valid(x.q) || std::fabs(x.B.z) < kF7) return false;
+  const PlayerFacts& q = x.w.p[x.q];
+  const float k = flag ? 0.8f : 0.0f, a = flag ? 2.0f : 0.0f;
+  if (Ad(x.dir, PVec(q.vel)) > 85.0f || Ad(x.dir, q.facing) > 85.0f) return false;
+  return !ConeOpp(x.w, x.q, x.dir, a + 90.0f, k + 40.0f) &&
+         !ConeOpp(x.w, x.q, x.dir, a + 160.0f, k + 4.5f) &&
+         !ConeOpp(x.w, x.q, x.dir, a + 120.0f, k + 6.0f);
+}
+bool L68ac40(const Ctx& x, Vec2f pos, bool flag) {
+  if (!Valid(x.q) || std::fabs(x.B.z) < kF7) return false;
+  if (Sgn(x.P.z) != Sgn(x.B.z) || std::fabs(x.P.z) > std::fabs(x.B.z)) return false;
+  const float k = flag ? 0.8f : 0.0f;
+  if (A720(x.B.x, x.P.x, x.s, 5.0f + k) && !A720(x.w.lineX[x.opp], x.B.x, x.s, -10.0f - k))
+    return false;
+  const float lim = x.s * x.B.x <= kF6 - 12.0f ? kF7 + 0.8f - k : kF5 + 0.8f - k;
+  if (std::fabs(pos.z) < lim) return false;
+  return L694ee0(x, flag);
+}
+
+// 643f50 (decompiled for this port): the carrier (or last toucher of the
+// team) is free to cross: in the box zone and no opponent in four cones.
+bool L643a30(const RunWorld& w, int team, int id);
+bool L643f50(const RunWorld& w, int team) {
+  const int c = w.carrier;
+  if (!Valid(c) || TeamOf(c) != team) return false;
+  const float s = w.s[team];
+  const Vec2f cp = w.p[c].pos;
+  if ((!L643a30(w, team, c) && s * cp.x < kF6 - 6.0f) || std::fabs(cp.z) < kF7 + 2.0f) return false;
+  const float dir = TDir(w, team);
+  if (ConeOpp(w, c, dir, 110.0f, 15.0f) || ConeOpp(w, c, dir, 165.0f, 5.5f) ||
+      ConeOpp(w, c, dir, 220.0f, 3.0f) || ConeOpp(w, c, dir, 265.0f, 2.2f))
+    return false;
+  return true;  // carrier valid: the decompile returns true on this path
+}
+// b1 #23, carrier branch only. ponytail: a63950/held (instruction 7), a72fb0
+// (the grid lookup) are not ported; the line checks without them.
+bool L643a30(const RunWorld& w, int team, int) {
+  const int c = Valid(w.carrier) ? w.carrier : -1;
+  if (c < 0) return false;
+  const float s = w.s[team];
+  const float A = TDir(w, team);
+  const float vb = PVec(w.p[c].vel);
+  if (s * w.ball.x < kF6 && Ad(vb, A) > 65.0f) return false;
+  if (s * w.ball.x < kF6 && std::fabs(w.ball.z) < kF7) return false;
+  return true;
+}
+
+// The cascade FUN_140688c00 (run-targets 3), steps numbered as there.
+bool CommonStop(const RunWorld& w, int id, int run) {
+  const Ctx x(w, id);
+  const bool counter = run == kCounter;
+  // Head (off-ball 2.2).
+  if (!w.openPlay || !w.possession[x.t]) return true;
+  if (w.carrier == id) return true;
+  if (x.s * x.P.x > kF4 + 2.5f) return true;
+  // 1: the last ball event is a pass to him.
+  if (EvKick(w.ev) && w.ev.target == id) {
+    if (w.ev.kind != 2) return true;
+    if (w.ev.age >= kPesFps / 3.0f) return true;
+  }
+  // 2: ponytail: the carrier/receiver pass-aim keeps (5a7fe0/7be0) and stop
+  // (5a7d10) read PES action records (+0x1490/+0x1494) GF has no equivalent of.
+  // 3.
+  if (Valid(x.c) && !Beyond(w, id, 0.7f) && w.possessionAge[x.t] < Frames(0.3f)) return false;
+  // 4. ponytail: 68bd90 needs T+0xb824 (the team's region code), not decoded.
+  if (L68f600(x)) return true;
+  // 5: event kind 4 has no GF counterpart.
+  // 6.
+  const bool pinned = false;
+  const float dx = std::fabs(x.P.x - x.B.x);
+  const float k = dx <= 4.0f ? 10.0f : dx < 10.0f ? 10.0f * (10.0f - dx) / 6.0f : 0.0f;
+  if (!L596240(x)) return true;
+  // 8.
+  const float d2 = x.D2();
+  if (d2 > (k + 40.0f) * (k + 40.0f) && !A720(x.P.x, x.B.x, x.s, counter ? 13.0f : 8.0f))
+    return true;
+  if (!counter && L692810(x)) return true;
+  // 9.
+  if (L692a00(x)) return true;
+  if (!counter && L692580(x)) return true;
+  // 10.
+  const float n = kRunPredictFrames / kPesFps;
+  const Vec2f pred{x.P.x + n * x.me.vel.x, x.P.z + n * x.me.vel.z};
+  bool intercept = false;
+  for (int o = x.opp * kSlots; o < x.opp * kSlots + kSlots && !intercept; ++o)
+    if (w.p[o].active && Dist2(w.p[o].pos, x.B) >= 6.25f &&
+        LaneIntercept(x.B, pred, x.P, w.p[o].pos, 20.833334f, true) >= 0.0f)
+      intercept = true;
+  // 11. 5a4b90 needs the opponents' defensive mode (T+0xa50c): false.
+  if (Valid(x.c) && x.tt > 2.0f * kPesFps && !L68a730(x, run) && !L68a8c0(x, intercept) &&
+      !counter && !pinned) {
+    const PlayerFacts& c = w.p[x.c];
+    const float a = Ad(c.facing, PBrg(x.B, x.me.aim));
+    if (a > 130.0f && d2 > 169.0f && (ConeOpp(w, x.c, x.dir, 70.0f, 6.5f) || d2 > 1156.0f))
+      return true;
+  }
+  // 12. ponytail: of the run != 0x1d skip tests only |ball.x - P.x| < 15 is
+  // ported (the rest are listed, not reduced, in run-targets 3).
+  if (Valid(x.c) && x.tt > kPesFps + 0.5f && !counter && !pinned && d2 >= 289.0f &&
+      std::fabs(x.P.z - x.B.z) > 0.5f && A720(x.B.x, x.P.x, x.s, -5.0f) &&
+      !(run != kSecondLine && dx < 15.0f)) {
+    const PlayerFacts& c = w.p[x.c];
+    const float a = Ad(c.facing, PBrg(c.pos, x.P));
+    const float dist = std::sqrt(Dist2(c.pos, x.P));
+    const float wv = dist <= 15.0f ? 1.0f : dist < 27.0f ? (27.0f - dist) / 12.0f : 0.0f;
+    if (a > 95.0f + 35.0f * wv && !L694d10(x) && (!Beyond(w, id, -10.0f) || a > 80.0f)) return true;
+  }
+  // 13.
+  if (!pinned && (L68dba0(x) || L68de30(x) || L68e300(x))) return true;
+  if (!counter && std::fabs(x.P.z - x.B.z) > 43.0f) return true;
+  // 14 (cls != 2).
+  if (run != kPullAway) {
+    const float r = x.tt > Frames(0.8f) ? 0.7f : 1.5f;
+    if (Valid(x.q) && (x.q == x.c || w.p[x.q].t <= 3.0f * kPesFps)) {
+      if (Beyond2(w, id, r)) return true;
+    } else if (Beyond(w, id, r)) {
+      return true;
+    }
+  }
+  // 15: state byte (falls) has no GF counterpart.
+  // 16.
+  if (x.tt > 4.0f * kPesFps && Valid(x.c) && !L68a730(x, run) && !L68a8c0(x, intercept) &&
+      Beyond2(w, id, -2.5f)) {
+    const PlayerFacts& c = w.p[x.c];
+    const float dev = Ad(PBrg(c.pos, x.P), c.facing);
+    const float bd = std::sqrt(d2);
+    const float wv = bd <= 15.0f ? 1.0f : bd < 35.0f ? (35.0f - bd) / 20.0f : 0.0f;
+    if (dev > 100.0f * wv + 70.0f) return true;
+  }
+  // 17 (Counter): keep-alive near a running mate skips to 19.
+  bool skip18 = false;
+  if (counter && x.tt <= 5.0f * kPesFps)
+    for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j)
+      if (j != id && IsRun(w.p[j].state) && Dist2(w.p[j].pos, x.P) <= 56.25f &&
+          Ad(x.dir, PBrg(x.P, w.p[j].pos)) <= 70.0f)
+        skip18 = true;
+  // 18. ponytail: 5a40a0 -> 5a3080 (partial in -b4 19) is not ported.
+  (void)skip18;
+  // 19. ponytail: 5a1cc0 and the carrier-action stop need the PES path/action
+  // records; 694320 needs 5a8290/6940f0 (not decoded): all taken as false.
+  if (counter || (!L68efc0(x) && (pinned || (!L68e900(x) && !L68ec50(x))))) {
+    if (x.tt <= 3.0f * kPesFps || !L68d920(x)) {
+      if (!pinned && (L68b070(x) || L692c50(x) || L68b920(x) || L691ef0(x) ||
+                      (!counter && x.tt > Frames(2.0f) && L692fe0(x))))
+        return true;
+      // 68b1a0 needs AI class 2; 68b6e0 the ball-sorted frame list; 693340
+      // the 643a30 grid read; 694bc0 instruction 6: all false.
+      const bool anyKeep = L690b90(x) || L690630(x) || L690400(x) || L690cf0(x) ||
+                           L694650(x) || L693a20(x) || L693730(x, intercept) ||
+                           L68e660(x, intercept) || L68b440(x, intercept) || L68c050(x) ||
+                           L692ea0(x);
+      if (!anyKeep) {
+        // 691d10 (SecondLine sub 8) and 68fa10 (T+0x87cc) are not reached.
+        if (L691a80(x)) return true;
+        if (!L68d0b0(x, pinned)) {
+          // 691300 (sub 2) not reached; 68aeb0 needs 653480/655660
+          // (time-to-reach, decompiled, implicit angle args unresolved).
+          if (L690960(x)) return true;
+          if (L68ac40(x, x.me.aim, true) || L693ef0(x)) return true;
+          // 68c1a0 (controlled path), 68baa0 (skill cards), 6910c0 (cls 0x19)
+          // are not reached.
+          if (!(L68d730(x) || L68fc70(x) || L68cde0(x) || L68cc40(x))) return false;
+        }
+      }
+    }
+  }
+  // 20.
+  return true;
+}
+
+}  // namespace
+
+int RoleClass(int gfRole) {
+  constexpr int kMap[] = {0, 1, 2, 2, 3, 4, 5, 5, 6, 9, 8, 8, 7};
+  return gfRole >= 0 && gfRole < static_cast<int>(std::size(kMap)) ? kMap[gfRole] : 0;
+}
+
+int Position(int gfRole) {
+  // GK CB LB RB DM CM LM RM AM CF LW RW SS -> 0 1 2 3 4 5 6 7 8 12 9 10 11
+  constexpr int kMap[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 9, 10, 11};
+  return gfRole >= 0 && gfRole < static_cast<int>(std::size(kMap)) ? kMap[gfRole] : 0;
+}
+
+namespace {
+// The team's players front-first by s·x (the a714e0 line list).
+std::vector<int> FrontFirst(const RunWorld& w, int team) {
+  std::vector<int> v;
+  for (int i = team * kSlots; i < team * kSlots + kSlots; ++i)
+    if (w.p[i].active) v.push_back(i);
+  const float s = w.s[team];
+  std::stable_sort(v.begin(), v.end(),
+                   [&](int a, int b) { return s * w.p[a].pos.x > s * w.p[b].pos.x; });
+  return v;
+}
+int LineRank(const RunWorld& w, int id) {
+  const std::vector<int> v = FrontFirst(w, TeamOf(id));
+  for (size_t i = 0; i < v.size(); ++i)
+    if (v[i] == id) return static_cast<int>(i);
+  return kSlots;
+}
+// a4f230: attackers of the team in possession ahead of the ball band.
+int AttackersAhead(const RunWorld& w) {
+  const int t = w.possession[0] ? 0 : 1;
+  const float s = w.s[t];
+  const int owner = Valid(w.carrier) ? w.carrier : w.receiver[t];
+  float line = 0.0f;
+  for (int i : FrontFirst(w, t))
+    if (s * w.p[i].pos.x <= (w.ball.x - s * 1.5f) * s) {
+      line = w.p[i].pos.x;
+      break;
+    }
+  const float back = w.ball.x - s * 7.0f;
+  if (s * line <= back * s) line = back;
+  int n = 0;
+  for (int i = t * kSlots; i < t * kSlots + kSlots; ++i) {
+    if (!w.p[i].active || i == owner) continue;
+    const float x = w.p[i].pos.x;
+    if (((w.ball.x - s * 5.0f) * s < s * x || s * line < s * x) &&
+        (w.ball.x - s * 12.0f) * s < s * x && std::fabs(w.p[i].pos.z - w.ball.z) <= 52.0f)
+      ++n;
+  }
+  return n;
+}
+// h1 #23 FUN_1405a5240: the team's focus player is free and faces forward.
+bool ReceiverFreeAndFacing(const RunWorld& w, int t) {
+  const int id = w.receiver[t];
+  if (!Valid(id)) return false;
+  if (OppNear(w, id, 1.0f)) return false;
+  const float dir = TDir(w, t);
+  if (ConeOpp(w, id, dir, 120.0f, 4.5f)) return false;
+  return Ad(PVec(w.p[id].vel), dir) < 60.0f;
+}
+// FUN_1405938a0(team, 0x7e) with FUN_140593290 (decompiled for this port):
+// the team may start Chance runs at all.
+bool TeamMayRun(const RunWorld& w, int t) {
+  if (!w.possession[t]) return false;
+  const float s = w.s[t];
+  // 593290: a carrier on the team; else its focus player within 25 m
+  // (625 m², 0x1425ab4c4) of the ball and the last kick at least 4 frames old.
+  if (Valid(w.carrier)) {
+    if (TeamOf(w.carrier) != t) return false;
+  } else {
+    const int q = w.receiver[t];
+    if (!Valid(q) || Dist2(w.p[q].pos, w.ball) > 625.0f) return false;
+    if (w.ev.valid && w.ev.age < 4.0f) return false;
+  }
+  // a4c930(receiver, ball.x): the ball in the team's own half.
+  const bool ownHalf = s > 0.0f ? w.ball.x <= 0.0f : w.ball.x >= 0.0f;
+  // ponytail: the a4c720 test on MA+0x3c+0x14t (arguments dropped by the
+  // decompile) and the holder flags (a50250) are taken false; T+0xa508 == 2
+  // (the latched special counter) is not modelled.
+  constexpr float kOwnHalfLimit_m = -15.0f;  // 0x14259d668
+  const bool open = ReceiverFreeAndFacing(w, t) || !ownHalf ||
+                    (s * w.ball.x >= kOwnHalfLimit_m && w.possessionAge[t] >= Frames(4.0f));
+  if (!open) return false;
+  constexpr float kEndBand_m = 10.0f;  // F0 - 10, 0x142588210
+  return s * w.ball.x <= kF0 - kEndBand_m || std::fabs(w.ball.z) <= kF7;
+}
+}  // namespace
+
+uint32_t AttackSlotMask(const RunWorld& w, int team, int L) {
+  constexpr uint32_t kAll = (1u << kSlots) - 1;
+  if (L >= 4) return kAll;
+  // ponytail: the 0 < L < 4 FUN_1405aaf00 branch needs instruction 2 (none).
+  const int need = L == 0 ? 0 : L == 1 ? 2 : L == 2 ? 4 : 6;
+  int ahead = AttackersAhead(w);
+  const float s = w.s[team];
+  int beyond = 0;
+  for (int i : FrontFirst(w, team)) {
+    if (s * w.p[i].pos.x < kPenaltyAreaLineX_m) break;
+    ++beyond;
+  }
+  ahead = std::max(ahead, beyond);
+  if (ahead < need) return kAll;
+  // Positions 7+ always qualify (score -100); the rest by distance to the
+  // opponents' goal line (INF med: the line-list value), less up to 5 near
+  // the ball (10 -> 25 m) and 3 on the receiver's turning side; the `need`
+  // lowest take the slots.
+  struct E { int slot; float v; };
+  std::vector<E> e;
+  uint32_t mask = 0;
+  const int q = w.receiver[team];
+  bool turning = false;
+  float side = 1.0f;
+  if (Valid(q)) {
+    const PlayerFacts& r = w.p[q];
+    if (Ad(PVec(r.vel), r.facing) > 15.0f) {
+      turning = true;
+      side = r.aim.z - r.pos.z < 0.0f ? -1.0f : 1.0f;
+    }
+  }
+  for (int i = team * kSlots; i < team * kSlots + kSlots; ++i) {
+    if (!w.p[i].active) continue;
+    const int slot = i - team * kSlots;
+    if (w.p[i].position >= 7) {
+      e.push_back({slot, -100.0f});
+      mask |= 1u << slot;
+      continue;
+    }
+    float v = kFieldHalfLength_m - s * w.p[i].pos.x;
+    const float d = std::sqrt(Dist2(w.p[i].pos, w.ball));
+    const float near = d <= 10.0f ? 1.0f : d < 25.0f ? (d - 25.0f) / -15.0f : 0.0f;
+    v -= near * 5.0f;
+    if (turning && Valid(q) && (w.p[i].pos.z - w.p[q].pos.z < 0.0f ? -1.0f : 1.0f) == side)
+      v += -3.0f;
+    e.push_back({slot, v});
+  }
+  std::stable_sort(e.begin(), e.end(), [](const E& a, const E& b) { return a.v < b.v; });
+  for (int i = 0; i < need && i < static_cast<int>(e.size()); ++i) mask |= 1u << e[i].slot;
+  return mask;
+}
+
+bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
+                   int attackLevel, bool buildUpLong, float awareness) {
+  const Ctx x(w, id);
+  const int slot = id - x.t * kSlots;
+  const PlayerFacts& me = x.me;
+  // Pre-gates: rank (or OVERLAP_SB) and FUN_140593430.
+  if (!(MayTake(kChance, me.state) || me.state == kOverlap)) return false;
+  if (id == w.carrier || id == x.q || me.position == 0) return false;
+  if (IsRun(me.state)) return false;  // 593430: a running slot only from PULL_AWAY
+  // 593430 (raw 0x1405935c4: k = -0.1 @0x14259d648): not already on the line.
+  if (Beyond2(w, id, -0.1f)) return false;
+  // Inside the box zone only with an opponent within 6.5 m (raw 0x14059373d).
+  if (!(x.s * x.P.x <= kF6 - 3.0f || std::fabs(x.P.z) >= kF5 + 1.5f || OppNear(w, id, 6.5f)))
+    return false;
+  if (x.s * x.P.x > kF4) return false;
+  if (!L596240(x)) return false;
+  // ponytail: 5a7d10 (carrier pass-aim records) is not applied; the special
+  // lanes 60a750/608570/87a0/9350/8ac0 are not ported.
+  // Generic lane: the attack-slot mask and the depth limit.
+  if (me.state == kOverlap || !((slotMask >> slot) & 1u)) return false;
+  if (x.s * x.P.x > kF8) return false;
+  if (!TeamMayRun(w, x.t)) return false;
+  const int rank = LineRank(w, id);
+  // ponytail: MA+0x68/+0x60 team ints unknown; taken 0 (this gate passes).
+  const int pos = me.position;
+  // b8a3 = attack level < 1 skips positions 0..4 (counter-trigger 128).
+  if (attackLevel < 1 && pos <= 4) return false;
+  bool styleLb = pos == 2;  // a64030(id, 0x11): no style bits in GF
+  const int ahead = AttackersAhead(w);
+  const bool reachPath = ahead > 3 || (pos < 4 && !styleLb);
+  const float dz = std::fabs(x.P.z - x.B.z);
+  if (reachPath) {
+    float dh = 0.0f;
+    if (dz > k.reachDhFrom_m) dh = dz < k.reachDhTo_m ? (dz - k.reachDhTo_m) / k.reachDhDiv_m : 0.0f;
+    // Build Up Long (a62180(team, 1) == 0) widens the base 15 -> 21.
+    constexpr float kLongBase_m = 21.0f;  // 0x1425c84bc
+    float r = (buildUpLong ? kLongBase_m : k.reachBase_m) + dh * k.reachDhGain_m;
+    // a50250(2) floor 24, 5a5b20 = 26 (needs style bit 0), 60a100 clamp,
+    // aaf00 floor 35, 5a9950 clamp: all off for GF's inputs (no holder flags,
+    // no style bits, no instructions, AI class 0).
+    float bonus = 0.0f;
+    if (buildUpLong && Valid(w.carrier)) {
+      if (awareness > k.awareTo)
+        bonus = k.awareBonus_m;
+      else if (awareness > k.awareFrom)
+        bonus = (awareness - k.awareFrom) / k.awareSpan * k.awareBonus_m;
+    }
+    r = std::min(r + bonus, k.reachCap_m);
+    if (r + bonus < std::fabs(x.P.x - x.B.x)) return false;
+  }
+  constexpr float kMaxDz_m = 42.0f;  // 0x1425cd830
+  if (dz > kMaxDz_m) return false;
+  // ponytail: the rank > 1 angle sub-test ends in a4c720 with arguments the
+  // decompile dropped; 5a8290 / 5a5400 are not reduced: the generic path goes
+  // to 79ac. There, with a carrier, 6046b0 (style bit 3: none -> true),
+  // 609b40 (carrier valid -> false) and 609e60 (receiver action 0x48 -> false)
+  // set the bit.
+  (void)rank;
+  return Valid(w.carrier) || !Valid(x.q) || Dist2(w.p[x.q].pos, x.B) <= 49.0f;
+}
+
+bool RunStop(const RunWorld& w, int id, int run) {
+  const PlayerFacts& me = w.p[id];
+  // Selector stop tests' own heads (off-ball 2.2).
+  const float minFrames = run == kSecondLine ? kPesFps : kChanceMinFrames;
+  if (me.t < minFrames) return false;
+  if (me.humanControlled || w.carrier == id) return true;
+  if (run == kCounter && CommonStop(w, id, run)) return true;
+  if (run == kCounter) return w.s[TeamOf(id)] * me.pos.x > kF8;
+  return CommonStop(w, id, run);
 }
 
 float SupporterCost(float angleDiff_deg, float distance_m) {

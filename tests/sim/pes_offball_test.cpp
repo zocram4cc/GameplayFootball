@@ -102,14 +102,6 @@ TEST(OffBallChance, ScoreIsBasePlusForwardX) {
   EXPECT_GT(ChanceScore(k, 1.0f, 30.0f), ChanceScore(k, 1.0f, 10.0f));
 }
 
-TEST(OffBallChance, ReachWidensWithLateralGapPastTwelveMetresAndWithAwareness) {
-  const OffBallConstants k = Synthetic();
-  EXPECT_FLOAT_EQ(ChanceReach_m(k, 5.0f, 60.0f), 15.0f);       // dz <= 12: no term
-  EXPECT_FLOAT_EQ(ChanceReach_m(k, 12.5f, 60.0f), 15.0f + 5.0f * (12.5f - 30.0f) / -18.0f);
-  EXPECT_FLOAT_EQ(ChanceReach_m(k, 5.0f, 85.0f), 15.0f + 2.0f * 18.0f * 0.5f);
-  EXPECT_FLOAT_EQ(ChanceReach_m(k, 5.0f, 99.0f), 15.0f + 2.0f * 18.0f);
-}
-
 TEST(OffBallLane, DefendersArePredictedFurtherTheFurtherTheRunnerIsFromTheBall) {
   const OffBallConstants k = Synthetic();
   // int(54·a + 0.5) + int(54·0.1 + 0.5) + int(54·0.3 + 0.5)
@@ -195,55 +187,161 @@ TEST(OffBallLane, UnderTheLimitFallsBackToTheLineBesideTheBall) {
   EXPECT_FALSE(ChanceLaneTarget(k, in).has_value());
 }
 
-StopInput Running() {
-  StopInput in;
-  in.run = kChance;
-  in.t_frames = 30.0f;
-  in.openPlay = true;
-  in.teamInPossession = true;
-  in.s = 1.0f;
-  in.runner = {10.0f, 0.0f};
-  in.ball = {0.0f, 0.0f};
-  in.target = {25.0f, 0.0f};
-  in.oppLineX = 25.0f;
-  return in;
+// Team 0 attacks +x with the ball at its carrier (id 0) on the halfway line;
+// runner id 3 is in a Chance run 10 m ahead; team 1 holds its line at 25 m.
+constexpr int kRunner = 3;
+RunWorld Running() {
+  RunWorld w;
+  for (int i = 0; i < 2 * kSlots; ++i) {
+    w.p[i].active = true;
+    w.p[i].roleClass = 4;
+    w.p[i].pos = {i < kSlots ? -20.0f : 40.0f, -30.0f + 3.0f * (i % kSlots)};
+    w.p[i].aim = w.p[i].pos;
+    w.p[i].slotPoint = w.p[i].pos;
+    w.p[i].facing = i < kSlots ? 90.0f : 270.0f;
+  }
+  w.carrier = 0;
+  w.receiver = {0, -1};
+  w.p[0].pos = w.ball = {0.0f, 0.0f};
+  PlayerFacts& r = w.p[kRunner];
+  r.pos = {10.0f, 0.0f};
+  r.aim = {25.0f, 0.0f};
+  r.state = kChance;
+  r.t = 30.0f;
+  w.lineX = {-30.0f, 25.0f};
+  w.possession = {true, false};
+  w.possessionAge = {500.0f, 0.0f};
+  return w;
+}
+
+TEST(OffBallMask, AttackSlotsOpenToAllUntilEnoughAttackersAreForward) {
+  RunWorld w = Running();
+  for (int i = 0; i < kSlots; ++i) w.p[i].position = i < 9 ? std::min(i, 6) : 12;  // 9, 10 forwards
+  EXPECT_EQ(AttackSlotMask(w, 0, 4), (1u << kSlots) - 1);
+  // Level 2 needs 4 attackers ahead of the ball band; only the runner is.
+  EXPECT_EQ(AttackSlotMask(w, 0, 2), (1u << kSlots) - 1);
+  for (int i = 7; i < kSlots; ++i) w.p[i].pos = {12.0f, -10.0f + 5.0f * i - 35.0f};
+  const uint32_t m = AttackSlotMask(w, 0, 2);
+  EXPECT_TRUE((m >> 9) & 1u);  // forwards always, and they count toward the 4
+  EXPECT_TRUE((m >> 10) & 1u);
+  int others = 0;
+  for (int i = 0; i < 9; ++i) others += (m >> i) & 1u;
+  EXPECT_EQ(others, 2);
+  EXPECT_TRUE((m >> 7) & 1u);  // the two nearest the goal line among the rest
+  EXPECT_TRUE((m >> 8) & 1u);
+}
+
+TEST(OffBallMask, ADefenderNeedsTheReachAForwardDoesNot) {
+  const OffBallConstants k = Synthetic();
+  RunWorld w = Running();
+  w.p[kRunner].state = kBasePosition;
+  w.p[kRunner].t = 1e9f;
+  w.lineX[1] = 45.0f;                // the runner stays onside
+  w.p[kRunner].pos = {30.0f, 0.0f};  // 30 m ahead of the ball: past 15 m
+  w.p[kRunner].position = 1;         // CB
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[kRunner].position = 12;        // CF: no reach path
+  w.lineX[1] = 25.0f;                // ... but not from beyond the line
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.lineX[1] = 45.0f;
+  w.p[kRunner].roleClass = 9;
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~(1u << kRunner), 2, false, 50.0f));
+  w.p[kRunner].pos = {30.0f, 43.0f};  // |dz| > 42
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[kRunner].pos = {12.0f, 0.0f};
+  w.p[kRunner].position = 1;
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[kRunner].pos = {19.0f, 0.0f};  // 19 m: past 15, inside Long Pass's 21
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, true, 50.0f));
+}
+
+TEST(OffBallMask, NoChanceRunsFromOwnHalfUntilFourSecondsOfPossession) {
+  // FUN_1405938a0: in its own half a team runs only with a free forward-facing
+  // focus player or after 4 s of possession.
+  const OffBallConstants k = Synthetic();
+  RunWorld w = Running();
+  w.p[kRunner].state = kBasePosition;
+  w.p[kRunner].position = 12;
+  w.p[0].pos = w.ball = {-5.0f, 0.0f};
+  w.p[kRunner].pos = {5.0f, 0.0f};
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.possessionAge[0] = 100.0f;
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[0].vel = {5.0f, 0.0f};  // the carrier runs forward, nobody near: free
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
 }
 
 TEST(OffBallStop, ChanceKeepsItsMinimumRunTimeThenTheCommonTestDecides) {
-  StopInput in = Running();
-  EXPECT_FALSE(RunStop(in));
-  in.becameCarrier = true;
-  EXPECT_TRUE(RunStop(in));
-  in.t_frames = 5.0f;
-  EXPECT_FALSE(RunStop(in));  // under 11 frames nothing stops it
-  in.becameCarrier = false;
-  in.t_frames = 30.0f;
-  in.teamInPossession = false;
-  EXPECT_TRUE(RunStop(in));
+  RunWorld w = Running();
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+  w.carrier = kRunner;
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+  w.p[kRunner].t = 5.0f;
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));  // under 11 frames nothing stops it
+  w = Running();
+  w.possession = {false, true};
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
 }
 
 TEST(OffBallStop, ReleasedPastTheLineOrNearTheGoalLine) {
-  StopInput in = Running();
-  in.runner = {26.0f, 0.0f};  // 1 m past: under 1.5 early, over 0.7 late
-  in.ball = {20.0f, 0.0f};
-  EXPECT_FALSE(RunStop(in));
-  in.t_frames = 50.0f;
-  EXPECT_TRUE(RunStop(in));
-  in = Running();
-  in.oppLineX = 60.0f;
-  in.ball = {45.0f, 0.0f};
-  in.runner = {50.0f, 0.0f};
-  EXPECT_TRUE(RunStop(in));
+  RunWorld w = Running();
+  w.p[kRunner].pos = {26.0f, 0.0f};  // 1 m past: under 1.5 early, over 0.7 late
+  w.p[0].pos = w.ball = {20.0f, 0.0f};
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+  w.p[kRunner].t = 50.0f;
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+  w = Running();
+  w.lineX[1] = 60.0f;
+  w.p[0].pos = w.ball = {45.0f, 0.0f};
+  w.p[kRunner].pos = {50.0f, 0.0f};
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
 }
 
 TEST(OffBallStop, FarRunnerStopsUnlessWellBehindTheBall) {
-  StopInput in = Running();
-  in.runner = {-35.0f, 0.0f};
-  in.ball = {10.0f, 0.0f};  // 45 m away, 45 m behind: keep
-  EXPECT_FALSE(RunStop(in));
-  in.runner = {10.0f, 0.0f};
-  in.ball = {10.0f, -45.0f};  // 45 m away, level: stop (and |dz| > 43)
-  EXPECT_TRUE(RunStop(in));
+  RunWorld w = Running();
+  w.p[kRunner].pos = {-35.0f, 0.0f};
+  w.p[kRunner].aim = {-20.0f, 0.0f};
+  w.p[0].pos = w.ball = {10.0f, 0.0f};  // 45 m away, 45 m behind: keep
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+  w.p[kRunner].pos = {10.0f, 0.0f};
+  w.p[0].pos = w.ball = {10.0f, -45.0f};  // 45 m away, level: stop
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+}
+
+TEST(OffBallStop, LooseBallKickedFarPastHimEndsTheRun) {
+  // FUN_140692810: no carrier, a kick within the last second carried the ball
+  // 20 m+, and it is not ahead of the runner.
+  RunWorld w = Running();
+  w.carrier = -1;
+  w.ball = {8.0f, 0.0f};
+  w.ev = {true, 1, 20.0f, {-15.0f, 0.0f}, 7};
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+  w.ev.pos = {0.0f, 0.0f};  // only 8 m: no
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+}
+
+TEST(OffBallStop, ThePassToHimEndsTheRunAThroughBallAfterEighteenFrames) {
+  RunWorld w = Running();
+  w.ev = {true, 1, 2.0f, {0.0f, 0.0f}, kRunner};
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+  w.ev.kind = 2;
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+  w.ev.age = 18.0f;
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
+}
+
+TEST(OffBallStop, ADefenderRunsOnlyIfNoCloserDefenderIsRunning) {
+  // FUN_140596240 over the role-class map: a CB/SB runner stops when another
+  // CB/SB runner is nearer the ball.
+  RunWorld w = Running();
+  w.p[kRunner].roleClass = 2;
+  EXPECT_FALSE(RunStop(w, kRunner, kChance));
+  w.p[5].roleClass = 1;
+  w.p[5].state = kChance;
+  w.p[5].pos = {5.0f, 2.0f};
+  EXPECT_TRUE(RunStop(w, kRunner, kChance));
 }
 
 TEST(OffBallSupport, SupporterCostPrefersInFrontAndPenalisesTooClose) {

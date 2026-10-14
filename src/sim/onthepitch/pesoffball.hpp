@@ -134,9 +134,6 @@ std::vector<int> SelectRunners(const std::array<float, kSlots>& scores, int runn
 // Chance score 0x140606060: base + s·x of the runner.
 float ChanceScore(const OffBallConstants& k, float s, float runnerX);
 
-// The Chance mask's longitudinal reach (0x140606cd0): a candidate only if
-// |x_runner - x_ball| <= reach. `dz` = |z_runner - z_ball|, `awareness` 0..99.
-float ChanceReach_m(const OffBallConstants& k, float dz_m, float awareness);
 
 struct Vec2f {
   float x = 0.0f, z = 0.0f;
@@ -165,20 +162,69 @@ int DefenderPredictFrames(const OffBallConstants& k, float runnerBallDist2_m2);
 // the 33 lanes 2 m apart, within the window around the runner's lane.
 std::optional<Vec2f> ChanceLaneTarget(const OffBallConstants& k, const LaneSearchInput& in);
 
-struct StopInput {
-  int run = kChance;
-  float t_frames = 0.0f;  // PES frames in the run
+// One player as the run code reads him. Angles are PES bearings
+// (atan2(dx, dz) in degrees, [0, 360): 90 = +x).
+struct PlayerFacts {
+  bool active = false;
+  bool goalie = false;
   bool humanControlled = false;
-  bool becameCarrier = false;  // carrier, PASS_GET or the pass's target
-  bool openPlay = true;
-  bool teamInPossession = true;
-  float s = 1.0f;
-  Vec2f runner, ball, target;
-  float oppLineX = 0.0f;  // the defending team's line
+  Vec2f pos, vel;        // m, m/s
+  float facing = 0.0f;   // +0x554, body facing
+  int state = kNothing;  // T+0xa2a0
+  float t = 0.0f;        // PES frames in the state (ring T+0xa2cc)
+  int roleClass = 0;     // FUN_1408c51f0: GK0 CB1 SB2 DMF3 CMF4 SMF5 AMF6 SS7 WF8 CF9
+  Vec2f aim;             // FUN_140596c30 / a76240: the run target, else the position
+  Vec2f slotPoint;       // T+0x4b4c + 12·slot: the slot's formation point
+  int marker = -1;       // FUN_140a62850: the opponent marking him
+  int position = 0;      // T+0x4c00: registered position, 0 GK 1 CB 2 LB 3 RB 4 DMF 5 CMF
+                         // 6 LMF 7 RMF 8 AMF 9 LWF 10 RWF 11 SS 12 CF
 };
 
-// The selector's stop test (vt+0x18): true releases the runner.
-bool RunStop(const StopInput& in);
+// The last ball event a3e190(ctx+0xe0, 0). Kinds as PES: 1 pass, 2 through
+// pass, 3 lofted, 0x10 shot.
+struct BallEvent {
+  bool valid = false;
+  int kind = 0;
+  float age = 1e9f;  // PES frames since the kick
+  Vec2f pos;         // where it was kicked
+  int target = -1;   // the intended receiver (global id)
+};
+
+// Everything the run selectors and stop tests read, global ids team·11 + slot.
+struct RunWorld {
+  std::array<PlayerFacts, 2 * kSlots> p;
+  int carrier = -1;                      // FUN_140a627e0(ctx, 0): ball owner
+  std::array<int, 2> receiver{-1, -1};   // FUN_1405969b0 per team
+  Vec2f ball;
+  std::array<float, 2> s{1.0f, -1.0f};   // T+0x254
+  std::array<float, 2> lineX{};          // MA+0x44 + 0x14·t: team t's line
+  bool openPlay = true;
+  std::array<bool, 2> possession{};      // T+0x255
+  std::array<float, 2> possessionAge{};  // MI+0x11a0, PES frames
+  BallEvent ev;
+};
+
+// T+0x4c00 registered positions from GF's e_PlayerRole order.
+int Position(int gfRole);
+
+// FUN_140500200: T+0xb8b8, the slots of `team` the Chance mask may take, by
+// attack level (decompiled for this port).
+uint32_t AttackSlotMask(const RunWorld& w, int team, int attackLevel);
+
+// FUN_140606cd0's generic-lane path for slot `id` (decompiled for this port):
+// true sets his candidate bit. `awareness` is the reach byte (0..99).
+bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
+                   int attackLevel, bool buildUpLong, float awareness);
+
+// FUN_1408c51f0's role classes (pes-re-stamina-subs.md 1): GK0 CB1 LB/RB2
+// DMF3 CMF4 LMF/RMF5 AMF6 SS7 LWF/RWF8 CF9, from GF's e_PlayerRole order
+// (GK CB LB RB DM CM LM RM AM CF LW RW SS).
+int RoleClass(int gfRole);
+
+// The selector's stop test (vt+0x18) for runner `id` in run `run`: true
+// releases him. Chance 0x140607a60 / Counter 0x14060b410 / SecondLine
+// 0x1406118e0 / Diagonal 0x140615090, each over FUN_140688c00.
+bool RunStop(const RunWorld& w, int id, int run);
 
 // FUN_1405eb980: 0.7·|Δangle| + distance + 15 when closer than 10 m.
 float SupporterCost(float angleDiff_deg, float distance_m);

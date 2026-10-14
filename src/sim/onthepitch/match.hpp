@@ -83,6 +83,20 @@ public:
   // How long the celebration has been running (onthepitch/goalcelebration.hpp).
   unsigned long GetGoalScoredTimer() const { return goalScoredTimer; }
   Player* GetLastGoalScorer() const { return lastGoalScorer; }
+  // PES's last ball event (a3e190(ctx+0xe0, 0)) as far as the run stop test
+  // reads it: the newest pass, its kind (1 ground, 2 through, 3 lofted), the
+  // kick point, its intended receiver and when it was kicked.
+  struct PassEvent {
+    bool valid = false;
+    int kind = 0;
+    Vector3 from;
+    Player* target = nullptr;
+    unsigned long time_ms = 0;
+  };
+  void RecordPassEvent(int kind, const Vector3& from, Player* target) {
+    lastPassEvent = PassEvent{true, kind, from, target, GetActualTime_ms()};
+  }
+  const PassEvent& GetLastPassEvent() const { return lastPassEvent; }
 
   void StartSetPiece() { inSetPiece = true; }
   void StopSetPiece() { inSetPiece = false; }
@@ -488,6 +502,7 @@ protected:
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::ContactConstants pesContactConstants{};
+  PassEvent lastPassEvent;
   pes::offball::OffBallConstants pesOffBallConstants{};
   pes::StrategyConstants pesStrategyConstants{};
   pes::TeamConceptConstants pesTeamConceptConstants{};

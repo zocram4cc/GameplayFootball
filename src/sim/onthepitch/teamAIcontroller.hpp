@@ -263,6 +263,7 @@ protected:
   };
   void ProcessOffBall();
   void ProcessRunManager(Player* carrier);
+  pes::offball::RunWorld BuildRunWorld(std::array<std::vector<Player*>, 2>* ids) const;
   void ProcessDesignatedSupporter(Player* carrier);
   std::map<const Player*, RunRecord> runs;
   long lastRunFrame = -1;

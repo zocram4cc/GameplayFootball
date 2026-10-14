@@ -2241,6 +2241,95 @@ void TeamAIController::ProcessDesignatedSupporter(Player* carrier) {
                                               ob::SupportDistance_m(in);
 }
 
+// The world as the run code reads it (pesoffball.hpp RunWorld), global ids
+// team·11 + slot over each team's active players in roster order.
+pes::offball::RunWorld TeamAIController::BuildRunWorld(
+    std::array<std::vector<Player*>, 2>* ids) const {
+  ob::RunWorld w;
+  const unsigned long now = match->GetActualTime_ms();
+  const Vector3 ball = match->GetBall()->Predict(0);
+  w.ball = Flat(ball);
+  w.openPlay = match->IsInPlay() && !match->IsInSetPiece();
+  auto pesDeg = [](const Vector3& v) {
+    return (v.coords[0] == 0.0f && v.coords[1] == 0.0f)
+               ? 0.0f
+               : std::fmod(std::atan2(v.coords[0], v.coords[1]) * 180.0f / pi + 360.0f, 360.0f);
+  };
+  for (int t = 0; t < 2; ++t) {
+    Team* tm = match->GetTeam(t);
+    for (const auto& p : tm->GetAllPlayers())
+      if (p->IsActive() && (*ids)[t].size() < ob::kSlots) (*ids)[t].push_back(p.get());
+    w.s[t] = -static_cast<float>(tm->GetSide());
+    w.lineX[t] = AI_GetOffsideLine(match, match->GetMentalImage(0), t);
+    w.possession[t] = match->GetLastTouchTeamID() == t;
+    TeamAIController* ctl = tm->GetController();
+    w.possessionAge[t] = (now - ctl->possessionChange_ms) * kPesFps / 1000.0f;
+  }
+  auto idOf = [&](const Player* pl) {
+    for (int t = 0; t < 2; ++t)
+      for (size_t i = 0; i < (*ids)[t].size(); ++i)
+        if ((*ids)[t][i] == pl) return t * ob::kSlots + static_cast<int>(i);
+    return -1;
+  };
+  for (int t = 0; t < 2; ++t) {
+    TeamAIController* ctl = match->GetTeam(t)->GetController();
+    for (size_t i = 0; i < (*ids)[t].size(); ++i) {
+      Player* pl = (*ids)[t][i];
+      ob::PlayerFacts& f = w.p[t * ob::kSlots + i];
+      f.active = true;
+      f.goalie = pl->GetFormationEntry().role == e_PlayerRole_GK;
+      f.pos = Flat(pl->GetPosition());
+      f.vel = Flat(pl->GetMovement());
+      f.facing = pesDeg(pl->GetDirectionVec());
+      f.roleClass = ob::RoleClass(static_cast<int>(pl->GetDynamicFormationEntry().role));
+      f.position = ob::Position(static_cast<int>(pl->GetFormationEntry().role));
+      f.slotPoint = Flat(ctl->GetAdaptedFormationPosition(pl, false));
+      auto run = ctl->runs.find(pl);
+      if (run != ctl->runs.end()) {
+        f.state = run->second.state;
+        f.t = (now - run->second.start_ms) * kPesFps / 1000.0f;
+        f.aim = Flat(run->second.target);
+      } else {
+        f.state = ob::kBasePosition;
+        f.t = 1e9f;
+        // ponytail: a non-runner's AI target (a76240) is where he is heading,
+        // one second out.
+        f.aim = Flat(pl->GetPosition() + pl->GetMovement());
+      }
+    }
+  }
+  // Markers: the opponent whose man-marking assignment is this player.
+  for (int t = 0; t < 2; ++t)
+    for (Player* pl : (*ids)[t]) {
+      const int mark = pl->GetManMarkingID();
+      if (mark < 0) continue;
+      const int target = idOf(match->GetPlayer(mark));
+      if (target >= 0) w.p[target].marker = idOf(pl);
+    }
+  Player* owner = match->GetDesignatedPossessionPlayer();
+  if (owner && owner->HasPossession()) w.carrier = idOf(owner);
+  // 5969b0: the ball owner on the team, else its last toucher, else its
+  // designated player.
+  for (int t = 0; t < 2; ++t) {
+    Team* tm = match->GetTeam(t);
+    if (w.carrier >= 0 && w.carrier / ob::kSlots == t)
+      w.receiver[t] = w.carrier;
+    else if (tm->GetLastTouchPlayer() && idOf(tm->GetLastTouchPlayer()) >= 0)
+      w.receiver[t] = idOf(tm->GetLastTouchPlayer());
+    else
+      w.receiver[t] = idOf(tm->GetDesignatedTeamPossessionPlayer());
+  }
+  const Match::PassEvent& ev = match->GetLastPassEvent();
+  if (ev.valid) {
+    w.ev.valid = true;
+    w.ev.kind = ev.kind;
+    w.ev.age = (now - ev.time_ms) * kPesFps / 1000.0f;
+    w.ev.pos = Flat(ev.from);
+    w.ev.target = ev.target ? idOf(ev.target) : -1;
+  }
+  return w;
+}
+
 void TeamAIController::ProcessRunManager(Player* carrier) {
   const pes::offball::OffBallConstants& k = match->GetPesOffBallConstants();
   const unsigned long now = match->GetActualTime_ms();
@@ -2250,29 +2339,20 @@ void TeamAIController::ProcessRunManager(Player* carrier) {
   const Vector3 ball = match->GetBall()->Predict(0);
   const float oppLineX = AI_GetOffsideLine(match, match->GetMentalImage(0), opp);
 
-  std::vector<Player*> slots;
-  for (const auto& p : team->GetAllPlayers())
-    if (p->IsActive()) slots.push_back(p.get());
+  std::array<std::vector<Player*>, 2> ids;
+  const ob::RunWorld world = BuildRunWorld(&ids);
+  const std::vector<Player*>& slots = ids[team->GetID()];
+  const int base = team->GetID() * ob::kSlots;
 
   // Stop pass: every runner whose stop test says so goes back to NOTHING.
   for (auto it = runs.begin(); it != runs.end();) {
-    const Player* p = it->first;
-    if (std::find(slots.begin(), slots.end(), p) == slots.end()) {
+    const auto at = std::find(slots.begin(), slots.end(), it->first);
+    if (at == slots.end()) {
       it = runs.erase(it);
       continue;
     }
-    ob::StopInput in;
-    in.run = it->second.state;
-    in.t_frames = (now - it->second.start_ms) * kPesFps / 1000.0f;
-    in.becameCarrier = p == carrier;
-    in.openPlay = openPlay;
-    in.teamInPossession = carrier != nullptr;
-    in.s = s;
-    in.runner = Flat(p->GetPosition());
-    in.ball = Flat(ball);
-    in.target = Flat(it->second.target);
-    in.oppLineX = oppLineX;
-    it = ob::RunStop(in) ? runs.erase(it) : std::next(it);
+    const int id = base + static_cast<int>(at - slots.begin());
+    it = ob::RunStop(world, id, it->second.state) ? runs.erase(it) : std::next(it);
   }
 
   // Select pass. Overlap (registered first) and the selectors after Chance are
@@ -2321,22 +2401,20 @@ void TeamAIController::ProcessRunManager(Player* carrier) {
   // out-ranking a Chance runner it then releases (claim gates 5abcc0/5ab380/
   // 5ab990). ponytail: those gates are undecoded, so no swap happens; the
   // cap simply holds.
+  const uint32_t slotMask = ob::AttackSlotMask(world, team->GetID(), level);
+  const bool buildUpLong = teamSheet.toggles[pes::kBuildUp] == 0;
   std::array<float, ob::kSlots> scores{};
   std::array<Vector3, ob::kSlots> targets;
   for (size_t i = 0; running < cap && i < slots.size() && i < ob::kSlots; ++i) {
     Player* p = slots[i];
-    if (p == carrier || p == designatedSupporter || IsGoalie(p)) continue;
-    // ponytail: GF keeps no per-player action state, so a non-runner counts as
-    // BASE_POSITION.
-    const int state = runs.count(p) ? runs[p].state : ob::kBasePosition;
-    if (!ob::MayTake(ob::kChance, state)) continue;
+    if (p == designatedSupporter) continue;
     const Vector3 pos = p->GetPosition();
     // ponytail: the reach byte's label is unresolved (attack-leftovers 1.10);
     // GF's offensive awareness on PES's 0..99 scale stands in, without the
     // Weighted Pass +10.
     const float awareness = p->GetStat("mental_offensivepositioning") * 100.0f;
-    if (std::fabs(pos.coords[0] - ball.coords[0]) >
-        ob::ChanceReach_m(k, std::fabs(pos.coords[1] - ball.coords[1]), awareness))
+    if (!ob::ChanceMaskBit(k, world, base + static_cast<int>(i), slotMask, level, buildUpLong,
+                           awareness))
       continue;
     lane.runner = Flat(pos);
     lane.runnerPred = Flat(Predict(p, kRunPredictFrames));
