@@ -53,7 +53,20 @@ struct PressConstants {
   float slot2Band_deg;        // 0x1425c48d4 (115)
   float slot3Lo_deg;          // 0x1425c6608 (-55)
   float slot3Hi_deg;          // 0x1425cee28 (-145)
+  // Speed and angle-band helpers (FUN_14042d470, FUN_140a92b90).
+  float secPerMinute;         // 0x14259a764 (60)
+  float metresPerKm;          // 0x14256ae34 (1000)
+  float framesPerSec;         // 0x14351ae54 (54): .data initializer, read as the image holds it
 };
+
+// True when the signed angle `deg` wraps to an |angle| outside [eps, halfTurn - eps]
+// (FUN_140a92b90 returns 1). Used for the boundary test on a bearing.
+bool PressAngleOutsideBand(const PressConstants& c, float deg, float eps);
+
+// Speed in km/h from a per-frame distance: (framesPerSec * 60 * 60 / 1000) * perFrame
+// (FUN_14042d470). // ponytail: unit reading is inferred from the constants; the
+// caller's threshold is the only check of the scale.
+float PressSpeedKmh(const PressConstants& c, float perFrame);
 
 // A bucket entry: a man index (0xff = empty) and the score the sort orders by.
 struct PressCandidate {

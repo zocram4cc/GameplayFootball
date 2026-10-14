@@ -87,6 +87,24 @@ TEST(PressSideAngle, FoldsAcrossTheSeamWithSign) {
   EXPECT_NEAR(pes::PressSideAngleDeg(c, 90.0f, 0.0f), 90.0f, kEps);
 }
 
+TEST(PressAngleBand, WrappedBoundaryTest) {
+  pes::PressConstants c = Synthetic();
+  EXPECT_FALSE(pes::PressAngleOutsideBand(c, 170.0f, 10.0f));
+  EXPECT_TRUE(pes::PressAngleOutsideBand(c, 175.0f, 10.0f));
+  EXPECT_TRUE(pes::PressAngleOutsideBand(c, -175.0f, 10.0f));
+  EXPECT_FALSE(pes::PressAngleOutsideBand(c, 190.0f, 10.0f));
+  EXPECT_TRUE(pes::PressAngleOutsideBand(c, 5.0f, 10.0f));
+}
+
+TEST(PressSpeed, FramesPerSecondTimesSixtyTimesSixtyOverKm) {
+  pes::PressConstants c = Synthetic();
+  c.framesPerSec = 54.0f;
+  c.secPerMinute = 60.0f;
+  c.metresPerKm = 1000.0f;
+  EXPECT_NEAR(pes::PressSpeedKmh(c, 1.0f), 194.4f, kEps);
+  EXPECT_NEAR(pes::PressSpeedKmh(c, 0.0f), 0.0f, kEps);
+}
+
 TEST(PressCarrierRamp, ZeroInsideStartOneAtEnd) {
   auto c = Synthetic();
   EXPECT_EQ(pes::PressCarrierRamp(c, 5.0f), 0.0f);
@@ -323,6 +341,9 @@ TEST(PressConstantsLoader, ImageRelationsHold) {
   EXPECT_FLOAT_EQ(c->carrierRampSpan_m, c->carrierRampEnd_m - c->carrierRampStart_m);
   EXPECT_FLOAT_EQ(c->pass2Div, c->pass2Lo - c->pass2Hi);
   EXPECT_FLOAT_EQ(c->slot3Hi_deg, -c->slot1Hi_deg);
+  EXPECT_FLOAT_EQ(c->framesPerSec, 54.0f);
+  EXPECT_FLOAT_EQ(c->secPerMinute, 60.0f);
+  EXPECT_FLOAT_EQ(c->metresPerKm, 1000.0f);
 }
 
 }  // namespace

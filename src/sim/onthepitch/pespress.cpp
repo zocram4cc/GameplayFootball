@@ -43,6 +43,9 @@ constexpr PressVa kPressVas[] = {
     {0x1425c48d4, &PressConstants::slot2Band_deg},
     {0x1425c6608, &PressConstants::slot3Lo_deg},
     {0x1425cee28, &PressConstants::slot3Hi_deg},
+    {0x14259a764, &PressConstants::secPerMinute},
+    {0x14256ae34, &PressConstants::metresPerKm},
+    {0x14351ae54, &PressConstants::framesPerSec},
     {0x1425a9464, &PressConstants::pass2DelayDistSq},
     {0x1425c6780, &PressConstants::pass2ZeroRoleDistSq},
     {0x14259bdf4, &PressConstants::pass2SameCodeAdd},
@@ -96,6 +99,17 @@ float PressSideAngleDeg(const PressConstants& c, float bearingDeg, float referen
   float d = bearingDeg - referenceDeg;
   if (std::fabs(d) > c.halfTurn_deg) d -= std::copysign(c.fullTurn_deg, d);
   return d;
+}
+
+bool PressAngleOutsideBand(const PressConstants& c, float deg, float eps) {
+  float w = deg;
+  if (std::fabs(w) > c.halfTurn_deg) w -= std::copysign(c.fullTurn_deg, w);
+  float a = std::fabs(w);
+  return !(eps <= a && a <= c.halfTurn_deg - eps);
+}
+
+float PressSpeedKmh(const PressConstants& c, float perFrame) {
+  return ((c.framesPerSec * c.secPerMinute * c.secPerMinute) / c.metresPerKm) * perFrame;
 }
 
 float PressCarrierRamp(const PressConstants& c, float carrierDist_m) {
