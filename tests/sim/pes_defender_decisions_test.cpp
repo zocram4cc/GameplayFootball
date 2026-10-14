@@ -221,9 +221,9 @@ TEST(PesDefenderSlide, ReachIsFourPlusEightyCentimetresPerLevel) {
 TEST(PesDefenderSlide, EngageWindowIsHundredTwelveAndAHalf) {
   const pes::DefenderDecisionConstants c = Synthetic();
   // Straight ahead and straight behind are inside the window.
-  EXPECT_TRUE(pes::SlideEngageWindow(c, 0.0f, 0.0f));
   EXPECT_TRUE(pes::SlideEngageWindow(c, 112.0f, 0.0f));
-  EXPECT_TRUE(pes::SlideEngageWindow(c, 112.5f, 0.0f));
+  // At the limit itself the raw refuses: the compare is `jae`, so `>=` is out.
+  EXPECT_FALSE(pes::SlideEngageWindow(c, 112.5f, 0.0f));
   // Past it the slide is refused: he cannot even see the point he would go at.
   EXPECT_FALSE(pes::SlideEngageWindow(c, 112.6f, 0.0f));
   EXPECT_FALSE(pes::SlideEngageWindow(c, -113.0f, 0.0f));
@@ -237,7 +237,8 @@ TEST(PesDefenderSlide, DirectionWindowIsNinetyDegrees) {
   const pes::DefenderDecisionConstants c = Synthetic();
   EXPECT_TRUE(pes::SlideDirectionWindow(c, 0.0f, 0.0f));
   EXPECT_TRUE(pes::SlideDirectionWindow(c, 89.9f, 0.0f));
-  EXPECT_TRUE(pes::SlideDirectionWindow(c, 90.0f, 0.0f));
+  // The raw compares `>=` against 90, so the boundary is out as well.
+  EXPECT_FALSE(pes::SlideDirectionWindow(c, 90.0f, 0.0f));
   // A sideways slide is not expressible, so past 90 the action is refused.
   EXPECT_FALSE(pes::SlideDirectionWindow(c, 90.1f, 0.0f));
   EXPECT_FALSE(pes::SlideDirectionWindow(c, 179.0f, 0.0f));

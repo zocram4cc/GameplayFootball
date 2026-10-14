@@ -94,6 +94,11 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 defensive-shape constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) defenderDecisionConstants_ = pes::LoadDefenderDecisionConstants(*exe, vfs_, &err);
+  if (!defenderDecisionConstants_) {
+    UtilityFunctions::push_error("PES21 defender-decision constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) stoppageConstants_ = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants_) {
     UtilityFunctions::push_error("PES21 stoppage constants unavailable: ", ToGd(err));
