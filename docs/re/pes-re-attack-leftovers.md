@@ -771,3 +771,133 @@ support values, Finishing byte read-back) stay open with the steps stated; the
 support-object address rule (§1.8, `rsi+0x2d4`) and the `14124dad0` chase plan
 (§3) are the handoff. A re-run needs a live open-play match and the two
 scripts in the AttackLeftoversRE scratch dir.
+
+## 7. Live section 2026-10-14 p.m. (match running, mode 1) — AttackLiveRE
+
+Read-only sudo pread of the running match (`G = 0x2d4d9570`; MI tick-gated:
+null between ticks, polled). Scratch: the AttackLiveRE scratch dir
+(`live_main.py` + `live_main.json`: 47,216 MI-hit records over frames
+16,302–22,085; `o7*.py`, `sup_scan*.py`). Tags: **OBS** = bytes/data read;
+**INF(x)** = inference with confidence. No player or team names.
+
+### 7.1 O7 — Chance mask/score live log: CLOSED (OBS)
+
+Log: `live_main.json` (47,216 MI-hit records, frames 16,302–22,085, modes
+1/2/3) + targeted watch `o7take.py`. Selector attribution OBS: `0x1a9a5b70`
+→ team 0, `0x1a9ac970` → team 1 (score burst coincides with that team's take).
+
+- Score-array layout corrected (OBS disasm `0x1406021a0–0x14060223c`): entries
+  are 8 B `(i32 key, f32 score)`, i.e. `sel+8+8·i`, NOT 11 packed floats.
+  The report §1.7's "`+8..0x68`" read as `<11f` was a mis-framing: even words
+  are keys (≈0.0 as float), odd words are scores. The prior ticket's "score
+  order" analysis must use stride 8.
+- Key encoding (OBS disasm `0x1406021a0`: `key = [r13+0x18]·11 + slot`).
+  Live: take keys equal the take slot (`key = slot`, Cls-0 tick, e.g. fr 30553
+  `(key 9, 134.2)` → slot 9) or `slot+11` (Cls-1 tick, e.g. `(key 20, 131.8)`
+  → slot 9; `20−11 = 9`). Take slot = `key mod 11` (OBS: all key-linked
+  takes). The Cls word varies per tick (AI class of the evaluating context;
+  team-0 takes seen with both Cls 0 and Cls 1). INF(med) on the Cls source
+  (`r13+0x18` — the register, not the raw `T+0x18` word: live `T0+0x18 = 1`
+  / `T1+0x18 = 17` do NOT match the per-tick Cls).
+- Sort-then-take (OBS disasm + live): `qsort(sel+8, 11, 8B, cmp)` @0x140602298
+  sorts best-first; the take loop @0x140602260 takes the first entry whose
+  `FUN_140a85aa0` gate passes. Live: every take = the entry-0 (best-score)
+  candidate — 14 takes in `live_main.json` (12 team-1, 2 team-0, all mode 1,
+  all `poss = 01`, L = 2), plus 5 key-linked takes in `o7take.py`
+  (e.g. fr 30553: entry `(key 9, 134.2)` → slot 9 takes; rest 0.0).
+- One take per (frame, team) (OBS): no multi-take tick in 47,216 records.
+  Multi-candidate ticks show DESC scores (fr 20546: 107.9/103.7/101.8 at
+  entries 0/1/2) with a single take — the cap-release step (§1.1 step 4)
+  confirmed live: max concurrent Chance 1 (team 0, cap 3) / 2 (team 1,
+  cap 1 → 1,048 over-cap records = the one-past-cap take released next tick).
+- Score magnitude (OBS): 86.9–141.4, consistent with `100 + s·x`
+  (sub-kind-E −3/−5 adjustments explain < 100). Mask word `sel+0x284`
+  (`mask[1]`): live values `0xec59936d` (team 0) / `0x4fc47f50` (team 1);
+  bit semantics NOT per-slot-candidate (take slot 2 takes with bit 2 clear)
+  — mask[1] is the veto battery output, not the candidate set. INF(med):
+  candidacy is decided inside the mask call, mask[1] records vetoes.
+- Parity (OBS): 11/12 team-1 takes on even frames, team-0 takes 1 even/1 odd
+  — consistent with per-team parity ticks (O6's stale-timer explanation
+  stands; no second writer needed).
+
+GF replaces: `SelectAttackingRunPlayer` Chance branch — sort 8 B
+`(key = Cls·11+slot, score)` entries best-first, take entry 0, one take per
+tick per team, cap-release of the excess next tick.
+
+### 7.2 Finishing byte read-back per carrier: CLOSED (OBS)
+
+- Chase verified end to end (OBS disasm): `FUN_140a489f0(G, id)` =
+  `*(G + (id+0xf3)·5·8)` (guard `id < 0x16`), `FUN_14124dad0(pms)` =
+  `pms+0x70` (address), Finishing = `*(pms+0x70+0x1a)` = `*(pms+0x8a)`
+  (carunits7.c:40 `140698d10` shoot-zone read). No call needed — pure
+  pointer chase, read-only safe.
+- Live (OBS, 42,393 hits): carrier `= 0` in 90.3% of MI-hits
+  (`FUN_140a627e0(G,0)` = `*(G+0x18)+0x2601c`); PMS `= 0x1ccaf118` stable;
+  byte `*(pms+0x8a) = 0x4d = 77` constant. I.e. carrier slot 0's
+  Finishing = 77. The Rn cross-check (`Rn = 18+3·clamp01((F−70)/29)` →
+  `18+3·(7/29) ≈ 18.7 → 18`) needs the shoot-zone's live Rn, which is
+  per-tick scratch (not logged) — the byte itself is confirmed, the
+  formula comparison stays INF(med) until an adopted-Shoot tick is caught
+  with both values.
+- GF replaces: nothing new — the accessor path is confirmed for the port's
+  stat reader; wire `pms+0x8a` with the chase above.
+
+### 7.3 Off-ball Chance dispatch live (cheap check): CLOSED (OBS)
+
+- Run-start census over frames 16,302–22,085 (OBS `live_main.json`, starts
+  dated from `T+0xa2cc` timer blocks): team 0 — Chance 2, Counter 2, Diagonal
+  1, misc 236 (mostly 50/52/54/58/61-state churn + set-piece states);
+  team 1 — Chance 12, misc 155. Zero LineBreak (0x20) / PullAway (0x2f)
+  starts — corroborates §1.9 (vestigial in open play).
+- Chance takes fire only in mode 1 with `poss = 01`, L = 2 (OBS: 14/14).
+- Which run types fire and how often is dominated by non-Chance state churn
+  (50/54 = base/mark states); among attacking runs Chance is the most
+  frequent starter for the possessing team (12 vs 2/1 for Counter/Diagonal
+  on team 1; team 0 was mostly out of possession in the window).
+
+### 7.4 O8 — support target values: OPEN (address rule advanced, values unlogged)
+
+Statically since §1.8 (all OBS disasm this session):
+
+- `FUN_1405db800` callers pass `rcx = rsi+0x2d4`, `rdx = rdi` (team-AI),
+  `r8 = [rsi+0xba8]` (slot-side object P), `r9 = tracked` — at `0x14067b8ee`
+  and the whole `0x14067b640`-family (`mov rdx,[rsi+0xba8]` + `lea rcx,
+  [rsi+0x2d4]` repeated 8× in that function alone). So the support object
+  really is at shape+0x2d4 (the §1.8 rule, now with 8 call sites, not 2).
+- The enclosing `0x14067b640(rcx = team, rdx = shape, r8 = tracked)` is called
+  once per tick from `0x1405ecc2a` with `rcx = r15` (the shape register).
+- Zone rects confirmed support-relative (OBS `0x1405ea896`:
+  `[rsi+slot·0x14+0x4ec..0x4fc]`, `rsi` = param_1 = support, inside
+  `FUN_1405e9f50`); stored cells are `[support+0x48f4]` in open play but
+  `[P+0x3f04]` otherwise (OBS `0x1405ea3b3/0x1405ea3bb` branch on
+  `MI+0x116c == 1`); carrier/passer live at support `+0x718/+0x40c`
+  (OBS `FUN_1405db800` head writes via `FUN_140a627e0`).
+- `T+0xba8` is NOT the slot array (OBS live: reads back `0xff000000ff` =
+  pin-pattern u32 data, not a pointer) — rsi (shape) is a different object
+  from T. T-neighbourhood scans (T±0x2000/0x4000 snapshot in-tick) find no
+  X with `[X+0xba8]` pointing at live pitch points; full-heap back-pointer
+  scans for the fingerprinted P object (`+0x7e24` per-slot u32s) find no
+  referrer at `+0xba8` — P's content is stable for 20+ min (role tables,
+  not per-tick data), so the live P address set goes stale between scans.
+- Heap fingerprint scans for the support object itself
+  (`+0x718/+0x7b4/+0x40c < 22`, `+0x7b8`/`+0x7e4` near current frame, zones
+  sane) return only dead-pool objects (zones zero) — the live object's zones
+  were never observed nonzero in any scan window.
+
+Remaining step (exact): in open play, break the staleness by doing ONE
+atomic snapshot per tick — `T`, `P` (`+0x7e24` fingerprint), full-heap
+`[X+0xba8]==P` back-pointer, and `X+0x2d4` support read in the SAME MI-hit
+(`sup_wide.py` + `sup_back.py` do the pieces but across different ticks;
+merge them into one loop). If P still has no referrer, rsi is stack-passed
+per call (not heap-linked) — fall back to logging `rsi` at the
+`0x14067b8ee`-family call via a code breakpoint under a debugger (needs a
+writable-debug session, not read-only pread). The match has now ended, so
+this waits for the next live match. Ready samplers: `sup_wide.py`,
+`sup_back.py`, `sup_inv4.py` in the AttackLiveRE scratch dir.
+
+### 7.5 Status close-out (end of live window)
+
+Live items 1–3 of the ticket: O7 CLOSED (§7.1), Finishing byte CLOSED (§7.2),
+off-ball Chance dispatch CLOSED (§7.3). Support values OPEN (§7.4). The match
+ended after the window (MI null, menu). §5 items 1–3 are therefore superseded
+by §7.1–§7.4; §5 items 4–9 (static bodies) are untouched by this sweep.
