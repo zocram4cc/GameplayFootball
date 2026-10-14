@@ -395,3 +395,6 @@ ball rather than holding it through the pass ratings.
 - Merge seams fixed at merge: sim_stamina_test supplies the carrier constants. The first port commit had also
   committed the worktree's godot-cpp symlink over the submodule; it was restored on main, and check_pii now
   rejects it.
+
+
+> **Settled (CarrierUnitsRE, `pes-re-carrier-units.md`):** the shoot-zone 0.9 m mismatch is not a missing term. The live Rn values imply integer Finishing values (19.03 → 80; 21.00 → 99, capped); the earlier comparison paired roster stats with live ones. No port change.

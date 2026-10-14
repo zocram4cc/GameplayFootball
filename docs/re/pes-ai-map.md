@@ -29,7 +29,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 
 |System|Status|Evidence|GF counterpart (to replace)|
 |---|---|---|---|
-|Carrier think units (25 kinds), cadence, adoption|OBS; **partially ported**: cadence, shoot zone + just-shoot/box/header, openness ladder, PassForward tiers, plan order + Breakthrough/MiddleShot/Cross/Long rolls; 20 units, dribble cost search, shield branch, delay tables not; shoot-zone live sample off by 0.9 m (open)|`pes-re-carrier-ai.md` §1–5; `pes-re-carrier-port.md`|`pescarrier.cpp`; `elizacontroller.cpp` ball-carrier branches|
+|Carrier think units (25 kinds), cadence, adoption|**OBS, port-ready**: dribble 72×15 search incl. threat, shield/keep/turn chooser (sub-kinds 0/1 never used), OneTwo/SideChange/GoalFront/PassTarget, RespondRequest = type 7, full adopter walk rules 1–11, delay tables; KeepBall is not a unit; live adoption mix from 892 snapshots. **Ported**: cadence, shoot zone, openness, PassForward, plan roll; shoot-zone mismatch settled (live-vs-roster stat pairing, no missing term)|`pes-re-carrier-ai.md`; `pes-re-carrier-units.md`; `pes-re-carrier-port.md`|`pescarrier.cpp`; `elizacontroller.cpp` ball-carrier branches (`AI_GetBestDribbleMovement`)|
 |Perception layer (image units every unit reads)|OBS|`pes-re-carrier-ai.md` §4|`AIsupport/mentalimage*`|
 |Cross / early cross / through-ball units and choosers|OBS|`pes-re-attack-decisions.md` §2|`elizacontroller.cpp` pass selection|
 |Dribble sub-kind and shielding|OBS|`pes-re-attack-decisions.md` §2.7|`elizacontroller.cpp` dribble|
