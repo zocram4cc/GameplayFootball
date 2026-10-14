@@ -370,3 +370,6 @@ each restored green afterwards:
   (`c364d5acf39787b4`); the later edits (unused-field removal, the
   `targetPlayer`-null fallback) are behaviour-preserving but not re-measured, so
   a fresh determinism hash is worth taking before accepting.
+
+
+> **Errors found after merge (GoalkeeperAIRE, `pes-re-goalkeeper.md` §10.6):** the carry branch is inverted (PES: min(x + 4, box line − 1 m)); the sideways correction is 2 m, not 2× the goal-area half-width; the bearing arguments are swapped (the 4 m step goes toward the chosen team-mate, killing this report's hypothesis #7); the final clamp |z| ≤ F7 − 1 is missing; and `AfterCatchMove` gives the keeper's walk-to point while holding the ball, not the pass target. A correction port is queued.

@@ -155,11 +155,13 @@ while `MI+0x11a0 ≤ ⌊2·fps + 0.5⌋` it always continues, after that only wh
 fore-check is a 2–5 s post-turnover window** for Frontline-Pressure teams. Effect (OBS reader scan of the running
 flag `T+0xb709`): read by the DELAY/PRESS writer `FUN_140536fc0` and the PASS_COURSE_CUT lane builder `FUN_1406350c0`
 (their branches not reduced). Live: 2 starts, 0.02 s and 0.15 s after losing the ball; the first ran 272 frames
-(5.04 s) and stopped on the 5 s limit. **Interaction with instruction 0xd (TacticsRE, live):** 0xd arms 0–3 frames
-after a loss and stays on 0.7–5.7 s (8 episodes), so a fore-check / TransitionChase can only start in the 1–3 frames
-before it arms or after it clears. The two ForeCheckPress starts here (1 and 8 frames after the loss) and the
-TransitionChase start (15 frames) fit the "before it arms / short episode" case only if 0xd was not armed for that
-team at those moments — not cross-checked (the 0xd slot table `MA+0x25cf8` was not in this capture). Open item.
+(5.04 s) and stopped on the 5 s limit. **Interaction with instruction 0xd (TacticsRE live, its label: gegenpress):**
+0xd arms on 8 of 9 in-play losses (never on losses during stoppages), 0–3 frames after the loss, for 0.7–5.7 s
+(team 0: 23991–24105, 31904–32043, 35257–35297; team 1: 23729–23865, 28475–28586, 31350–31673, 34995–35043,
+35765–36007). The veto sits only in the start tests: ForeCheckPress started at 35256, **one frame before** 0xd armed at
+35257, and kept running through the 0xd episode to its 5 s limit (OBS both captures). The 39783/39790 starts are
+outside TacticsRE's capture (23050–36477); INF(med) a loss that did not arm 0xd. So in practice a Frontline team's
+fore-check / TransitionChase either wins the race on the loss frame or starts after the 0xd episode ends.
 
 ### 2.3 Regroup: `SubConceptRetreatBlockCreate` (id 0x25) and `SubConceptForeCheckLineDown` (id 0x22) (OBS code + live)
 Running flags are `T+0xb6e8 + id` (one byte per concept). Their only effect found: the shape pass `FUN_140687fb0`
