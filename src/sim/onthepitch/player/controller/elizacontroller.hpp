@@ -53,7 +53,17 @@ public:
 
 protected:
   void GetOnTheBallCommands(std::vector<PlayerCommand>& commandQueue, Vector3& rawInputDirection,
-                            float& rawInputVelocity);
+                            float& rawInputVelocityFloat);
+
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md):
+  // the plan the carrier is running and the frame stamps the think cadence
+  // keeps. The plan is the running plan of report 4.4, re-chosen in the
+  // priority order when its own end condition holds; the stamps are PES logic
+  // frames, converted from this engine's ticks the way pesballphysics.hpp
+  // converts the ball's per-tick factors.
+  int carrierPlan = 0;        // pes::CarrierPlan
+  int carrierPlanStamp = 0;   // the frame the plan was chosen
+  int carrierBusyStamp = 0;   // the last frame inside a committed action
 
   void _AddPass(std::vector<PlayerCommand>& commandQueue, Player* target, e_FunctionType passType);
   void _AddPanicPass(std::vector<PlayerCommand>& commandQueue,

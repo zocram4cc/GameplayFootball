@@ -41,6 +41,18 @@
 #include "strategies/strategy.hpp"
 #include "onthepitch/goalcelebration.hpp"
 #include "onthepitch/goalsequence.hpp"
+#include "onthepitch/pescarrier.hpp"
+
+namespace {
+
+// PES's angle fold (0x140481b00, report 4): wrap at 360, fold at 180.
+inline float WrapDeg(float a) {
+  while (a > 180.0f) a -= 360.0f;
+  while (a < -180.0f) a += 360.0f;
+  return a;
+}
+
+}  // namespace
 
 ElizaController::ElizaController(Match* match) : PlayerController(match) {
   lastDesiredDirection = Vector3(0);
@@ -1107,6 +1119,9 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
 void ElizaController::Reset() {
   lastDesiredDirection = Vector3(0);
   lastDesiredVelocity = 0;
+  carrierPlan = 0;
+  carrierPlanStamp = 0;
+  carrierBusyStamp = 0;
 }
 
 void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQueue,
@@ -1129,243 +1144,6 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
 
   std::vector<PlayerImage> opponentPlayerImages;
   _mentalImage->GetTeamPlayerImages(abs(team->GetID() - 1), -1, opponentPlayerImages);
-
-  // DECIDE WHAT TO DO
-  // One width a body actually blocks: the lane counter the shot trigger and
-  // the aim function both price per post. Shared by trigger and runner read.
-  constexpr float kShotLaneHalfWidth_m = 2.0f;
-
-  float longPossessionFactor =
-      std::pow(NormalizedClamp(CastPlayer()->GetPossessionDuration_ms(), 0, 5000), 2.0f);
-
-  // first selection
-  float forwardSpaceWeight = 0.4f;
-  float spaceWeight = PlayingStyles::GetSpaceRatingWeight(style, 0.3f);
-  float forwardWeight = 2.0f + AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role) * 6.0f;
-
-  float totalWeight1 = forwardSpaceWeight + spaceWeight + forwardWeight;
-  // In the final third the gate relaxes: an incisive ball that only slightly
-  // improves the position is still worth playing, which is where chances come
-  // from.
-  const float finalThirdBias =
-      NormalizedClamp(CastPlayer()->GetPosition().coords[0] * -team->GetSide(), pitchHalfW * 0.2f,
-                      pitchHalfW * 0.75f);
-  float tacticalImprovementThreshold =
-      0.06f * (1.0f - finalThirdBias * 0.7f) *
-      (1.0f - AI_GetMindSet(CastPlayer()
-                                ->GetDynamicFormationEntry()
-                                .role));  // only go on with pass selection if recipient has this
-                                          // much tactical advantage over current player
-
-  // second selection
-  float tacticalDiffWeight =
-      1.0f + std::pow(AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role), 2.0f) * 10.0f;
-  float passWeight = 1.0f;
-  // The bar a pass must clear to be worth attempting at all. It scales down with
-  // mindset so attackers try things defenders would not - but unfloored it
-  // reached zero for the most advanced roles, which let a forward play a ball
-  // with essentially no chance of arriving purely because the target stood
-  // further upfield. Tactical advantage outweighs the odds by up to eleven to one
-  // in the rating below, so without a floor here nothing else stops him.
-  float passMinimum = 0.2f * (1.0f - AI_GetMindSet(CastPlayer()->GetDynamicFormationEntry().role)) -
-                      longPossessionFactor * 0.1f;
-  passMinimum = std::max(passMinimum, 0.12f);
-
-  float totalWeight2 = tacticalDiffWeight + passWeight;
-
-  // name says it all
-  float passThreshold = 0.1f - longPossessionFactor * 0.05f;
-  // The match has decided nothing is happening: the ball has lain at rest,
-  // untouched, long past the point where holding it is football. Take it off
-  // him. Both bars go, and the fallback below guarantees a target is chosen even
-  // when every candidate rates poorly - a bad pass is a football match moving,
-  // standing still is not.
-  const bool mustRelease = match->ShouldReleaseBall();
-  if (mustRelease) {
-    passThreshold = 0.0f;
-    passMinimum = 0.0f;
-  }
-
-  // self rating
-  const TacticalPlayerSituation& sit = CastPlayer()->GetTacticalSituation();
-  float tacticalRating = sit.forwardSpaceRating * forwardSpaceWeight +
-                         sit.spaceRating * spaceWeight + sit.forwardRating * forwardWeight;
-
-  tacticalRating /= totalWeight1;
-
-  // collect pass target candidates
-  std::vector<Player*> mates;
-  team->GetActivePlayers(mates);
-
-  struct MateRating {
-    Player* player;
-    float tacticalRating;
-    float tacticalDiffRating;
-    float passRating;
-    float supportRating;
-    float proximityRating;
-    e_FunctionType passType;
-  };
-
-  float bestTotalRating = 0.0f;
-  MateRating bestMateRating;
-  TacticalPlayerSituation bestMateSit;
-  bestMateRating.player = 0;
-  bestMateRating.passRating = 0.0f;
-  bestMateRating.passType = e_FunctionType_ShortPass;
-  for (unsigned int i = 0; i < mates.size(); i++) {
-    if (mates.at(i) != CastPlayer()) {
-      const TacticalPlayerSituation& mateSit = mates.at(i)->GetTacticalSituation();
-
-      float mateTacticalRating = mateSit.forwardSpaceRating * forwardSpaceWeight +
-                                 mateSit.spaceRating * spaceWeight +
-                                 mateSit.forwardRating * forwardWeight;
-
-      mateTacticalRating /= totalWeight1;
-      if (mates.at(i)->GetFormationEntry().role == e_PlayerRole_GK)
-        mateTacticalRating *= 0.7f;  // don't like playing back to goalie
-
-      MateRating mateRating;
-      mateRating.player = mates.at(i);
-      mateRating.tacticalRating = mateTacticalRating;
-
-      // A teammate on an attacking run is the chance being created: he is a
-      // pass candidate regardless of the usual improvement gate, and his run
-      // makes the ball forward into space rather than sideways to feet.
-      Player* runner = team->GetController()->GetAttackingRunPlayer();
-      const bool isActiveRunner =
-          mates.at(i) == runner &&
-          team->GetController()->GetEndApplyAttackingRun_ms() > match->GetActualTime_ms();
-
-      const bool progressiveCandidate =
-          isActiveRunner || mateTacticalRating > tacticalRating + tacticalImprovementThreshold;
-      const bool supportCandidate =
-          AITactics::ShouldConsiderSupportPass(tacticalRating, sit.spaceRating, mateTacticalRating,
-                                               mateSit.spaceRating, longPossessionFactor);
-
-      if (progressiveCandidate || supportCandidate) {
-        float tacticalDiffRating = mateRating.tacticalRating - tacticalRating;
-
-        mateRating.tacticalDiffRating = std::max(tacticalDiffRating, 0.0f);
-        mateRating.supportRating =
-            supportCandidate ? AITactics::GetSupportPassBonus(sit.spaceRating, mateSit.spaceRating,
-                                                              longPossessionFactor)
-                             : 0.0f;
-        float passingOddsShort =
-            _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages) *
-            PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_ShortPass);
-        if (TeamPhilosophy::PrefersShortPassing(philosophy))
-          passingOddsShort *= 1.2f;
-        passingOddsShort = std::min(passingOddsShort, 1.0f);
-        float passingOddsLong = std::min(
-            _GetPassingOdds(mates.at(i), e_FunctionType_LongPass, opponentPlayerImages) *
-                PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_LongPass),
-            1.0f);
-        float passingOddsHigh = std::min(
-            _GetPassingOdds(mates.at(i), e_FunctionType_HighPass, opponentPlayerImages) *
-                PlayingStyles::GetPassTypeBias(style, comStyles, e_FunctionType_HighPass),
-            1.0f);
-        if (passingOddsShort >= passingOddsLong && passingOddsShort >= passingOddsHigh) {
-          mateRating.passRating = passingOddsShort;
-          mateRating.passType = e_FunctionType_ShortPass;
-        } else if (passingOddsLong >= passingOddsHigh) {
-          mateRating.passRating = passingOddsLong;
-          mateRating.passType = e_FunctionType_LongPass;
-        } else {
-          mateRating.passRating = passingOddsHigh;
-          mateRating.passType = e_FunctionType_HighPass;
-        }
-
-        // What the pass is worth is what it gains multiplied by the chance it
-        // arrives, not the two added together. Added, tacticalDiffWeight - which
-        // reaches eleven for a forward against passWeight's one - swamped the odds
-        // entirely, so the ball went to the most advanced man however hopeless the
-        // ball to him was. Multiplying makes a pass that cannot arrive worth
-        // nothing no matter how good the position it would reach.
-        float upside = mateRating.tacticalDiffRating * tacticalDiffWeight +
-                       mateRating.supportRating;
-        // What a pass is worth is the chance it creates, so EVERY candidate is
-        // priced by the shot he would have: his position through the same xG
-        // model that scores the stats, bodies in his lane to goal, finished by
-        // what he is. Pricing only the designated runner - which is what this
-        // did - left every other ball rated on tactical advance alone, so the
-        // ball went to the most advanced man rather than the best placed one,
-        // and the box was never the destination: measured over a full match,
-        // not one shot in it was taken from inside 18 m.
-        const Vector3 matePos = mates.at(i)->GetPosition();
-        const Vector3 mateLaneEnd((pitchHalfW + 1.0f) * -team->GetSide(), matePos.coords[1], 0);
-        const Vector3 mateLane = mateLaneEnd - matePos;
-        int mateLaneBodies = 0;
-        if (mateLane.GetLength() >= 0.1f) {
-          const Vector3 mateLaneDir = mateLane.GetNormalized(Vector3(0));
-          for (const PlayerImage& opp : opponentPlayerImages) {
-            const Vector3 toOpp = opp.position.Get2D() - matePos;
-            const float along = toOpp.GetDotProduct(mateLaneDir);
-            if (along <= 0.0f || along > mateLane.GetLength())
-              continue;
-            if ((toOpp - mateLaneDir * along).GetLength() < kShotLaneHalfWidth_m)
-              mateLaneBodies++;
-          }
-        }
-        const MatchAnalytics::ShotContext mateCtx =
-            MatchAnalytics::MakeShotContext(matePos, team->GetSide(), mateLaneBodies, false, 0.5f);
-        // A reference chance prices the stock floor: better shooting positions
-        // raise it, worse ones lower it, around the old level.
-        constexpr float kRunnerReferenceXg = 0.1f;
-        const float mateChanceShare =
-            MatchAnalytics::CalculateExpectedGoals(mateCtx) / kRunnerReferenceXg;
-        const float mateFinisher =
-            PlayerSkills::GetFinisherChanceMultiplier(mates.at(i)->GetPlayerData()->GetSkills(),
-                                                      mates.at(i)->GetStat("technical_shot")) *
-            PlayingStyles::GetFinisherDemand(mates.at(i)->GetPlayerData()->GetPlayingStyle(),
-                                             mates.at(i)->GetPlayerData()->GetComStyles());
-        // What the chance itself is worth to an ordinary ball, against the
-        // tactical advance it competes with (whose weight reaches eleven for a
-        // forward). Deliberately below the through-ball specialist's own bonus
-        // below: everyone looks for the man in the box, he finds him.
-        constexpr float kReceiverChanceWeight = 0.6f;
-        upside += kReceiverChanceWeight * mateChanceShare * mateFinisher;
-        // The ball into the runner's path is the pass that MAKES the chance,
-        // and the through-ball specialist looks for it first.
-        if (isActiveRunner) {
-          upside += PlayerSkills::GetThroughBallBonus(skills, PlayerSkills::kThroughBallBaseUpside) *
-                    mateChanceShare * PlayingStyles::GetCreatorVision(style, comStyles) *
-                    mateFinisher;
-        }
-
-        // The plain odds term survives alongside it so a safe ball with no
-        // tactical gain is still worth playing.
-        float totalRating =
-            upside * mateRating.passRating + mateRating.passRating * passWeight - oneTouchIsHard;
-
-        totalRating /= totalWeight2;
-
-        if (totalRating > bestTotalRating && totalRating > passThreshold &&
-            mateRating.passRating > passMinimum) {
-          bestTotalRating = totalRating;
-          bestMateRating = mateRating;
-          bestMateSit = mateSit;
-        }
-      }
-
-    }  // !self
-
-    // Forced off the ball and nothing rated above the bar: play it to the best
-    // man available rather than keep holding it.
-    if (mustRelease && bestMateRating.player == 0 && !mates.empty()) {
-      float bestOdds = -1.0f;
-      for (unsigned int i = 0; i < mates.size(); i++) {
-        if (mates.at(i) == CastPlayer()) continue;
-        const float odds =
-            _GetPassingOdds(mates.at(i), e_FunctionType_ShortPass, opponentPlayerImages);
-        if (odds > bestOdds) {
-          bestOdds = odds;
-          bestMateRating.player = mates.at(i);
-          bestMateRating.passType = e_FunctionType_ShortPass;
-        }
-      }
-    }
-  }
 
   // Panic under pressure: count opponents closing in and let temperament decide
   // whether the player loses his composure (proposal 3B).
@@ -1407,9 +1185,9 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
                                    .GetLength(),
                                2.0f, 16.0f);  // 8.0f, 32.0f);
     if (CastPlayer()->GetDynamicFormationEntry().role != e_PlayerRole_GK) {
-      if ((bestMateRating.player == 0 ||
-           bestMateRating.passRating < panicProneness * goalCloseness) &&
-          possessionAmount < 0.9f + panicProneness * goalCloseness * 0.8f) {
+      // No pass found and no sight of goal is what a panic pass is for; the
+      // possessionAmount term still keeps the carrier in control.
+      if (possessionAmount < 0.9f + panicProneness * goalCloseness * 0.8f) {
         _AddPanicPass(commandQueue, opponentPlayerImages);
         if (Verbose())
           printf("panic! %f, %f, %f\n", possessionAmount, panicProneness, goalCloseness);
@@ -1421,140 +1199,287 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     }
   }
 
-  // shoot? Decided before the pass: a player in a shooting position with a
-  // sight of goal has a go instead of recycling the ball sideways - the old
-  // order queued the pass first, so shots only ever happened when no pass
-  // candidate existed, which is why whole matches passed with two shots.
+
+  // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md):
+  // the plan the carrier runs, then the shoot decision, then the pass
+  // decision, in the order PES adopts them. The cadence is report 2's: the
+  // default dribble/keep answer is recomputed every tick, and a full think
+  // only runs once the carrier has been free of a committed action for longer
+  // than five PES frames (0.1 @0x142588200 + 0.5 @0x142565600 on the 54 Hz
+  // game speed, converted to this engine's 10 ms tick).
+  const pes::CarrierConstants& carrier = match->GetPesCarrierConstants();
+  const int attackDir = -team->GetSide();
+  const float attackSign = static_cast<float>(attackDir);
+  const Vector3 carrierPos = CastPlayer()->GetPosition();
+  const Vector3 ballPos = match->GetBall()->GetPositionBuffer();
+  const Vector3 ballMove = match->GetBall()->GetMovement();
+  const float ballHeight = ballPos.coords[2];
+  const float degreesPerRadian = 180.0f / 3.14159265358979f;
+  // PES's logic frame: one GF tick is 0.54 of a PES tick, so the carrier's
+  // clock (its possession, in GF ticks) converts by the same factor
+  // pesballphysics.hpp uses for the ball's per-tick factors.
+  const int nowFrame =
+      pes::PesFramesToGfTicks(static_cast<int>(CastPlayer()->GetPossessionDuration_ms() / Match::kTick_ms));
+  // GF's committed-action equivalent of PES's `state+8 bit0` reset: inside a
+  // pass, shot, trap or ball-control action the carrier is committed, so the
+  // think timer restarts every such tick (0x140a6e320's property bits 0x30000).
+  const e_FunctionType currentAction = CastPlayer()->GetCurrentFunctionType();
+  if (currentAction == e_FunctionType_ShortPass || currentAction == e_FunctionType_LongPass ||
+      currentAction == e_FunctionType_HighPass || currentAction == e_FunctionType_Shot ||
+      currentAction == e_FunctionType_Trap || currentAction == e_FunctionType_BallControl) {
+    carrierBusyStamp = nowFrame;
+  }
+  const bool rethink = pes::RethinkDue(nowFrame, carrierBusyStamp);
   bool shooting = false;
+  bool passAnswered = false;
 
-  {
-    float goalDist = NormalizedClamp(
-        (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - player->GetPosition()).GetLength(), 0.0f,
-        32.0f);
-    // How far out a player will have a go: the classic 16 metre window was so
-    // tight that whole matches passed with three or four shots. Poachers, long
-    // rangers and the team's appetite for a shot widen it further (proposal: an
-    // offensive, flowing game).
-    // Appetite is the player (his skills and his style) TIMES how the side is
-    // set up: a team told to contain takes fewer of the same chances than one
-    // chasing the game. Read through GetLiveTacticReal so philosophy, the
-    // user's own modifiers, touchline instructions and reactive mentality all
-    // reach the trigger - a manager chasing a goal shoots more by the same
-    // path a pack's tactical export does.
-    const TeamAIController* teamAI = team->GetController();
-    const float offensiveness =
-        teamAI ? GameplayTuning::GetTacticalOffensiveness(
-                     teamAI->GetLiveTacticReal("position_offense_depth_factor", 0.5f),
-                     teamAI->GetLiveTacticReal("dribble_offensiveness", 0.5f),
-                     teamAI->GetLiveTacticReal("counter_attack", 0.5f))
-               : 0.5f;
-    const float shotAppetite = PlayerSkills::GetShotAppetite(skills) *
-                               PlayingStyles::GetShotAppetite(style, comStyles) *
-                               GameplayTuning::GetTacticalShotAppetite(offensiveness) *
-                               GameplayTuning::GetShotAppetite(*GetConfiguration());
-    const float shootingRange = GameplayTuning::GetShootingRange(*GetConfiguration()) +
-                                PlayerSkills::GetShootingRangeBonus(skills) +
-                                PlayingStyles::GetShootingRangeBonus(style, comStyles);
-    float idealShotPosFactor =
-        1.0f - NormalizedClamp(
-                   (Vector3((pitchHalfW - 7.0f) * -team->GetSide(), 0, 0) - player->GetPosition())
-                       .GetLength(),
-                   0.0f, shootingRange);
-    idealShotPosFactor = curve(idealShotPosFactor, 1.0f);
-    if (idealShotPosFactor > 0.1f) {
-      float odds1 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), -3.6f, 0),
-                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-      float odds2 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 0.0f, 0),
-                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-      float odds3 = _GetPassingOdds(Vector3((pitchHalfW + 1.0f) * -team->GetSide(), 3.6f, 0),
-                                    e_FunctionType_Shot, opponentPlayerImages, 3.0f);
-      float odds = odds2;
-      float y = 0.0f;
-      if (odds1 > odds) {
-        odds = odds1;
-        y = -1.7f;
-      }
-      if (odds3 > odds) {
-        odds = odds3;
-        y = 1.7f;
-      }
+  // The shoot zone, over the ball in PES's frame (this engine's y is PES's z).
+  const float finishing = CastPlayer()->GetStat("technical_shot");
+  const bool longShotSkill = PlayerSkills::Has(skills, PlayerSkills::Skill::LongRangeShooting) ||
+                             PlayerSkills::Has(skills, PlayerSkills::Skill::KnuckleShot) ||
+                             PlayerSkills::Has(skills, PlayerSkills::Skill::DippingShots);
+  const pes::ShootZone zone = pes::ComputeShootZone(ballPos.coords[0], ballPos.coords[1],
+                                                   attackSign, finishing, longShotSkill,
+                                                   pitchHalfW, goalHalfWidth, carrier);
 
-      odds = std::pow(odds, 0.5f);
-      if (Verbose())
-        printf("ODDS: %f\n", odds);
-
-      // A hungrier player needs less of an opening to pull the trigger.
-      // The opening is priced with the same xG model that scores the stats:
-      // bodies in the lane discount it the way the census counts them (2 m
-      // corridor, same geometry the aim function prices per post), and
-      // appetite lowers the bar instead of widening the range. Below the bar
-      // he keeps the ball and the caller falls through to the pass - the
-      // direction function then aims at the keeper's chest, the lowest-value
-      // ball on the pitch.
-      int defendersInShotLane = 0;
-      {
-        const Vector3 laneOrigin =
-            CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.12f;
-        const Vector3 laneEnd((pitchHalfW + 1.0f) * -team->GetSide(), y, 0);
-        const Vector3 lane = laneEnd - laneOrigin;
-        const float laneLen = lane.GetLength();
-        if (laneLen >= 0.1f) {
-          const Vector3 laneDir = lane.GetNormalized(Vector3(0));
-          for (const PlayerImage& opp : opponentPlayerImages) {
-            const Vector3 toOpp = opp.position.Get2D() - laneOrigin;
-            const float along = toOpp.GetDotProduct(laneDir);
-            if (along <= 0.0f || along > laneLen) continue;
-            if ((toOpp - laneDir * along).GetLength() < kShotLaneHalfWidth_m)
-              defendersInShotLane++;
-          }
-        }
-      }
-      const MatchAnalytics::ShotContext triggerCtx = MatchAnalytics::MakeShotContext(
-          CastPlayer()->GetPosition(), team->GetSide(), defendersInShotLane, false, 0.5f);
-      const float triggerXg = MatchAnalytics::CalculateExpectedGoals(triggerCtx);
-      const float triggerBar =
-          GameplayTuning::GetMinShotXg(*GetConfiguration()) / std::max(0.5f, shotAppetite);
-      if ((odds + random(0.0f, 0.5f)) * shotAppetite > 0.5f && triggerXg >= triggerBar) {
-        PlayerCommand command;
-        command.desiredFunctionType = e_FunctionType_Shot;
-        command.useDesiredMovement = false;
-        command.useDesiredLookAt = false;
-        command.desiredVelocityFloat =
-            rawInputVelocityFloat;  // this is so we can use sprint/dribble buttons as shot
-                                    // modifiers
-        // Close-range shots are placed, not sprayed: the aim error grows with
-        // distance, so a striker eight metres out hits the spot he picked.
-        const float aimNoise = (1.0f - player->GetStat("technical_shot")) *
-                               NormalizedClamp(goalDist * 32.0f, 8.0f, 26.0f);
-        command.touchInfo.desiredDirection =
-            (Vector3((pitchHalfW + 1.0f) * -team->GetSide(), y + random(-aimNoise, aimNoise), 0) -
-             (CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.2f))
-                .GetNormalized(Vector3(-team->GetSide(), 0, 0));
-        command.touchInfo.desiredDirection =
-            (command.touchInfo.desiredDirection * 0.7f +
-             -CastPlayer()->GetDirectionVec() *
-                 (CastPlayer()->GetFloatVelocity() / sprintVelocity) * 0.3f)
-                .GetNormalized();
-        command.touchInfo.autoDirectionBias = 1.0f;
-        command.touchInfo.desiredPower =
-            random(0.7f * (0.6f + goalDist * 0.4f), 1.0f * (0.6f + goalDist * 0.4f));
-        // Chip Shot Control: a keeper who has come off his line gets lifted over.
-        Player* keeper = match->GetTeam(abs(team->GetID() - 1))->GetGoalie();
-        if (keeper &&
-            PlayerSkills::WantsChip(
-                skills, (keeper->GetPosition() - CastPlayer()->GetPosition()).GetLength(),
-                std::fabs(pitchHalfW * -team->GetSide() - keeper->GetPosition().coords[0]))) {
-          command.touchInfo.desiredDirection.coords[2] = PlayerSkills::chipLoft;
-          command.touchInfo.desiredPower *= 0.6f;
-        }
-        commandQueue.push_back(command);
-        shooting = true;
+  if (rethink) {
+    // The plan (report 4.4): rolled whenever its own conditions hold, in the
+    // priority order 9, 8, 2, 3, 1, 4, 5, 6, else Basic. Each plan's roll is
+    // its own throw-away generator seeded with int(carrierClock * K) on slot
+    // 2 and drawn once through RangeRaw(2, 100) (0x14211a89..0x14211aac2).
+    struct PlanChoice {
+      int plan;
+      float seedK;
+      float probability;
+      bool eligible;
+    };
+    const float statBreakthrough = CastPlayer()->GetStat("technical_dribble");
+    const bool skillBreakthrough = PlayerSkills::Has(skills, PlayerSkills::Skill::DoubleTouch);
+    const bool comBreakthrough =
+        PlayingStyles::Has(comStyles, PlayingStyles::Com::SpeedingBullet) ||
+        PlayingStyles::Has(comStyles, PlayingStyles::Com::MazingRun) ||
+        PlayingStyles::Has(comStyles, PlayingStyles::Com::IncisiveRun);
+    const float carrierX = attackSign * carrierPos.coords[0];
+    const PlanChoice choices[] = {
+        {pes::kPlanBreakthrough, carrier.breakthroughSeedK,
+         pes::PlanStartProbability(pes::kPlanBreakthrough, carrier, statBreakthrough,
+                                   skillBreakthrough, comBreakthrough, false),
+         // Breakthrough needs the mid band or a spot past the penalty-area
+         // line (report 4.4's start conditions).
+         pes::IsMid(zone) || carrierX > SetPieceLaws::kAreaDepth},
+        {pes::kPlanMiddleShot, carrier.middleShotSeedK,
+         pes::PlanStartProbability(pes::kPlanMiddleShot, carrier, finishing, longShotSkill, false,
+                                   false),
+         // MiddleShot needs the mid band (or the far sector past the line).
+         pes::IsMid(zone)},
+        {pes::kPlanCross, carrier.crossSeedK,
+         pes::PlanStartProbability(
+             pes::kPlanCross, carrier, finishing,
+             PlayerSkills::Has(skills, PlayerSkills::Skill::PinpointCrossing),
+             PlayingStyles::Has(comStyles, PlayingStyles::Com::EarlyCross), false),
+         // Cross needs the carrier inside the cross zone: the close band.
+         pes::IsClose(zone)},
+        {pes::kPlanLong, carrier.longSeedK,
+         pes::PlanStartProbability(pes::kPlanLong, carrier,
+                                   CastPlayer()->GetStat("technical_highpass"), false, false,
+                                   false),
+         true},
+    };
+    int chosen = pes::kPlanBasic;
+    for (const PlanChoice& c : choices) {
+      if (!c.eligible || c.probability <= 0.0f) continue;
+      if (pes::PlanRoll(nowFrame, c.seedK, match->GetPesRngConstants(), carrier) <=
+          static_cast<int>(c.probability)) {
+        chosen = c.plan;
+        break;
       }
     }
+    carrierPlan = chosen;
+    carrierPlanStamp = nowFrame;
   }
 
-  if (!shooting && bestMateRating.player != 0) {
-    _AddPass(commandQueue, bestMateRating.player, bestMateRating.passType);
+  // The shoot decision (report 5.1): the shoot zone, the "just shoot" rule
+  // and the box/header rule.
+  const Vector3 facing = CastPlayer()->GetDirectionVec();
+  const float facingAngle = std::atan2(-facing.coords[1], -facing.coords[0]) * degreesPerRadian;
+  const float aimVsFacing =
+      std::fabs(WrapDeg((attackSign < 0.0f ? 180.0f : 0.0f) - facingAngle));
+  Player* keeper = match->GetTeam(abs(team->GetID() - 1))->GetGoalie();
+  pes::ShootInput shoot;
+  shoot.zone = zone;
+  shoot.ballHeight_m = ballHeight;
+  shoot.height_m = CastPlayer()->GetStat("physical_height") * 100.0f;
+  shoot.owned = CastPlayer()->GetPossessionDuration_ms() > 0;
+  shoot.planId = carrierPlan;
+  shoot.aimVsFacing_deg = aimVsFacing;
+  shoot.keeperPresent = keeper != nullptr;
+  shoot.keeperSettled =
+      keeper != nullptr && keeper->GetCurrentFunctionType() == e_FunctionType_Movement;
+  if (pes::ShootSubKind(shoot, carrier) == 1) {
+    PlayerCommand command;
+    command.desiredFunctionType = e_FunctionType_Shot;
+    command.useDesiredMovement = false;
+    command.useDesiredLookAt = false;
+    command.desiredVelocityFloat = rawInputVelocityFloat;
+    // The aim point: the goal centre, biased to the post the ball's sector
+    // favours. ponytail: PES's aim function 0x14211f090 is not decoded (report
+    // 9.1), so this engine's own aim stands in for it.
+    const float y = zone.sector == pes::kSectorSideLow
+                        ? -goalHalfWidth
+                        : (zone.sector == pes::kSectorSideHigh ? goalHalfWidth : 0.0f);
+    command.touchInfo.desiredDirection =
+        (Vector3((pitchHalfW + 1.0f) * -team->GetSide(), y, 0) -
+         (carrierPos + CastPlayer()->GetMovement() * 0.2f))
+            .GetNormalized(Vector3(-team->GetSide(), 0, 0));
+    command.touchInfo.desiredDirection =
+        (command.touchInfo.desiredDirection * 0.7f +
+         -CastPlayer()->GetDirectionVec() *
+             (CastPlayer()->GetFloatVelocity() / sprintVelocity) * 0.3f)
+            .GetNormalized();
+    command.touchInfo.autoDirectionBias = 1.0f;
+    const float goalDist = NormalizedClamp(
+        (Vector3(pitchHalfW * -team->GetSide(), 0, 0) - carrierPos).GetLength(), 0.0f, 32.0f);
+    command.touchInfo.desiredPower =
+        random(0.7f * (0.6f + goalDist * 0.4f), 1.0f * (0.6f + goalDist * 0.4f));
+    commandQueue.push_back(command);
+    shooting = true;
+  }
+
+  // The pass decision (report 4.3 + 5.2): enumerate the mates, open each
+  // lane with the interception formula, and let PassForward pick the tier.
+  // Enumerated on every think, gated on the same re-think clock as the plan,
+  // so a carrier who has just collected the ball does not re-roll his passing
+  // every tick.
+  if (!shooting && rethink) {
+    // The carrier's pressure class from the nearest opponent: the report 4.2
+    // radii are 4 m in the own third and 2 m in the attacking third, which is
+    // what a nearest-opponent distance gives when the class ladder is 0
+    // (inside r1), 1 (r2), 2 (r3), 3 (free).
+    const float pressureRadius = attackDir * carrierPos.coords[0] < -pitchHalfW / 3.0f ? 4.0f : 2.0f;
+    const float nearestOpp = [&] {
+      float best = 1000.0f;
+      for (const PlayerImage& opp : opponentPlayerImages) {
+        const float d = (opp.position - carrierPos).GetLength();
+        if (d < best) best = d;
+      }
+      return best;
+    }();
+    int carrierPressureClass = 3;
+    if (nearestOpp < pressureRadius) carrierPressureClass = 0;
+    else if (nearestOpp < 2.3f * pressureRadius) carrierPressureClass = 1;
+    else if (nearestOpp < 3.0f * pressureRadius) carrierPressureClass = 2;
+
+    // The lanes: 11 frames ahead, the owned-ball value of report 4.3's `F`.
+    constexpr float kLaneFrames = 11.0f;
+    const float laneTime_s = kLaneFrames * Match::kTick_ms * 0.001f / pes::kGfTicksPerPesTick;
+    const float lowPass = CastPlayer()->GetStat("technical_shortpass");
+    const float carrierSpeed_kmh = CastPlayer()->GetMovement().GetLength() * 3.6f;
+
+    pes::PassForwardInput in;
+    in.owned = true;
+    in.close = pes::IsClose(zone);
+    in.carrierPressureClass = carrierPressureClass;
+    in.attackSign = attackSign;
+    in.planAngle_deg = 0.0f;  // ponytail: the plan's desired angle (+0xC0) is
+                              // not decoded (report 9.3); the attack direction
+                              // stands in for it.
+    in.imageState = 0;  // ponytail: the image state (+0x32B0+8) has no GF
+                        // counterpart; state 0 is the neutral one.
+    in.halfLen_m = pitchHalfW;
+    in.goalHalfWidth_m = goalHalfWidth;
+    in.goalAreaHalfWidth_m = SetPieceLaws::kAreaHalfWidth;
+    in.mateLaneOk = true;  // ponytail: 0x140a4c8e0 is not decoded.
+
+    std::vector<pes::PassCandidate> candidates;
+    std::vector<Player*> mates;
+    team->GetActivePlayers(mates);
+    for (Player* mate : mates) {
+      if (mate == CastPlayer()) continue;
+      if (mate->GetFormationEntry().role == e_PlayerRole_GK) continue;  // status 5
+      // The mate's target is his position a lane-time ahead (record A, "to
+      // feet"); record B ("into space") is not ported.
+      const Vector3 matePos = mate->GetPosition();
+      const Vector3 matePred = matePos + mate->GetMovement() * laneTime_s;
+      const Vector3 target3(matePred.coords[0], matePred.coords[1], ballPos.coords[2]);
+      const float dist = (target3 - ballPos).GetLength();
+      if (dist > in.halfLen_m) continue;  // off the pitch
+      const float dx = target3.coords[0] - ballPos.coords[0];
+      const float dz = target3.coords[1] - ballPos.coords[1];
+      // The pass's forward angle is its bearing against the attack direction,
+      // and its turn angle the same bearing against the carrier's facing
+      // (report 4.3's +0xE4 and +0xE8). The absolute bearing stays local: the
+      // openness loop measures each opponent against the pass direction from
+      // it.
+      const float bearing = std::atan2(dz, dx) * degreesPerRadian;
+      const Vector3 facing = CastPlayer()->GetDirectionVec();
+      const float facingAngle = std::atan2(-facing.coords[1], -facing.coords[0]) * degreesPerRadian;
+      const float fwdAngle = WrapDeg(bearing - (attackSign < 0.0f ? 180.0f : 0.0f));
+      const float turnAngle = WrapDeg(bearing - facingAngle);
+
+      // The openness: the minimum over the opponents in front of the pass.
+      float bestMargin = 150.0f;
+      for (const PlayerImage& opp : opponentPlayerImages) {
+        const float oppDx = opp.position.coords[0] - ballPos.coords[0];
+        const float oppDz = opp.position.coords[1] - ballPos.coords[1];
+        if (std::fabs(WrapDeg(std::atan2(oppDz, oppDx) * degreesPerRadian - bearing)) >
+            carrier.openInFront_deg)
+          continue;
+        // The opponent's predicted point along the lane.
+        const Vector3 oppPred =
+            opp.position + opp.movement * laneTime_s;
+        const float odx = oppPred.coords[0] - ballPos.coords[0];
+        const float odz = oppPred.coords[1] - ballPos.coords[1];
+        const float laneLen = std::sqrt(dx * dx + dz * dz);
+        const float along = (odx * dx + odz * dz) / std::max(laneLen, 0.001f);
+        const float perp = std::fabs(odx * dz - odz * dx) / std::max(laneLen, 0.001f);
+        bestMargin = std::min(bestMargin,
+                              pes::LaneOpennessMargin(dx, dz, along, perp, 1.0f, 0.0f, carrier));
+      }
+      const float difficulty = pes::ReceiverDifficulty(
+          ballMove.GetLength(), dist, 0.0f,
+          PlayerSkills::Has(skills, PlayerSkills::Skill::OneTouchPass), carrierSpeed_kmh, false,
+          turnAngle, ballHeight, lowPass, carrier);
+
+      pes::PassCandidate c;
+      c.index = mate->GetID();
+      c.record.target = {target3.coords[0], target3.coords[1]};
+      c.record.passAngle_deg = fwdAngle;
+      c.record.fwdAngle_deg = fwdAngle;
+      c.record.turnAngle_deg = turnAngle;
+      c.record.ballToTarget_m = dist;
+      c.record.difficulty = difficulty;
+      c.record.openness = bestMargin;
+      c.record.opennessClass = pes::OpennessClassFromMargin(bestMargin, carrier);
+      c.record.dirClass = pes::DirectionClass(fwdAngle, carrier);
+      c.record.turnClass = pes::TurnClass(turnAngle, carrier);
+      // The mate's own pressure: the nearest opponent to him decides both the
+      // short-forward gate and the lofted tier's keeper-distance stand-in.
+      float mateNearest = 1000.0f;
+      for (const PlayerImage& opp : opponentPlayerImages) {
+        const float d = (opp.position - matePos).GetLength();
+        if (d < mateNearest) mateNearest = d;
+      }
+      c.nearestOppToMate_m = mateNearest;
+      c.pressureClass = mateNearest < 2.0f ? 0 : (mateNearest < 4.6f ? 1 : (mateNearest < 6.0f ? 2 : 3));
+      // ponytail: the pressure entry's distance to opponent slot 0 (INF the
+      // keeper) is the nearest opponent's distance; the lofted tier compares a
+      // linear distance against a squared one, which never passes on a full
+      // pitch, so this stands in for it.
+      c.pressureDistOpp0_m = mateNearest * mateNearest;
+      candidates.push_back(c);
+    }
+
+    const pes::PassAnswer answer = pes::PassForward(candidates, {}, in, carrier);
+    if (answer.index >= 0) {
+      Player* target = match->GetPlayer(answer.index);
+      if (target) {
+        e_FunctionType passType = e_FunctionType_ShortPass;
+        if (answer.kind == pes::kPassLong) passType = e_FunctionType_HighPass;
+        else if (answer.kind == pes::kPassThrough) passType = e_FunctionType_ShortPass;
+        _AddPass(commandQueue, target, passType);
+        passAnswered = true;
+      }
+    }
   }
 
   e_Velocity enumVelocity = e_Velocity_Idle;

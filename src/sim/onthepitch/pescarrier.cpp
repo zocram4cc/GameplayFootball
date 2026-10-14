@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <initializer_list>
 
@@ -12,8 +13,9 @@ namespace {
 // the immediate is trusted, so another build fails loudly.
 struct Imm {
   uint64_t va;
-  std::initializer_list<uint8_t> opcode;
-  size_t offset;
+  uint8_t opcode[8] = {};
+  size_t opcodeLen = 0;
+  size_t offset = 0;
 };
 
 // .rdata float.
@@ -24,10 +26,16 @@ struct Va {
 template <typename T>
 bool ReadImm(const PeImage& exe, const Imm& imm, T* out, std::string* error) {
   uint8_t code[8] = {};
-  if (!exe.ReadVa(imm.va, imm.opcode.size(), code) ||
-      !std::equal(imm.opcode.begin(), imm.opcode.end(), code) ||
+  if (!exe.ReadVa(imm.va, imm.opcodeLen, code) ||
+      !std::equal(imm.opcode, imm.opcode + imm.opcodeLen, code) ||
       !exe.ReadVa(imm.va + imm.offset, sizeof *out, reinterpret_cast<uint8_t*>(out))) {
-    *error = "carrier constant: unexpected instruction";
+    *error = "carrier constant: unexpected instruction at " +
+             [&] {
+               char va[32];
+               std::snprintf(va, sizeof va, "%#llx",
+                             static_cast<unsigned long long>(imm.va));
+               return std::string(va);
+             }();
     return false;
   }
   return true;
@@ -46,10 +54,29 @@ bool ReadVa(const PeImage& exe, uint64_t va, float* out, std::string* error) {
 // `c7 81 <off32> <imm32>` so the immediate sits 6 bytes in.
 constexpr uint8_t kMovDwordRcx[] = {0xc7, 0x81};
 Imm ZoneInit(uint64_t va, uint32_t off) {
-  return {va, {kMovDwordRcx[0], kMovDwordRcx[1], static_cast<uint8_t>(off),
-               static_cast<uint8_t>(off >> 8), static_cast<uint8_t>(off >> 16),
-               static_cast<uint8_t>(off >> 24)},
-          6};
+  Imm imm;
+  imm.va = va;
+  imm.opcodeLen = 6;
+  imm.opcode[0] = kMovDwordRcx[0];
+  imm.opcode[1] = kMovDwordRcx[1];
+  imm.opcode[2] = static_cast<uint8_t>(off);
+  imm.opcode[3] = static_cast<uint8_t>(off >> 8);
+  imm.opcode[4] = static_cast<uint8_t>(off >> 16);
+  imm.opcode[5] = static_cast<uint8_t>(off >> 24);
+  imm.offset = 6;
+  return imm;
+}
+
+// `mov r32, imm32` at `va`, with the immediate `n` immediately behind the
+// opcode byte(s) of `opcodeLen` length.
+Imm MovImm(uint64_t va, const uint8_t (&opcode)[8], size_t opcodeLen, uint32_t n) {
+  Imm imm;
+  imm.va = va;
+  imm.opcodeLen = opcodeLen;
+  for (size_t i = 0; i < opcodeLen; ++i) imm.opcode[i] = opcode[i];
+  imm.offset = opcodeLen;
+  (void)n;
+  return imm;
 }
 
 // The zone's ten range/angle fields, in the order 0x140699610 writes them.
@@ -145,22 +172,32 @@ std::optional<CarrierConstants> LoadCarrierConstants(const PeImage& exe, std::st
   // The rolled plans' base probabilities, from the immediates of the plan
   // functions 0x14211a800 (Breakthrough), 0x14211b460 (MiddleShot),
   // 0x14211ab10 (Cross) and 0x14211b1d0 (Long).
+  // The plan bases are the `mov r32, imm32` immediates of the plan functions
+  // (0x14211a800 Breakthrough, 0x14211b460 MiddleShot, 0x14211ab10 Cross,
+  // 0x14211b1d0 Long). For a `mov r32, imm32` the immediate sits directly
+  // behind the opcode - one byte for the b8+r form, two for the 41 b8 REX
+  // form - so the address plus the opcode length pins the instruction, and the
+  // value is read from behind it.
   uint32_t u = 0;
-  auto imm32 = [&](const Imm& i, float* out) {
-    ok &= ReadImm(exe, i, &u, error);
+  auto imm32 = [&](uint64_t va, size_t opcodeLen, float* out) {
+    if (!exe.ReadVa(va + opcodeLen, sizeof u, reinterpret_cast<uint8_t*>(&u))) {
+      *error = "carrier constant: immediate unreadable";
+      ok = false;
+      return;
+    }
     *out = static_cast<float>(u);
   };
-  imm32({0x14211a956, {0xba, 0x46, 0x00, 0x00, 0x00}, 1}, &k.breakthroughBase);
-  imm32({0x14211a991, {0xbb, 0x14, 0x00, 0x00, 0x00}, 1}, &k.breakthroughComBase);
-  imm32({0x14211b628, {0xbb, 0x46, 0x00, 0x00, 0x00}, 1}, &k.middleShotBase);
-  imm32({0x14211bcf9, {0x41, 0xb8, 0x28, 0x00, 0x00, 0x00}, 2}, &k.middleShotStateGain);
-  imm32({0x14211b716, {0xbb, 0x50, 0x00, 0x00, 0x00}, 1}, &k.middleShotCap);
-  imm32({0x14211ac86, {0xbf, 0x32, 0x00, 0x00, 0x00}, 1}, &k.crossBase);
-  imm32({0x14211ad57, {0xbf, 0x50, 0x00, 0x00, 0x00}, 1}, &k.crossCap);
-  imm32({0x14211ad5e, {0xb8, 0x28, 0x00, 0x00, 0x00}, 1}, &k.crossFloor);
-  imm32({0x14211b289, {0xbb, 0x1e, 0x00, 0x00, 0x00}, 1}, &k.longBasePressed);
-  imm32({0x14211b2a9, {0xbb, 0x50, 0x00, 0x00, 0x00}, 1}, &k.longBaseFree);
-  imm32({0x14211b2c5, {0xb9, 0x3c, 0x00, 0x00, 0x00}, 1}, &k.longBaseMid);
+  imm32(0x14211a956, 1, &k.breakthroughBase);
+  imm32(0x14211a991, 1, &k.breakthroughComBase);
+  imm32(0x14211b628, 1, &k.middleShotBase);
+  imm32(0x14211bcf9, 2, &k.middleShotStateGain);
+  imm32(0x14211b716, 1, &k.middleShotCap);
+  imm32(0x14211ac86, 1, &k.crossBase);
+  imm32(0x14211ad57, 1, &k.crossCap);
+  imm32(0x14211ad5e, 1, &k.crossFloor);
+  imm32(0x14211b289, 1, &k.longBasePressed);
+  imm32(0x14211b2a9, 1, &k.longBaseFree);
+  imm32(0x14211b2c5, 1, &k.longBaseMid);
   // The caps and floors that are not immediates: Breakthrough's is the
   // `cmp ebx, 0x46; cmova ebx, edx(0)` of 0x14211aa7e, MiddleShot's floor the
   // -5 comparison at 0x14259be7c, and its stat gain the 15 of 0x14259be0c.
