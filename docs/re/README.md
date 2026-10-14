@@ -61,6 +61,7 @@ address given.
 |`pes-re-cutscenes.md`|demo tables, the `.fdc` cut format, selection, replays|
 |`pes-re-camera-live.md`|the live in-play camera: Dynamic Wide mode 5, slider values and offsets, camera distance (52.7 m) and vFOV (23.68°) for a known target, the PosY model check|
 |`pes-re-stamina-drain.md`|kick-off tank from the Stamina ability (x1.1/1.2/1.3/1.4/95+5, 400/second + kind/condition terms), the per-tick drain (speed classes, +19/-5/-9), the breath reserve (+5/-3, capped at max(pct,20)*1920/100), the half-time +9000/+3600/+7200, the A5 fatigue effect (0.8+0.2*clamp) and the injury roll; live-verified 97.4% of single-tick steps|
+|`pes-re-dash-reserve.md`|the dash reserve (breath) tank: one writer (+5/+3 refill, −3/−4 while dashing above 22 km/h), refills through every dead ball; caps top speed by up to 20 Speed points below 20 %; lists GF's ungated refill and its dead BreathPenalty|
 |`pes-re-stamina-live.md`|live match structures (match context, roster and player blocks) and the stamina field search, partial; superseded by pes-re-stamina-drain for the drain/recovery formulas|
 |`pes-re-injury-fatigue.md`|stamina tiers, the fatigue and injury clip families, the injury state machine and the constant archive layout that carries the values|
 |`pes-re-setpiece-referee.md`|set-piece state machines and constants, the placement tables, the officials, and where every value lives|
