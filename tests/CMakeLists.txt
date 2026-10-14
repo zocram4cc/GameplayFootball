@@ -19,6 +19,10 @@ add_executable(pes_formats_test pes_formats_test.cpp)
 target_link_libraries(pes_formats_test PRIVATE pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_formats_test)
 
+add_executable(pes_animetable_test pes_animetable_test.cpp)
+target_link_libraries(pes_animetable_test PRIVATE pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_animetable_test)
+
 add_executable(pes_anim_test pes_anim_test.cpp)
 target_link_libraries(pes_anim_test PRIVATE pesrig GTest::gtest_main)
 gtest_discover_tests(pes_anim_test)
