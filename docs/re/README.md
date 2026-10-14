@@ -76,8 +76,9 @@ address given.
 |`pes-re-ball-contact.md`|ball ground contact, the tangential and spin response, and rolling, every constant mapped to a named ball.o field|
 |`pes-re-ball-constants.md`|where PES ball physics constants live: ball.o in constant_match.bin, the named field map, and the runtime-written spin scale|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
-|`pes-re-leftovers.md`|small closures: the match-ball query (dead code, no static root), late-card window = 16 game-minutes, `MI+0x158c == 1` = foul without a card, `injury.o` fields (`constant::Injury`, id 0x0b; reader open), officials' ids are setup reads (pick rule open)|
-|`pes-re-leftovers-2.md`|follow-ups: injury.o's full field table (4 severities, 6 symptoms), why the getter xref cannot find its reader, injury vftable/factory; officials' pick-rule search narrowed (generic holder pattern), still open|
+|`pes-re-leftovers.md`|small closures: the match-ball query (dead code, no static root), late-card window = 16 game-minutes, `MI+0x158c == 1` = foul without a card, `injury.o` fields (`constant::Injury`, id 0x0b; reader open), officials' ids are setup reads (pick rule closed by pes-re-officials-pick)|
+|`pes-re-leftovers-2.md`|follow-ups: injury.o's full field table (4 severities, 6 symptoms), why the getter xref cannot find its reader, injury vftable/factory; officials' pick-rule search narrowed (generic holder pattern), closed by pes-re-officials-pick|
+|`pes-re-officials-pick.md`|the officials pick: a uniform `std::shuffle` of a pool chosen by mode and competition (25 ids in exhibition, 35 in competition, a region subset with one), first 5 ids taken, drawn from a session-wide clock-seeded xorshift128 — not the match RNG; the full writer chain from the picker to the ENV record|
 |`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
 |`pes-re-fox2-stadium.md`|stadium assembly: Stadium.bin, the scene/pitch/goal/net/corner-flag placements, goal and corner-flag transforms|
