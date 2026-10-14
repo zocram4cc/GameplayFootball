@@ -146,6 +146,11 @@ public:
   // PES's PRESS state, the block-radius input (defender decisions): while the
   // team's ForeCheckPress runs, its MATCH_UP man presses.
   bool IsPressing(const Player* player) const;
+  // PES's presser (T+0xa548 slot 0). The writer FUN_140536fc0 is not ported,
+  // so while the ForeCheckPress concept runs the team's pressure man is its
+  // designated possession player - the same stand-in IsPressing uses.
+  // ponytail: replace with the role table once the writer lands.
+  Player* GetTeamPressurePlayer();
   // PES's strategy word T+0x134 (docs/re/pes-re-match-management.md 1).
   int GetStrategy() const { return strategy.strategy; }
   // Every team tick, dead balls included: the decider moves the strategy while

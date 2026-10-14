@@ -1837,6 +1837,11 @@ bool TeamAIController::IsPressing(const Player* player) const {
   return conceptRunning[pes::kConceptForeCheckPress] && player == team->GetDesignatedTeamPossessionPlayer();
 }
 
+Player* TeamAIController::GetTeamPressurePlayer() {
+  return conceptRunning[pes::kConceptForeCheckPress] ? team->GetDesignatedTeamPossessionPlayer()
+                                                     : nullptr;
+}
+
 bool TeamAIController::StartConcept(int id) {
   const pes::TeamConceptConstants& k = match->GetPesTeamConceptConstants();
   std::vector<Player*> men;

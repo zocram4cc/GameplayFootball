@@ -130,6 +130,8 @@ struct DefenderDecisionConstants {
 };
 
 
+bool ReadConstantPlayerObject(const PesVfs& vfs, const char* name, std::vector<uint8_t>* rec,
+                              std::string* error);
 std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     const PeImage& exe, const PesVfs& vfs, std::string* error);
 

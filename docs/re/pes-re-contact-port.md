@@ -102,3 +102,120 @@ Decoded predicates for entries 4–7: `0x140a070e0` BALL_DODGE, `0x140a07dd0` GO
 
 ## Also in pass 3
 - Veto 0's contact flags are decoded: record `+0x628+part` for parts 1..6 are the per-leg-part contact flags (the injury roll reads the same bytes, stamina-drain §6). `+0x62a`/`+0x62d` = both shins in the contact. Ported as `selfBothShinsTouching`, computed from GF's shin AABBs.
+
+---
+
+# Pass 4 (DODGE / tackle sub-kind clips) — scope found, not started in code
+
+Rebased onto main: clean, no new code commits.
+
+## What the pipeline actually is in GodotFootball
+- The GF sim loads only GF-native `.anim` files from `assets/gf_anims` (293 files). `AnimCollection::Load` still has a hook for imported clips under `<family>/pes/`, plus `Humanoid::PreferImportedAnims`, but nothing in this repo produces them.
+- `gani_to_anim.py` and `reconvert_installed.py` live in the old `~/Code/GameplayFootball` repo, not here. GodotFootball reads ganis only on the Godot side (`pes/clips`, `rig/ClipSampler`, `gdext/pes_animation`). The sim already holds the rig (`MatchSetup::rig`).
+- So "import through the pipeline" means: port `gani_to_anim.convert` into the sim (ClipSampler → GF node keyframes, Fox→GF basis `(x,−z,y)`, gameplay position scale), load the result in memory, and synthesise GF metadata (type / special vars, mirrored copy, `_PrepareAnim`). Clips would be built at match start from the user's install, so nothing is committed.
+- Playback: GF has no "play this exact clip" command, but the `special` type with `specialvar1/2` is a forced-clip path that already exists.
+
+## DODGE, decoded so far
+- Dodge action vtable `0x1425df820` (RTTI `.?AVDodge@action@anime@match@@`, COL `0x142c9c840`).
+- Slot 13 `FUN_14073bc70` dispatches on the dodge kind (`cmd+0x1094`, set by the four predicates):
+  - 1 ball → `FUN_14073bd80`;
+  - 2 goal net → `FUN_14073c5d0`;
+  - 3 post → `FUN_14073c9c0`;
+  - 4 → accepted without a selector;
+  - else, human → `FUN_14073c520`.
+- The name table at `0x14349af78…` lists the clips: `dodge_human_*` ×21 (jumplow, jumphigh, jumpslide, slide_rapid_up/down, decelerate, stop, block_back), `dodge_ball_{0,2}_0_{crouch,slide_low/mid/high}` ×8, `dodge_net_*` ×5, `dodge_post_*` ×4.
+- Predicates: `FUN_140a072d0`, `FUN_140a07e40` and `FUN_140a084d0` are decoded (scratch `dodge.c` / `dodge2.c`). `FUN_140a07bf0`, `FUN_140a07570` and `FUN_140a07880` are not yet.
+- The selectors go on into `FUN_140736ce0` and `FUN_1407358e0`, and the motion-group lookup goes through `FUN_1406abb30` / `FUN_1406abdd0` (group+angle → clip). That group machinery is its own RE area: anim-select §4.2 only describes it, it does not decode it.
+- Correction kept from pass 3: `FUN_140ca1a50` = `mov al,1; ret`, so all four dodges are live for the CPU.
+
+## Tackle sub-kind, decoded so far
+- Writer `FUN_14078b550` (via `FUN_140791870` ← slot 13 `FUN_1407902c0`).
+- It needs the readiness mask `FUN_14078e5a0` (decoded, scratch `tk5.c`), the per-kind tables of `FUN_14078fe90`, and the solver `FUN_14078a640` (not decoded).
+- The table ids are not motion-table indices (read as motions they come out as kick clips), so they index the tackle selector's own group table, which is not decoded.
+- Making the sub-kind real also means GF's standing tackle plays PES tackle clips, which amounts to porting the Tackle action and replacing GF's interfere clips.
+
+## Staged plan (each stage commit + gate + smoke)
+- **A.** Runtime gani→GF importer in the sim (C++ port of `convert`), the clip list carried in `MatchSetup`, and a forced-special playback path. Plus a unit test on a synthetic gani and an install test.
+- **B.** DODGE: decode the three remaining predicate helpers, the four selectors and the group→clip lookup; port entries 4–7 into `ChooseReaction` (after receive, before block); the PES action becomes DODGE while the clip plays.
+- **C.** Tackle: decode `FUN_14078a640` and the group table, port the readiness mask and the sub-kind pick, and play PES tackle clips.
+
+## Stage A — done (`d78d064`, on main `212a7cf`)
+- `src/sim/onthepitch/pesclips.{hpp,cpp}`:
+  - `LoadPesClips(exe, vfs)` takes every motion in the exe's motion table (`pes::MotionNames`) whose name starts with a family prefix (`dodge_`, 67 clips) and pulls the gani from the install (`FindBodyClip`).
+  - `PesClipAnimText` is a C++ port of `gani_to_anim.convert`: `rig::ClipSampler` at `PES_FRAME_S` and the gameplay scale, the verbatim `(x,y,z)→(x,−z,y)` map on the 20 body joints, `body` = RIG_ROOT∘mover, and a `player` line for the translation from the first frame, written at 10 ms per frame.
+- `Animation::LoadText` loads the .anim text from memory. The file loader shares the same `LoadLines`.
+- `AnimCollection::AddPesClips` adds each clip as `special` with specialvar1 = family (100 = dodge) and specialvar2 = motion number, authored and mirrored, through `_PrepareAnim`. GF's existing special query is the forced-clip path.
+- `MatchSetup::pesClips` is required (Match throws without it) and is wired in `gfsim_run`, `pes_match_constants` and `pes_library`/`gf_match`. Nothing PES-derived is committed.
+- Tests `pes_clips_test` (3):
+  - a synthetic clip checks the basis map, the 10 ms resampling and the player line; the basis-map mutation fails it;
+  - the install test converts every dodge clip and checks its length;
+  - the install test checks that a special query (family, motion) returns exactly that clip and its mirror.
+- Gate green, `SameSeedPlaysTheSameMatch` OK. Smoke seeds 7/11 are bit-identical to main (`56643e20…`, `fc6fccc6…`): the clips are loaded, but nothing selects them until stage B.
+
+## Stage B — decode status
+- **Every dodge predicate ends in the same call.** All of them (`FUN_140a072d0`, `07570`, `07880`, `07e40`, `084d0`, `089e0`) end in `FUN_1406b4580(anime, 0x15, ball, params{kind})` → Dodge slot 13 `FUN_14073bc70`. The decision is the selector's clip fit, so B = predicates + selectors + clip fit.
+- **Decoded:** `FUN_140a07bf0` (ball-dodge eligibility: the player is not in play/receive classes; ball-owner rules; `5/48·fps` frames since the last event), `FUN_140a07570`, `FUN_140a07880`, and the ball selector head `FUN_14073bd80`.
+- **Still to decode:**
+  - the selector helpers `FUN_140736ce0` and `FUN_1407358e0`;
+  - the group→clip lookup `FUN_1406abdd0` / `FUN_1406abb30` (the motion-group selector tables);
+  - the net, post and human selectors `FUN_14073c5d0`, `c9c0`, `c520`.
+
+## Stage B — decode progress (run 2; rebased onto main, nothing committed)
+- **Clip choice uses the Animetable.** Dodge clip selection is a row/column lookup in `Animetable.bin` (animselect §2.3: 3045 rows × 18 angle columns, `motionNo+1` and a mirror bit; row labels at 0x1434997f0). `FUN_1406abdd0` tests whether a column is populated; `FUN_1406abb30` returns the motion.
+  - GodotFootball has **no Animetable parser yet**. It is needed by B and by C, so it is the next code item: `src/pes/animetable.{hpp,cpp}`, read from `common/anime/AnimeTable/bin/Animetable.bin` via the VFS, with row labels from the exe.
+- **Ball selector** (`FUN_1407358e0`, decoded; scratch `dsel3.c`):
+  - a row table on the stack: 0xbe5 default, a 3×5 grid from .rdata `0x1425e6650…0x1425e6678`, plus 0x306/0x30a;
+  - the grid index is a ball-height class from `FUN_1406e69f0` at two look-ahead times (`3/60` + offset and `6/60` s), and the side from the ball bearing (> 45°);
+  - column 9; the mirror is decided by `FUN_140735700` and the clip's hit-point positions (`FUN_1406e8690`).
+- **Look-ahead offset** `FUN_140736ce0`: `gs·12/60` frames when `FUN_140736d30` ∈ {0,1,2}.
+- **Dodge gate** `FUN_14073cbc0`: the current action must allow DODGE (actions 2–10, 0x14, 0x4f through the action's own slot 0x70; TACKLE only after `ap+0xae4`; 0x49/0x4a always).
+- **Human selector** `FUN_140735e10` (scratch `dsel4.c`):
+  - about 600 lines: row 0xbe5 / column 0x12 by default;
+  - kind from `FUN_14073a3d0`, row from `FUN_140739f90`, column/variant from `FUN_140735870`;
+  - **one per-player LCG draw** (`FUN_1406e6bf0(ap,1000)`, stream 2) picks the mirror side in the default case.
+- **Next to decode:** `FUN_140736d30`, `FUN_1406e69f0`, `FUN_140735700`, `FUN_1406e8690`, `FUN_14073a3d0`, `FUN_140739f90`, `FUN_140735870`; the net/post selectors `FUN_14073c5d0` / `FUN_14073c9c0`; and the Dodge action's playback (start/update slots 4/5/14) for the clip's root motion and cancel window.
+
+## Run 3
+- **Committed `c977358` `pes::Animetable`** (`src/pes/animetable.{hpp,cpp}`, test `tests/pes_animetable_test.cpp`, 4 tests):
+  - general: all rows × columns, motion number + mirror;
+  - every layout number is an opcode-checked exe immediate: rows `0x1406aa4df`, columns `0x1406aa53a`, motion mask `0x1406aa4e5`, mirror shift `0x1406aa50a`;
+  - the hard-coded patch cell `0x1406abb3a/43/49`;
+  - the column picker `FUN_1406de990`: split column `0x1406dea47`, default column `0x1406de9b1`, floats `0x14259d618/0x142598580/0x1425de6fc/0x1425a9668/0x14259858c`;
+  - row labels from 0x1434997f0.
+  - Mutation of the split column fails the column test.
+- **Dodge helpers decoded** (scratch `dh.c`):
+  - `FUN_140736d30`: speed class — 0 unless the movement is within 45° of the heading and speed ≥ 11 km/h (0x14259bdfc); 1, or 2 at ≥ 22 km/h (0x1425c48c0).
+  - `FUN_1406e69f0`: the ball-height band `FUN_140a6d380(height, body scale)`, i.e. contact-2 §3's 0.335…2.585 × scale bands.
+  - `FUN_140735700`: mirror side from the ball bearing. The relative angle is clamped to a per-speed-class window (class 0: `0x14259d674`..`0x14253ee30`, class 1: `0x1425aa1c8`..45, class 2: `0x1425cfa50`..22.5); the flag is "clamped by more than 0.1°".
+  - `FUN_1406e8690`: a clip's hit-data position × clamp(body scale, `0x1425ddf78`, `0x1425ddf80`).
+  - `FUN_14073a3d0`: the human-dodge **kind 1..8**, from the opponent's predicted position 3/60 s ahead, the contact record (part 7 = belly on both sides, overlap > `0x1425e6640` / `0x1425e6648`) and the opponent's action (0x50 → 3, 0x14 …). Partly read; it continues past the excerpt.
+- **Still to decode:** the rest of `FUN_14073a3d0`, `FUN_140739f90` (kind → row), `FUN_140735870` (kind → variant), the net/post selectors, and the Dodge playback slots 4/5/14.
+
+## Run 4 (decode only; rebased, nothing new to commit)
+- **`FUN_14073a3d0`, human-dodge kind (rest):**
+  - kinds 4/5: the opponent's contact direction and heading both off by more than 150° (0x14259be68), bearing < 45°, the opponent not the ball owner, distance² > 9.0; 5 when he is in FALL_DOWN before his frame `+0x22`;
+  - otherwise `FUN_14073aa20` (kinds from the opponent's action classes; scratch `dh2.c`, not yet read).
+- **`FUN_140739f90`, kind → Animetable row:**
+  - row table **`0x14344efb0`**: `int[8 kinds][3 speed classes]`; speed class 0 below 13.5 km/h, 1, 2 above 22;
+  - for the ball owner it steps down the speed classes until the row's column 9 is populated **and** the clip's hit window (from `FUN_1406b0250` / `b03d0` / `af8e0` / `e9050`) fits the ball;
+  - row 0x2f8 becomes 0x2f4 or 0x2f9 (frame parity), and 0x2ff becomes 0x302 when the player's AI action is 0x11; no row = 0xbe5.
+- **`FUN_140735870`, kind → column:** kinds 0–2 → 9, 3–5 → 5, 6 → 7, 7 → 8, else 11.
+- **New data dependency:** the row choice reads each clip's **HitData / Animation records** (Mbinfo: hit frame, contact position; animselect §2.1–2.2). GodotFootball has no Mbinfo reader, so `src/pes/mbinfo.{hpp,cpp}` (HitData + Animation.bin, from the install) comes before the B port. Stage C's tackle solver `FUN_14078a640` needs it too.
+- **Next, in order:**
+  1. the `pes::Mbinfo` reader (commit);
+  2. `FUN_14073aa20`, the net/post selectors and the Dodge playback slots 4/5/14;
+  3. the B port: the predicates, the four selectors over `pes::Animetable` + `pes::Mbinfo`, reaction entries 4–7, and the DODGE action through the stage-A special clips; commit, gate, smoke.
+
+## Close-out (run 5, owner's stop order)
+- **Committed and not yet on main:**
+  - `c977358` `pes::Animetable` (4 tests pass)
+  - `0effd48` `pes::Mbinfo` (Animation / HitData / CancelData readers; 3 tests pass, including the install test)
+- **Not run for these two commits:** the full gate and the 20-min smokes. Each commit's own test binary passes. They add pesfmt readers only and do not touch the sim.
+- **Done overall:**
+  - contact passes 1–3 (merged);
+  - stage A, the clip importer (merged);
+  - the Animetable and Mbinfo readers (above).
+- **Not done:**
+  - stage B (DODGE): decode is partial — the remaining items are listed under "Run 3" and "Run 4";
+  - stage C (tackle sub-kind / PES Tackle action): not started.
+- **Next step:** read `FUN_14073aa20` (decompiled in scratch `dh2.c`, not read), then the net/post selectors (`FUN_14073c5d0` / `c9c0`) and the Dodge playback slots (`0x140734a80`, `0x140734a30`, `0x14073b680`). Then port B as planned in "Run 4".
