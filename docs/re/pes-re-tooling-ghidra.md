@@ -137,6 +137,34 @@ curl -s 'http://127.0.0.1:8080/decompile_function?address=0x1419f1b00'
 curl -s 'http://127.0.0.1:8080/methods?limit=5'
 ```
 
+### Agent → Ghidra (MCP tool-calling pattern — what good agents actually do)
+
+Verified against a working agent's transcript (DefenderPort-3, 2026-10-14, while porting the
+defender decisions). This is the pattern RE and port agents should copy, and the one to check
+an agent against when its output looks thin.
+
+1. **Decompile by name, not by address, when a report names the function.** The mounted tool
+   `xd://mcp__ghidra_decompile_function` takes a symbol (`FUN_140a7b7a0`) and resolves it.
+   Addresses are only needed when a report has no name or the body start differs from the label.
+2. **Batch independent decompiles in one block.** Six calls issued together cost one round trip;
+   the same six issued one per turn cost six. Dependencies still serialise — read the output
+   before choosing the next function.
+3. **Cross-check any branch with the disassembly.** Ghidra's C rendering has inverted conditions
+   in this image (documented in `pes-re-defender-decisions.md` §12.2, where the previous agent
+   shipped a flipped from-behind test). Confirming a `Jcc` on the raw instructions is cheap and
+   is the only reliable way to get branch sense right.
+4. **Read the port's own code before trusting any report.** The report said one thing, the code
+   said another; the agent read both and decided from the code.
+5. **Instrument the port to see which gate fires.** Add temporary probes around the candidate
+   gate, run the smoke, read the counts. A hypothesis grounded in observed gate decisions is
+   worth several inferred ones.
+6. **Scratch files go on the mounted scratch partition, not `/tmp`** — `/tmp` is a RAM filesystem
+   and is not the agreed location (see AGENTS.md: `gf-<name>-scratch`).
+
+Misuse to watch for: decompiling one function per turn; reading disassembly for a function whose
+C is unambiguous; writing "Ghidra says X" as evidence without the OBS tag; and treating a
+decompile as final without a disassembly check when the result decides a branch.
+
 ### Agent → Ghidra (headless path, preferred per your instruction)
 
 ```bash

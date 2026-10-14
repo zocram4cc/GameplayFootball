@@ -17,7 +17,7 @@ address given.
 |`pes-ai-map.md`|**the AI index**: every PES team and player AI system, its RE status, the report that holds it and the GF code it replaces; the documentation standard a port needs|
 |`pes-re-protection.md`|the protection (Denuvo: moved plain code, ~99 mutated bodies, ~183 VM-entered Denuvo routines); live code equals disk; the full-image Ghidra project PESLive and the resolve/dec/annot/emu recipe; keeper deflect, referee set-piece positions and hidden constants unblocked|
 |`pes-re-fox-registry.md`|there is no Fox method registry: the dispatch records are MSVC RTTI and every vtable is static (13,816 resolved); the action dispatch chain, the corner-kick state machine, the sequencer holds, and why post/net response is not virtual|
-|`pes-re-tooling-ghidra.md`|the RE toolchain: GhidraMCP 1.4 on Ghidra 12.1.2 (two fixes), the headless postScript path, and how agents call both|
+|`pes-re-tooling-ghidra.md`|the RE toolchain: GhidraMCP 1.4 on Ghidra 12.1.2 (two fixes), the headless postScript path, and how agents call both (batching by symbol, disassembly cross-checks on branches, instrumenting the port before deciding a fix)|
 |`pes-kit-assembly.md`|kit configs (`UniformParameter.bin`, realUni), part selection, kit texture binding, the 4cc composition, live draw lists, the EDIT save cipher and appearance records, boots/gloves, skin tone|
 |`pes-re-shaders.md`|shader packs, the deferred G-buffer and lighting model, per-shader texture roles and formulas, a Godot recipe|
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
