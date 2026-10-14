@@ -641,3 +641,6 @@ Decompile of `FUN_141eb9a30` on the fully analysed image, plus reads of the tabl
 - the `AnimConvertBoneSpacePlugin` L→R mapping (mirror versus a separate bone list);
 - meaning of Sequenceinfo bits +0x66/+0x69 and the 5-bit +0x6a field;
 - keys below 216 other than the fallback set (e.g. referee clips).
+
+
+> **Correction (AnimSelectRE, `pes-re-anim-select.md`):** locomotion runs on a 24-state machine over `Animetable.bin` rows, not on `Freemove.bin`.

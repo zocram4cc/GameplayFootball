@@ -509,3 +509,6 @@ Killed this session, recorded so nobody repeats them:
 
 No player or team names; no PES-derived bytes, name lists or number tables beyond the
 individual constants quoted as evidence at their addresses.
+
+
+> **Superseded in part (AnimSelectRE, `pes-re-anim-select.md`):** the Speed attribute sets a per-player rate cap (≈25.3 km/h at 40, 29.8 at 99), and Acceleration a linear rate ramp (`FUN_1406eab00`); the "no acceleration variable" claim is killed. Locomotion picks clips from `Animetable.bin` rows, not `Freemove.bin`.

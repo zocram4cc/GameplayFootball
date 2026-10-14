@@ -43,7 +43,7 @@ Status words: **OBS** = decoded and observed (decompile and/or live); **partial*
 |Advantage attack-chance test (`FUN_14050f7e0`)|partial (structure OBS, three tables INF)|`pes-re-duels-fouls.md` §3.1|`pesjudge.cpp` distance-only shortcut|
 |Receiving the ball (first touch, turn, let it run)|partial: 95 live first touches (directional, median 58° off the body); interception touch and re-touch lockouts need per-frame capture|`pes-re-transitions.md`|`ElizaController::_TrapCommand`, `humanoid.cpp` trap path, receiver lead|
 |Aerial duels and headers|open|—|`humanoid.cpp` jump/header|
-|Animation selection and blending (which clip per action)|partial (anim-blend, locomotion: clip-driven speed)|`pes-re-anim-blend.md`, `pes-re-locomotion.md`, `pes-re-sim-motion-mapping.md`|`animcollection.cpp`, `humanoid.cpp` SelectAnim|
+|Animation selection and blending (which clip per action)|**OBS + live** for locomotion: 24-state MOVESTEP machine over `Animetable.bin` rows (not Freemove), 45° turn buckets, one parametric run blend (11-knot table), playback-speed formulas, crossfade lengths, kick root alignment; Speed sets the rate cap (25.3–29.8 km/h), Acceleration a linear ramp; open-play kick foot alignment and some style writers open|`pes-re-anim-select.md` (corrects animselect, sim-motion-mapping, locomotion); `pes-re-anim-blend.md`|`humanoid.cpp` `SelectAnim`, `AnimCollection::CrudeSelection`, `pes_locomotion.cpp`, `GetMaxVelocity`/`StretchSprintTo`, `clip_pose.hpp`/`pes_animation.cpp`|
 |Player-vs-player contact (shoulder, balance, falls)|open (only the foul judgement is ported)|`pes-re-duels-fouls.md` §2|`match.cpp` collision, `humanoid.cpp`|
 |RNG slot per system|partial (generator ported; slots by convention)|`pes-re-rng.md` §3|`pesrandom.cpp` callers|
 

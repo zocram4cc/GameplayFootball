@@ -22,6 +22,7 @@ address given.
 |`pes-re-shaders.md`|shader packs, the deferred G-buffer and lighting model, per-shader texture roles and formulas, a Godot recipe|
 |`pes-re-ftex.md`|`.ftex` arrays, cubes, volumes, chunk rules, a census of all 65,339 textures|
 |`pes-re-anim-blend.md`|animation playback: linear crossfades with caller-set durations, the two-layer stack (base, officials-only upper), mask types 4-6, the startTime formula (no RNG), playbackSpeed per clip family, root motion with the AdjustTrans correction|
+|`pes-re-anim-select.md`|how PES picks and blends player clips: the 24-state locomotion machine over Animetable.bin, turn buckets, the run blend, playback-speed formulas, Speed→top speed and Acceleration→ramp, crossfades, kick root alignment; live-checked on 25 bodies|
 |`pes-re-locomotion.md`|player movement: no speed formula - displacement is the clip root track times AnimMovePlugin scale and playbackSpeed; speed classes, member root speeds, turn buckets, the plugin scale clamp; playbackSpeed driver and the Speed coefficient open|
 |`pes-re-animselect.md`|motion ids, 30 fps clips, 1/16384 root scale, situation tables, locomotion graph, blends, the hand rig|
 |`pes-re-physique-helpers.md`|the physique helpers: slider decode and normalisers, the per-bone scale tables, the global scale and how it reaches the skeleton and animation|
