@@ -10,6 +10,7 @@
 
 
 #include "onthepitch/pespress.hpp"
+#include "onthepitch/teamAIcontroller.hpp"
 
 namespace {
 
@@ -322,6 +323,16 @@ TEST(PressExcludedMan, NoEligibleManGivesTheSentinel) {
   std::array<int, 11> flag{};
   flag.fill(1);
   EXPECT_EQ(pes::PressExcludedMan(1, on, flag), pes::kPressNoMan);
+}
+
+TEST(PressTeamState, SetActionStoresRoleAndStampsRing) {
+  pes::TeamPressState s{};
+  s.SetAction(3, 0x34, 100);
+  EXPECT_EQ(s.role[3], 0x34);
+  EXPECT_EQ(s.actionRing[3].slots[1].id, 0x34);
+  s.SetAction(3, 0x34, 200);  // same action as head: role rewritten, stamp unchanged
+  EXPECT_EQ(s.role[3], 0x34);
+  EXPECT_EQ(s.actionRing[3].slots[1].last, 100u);
 }
 
 TEST(PressStampRing, SameIdAsHeadIsANoOp) {

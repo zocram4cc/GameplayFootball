@@ -33,6 +33,7 @@
 #include "pesdefshape.hpp"
 #include "teaminstructions.hpp"
 #include "pesteamconcepts.hpp"
+#include "pespress.hpp"
 
 class Match;
 class Team;
@@ -52,8 +53,18 @@ namespace pes {
 struct TeamPressState {
   // Role-table entry per man (PES T+0xa2a0): kPresserRole marks the presser.
   int role[22] = {};
+  // Per-man recent-action stamps (PES T+0xa2cc + k*0x34, FUN_140a40200).
+  std::array<PressStampRing, 22> actionRing{};
   // The four press slots, as man indices; -1 when empty (PES T+0xa548).
   int pressSlot[4] = {-1, -1, -1, -1};
+
+  // FUN_140a42940 (action part): store the man's action and stamp it at time `t`.
+  // ponytail: the 0x40-byte per-man record it also clears (PES T+0x28c) has no GF
+  // reader yet; add it when the writer's tail reads that record.
+  void SetAction(int g, int action, uint32_t t) {
+    role[g] = action;
+    PressStampPush(actionRing[g], action, t);
+  }
 };
 }  // namespace pes
 
