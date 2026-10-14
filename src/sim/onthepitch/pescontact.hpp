@@ -210,6 +210,7 @@ struct ContactInput {
   float oppJostleContact_s = 0.0f;    // human(opp)+0x2f in seconds
   bool selfOwnsBall = false;
   bool selfIsKeeper = false;  // FUN_140a638c0: the team's role-0 player
+  bool selfBothShinsTouching = false;  // record flags +0x62a / +0x62d (LEG_L, LEG_R)
   bool oppSlidingFlag = false;  // human+8 bit 15: the slide's 6/60 s impact window
 };
 

@@ -343,6 +343,9 @@ TEST(PesContactVeto, V0ArmsAndLegBrushes) {
   EXPECT_EQ(pes::ContactLevel(k, in), 0);
   in.oppAction = ContactAction::kKeeperHandle;
   EXPECT_GT(pes::ContactLevel(k, in), 0);
+  in.oppAction = ContactAction::kOther;
+  in.selfBothShinsTouching = true;  // both shins in the contact: no veto
+  EXPECT_GT(pes::ContactLevel(k, in), 0);
   // A body hit on a keeper running about is spared; an outfielder is not.
   in = Falling();
   in.selfAction = ContactAction::kLoco;

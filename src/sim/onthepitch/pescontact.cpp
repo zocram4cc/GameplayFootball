@@ -325,10 +325,11 @@ bool ForcedFall(const ContactConstants& k, const ContactInput& in, int tableLeve
 // 0x14348cab0[0..8], in order; true = level 0.
 bool Veto0(const ContactConstants& k, const ContactInput& in) {
   if (IsArmBone(in.selfBone)) return true;
-  // ponytail: PES clears this veto when the record's per-group deep-overlap
-  // flags +0x62a/+0x62d (depth >= 0.23 m, FUN_1408c31c0) are both set; GF's
-  // AABB contact has no part groups, so they read unset.
-  if (IsArmBone(in.oppBone)) return in.oppAction != ContactAction::kKeeperHandle;
+  // The partner's arm: vetoed unless both of the self's shins are in the
+  // contact too (record flags +0x628+part, parts 2 / 5 = LEG_L / LEG_R, the
+  // per-part flags FUN_1408c31c0 sets and the injury roll reads).
+  if (IsArmBone(in.oppBone))
+    return in.oppAction != ContactAction::kKeeperHandle && !in.selfBothShinsTouching;
   // An opponent's body part, or the self already down: only a goalkeeper
   // (FUN_140a638c0) running about without the ball in his hands is spared.
   if (!IsLegBone(in.oppBone) || IsStaggerOrFall(in.selfAction))
