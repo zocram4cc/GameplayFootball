@@ -692,6 +692,12 @@ void Referee::AlterSetPiecePrepareTime(unsigned long newTime_ms) {
   }
 }
 
+int Referee::GetOffsideCategory(Player* player) const {
+  const auto flagged = offsidePlayers.find(player);
+  if (flagged == offsidePlayers.end()) return -1;
+  return flagged->second.category;
+}
+
 void Referee::BallTouched() {
   // check for offside player receiving the ball
 
@@ -751,7 +757,12 @@ void Referee::BallTouched() {
     Team* team = match->GetTeam(lastTouchTeamID);
     const float offside =
         AI_GetOffsideLine(match, match->GetMentalImage(0), abs(lastTouchTeamID - 1));
-    const int attackingSide = team->GetSide();
+    // PES's attacker test runs in the attacking team's own attack frame
+    // (report 4: s*P.x + m > s*L + tol, s the team's attack direction).
+    // Team::GetSide() points at the team's own goal, so the attack direction
+    // is its negation - the same read as elizacontroller.cpp's attackDir and
+    // JudgeContact's attackDirSign.
+    const int attackingSide = -team->GetSide();
     const pes::JudgeConstants& constants = match->GetPesJudgeConstants();
     std::vector<Player*> players;
     team->GetActivePlayers(players);

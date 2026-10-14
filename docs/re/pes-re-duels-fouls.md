@@ -433,8 +433,9 @@ is now involved) → `FUN_1405b6660` (SetPending). With a pending kind-1 foul it
 - **Flags** live in the match-analysis object `MA = *( *(ctx) + 0x18 )`: per team `t` four u32 bit sets
   `MA+0x253c4 + 0x10·t + 4·c` (bit = player id, `c` = category 0..3), the flag frame `MA+0x253bc[t]`, a float
   `MA+0x254ec[t]` and a snapshot `MA+0x254fc`. Only categories **0..2 are punishable** (`FUN_1405b6490` scans
-  `c < 3`; the AI helpers `FUN_14050f580`/`FUN_14045e0d0` treat `c < 3`/`c < 2` as "offside, do not chase").
-  INF(med): category 3 = "in an offside position but not punishable".
+  `c < 3`; the AI helpers read the same words with different thresholds: the ball-list builder `FUN_14045e0d0`
+  treats categories 0-1 as "offside, do not chase", the key-player selector `FUN_14050f580` also excludes
+  category 2 — decompiled in `pes-re-offside.md` §4.1).
 - Per-side enable: `*(G+0x2c0)+0x6e+t` (match settings; same block as the card-suppression flag `+0x76`).
 - `FUN_1405b6490` requires a reference player (ball owner, else the pass target `MA+0x2483c`, else the
   nearer of the two line players `MA+0x2470c`/`+0x24764`), then scans team 0 then team 1 (categories 0..2,

@@ -40,6 +40,9 @@ constexpr float HALF_M = 50.0f;
 
 Vector3 At(float x) { return Vector3(x, 0.0f, 0.0f); }
 
+// A stationary point.
+Vector3 Still() { return Vector3(0.0f, 0.0f, 0.0f); }
+
 float Line(int defendingSide, const std::vector<Vector3>& defenders, float ballX) {
   return OffsideRule::OffsideLineX(defendingSide, defenders, ballX, HALF_M, Synthetic());
 }
@@ -162,6 +165,137 @@ TEST(OffsideGate, NoEvaluationWhileARestartIsStaged) {
   // Out of play nothing is recorded at all.
   EXPECT_FALSE(OffsideRule::ShouldSnapshot(false, false, e_SetPiece_None));
   EXPECT_FALSE(OffsideRule::ShouldSnapshot(false, true, e_SetPiece_FreeKick));
+}
+
+// PES 2021's offside readers on the attacking side (docs/re/pes-re-offside.md
+// 4, FUN_14045e0d0 and FUN_14050f580; docs/re/pes-re-carrier-ai.md 4.3,
+// FUN_142117c30's status 6). These are the rules that keep GF's attackers from
+// running the line.
+TEST(PesOffsideChase, OnlyCategoriesZeroAndOneBlockTheBallList) {
+  // FUN_14045e0d0's ball list gives a category 0 or 1 player the impossible
+  // score: he is never the one who goes and gets the ball.
+  EXPECT_FALSE(OffsideRule::OffsideBlocksChase(-1));  // not flagged
+  EXPECT_TRUE(OffsideRule::OffsideBlocksChase(0));
+  EXPECT_TRUE(OffsideRule::OffsideBlocksChase(1));
+  // A tight call (2) and a near-level onside attacker (3) stay on the list.
+  EXPECT_FALSE(OffsideRule::OffsideBlocksChase(2));
+  EXPECT_FALSE(OffsideRule::OffsideBlocksChase(3));
+}
+
+// The receiver line's inputs: a defence of six, the keeper deepest. The five
+// LAST defenders are the five closest to their own goal, so the line is the
+// deepest of THOSE (30), not the most advanced man (55, a full back up the
+// wing): int(gameSpeed x 0.3) = 16 PES frames is the prediction.
+const std::vector<Vector3>& Defence() {
+  static const std::vector<Vector3> defence = {At(-5.0f), At(10.0f), At(14.0f), At(18.0f),
+                                               At(30.0f), At(55.0f)};
+  return defence;
+}
+const Vector3& BallNear() {
+  static const Vector3 ball = At(5.0f);
+  return ball;
+}
+constexpr float kReceiverPrediction_s = 16.0f * 0.011f;
+// A whole defence standing still.
+const std::vector<Vector3>& NobodyMoves() {
+  static const std::vector<Vector3> still(6, Still());
+  return still;
+}
+// The receiver-eligibility predicate for a mate of the +x-attacking side.
+bool MateIsOffside(const std::vector<Vector3>& defence,
+                   const std::vector<Vector3>& defenceVelocities, const Vector3& ball,
+                   const Vector3& mate, const Vector3& mateVelocity) {
+  return OffsideRule::ReceiverIsOffside(1, defence, defenceVelocities, ball, Still(), mate,
+                                        mateVelocity, kReceiverPrediction_s);
+}
+
+TEST(PesOffsideReceiver, AMateBeyondTheFiveLastDefendersIsOffside) {
+  // The attacking team attacks +x (side +1), so the line is the deepest of the
+  // five LAST defenders: 30.
+  const std::vector<Vector3>& defence = Defence();
+  const Vector3& ball = BallNear();
+  const std::vector<Vector3>& still = NobodyMoves();
+  // Beyond it - never offered the ball.
+  EXPECT_TRUE(MateIsOffside(defence, still, ball, At(35.0f), Still()));
+  // Behind it - a perfectly fine pass.
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(25.0f), Still()));
+  // Exactly on the line is not beyond it (PES's comparison is strict).
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(30.0f), Still()));
+  // The line is the deepest of the five LAST, not the most advanced man: the
+  // full back on 55 is the sixth, so he does not drag the line up to him.
+  EXPECT_TRUE(MateIsOffside(defence, still, ball, At(32.0f), Still()));
+}
+
+TEST(PesOffsideReceiver, TheBallDeepensTheLine) {
+  // A defence all behind halfway, with the ball ahead of them: the line is the
+  // ball, deeper than any of the five last defenders.
+  const std::vector<Vector3> defence = {At(-30.0f), At(-28.0f), At(-20.0f)};
+  const std::vector<Vector3> still(3, Still());
+  const Vector3 ball(25.0f, 0.0f, 0.0f);
+  // Behind the ball, however far up the pitch: a back pass is fine.
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(24.0f), Still()));
+  // Ahead of it.
+  EXPECT_TRUE(MateIsOffside(defence, still, ball, At(26.0f), Still()));
+}
+
+TEST(PesOffsideReceiver, TheLineHasAHalfwayFloor) {
+  // PES's running maximum starts at 0, so a line of defenders and a ball all
+  // behind halfway put the line on halfway: a receiver in his own half is
+  // never offside for the pass.
+  const std::vector<Vector3> defence = {At(-40.0f), At(-35.0f)};
+  const std::vector<Vector3> still(2, Still());
+  const Vector3 ball(-20.0f, 0.0f, 0.0f);
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(-5.0f), Still()));
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(0.0f), Still()));
+}
+
+TEST(PesOffsideReceiver, TheForwardPredictionJudgesTheRun) {
+  // A mate standing level with the line but running through it is judged by
+  // his predicted position, so he is an offside receiver for the pass.
+  const std::vector<Vector3>& defence = Defence();
+  const Vector3& ball = BallNear();
+  const std::vector<Vector3>& still = NobodyMoves();
+  const Vector3 sprint(8.0f, 0.0f, 0.0f);  // 8 m/s, 16 frames ahead is 8 * 0.176 m
+  EXPECT_TRUE(MateIsOffside(defence, still, ball, At(30.0f), sprint));
+  // Standing still he is merely level, and the pass stays on.
+  EXPECT_FALSE(MateIsOffside(defence, still, ball, At(30.0f), Still()));
+}
+
+TEST(PesOffsideReceiver, TheDefendersAreReadForwardToo) {
+  // A defender dropping away under a played ball can no longer cover the run:
+  // PES reads the five last defenders' predicted positions. The deepest of the
+  // five is on 30; over the prediction he is on 30 - 0.35 = 29.65 when he drops
+  // 2 m/s, so a mate on 29 is beyond him when he stands still and level with
+  // him when he drops.
+  const std::vector<Vector3>& defence = Defence();
+  const Vector3& ball = BallNear();
+  const std::vector<Vector3>& still = NobodyMoves();
+  const std::vector<Vector3> retreating = {Vector3(0, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 0),
+                                           Vector3(0, 0, 0), Vector3(-2.0f, 0.0f, 0.0f),
+                                           Vector3(0, 0, 0)};
+  // Level with him when he drops: the pass stays on.
+  EXPECT_FALSE(MateIsOffside(defence, retreating, ball, At(29.0f), Still()));
+  // A stride further up he is caught by him either way.
+  EXPECT_TRUE(MateIsOffside(defence, still, ball, At(31.0f), Still()));
+  EXPECT_TRUE(MateIsOffside(defence, retreating, ball, At(31.0f), Still()));
+}
+
+TEST(PesOffsideReceiver, WorksInEitherDirection) {
+  // The attacking team attacks -x (side -1): the frame mirrors, and the five
+  // last defenders are the six closest to THEIR own goal, which in this
+  // mirrored shape are the ones on 5..30 - the same line, 30, in the other
+  // direction.
+  const std::vector<Vector3> defence = {At(-55.0f), At(-30.0f), At(-18.0f), At(-14.0f),
+                                        At(-10.0f), At(5.0f)};
+  const std::vector<Vector3> still(6, Still());
+  const Vector3 ball(-5.0f, 0.0f, 0.0f);
+  EXPECT_TRUE(OffsideRule::ReceiverIsOffside(-1, defence, still, ball, Still(), At(-35.0f),
+                                             Still(), kReceiverPrediction_s));
+  EXPECT_FALSE(OffsideRule::ReceiverIsOffside(-1, defence, still, ball, Still(), At(-25.0f),
+                                              Still(), kReceiverPrediction_s));
+  // With no attack side known, no pass is refused.
+  EXPECT_FALSE(OffsideRule::ReceiverIsOffside(0, defence, still, ball, Still(), At(-35.0f),
+                                              Still(), kReceiverPrediction_s));
 }
 
 TEST(PesOffsideInstall, LoadsFromTheExe) {

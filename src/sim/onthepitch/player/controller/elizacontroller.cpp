@@ -1372,6 +1372,12 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     // The lanes: 11 frames ahead, the owned-ball value of report 4.3's `F`.
     constexpr float kLaneFrames = 11.0f;
     const float laneTime_s = kLaneFrames * Match::kTick_ms * 0.001f / pes::kGfTicksPerPesTick;
+    // The receiver offside prediction (report 4.3's status 6): every input to
+    // the carrier's offside line, and the receiver's own position, is read
+    // int(gameSpeed x 0.3) = 16 frames ahead.
+    constexpr float kReceiverFrames = 16.0f;
+    const float receiverPrediction_s =
+        kReceiverFrames * Match::kTick_ms * 0.001f / pes::kGfTicksPerPesTick;
     const float lowPass = CastPlayer()->GetStat("technical_shortpass");
     const float carrierSpeed_kmh = CastPlayer()->GetMovement().GetLength() * 3.6f;
 
@@ -1400,6 +1406,14 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
       // feet"); record B ("into space") is not ported.
       const Vector3 matePos = mate->GetPosition();
       const Vector3 matePred = matePos + mate->GetMovement() * laneTime_s;
+      // PES 2021's receiver enumeration (docs/re/pes-re-carrier-ai.md 4.3):
+      // a team-mate whose position now or his position the receiver
+      // prediction ahead is beyond the carrier's offside line gets status 6
+      // - offside - and is never a pass receiver.
+      if (AI_ReceiverIsOffside(match, _mentalImage, team->GetID(), matePos,
+                               mate->GetMovement(), ballPos, ballMove,
+                               receiverPrediction_s))
+        continue;
       const Vector3 target3(matePred.coords[0], matePred.coords[1], ballPos.coords[2]);
       const float dist = (target3 - ballPos).GetLength();
       if (dist > in.halfLen_m) continue;  // off the pitch

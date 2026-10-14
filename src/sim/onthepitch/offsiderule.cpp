@@ -68,6 +68,50 @@ int OffsideCategory(float attackerCentreX, float lineX, int attackingSide,
   return d < k.offsideNearBand_m ? 3 : -1;
 }
 
+bool OffsideBlocksChase(int category) {
+  // PES 2021's ball-list reader FUN_14045e0d0 (docs/re/pes-re-offside.md 4):
+  // the score of a player offside-flagged in category 0 or 1 is the impossible
+  // one, so he never appears in his team's ball list.
+  return category >= 0 && category < 2;
+}
+
+bool ReceiverIsOffside(int attackingSide,
+                       const std::vector<blunted::Vector3>& opponentCentres,
+                       const std::vector<blunted::Vector3>& opponentVelocities,
+                       const blunted::Vector3& ballCentre,
+                       const blunted::Vector3& ballVelocity,
+                       const blunted::Vector3& receiverCentre,
+                       const blunted::Vector3& receiverVelocity, float prediction_s) {
+  const float s = static_cast<float>(attackingSide);
+  if (s == 0.0f) return false;
+
+  // The five last defenders, each predicted forward, in the attacking team's
+  // own attack frame. The rearmost first, so the first five are PES's "5 last
+  // defenders" and the deepest of them is the 5th rearmost - the line the
+  // enumeration puts its receivers behind.
+  std::vector<float> rear;
+  rear.reserve(opponentCentres.size());
+  for (size_t i = 0; i < opponentCentres.size(); ++i) {
+    rear.push_back(s * (opponentCentres[i].coords[0] +
+                        opponentVelocities[i].coords[0] * prediction_s));
+  }
+  std::sort(rear.begin(), rear.end());
+  // PES's running maximum starts at 0 (the halfway line) and then takes the
+  // ball, predicted forward: whichever of the 5th-rearmost defender and the
+  // ball is further up the pitch is the line.
+  float line = 0.0f;
+  for (size_t i = 0; i < rear.size() && i < kReceiverDefenders; ++i) {
+    line = std::max(line, rear[i]);
+  }
+  line = std::max(line, s * (ballCentre.coords[0] + ballVelocity.coords[0] * prediction_s));
+
+  // Offside when his position now, or his position prediction_s ahead, is
+  // beyond it - the enumeration reads both (0x142117c30, LAB_14211818f).
+  const float now = s * receiverCentre.coords[0];
+  const float later = s * (receiverCentre.coords[0] + receiverVelocity.coords[0] * prediction_s);
+  return now > line || later > line;
+}
+
 bool CanCreateOffside(e_SetPiece restart) {
   // PES 2021's gate (docs/re/pes-re-offside.md 2.2): the delivery of its staged
   // set 1..4 - a kick-off, a throw-in, a goal kick or a corner - never arms a

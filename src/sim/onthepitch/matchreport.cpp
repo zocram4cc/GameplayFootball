@@ -120,6 +120,9 @@ void PrintMatchReport(Match& match, FILE* out) {
          matchData->GetPassDistanceMeanRms_m(0), matchData->GetPassDistanceMeanRms_m(1),
          matchData->GetSupportWebWidthMean_m(0), matchData->GetSupportWebWidthMean_m(1));
 #endif
+  std::fprintf(out, "[balance-offside] offsides %i-%i | free kicks %i-%i\n",
+         matchData->GetOffsides(0), matchData->GetOffsides(1),
+         matchData->GetFreeKicks(0), matchData->GetFreeKicks(1));
   std::fprintf(out,
       // Saves are in here because they are the lever between on-target and
       // goals: on-target minus saves minus goals is what the keeper never

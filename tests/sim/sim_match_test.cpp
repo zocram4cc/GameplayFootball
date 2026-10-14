@@ -34,6 +34,12 @@ constexpr int SHORT_MATCH_MINUTES = 2;  // long enough for set pieces and shots
 constexpr int FULL_MATCH_MINUTES = 5;
 // A match must end: the clock covers the duration plus generous added time.
 constexpr unsigned long kMaxSimTime_ms = 30ul * 60ul * 1000ul;
+// PES 2021's live matches call a handful of offsides per 20 minutes
+// (docs/re/pes-re-offside-port.md 4). Scaled to the 5-minute fixture below and
+// given room for the fixture's higher tempo, this is the band the ported rule
+// and the AI's offside readers keep the count inside: with the line read in the
+// wrong frame it goes past ten.
+constexpr int kPesOffsideBand_5min = 5;
 
 const pesrig::Rig* SharedRig() {
   static std::optional<pesrig::Rig> rig;
@@ -210,6 +216,7 @@ struct Outcome {
   uint64_t hash = 0;
   std::string report;
   int goals[2] = {0, 0};
+  int offsides[2] = {0, 0};
 };
 
 Outcome Play(unsigned int seed, int minutes) {
@@ -243,6 +250,8 @@ Outcome Play(unsigned int seed, int minutes) {
     out.hash = match.GetDeterminismHash();
     out.goals[0] = match.GetMatchData()->GetGoalCount(0);
     out.goals[1] = match.GetMatchData()->GetGoalCount(1);
+    out.offsides[0] = match.GetMatchData()->GetOffsides(0);
+    out.offsides[1] = match.GetMatchData()->GetOffsides(1);
     char* buf = nullptr;
     size_t len = 0;
     FILE* mem = open_memstream(&buf, &len);
@@ -353,6 +362,24 @@ TEST(SimMatch, AIManagerSwitchGovernsTactics) {
   REQUIRE_RIG();
   EXPECT_TRUE(EverPressesWhileTrailing(true));
   EXPECT_FALSE(EverPressesWhileTrailing(false));
+}
+
+// The offside port's end-to-end effect (docs/re/pes-re-offside-port.md 4): a
+// PES-faithful line, test and category plus the AI's offside readers. With the
+// frame the line is read in the wrong way round the line lands on the ball, and
+// every attacker behind the ball at his team's touch is offside: this fixture
+// then whistles a handful per minute. With it right, GF's offside count sits in
+// the band PES's own matches live in - a handful per 20 minutes.
+TEST(SimMatch, OffsideRateStaysInPessBand) {
+  REQUIRE_RIG();
+  const Outcome o = Play(SEED, FULL_MATCH_MINUTES);
+  const int offsides = o.offsides[0] + o.offsides[1];
+  EXPECT_GT(offsides, 0) << "a fixture this lively calls some offsides";
+  EXPECT_LE(offsides, kPesOffsideBand_5min) << o.report;
+  // Both sides are treated by the same rule, so neither side can run away with
+  // the whole of it.
+  EXPECT_LE(o.offsides[0], kPesOffsideBand_5min);
+  EXPECT_LE(o.offsides[1], kPesOffsideBand_5min);
 }
 
 TEST(SimMatch, SameSeedPlaysTheSameMatch) {

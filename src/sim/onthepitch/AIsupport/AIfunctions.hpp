@@ -48,6 +48,15 @@ float AI_CalculateFreeSpace(Match* match, const MentalImage* mentalImage, int te
                             const Vector3& focusPos, float safeDistance = 8.0,
                             float futureTime_sec = 0.3, bool ignoreKeeper = false);
 float AI_GetOffsideLine(Match* match, const MentalImage* mentalImage, int teamID);
+// PES 2021's receiver-enumeration offside test (docs/re/pes-re-carrier-ai.md
+// 4.3): whether the carrier of `attackingTeamID` may pass to a team-mate at
+// `receiverPos`, moving at `receiverVelocity`, judged against the carrier's
+// own offside line over the five last defenders and the ball, each
+// `prediction_s` ahead.
+bool AI_ReceiverIsOffside(Match* match, const MentalImage* mentalImage, int attackingTeamID,
+                          const Vector3& receiverPos, const Vector3& receiverVelocity,
+                          const Vector3& ballPos, const Vector3& ballVelocity,
+                          float prediction_s);
 void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage* mentalImage,
                                Vector3& desiredDirection, float& desiredVelocity,
                                const TeamTactics& teamTactics);

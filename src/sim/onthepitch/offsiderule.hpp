@@ -36,6 +36,35 @@ float OffsideLineX(int defendingSide, const std::vector<blunted::Vector3>& defen
 int OffsideCategory(float attackerCentreX, float lineX, int attackingSide,
                     const pes::JudgeConstants& k);
 
+// PES 2021's ball-list reader FUN_14045e0d0 (docs/re/pes-re-offside.md 4): a
+// player offside-flagged in category 0 or 1 (beyond by more than a metre) is
+// given the impossible score, so he never appears in his team's ball list and
+// is never the one who goes and gets the ball. Categories 2 and 3 leave him on
+// the list - category 2 is a tight call the referee's DelayWhistle holds, so
+// PES does not stand him off the ball yet. `category` is the referee's
+// category, or -1 when the player is not flagged.
+bool OffsideBlocksChase(int category);
+
+// How many of the defending team's last men the receiver line counts over
+// (docs/re/pes-re-carrier-ai.md 4.3: the deepest of the 5 last defenders).
+constexpr size_t kReceiverDefenders = 5;
+
+// PES 2021's receiver-enumeration offside test (docs/re/pes-re-carrier-ai.md
+// 4.3, status code 6). The carrier's offside line is, in HIS team's own attack
+// frame, the deepest forward point of the five last defenders and the ball,
+// each predicted `prediction_s` ahead, floored at halfway. A team-mate whose
+// position now or `prediction_s` ahead is beyond it is an offside receiver and
+// is never offered the ball. Returns false when the attacking side is not
+// known. GF has no per-limb points, so a centre stands in for every defender's
+// rear surface (the same approximation OffsideLineX makes).
+bool ReceiverIsOffside(int attackingSide,
+                       const std::vector<blunted::Vector3>& opponentCentres,
+                       const std::vector<blunted::Vector3>& opponentVelocities,
+                       const blunted::Vector3& ballCentre,
+                       const blunted::Vector3& ballVelocity,
+                       const blunted::Vector3& receiverCentre,
+                       const blunted::Vector3& receiverVelocity, float prediction_s);
+
 // Law 11: there is no offside offence when receiving the ball directly from a
 // goal kick, a throw-in or a corner kick.
 bool CanCreateOffside(e_SetPiece restart);

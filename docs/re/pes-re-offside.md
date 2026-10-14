@@ -199,6 +199,63 @@ torso/hips (radius 0.15, live heights up to 1.64 m), `+0x7c/+0x88/+0x94/+0xa0` e
 | 2 | beyond, `d < 1 m` | Judge (punishable) but the pending commit routes it through **DelayWhistle** (a tight call waits for the move to finish, duels-fouls §5.1); `FUN_14050f580` treats `c < 3` as offside |
 | 3 | **onside**, `d < 1 m` | never punished (`FUN_1405b6490` scans `c < 3`). Corrects duels-fouls §5.1's "offside position but not punishable". |
 
+### 4.1 The AI readers of the flags (OBS decompiles, added OffsideAwarenessPort 2026-10-14)
+
+Three readers were decompiled to close "how does an attacker know he is offside". All three index the flag
+words the same way: `MA+0x253c4 + 0x10·team + 4·category` (`(0x94f1 + 4c)·4` for team 0, `0x94f5·4` base
+for team 1), bit `id & 0x1f`, each gated by the per-side enable `*(G+0x2c0)+0x6e+team`.
+
+**`FUN_14045e0d0` (0x14045e0d0, the per-team ball list).** Builds each team's arrival list
+(`MA+0x24840`, 11 × `{id, frames}`) over its own 11 slots. For a slot whose player is flagged, the loop
+walks categories 0..3 and, if the bit is set in category `iVar20 < 2` (0 or 1), jumps to `LAB_14045e914`
+with `fVar58 = fVar53` = **1000000.0** @0x14259d640 — the "impossible" score the loop seeds with (the
+normal seed is 3600.0 @0x142598590). ⇒ **a player offside-flagged in category 0 or 1 is never on his
+team's ball list: he does not chase the ball.** Category 2 or 3 keeps his computed score. The same list
+is the team's presser (defensive-shape §12), the involvement walker (duels-fouls §5.2 step 6), the
+key-player fallback below, the keeper's decision (goalkeeper §7) and the camera target
+(`[this+0x1e8] + 0x24840`, pes-re-camera-target.md).
+
+**`FUN_14050f580` (0x14050f580, the team's ball candidate).** Takes the team's key player `team+0x78`
+when he is not flagged in a category `iVar5 < 3` **and** `param_3 == 0`; otherwise walks the
+nearest-to-ball list `MA+0x2470c + team·0x58` (11 × `{id, dist}`) and returns the first entry that is
+active, not flagged in 0..2 (with `param_3 == 0`), `team+0x4bd4[slot] == 0`, in a ball-seeking AI state
+(`player+0x5d0` ∈ {3, 4, 5, 0x12, 0x14, 0x16, 0x18, 0x34, 0x3e}) and not falling/sliding
+(`human+1` not 0x11/0x57). Used by the attack-chance test `FUN_14050f7e0` → the Judge's advantage
+(duels-fouls §3.1) — the caller passes `param_3` to relax the flag test.
+
+**`FUN_142117c30` (0x142117c30, the receiver enumeration).** `table+0x3c+4·slot` carries the status code
+(carrier-ai §4.3); the offside code is `LAB_14211818f`:
+
+```
+fVar30 = s * table[+0x34]                       -- the carrier's offside line (below)
+if  fVar30 < s * (0*vel + pos)      -> status 6   -- his position now
+ or fVar30 < s * (T16*vel + pos)     -> status 6   -- his position 16 frames ahead
+```
+with `table+0x30` = `int(gameSpeed × 0.3)` = **16** frames (`(int)(uVar7 * 0.30 @0x142590d98)`, `uVar7`
+from the fps getter) and `table+0x34` = the running **maximum**, from 0, of the attack-signed x
+(predicted 16 frames ahead) of the first **five** entries of the depth-sorted defenders' table
+`FUN_140a714e0(MA, s)` (team block of the carrier's opponents), then of the ball (also 16 frames ahead).
+⇒ **a team-mate whose current or near-future position is beyond the deepest of the five last defenders
+and the ball is never offered the ball.** Note this is the carrier's own line, not the referee's
+`MA+0x44`, and it is a *maximum* (deeper of the two) floored at halfway.
+
+### 4.2 What does NOT read the flags (OBS decompiles, 2026-10-14)
+
+The off-ball run selectors' stop tests were checked for the same block and read none of it:
+
+| function | role | offside reads |
+|---|---|---|
+| `FUN_140688c00` (0x140688c00) | common run stop test | none (open-play, possession, carrier/PASS_GET, loose-ball, target reached, `s·x > F[4]+2.5`, last pass) |
+| `FUN_140607a60` (0x140607a60) | Chance stop test | none (pad-controlled, carrier, PASS_GET, 11-frame minimum, then the common test) |
+| `FUN_140612830` (0x140612830) | LineBreak stop test | the ball line only: `FUN_140a4c720(MA+0x2482c, runner.x, team+0x254, −1.8 @0x1425cdbe0)` |
+| `FUN_140620900` (0x140620900) | PostPlay stop test | the ball line only: `FUN_140a4c720(runner.x, MA+0x2482c, team+0x254, −2.5 @0x1425c74d0)` |
+| `FUN_14059ba60` (0x14059ba60) | the Chance target search behind the score of `spaceRun.o` | no `MA+0x44` / no flag words |
+
+⇒ **PES's attackers do not hold a run because of offside.** A run is stopped by the ball line
+(±1.8–2.5 m), not by the offside line; PES runs a player offside and lets the referee's flag stop the
+play. The `spaceRun.o` key `checkOffsideLineDistX 12` is listed in pes-re-off-ball.md §1.5 but no reader
+among the run selectors uses it — open item O3 of that report still stands.
+
 ---
 
 ## 5. Inputs, outputs, RNG

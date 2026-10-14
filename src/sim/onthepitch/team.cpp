@@ -11,8 +11,10 @@
 #include "../utils.hpp"
 #include "AIsupport/AIfunctions.hpp"
 #include "match.hpp"
+#include "offsiderule.hpp"
 #include "pesstamina.hpp"
 #include "player/humanoid/pesplayernode.hpp"
+#include "referee.hpp"
 
 Team::Team(int id, Match* match, TeamData* teamData) : id(id), match(match), teamData(teamData) {
   assert(id == 0 || id == 1);
@@ -284,10 +286,21 @@ Player* Team::GetBestPossessionPlayer() {
   Player* bestPlayer = nullptr;
   for (unsigned int i = 0; i < players.size(); i++) {
     if (players.at(i)->IsActive()) {
-      int time_ms = players.at(i)->GetTimeNeededToGetToBall_ms();
+      // PES 2021's ball-list reader FUN_14045e0d0 (docs/re/pes-re-offside.md
+      // 4): a player offside-flagged in category 0 or 1 gets the impossible
+      // score, so he is never the one who goes and gets the ball. This picker
+      // is that list - the team's men sorted by how soon they reach the ball -
+      // and its consumers (the designated possession player, the match's
+      // possession side) all read from here.
+      // ponytail: PES lists category 2 as a chaser too (a tight call the
+      // referee holds), and only excludes the categories the ball list does;
+      // the key-player reader FUN_14050f580 also excludes 2 and is not ported.
+      Player* active = players.at(i).get();
+      if (OffsideRule::OffsideBlocksChase(match->GetReferee()->GetOffsideCategory(active))) continue;
+      int time_ms = active->GetTimeNeededToGetToBall_ms();
       if (time_ms < bestTime_ms) {
         bestTime_ms = time_ms;
-        bestPlayer = players.at(i).get();
+        bestPlayer = active;
       }
     }
   }

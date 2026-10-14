@@ -182,7 +182,7 @@ ranks lower (`FUN_140a40000`), (e) for Chance/Counter/LineBreak the one-two test
 | LineBreak `0x140612830` | 54 f | carrier; PASS_GET; predicted-position test `FUN_1405a0ec0`; after 54 f the common test or the ball-line test `FUN_140a4c720(ball.x, x, s, −1.8)` …; reached target (< 1 m) |
 | Diagonal `0x140615090` | 11 f | not open play / not in possession / designated player → stop; then `FUN_140695800` |
 | PullAway `0x14061e1e0` | — | pad; `s·x > F[8]`; else stop when `t > 4·fps` = **216 f (4 s)** |
-| PostPlay `0x140620900` | — | not open play; `t > int(fps·3.5+0.5)` = **189 f**; no ref/receiver; lane 1: ball > 20 m away, ball past `F[6]+3`, ball `|z| < F[7]+2`; lane 2: ball > 40 m; lane 0: offside-line test −2.5, keeper-distance table > 20.25 m² or > 2.25, ball > 20 m; ≥ 16 m² from ball and not the event target: after `fps+0.5` f stop if the angle to the receiver > 110° |
+| PostPlay `0x140620900` | — | not open play; `t > int(fps·3.5+0.5)` = **189 f**; no ref/receiver; lane 1: ball > 20 m away, ball past `F[6]+3`, ball `|z| < F[7]+2`; lane 2: ball > 40 m; lane 0: ball-line test −2.5 (`FUN_140a4c720(runner.x, MA+0x2482c, team+0x254, −2.5 @0x1425c74d0)`, OBS 0x140620a7f; **not the offside line** — the constant is applied to the ball x, verified OffsideAwarenessPort 2026-10-14), keeper-distance table > 20.25 m² or > 2.25, ball > 20 m; ≥ 16 m² from ball and not the event target: after `fps+0.5` f stop if the angle to the receiver > 110° |
 | GoalGet `0x14061e810`, CenteringGet `0x14061a640`, Overlap `0x1406013d0`, OverlapCB `0x14061e590` | — | see attack-decisions §3.6–3.8 (bodies there are these stop tests) |
 
 **Common stop test `FUN_140688c00(ctx, id, run, arg)` (head OBS b3a.c:438–530):** stop when not open play
@@ -194,6 +194,14 @@ non-through pass → stop now; a through pass (type 2, or type 3 sub 3/4) → st
 The rest of the cascade (b3a.c:534–1251; `FUN_1405a7fe0/7be0` lane-free → keep, the 0.15·fps random-free clip
 window, `FUN_14068f600`, `FUN_14068bd90`, distance ramps 4→10 m, 40 m, 6.25, 70°, 130°/169 m², 289 m², 45°/80°/24 m,
 27→15 m angle ramp `95 + 35·k`, `FUN_14068dba0/de30/e300`, 43) is listed but not reduced (open O4).
+
+**No offside input in any run stop test (OBS decompiles, OffsideAwarenessPort 2026-10-14).** `FUN_140688c00`,
+`FUN_140607a60` (Chance), `FUN_140612830` (LineBreak), `FUN_140620900` (PostPlay) and the Chance target search
+`FUN_14059ba60` were all decompiled against the flag words (`MA+0x253c4+0x10·a+4·c`) and the referee's offside line
+(`MA+0x44+0x14·t`): none reads either. The only longitudinal stop input is the **ball line**
+(`FUN_140a4c720`, −1.8 m for LineBreak and −2.5 m for PostPlay's lane 0). ⇒ **a run is never held, delayed or checked
+because of offside; PES runs the player offside and the referee's flag stops the play.** Details in
+`pes-re-offside.md` §4.2.
 
 ### 2.3 Re-run block (OBS)
 `A[s]` = 108 manager ticks after a slot leaves a run state; ticks are every other frame → **216 frames ≈ 4 s**; read by

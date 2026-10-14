@@ -287,8 +287,7 @@ inside `imageA+0xB54`² with facing within 60° (90° when not owned).
 
 **Enumeration.** All 11 team-mates (slot order) get a status code at `table+0x3C+4i`:
 1 not on the pitch, 2 the carrier, 4 predicted (18 frames) position off the pitch,
-5 set-piece taker, 6 offside (ahead of the offside line `table+0x34` = deepest of the 5
-last defenders and the ball, each predicted `int(gameSpeed×0.3) = 16` frames ahead), 7/8/9/10
+5 set-piece taker, 6 offside, 7/8/9/10
 busy action classes (`0x140a6e450`, `0x140a6e110`, action 0x57, action ids 0x0F–0x11),
 **0x0B = valid**. Each valid mate gets two records (stride 0xF8):
 - **A** (`table+0x68+i·0xF8`, "to feet"): target = mate position predicted
@@ -300,6 +299,22 @@ busy action classes (`0x140a6e450`, `0x140a6e110`, action 0x57, action ids 0x0F�
   (Δ = mate velocity vs that direction). If the target passes the penalty-area line
   (`pitch[6]`), it is re-placed at half the length returned by `0x140a4ddc0` (INF: room left
   before the keeper/goal line).
+
+**Status 6 (offside) — OBS decompile 2026-10-14** (`FUN_142117c30`, `LAB_14211818f`).
+```
+T16  = int(fps * 0.30 @0x142590d98)                     -- 16 frames, stored at table+0x30
+line = 0.0                                             -- a running maximum, so halfway is a floor
+for k in 0..4 while entry valid:
+        line = max(line, s * (entry[k].x + entry[k].vx * T16))   -- FUN_140a714e0(MA, s), opponents
+line = max(line, s * (ball.x + ball.vx * T16))                  -- table+0x34
+status = 6  if  line < s * (mate.x)                             -- his position now
+           or  line < s * (mate.x + mate.vx * T16)              -- or 16 frames ahead
+```
+⇒ a team-mate is an offside receiver when his **current or near-future** position is beyond the
+deeper of the five last defenders (predicted 16 frames ahead) and the ball (predicted the same way).
+This is the carrier's own line, **not** the referee's `MA+0x44`: it has no second-last-defender rule
+and no goal-line clamp. It does **not** read the offside flag bits
+(`MA+0x253c4+0x10·a+4·c`): an offside attacker is excluded because of geometry, not because a flag is set.
 
 **Record fields** (OBS writer `0x1421174f0`): `[0]` openness class, `[1]` direction class,
 `[2]` turn class, `[3..5]` target, `+0xE0` pass angle (deg, `atan2(dx,dz)`), `+0xE4` angle to

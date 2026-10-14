@@ -102,6 +102,14 @@ public:
   Player* GetCurrentFoulPlayer() { return foul.foulPlayer; }
   int GetCurrentFoulType() { return foul.foulType; }
 
+  // PES 2021's offside category for a player (docs/re/pes-re-offside.md 4):
+  // 0 beyond by more than 4 m, 1 beyond by 1-4 m, 2 beyond by less than a
+  // metre, -1 when he is not flagged. Category 3 (onside, near level) is never
+  // punishable and never stored. The AI's offside readers compare it:
+  // FUN_14045e0d0's ball list treats categories 0-1 as "offside, do not
+  // chase" and FUN_14050f580's key-player selector also excludes category 2.
+  int GetOffsideCategory(Player* player) const;
+
 protected:
   Match* match;
 
