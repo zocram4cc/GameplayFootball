@@ -66,7 +66,50 @@ Shared notation: `h = |N−50|/50`. `w = [rsp+0x78]`, the cc30 out-param `*param
 - "All 6 draws are direction": killed. Two are speed (S record), two are elevation, two are yaw.
 - "errScale multiplies the scatter amps" (accuracy §9.5 addendum): killed by the scan in §4.
 
-## 6. Still open
-1. Semantics of the `q1..q6` inputs (§1). Next step: slice them as described there.
+## 6. The inputs to q1..q6 (second pass)
+Every q is `soft-min(I, X, F, R)` over 4 inputs (`FUN_1408413c0`). Which call feeds which record is OBS from raw: the record writes at `0x14083ef2c..0x14083f018` use r10 = Y, rdx = P, rcx = S. The call outputs go to xmm9/10/7/13/15/8 respectively.
+
+| q | call | record field | I | X (the per-q input) | F | R |
+|---|---|---|---|---|---|---|
+| q1 | `0x14083ee62` | Y.scale | I | `Q` (xmm13) | F1 | R |
+| q2 | `0x14083ee7c` | P.scale | I | `Qk = k·Q+(1−k)`, stored `[rbp-0x5c]` @`0x14083e712` | **F2** (xmm10) | R |
+| q3 | `0x14083ee97` | S.scale | I | `0.5·Q+0.5`, `[rsp+0x6c]` @`0x14083e64e`, ×0.3 under AI-mask `0x28005` (`0x14083e72d`) | F1 | R |
+| q4 | `0x14083eeb0` | Y.amp | I | `A·Q`, `[rbp-0x58]` @`0x14083e654` | F1 | R |
+| q5 | `0x14083eecc` | P.amp | I | `A·Qk`, `[rbp-0x7c]` @`0x14083e717` | F1 | R |
+| q6 | `0x14083eeea` | S.amp | I | `A·(0.5Q+0.5)`, `[rsp+0x60]` @`0x14083e659` (×0.3 under the same mask) | F1 (via `[rbp-0x80]`) | R |
+
+Definitions:
+- **`a`** = `[rbp+0xa0]` = `FUN_14071d760(ap,1)`, a jump to `FUN_14071d770`. It is the kick-type quality `q(S)` from accuracy §2: Finishing `0x1a`, Low Pass `0x1b`, Lofted Pass `0x1c` or Heading `0x1d`, plus skill +5 bonuses. OBS store `0x14083cf39`.
+  - `A = 0.75·a + 0.25` (OBS `0x14083e610..0x14083e633`).
+  - Only the amps (q4..q6) get the direct stat factor.
+- **`Q`** = the situation product (decompile lines 846–1000; rebuilt in xmm13 up to `0x14083e607`). It is the product of:
+  - **base by contact class** `uVar10 = FUN_1407205a0(kind)`: 0 → 0.9, 1 → 0.88, 2 or 3 → 0.86, other → 1.0. Constants `0x14258c260`, `0x1425ddf70`, `0x1425eb850`.
+  - **subclass factor** `FUN_14071e520(kind)`: 1 → 0.95, 5 → 0.8, 6 → 0.85, 7/0xb → 0.9, 8 → 0.7.
+  - **first-time / volley factor:** 0.925 or class multipliers on a kind gate (`0x1407240f0`/`0x140724590`…).
+  - **body-turn factor:** `1 − (0.7·(1−a)+0.1)·ramp(|facing ap+0xbe4 − heading ap+0x247c|)`, with a ramp start that rises with launch speed.
+  - **kind-specific extras:** for subclass 0/1/9/10, `×(1 − 0.3·ramp²)`; for some 0x2755 stances, a ±a term; a FUN_14042d470 term when `0x1406b0250(..)==1`.
+  - **final factor:** `×(1 − (0.5+0.25·ramp)·X·{0.95 for skill 0xb/0xc}·{0.9 or 0.7 by AI bits})`, at `0x14083e57c..0x14083e607`.
+  - Status: INF(med), read from the decompile; the branch selectors are OBS in raw.
+- **`k`** (Qk): 0.5 by default. 0.7 when the subclass is 5/6, the action byte is 8 and skill `0x18` is set. 0.9 when skill 9 is set on a qualifying kind. OBS `0x14083e668..0x14083e6eb`. Constants `0x142565600`, `0x14257a194`, `0x14258c260`.
+- **`I`** = `[rsp+0x58]`: the launch-power and elevation penalty, `1 − ramp·w`.
+  - Non-SHOOT path (`0x14083dd32..0x14083df70`), INF(med) labels on OBS arithmetic:
+    - `ramp` runs over launch speed in km/h: `|r15 vel|·f·3.6`, where 3.6 = 60·60/1000. The window is `[60+10a, 85+10a]` for action byte 1–3. Action 7 uses 55+10a, and other actions use 60+10a.
+    - `w = clamp01(1 − 0.95·a)·{0.3, 0.4, 0.375}` for actions 1–3, 7 and the rest.
+    - When `[ap+0x2754]==0`, ramp is `max`'d with an elevation ramp `(pitch°−20)/10`.
+  - SHOOT path (`vtbl+0x28 == 10`, `0x14083dc98..0x14083dd27`): `1 − 0.25·ramp(ap+0x2bd0, 0.2..1.0) − 0.02·g` (action byte 10), or `0.35/0.04` for the other actions. `g` = a pitch-angle ramp. Action 0xb uses `1 − sin(…)`. The meaning of `ap+0x2bd0` is still open; the fox-registry uses it as a height/approach gate.
+- **`R`** = `1 − 0.4·X` (`0x14083ee3e`, 0.4@`0x14259b89c`). X = `(1−0.5a)·1.3·run·(1−D) + 1.5·D` (`0x14083ee00..0x14083ee33`, 1.3@`0x14259bdd8`).
+  - `run` = `(FUN_140723320(ap)·[1.5])²`, capped at 1, ×0.3 for kind 0x6e. INF(high) that this is the kicker's running speed.
+  - **`D` = the pressure term:** `(0.8 − 0.4·clamp01((PhysContact − oppByte+0x28 + 20)/40))·distRamp·angRamp`, for the nearest opponent (`0x1406ea340`). `0x28` = Physical Contact (anim-select-2 §; ML). OBS `0x14083eda4..0x14083edf4`.
+  - So **pressure does enter the execution error**, via R and the kicker's Physical Contact versus the opponent. This bears on accuracy §9 item 6, which said no Balance (0x29) consumer: correct, it is 0x28.
+- **`F1`, `F2`** = `1.0` (stored `0x14083e749`) unless `0x1406b0250(team, …) == 1` (`0x14083e76f`). In that case they come from the geometry of a target entity `[rbp-0x78]`, relative to the kicker's position `ap+0x2480`:
+  - its bearing vs heading → `F1 = (1 − 0.3·cos-term·…)·(1 − 2·…)` (`0x14083e9de..0x14083ea95`);
+  - `F2 = F1·(1 − (k·[rbp-0x60])·(1−…)·ramp)` (`0x14083eac1..0x14083eaf1`).
+  - INF(low): the entity is the pass receiver or set-piece target. I did not resolve what `0x1406b0250` returns.
+
+### FUN_1408414a0 branch conditions
+Not traced this pass. This is the only reach-able leftover. Next step: run `pdis.py 0x1408414a0 0xe0` and map the two branches at decompile lines 47/56 to their compares.
+
+## 7. Still open
+1. The exact Q sub-factor gates (`0x1407240f0`/`0x140724590`/`0x140726610`/`0x140726640` kind predicates), and what `0x1406b0250`==1 means.
 2. The branch conditions in `FUN_1408414a0` that pick the ×0.1/×0.9 scale cuts and the pSign values.
 3. `FUN_140470d60`'s exact maths. INF(high): it rotates the heading by `xmm2` degrees, with the pitch passed by pointer. Confirm by decompiling `0x140470d60`.
