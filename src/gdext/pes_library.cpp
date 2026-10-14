@@ -99,6 +99,11 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 defender-decision constants unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) pesClips_ = pes::LoadPesClips(*exe, vfs_, &err);
+  if (!pesClips_) {
+    UtilityFunctions::push_error("PES21 body clips unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) contactConstants_ = pes::LoadContactConstants(*exe, vfs_, &err);
   if (!contactConstants_) {
     UtilityFunctions::push_error("PES21 contact constants unavailable: ", ToGd(err));

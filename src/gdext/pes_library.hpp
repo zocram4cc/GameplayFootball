@@ -11,6 +11,7 @@
 #include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/pescontact.hpp"
+#include "onthepitch/pesclips.hpp"
 #include "onthepitch/pesstrategy.hpp"
 #include "onthepitch/pesteamconcepts.hpp"
 #include "onthepitch/pessubs.hpp"
@@ -103,6 +104,7 @@ class PesLibrary : public RefCounted {
     return defenderDecisionConstants_ ? &*defenderDecisionConstants_ : nullptr;
   }
   // PES 2021's contact reaction (docs/re/pes-re-contact.md).
+  const pes::PesClipSet* pes_clips() const { return pesClips_ ? &*pesClips_ : nullptr; }
   const pes::ContactConstants* contact_constants() const {
     return contactConstants_ ? &*contactConstants_ : nullptr;
   }
@@ -159,6 +161,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::DefensiveShapeConstants> defensiveShapeConstants_;
   std::optional<pes::DefenderDecisionConstants> defenderDecisionConstants_;
   std::optional<pes::ContactConstants> contactConstants_;
+  std::optional<pes::PesClipSet> pesClips_;
   std::optional<pes::StrategyConstants> strategyConstants_;
   std::optional<pes::TeamConceptConstants> teamConceptConstants_;
   std::optional<pes::SubstitutionConstants> substitutionConstants_;

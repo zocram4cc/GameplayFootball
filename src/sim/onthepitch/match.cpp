@@ -157,6 +157,10 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES contact constants missing: read them from the install with "
         "pes::LoadContactConstants into MatchSetup::pesContactConstants");
   pesContactConstants = *setup.pesContactConstants;
+  if (setup.pesClips == nullptr)
+    throw std::runtime_error(
+        "PES clips missing: read them from the install with pes::LoadPesClips into "
+        "MatchSetup::pesClips");
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   if (setup.pesStrategyConstants == nullptr)
     throw std::runtime_error(
@@ -208,6 +212,7 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
 
   anims = std::make_shared<AnimCollection>(*rig);
   anims->Load(setup.animationDir);
+  anims->AddPesClips(*setup.pesClips);
 
   // cache animation positions
 

@@ -581,6 +581,26 @@ void AnimCollection::Load(std::filesystem::path directory) {
   Log(e_Notice, "AnimCollection", "Load", "Ready");
 }
 
+void AnimCollection::AddPesClips(const pes::PesClipSet& clips) {
+  boost::intrusive_ptr<Node> playerNode = BuildPlayerNode(rig);
+  std::list<boost::intrusive_ptr<Object>> bodyParts;
+  playerNode->GetObjects(e_ObjectType_Geometry, bodyParts, true);
+  std::map<const std::string, boost::intrusive_ptr<Node>> nodeMap;
+  FillNodeMap(playerNode, nodeMap);
+  for (const pes::PesClip& clip : clips.clips) {
+    Animation* animation = new Animation();
+    animation->AddExtension("football", std::make_shared<FootballAnimationExtension>(animation));
+    animation->LoadText(clip.name, pes::PesClipAnimText(clip, rig));
+    animation->SetVariable("imported", "true");
+    Animation* mirrored = new Animation(*animation);
+    mirrored->AddExtension("football", std::make_shared<FootballAnimationExtension>(mirrored));
+    mirrored->Mirror();
+    _PrepareAnim(animation, playerNode, bodyParts, nodeMap, false);
+    _PrepareAnim(mirrored, playerNode, bodyParts, nodeMap, false);
+  }
+  playerNode->Exit();
+}
+
 bool AnimCollection::HasSpecial(int specialVar1, int specialVar2) const {
   for (unsigned int i = 0; i < animations.size(); i++) {
     if (animations.at(i)->GetAnimType().compare("special") != 0)

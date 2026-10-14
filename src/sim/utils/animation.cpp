@@ -1224,10 +1224,25 @@ void Animation::LoadData(std::vector<std::vector<std::string>>& file) {
 }
 
 void Animation::Load(const std::string& filename) {
-  name = filename;
-
   std::vector<std::string> file;
   file_to_vector(filename, file);
+  LoadLines(filename, file);
+}
+
+void Animation::LoadText(const std::string& clipName, const std::string& text) {
+  std::vector<std::string> file;
+  size_t start = 0;
+  while (start < text.size()) {
+    const size_t end = text.find('\n', start);
+    const size_t stop = end == std::string::npos ? text.size() : end;
+    if (stop > start) file.push_back(text.substr(start, stop - start));
+    start = stop + 1;
+  }
+  LoadLines(clipName, file);
+}
+
+void Animation::LoadLines(const std::string& clipName, std::vector<std::string>& file) {
+  name = clipName;
 
   // Each line's tokens were built and then *copied* into the file vector, so
   // every token in a 453 MB collection was allocated and memcpy'd twice. Moving

@@ -108,6 +108,9 @@ public:
   void Reset();
   void LoadData(std::vector<std::vector<std::string>>& file);
   void Load(const std::string& filename);
+  // The same .anim text, built in memory (clips converted from the user's PES
+  // install at match start, docs/re/pes-re-contact-port.md stage A).
+  void LoadText(const std::string& clipName, const std::string& text);
   void Save(const std::string& filename);
   void Mirror();
   std::string GetName() const;
@@ -134,6 +137,7 @@ protected:
 
   std::map<std::string, std::shared_ptr<AnimationExtension>> extensions;
 
+  void LoadLines(const std::string& clipName, std::vector<std::string>& file);
   std::shared_ptr<XMLTree> customData;
   std::map<const char*, std::string, CompareCharacterStrings> variableCache;
 

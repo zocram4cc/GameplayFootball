@@ -122,6 +122,9 @@ int main(int argc, char** argv) {
   // the exe's level table, vetoes and balance gauge.
   auto contactConstants = pes::LoadContactConstants(*exe, vfs, &err);
   if (!contactConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES body clips the engine plays (pesclips.hpp), converted at match start.
+  auto pesClips = pes::LoadPesClips(*exe, vfs, &err);
+  if (!pesClips) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   auto strategyConstants = pes::LoadStrategyConstants(*exe, &err);
   if (!strategyConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
@@ -158,6 +161,7 @@ int main(int argc, char** argv) {
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
   setup.pesContactConstants = &*contactConstants;
+  setup.pesClips = &*pesClips;
   setup.pesStrategyConstants = &*strategyConstants;
   setup.pesTeamConceptConstants = &*teamConceptConstants;
   setup.pesSubstitutionConstants = &*substitutionConstants;

@@ -37,6 +37,8 @@ struct Rig;
 #include "pesdefenderdecisions.hpp"
 // PES 2021's player-vs-player contact reaction (docs/re/pes-re-contact.md).
 #include "pescontact.hpp"
+// PES body clips the simulation plays, converted from the install at match start.
+#include "pesclips.hpp"
 #include "pesstrategy.hpp"
 #include "pesteamconcepts.hpp"
 #include "pessubs.hpp"
@@ -116,6 +118,9 @@ struct MatchSetup {
   // fall level table, contact.o's thresholds, the vetoes and the balance
   // gauge. Required: without them a body contact has no outcome to read.
   const pes::ContactConstants* pesContactConstants = nullptr;
+  // PES body clips (pesclips.hpp) the engine plays itself - the Dodge action's
+  // clips. Required: they are PES's animation data, read from the install.
+  const pes::PesClipSet* pesClips = nullptr;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1):
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.

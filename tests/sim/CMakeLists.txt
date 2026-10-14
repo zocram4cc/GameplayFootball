@@ -110,3 +110,7 @@ gtest_discover_tests(pes_team_concepts_test)
 add_executable(pes_contact_test pes_contact_test.cpp)
 target_link_libraries(pes_contact_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_contact_test)
+
+add_executable(pes_clips_test pes_clips_test.cpp)
+target_link_libraries(pes_clips_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_clips_test PROPERTIES TIMEOUT 1800)
