@@ -212,22 +212,110 @@ Verified against raw (l68.txt): the 13/8 constants and arg order at 0x140689345/
 0 (xorps xmm7) at 0x1406899a9; 130/169/6.5/1156 at 0x1406895fc–0x140689644; 45/24/80/20/18/90/15/27/−12/35 at
 0x1406897ca–0x140689a4f. The remaining items are decompile-order OBS (b.c 1784–2500), not each re-walked in raw.
 
-## 4. Still undecoded (exact next step: `dec.sh` each, then cross-check)
+## 4. Pass 2 (2026-10-14): base score table, search predicates, return value
 
-- **Lane value table `MA+0x25378` (33 bytes per team)**: base score `S` of every candidate. Writer not found here (only the
-  kind-0 sub 2/3 clear in defence-leftovers §2.2). Next: byte-scan `pes_full.bin` for stores with disp `0x25378`/`+0x24d70`
-  base, or the `FUN_140a7b2c0` callers.
-- 59ba60 predicates: `FUN_1405a7840, 6de0, 60f0, 73c0, 65a0, 7960, 7520, 6910, 7270` (force S=100), `FUN_140592fd0`
-  (lane budget), `FUN_140594470`, `FUN_14059a1f0/595ab0` (sector), `FUN_1405ab180/abcc0/ab380/ab990`, `FUN_140595260/5955e0`,
-  `FUN_1405973b0`, `FUN_140664ee0` (final commit; reads 0xc3), `FUN_14063fbc0/140597ff0` (which two defenders give X),
-  `FUN_1405a5b20, a0d20, 948d0, a9950, aaf00, aaba0, a4830, 644fe0`, `FUN_140a4d2c0` (region code). Decoded here:
-  `FUN_1405a59d0` (instr-1 set, |P.x−ball.x| ≤ 7, |P.z−ball.z| ≤ 15, |C.z−P.z| ≤ 12, class > 6 or a4c9a0(−5)),
-  `FUN_140595cb0` (sub-kind 1: |C.z| ≤ F5+3; 2: |C.z| ≥ F7+2; 3: F5+3 ≤ |C.z| ≤ F7; 4: side tests vs ball z ±5 and
-  T.dir 40°), `FUN_14059fd70`, `FUN_1405a0a70`, `FUN_140599d90/599e90`, `FUN_14060a4d0/a750`.
-- Stop-test leaves: all `FUN_14068xxxx`/`FUN_14069xxxx` named in §3 steps 4, 8–9, 11, 13, 16, 19, plus `FUN_1405a7fe0/7be0/7d10`
-  (O2), `FUN_140596240`, `FUN_1405a4f40`, `FUN_1405a40a0`, `FUN_1405a1cc0`, `FUN_140a53460`, `FUN_1405951b0`, `FUN_140a4c9a0`
-  (generic "≥ k m ahead/behind" predicate; its exact reference line is not decoded here).
-- 59ba60's return: decompiled `void`; callers test `al`. INF(high): `al = found` (`cStack_399`). Check the epilogue in raw.
+### 4.1 Writer of `MA+0x25378` — FOUND (OBS)
+Every one of the 21 `FUN_140a7b2c0` callers only reads (byte-scan of `call 0x140a7b2c0` + the next instruction); the only
+writer is `FUN_140462470` (store `mov [param_1 + row·0x21 + k], al`, 0x140462470–0x140462695), called by `FUN_1404623d0`,
+which `0x140457620` calls right after the grid builder `FUN_140459ce0` (same update, so the table is always fresh vs the grid).
+```
+# occupancy grid, one per team t (MA+0x78 + t·0x1bb0), FUN_14045a080 (OBS)
+grid_t: header {L, W, cw = 2L/104, ch = 2W/68}  (FUN_140a783d0; 104 = 0x1425cb308, 68 = 0x1425cf878)
+        104×68 bytes at +0x10, reset to 0xff (= 100) by FUN_140a77780 (memset 0x1ba0)
+        cell (i,j) centre = (−L + (i+0.5)·cw, −W + (j+0.5)·ch);  index = j·104 + i
+for each active player p of team t (MI+0x1748):                         # FUN_140a77130 (OBS)
+    for cells within the box around p with |cell − p|² < 16:            # 16 @0x14259be10
+        v = cell (0xff → 100);  if v > 0: cell = max(0, v − (4 − |cell − p|)·100·0.25)   # 4 @0x1425656c0, 0.25 @0x142592228
+# lane table row t, lane k (FUN_140462470, OBS)
+X_t = MA+0x44+0x14·t  (team t's line x);  if s_t·ball.x > s_t·X_t: X_t = ball.x      # s_t = team t +0x254
+z_k = W' − 2 − 2k,  k = 0..32           (W' = the 6th arg, *( *(G+0x10) + 4) [INF(med): F1, matches FUN_140a71990 lanes])
+S[t][k] = mean over grid_t cells with centre within 1 m of (X_t, z_k), 0xff counted as 100; no cell → 100
+          (FUN_140a77b80 disc r ∈ [0, 1], no angle filter, x clamped to [−100, 100]; FUN_140a78320 integer mean)
+```
+So **S = "how free of team-t players the 1 m disc on team t's line is", 0 (packed) … 100 (empty)**. The search reads row
+`opp` (the defending team) at its own line. Open: `L, W` passed to `FUN_140a783d0` come from `[rbx]`,`[rbx+4]` at
+0x140459e94 in `FUN_140459ce0` (INF(med): F0, F1); the radius term `|cell − p|` is the decompile's sqrt argument, not re-walked
+(the raw linear sweep desyncs inside 0x140a77130 — decode next from 0x140a773xx with a proper disassembler start).
+`FUN_1404621d0` (kind-7 ball event) calls `FUN_140a7b7a0/140a7bee0` on the same base; they did not show as `a7b2c0` writers
+but were not decompiled (INF(med): they write the `+0x50`+ flag words of the same struct, not the 66 lane bytes).
+
+### 4.2 Search predicates (OBS decompile p2.c; in score order; true = effect shown)
+Force `S = 100` ("treat lane as open", not a veto; all need `S < 100`):
+- `5a7840(C, flagA, flagB)`: flagA && !flagB, runner–C² ≤ 42.25, a4c9a0(id,−5.5), |runner.z| < F5+4, runner–ball² < 289.
+- `5a6de0`: (one of 3 flags) && !flag4 && FUN_140593bd0; |P−C| ≤ 4 (6.5 with flag2); route via FUN_1405976d0/596560;
+  if speed > FUN_1404c8dc0(10) need |heading − bearing(P→C)| ≤ 20; no opponent with bearing dev < 26° and |Δz| < 3, nor
+  FUN_14069cd40(ball, route, P, o, 18.06 m/s) ≥ 0.
+- `5a60f0`: a4c9a0(id,−5); |C.z−P.z| ≤ 5.5; if runner not in own half-region (a4f1e0): s·C.x ≤ F8, (dev(T.dir,P→C) ≤ 65 or
+  |Δz| ≤ 3), instr-2 set or a4c720(line,ball,−10), angle 35° tests vs ball, |P.x−ball.x| ≤ 8 when behind, distance-rank
+  < 3: dist² ≤ 144/256 (or ≤ 1024 with instr 2), C nearer than 4 nearest opponents, no a4e720(40°,15).
+- `5a73c0`: the teammate nearest C (excluding opponent-receiver `FUN_140a62960`) is the runner and no other within 5 m.
+- `5a65a0`: C and ball on the same z side of P, dev(T.dir, ball→C) ≥ 40, nearest teammate to C on the other side and its
+  16-f predicted pos ≥ 1.5 m from C and no nearer than P, dev(T.dir, ball→mate) ≥ 32.
+- `5a7960`: dev(T.dir, P→C) ≤ 65, nearest teammate q to C; per-player angle table MA+0x228d4+0x58·id+0x16a8 vs T.dir ≥ 95.
+  (Decompile returns a tautology `d ≤ d` — **raw check needed**, INF: compares runner vs q distance.)
+- `5a7520`: |P.x−C.x| ≤ 10, (dev ≤ 65 or |Δz| ≤ 3), |P−C|² ≤ 225; nearest teammate within 90° per table;
+  FUN_140655660(id) < FUN_140655660(mate) on the FUN_140599ff0 path.
+- `5a6910`: |C.z| ≤ 12, class ≥ 7 or style 9, s·C.x ≤ F6+5, |P−C|² ≤ 64, dev ≤ 35, 6 ≤ |C.z−ball.z| ≤ 18,
+  a4c720(line, ball, −8), dev(T.dir, ball→C) ≥ 55, C between the nearest unmarked defenders on each side (gap ≥ 1.5, < 500).
+- `5a7270`: every opponent within 4 m (16 m²) of C is a marker (state 0x36) of a valid player ≠ runner who fails a4c9a0(6.5).
+- Inline: `S < 100 && T+0xb8e8 && T+0xb8d4 < 22 && |z_k − T+0xb8e4| ≤ 7` → S = 100 and the 'held' flag.
+
+Accept/budget:
+- `594470(…, out allClear, out anyHit)`: steps 0..4 × 3.5 m from C along bearing(P→C) while s·x ≤ F0; per opponent with
+  bearing-from-ball dev ≤ 65, t = FUN_14069cd40(ball, step, P, o, 22.22 m/s = 80 km/h); t ≥ 0 → anyHit; t ≥ sel+0xc → keep
+  stepping, else stop with allClear = 0.
+- `592fd0(ctx, id, k, limit, allClear)` (OBS raw 0x14059cec6: r9 = limit byte r14b, [rsp+0x20] = allClear):
+  need limit ≥ 15 (30 if `FUN_1405a5eb0` or `FUN_1405a5240`); pass early if class > 6, (!allClear or kickoff state
+  MI+0x11d4 = 2), s·line.x > F6 − 5 and runner and ball both within 15 m of (line.x, z_k); else reject if a neighbour lane
+  k±1 has S < limit − 15 and < 85, or (budget 2 only) k±2 has S < limit − 15 and < 70; else pass.
+- `14059a1f0(id, C)` → **sec** (float 0..100, max over probe points): probe (lineX + 4s, C.z) and ±3.5 m, stepping 4 m while
+  `FUN_140a4c750` (onside/in-pitch) holds, ≤ 3 steps; value = (w_z·(20r+30) + 100 − (20r+30)) · ramp(dist(ball,p), 20→60)
+  +20 if |p.z| < F2+2 and s·x > F6, +20 if F2 < |p.z| < F7 and s·x > F6+4, +20 if no a4e720(60°,50) cone; clamp 0..100;
+  × FUN_14059b630; r = ramp(s·ball.x, 13 → F6−10), w_z = ramp(|p.z|, F7 → F2) (1 inside the goal width, 0 outside the box
+  width). Offsets OBS: `+0x08` = F2 3.66, `+0x18` = F6, `+0x1c` = F7.
+- `595ab0(sec)`: pass unless instruction 0 set and 1, 2 clear; then pass if sec > 30 (15 with style 0), or
+  `FUN_140a3e840` > 4·fps, or (a4c720 and P within 11 m (16 with style 0) of ball), or s·ball.x > F6 and |ball.z| < F7.
+- Teammate-claim gates, used when `cnt = T+0xbab4[slot·0x21+k] < 45` (`5ab180`) or with `p8` (`5abcc0` or `5ab380` or
+  `5ab990`): pass only if a Chance-running teammate (state 0x1e, ≥ 11 f in) is found that the lane outranks; each sets that
+  teammate's bit in `sel+0x280` (the Chance pin mask). `5ab180`: sec ≥ 50 and mate's `T+0xc064` value ≤ min(60, sec) and
+  mate's AI z within 10 m of C.z. `5abcc0`: sec ≥ 70 (or runner in 0x2f), receiver geometry 90°/100 m, mate value ≤ 55 …
+  ≤ sec. `5ab380`: |C.z| ≤ F5+2, same z side as ball, s·ball.x ≥ 15, receiver→C dev ≤ 60, mate ≥ 7 m away in z.
+  `5ab990`: sec ≥ 10, |P.z| ≤ F7 and |C.z| ≤ F5, mate and mate's AI target both at |z| ≥ F7.
+- Tie-break (equal S, OBS 59ba60 1498–1601): `5973b0(C)` = max over opponents of min(ramp(|o−C|, 5→8.5),
+  ramp(s·(line.x − o.x), 1.8→5)) ("defender close to C and on the line"); `595260(C, best)` and `5955e0(C, best)` only act
+  for runs 0x1d–0x1f with AI class 1: prefer the lane closer in bearing to the 11-f predicted runner (70°, a4c720(−0.2)),
+  and reject a lane that crosses ball z behind a defender within 75° (225 m² list cut).
+- Flags into the search: `5a5b20` true unless style 0 set and the slot state ∈ {0x1d…0x21,0x24,0x25,0x27,0x2c} for
+  ≤ 2.5·fps+0.5 = 135 f (or FUN_140a62d90 == 0x3cc → true). `5a0d20`: style 0x11 clear, last event a pass (1/2) to him
+  within 1 s, ball past line or not in own region, |P−ball| ≤ 18 (14 in region). `5948d0`: FUN_140a62d90 == 0x3cc,
+  T+0x8828[slot] == 2, s·P.x ≥ F6−5, |P.z| ≤ F5, FUN_1404c8e60 ≤ 64. `5a9950`: receiver valid and FUN_140a63680, s·ball.x ≤
+  F6−2, class > 1 and ≠ 3. `5aaf00`: open play, carrier (or MA+0x2483c, dist ≤ 49) on team, instr 2 set, MI+0x11a0 ≥ 65 f,
+  FUN_140a57800+4 ≤ 1, no Chance runner yet, carrier facing within 130° of T.dir, !a4c9a0(c,−12), carrier x ≤ F6−10 and not
+  past team line +0x38.
+- `5aaba0(C)`: nearest opponent within 7.5 m, runner speed ≥ 16000/(fps·3600) m/f (16 km/h) and heading within 80° of
+  T.dir → builds a 3-point path (16-f pred, C, C + 30 m along it) and returns `FUN_140594a10(path, 3)` (not decoded).
+- `a4d2c0(C, s)` region: 0 if |C.z| < F1/3 + 2 (central), else 2 if sign(C.z) == s else 1.
+- X source: `63fbc0(opp)` = the two deepest outfield opponents by s·x (sorted by FUN_140a79640, index 1 and 2 skip the GK);
+  `597ff0(p, n)` = p's position advanced along its velocity heading by n·speed (n = FUN_1405997f0 frames), or, when the
+  player is controlled (a6e6b0), stepped `n/2` times through FUN_140597e90 with speed tiers 5/11/16/28 km/h·1000/(fps·3600).
+
+### 4.3 59ba60 return (OBS raw)
+`al = 1` only at 0x14059da1d after copying `best` to `out` (path from 0x14059d9f1 `[rsp+0x7f]` = found ≠ 0); `xor al, al`
+at 0x14059dbbb for not-found and for an empty lane window (0x14059c8f6). Epilogue 0x14059dbbd–0x14059dc00.
+
+### 4.4 Still undecoded (exact next step)
+- `FUN_140664ee0` (final commit, ~660 lines; reads 0xc3 at 0x140664f6x): first gates are |dev| ≤ 90, |ball.z − C.z| ≤ 48,
+  then ~30 sub-tests (`FUN_14066f080, 6697b0, 596470, 66cc20, 661550, 6705d0, 66af40, 5a0ec0, 66f200, 6683a0, 6693e0,
+  667b90, 6680e0, 66ce40, 676210, 6749c0, 6612b0, 66bde0, 5a2590, 66d100, 668620, 643a30, 593e30, 660ea0, 660220, 65ff20,
+  660cc0, 596010, 66a5a0, 66a200, 66dad0`). Next: `dec.sh 0x140664ee0` already in h2.c; decode its 0xc3 key reads first
+  (that is where `checkBallDist_chance`/`checkLastLineDist_chance` likely apply).
+- `FUN_140594a10`, `FUN_14059b630` (sec multiplier), `FUN_140655660`, `FUN_1405976d0/596560`, `FUN_140a4c750`, `FUN_140a79640`.
+- `5a7960` tautology and `14059a1f0`'s `+0x08` field: re-walk in raw.
+- Stop-test leaves: unchanged from pass 1 (all `FUN_14068xxxx`/`FUN_14069xxxx` in §3, `FUN_1405a7fe0/7be0/7d10`,
+  `FUN_140596240`, `FUN_1405a4f40`, `FUN_1405a40a0`, `FUN_1405a1cc0`, `FUN_140a53460`, `FUN_1405951b0`, `FUN_140a4c9a0`).
+
+Correction to §2: the predicates listed as "S = 100" there are **promotions** (lane counted as fully open), not vetoes; the
+leftovers' "`bVar15 = 100` = vetoed" reading in `FUN_14059ed10` should be rechecked against this.
 
 Killed hypotheses: (a) "`_good` gates the second Chance search" — killed by r12b = `FUN_14060a4d0` at 0x1406026db.
 (b) "chanceScore = 40.0 float" — killed by the byte load at 0x14060291e and the header/ordering check in §0.
