@@ -23,6 +23,11 @@ namespace SetPieceLaws {
 constexpr float kAreaDepth = 16.5f;
 constexpr float kAreaHalfWidth = 20.15f;
 
+// The goal area ("six-yard box", Law 1): 5.5 m deep and 9.16 m either side of the
+// centre line. PES's FieldInfo F4/F5 hold the same two surfaces.
+constexpr float kGoalAreaDepth = 5.5f;
+constexpr float kGoalAreaHalfWidth = 9.16f;
+
 // How far outside the line a cleared player is sent. Standing exactly on it is legal
 // and looks like cheating, and a man drifting a step back would be inside again.
 constexpr float kClearanceMargin = 1.5f;

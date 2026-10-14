@@ -305,25 +305,29 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
       } else if (match->GetBallRetainer() == player) {  // keeper fetched ball, probably
         // PES's after-catch distribution (ActionKeeperAfterCatchMove::exec
-        // 0x1409e8880, docs/re/pes-re-keeper-port.md 2): the ball is carried
-        // up-field first - at least 4 m, and never back across his own line -
-        // and the teammate is picked from there, then the target steps 4 m
-        // farther on the bearing to that teammate. The choice itself (throw /
-        // short throw / punt) stays this engine's: PES reads a request kind,
-        // and GF's pass types already are the three kinds.
-        // ponytail: PES picks the teammate from a per-keeper 11-entry table
-        // (team+0x22e4c) that is install data this engine does not carry, so
-        // the nearest man to the carry point stands in for it.
+        // 0x1409e8880, docs/re/pes-re-keeper-port.md 2 and the corrections of
+        // pes-re-goalkeeper.md 10.6.2). PES's point is where the keeper WALKS
+        // while holding the ball, not the pass target - the pass target is the
+        // chosen team-mate, which is what this uses it for: he walks toward
+        // the free man and GF's pass goes to him.
+        // ponytail: PES picks the mate as the first team-mate in his own
+        // neighbour list with 10 m of space (MA+0x22e4c is the engine's
+        // per-player sorted distance list); this engine's nearest-player rule
+        // to the carry point stands in for that list.
         const pes::KeeperConstants& keeperConstants = match->GetPesKeeperConstants();
-        // His own penalty-area line, signed with the attack direction: the Law-1
-        // box line on his half (pitchHalfW - kAreaDepth), and the goal-area half
-        // width for the lateral reflection.
+        // His own goal-area and box marks (PES F5/F6/F7). The keeper of the -x
+        // goal attacks +x, so his own half is -x: the marks are magnitudes and
+        // `attackDir` carries the sign.
         const int attackDir = -team->GetSide();
-        const float ownPenaltyLineX =
-            -attackDir * (pitchHalfW - SetPieceLaws::kAreaDepth);
+        const pes::KeeperFieldMarks marks{pitchHalfW,
+                                          goalHalfWidth,
+                                          pitchHalfW - SetPieceLaws::kGoalAreaDepth,
+                                          SetPieceLaws::kGoalAreaHalfWidth,
+                                          pitchHalfW - SetPieceLaws::kAreaDepth,
+                                          SetPieceLaws::kAreaHalfWidth};
         const pes::DistributionPoint carry = pes::PesAfterCatchCarry(
-            player->GetPosition().coords[0], player->GetPosition().coords[1], attackDir,
-            ownPenaltyLineX, SetPieceLaws::kAreaHalfWidth, keeperConstants);
+            player->GetPosition().coords[0], player->GetPosition().coords[1], attackDir, marks,
+            keeperConstants);
         Player* targetPlayer = AI_GetClosestPlayer(team, Vector3(carry.x, carry.z, 0), CastPlayer());
 
         if (targetPlayer) {
@@ -348,10 +352,10 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
           // which PES's fallback (the keeper, displaced 2 m) also lands on.
           const float targetX = targetPlayer ? targetPlayer->GetPosition().coords[0] : carry.x;
           const float targetZ = targetPlayer ? targetPlayer->GetPosition().coords[1] : carry.z;
-          const pes::DistributionPoint aimed = pes::PesAfterCatchStep(
-              carry.x, carry.z, targetX, targetZ, attackDir, ownPenaltyLineX,
-              SetPieceLaws::kAreaHalfWidth, keeperConstants);
-          desiredTargetPosition = Vector3(aimed.x, aimed.z, 0.0f);
+          const pes::DistributionPoint walk = pes::PesAfterCatchWalk(
+              player->GetPosition().coords[0], player->GetPosition().coords[1], carry.x, carry.z,
+              targetX, targetZ, attackDir, marks, keeperConstants);
+          desiredTargetPosition = Vector3(walk.x, walk.z, 0.0f);
         }
       }
 
