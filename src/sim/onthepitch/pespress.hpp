@@ -11,6 +11,7 @@
 // metres. Constants come from the install's PES2021.exe image, read by
 // LoadPressConstants at the addresses named below.
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -31,6 +32,11 @@ struct PressConstants {
   float radToDeg;             // 0x14259be40 (57.2957763671875)
   float notSlotPenalty;       // 0x14259d634 (10000): the man holds no press slot
   float notRolePenalty;       // 0x1425cee24 (250000): role is not the presser role
+  // Pass-2 gates and adds (FUN_140639a20).
+  float pass2DelayDistSq;     // 0x1425a9464 (36): squared distance for the DELAY slot step
+  float pass2ZeroRoleDistSq;  // 0x1425c6780 (81): squared distance for the +pass2SameCodeAdd role case
+  float pass2SameCodeAdd;     // 0x14259bdf4 (8): score add when no code change is made
+  float pass2ActionAdd;       // 0x1425656c0 (4.0): score add for a man not in DELAY (0x33/0x34)
   float carrierRampStart_m;   // 0x14259be18 (18)
   float carrierRampEnd_m;     // 0x14259be20 (25)
   float carrierRampSpan_m;    // 0x14259bdf0 (7)
@@ -89,5 +95,36 @@ float PressManScore(const PressConstants& c, float distSq, float angleDeg, int r
 // Angle code 0..3 of FUN_140639600 for a signed angle `angleDeg` (the carrier
 // bearing offset) and the press slot index 0..3, or -1 for none.
 int PressAngleCode(const PressConstants& c, float angleDeg, int slot);
+
+// Pass-2 state of FUN_140639a20 (`param_3`): codeTaken marks an angle code as
+// used, pressCode[man % 11] is the code a man holds (-1 none), and
+// zeroCodeFlag is set once a man holds code 0.
+struct PressPickState {
+  std::array<int, 4> codeTaken{};
+  std::array<int, 11> pressCode{{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
+  bool zeroCodeFlag = false;
+};
+
+// Inputs of pass 2 for one side. Men are team indices 0..21 (side*11 + slot);
+// role is the side's role table indexed by man % 11.
+struct PressPickInput {
+  float ballX = 0, ballZ = 0;                         // MA+0x2482c / +0x24834
+  float refX = 0, refZ = 0;                           // func_0x140a57800: carrier reference
+  float referenceDeg = 0;                             // FUN_140a71540: side reference, [0, 360)
+  bool presserFlag = false;                           // team+0xf1
+  std::array<float, 22> posX{}, posZ{};               // player +0x55c / +0x564
+  std::array<bool, 22> onField{};                     // MI+0x1748 on-pitch flag
+  std::array<int, 22> action{};                       // player +0x5d0
+  int excludedMan = -1;                               // FUN_140a62690 result
+  std::array<int, 11> role{};                         // team+0xa2a0
+  std::array<int, 4> pressSlotMan{{-1, -1, -1, -1}};  // team+0xa548: man in each slot
+};
+
+// Pass 2 of FUN_140639a20 for one side. `pass1Bucket` is the side's pass-1
+// bucket sorted ascending by score. Returns the side's output bucket, sorted
+// ascending by score.
+std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const PressPickInput& in,
+                                             const std::vector<PressCandidate>& pass1Bucket,
+                                             PressPickState& state);
 
 }  // namespace pes

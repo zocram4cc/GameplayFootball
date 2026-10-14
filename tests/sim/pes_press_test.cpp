@@ -4,7 +4,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdlib>
+#include <vector>
+
 
 #include "onthepitch/pespress.hpp"
 
@@ -36,6 +39,10 @@ pes::PressConstants Synthetic() {
   c.slot2Band_deg = 80.0f;
   c.slot3Lo_deg = -30.0f;
   c.slot3Hi_deg = -120.0f;
+  c.pass2DelayDistSq = 16.0f;
+  c.pass2ZeroRoleDistSq = 81.0f;
+  c.pass2SameCodeAdd = 8.0f;
+  c.pass2ActionAdd = 4.0f;
   return c;
 }
 
@@ -137,6 +144,118 @@ TEST(PressAngleCode, NoSlotFallsThroughToTheBands) {
   EXPECT_EQ(pes::PressAngleCode(c, -60.0f, -1), 3);
   EXPECT_EQ(pes::PressAngleCode(c, 170.0f, -1), 2);
 }
+// Pass-2 fixture: the ball is at the origin, the carrier reference 15 m away, so
+// the candidate radius is 15 m. Bearings are measured from +z.
+struct Pass2Fixture {
+  pes::PressConstants c = Synthetic();
+  pes::PressPickInput in;
+  pes::PressPickState st;
+  Pass2Fixture() {
+    in.ballX = 0;
+    in.ballZ = 0;
+    in.refX = 0;
+    in.refZ = -15;
+    in.referenceDeg = 0;
+    in.onField.fill(true);
+  }
+  // Places man `m` at `bearingDeg` from the ball, `dist` metres away.
+  void Place(int m, float bearingDeg, float dist) {
+    const float r = bearingDeg * 3.14159265358979f / 180.0f;
+    in.posX[m] = dist * std::sin(r);
+    in.posZ[m] = dist * std::cos(r);
+  }
+};
+
+TEST(PressPass2, FirstUseRecordsTheCodeAndAddsNothing) {
+  Pass2Fixture f;
+  f.Place(3, 60.0f, 5.0f);
+  auto out = pes::RunPresserPicker(f.c, f.in, {{3, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].man, 3);
+  EXPECT_NEAR(out[0].score, 1.0f, kEps);
+  EXPECT_EQ(f.st.codeTaken[1], 1);
+  EXPECT_EQ(f.st.pressCode[3], 1);
+  EXPECT_FALSE(f.st.zeroCodeFlag);
+}
+
+TEST(PressPass2, ZeroCodeFarManIsSkippedWithoutAPresser) {
+  Pass2Fixture f;
+  f.Place(5, 0.0f, 11.0f);  // code 0, dist^2 121 > rampStart 20
+  EXPECT_TRUE(pes::RunPresserPicker(f.c, f.in, {{5, 1.0f}}, f.st).empty());
+}
+
+TEST(PressPass2, ZeroCodeFarManKeptWhenTheTeamHasAPresser) {
+  Pass2Fixture f;
+  f.in.presserFlag = true;
+  f.Place(5, 0.0f, 11.0f);
+  auto out = pes::RunPresserPicker(f.c, f.in, {{5, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(f.st.pressCode[5], 0);
+  EXPECT_TRUE(f.st.zeroCodeFlag);
+}
+
+TEST(PressPass2, PresserRoleIsExemptFromTheZeroCodeSkip) {
+  Pass2Fixture f;
+  f.Place(5, 0.0f, 11.0f);
+  f.in.role[5] = pes::kPresserRole;
+  EXPECT_EQ(pes::RunPresserPicker(f.c, f.in, {{5, 1.0f}}, f.st).size(), 1u);
+}
+
+TEST(PressPass2, SameCodeTakenAddsEight) {
+  Pass2Fixture f;
+  f.Place(3, 60.0f, 5.0f);
+  f.Place(4, 60.0f, 6.0f);
+  auto out = pes::RunPresserPicker(f.c, f.in, {{3, 1.0f}, {4, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[0].score, 1.0f, kEps);
+  EXPECT_NEAR(out[1].score, 9.0f, kEps);
+  EXPECT_EQ(f.st.pressCode[4], -1);  // no reassignment
+}
+
+TEST(PressPass2, DifferentCodeReassignsAndAddsFour) {
+  Pass2Fixture f;
+  f.Place(3, 60.0f, 5.0f);
+  f.Place(4, 95.0f, 5.0f);  // code 1; +offset moves it to code 2
+  auto out = pes::RunPresserPicker(f.c, f.in, {{3, 1.0f}, {4, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[1].score, 5.0f, kEps);
+  EXPECT_EQ(f.st.pressCode[4], 2);
+}
+
+TEST(PressPass2, ZeroChosenCodeFarFromTheBallAddsEightAndKeepsCode) {
+  Pass2Fixture f;
+  f.Place(3, 60.0f, 5.0f);
+  f.Place(6, 45.0f, 10.0f);  // code 1; -offset moves it to code 0
+  auto out = pes::RunPresserPicker(f.c, f.in, {{3, 1.0f}, {6, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[1].score, 9.0f, kEps);
+  EXPECT_EQ(f.st.pressCode[6], -1);
+}
+
+TEST(PressPass2, DelayManTakesHisSlotAsCode) {
+  Pass2Fixture f;
+  f.in.presserFlag = true;
+  f.Place(3, 0.0f, 5.0f);   // takes code 0
+  f.Place(7, 0.0f, 3.0f);   // DELAY man in slot 2, dist^2 9 <= 16
+  f.in.action[7] = 0x33;
+  f.in.pressSlotMan[2] = 7;
+  auto out = pes::RunPresserPicker(f.c, f.in, {{3, 1.0f}, {7, 1.0f}}, f.st);
+  ASSERT_EQ(out.size(), 2u);
+  EXPECT_NEAR(out[1].score, 1.0f, kEps);  // DELAY: no action add
+  EXPECT_EQ(f.st.pressCode[7], 2);
+}
+
+TEST(PressPass2, ExcludedOffPitchAndOutsideTheRadiusAreDropped) {
+  Pass2Fixture f;
+  f.Place(9, 60.0f, 5.0f);
+  f.Place(10, 60.0f, 5.0f);
+  f.Place(8, 0.0f, 16.0f);  // radius 15
+  f.in.excludedMan = 9;
+  f.in.onField[10] = false;
+  EXPECT_TRUE(pes::RunPresserPicker(f.c, f.in, {{9, 1.0f}, {10, 1.0f}, {8, 1.0f}}, f.st).empty());
+}
+
+
 
 // Install relation test: the image's constants are internally consistent.
 // Skips without PES21_ROOT, like the other install tests.

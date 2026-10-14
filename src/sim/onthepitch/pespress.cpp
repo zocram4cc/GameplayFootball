@@ -43,6 +43,10 @@ constexpr PressVa kPressVas[] = {
     {0x1425c48d4, &PressConstants::slot2Band_deg},
     {0x1425c6608, &PressConstants::slot3Lo_deg},
     {0x1425cee28, &PressConstants::slot3Hi_deg},
+    {0x1425a9464, &PressConstants::pass2DelayDistSq},
+    {0x1425c6780, &PressConstants::pass2ZeroRoleDistSq},
+    {0x14259bdf4, &PressConstants::pass2SameCodeAdd},
+    {0x1425656c0, &PressConstants::pass2ActionAdd},
 };
 
 }  // namespace
@@ -146,6 +150,86 @@ int PressAngleCode(const PressConstants& c, float a, int slot) {
   if (m < c.lowBand_deg) return 0;
   if (m <= c.highBand_deg) return a <= 0.0f ? 3 : 1;
   return 2;
+}
+
+namespace {
+
+// Press slot of `man` (team+0xa548 index), or -1.
+int PressSlotOf(const std::array<int, 4>& pressSlotMan, int man) {
+  for (int i = 0; i < 4; ++i) {
+    if (pressSlotMan[i] == man) return i;
+  }
+  return -1;
+}
+
+// Angle code of `man` for the carrier bearing shifted by `offsetDeg`
+// (FUN_140639600): bearing ball->man, plus offset, minus the side reference.
+int PressManAngleCode(const PressConstants& c, const PressPickInput& in, int man, float offsetDeg,
+                      int slot) {
+  float bearing = PressBearingDeg(c, in.ballX, in.ballZ, in.posX[man], in.posZ[man]);
+  float a = PressSideAngleDeg(c, PressWrapDeg(c, bearing + offsetDeg), in.referenceDeg);
+  return PressAngleCode(c, a, slot);
+}
+
+}  // namespace
+
+std::vector<PressCandidate> RunPresserPicker(const PressConstants& c, const PressPickInput& in,
+                                             const std::vector<PressCandidate>& pass1Bucket,
+                                             PressPickState& state) {
+  // Radius of the pass-2 window: the carrier ramp scales it between the start and span.
+  float carrierDist = std::hypot(in.ballX - in.refX, in.ballZ - in.refZ);
+  float radius = PressCarrierRamp(c, carrierDist) * c.carrierRampSpan_m + c.carrierRampStart_m;
+  float radiusSq = radius * radius;
+
+  std::vector<PressCandidate> out;
+  for (const PressCandidate& e : pass1Bucket) {
+    const int man = e.man;
+    if (man >= 22 || man == in.excludedMan || !in.onField[man]) continue;
+    float dx = in.posX[man] - in.ballX;
+    float dz = in.posZ[man] - in.ballZ;
+    float distSq = dx * dx + dz * dz;
+    if (distSq > radiusSq) continue;
+
+    const int role = in.role[man % 11];
+    const int slot = PressSlotOf(in.pressSlotMan, man);
+    const float root = std::sqrt(e.score);
+    const float offset = PressOffsetDeg(c, root);
+    int code0 = PressManAngleCode(c, in, man, 0.0f, slot);
+    int codePlus = PressManAngleCode(c, in, man, offset, slot);
+    int codeMinus = PressManAngleCode(c, in, man, -offset, slot);
+
+    // Skip a man on the zero code who is far from the ball, unless the team
+    // has a first presser or the man is the presser role.
+    if (!in.presserFlag && code0 == 0 && distSq > c.rampStart_deg && role != kPresserRole) continue;
+
+    // DELAY (action 0x33/0x34): a man in a press slot close to the ball takes
+    // that slot as his code.
+    const bool delay = static_cast<unsigned>(in.action[man] - 0x33) < 2u;
+    if (delay && slot >= 0 && distSq <= c.pass2DelayDistSq && code0 == 0) {
+      codePlus = slot;
+      codeMinus = slot;
+    }
+
+    float score = root;
+    if (state.codeTaken[code0] == 0) {
+      state.codeTaken[code0] = 1;
+      if (state.pressCode[man % 11] < 0) state.pressCode[man % 11] = code0;
+    } else if (codePlus != code0 || codeMinus != code0) {
+      int chosen = codePlus != code0 ? codePlus : codeMinus;
+      if (chosen == 0 && distSq >= c.pass2ZeroRoleDistSq && role != kPresserRole) {
+        score += c.pass2SameCodeAdd;
+      } else {
+        if (!delay) score += c.pass2ActionAdd;
+        state.pressCode[man % 11] = chosen;
+      }
+    } else {
+      score += c.pass2SameCodeAdd;
+    }
+    if (state.pressCode[man % 11] == 0) state.zeroCodeFlag = true;
+    out.push_back({man, score});
+  }
+  SortPressBucket(out);
+  return out;
 }
 
 }  // namespace pes
