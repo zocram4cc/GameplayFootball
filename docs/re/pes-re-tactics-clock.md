@@ -191,7 +191,7 @@ ctx->[+0x1A484] = matchTime                       // cached copy for other subsy
 
 ### 2.5 The tick driver — OBS
 
-`FUN_140925750` @0x140925750 (0x57 B) is the **per-tick match tick**, a virtual method (vtable slot **0x1426333B8**, member +0x18 of the class whose vtable starts at 0x1426333A0):
+`FUN_140925750` @0x140925750 (0x57 B) is the **per-tick match tick**, a virtual method (vtable slot **0x1426329b8** - corrects the earlier reading 0x1426333B8, per `pes-re-dead-code.md` §5.2; member +0x18 of the class whose vtable starts at 0x1426329a0):
 
 ```
 sub_140925750(matchCtx):

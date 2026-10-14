@@ -14,7 +14,16 @@ with the exact next step. No player or team names.
 
 ## 1. Off-ball
 
-### 1.1 O1 — Chance target builder sub-functions (OBS atk1.c/atk2.c)
+### 1.0 Correction: `0.6944444/fps` is a speed floor, not a prediction
+
+Every "`0.6944444/fps` velocity read (a speed floor, see §1.0)" line below (fps = the tick rate, `FUN_141e532d0`) misreads
+`FUN_140a6c6d0`'s third argument: it is the **minimum speed below which a state-5 player's velocity is
+replaced** (2.5 km/h = 0.694444 m/tick at any fps, `0x14259bdd0`), so there is no look-ahead. Same for
+`FUN_140458740`'s same-valued argument (the velocity heading, floored). Verified across the users
+(`dash-reserve` §, `stamina-drain` §, `duel-sim` §, `run-targets-s1/s2/b2`, and the corrected
+`pes-re-contact.md` closing speed).
+
+## 1.1 O1 — Chance target builder sub-functions (OBS atk1.c/atk2.c)
 
 Dispatch order in `FUN_140602600` (Chance target builder, OffBallRE b1a.c:255–470
 re-read here) per candidate slot, first success wins; pin bits in `sel+0x280..`
@@ -57,8 +66,10 @@ Sub-function roles (all OBS signatures + head logic; full bodies in scratch):
 - `FUN_14059ed10(ctx,id,from,out,slotId,sectorN,flag)` — radial sector sweep:
   sectors `bVar21..bVar8` = `gridClass(from) ± param_7`, clamped to 0x20;
   per sector reads the offside-line table `MA+0x25378` row, runs the
-  `FUN_1405a6de0/60f0/73c0/65a0/7960/7520` veto battery (`bVar15 = 100` =
-  vetoed); winner = min angular deviation (`FUN_140439e50` bearing − runner
+  `FUN_1405a6de0/60f0/73c0/65a0/7960/7520` predicate battery, each setting the
+  sector's openness (`bVar15 = 100` = fully open, i.e. a promotion, not a veto
+  - see the correction in `pes-re-run-targets.md` §4); winner = min angular
+  deviation (`FUN_140439e50` bearing − runner
   bearing, ±180/360 fold) with score `< 45°` gate (`45.0 @0x14259be30`),
   tie-break by lower line distance. **Reads the runner's own stored target
   `T+0x26c+0x40·s` (`param_5`) only for the `param_7` hysteresis test**
@@ -72,11 +83,11 @@ Sub-function roles (all OBS signatures + head logic; full bodies in scratch):
 - `FUN_14059dc20(ctx,id,out)` — long corridor builder (≈300 lines; OBS
   skeleton): `15 m` reach gate (`@0x14259be0c`), `−10°` ball-line test
   (`@0x14259be84`), `10 m`/`1 m` corridor gates, `90°` turn gate, `60 m` range,
-  `0.6944444/fps` velocity prediction, then `5 m` stepping
+  `0.6944444/fps` velocity read (a speed floor, see §1.0), then `5 m` stepping
   (`@0x14259222c`) with `+5 m`/`+4 m` extensions. Port needs the full body;
   constants OBS.
 - `FUN_140673ad0` — box-corridor search (≈430 lines; OBS skeleton): `8 m`
-  (`@0x14259bdf4`)/`−7 m` (`@0x14259d62c`) gates, `0.6944444/fps` prediction,
+  (`@0x14259bdf4`)/`−7 m` (`@0x14259d62c`) gates, `0.6944444/fps` velocity read (a speed floor, see §1.0),
   `100/−10` angle window, `MA+0x2444`-family depth test, `6.5 m`
   (`@0x1425a2828`)/`70 m` (`@0x14259be4c`)/`30°` (`@0x142591140`) gates,
   `FUN_1405a3080/0x1405a0ec0/0x1405a1310/0x14066f200/0x1406613f0` commit
@@ -84,7 +95,7 @@ Sub-function roles (all OBS signatures + head logic; full bodies in scratch):
 - `FUN_1406718f0` — near-side lane test (≈330 lines; OBS skeleton): keeper-rate
   gates (`12.0 @0x14259be04`, `0x14259ce3c`, `−8 @0x142565604`), `45°`
   (`@0x14259be30`)/`25 m` (`@0x14259be20`) gates, `20 m` (`@0x14259be1c`)
-  commit, `+7 m`/`−7 m` window, `0.6944444/fps` prediction, instruction-2/3
+  commit, `+7 m`/`−7 m` window, `0.6944444/fps` velocity read (a speed floor, see §1.0), instruction-2/3
   reads, the same commit battery as `673ad0`. Constants OBS; full body open.
 - `FUN_1406725f0` — far-side variant (≈380 lines; OBS skeleton): instruction-9
   reads (vs 2/3 for `6718f0`), `20→15 m` ramp (`@0x14259be20/0x14259be0c`),

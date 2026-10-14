@@ -397,6 +397,10 @@ a4fea0/a4fbc0, a4c9a0, a4e250, 5951b0, a50250, a63950, 5a4830, 5969b0, a8f7c0, a
 - Stop-test leaves: `-s1.md` (22: 21 done, 68efc0 partial — duplicate sign test, raw check near 0x14068f1xx),
   `-s2.md` (21 done; 68c050 is effectively dead: sqrt(d²) compared with 1444, raw-confirmed; 690cf0 discards its cone),
   `-s3.md` (22 done; 5a40a0 tail-calls 5a3080).
+## 7b. Correction to the §0 key table (from `pes-re-attack-leftovers.md` §1.5, the dumped `o_spaceRun.o`)
+
+The key names in §0 were read against a PES19 key ordering, so several values are attached to the wrong keys. The corrected pairs are **chanceScore 40 / 69** (+0x1c/0x20, not 102/88), checkBallDist_chance 19/25 (27.5/33.0 = checkBackDist_second), checkLastLineDist_chance 6/11 (24/30 = checkInterceptScore) and checkZ 125/24 (41.5 = checkSpaceRunCount). §0's "102/88 chanceScore" entry and the "killed: chanceScore = 40.0 float" hypothesis at §4 fall with it: the score limit `FUN_14059ba60` reads is the float 40.0.
+
 ## 8. Status
 Lane search (§2, §4, §5, b1–b4, h1) and stop test (§3, s1–s3) are decoded to leaf level. Not yet port-ready items, exact:
 5a3080 angle-widening branch 0x1405a3afe–0x1405a3c34; 66bde0 angle-arg order and 643a30 one a4c720 arg (raw);

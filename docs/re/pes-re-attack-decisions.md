@@ -75,8 +75,9 @@ playing-direction sign convention as in carrier-ai.md: `attack sign s = ±1`):
    player and his "active" byte `[r12+rax+0x1748]` is set, compute an **intercept-time race**:
    `t_p = 16000 / (rng·3600)` (0x14259d638 = **16000.0** @0x14045e6d6),
    `t_b = 25000 / (rng·3600)` (0x14259d63c = **25000.0** @0x14045e6ef),
-   predicted positions via `FUN_140a6c6d0(p, …, 0.6944444/rng)` (0x14259bdd0 = **0.6944444**
-   = 1/1.44 @0x14045e707), `d = ‖pred_p − pred_b‖`; if `d <= t_b` use `max(t_p, d)`.
+   both players' velocities from `FUN_140a6c6d0(p, …, 0.6944444/rng)` (0x14259bdd0 = **0.6944444**
+   = 1/1.44 @0x14045e707; a 2.5 km/h speed floor, not a look-ahead),
+   `d = ‖vel_p − vel_b‖`; if `d <= t_b` use `max(t_p, d)`.
    **INF (med): who-gets-there-first race between the candidate and the ball.**
 2. **Ball-proximity gate** (0x14045e7ba): `comiss [rax+0x18], 1.5` — ball height > **1.5 m**
    (0x14259bddc @0x14045e7bf) skips the short path. Then the newest event must be
@@ -281,7 +282,7 @@ aim = carrier.pos + attack_sign·F[0]                  # F[0] = half-length 52.5
 reach = dist_along(carrier → aim)                     # FUN_140a8f820
 lane_free = FUN_14063de20-along-attack(len = reach − 5.0, wid 50.0, h 5.0)
                                                      # 5.0 @0x14259222c, 50.0 @0x14259be34
-carry_bearing = turn-predicted bearing (FUN_140458740, 0.6944444/rng)
+carry_bearing = velocity-heading (FUN_140458740, 0.6944444/rng - the same speed floor, not a prediction)
 lane_closed = FUN_14063dab0(width 3.0, budget 220, flag 1)  # 3.0 @0x14258c264, 220 @0x1425ca310
 if lane_free or lane_closed: (either may be false — need both blockers below)
     if imageA[0xb8a2] or FUN_140a63950(ctx,team,7,0xff) or (plan[0x3c] != 1 and FUN_14063e960(ctx,carrier,0xe))

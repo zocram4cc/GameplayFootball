@@ -128,8 +128,9 @@ and `P+0x6d8` = `pl+0x610`), but a different allocation (`pl` is the published c
   sliding (flag bit 15 + isSlide) and the slide leg class matches the touched leg class, `d = 0.2` fixed; when
   no part is tracked, `d = overlap(+0x63c) − 0.46`.
   INF(hi): "how far the opponent has knocked my body off its animation".
-- **Closing speed `v` (km/h)** = `FUN_140843a20`: both players' velocities `0.6944/gs` s ahead
-  (`FUN_140a6c6d0`), minus their contact separation, rotated into the self→opponent and opponent→self lines;
+- **Closing speed `v` (km/h)** = `FUN_140843a20`: both players' velocities from `FUN_140a6c6d0`, whose third
+  argument is a **2.5 km/h speed floor**, not a look-ahead (0.6944/gs s; corrected in `pes-re-contact-port.md`
+  §9), minus their contact separation, rotated into the self→opponent and opponent→self lines;
   `v = 3.6·gs·(along_self + along_opp)` (60·60/1000 = 3.6 @0x14259a764, 0x14256ae34).
 - **Hit class** `cs = class(pl+0x624)` (own part), `co = class(pl+0x65c)` (partner part).
 - **Opponent mode `m`**: 2 = slide that reaches the hit leg (isSlide and (`co==2` or `co == class(human(opp)+5)`)),
@@ -165,7 +166,7 @@ Modifiers, in order (OBS):
 3. `m != 2` and the self is *committed* (mid-kick before its contact frame, or dodging an opponent who is not
    tackling, or both stagger/fall-protected cases of `0x1408431a7`): all five thresholds ×1.25 (the forced-fall
    speed ×2.25).
-4. Self in a kick clip of set `FUN_140a6e170` between `8/60` and `16/60` s: ×1.5 (forced-fall speed ×2.5).
+4. Self in a push-away jostle clip of set `FUN_140a6e170` (`js_run_*_push_away`, m0x1119–0x111d - not a kick window, corrected in `pes-re-contact-port.md` §4) between `8/60` and `16/60` s: ×1.5 (forced-fall speed ×2.5).
 5. **Jostle hold-up** (opponent in JOSTLE, self owns the ball `FUN_140a63f80`, self not before a kick contact):
    `T = 120 + 120·clamp((stat(self,PC) + 60 − ab(opp)+0x28 − 20)/80)`; once the opponent's jostle counter
    `human(opp)+0x2f` (frames in jostle phases 7–9, OBS `FUN_140781440`) exceeds `gs·T/60`:
@@ -191,7 +192,9 @@ Then (OBS):
 - **Receiving-body clash** (self's clip has hold data and is inside its hold window, both foot bones > 0.25 m
   off the ball, self not DODGE, partner < 0.65 m, `cs == 2`, self not already STAGGER):
   `p = 3·clamp((PC−40)/59)`; `level = v > p+7 ? 3 : v > p−6 ? 2 : 0`; if either is in TRAP or the hold window has
-  started: `level = v > p+25 ? 3 : v > p+22 ? 2 : 0` (PC raises the speed a receiver can absorb by up to 3 km/h).
+  started: `level = v > p+25 ? 3 : v > p+22 ? 2 : 0` (PC raises the speed a receiver can absorb by up to 3 km/h;
+  0x1408435fe..0x140843651 - the report's earlier lenient/strict reading of the +25/+22 vs +7/−6 thresholds
+  was reversed, corrected in `pes-re-contact-port.md` §5).
 - Self kicking with AI action WAIT_TIMER, body hit, still within `12/60` s after his contact frame → level 2.
 - **Forced fall** `FUN_140844540` → **level 3** (raw `0x1408436e3 mov edi,3`; the decompiler shows a veto):
   - a sliding opponent (flag 15) whose slide leg hits the same leg class (or the body), with the contact point
@@ -231,7 +234,7 @@ After the level path, with the nearest opponent `o` (distance-sorted table `MA+0
   contact frame, heading within 45°, the other directly behind (`z > 0`, |lateral| < 0.5 m).
 - **Tackle sub-kind 1 at its contact frame (±4 frames) → FALL_DOWN, cause 7**: foot within
   `0.2 + 0.1·(1 − clamp((PC−40)/59))` m.
-- **Stud-trip → STAGGER, cause 1**: opponent in a set-`FUN_140a6e170` clip between 8/60 and 16/60 s, its foot
+- **Stud-trip → STAGGER, cause 1**: opponent in a push-away jostle set-`FUN_140a6e170` clip between 8/60 and 16/60 s, its foot
   within 0.3 m of the self's bone 7, the self in front and < 1 m lateral.
 
 ### 1.7 What is NOT an input (OBS by absence in every function above)
