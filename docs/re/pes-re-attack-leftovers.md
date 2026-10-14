@@ -895,9 +895,17 @@ writable-debug session, not read-only pread). The match has now ended, so
 this waits for the next live match. Ready samplers: `sup_wide.py`,
 `sup_back.py`, `sup_inv4.py` in the AttackLiveRE scratch dir.
 
-### 7.5 Status close-out (end of live window)
+### 7.5 Status close-out (two live windows)
 
 Live items 1–3 of the ticket: O7 CLOSED (§7.1), Finishing byte CLOSED (§7.2),
-off-ball Chance dispatch CLOSED (§7.3). Support values OPEN (§7.4). The match
-ended after the window (MI null, menu). §5 items 1–3 are therefore superseded
-by §7.1–§7.4; §5 items 4–9 (static bodies) are untouched by this sweep.
+off-ball Chance dispatch CLOSED (§7.3). Support values OPEN (§7.4). §5 items
+1–3 are superseded by §7.1–§7.4; §5 items 4–9 (static bodies) untouched.
+
+Second window (new match, `G = 0x2d3115f0`, mode 1 frame 15,422 → 42,039):
+the atomic per-tick snapshot (`sup_atomic.py`/`sup_atomic2.py`: T + P
+fingerprint + `[X+0xba8]==P` back-pointer + `X+0x2d4` support read in ONE
+MI-hit) ran ~10 min + ~6 min with zero wins — partly sampler bug (first
+version re-read MI between phases so the tick lapsed; fixed version
+`sup_atomic2.py` was killed when the match ended). No support values logged.
+The match ended again before a third window; O8 waits for the next live
+match with `sup_atomic2.py` ready.
