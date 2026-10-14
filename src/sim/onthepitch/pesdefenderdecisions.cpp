@@ -32,22 +32,6 @@ bool ReadVa(const PeImage& exe, uint64_t va, float* out, std::string* error) {
   return true;
 }
 
-// One object's record out of the WESYS container constant_player.bin, the way
-// LoadBallRecordConstants reads ball.o out of constant_match.bin.
-bool ReadObject(const PesVfs& vfs, const char* name, std::vector<uint8_t>* rec,
-                std::string* error) {
-  auto blob = vfs.Read(kConstantPlayerPath, error);
-  if (!blob) return false;
-  auto table = ParseUniformTable(*blob, error);
-  if (!table) return false;
-  auto span = table->Find(name);
-  if (!span) {
-    *error = std::string(name) + " missing from " + kConstantPlayerPath;
-    return false;
-  }
-  rec->assign(span->begin(), span->end());
-  return true;
-}
 
 // The angle fold (0x140481b00): wrap at 360, fold at 180.
 inline float WrapDeg(float a) {
@@ -70,6 +54,23 @@ inline int FramesToTicks(float pesFrames) {
 inline int ClampLevel(int level) { return level < 0 ? 0 : (level > 3 ? 3 : level); }
 
 }  // namespace
+
+// One object's record out of the WESYS container constant_player.bin, the way
+// LoadBallRecordConstants reads ball.o out of constant_match.bin.
+bool ReadConstantPlayerObject(const PesVfs& vfs, const char* name, std::vector<uint8_t>* rec,
+                              std::string* error) {
+  auto blob = vfs.Read(kConstantPlayerPath, error);
+  if (!blob) return false;
+  auto table = ParseUniformTable(*blob, error);
+  if (!table) return false;
+  auto span = table->Find(name);
+  if (!span) {
+    *error = std::string(name) + " missing from " + kConstantPlayerPath;
+    return false;
+  }
+  rec->assign(span->begin(), span->end());
+  return true;
+}
 
 std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     const PeImage& exe, const PesVfs& vfs, std::string* error) {
@@ -126,13 +127,13 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
   // stock and the modded file (checked against both, report 12.5). Nothing is
   // pinned - the VFS resolves whichever constant_player.bin the install mounts.
   std::vector<uint8_t> rec;
-  if (!ReadObject(vfs, "tackle.o", &rec, error)) return std::nullopt;
+  if (!ReadConstantPlayerObject(vfs, "tackle.o", &rec, error)) return std::nullopt;
   if (!ReadRecordFloat(rec, 0x0c, &c.tackleSafetyRateLastLine) ||
       !ReadRecordFloat(rec, 0x10, &c.tackleSafetyRateNoCover)) {
     *error = "tackle.o: safety-rate slots past end";
     return std::nullopt;
   }
-  if (!ReadObject(vfs, "block.o", &rec, error)) return std::nullopt;
+  if (!ReadConstantPlayerObject(vfs, "block.o", &rec, error)) return std::nullopt;
   if (!ReadRecordFloat(rec, 0x40, &c.blockNormal_s) ||
       !ReadRecordFloat(rec, 0x44, &c.blockSpeedBall_s)) {
     *error = "block.o: window slots past end";

@@ -558,8 +558,6 @@ void HumanoidBase::OffsetPosition(const Vector3& offset) {
 }
 
 void HumanoidBase::TripMe(const Vector3& tripVector, int tripType) {
-  if (match->GetBallRetainer() == player)
-    return;
   if (currentAnim->anim->GetVariable("incoming_special_state").compare("") == 0 &&
       currentAnim->anim->GetVariable("outgoing_special_state").compare("") == 0) {
     if (this->interruptAnim == e_InterruptAnim_None &&

@@ -17,6 +17,7 @@
 #include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/pesjudge.hpp"
+#include "onthepitch/pescontact.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pessetpiecetaker.hpp"
@@ -46,6 +47,7 @@ struct PesMatchConstants {
   std::optional<pes::CarrierConstants> carrier;
   std::optional<pes::DefensiveShapeConstants> defensiveShape;
   std::optional<pes::DefenderDecisionConstants> defenderDecisions;
+  std::optional<pes::ContactConstants> contact;
   std::optional<pes::StrategyConstants> strategy;
   std::optional<pes::TeamConceptConstants> teamConcepts;
   std::optional<pes::SubstitutionConstants> substitutions;
@@ -77,6 +79,7 @@ inline const PesMatchConstants& SharedPesMatchConstants() {
   c.defensiveShape = pes::LoadDefensiveShapeConstants(*exe, &err);
   if (mounted)
     c.defenderDecisions = pes::LoadDefenderDecisionConstants(*exe, vfs, &err);
+  if (mounted) c.contact = pes::LoadContactConstants(*exe, vfs, &err);
     c.strategy = pes::LoadStrategyConstants(*exe, &err);
     c.substitutions = pes::LoadSubstitutionConstants(*exe, &err);
   if (mounted) c.teamConcepts = pes::LoadTeamConceptConstants(*exe, vfs, &err);
@@ -105,6 +108,7 @@ inline bool FillMissingPesConstants(MatchSetup* setup) {
   fill(setup->pesCarrierConstants, c.carrier);
   fill(setup->pesDefensiveShapeConstants, c.defensiveShape);
   fill(setup->pesDefenderDecisionConstants, c.defenderDecisions);
+  fill(setup->pesContactConstants, c.contact);
   fill(setup->pesStrategyConstants, c.strategy);
   fill(setup->pesTeamConceptConstants, c.teamConcepts);
   fill(setup->pesSubstitutionConstants, c.substitutions);

@@ -549,3 +549,5 @@ Labels for the port: every non-PES approximation `RE-APPROX(EV-CONTACT-xxxx)` (l
 
 
 > **Follow-up (ContactLeftoversRE, `pes-re-contact-2.md`):** `ap+0xb10` has exactly one writer (value 2, shoulder-through); values 3/4 fall, 5–7 stagger, and the field is never cleared. `contact.o` stock vs mod differs in exactly three fields (+0x04 56→88, +0x30 24→42, +0x34 16→36); the "from behind" switch is 0 in stock too. §3.2's "category 9 = jumping-header family" is retracted: `ap+0x2754` is the ball-height band 0–11 (HeaderRE).
+
+> **Port (ContactPort):** §1.4–1.5, the vetoes 3/6/7/8, the slide/displacement/from-behind forced falls and the §2.3 gauge are in `src/sim/onthepitch/pescontact.*`, driven by `Match::ResolvePesContact` / `CheckTackleLegContact` / `UpdateBalanceGauges`; GF's trip-sensitivity sum and the tackle-AABB trip types are gone. Not ported: jostle hold-up and shoulder-through (GF has no JOSTLE action), §1.6 direct triggers, playback rates (§4.3), clip choice (§4.2).

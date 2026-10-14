@@ -35,6 +35,8 @@ struct Rig;
 #include "pesdefshape.hpp"
 // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
 #include "pesdefenderdecisions.hpp"
+// PES 2021's player-vs-player contact reaction (docs/re/pes-re-contact.md).
+#include "pescontact.hpp"
 #include "pesstrategy.hpp"
 #include "pesteamconcepts.hpp"
 #include "pessubs.hpp"
@@ -110,6 +112,10 @@ struct MatchSetup {
   // the gates' numbers live in the image and in the install's constant files,
   // so a defender with no constants would be deciding on invented distances.
   const pes::DefenderDecisionConstants* pesDefenderDecisionConstants = nullptr;
+  // PES 2021's contact reaction (docs/re/pes-re-contact.md 1-2): the stagger/
+  // fall level table, contact.o's thresholds, the vetoes and the balance
+  // gauge. Required: without them a body contact has no outcome to read.
+  const pes::ContactConstants* pesContactConstants = nullptr;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1):
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.

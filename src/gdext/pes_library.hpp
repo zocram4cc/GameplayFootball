@@ -10,6 +10,7 @@
 #include "onthepitch/pescarrier.hpp"
 #include "onthepitch/pesdefshape.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
+#include "onthepitch/pescontact.hpp"
 #include "onthepitch/pesstrategy.hpp"
 #include "onthepitch/pesteamconcepts.hpp"
 #include "onthepitch/pessubs.hpp"
@@ -101,6 +102,10 @@ class PesLibrary : public RefCounted {
   const pes::DefenderDecisionConstants* defender_decision_constants() const {
     return defenderDecisionConstants_ ? &*defenderDecisionConstants_ : nullptr;
   }
+  // PES 2021's contact reaction (docs/re/pes-re-contact.md).
+  const pes::ContactConstants* contact_constants() const {
+    return contactConstants_ ? &*contactConstants_ : nullptr;
+  }
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   const pes::StrategyConstants* strategy_constants() const {
     return strategyConstants_ ? &*strategyConstants_ : nullptr;
@@ -153,6 +158,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::CarrierConstants> carrierConstants_;
   std::optional<pes::DefensiveShapeConstants> defensiveShapeConstants_;
   std::optional<pes::DefenderDecisionConstants> defenderDecisionConstants_;
+  std::optional<pes::ContactConstants> contactConstants_;
   std::optional<pes::StrategyConstants> strategyConstants_;
   std::optional<pes::TeamConceptConstants> teamConceptConstants_;
   std::optional<pes::SubstitutionConstants> substitutionConstants_;

@@ -31,6 +31,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "pes/exe.hpp"
 #include "pes/types.hpp"
@@ -117,6 +118,10 @@ struct DefenderDecisionConstants {
   float blockSpeedBall_s = 0.0f;  // block.o +0x44
 };
 
+
+// One object's record (payload, disk offsets) out of constant_player.bin.
+bool ReadConstantPlayerObject(const PesVfs& vfs, const char* name, std::vector<uint8_t>* rec,
+                              std::string* error);
 std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     const PeImage& exe, const PesVfs& vfs, std::string* error);
 

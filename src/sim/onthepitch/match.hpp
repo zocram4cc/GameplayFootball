@@ -337,6 +337,15 @@ protected:
   void CheckHumanoidCollisions();
   void CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBounce>& p1Bounce,
                               std::vector<PlayerBounce>& p2Bounce);
+  // PES's contact reaction (docs/re/pes-re-contact.md): one side of a contact,
+  // the tackle leg hits, the balance gauge, and the trip they issue.
+  bool ResolvePesContact(Player* self, Player* opp, pes::ContactPart selfPart,
+                         pes::ContactPart oppPart);
+  void CheckTackleLegContact(Player* tackler, Player* victim);
+  void UpdateBalanceGauges(const std::vector<Player*>& players);
+  bool TripFromContact(Player* victim, Player* other, int tripType);
+  std::map<int, int> pesBalanceGauge;      // player id -> ap+0x2820
+  std::vector<Player*> pesContactReacted;  // reacted this tick
   void CheckBallCollisions();
   // Poses every body for this tick (GF's put phase, run in-line).
   void UpdateBodies();
@@ -442,6 +451,7 @@ protected:
   pes::KickErrorConstants pesKickErrorConstants{};
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
+  pes::ContactConstants pesContactConstants{};
   pes::StrategyConstants pesStrategyConstants{};
   pes::TeamConceptConstants pesTeamConceptConstants{};
   pes::SubstitutionConstants pesSubstitutionConstants{};

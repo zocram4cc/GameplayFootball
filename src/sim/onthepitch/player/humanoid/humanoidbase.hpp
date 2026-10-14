@@ -211,9 +211,9 @@ public:
 
   boost::intrusive_ptr<Node> GetHumanoidNode() { return humanoidNode; }
 
-  virtual float GetDecayingPositionOffsetLength() const {
-    return decayingPositionOffset.GetLength();
-  }
+  // How far collisions have pushed him off the current clip's path: PES's
+  // contact displacement (docs/re/pes-re-contact.md 1.3).
+  float GetAnimDisplacementLength() const { return currentAnim->positionOffset.GetLength(); }
   virtual float GetDecayingDifficultyFactor() const { return decayingDifficultyFactor; }
 
   const Anim* GetCurrentAnim() { return currentAnim; }

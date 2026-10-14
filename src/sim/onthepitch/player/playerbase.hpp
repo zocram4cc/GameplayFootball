@@ -71,7 +71,7 @@ public:
 
   boost::intrusive_ptr<Node> GetHumanoidNode() { return humanoid->GetHumanoidNode(); }
 
-  float GetDecayingPositionOffsetLength() { return humanoid->GetDecayingPositionOffsetLength(); }
+  float GetAnimDisplacementLength() const { return humanoid->GetAnimDisplacementLength(); }
 
   virtual void Process();
   virtual void PreparePutBuffers(unsigned long snapshotTime_ms);

@@ -151,6 +151,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "pes::LoadDefenderDecisionConstants into "
         "MatchSetup::pesDefenderDecisionConstants");
   pesDefenderDecisionConstants = *setup.pesDefenderDecisionConstants;
+  // PES 2021's contact reaction (docs/re/pes-re-contact.md).
+  if (setup.pesContactConstants == nullptr)
+    throw std::runtime_error(
+        "PES contact constants missing: read them from the install with "
+        "pes::LoadContactConstants into MatchSetup::pesContactConstants");
+  pesContactConstants = *setup.pesContactConstants;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   if (setup.pesStrategyConstants == nullptr)
     throw std::runtime_error(
@@ -1012,8 +1018,16 @@ void Match::CalculateBestPossessionTeamID() {
   }
 }
 
+namespace {
+// GF's body contact: twice CheckHumanoidCollision's bounce radius (0.5 * 0.72).
+constexpr float kBodyContactDistance_m = 0.72f;
+// Pairs further apart cannot reach each other's legs with a tackle.
+constexpr float kTackleBroadphase_m = 2.0f;
+}  // namespace
+
 void Match::CheckHumanoidCollisions() {
   std::vector<Player*> players;
+  pesContactReacted.clear();
 
   GetTeam(0)->GetActivePlayers(players);
   GetTeam(1)->GetActivePlayers(players);
@@ -1030,11 +1044,11 @@ void Match::CheckHumanoidCollisions() {
   // check each combination of humanoids once
   for (unsigned int i1 = 0; i1 < players.size() - 1; i1++) {
     for (unsigned int i2 = i1 + 1; i2 < players.size(); i2++) {
-      Vector3 tripVec1, tripVec2;
       CheckHumanoidCollision(players.at(i1), players.at(i2), playerBounces.at(i1),
                              playerBounces.at(i2));
     }
   }
+  UpdateBalanceGauges(players);
 
   // do bouncy magic
   for (unsigned int i1 = 0; i1 < players.size(); i1++) {
@@ -1295,216 +1309,201 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
       p2Bounce.push_back(player2Bounce);
     }
 
-    // u b trippin?
-
+    // PES's contact reaction, each side on its own (docs/re/pes-re-contact.md 1).
     if (distance < bouncePlayerRadius * 2.0f) {
-      bool verbose = false;
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("trip sensitivity: ");
-
-      float p1sensitivity = 0.0f;
-      float p2sensitivity = 0.0f;
-
-      p1sensitivity += (1.0f - p1backFacing) * 1.0f;
-      p2sensitivity += (1.0f - p2backFacing) * 1.0f;
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("backfacing: %f - %f; ", p1sensitivity, p2sensitivity);
-
-      // velocity, faster is worse
-      float p1velocity = p1->GetFloatVelocity();
-      float p2velocity = p2->GetFloatVelocity();
-      p1sensitivity += NormalizedClamp(p1velocity, idleVelocity, sprintVelocity) * 1.0f;
-      p2sensitivity += NormalizedClamp(p2velocity, idleVelocity, sprintVelocity) * 1.0f;
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("velocity: %f - %f; ", p1sensitivity, p2sensitivity);
-
-      if (p1->HasBestPossession() == true)
-        p1sensitivity += 1.0f;
-      if (p2->HasBestPossession() == true)
-        p2sensitivity += 1.0f;
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("haspossession: %f - %f; ", p1sensitivity, p2sensitivity);
-
-      float balanceWeight = 3.0f;
-      p1sensitivity += (1.0f - p1->GetStat("physical_balance") * 1.0f) * balanceWeight;
-      p2sensitivity += (1.0f - p2->GetStat("physical_balance") * 1.0f) * balanceWeight;
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("balance: %f - %f; ", p1sensitivity, p2sensitivity);
-
-      p1sensitivity += clamp(p1->GetDecayingPositionOffsetLength() * 10.0f, 0.0f, 1.0f);
-      p2sensitivity += clamp(p2->GetDecayingPositionOffsetLength() * 10.0f, 0.0f, 1.0f);
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("decposoffset: %f - %f", p1sensitivity, p2sensitivity);
-
-      // penetration
-      float penetrationWeight = 6.0f;
-      float penetration = ((p1->GetPosition() + p1->GetMovement() * 0.03f) -
-                           (p2->GetPosition() + p2->GetMovement() * 0.03f))
-                              .GetLength();
-      // if (p1->GetDebug() || p2->GetDebug()) printf("penetration: %f\n", pow(1.0f -
-      // NormalizedClamp(penetration, 0.0f, bouncePlayerRadius * 2.0f), 0.4f));
-      p1sensitivity +=
-          pow(1.0f - NormalizedClamp(penetration, 0.0f, bouncePlayerRadius * 2.0f), 0.4f) *
-          penetrationWeight;
-      p2sensitivity +=
-          pow(1.0f - NormalizedClamp(penetration, 0.0f, bouncePlayerRadius * 2.0f), 0.4f) *
-          penetrationWeight;
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("penetration: %f - %f\n", p1sensitivity, p2sensitivity);
-
-      // ball proximity (usually means: stability is less because we sacrifice balance to control
-      // the ball)
-      float p1BallDistance = (GetBall()->Predict(10).Get2D() - p1->GetPosition()).GetLength();
-      float p2BallDistance = (GetBall()->Predict(10).Get2D() - p2->GetPosition()).GetLength();
-      p1sensitivity += 1.0f - NormalizedClamp(p1BallDistance, 0.0f, 0.7f);
-      p2sensitivity += 1.0f - NormalizedClamp(p2BallDistance, 0.0f, 0.7f);
-
-      if ((p1->GetDebug() || p2->GetDebug()) && verbose)
-        printf("ball proximity: %f - %f\n", p1sensitivity, p2sensitivity);
-
-      // divided by elements active
-      p1sensitivity /= 5.0f + balanceWeight + penetrationWeight;
-      p2sensitivity /= 5.0f + balanceWeight + penetrationWeight;
-
-      float trip0threshold = 0.38f;
-      float trip1threshold = 0.48f;
-      float trip2threshold = 0.58f;
-
-      if (p1sensitivity > trip0threshold) {
-        int tripType = 0;
-        if (p1sensitivity > trip1threshold)
-          tripType = 1;
-        if (p1sensitivity > trip2threshold)
-          tripType = 2;
-        if (tripType > 0) {
-          p1->TripMe((p1->GetMovement() * 0.1f + p2->GetMovement() * 0.06f + bounceVec * 1.0f)
-                         .GetNormalized(bounceVec),
-                     tripType);
-          referee->TripNotice(p1, p2, tripType);
-          // foul statistics are counted by the referee at the whistle
-          InjureFromContact(p1, p2);
-        }
-      }
-      if (p2sensitivity > trip0threshold) {
-        int tripType = 0;
-        if (p2sensitivity > trip1threshold)
-          tripType = 1;
-        if (p2sensitivity > trip2threshold)
-          tripType = 2;
-        if (tripType > 0) {
-          p2->TripMe((p2->GetMovement() * 0.1f + p1->GetMovement() * 0.06f - bounceVec * 1.0f)
-                         .GetNormalized(-bounceVec),
-                     tripType);
-          referee->TripNotice(p2, p1, tripType);
-          // foul statistics are counted by the referee at the whistle
-          InjureFromContact(p2, p1);
-        }
-      }
-
-    }  // within either bump, similar or trip range
+      ResolvePesContact(p1, p2, pes::ContactPart::kBody, pes::ContactPart::kBody);
+      ResolvePesContact(p2, p1, pes::ContactPart::kBody, pes::ContactPart::kBody);
+    }
   }
 
-  // check for tackling collisions
+  // A tackler's limbs against the other's shins and feet: the leg-part hits of
+  // PES's capsule contact (pes-re-collision.md 2.3), through GF's part AABBs.
+  if (distance < kTackleBroadphase_m) {
+    CheckTackleLegContact(p1, p2);
+    CheckTackleLegContact(p2, p1);
+  }
+}
 
-  int tackle = 0;
-  if ((p1->GetCurrentFunctionType() == e_FunctionType_Sliding ||
-       p1->GetCurrentFunctionType() == e_FunctionType_Interfere) &&
-      p1->GetFrameNum() > 5 && p1->GetFrameNum() < 28)
-    tackle += 1;
-  if ((p2->GetCurrentFunctionType() == e_FunctionType_Sliding ||
-       p2->GetCurrentFunctionType() == e_FunctionType_Interfere) &&
-      p2->GetFrameNum() > 5 && p2->GetFrameNum() < 28)
-    tackle += 2;
-  if (distance < 2.0f && tackle > 0 && tackle < 3) {  // if tackle is 3, ignore both
-    std::list<boost::intrusive_ptr<Geometry>> tacklerObjectList;
-    std::list<boost::intrusive_ptr<Geometry>> victimObjectList;
-    /*
-    if (tackle == 0) { // todo: this way, p1 would have an advantage
-      if (p1->GetCurrentFunctionType() == e_FunctionType_Trap ||
-          p1->GetCurrentFunctionType() == e_FunctionType_ShortPass ||
-          p1->GetCurrentFunctionType() == e_FunctionType_LongPass ||
-          p1->GetCurrentFunctionType() == e_FunctionType_HighPass ||
-          p1->GetCurrentFunctionType() == e_FunctionType_Shot ||
-          p1->GetCurrentFunctionType() == e_FunctionType_Interfere) {
-        p1->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerObjectList);
-        p2->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimObjectList);
-        p1action = true;
-      }
-      else if (p2->GetCurrentFunctionType() == e_FunctionType_Trap ||
-               p2->GetCurrentFunctionType() == e_FunctionType_ShortPass ||
-               p2->GetCurrentFunctionType() == e_FunctionType_LongPass ||
-               p2->GetCurrentFunctionType() == e_FunctionType_HighPass ||
-               p2->GetCurrentFunctionType() == e_FunctionType_Shot ||
-               p2->GetCurrentFunctionType() == e_FunctionType_Interfere) {
-        p2->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerObjectList);
-        p1->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimObjectList);
-        p2action = true;
-      }
+namespace {
+
+// GF stores a PES 0..99 rating as rating/100 (the database import).
+constexpr float kGfStatToPesRating = 100.0f;
+
+int PesRating(const Player* p, const char* stat) {
+  return static_cast<int>(p->GetStat(stat) * kGfStatToPesRating + 0.5f);
+}
+
+// Unsigned angle between two 2D directions, degrees.
+float AngleDeg(const Vector3& a, const Vector3& b) {
+  const float c = clamp(a.Get2D().GetNormalized(0).GetDotProduct(b.Get2D().GetNormalized(0)),
+                        -1.0f, 1.0f);
+  return std::acos(c) * (180.0f / pi);
+}
+
+Vector3 MovementDirection(const Player* p) {
+  return p->GetMovement().Get2D().GetNormalized(p->GetDirectionVec());
+}
+
+bool IsKick(e_FunctionType f) {
+  return f == e_FunctionType_ShortPass || f == e_FunctionType_LongPass ||
+         f == e_FunctionType_HighPass || f == e_FunctionType_Shot || f == e_FunctionType_Header;
+}
+
+bool IsTackle(e_FunctionType f) {
+  return f == e_FunctionType_Interfere || f == e_FunctionType_Sliding;
+}
+
+// FUN_140843c30's classes over GF's part names.
+pes::ContactPart PartClass(const std::string& name) {
+  const bool leg = name.find("leg") != std::string::npos || name.find("foot") != std::string::npos;
+  if (!leg) return pes::ContactPart::kBody;
+  return name.rfind("left_", 0) == 0 ? pes::ContactPart::kLeftLeg : pes::ContactPart::kRightLeg;
+}
+
+// Referee::TripNotice's trip types.
+constexpr int kTripStagger = 1;
+constexpr int kTripFall = 2;
+constexpr int kTripSlide = 3;
+
+}  // namespace
+
+bool Match::TripFromContact(Player* victim, Player* other, int tripType) {
+  // PES runs no reaction for a player already down, and a stagger only
+  // escalates to a fall (FUN_140844cb0 head, veto 2).
+  if (victim->GetCurrentFunctionType() == e_FunctionType_Trip &&
+      (tripType == kTripStagger ||
+       victim->GetCurrentAnim()->anim->GetVariable("triptype") != std::to_string(kTripStagger)))
+    return false;
+  // The keeper holding the ball in his hands (veto 3: keeper handling).
+  if (GetBallRetainer() == victim) return false;
+  victim->TripMe(
+      (victim->GetPosition() - other->GetPosition()).Get2D().GetNormalized(victim->GetDirectionVec()),
+      tripType);
+  referee->TripNotice(victim, other, tripType);
+  // foul statistics are counted by the referee at the whistle
+  InjureFromContact(victim, other);
+  pesContactReacted.push_back(victim);
+  // The new action refills the balance gauge (0x1406eb85b, per action start).
+  pesBalanceGauge[victim->GetID()] = pesContactConstants.gaugeFull;
+  return true;
+}
+
+bool Match::ResolvePesContact(Player* self, Player* opp, pes::ContactPart selfPart,
+                              pes::ContactPart oppPart) {
+  const pes::ContactConstants& k = pesContactConstants;
+  const e_FunctionType sf = self->GetCurrentFunctionType();
+  const e_FunctionType of = opp->GetCurrentFunctionType();
+  const Vector3 toOpp =
+      (opp->GetPosition() - self->GetPosition()).Get2D().GetNormalized(self->GetDirectionVec());
+  const Vector3 selfMove = self->GetMovement().Get2D();
+  const Vector3 oppMove = opp->GetMovement().Get2D();
+
+  pes::ContactInput in;
+  in.selfPart = selfPart;
+  in.oppPart = oppPart;
+  // A standing tackle counts once past half its clip (report 1.3).
+  if (of == e_FunctionType_Sliding)
+    in.mode = pes::ContactOpponentMode::kSlide;
+  else if (of == e_FunctionType_Interfere && opp->GetFrameNum() * 2 > opp->GetFrameCount())
+    in.mode = pes::ContactOpponentMode::kTackle;
+  in.displacement_m = self->GetAnimDisplacementLength();
+  // ponytail: current velocities; PES predicts both 0.6944/gs s ahead minus
+  // the separation (FUN_140843a20). Upgrade if contact timing looks early.
+  in.closingSpeed_kmh = k.kmhPerMps * (selfMove.GetDotProduct(toOpp) - oppMove.GetDotProduct(toOpp));
+  in.relativeSpeed_kmh = k.kmhPerMps * (selfMove - oppMove).GetLength();
+  in.selfSpeed_kmh = k.kmhPerMps * selfMove.GetLength();
+  in.oppSpeed_kmh = k.kmhPerMps * oppMove.GetLength();
+  in.headingDelta_deg = AngleDeg(self->GetDirectionVec(), opp->GetDirectionVec());
+  in.movementDelta_deg = AngleDeg(MovementDirection(self), MovementDirection(opp));
+  // ponytail: the contact point is taken as the self's position, so the
+  // slide's approach and the "running away" angle are the same bearing.
+  in.oppAway_deg = AngleDeg(MovementDirection(opp), -toOpp);
+  in.slideApproach_deg = in.oppAway_deg;
+  in.oppBehind_deg = AngleDeg(self->GetDirectionVec(), toOpp);
+  in.partnerDistance_m = (opp->GetPosition() - self->GetPosition()).Get2D().GetLength();
+  in.selfBallDistance_m = (GetBall()->Predict(0).Get2D() - self->GetPosition().Get2D()).GetLength();
+  in.selfContactAbility = PesRating(self, "physical_contact");
+  // KP_CATCH / KP_DEFLECT / KP_SCOOP_OUT / KP_BLOCK: GF's keeper actions.
+  in.oppKeeperHandling = of == e_FunctionType_Catch || of == e_FunctionType_Deflect;
+  in.selfCommitted = IsKick(sf) && self->TouchPending();
+  in.selfTackling = IsTackle(sf);
+  in.selfTrapping = sf == e_FunctionType_Trap;
+  in.selfStaggering = sf == e_FunctionType_Trip;
+  in.selfOwnsBall = self->HasPossession();
+  in.selfLocomotion = sf == e_FunctionType_Movement;
+  in.oppLocomotion = of == e_FunctionType_Movement;
+  in.oppTackling = IsTackle(of);
+  in.oppBeforeContactFrame = in.oppTackling && opp->TouchPending();
+
+  switch (pes::ReactionForLevel(k, pes::ContactLevel(k, in))) {
+    case pes::ContactReaction::kNone:
+      return false;
+    case pes::ContactReaction::kStagger:
+      return TripFromContact(self, opp, kTripStagger);
+    case pes::ContactReaction::kFall:
+      return TripFromContact(self, opp, of == e_FunctionType_Sliding ? kTripSlide : kTripFall);
+  }
+  return false;
+}
+
+void Match::CheckTackleLegContact(Player* tackler, Player* victim) {
+  if (!IsTackle(tackler->GetCurrentFunctionType())) return;
+  // GF's part AABBs are loose; shrink the tackler's before testing.
+  constexpr float kAabbShrink_m = 0.1f;
+  std::list<boost::intrusive_ptr<Geometry>> tacklerParts, victimParts;
+  tackler->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerParts);
+  victim->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimParts);
+  for (const auto& t : tacklerParts) {
+    AABB box = t->GetAABB();
+    box.minxyz += kAabbShrink_m;
+    box.maxxyz -= kAabbShrink_m;
+    for (const auto& v : victimParts) {
+      const std::string& name = v->GetName();
+      // The shins and feet: GF's lower leg parts.
+      if (name != "left_foot" && name != "right_foot" && name != "left_lowerleg" &&
+          name != "right_lowerleg")
+        continue;
+      if (!box.Intersects(v->GetAABB())) continue;
+      ResolvePesContact(victim, tackler, PartClass(name), PartClass(t->GetName()));
+      return;
     }
-    */
-    if (tackle == 1) {
-      p1->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerObjectList);
-      p2->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimObjectList);
+  }
+}
+
+// PES's shoulder-to-shoulder balance gauge ap+0x2820 (docs/re/pes-re-contact.md
+// 2.3), once per tick per player against his nearest body contact; below zero
+// with no other reaction this tick he staggers (FUN_140844cb0, cause 5).
+void Match::UpdateBalanceGauges(const std::vector<Player*>& players) {
+  const pes::ContactConstants& k = pesContactConstants;
+  constexpr int kTicksPerSecond = 1000 / kTick_ms;
+  for (Player* self : players) {
+    Player* partner = nullptr;
+    float nearest = kBodyContactDistance_m;
+    for (Player* other : players) {
+      if (other == self) continue;
+      const float d = (other->GetPosition() - self->GetPosition()).Get2D().GetLength();
+      if (d < nearest) nearest = d, partner = other;
     }
-    if (tackle == 2) {
-      p2->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerObjectList);
-      p1->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimObjectList);
+    pes::BalanceGaugeInput in;
+    if (partner) {
+      const Vector3 toPartner = (partner->GetPosition() - self->GetPosition()).Get2D().GetNormalized(
+          self->GetDirectionVec());
+      in.touching = true;
+      in.bothLocomotion = self->GetCurrentFunctionType() == e_FunctionType_Movement &&
+                          partner->GetCurrentFunctionType() == e_FunctionType_Movement;
+      in.selfSpeed_kmh = k.kmhPerMps * self->GetMovement().Get2D().GetLength();
+      in.partnerSpeed_kmh = k.kmhPerMps * partner->GetMovement().Get2D().GetLength();
+      in.selfBearing_deg = AngleDeg(self->GetDirectionVec(), toPartner);
+      in.partnerBearing_deg = AngleDeg(partner->GetDirectionVec(), -toPartner);
+      in.selfContactAbility = PesRating(self, "physical_contact");
+      in.partnerContactAbility = PesRating(partner, "physical_contact");
     }
-
-    // iterate through all body parts of tackler
-    std::list<boost::intrusive_ptr<Geometry>>::iterator objIter = tacklerObjectList.begin();
-    while (objIter != tacklerObjectList.end()) {
-      AABB objAABB = (*objIter)->GetAABB();
-
-      // make a tad smaller: AABBs are usually too large.
-      objAABB.minxyz += 0.1f;
-      objAABB.maxxyz -= 0.1f;
-
-      std::list<boost::intrusive_ptr<Geometry>>::iterator victimIter = victimObjectList.begin();
-      while (victimIter != victimObjectList.end()) {
-        std::string bodyPartName = (*victimIter)->GetName();
-        if (bodyPartName == "left_foot" || bodyPartName == "right_foot" ||
-            bodyPartName == "left_lowerleg" || bodyPartName == "right_lowerleg"
-            /*bodyPartName == "left_upperleg" || bodyPartName == "right_upperleg"*/) {
-          if (objAABB.Intersects((*victimIter)->GetAABB())) {
-            // printf("HIT: %s hits %s\n", (*objIter)->GetName().c_str(),
-            // (*victimIter)->GetName().c_str());
-
-            if (tackle == 1) {
-              if (p1->GetFrameNum() > 10 && p1->GetFrameNum() < p1->GetFrameCount() - 6) {
-                Vector3 tripVec = p2->GetDirectionVec();
-                int tripType = 3;  // sliding
-                if (p1->GetCurrentFunctionType() == e_FunctionType_Interfere)
-                  tripType = 1;  // was 2
-                p2->TripMe(tripVec, tripType);
-                referee->TripNotice(p2, p1, tripType);
-              }
-            }
-            if (tackle == 2) {
-              if (p2->GetFrameNum() > 10 && p2->GetFrameNum() < p2->GetFrameCount() - 6) {
-                Vector3 tripVec = p1->GetDirectionVec();
-                int tripType = 3;  // sliding
-                if (p2->GetCurrentFunctionType() == e_FunctionType_Interfere)
-                  tripType = 1;  // was 2
-                p1->TripMe(tripVec, tripType);
-                referee->TripNotice(p1, p2, tripType);
-              }
-            }
-            break;
-          }
-        }
-
-        victimIter++;
-      }
-
-      objIter++;
-    }
+    int& gauge = pesBalanceGauge.try_emplace(self->GetID(), k.gaugeFull).first->second;
+    gauge = pes::UpdateBalanceGauge(k, in, gauge, kTicksPerSecond);
+    if (gauge < 0 && partner &&
+        std::find(pesContactReacted.begin(), pesContactReacted.end(), self) ==
+            pesContactReacted.end())
+      TripFromContact(self, partner, kTripStagger);
   }
 }
 
