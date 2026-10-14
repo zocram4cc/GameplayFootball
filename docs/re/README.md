@@ -101,6 +101,8 @@ address given.
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
 |`pes-re-clock-record.md`|the real match clock: plain f32 seconds at `*(G+0x2c0)+0xa0`; the old percentage clock model is the stamina tank; `match_time` scales stamina; a freeze is a 4-byte float store; GF's `pesclock.*` mapping|
+
+|`pes-re-clock-live.md`|live clock sweep over 3 matches: `E+0xa0`/`E+0x11c` falsified (0.0 throughout), rate corrected to ~9.5 displayed-s/s, `MI+0x155c` is an event timer (0 writes in a 45 s watchpoint), new leads `MI+0x119c`/`0x11a0` tick shadows and `E+0xb8`; the live record itself still open, the computed-on-the-fly model INF med-high; three freeze architectures for the owner decision|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
 
 Paths in the reports are placeholders: `$PES21_ROOT` is your install,
