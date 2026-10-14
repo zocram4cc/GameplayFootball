@@ -33,6 +33,7 @@
 #include <string>
 #include <vector>
 
+#include "onthepitch/pesreceive.hpp"
 #include "pes/exe.hpp"
 #include "pes/types.hpp"
 #include "pes/vfs.hpp"
@@ -116,12 +117,12 @@ struct DefenderDecisionConstants {
   // block.o (VFS): the two windows in seconds.
   float blockNormal_s = 0.0f;   // block.o +0x40
   float blockSpeedBall_s = 0.0f;  // block.o +0x44
+
+  // --- receive (reaction entry 3, docs/re/pes-re-receiving.md) ---
+  ReceiveConstants receive;
 };
 
 
-// One object's record (payload, disk offsets) out of constant_player.bin.
-bool ReadConstantPlayerObject(const PesVfs& vfs, const char* name, std::vector<uint8_t>* rec,
-                              std::string* error);
 std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     const PeImage& exe, const PesVfs& vfs, std::string* error);
 
@@ -132,9 +133,10 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
 // the port report (docs/re/pes-re-defender-decisions.md 13).
 enum class DefenderReaction {
   kNone,           // nothing fired: the team-level movement command stands
-  kReceive,        // entry 0, ball receive (trap/header family)
   kTackle,         // entry 1, standing tackle (PES AI 0x31 / anime 0xd)
   kSlide,          // entry 2, slide tackle (PES AI 0x30 / anime 0xb or 0xc)
+  kReceive,        // entry 3, ball receive FUN_1409f8220 (pes-re-receiving.md §1;
+                   // entry 0 is the body-contact reaction, not the receive)
   kBlock,          // entry 8, pass/shot block (PES anime 0xe)
   kJostleForPass,  // entry 11, jostle for an incoming pass (PES anime 0x48)
 };

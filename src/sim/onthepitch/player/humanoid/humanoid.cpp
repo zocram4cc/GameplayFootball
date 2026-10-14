@@ -779,8 +779,9 @@ void Humanoid::Process() {
 
         }  // else: just stick to original
 
-        if (targetPlayer)
-          team->SetDesignatedTeamPossessionPlayer(targetPlayer);
+        // PES's T+0x78: the kick writes the team's pass target; the receiver's
+        // run follows from it (Team::PassGetReceiver).
+        team->SetPassTarget(targetPlayer);
 
         float zcurve = 0.0f;
         Vector3 touchVec = ballDirection * 36 * (ballPower + 0.3f);

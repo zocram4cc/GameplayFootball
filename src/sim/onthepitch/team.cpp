@@ -16,6 +16,32 @@
 #include "player/humanoid/pesplayernode.hpp"
 #include "referee.hpp"
 
+namespace {
+
+// FUN_140931c60's MA+0x24840 scan: the loop runs over the first three slots
+// of the team's ball-distance list (`uVar14 < 3`).
+constexpr unsigned int kPassGetNearestSlots = 3;
+
+bool IsKickFunction(e_FunctionType f) {
+  return f == e_FunctionType_ShortPass || f == e_FunctionType_LongPass ||
+         f == e_FunctionType_HighPass || f == e_FunctionType_Shot;
+}
+
+// The ring-0 event kind of a touch made by a player running this function.
+pes::BallEventKind BallEventKindOf(e_FunctionType f) {
+  switch (f) {
+    case e_FunctionType_ShortPass:
+    case e_FunctionType_LongPass: return pes::BallEventKind::kPass;
+    case e_FunctionType_HighPass: return pes::BallEventKind::kHighPass;
+    case e_FunctionType_Shot: return pes::BallEventKind::kShot;
+    default: return pes::BallEventKind::kTouch;
+  }
+}
+
+float HeadingDeg(const Vector3& v) { return pes::HeadingDeg(v.coords[0], v.coords[1]); }
+
+}  // namespace
+
 Team::Team(int id, Match* match, TeamData* teamData) : id(id), match(match), teamData(teamData) {
   assert(id == 0 || id == 1);
   assert(teamData->GetPlayerNum() >= playerNum);  // does team have enough players?
@@ -194,6 +220,7 @@ bool Team::Substitute(Player* playerOut, Player* playerIn) {
   // Nobody may be left pointing at the player who just walked off.
   if (designatedTeamPossessionPlayer == playerOut)
     designatedTeamPossessionPlayer = playerIn;
+  if (passTarget == playerOut) passTarget = playerIn;
 
   // Everything that cached the outgoing player has to let go of him: the match's
   // designated possession player and the mental images the AI reads.
@@ -336,6 +363,64 @@ void Team::SetLastTouchPlayer(Player* player, e_TouchType touchType) {
   player->SetLastTouchTime_ms(match->GetActualTime_ms());
   player->SetLastTouchType(lastTouchType);
   match->SetLastTouchTeamID(GetID(), touchType);
+  match->PushBallEvent(player, GetID(), BallEventKindOf(player->GetCurrentFunctionType()));
+}
+
+Player* Team::PassGetReceiver() {
+  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
+  const Match::BallEvent& event = match->GetBallEvent(0);
+  const bool passInFlight = event.kind == pes::BallEventKind::kPass ||
+                            event.kind == pes::BallEventKind::kHighPass;
+  const Vector3 ballPos = match->GetBall()->Predict(0).Get2D();
+
+  // The own receive (FUN_140931c60): the team's pass target, the newest event
+  // a team-mate's pass rather than his own kick, not in a kick clip himself,
+  // and none of the three team-mates nearest the ball already on it.
+  if (passTarget && passTarget->IsActive() && passInFlight && event.teamID == id) {
+    pes::PassGetInput in;
+    in.iAmPassTarget = true;
+    in.newestEventIsMyKick = event.player == passTarget;
+    in.inKickBeforeContact = IsKickFunction(passTarget->GetCurrentFunctionType());
+    std::vector<Player*> nearest;
+    AI_GetClosestPlayers(this, ballPos, nearest, kPassGetNearestSlots);
+    for (Player* mate : nearest) {
+      if (mate != passTarget && (mate->HasPossession() ||
+                                 mate->GetCurrentFunctionType() == e_FunctionType_Trap))
+        in.mateNearBallOwnsIt = true;
+    }
+    if (pes::PassGetSelected(k, in)) return passTarget;
+  }
+
+  // The arbitration against the other team's pass in flight. PES runs it for
+  // its own (persistent) T+0x78 only; GF has no writer that keeps a stale
+  // target meaningful (report §7.3), so every outfield man is tested and the
+  // one nearest the ball of those inside the capsule wins.
+  // ponytail: nearest-wins tie-break; PES has a single candidate by construction.
+  Team* other = match->GetTeam(1 - id);
+  Player* theirTarget = other->GetPassTarget();
+  if (!theirTarget || !theirTarget->IsActive() || !passInFlight || event.teamID != other->GetID())
+    return nullptr;
+  const Vector3 ballMove = match->GetBall()->GetMovement().Get2D();
+  pes::ArbitrationInput in;
+  in.otherTargetValid = true;
+  in.otherTargetHeading_deg = HeadingDeg(theirTarget->GetDirectionVec());
+  in.ballHeading_deg = HeadingDeg(ballMove);
+  in.ballX = ballPos.coords[0];
+  in.ballY = ballPos.coords[1];
+  Player* winner = nullptr;
+  float best = 0.0f;
+  for (auto& p : players) {
+    if (!p->IsActive() || p->GetFormationEntry().role == e_PlayerRole_GK) continue;
+    in.myX = p->GetPosition().coords[0];
+    in.myY = p->GetPosition().coords[1];
+    if (!pes::ArbitrationWins(k, in)) continue;
+    const float d = (p->GetPosition() - ballPos).GetLength();
+    if (!winner || d < best) {
+      winner = p.get();
+      best = d;
+    }
+  }
+  return winner;
 }
 
 void Team::ResetSituation(const Vector3& focusPos) {
@@ -350,6 +435,7 @@ void Team::ResetSituation(const Vector3& focusPos) {
   }
   lastTouchPlayer = 0;
   lastTouchType = e_TouchType_None;
+  passTarget = nullptr;
 
   designatedTeamPossessionPlayer = players.at(0).get();
 
@@ -401,6 +487,15 @@ void Team::Process() {
     if (players.at(i)->IsActive()) {
       players.at(i)->Process();
     }
+  }
+
+  // PES's movement selector (pes-re-receiving.md §2) sends the PASS_GET
+  // receiver to the ball while a pass is in flight; GF's time-to-ball rating
+  // below covers the loose balls PES's undecoded race selectors handle.
+  if (Player* receiver =
+          match->IsInPlay() && !match->IsInSetPiece() ? PassGetReceiver() : nullptr) {
+    designatedTeamPossessionPlayer = receiver;
+    return;
   }
 
   int designatedPlayerTime_ms = designatedTeamPossessionPlayer->GetTimeNeededToGetToBall_ms();

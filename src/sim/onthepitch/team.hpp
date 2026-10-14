@@ -51,7 +51,13 @@ public:
   int GetTimeNeededToGetToBall_ms() const;
   signed int GetBestPossessionPlayerID();
   Player* GetDesignatedTeamPossessionPlayer() { return designatedTeamPossessionPlayer; }
-  void SetDesignatedTeamPossessionPlayer(Player* player) { designatedTeamPossessionPlayer = player; }
+  // PES's team pass target T+0x78 (pes-re-receiving.md §2), written by the pass.
+  void SetPassTarget(Player* player) { passTarget = player; }
+  Player* GetPassTarget() const { return passTarget; }
+  // The player PES's movement selector sends to the ball as the receiver
+  // (PASS_GET), or null: the own pass target, or this team's interceptor
+  // winning the arbitration against the other team's pass.
+  Player* PassGetReceiver();
   Player* GetBestPossessionPlayer();
   float GetTeamPossessionAmount() const;
   float GetFadingTeamPossessionAmount() const;
@@ -109,6 +115,7 @@ protected:
   Player* lastTouchPlayers[e_TouchType_SIZE];
   Player* lastTouchPlayer;
   e_TouchType lastTouchType;
+  Player* passTarget = nullptr;
 
   // Player ids that have been taken off; they may not come back on.
   std::vector<int> substitutedPlayerIDs;

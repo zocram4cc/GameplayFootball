@@ -139,15 +139,18 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
     *error = "block.o: window slots past end";
     return std::nullopt;
   }
+  auto receive = LoadReceiveConstants(exe, vfs, error);
+  if (!receive) return std::nullopt;
+  c.receive = *receive;
   return c;
 }
 
 DefenderReaction ChooseReaction(const DefenderReactionInput& in) {
   // The walk, in PES's table order: the first predicate that returns true is
   // adopted and the rest of the table is not even read.
-  if (in.receive) return DefenderReaction::kReceive;
   if (in.tackle) return DefenderReaction::kTackle;
   if (in.slide) return DefenderReaction::kSlide;
+  if (in.receive) return DefenderReaction::kReceive;
   if (in.block) return DefenderReaction::kBlock;
   if (in.jostleForPass) return DefenderReaction::kJostleForPass;
   return DefenderReaction::kNone;

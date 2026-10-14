@@ -124,6 +124,19 @@ public:
     lastTouchTeamID = id;
     referee->BallTouched();
   }
+  // PES's ball-event history ring (pes-re-receiving.md §3: ring 0 the newest
+  // event, ring 1 the one before). Every touch pushes one.
+  struct BallEvent {
+    Player* player = nullptr;
+    int teamID = -1;
+    pes::BallEventKind kind = pes::BallEventKind::kTouch;
+    unsigned long time_ms = 0;
+  };
+  void PushBallEvent(Player* player, int teamID, pes::BallEventKind kind) {
+    ballEvents[1] = ballEvents[0];
+    ballEvents[0] = {player, teamID, kind, actualTime_ms};
+  }
+  const BallEvent& GetBallEvent(int age) const { return ballEvents[age]; }
   int GetLastTouchTeamID(e_TouchType touchType) const { return lastTouchTeamIDs[touchType]; }
   int GetLastTouchTeamID() const { return lastTouchTeamID; }
   Team* GetLastTouchTeam(e_TouchType touchType) {
@@ -440,6 +453,7 @@ protected:
   unsigned long pendingPenaltyDeadline_ms = 0;
   int lastTouchTeamIDs[e_TouchType_SIZE];
   int lastTouchTeamID = -1;
+  BallEvent ballEvents[2];
   signed int bestPossessionTeamID = -1;
   Player* designatedPossessionPlayer = nullptr;
   Player* ballRetainer = nullptr;

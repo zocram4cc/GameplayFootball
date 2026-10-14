@@ -62,6 +62,8 @@ constexpr float kPesFramesPerSecond = 1.0f / (1.0f / 54.0f);
 // One PES frame is 0.54 of a GF tick, the conversion pesballphysics.hpp uses.
 constexpr float kTicksPerPesFrame = (1.0f / 54.0f) / 0.01f;
 
+// Tackle (1), slide (2), receive (3, pes-re-receiving.md §1), block (8),
+// jostle (11).
 TEST(PesDefenderChooser, FirstTruePredicateWinsInPesOrder) {
   pes::DefenderReactionInput in;
   in.receive = true;
@@ -69,15 +71,15 @@ TEST(PesDefenderChooser, FirstTruePredicateWinsInPesOrder) {
   in.slide = true;
   in.block = true;
   in.jostleForPass = true;
-  EXPECT_EQ(pes::ChooseReaction(in), pes::DefenderReaction::kReceive);
-
-  in.receive = false;
   EXPECT_EQ(pes::ChooseReaction(in), pes::DefenderReaction::kTackle);
 
   in.tackle = false;
   EXPECT_EQ(pes::ChooseReaction(in), pes::DefenderReaction::kSlide);
 
   in.slide = false;
+  EXPECT_EQ(pes::ChooseReaction(in), pes::DefenderReaction::kReceive);
+
+  in.receive = false;
   EXPECT_EQ(pes::ChooseReaction(in), pes::DefenderReaction::kBlock);
 
   in.block = false;

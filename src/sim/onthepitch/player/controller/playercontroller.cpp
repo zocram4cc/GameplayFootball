@@ -26,6 +26,7 @@
 #include "../../AIsupport/AIfunctions.hpp"
 #include "../../AIsupport/mentalimage.hpp"
 #include "../../match.hpp"
+#include "../../pesballphysics.hpp"
 #include "../../team.hpp"
 #include "../humanoid/humanoid_utils.hpp"
 #include "../player.hpp"
@@ -363,53 +364,112 @@ void PlayerController::_BallControlCommand(PlayerCommandQueue& commandQueue,
   }
 }
 
-// PES's reaction chooser entry 0 (report 1) needs this as a predicate rather
-// than a command, so the walk can stop at the first true one. It is the same
-// gate _TrapCommand queues on.
+namespace {
+// PES's logic frame rate (FUN_141e532d0, live 54).
+constexpr float kPesFps = 1.0f / pesball::kPesTick_s;
+
+float Heading(const Vector3& v) { return pes::HeadingDeg(v.coords[0], v.coords[1]); }
+}  // namespace
+
+// The reaction table's receive entry (pes-re-receiving.md §1, §3): a predicate
+// so the walk can stop at the first true one.
 bool PlayerController::_ReceiveCandidate() {
+  // GF routing: a slow ball is _BallControlCommand's, and the 200 ms reach
+  // gate stands in for PES's ball-distance table (MA+0x24710 <= 100).
+  // ponytail: GF reach gate, not the undecoded table.
   if (match->GetBall()->GetMovement().Get2D().GetLength() < 2.0f) return false;
   if (match->GetBall()->Predict(200).GetDistance(player->GetPosition()) >
       ballDistanceOptimizeThreshold)
     return false;
   if (match->GetBallRetainer() != 0) return false;
   if (hasPossession) return false;
-  if (match->GetDesignatedPossessionPlayer() == player) return true;
-  return team->GetDesignatedTeamPossessionPlayer() == player &&
-         CastPlayer()->GetTimeNeededToGetToBall_optimistic_ms() < 1000 &&
-         oppTimeNeededToGetToBall > 400 && !oppTeamHasPossession &&
-         CouldWinABallDuelLikeliness() >= 0.5f;
+  // Who goes: the PASS_GET receiver / the team's designated man
+  // (Team::PassGetReceiver feeds the designation).
+  if (match->GetDesignatedPossessionPlayer() != player &&
+      team->GetDesignatedTeamPossessionPlayer() != player)
+    return false;
+
+  // FUN_1409fa720: the re-touch lockout.
+  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
+  const Match::BallEvent& ev = match->GetBallEvent(0);
+  const Match::BallEvent& prev = match->GetBallEvent(1);
+  const unsigned long now = match->GetActualTime_ms();
+  const Vector3 ballPos = match->GetBall()->Predict(0);
+  const Vector3 ballMove = match->GetBall()->GetMovement();
+  pes::LockoutInput in;
+  in.ballOwned = ev.player && ev.player->HasPossession();
+  in.ownerIsMe = ev.player == player;
+  in.eventKind = ev.kind;
+  in.eventByMe = ev.player == player;
+  in.eventByMyTeam = ev.teamID == team->GetID();
+  in.previousEventByMe = prev.player == player;
+  in.previousEventAge_s = (now - prev.time_ms) * 0.001f;
+  // GF's stat is PES's 40..99 rating scaled to 0..1 (team.cpp's stamina map).
+  in.ballStat = k.statFloor + CastPlayer()->GetStat("technical_ballcontrol") * k.statSpan;
+  in.ballSpeed_mps = ballMove.Get2D().GetLength();
+  in.ballHeight_m = ballPos.coords[2];
+  if (!pes::RetouchAllowed(k, in, (now - ev.time_ms) * 0.001f, kPesFps)) return false;
+
+  // The shot-through rule: my team's shot on target runs on to goal.
+  pes::ShotThroughInput shot;
+  shot.ownTeamShot = ev.kind == pes::BallEventKind::kShot && ev.teamID == team->GetID();
+  shot.ballX = ballPos.coords[0];
+  shot.ballY = ballPos.coords[1];
+  shot.ballVelX = ballMove.coords[0];
+  shot.ballVelY = ballMove.coords[1];
+  shot.goalX = -team->GetSide() * pitchHalfW;
+  shot.goalHalfWidth = goalHalfWidth;
+  return !pes::ShotRunsThrough(k, shot);
 }
 
-void PlayerController::_TrapCommand(PlayerCommandQueue& commandQueue, bool idleTurnToOpponentGoal,
-                                    bool knockOn) {
-  if (!_ReceiveCandidate()) return;
+// FUN_1409f8a50: the first touch. The planned direction is the carrier brain's
+// (GetOnTheBallCommands runs for the designated man before the ball arrives
+// and leaves its direction in inputDirection); a one-touch kick is that brain's
+// queued pass, so kind 3 needs nothing here.
+void PlayerController::_TrapCommand(PlayerCommandQueue& commandQueue) {
+  const pes::ReceiveConstants& k = match->GetPesDefenderDecisionConstants().receive;
+  const Match::BallEvent& ev = match->GetBallEvent(0);
+  const Vector3 ballMove = match->GetBall()->GetMovement().Get2D();
+  Vector3 planned = inputDirection;
+  if (quantizeDirection) QuantizeDirection(planned, GetQuantizedDirectionBias());
+
+  pes::FirstTouchInput in;
+  in.hasPlannedDirection =
+      match->GetDesignatedPossessionPlayer() == player && planned.GetLength() > 0.0f;
+  in.plannedHeading_deg = Heading(planned);
+  in.bodyHeading_deg = Heading(CastPlayer()->GetDirectionVec());
+  in.moveHeading_deg = Heading(CastPlayer()->GetMovement());
+  in.moveSpeed_mps = CastPlayer()->GetMovement().Get2D().GetLength();
+  in.eventByMyTeam = ev.teamID == team->GetID();
+  in.eventIsKick = ev.kind == pes::BallEventKind::kPass || ev.kind == pes::BallEventKind::kHighPass;
+  in.eventByMe = ev.player == player;
+  in.eventAge_s = (match->GetActualTime_ms() - ev.time_ms) * 0.001f;
+  in.ballSpeedSq_m2s2 = ballMove.GetDotProduct(ballMove);
+  in.ballHeading_deg = Heading(ballMove);
+  in.posX = player->GetPosition().coords[0];
+  in.posY = player->GetPosition().coords[1];
+  in.halfLength = pitchHalfW;
+  in.halfWidth = pitchHalfH;
+  const pes::FirstTouch touch = pes::ChooseFirstTouch(k, in, kPesFps);
 
   PlayerCommand command;
   command.desiredFunctionType = e_FunctionType_Trap;
   command.useDesiredMovement = true;
-  command.desiredDirection = inputDirection;
-  if (quantizeDirection)
-    QuantizeDirection(command.desiredDirection, GetQuantizedDirectionBias());
-
-  command.desiredVelocityFloat = inputVelocityFloat;
+  if (touch.kind == pes::TouchKind::kDirectional) {
+    command.desiredDirection = planned;
+    command.desiredVelocityFloat = inputVelocityFloat;
+  } else {
+    // Kind 0: control along the body, at his own pace.
+    command.desiredDirection = CastPlayer()->GetDirectionVec();
+    command.desiredVelocityFloat = CastPlayer()->GetFloatVelocity();
+  }
   if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
     command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
     command.desiredVelocityFloat = idleVelocity;
   }
-
-  if (FloatToEnumVelocity(command.desiredVelocityFloat) == e_Velocity_Idle &&
-      idleTurnToOpponentGoal) {
-    command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
-  }
-
-  if (knockOn) {
-    command.modifier |= e_PlayerCommandModifier_KnockOn;
-  }
-
   command.useDesiredLookAt = true;
   command.desiredLookAt = CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.3f +
                           command.desiredDirection * 10.0f;
-
   commandQueue.push_back(command);
 }
 
