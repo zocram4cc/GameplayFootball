@@ -12,6 +12,7 @@
 #include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/pescontact.hpp"
 #include "onthepitch/pesclips.hpp"
+#include "onthepitch/pesdodge.hpp"
 #include "onthepitch/pesstrategy.hpp"
 #include "onthepitch/pesteamconcepts.hpp"
 #include "onthepitch/pessubs.hpp"
