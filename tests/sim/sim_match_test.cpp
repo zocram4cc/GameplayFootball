@@ -2,6 +2,7 @@
 
 #include "pes_match_constants.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -219,10 +220,7 @@ struct Outcome {
   int offsides[2] = {0, 0};
 };
 
-Outcome Play(unsigned int seed, int minutes) {
-  blunted::Database db;
-  EXPECT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
-  SetDB(&db);
+MatchSetup MakeSetup(unsigned int seed, int minutes) {
   MatchSetup setup;
   setup.homeTeamDbId = HOME_TEAM;
   setup.awayTeamDbId = AWAY_TEAM;
@@ -239,6 +237,14 @@ Outcome Play(unsigned int seed, int minutes) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  return setup;
+}
+
+Outcome Play(unsigned int seed, int minutes) {
+  blunted::Database db;
+  EXPECT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
+  SetDB(&db);
+  MatchSetup setup = MakeSetup(seed, minutes);
 
   Outcome out;
   {
@@ -398,6 +404,47 @@ TEST(SimMatch, SameSeedPlaysTheSameMatch) {
 TEST(SimMatch, AnotherSeedPlaysAnotherMatch) {
   REQUIRE_RIG();
   EXPECT_NE(Play(SEED, SHORT_MATCH_MINUTES).hash, Play(SEED + 1, SHORT_MATCH_MINUTES).hash);
+}
+
+// The seed-7 stalls (20-minute setup): from 107 s and from 174 s a throw-in restart
+// is started but never taken. The ball lies beyond the line (pushed off its spot in
+// the hold), and the taker's touch is refused as out of bounds. The window covers both.
+// A 3-minute setup does not reproduce them, so the test uses 20.
+constexpr unsigned int kThrowInSeed = 7;
+constexpr int kThrowInMatchMinutes = 20;
+constexpr unsigned long kThrowInWindow_ms = 200ul * 1000ul;
+// ponytail: a GF bound, not a PES value. PES's CPU taker throws about 1.5 s
+// after he is ready (pes-re-throwin-choreography.md EV-TI-0015).
+constexpr unsigned long kMaxThrowInWait_ms = 10ul * 1000ul;
+
+TEST(SimMatch, AThrowInTakerTakesTheThrow) {
+  REQUIRE_RIG();
+  blunted::Database db;
+  ASSERT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
+  SetDB(&db);
+  MatchSetup setup = MakeSetup(kThrowInSeed, kThrowInMatchMinutes);
+  unsigned long longestWait_ms = 0;
+  {
+    pestest::FillMissingPesConstants(&setup);
+    Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
+    unsigned long waitStart_ms = 0;
+    bool waiting = false;
+    while (match.GetSimTime_ms() < kThrowInWindow_ms) {
+      match.Process();
+      const RefereeBuffer& buffer = match.GetRefereeBuffer();
+      const bool throwInStarted =
+          buffer.active && buffer.started && buffer.desiredSetPiece == e_SetPiece_ThrowIn;
+      if (throwInStarted && !waiting) {
+        waiting = true;
+        waitStart_ms = match.GetSimTime_ms();
+      }
+      if (!throwInStarted) waiting = false;
+      if (waiting)
+        longestWait_ms = std::max(longestWait_ms, match.GetSimTime_ms() - waitStart_ms);
+    }
+  }
+  SetDB(nullptr);
+  EXPECT_LE(longestWait_ms, kMaxThrowInWait_ms);
 }
 
 TEST(SimMatch, FullMatchRunsToTheWhistle) {

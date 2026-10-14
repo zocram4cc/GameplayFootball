@@ -435,6 +435,18 @@ void Referee::Process() {
         PrepareSetPiece(buffer.desiredSetPiece);
       }
 
+      // A throw-in's ball is dead until the kick and stays on its spot, on the line. A
+      // player who bumps it during the hold leaves it beyond the line, where the taker's
+      // touch is refused as out of bounds (humanoid GetBestCheatableAnimID), and the throw
+      // never starts. Seed 7 stalled this way at 107 s (ball 4.3 m out) and 174 s. Other
+      // restarts sit inside the line, so the rule is not applied to them.
+      // ponytail: a teleport back to the spot once it strays, not PES's ball hold.
+      constexpr float kRestartHoldTolerance_m = 0.05f;  // a GF tolerance, not a PES value
+      if (buffer.desiredSetPiece == e_SetPiece_ThrowIn && buffer.prepared && !buffer.started &&
+          match->GetBall()->GetPositionBuffer().Get2D().GetDistance(buffer.restartPos.Get2D()) >
+              kRestartHoldTolerance_m)
+        match->GetBall()->ResetSituation(buffer.restartPos);
+
       // Law 16: the taker waits for the opponents to leave the penalty area. They walk
       // out on their own (elizacontroller.cpp); this holds the whistle until they have,
       // for a bounded time so a wedged player cannot freeze the match.
