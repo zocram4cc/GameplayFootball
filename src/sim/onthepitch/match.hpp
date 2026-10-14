@@ -373,8 +373,10 @@ protected:
   unsigned long actualTime_ms = 0;
   unsigned long goalScoredTimer = 0;
 
-  e_MatchPhase matchPhase;  // 0 - first half; 1 - second half; 2 - 1st extra time; 3 - 2nd extra
-                            // time; 4 - penalties
+  // Initialised: Team::GetSide() reads the phase while the constructor activates
+  // players, before SetMatchPhase runs; a stale 2nd-half value left on the heap
+  // by a previous in-process match mirrored every spawn.
+  e_MatchPhase matchPhase = e_MatchPhase_PreMatch;  // then 1st/2nd half, extra time, penalties
   bool inPlay = false;
   bool inSetPiece = false;
   bool goalScored = false;  // true after goal scored, false again after next match state change
