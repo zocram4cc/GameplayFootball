@@ -37,6 +37,7 @@ address given.
 |`pes-re-pitch-grass.md`|the pitch, line and turf shaders as port-ready formulas, verified numerically against the compiled DXBC|
 |`pes-re-stadium-camera.md`|nested stadium cpks, pitch dimensions, crowd, the in-play camera|
 |`pes-re-fieldinfo.md`|PES's pitch geometry record: all 18 FieldInfo floats read live, 15 named (net roof/floor back, centre circle), none readable from the exe (named constants); GF's goal depth is 0.68–0.79 m too deep|
+|`pes-re-misc-leftovers.md`|officials chain (the pick rule lives in fixture-VM code), FieldInfo F11 = goal-mouth back plane, the runtime net layout (0x60 stride), the injury registry; live items open|
 |`pes-re-effects-particles.md`|the Tpp Effect system: the runtime path, the particle update rule, weather, the post chain, and the negative result on in-play emitters|
 |`pes-re-audio.md`|the audio system (in-exe CRIWARE ADX2), the match sound inventory, the trigger-to-cue condition trees, and the crowd|
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|
@@ -85,6 +86,7 @@ address given.
 |`pes-re-carrier-units.md`|the rest of the carrier brain: the 72x15 dribble search with its threat term, shield/keep/turn, OneTwo/SideChange/GoalFront/PassTarget, RespondRequest, the full adopter walk, delay tables; live adoption mix; settles the shoot-zone mismatch|
 |`pes-re-team-plans.md`|team AI: the team-brain class inventory, formation slot to target position, advanced-instruction enums, off-ball run selector gates, the press trigger/target/count, ZoneDefenceManager marking, pass/shoot/dribble scoring skeletons|
 |`pes-re-tactics.md`|team tactics → behaviour: the team-sheet layout, slider formulas, toggles gating the team plans, the plan selector, the 17 advanced instructions and their timing, attack level/CPU strategy; live-checked|
+|`pes-re-team-ai-leftovers.md`|team-AI follow-ups: the ReverseSideCounter body; PossessionMfJoinDefenceLine is dead; all 48 subConcepts are enabled; the defender aggression team terms; the six designated players; substitution settings provenance|
 |`pes-re-match-management.md`|how the CPU manages a match: the strategy decider and its inputs, strategy→attack level outside watch mode, substitution rules, reactive tactical changes; no late-game scripts|
 |`pes-re-transitions.md`|possession and kick-off timers, counter-press/fore-check/regroup concepts with live timings, the concept id map, first-touch sample; corrects team-plans §4.1 and defensive-shape's timer trigger|
 |`pes-re-receiving.md`|receiving the ball: the receive reaction, PASS_GET assignment and approach routes, first-touch kinds, interception touches; live 54 Hz capture; corrects defender-decisions entry 0|
