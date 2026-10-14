@@ -320,3 +320,62 @@ leftovers' "`bVar15 = 100` = vetoed" reading in `FUN_14059ed10` should be rechec
 Killed hypotheses: (a) "`_good` gates the second Chance search" — killed by r12b = `FUN_14060a4d0` at 0x1406026db.
 (b) "chanceScore = 40.0 float" — killed by the byte load at 0x14060291e and the header/ordering check in §0.
 (c) "`F+0x04` is F0 52.56 so lanes run along x" — killed by `**F` = F0 in 0x14059f9a0; lanes are z = 32.06 … −31.94.
+
+## 5. Pass 3 (2026-10-14): final commit `FUN_140664ee0(ctx, reg, sel, id, C, flags[10], arg)` (0x140664ee0–0x1406665c7)
+
+Verdict: **skeleton decoded, not port-ready.** It is a gate tree of ~95 boolean leaves (1 = lane accepted); the key-dependent
+part is tiny. `flags` = the 8-byte pack built in 59ba60 (0x14059da45–0x14059da71): [0] laneBudget(594470 anyHit),
+[1] 594470 allClear, [2] interceptable(59ba60 pre-pass), [3] 2d4 (a4f720 ball-near-line flag), [4] 5a9950, [5] aaf00,
+[6] 2-pin flag cStack_3cf (5a8df0), [7] 'held' (cStack_39e), [8] 5aa480, [9] 0 (OBS stack order; names INF(med)).
+
+**0xc3 key use (OBS raw):** the record is fetched at 0x140664fb7 (`mov edx,0xc3; call 0x141e5d4c0`). Only two uses:
+1. `cmp byte [rec+0xe8], 0` at 0x140665da2: if nonzero (and not a Chance-family run, flags[8] clear) the lane must also
+   pass `FUN_140670230`. rec+0xe8 = blob 0xe0 = **1** in the 2021 dump, so the test is live; its key name is one of the
+   unmapped trailing 8 words (§0).
+2. passed to `FUN_140662d60` (call 0x140665d08) — whose decompile never reads that argument (INF(high): unused; raw not
+   re-walked). So **no `checkBallDist_chance` / `checkLastLineDist_chance` / `checkZ` read here**; the remaining 0xc3 readers
+   (0x1405aca50, 0x140605570, 0x1406071df, 0x14060acfa, 0x140612660) are where to look next.
+
+**Context `cx = FUN_140591b70(id, C, arg)` (OBS):** `cx[0]` team, `[1]` bearing(P→C), `[2]` bearing(ball→C),
+`[3]` bearing(ball→FUN_140599ff0 point), `[4]` |P−C|², `[5]` |ball−C|², `[6]` |P−ball|², `[7]` arg.
+
+**Order (OBS decompile h2.c 362–957; inline constants raw-consistent):**
+```
+reject if |fold(cx.ballBearing − T.dir)| > 90  or |ball.z − C.z| > 48
+require 66f080, 6697b0, 596470, 66cc20, 661550
+chance = state(id) ∈ 0x1d..0x1f;  if !chance require 6705d0
+require 66af40;  reject if last event kind 3 and |ball.z − C.z| ≥ 7.5
+if !flags[3]: if a4fea0(opp, ball, cx.ballBearing, 100, 5.5) and cx[5] > (sel+4)² → reject; else flags3' = 1
+reject if 5a0ec0(C); require 66f200, 6683a0, 6693e0, 667b90, 6680e0(chance); chance → require 66ce40
+(team T+0xa508 == 2 with 6612b0 & …) else if !chance and !5a0a70 and !flags[4] and !(flags[5]&&6749c0 or flags[8])
+   and instr 1,2 clear: require 66bde0
+if |C.z| > F7 and 5a2590: strong = false-path skipped ...   (5a0d20 && a4c9a0(−6.5) && cx[6] ≥ cx[5] → strong)
+!strong: require 66d100;  require 668620(flags[0]); box-side tests: |C.z| > F5, |C.z − ball.z| < 12 → reject if
+   |P.z| < |ball.z| or |C.z| < |ball.z| or < 3.5; reject crossing behind ball with min angle > 22
+require 593e30 and (chance&&660ea0 | flags[7] | 660220&&65ff20) and (a508==2 | 596010) and 66a5a0, 66a200 and
+   (chance | 66dad0)
+count opponents q (≠ held marker) with |P−q| ≤ |P−C|+1.5, bearing dev ≤ 19, and (!5a0d20 or |P−q|² ≥ 10.24):
+   if n>0 and (!flags6&&!flags7 or n>1) and !675de0 and !676010: reject if n>1 && !flags[9]; else need the
+   receiver FUN_140a62960 to pass a53da0(…, 38°, |P−C|+1.5)
+then ~45 more require-leaves (a53df0 60/7 ×2, 66d250, 6711d0, 670e20, 663750, 663440, 664200, 664320, 664ca0, 663970,
+   66b980, 667480, 667310, 66f450, [!chance: 662d60, 662a10], 663e70, 676530, 66f6e0, [rec+0xe8: 670230], 66fd10, 667cb0,
+   chance: 661be0, 6622d0, 666b20 | else 671440, 670cb0, 670a10, 670b80, 663c50, 668d00, 66e900, 66a880, 669940, 66ca20;
+   66c920, 66b6e0/66b590, 666f20, 66e130, 6665d0, 66cd50, 66e470, [!chance 6679e0; no carrier → reject if dev ≥ 65 and
+   cx… ≥ 9], a72180(MA+0x24c6a), 66e5f0, 66ed80, 66b210, 6676c0, 66c7f0, 66b070; reject if |C.z| ≥ F7 and s·P.x ≥ F6−5;
+   66a130, !68ac40(C,1), (chance ? 669080 : 666710), !5a1310, !5a3080(C,1,1), !674f00, !5a2190, chance extras 6615e0/6627c0,
+   66d720, 66d980)
+final receiver test (FUN_140a63020 receiver r, skill byte r+0x26 ∈ 0..2 → w = min(1, b/2)):
+   if cx[6] > (8w+20)² and (flags[1] or cx[6] > 1024): speed ramp u from FUN_1404c8dc0 pair;
+     if angle > 15u + 10 + 10w or cx[6] > (15w+22)²: return sign test of a43a0a0 (side of r's facing, +0x34 flag picks which)
+   return 1
+```
+`FUN_140662d60` (OBS, uses cx): accepts at once with style ≠ 1 in own region or instr 2; rejects s·P.x > F6−2 with
+cx[5] > 324 and both bearings within 22° of T.dir; then a 75°/F7−7/14/20 m/−7 pass-lane window, 1600/2025/2809 distance
+cuts, a carrier-side cone (4 m, 140°/7, 80°/100) for the non-allClear case, and a 24(+16)-m / ramp(3→F6−10)·10+22 (≤ 42)
+radius cap on cx[5]/cx[6].
+
+### 5.1 Next steps (exact)
+- Decompile the ~95 leaves in tree order: `dec.sh` the list above in batches of 25 (they are all 0x14065f…–0x140676…).
+  They are mostly small "require" predicates like 662d60; expect two more passes.
+- Raw re-walk of 662d60 to confirm the 0xc3 argument is unused.
+- Name rec+0xe8: match the 2021 key list (11 more names than PES19) by dumping the key-name table next to `o_spaceRun.o`.
