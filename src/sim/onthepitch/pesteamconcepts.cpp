@@ -109,6 +109,7 @@ constexpr uint64_t COUNTER_DX_VA = 0x142591140;   // 30
 constexpr uint64_t FORECHECK_WINDOW_VA = 0x14259222c;  // 5 (x fps)
 constexpr uint64_t FORECHECK_HOLD_VA = 0x142565604;    // 2 (x fps)
 constexpr uint64_t FORECHECK_FLOOR_VA = 0x14259be84;   // -10
+constexpr uint64_t FORECHECK_CORRIDOR_VA = 0x14259be04; // 12
 constexpr uint64_t PRESS_GOAL_SIDE_VA = 0x14259be4c;   // 70
 constexpr uint64_t PRESS_RAMP_FROM_VA = 0x14253ee30;   // 100
 constexpr uint64_t PRESS_RAMP_TO_VA = 0x1425c964c;     // 170
@@ -302,6 +303,7 @@ std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe,
       {FORECHECK_WINDOW_VA, &k.foreCheckWindow_s},
       {FORECHECK_HOLD_VA, &k.foreCheckHold_s},
       {FORECHECK_FLOOR_VA, &k.foreCheckBallFloor_m},
+      {FORECHECK_CORRIDOR_VA, &k.foreCheckCorridor_m},
       {PRESS_GOAL_SIDE_VA, &k.pressGoalSide_deg},
       {PRESS_RAMP_FROM_VA, &k.pressRampFrom_deg},
       {PRESS_RAMP_TO_VA, &k.pressRampTo_deg},
@@ -404,10 +406,12 @@ bool ForeCheckPressCount(const TeamConceptConstants& k, const DefenceConceptInpu
 
 bool ForeCheckPressStart(const TeamConceptConstants& k, const DefenceConceptInput& in) {
   if (!in.inPlay || in.sincePossessionChange_s > k.foreCheckWindow_s) return false;
-  // Ball in the opponents' half. ponytail: the "< 12 m and inside the
-  // corridor" veto reads MA+0x3c+0x14*side, a per-team float whose writer is
-  // not found (tried: its only displacement readers are this test).
-  if (in.dir * in.ball.coords[0] < 0.0f) return false;
+  // Ball in the opponents' half, and not still inside our block: within 12 m
+  // of halfway and behind our team's midpoint MA+0x3c+0x14*side (written by
+  // FUN_14045bfe0: the mean of our front man and our deepest outfielder).
+  const float b = in.dir * in.ball.coords[0];
+  if (b < 0.0f) return false;
+  if (b < k.foreCheckCorridor_m && Beyond(in.teamMid, in.ball.coords[0], in.dir, 0.0f)) return false;
   return ForeCheckPressCount(k, in);  // instruction 0xd is never armed in GF
 }
 

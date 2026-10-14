@@ -33,7 +33,7 @@ pes::TeamConceptConstants Synthetic() {
   k.supportAhead_m = 15, k.supportSide_m = 12, k.supportTurn_deg = 22, k.supportMinAhead_m = 8;
   k.supportHoldBonus_m = -5;
   k.counterRunGrace_s = 2, k.counterMaxAge_s = 6, k.counterRunnerFarSq = 1369, k.counterRunnerMaxDx_m = 30;
-  k.foreCheckWindow_s = 5, k.foreCheckHold_s = 2, k.foreCheckBallFloor_m = -10;
+  k.foreCheckWindow_s = 5, k.foreCheckHold_s = 2, k.foreCheckBallFloor_m = -10, k.foreCheckCorridor_m = 12;
   k.pressGoalSide_deg = 70, k.pressRampFrom_deg = 100, k.pressRampTo_deg = 170;
   k.pressRadius_m = 8, k.pressRadiusRamp_m = 4, k.pressBonusAbove = 0.2f, k.pressCount = 3;
   k.lineDownBallDivisor = -2.5f, k.lineDownBallMax_m = 27, k.lineDownGap_m = 3, k.lineDownLongPassFacing_deg = 70;
@@ -54,6 +54,7 @@ pes::DefenceConceptInput PressScene() {
   in.dir = 1;
   in.ball = Vector3(10, 0, 0);
   in.opponentsHoldBall = true;
+  in.teamMid = 20;  // our block is up: the ball is not beyond its midpoint
   in.mates = {Vector3(5, 0, 0), Vector3(10, 7, 0), Vector3(20, 0, 0)};  // goal-side, side, behind (11 m)
   return in;
 }
@@ -77,6 +78,11 @@ TEST(PesForeCheck, PressStartsInTheirHalfAndHoldsTwoSecondsThenRecounts) {
   const auto k = Synthetic();
   auto in = PressScene();
   EXPECT_TRUE(pes::ForeCheckPressStart(k, in));
+  in.teamMid = 5;  // ball 10 m upfield, beyond our midpoint and inside 12 m: still in our block
+  EXPECT_FALSE(pes::ForeCheckPressStart(k, in));
+  in.ball.coords[0] = 13;  // past the 12 m corridor
+  EXPECT_TRUE(pes::ForeCheckPressStart(k, in));
+  in = PressScene();
   in.ball.coords[0] = -1;
   EXPECT_FALSE(pes::ForeCheckPressStart(k, in));
   in = PressScene();

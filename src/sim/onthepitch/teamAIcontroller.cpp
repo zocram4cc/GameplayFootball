@@ -1897,18 +1897,26 @@ pes::DefenceConceptInput TeamAIController::DefenceInput() {
     in.holderHeading_deg = HeadingOf(retainer->GetDirectionVec());
     in.holderOpponent = true;
   }
-  // MA+0x40+0x14*side: our own line. ponytail: GF's own offside line stands in
-  // (MA+0x40's writer is the analysis object's line pass, INF the same line).
-  in.ownLine = AI_GetOffsideLine(match, match->GetMentalImage(0), team->GetID());
+  // FUN_14045bfe0's per-team block: front = the most advanced man, back
+  // (MA+0x40) = the deepest outfielder, mid (MA+0x3c) = their mean. Default
+  // back is our goal line. ponytail: PES walks its depth list
+  // (FUN_140a71500); GF takes the extremes of the same positions.
   Player* presser = team->GetDesignatedTeamPossessionPlayer();
   std::vector<Player*> men;
   team->GetActivePlayers(men);
+  float front = -in.dir * pitchHalfW, back = -in.dir * pitchHalfW;
+  bool anyFront = false, anyBack = false;
   for (Player* p : men) {
+    const float x = p->GetPosition().coords[0];
+    if (!anyFront || in.dir * x > in.dir * front) front = x, anyFront = true;
     in.allMen.push_back(p->GetPosition());
     if (p->GetFormationEntry().role == e_PlayerRole_GK) continue;
+    if (!anyBack || in.dir * x < in.dir * back) back = x, anyBack = true;
     if (p == presser) in.presser = static_cast<int>(in.mates.size());
     in.mates.push_back(p->GetPosition());
   }
+  in.ownLine = back;
+  in.teamMid = (front + back) * 0.5f;
   in.measuredBack = measuredBackLine, in.measuredMid = measuredMidLine;
   in.backBand = backBand, in.midBand = midBand;
   return in;

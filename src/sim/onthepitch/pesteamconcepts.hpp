@@ -104,6 +104,7 @@ struct TeamConceptConstants {
   float foreCheckWindow_s = 0;       // 5
   float foreCheckHold_s = 0;         // 2: always continues inside it
   float foreCheckBallFloor_m = 0;    // -10 own frame
+  float foreCheckCorridor_m = 0;     // 12
   float pressGoalSide_deg = 0;       // 70: "close" mate, and the 100..170 ramp span
   float pressRampFrom_deg = 0;       // 100
   float pressRampTo_deg = 0;         // 170
@@ -152,7 +153,8 @@ struct DefenceConceptInput {
   bool holderLongPass = false;  // the opponent on the ball in LONG_PASS (anime 8)
   float holderHeading_deg = 0;
   bool holderOpponent = false;  // an opponent holds the ball (carrier or MA holder)
-  float ownLine = 0;            // MA+0x40+0x14*side, world x
+  float ownLine = 0;            // MA+0x40+0x14*side: our deepest outfielder, world x
+  float teamMid = 0;            // MA+0x3c+0x14*side: midpoint of front man and ownLine
   std::vector<Vector3> mates;   // our outfield men, world
   std::vector<Vector3> allMen;  // all our men on the pitch, keeper included
   int presser = -1;             // the MATCH_UP man, index into mates
