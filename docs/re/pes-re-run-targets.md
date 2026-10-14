@@ -379,3 +379,27 @@ radius cap on cx[5]/cx[6].
   They are mostly small "require" predicates like 662d60; expect two more passes.
 - Raw re-walk of 662d60 to confirm the 0xc3 argument is unused.
 - Name rec+0xe8: match the 2021 key list (11 more names than PES19) by dumping the key-name table next to `o_spaceRun.o`.
+
+## 6. Pass 4: 664ee0 leaves (decoded per batch in companion files)
+All ~97 leaves of `FUN_140664ee0` are decoded in tree order, each "true = lane passes":
+`local://pes-re-run-targets-b1.md` (24: 21 done, 2 partial 66bde0/643a30, 1 open a4fea0 → a4fbc0),
+`-b2.md` (24 done; 664320 from raw), `-b3.md` (24 done; 662d60 raw-confirmed not to read the 0xc3 arg; 676530 loops
+over MI+0x1748 == 0 slots — port literally), `-b4.md` (25: 24 done, 5a3080 angle-widening sub-branch 0x1405a3afe–c34 partial).
+Remaining blockers for a faithful port are shared helpers listed as open in those files (cone tests a4e720/a4e3f0,
+a4fea0/a4fbc0, a4c9a0, a4e250, 5951b0, a50250, a63950, 5a4830, 5969b0, a8f7c0, a90d30, …) — §7.
+
+## 7. Pass 4: shared helpers and stop-test leaves (companion files)
+- `-h1.md`: 24 shared helpers done (cones a4e720→a4e3f0 = count of opponents in cone, minDist<d<radius, |dev| ≤ w/2;
+  a4fea0→a4fbc0 strict <w/2; a4c9a0(p,k) = a4c720(opp line MA+0x44+0x14·(t^1), P.x, s, k); 5951b0 same vs 599d90 line;
+  a50250 = ball-owner record +0xdc[k]; 69cd40 = defender perpendicular gap to lane or −1, reach 5.65·t+0.6; a4c750 = in pitch;
+  a62960 = keeper slot (role 0x3a) …). Still open: 5a4790, a580a0 (AI class), a3b110/a3af90 masks, a3e7d0, a900e0, 439e50, 458740.
+  Already decoded elsewhere in this report: 599d90 (§1), a6c6d0 (velocity sample), 141e532d0 (= fps 54).
+- Stop-test leaves: `-s1.md` (22: 21 done, 68efc0 partial — duplicate sign test, raw check near 0x14068f1xx),
+  `-s2.md` (21 done; 68c050 is effectively dead: sqrt(d²) compared with 1444, raw-confirmed; 690cf0 discards its cone),
+  `-s3.md` (22 done; 5a40a0 tail-calls 5a3080).
+## 8. Status
+Lane search (§2, §4, §5, b1–b4, h1) and stop test (§3, s1–s3) are decoded to leaf level. Not yet port-ready items, exact:
+5a3080 angle-widening branch 0x1405a3afe–0x1405a3c34; 66bde0 angle-arg order and 643a30 one a4c720 arg (raw);
+68efc0 sign test (raw); 5a7960 tautology (raw); ~25 second-level helpers named in the companion files' open lists
+(5a4790, a580a0, a53da0, 655660, 594a10, 59b630, 5a2850, 598350, 694ee0, 593430, 68cb80, 44e020, path API).
+Per-leaf raw cross-checks were done for arguments/constants the decompile dropped, not for every branch.
