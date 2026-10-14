@@ -23,6 +23,7 @@
 #include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstoppage.hpp"
 #include "onthepitch/peskickerror.hpp"
+#include "onthepitch/pesoffball.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
@@ -140,6 +141,10 @@ class PesLibrary : public RefCounted {
   const pes::KickErrorConstants* kick_error_constants() const {
     return kickErrorConstants_ ? &*kickErrorConstants_ : nullptr;
   }
+  // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
+  const pes::offball::OffBallConstants* off_ball_constants() const {
+    return offBallConstants_ ? &*offBallConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -170,6 +175,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::StaminaConstants> staminaConstants_;
   std::optional<pes::StoppageConstants> stoppageConstants_;
   std::optional<pes::KickErrorConstants> kickErrorConstants_;
+  std::optional<pes::offball::OffBallConstants> offBallConstants_;
   std::optional<pes::SetPieceTakerConstants> setPieceTakerConstants_;
   std::optional<pes::SetPieceTeamConstants> setPieceTeamConstants_;
 };

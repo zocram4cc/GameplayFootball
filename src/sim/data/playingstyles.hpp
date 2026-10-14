@@ -85,9 +85,6 @@ float GetWidthOffset(Player style, bool teamHasPossession);
 // team attacks. `teamSide` is -1 or 1 and points towards the team's own goal.
 const float poacherOffsideCushion = 0.5f;
 float GetPoacherTargetX(Player style, float defaultX, float opponentOffsideLineX, int teamSide);
-// How keen this player is to be the one sent on the attacking run: 0.5 is
-// neutral, 0 never runs, 1 always volunteers.
-float GetAttackingRunAffinity(Player style, ComMask com);
 
 // --- On the ball (ElizaController::GetOnTheBallCommands) ---
 

@@ -30,6 +30,7 @@
 #include "base/properties.hpp"
 #include "pesrandom.hpp"
 #include "pesstrategy.hpp"
+#include "pesoffball.hpp"
 #include "pesdefshape.hpp"
 #include "teaminstructions.hpp"
 #include "pesteamconcepts.hpp"
@@ -102,7 +103,6 @@ public:
   // shootout needs its own rotation to take the kicks.
   void SetPieceTaker(Player* player) { taker = player; }
   e_SetPiece GetSetPieceType() { return setPieceType; }
-  void ApplyAttackingRun(Player* manualPlayer = 0);
   void CalculateSituation();
 
   // PES 2021's open-play defensive line, rebuilt every tick (report 6, 14.1).
@@ -152,10 +152,11 @@ public:
   // the ball is dead and the attack level follows it once play resumes.
   void UpdateStrategy();
 
-  unsigned long GetEndApplyAttackingRun_ms() { return endApplyAttackingRun_ms; }
-  Player* GetAttackingRunPlayer() { return attackingRunPlayer; }
+  // PES's off-ball run or designated-supporter target for this player, if any
+  // (pes-re-off-ball.md 1, 4.1).
+  bool GetOffBallTarget(const Player* player, Vector3* target) const;
+  int GetRunState(const Player* player) const;
 
-  Player* GetForwardSupportPlayer() { return forwardSupportPlayer; }
 
   const std::vector<TacticalOpponentInfo>& GetTacticalOpponentInfo() {
     return tacticalOpponentInfo;
@@ -242,8 +243,6 @@ protected:
   std::vector<int> markPendingOpponent;
   std::vector<unsigned long> markPendingSinceTick;
 
-  unsigned long endApplyAttackingRun_ms;
-  Player* attackingRunPlayer;
   bool prevTeamHasPossession;
 
   void RunConcepts();
@@ -255,9 +254,20 @@ protected:
   pes::SideCounterInput CounterInput(std::vector<Player*>* men);
   pes::DefenceConceptInput DefenceInput();
   float MeasuredLine(int line, float ref) const;
-  Player* forwardSupportPlayer;  // sort of like the attacking run player, but more for a forward
-                                 // offset for a player close to the action, to support the player
-                                 // in possession
+
+  // PES's run manager (pesoffball.hpp): one record per player in a run.
+  struct RunRecord {
+    int state = pes::offball::kNothing;
+    unsigned long start_ms = 0;
+    Vector3 target;
+  };
+  void ProcessOffBall();
+  void ProcessRunManager(Player* carrier);
+  void ProcessDesignatedSupporter(Player* carrier);
+  std::map<const Player*, RunRecord> runs;
+  long lastRunFrame = -1;
+  Player* designatedSupporter = nullptr;
+  Vector3 supporterTarget;
 
   std::vector<TacticalOpponentInfo> tacticalOpponentInfo;
 };

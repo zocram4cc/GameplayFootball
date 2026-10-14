@@ -78,9 +78,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   defensiveCompactSlider = 4.0f;
   defensivePressing = false;
 
-  endApplyAttackingRun_ms = 0;
-  attackingRunPlayer = 0;
-  forwardSupportPlayer = 0;
 
   prevTeamHasPossession = false;
 
@@ -153,34 +150,6 @@ TeamAIController::~TeamAIController() {
     printf("exiting teamcontroller.. ");
   if (Verbose())
     printf("done\n");
-}
-
-Player* SelectAttackingRunPlayer(Team* team) {
-  Player* possessionPlayer = team->GetDesignatedTeamPossessionPlayer();
-
-  Vector3 offenseFocusPos =
-      possessionPlayer->GetPosition() + Vector3(-team->GetSide() * 26.0f, 0, 0);
-
-  // The nearest AI teammate to the focus, except that a hole player or a
-  // full-back finisher volunteers from further away and an anchor man never
-  // leaves his post (PES Playing Styles).
-  Player* attackingRunPlayer = nullptr;
-  float bestCost = 10000.0f;
-  for (const std::unique_ptr<Player>& candidate : team->GetAllPlayers()) {
-    if (!candidate->IsActive() || candidate.get() == possessionPlayer)
-      continue;
-    const float affinity = PlayingStyles::GetAttackingRunAffinity(
-        candidate->GetPlayerData()->GetPlayingStyle(), candidate->GetPlayerData()->GetComStyles());
-    if (affinity <= 0.0f)
-      continue;
-    const float cost =
-        (candidate->GetPosition() - offenseFocusPos).GetLength() * (1.5f - affinity);
-    if (cost < bestCost) {
-      bestCost = cost;
-      attackingRunPlayer = candidate.get();
-    }
-  }
-  return attackingRunPlayer;
 }
 
 void TeamAIController::Process() {
@@ -294,63 +263,7 @@ void TeamAIController::Process() {
   // counter-attack replace GF's zone pressure and counter roll.
   RunConcepts();
 
-  // trigger attacking runs
-
-  if (match->GetActualTime_ms() % 500 == 0 &&
-      endApplyAttackingRun_ms <= match->GetActualTime_ms()) {
-    if (match->GetBestPossessionTeamID() == team->GetID()) {
-      const float counterAttack =
-          liveTeamTactics.GetReal("counter_attack", 0.5f);
-      const float neededRating = AITactics::GetAttackingRunThreshold(counterAttack);
-
-      // from a certain distance, running is not very useful (can't pass that far)
-      Player* runner = SelectAttackingRunPlayer(team);
-      if (runner) {
-        // -team->GetSide() is the direction this team attacks (see
-        // SelectAttackingRunPlayer's own -side * 26 m target). The probe was
-        // sampling ten metres toward the team's OWN goal, so the defenders it
-        // counted were the ones behind the runner and the ones he was about
-        // to run into were invisible: the density term rewarded running at a
-        // crowded area and punished an open one, exactly backwards.
-        Player* carrier = team->GetDesignatedTeamPossessionPlayer();
-        const float distance =
-            carrier ? (runner->GetPosition() - carrier->GetPosition()).GetLength() : 40.0f;
-        float distanceRating = std::pow(1.0f - NormalizedClamp(distance, 0, 40), 0.5f);
-
-        // more likely to run when there's less defenders in front
-        std::vector<Player*> opponents;
-        Vector3 spot = runner->GetPosition() * Vector3(1.0f, 0.8f, 0.0f) +
-                       Vector3(-team->GetSide() * 10.0f, 0, 0);
-        AI_GetClosestPlayers(team->GetMatch()->GetTeam(abs(team->GetID() - 1)), spot,
-                             opponents, 4);
-        float oppDensityRating = 1.0f;
-        for (unsigned int i = 0; i < opponents.size(); i++) {
-          float oppDistance = (opponents.at(i)->GetPosition() - spot).GetLength();
-          float oppDistanceRatingInv =
-              std::pow(curve(1.0f - NormalizedClamp(oppDistance, 0, 15), 1.0f), 0.5f);
-          oppDensityRating -= oppDistanceRatingInv * 0.3f;  // subtractive!
-        }
-
-        float runConditionsRating = distanceRating * oppDensityRating;
-
-        if (runConditionsRating >= neededRating) {
-          ApplyAttackingRun();
-          if (Verbose())
-            printf("!!! tactics induced run !!!\n");
-        }
-      }
-    }
-  }
-
-  if (match->GetActualTime_ms() % 1500 == 0) {
-    const float counterAttack =
-        liveTeamTactics.GetReal("counter_attack", 0.5f);
-    const float supportLead = 0.5f + AITactics::ClampSetting(counterAttack) * 2.0f;
-    forwardSupportPlayer = AI_GetClosestPlayer(
-        team,
-        team->GetDesignatedTeamPossessionPlayer()->GetPosition() * Vector3(1.0f, 1.0f, 0.0f) +
-            Vector3(-team->GetSide() * supportLead, 0, 0), team->GetDesignatedTeamPossessionPlayer());
-  }
+  ProcessOffBall();
 }
 
 float mixup(float base, const std::string& varname, e_PlayerRole role, float counterAttack) {
@@ -1699,15 +1612,6 @@ void TeamAIController::PrepareSetPiece(e_SetPiece setPiece, int takerTeamID) {
   }
 }
 
-void TeamAIController::ApplyAttackingRun(Player* manualPlayer) {
-  const float counterAttack =
-      liveTeamTactics.GetReal("counter_attack", 0.5f);
-  endApplyAttackingRun_ms =
-      match->GetActualTime_ms() + AITactics::GetAttackingRunDuration_ms(counterAttack);
-
-  attackingRunPlayer = manualPlayer ? manualPlayer : SelectAttackingRunPlayer(team);
-}
-
 // --- PES's team concepts (docs/re/pes-re-tactics.md 2.1, pes-re-transitions.md 2-3)
 
 namespace {
@@ -2208,9 +2112,10 @@ void TeamAIController::Reset() {
 
   offsideTrapX = 0;
 
-  endApplyAttackingRun_ms = 0;
-  attackingRunPlayer = 0;
   for (int id = 0; id < pes::kConceptCount; ++id) StopConcept(id);
+  runs.clear();
+  lastRunFrame = -1;
+  designatedSupporter = nullptr;
 
   teamHasPossession = false;
   teamHasUniquePossession = false;
@@ -2221,4 +2126,247 @@ void TeamAIController::Reset() {
   fadingTeamPossessionAmount = 1.0f;
   timeNeededToGetToBall = 100;
   oppTimeNeededToGetToBall = 100;
+}
+
+// --- PES's off-ball runs and designated supporter (pesoffball.hpp) ---
+
+namespace {
+
+namespace ob = pes::offball;
+
+constexpr float kPesFps = 54.0f;  // FUN_141e532d0 = [0x14351ae54]
+// Positions the target builder predicts: int(fps·0.3+0.5) = 16 frames (0x14059bbe4).
+constexpr float kRunPredictFrames = 16.0f;
+// The supporter search predicts int(fps·0.35+0.5) = 19 frames (FUN_1405eb980).
+constexpr float kSupporterPredictFrames = 19.0f;
+
+ob::Vec2f Flat(const Vector3& v) { return {v.coords[0], v.coords[1]}; }
+Vector3 Predict(const Player* p, float frames) {
+  return p->GetPosition() + p->GetMovement() * (frames / kPesFps);
+}
+bool IsGoalie(Player* p) { return p->GetFormationEntry().role == e_PlayerRole_GK; }
+
+}  // namespace
+
+int TeamAIController::GetRunState(const Player* player) const {
+  auto it = runs.find(player);
+  return it == runs.end() ? ob::kNothing : it->second.state;
+}
+
+bool TeamAIController::GetOffBallTarget(const Player* player, Vector3* target) const {
+  auto it = runs.find(player);
+  if (it != runs.end() && it->second.state != ob::kNothing) {
+    *target = it->second.target;
+    return true;
+  }
+  if (player == designatedSupporter) {
+    *target = supporterTarget;
+    return true;
+  }
+  return false;
+}
+
+void TeamAIController::ProcessOffBall() {
+  // The manager ticks only on the team's own parity frame (raw 0x1404f78a5):
+  // each team every other PES frame, the two alternating.
+  const long frame = static_cast<long>(match->GetActualTime_ms() * kPesFps / 1000.0f);
+  if (frame == lastRunFrame) return;
+  lastRunFrame = frame;
+  if ((frame & 1) != team->GetID()) return;
+
+  // PES's team possession flag T+0x255 changes only when the other team takes
+  // the ball. ponytail: GF has no such flag; the last team to touch the ball
+  // stands in (stable through a pass, unlike GF's per-tick HasPossession).
+  Player* carrier = match->GetLastTouchTeamID() == team->GetID()
+                        ? team->GetDesignatedTeamPossessionPlayer()
+                        : nullptr;
+  // ponytail: PES's support pipeline runs every team tick; here it shares the
+  // manager's parity tick.
+  ProcessDesignatedSupporter(carrier);
+  ProcessRunManager(carrier);
+}
+
+void TeamAIController::ProcessDesignatedSupporter(Player* carrier) {
+  // ponytail: T+0xc12b (the "supporter wanted" flag) is undecoded; a supporter
+  // exists whenever the team has a carrier in open play (the pipeline's
+  // open-play branch, pes-re-off-ball.md 4.1).
+  if (!carrier || !match->IsInPlay() || match->IsInSetPiece()) {
+    designatedSupporter = nullptr;
+    return;
+  }
+  // FUN_1405eb980 keeps the supporter (+0x7b4) and searches again only when
+  // there is none or T+0xc12c asks for it. ponytail: c12c's writer is not
+  // decoded; a supporter who became the passer or left the pitch is replaced.
+  if (!designatedSupporter || designatedSupporter == carrier || !designatedSupporter->IsActive()) {
+    designatedSupporter = nullptr;
+    const Vector3 carrierPred = Predict(carrier, kSupporterPredictFrames);
+    const Vector3 facing = carrier->GetDirectionVec();
+    const float facing_deg = std::atan2(facing.coords[1], facing.coords[0]) * 180.0f / pi;
+    float bestCost = 0.0f;
+    for (const auto& p : team->GetAllPlayers()) {
+      Player* mate = p.get();
+      if (!mate->IsActive() || mate == carrier || IsGoalie(mate)) continue;
+      const Vector3 d = Predict(mate, kSupporterPredictFrames) - carrierPred;
+      const float bearing = std::atan2(d.coords[1], d.coords[0]) * 180.0f / pi;
+      const float diff = std::fmod(bearing - facing_deg + 540.0f, 360.0f) - 180.0f;
+      const float cost = ob::SupporterCost(diff, d.Get2D().GetLength());
+      if (!designatedSupporter || cost < bestCost) {
+        bestCost = cost;
+        designatedSupporter = mate;
+      }
+    }
+    if (!designatedSupporter) return;
+  }
+  const Vector3 carrierPred = Predict(carrier, kSupporterPredictFrames);
+  // Forced back to BASE_POSITION: the supporter never runs (b2a.c:657-699).
+  runs.erase(designatedSupporter);
+
+  // FUN_1405ebca0: the carrier's predicted point moved by the support distance
+  // along the bearing carrier -> supporter.
+  const float s = -team->GetSide();
+  const int opp = abs(team->GetID() - 1);
+  const Vector3 toMate = (Predict(designatedSupporter, kSupporterPredictFrames) - carrierPred).Get2D();
+  const float bearing = std::atan2(toMate.coords[1], toMate.coords[0] * s) * 180.0f / pi;
+  ob::SupportDistanceInput in;
+  // Support Range and Build Up from the team sheet (tactics 4.1).
+  in.supportRange = teamSheet.supportRange;
+  in.buildUpLong = teamSheet.toggles[pes::kBuildUp] == 0;
+  const Vector3 ball = match->GetBall()->Predict(0);
+  in.ballX = s * ball.coords[0];
+  in.ballZ = ball.coords[1];
+  in.ownLineX = s * AI_GetOffsideLine(match, match->GetMentalImage(0), team->GetID());
+  in.oppLineX = s * AI_GetOffsideLine(match, match->GetMentalImage(0), opp);
+  in.bearingFromAttack_deg = bearing;
+  supporterTarget = carrierPred.Get2D() + toMate.GetNormalized(Vector3(s, 0, 0)) *
+                                              ob::SupportDistance_m(in);
+}
+
+void TeamAIController::ProcessRunManager(Player* carrier) {
+  const pes::offball::OffBallConstants& k = match->GetPesOffBallConstants();
+  const unsigned long now = match->GetActualTime_ms();
+  const float s = -team->GetSide();
+  const int opp = abs(team->GetID() - 1);
+  const bool openPlay = match->IsInPlay() && !match->IsInSetPiece();
+  const Vector3 ball = match->GetBall()->Predict(0);
+  const float oppLineX = AI_GetOffsideLine(match, match->GetMentalImage(0), opp);
+
+  std::vector<Player*> slots;
+  for (const auto& p : team->GetAllPlayers())
+    if (p->IsActive()) slots.push_back(p.get());
+
+  // Stop pass: every runner whose stop test says so goes back to NOTHING.
+  for (auto it = runs.begin(); it != runs.end();) {
+    const Player* p = it->first;
+    if (std::find(slots.begin(), slots.end(), p) == slots.end()) {
+      it = runs.erase(it);
+      continue;
+    }
+    ob::StopInput in;
+    in.run = it->second.state;
+    in.t_frames = (now - it->second.start_ms) * kPesFps / 1000.0f;
+    in.becameCarrier = p == carrier;
+    in.openPlay = openPlay;
+    in.teamInPossession = carrier != nullptr;
+    in.s = s;
+    in.runner = Flat(p->GetPosition());
+    in.ball = Flat(ball);
+    in.target = Flat(it->second.target);
+    in.oppLineX = oppLineX;
+    it = ob::RunStop(in) ? runs.erase(it) : std::next(it);
+  }
+
+  // Select pass. Overlap (registered first) and the selectors after Chance are
+  // not ported (report: pes-re-off-ball-port.md); Chance is the only one.
+  if (!openPlay || !carrier) return;
+  const int level = static_cast<int>(GetInstructions().mentality);
+  // Instruction 6 (TIKI_TAKA): GF carries no advanced instructions (their
+  // in-match writer is not found, teaminstructions.hpp), so it is never set.
+  constexpr bool tikiTaka = false;
+  const int cap = ob::RunCap(k, ob::kCapChance, level, tikiTaka);
+  int running = 0;
+  for (const auto& [p, r] : runs) running += r.state == ob::kChance;
+  const int runningAtStart = running;
+
+  std::vector<Player*> opponents;
+  match->GetActiveTeamPlayers(opp, opponents);
+  ob::LaneSearchInput lane;
+  lane.s = s;
+  lane.ball = Flat(ball);
+  lane.defLineX = oppLineX;
+  lane.teamDir_deg = s > 0.0f ? 0.0f : 180.0f;  // ponytail: T+0x250 taken as the attack direction
+  // FUN_140644fe0 (decompiled for this port) is false unless the ball is past
+  // F6 + 2 in the attack direction, and false for a runner within 10 m of the
+  // ball's z while the ball is inside the box width (both applied per runner
+  // below). ponytail: its remaining tests (the role-58 receiver FUN_140a62850
+  // and its 120°/7 m and 120°/5 m cones) are not ported, and the receiver
+  // the lane bonus measures from is the carrier (GF's carrier is the pass's
+  // target while the ball travels).
+  constexpr float kRecvBoxMargin_m = 2.0f;  // 0x142565604
+  constexpr float kRecvSideBand_m = 10.0f;  // 0x142588210
+  const bool ballPastBox = s * ball.coords[0] >= pesPenaltyAreaLineX + kRecvBoxMargin_m;
+  lane.receiver = Flat(carrier->GetPosition());
+  lane.limit = k.chanceScoreLimit;
+  std::vector<Player*> outfield;
+  for (Player* o : opponents) {
+    lane.opponents.push_back(Flat(o->GetPosition()));
+    if (!IsGoalie(o)) outfield.push_back(o);
+  }
+  // The two deepest outfield defenders (FUN_14063fbc0), predicted per runner
+  // by FUN_1405997f0's length below.
+  std::sort(outfield.begin(), outfield.end(), [s](Player* a, Player* b) {
+    return s * a->GetPosition().coords[0] > s * b->GetPosition().coords[0];
+  });
+
+  // At or over the cap PES searches with p8 = 1: a lane is taken only by
+  // out-ranking a Chance runner it then releases (claim gates 5abcc0/5ab380/
+  // 5ab990). ponytail: those gates are undecoded, so no swap happens; the
+  // cap simply holds.
+  std::array<float, ob::kSlots> scores{};
+  std::array<Vector3, ob::kSlots> targets;
+  for (size_t i = 0; running < cap && i < slots.size() && i < ob::kSlots; ++i) {
+    Player* p = slots[i];
+    if (p == carrier || p == designatedSupporter || IsGoalie(p)) continue;
+    // ponytail: GF keeps no per-player action state, so a non-runner counts as
+    // BASE_POSITION.
+    const int state = runs.count(p) ? runs[p].state : ob::kBasePosition;
+    if (!ob::MayTake(ob::kChance, state)) continue;
+    const Vector3 pos = p->GetPosition();
+    // ponytail: the reach byte's label is unresolved (attack-leftovers 1.10);
+    // GF's offensive awareness on PES's 0..99 scale stands in, without the
+    // Weighted Pass +10.
+    const float awareness = p->GetStat("mental_offensivepositioning") * 100.0f;
+    if (std::fabs(pos.coords[0] - ball.coords[0]) >
+        ob::ChanceReach_m(k, std::fabs(pos.coords[1] - ball.coords[1]), awareness))
+      continue;
+    lane.runner = Flat(pos);
+    lane.runnerPred = Flat(Predict(p, kRunPredictFrames));
+    lane.runnerVel = Flat(p->GetMovement());
+    lane.hasReceiver =
+        ballPastBox && !(std::fabs(ball.coords[1]) < pesPenaltyAreaHalfWidth &&
+                         std::fabs(pos.coords[1] - ball.coords[1]) < kRecvSideBand_m);
+    const int predFrames = ob::DefenderPredictFrames(
+        k, (pos - ball).Get2D().GetLength() * (pos - ball).Get2D().GetLength());
+    lane.deepest.clear();
+    for (size_t d = 0; d < outfield.size() && d < 2; ++d)
+      lane.deepest.push_back(Flat(Predict(outfield[d], static_cast<float>(predFrames))));
+    const std::optional<ob::Vec2f> t = ob::ChanceLaneTarget(k, lane);
+    if (!t) continue;  // y = -100: score 0
+    targets[i] = Vector3(t->x, t->z, 0.0f);
+    scores[i] = ob::ChanceScore(k, s, pos.coords[0]);
+  }
+  for (int i : ob::SelectRunners(scores, running, cap, ob::kChancePerTick, true)) {
+    runs[slots[i]] = RunRecord{ob::kChance, now, targets[i]};
+    match->GetMatchData()->AddChanceRun(team->GetID());
+    ++running;
+  }
+  // Excess Chance runners from a lowered cap are released.
+  // ponytail: PES walks only runners pinned in sel+0x280 (the claim gates are
+  // not ported); here the first ones in slot order.
+  for (int excess = runningAtStart - cap; excess > 0; ) {
+    auto it = std::find_if(slots.begin(), slots.end(),
+                           [&](Player* p) { return GetRunState(p) == ob::kChance; });
+    if (it == slots.end()) break;
+    runs.erase(*it);
+    --excess;
+  }
 }

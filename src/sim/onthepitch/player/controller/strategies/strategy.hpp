@@ -33,6 +33,11 @@ public:
   std::string GetName() { return name; }
 
 protected:
+  // PES's off-ball run or designated-supporter target (pes-re-off-ball.md):
+  // the player goes straight there. False when the team gives him neither.
+  bool RequestOffBallTarget(Vector3& direction, float& velocity);
+
+protected:
   ElizaController* controller;
 
   std::string name;

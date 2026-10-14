@@ -289,6 +289,9 @@ public:
     ResetPendingPass();
   }
   int GetClearances(int teamID) const { return clearances[teamID]; }
+  // PES Chance runs started (pesoffball.hpp), for the match report.
+  void AddChanceRun(int teamID) { chanceRuns[teamID]++; }
+  int GetChanceRuns(int teamID) const { return chanceRuns[teamID]; }
   void ResetPendingPass() {
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
@@ -807,6 +810,7 @@ protected:
 
   int passAttempts[2];
   int clearances[2];
+  int chanceRuns[2] = {0, 0};
   int passesCompleted[2];
   int pendingPassTeamID;
 

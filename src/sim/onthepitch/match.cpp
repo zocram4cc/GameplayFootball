@@ -161,6 +161,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
     throw std::runtime_error(
         "PES clips missing: read them from the install with pes::LoadPesClips into "
         "MatchSetup::pesClips");
+  // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
+  if (setup.pesOffBallConstants == nullptr)
+    throw std::runtime_error(
+        "PES off-ball constants missing: read them from the install with "
+        "pes::offball::LoadOffBallConstants into MatchSetup::pesOffBallConstants");
+  pesOffBallConstants = *setup.pesOffBallConstants;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   if (setup.pesStrategyConstants == nullptr)
     throw std::runtime_error(

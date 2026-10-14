@@ -12,16 +12,6 @@ inline float ClampSetting(float value) {
   return std::max(0.0f, std::min(value, 1.0f));
 }
 
-// A low setting waits for a clear break; a high setting encourages earlier
-// supporting runs. The neutral value remains close to the previous threshold.
-inline float GetAttackingRunThreshold(float counterAttack) {
-  return 0.48f - ClampSetting(counterAttack) * 0.24f;
-}
-
-inline unsigned int GetAttackingRunDuration_ms(float counterAttack) {
-  return 3400U + static_cast<unsigned int>(ClampSetting(counterAttack) * 2200.0f);
-}
-
 inline float GetDribbleForwardDrive(float dribbleOffensiveness, float roleMindset) {
   return 0.62f + ClampSetting(dribbleOffensiveness) * 0.28f + ClampSetting(roleMindset) * 0.12f;
 }

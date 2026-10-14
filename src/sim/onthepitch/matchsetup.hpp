@@ -26,6 +26,7 @@ struct Rig;
 #include "pessetpieceteam.hpp"
 #include "pesstoppage.hpp"
 #include "peskickerror.hpp"
+#include "pesoffball.hpp"
 #include "pesstamina.hpp"
 // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
 #include "pescarrier.hpp"
@@ -132,6 +133,10 @@ struct MatchSetup {
   const pes::TeamConceptConstants* pesTeamConceptConstants = nullptr;
   // PES 2021's CPU substitutions (docs/re/pes-re-stamina-subs.md).
   const pes::SubstitutionConstants* pesSubstitutionConstants = nullptr;
+  // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md): run caps,
+  // the Chance lane search and its limit. Required: runs without them would
+  // be capped and aimed by invented numbers.
+  const pes::offball::OffBallConstants* pesOffBallConstants = nullptr;
 };
 
 #endif

@@ -1313,7 +1313,7 @@ Vector3 ElizaController::GetSupportPosition(const MentalImage* mentalImage,
 }
 
 Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mentalImage,
-                                                       const Vector3& basePosition, bool makeRun) {
+                                                       const Vector3& basePosition) {
   Player* designatedPlayer = team->GetDesignatedTeamPossessionPlayer();
 
   Vector3 currentPos = player->GetPosition() + CastPlayer()->GetMovement() * 0.1f;  // basePosition;
@@ -1335,7 +1335,6 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
   float opponentRepelWeight = 0.3f * overallWeight;
   float teammateRepelWeight = 0.4f * overallWeight;
   float ballRepelWeight = 1.0f * overallWeight;
-  float runWeight = 1.0f * overallWeight;
   float flockToPossessionPlayerWeight = 0.45f * overallWeight;
 
   // Support Range 1..10 as the 0..1 share PES itself uses, (SR - 1) / 9
@@ -1390,29 +1389,15 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
   }
 
   float offsideX = AI_GetOffsideLine(match, _mentalImage, abs(team->GetID() - 1));
-  float adaptedMakeRun = makeRun;
 
   // actual base position
   {
     ForceSpot spot;
     spot.origin = basePosition;
 
-    // let left and right flank flow forwards and backwards every period_sec seconds, for some
-    // dynamics except for one close player, who should always run forward for support
-    Player* forwardSupportPlayer = team->GetController()->GetForwardSupportPlayer();
-    if (player == forwardSupportPlayer) {
-      spot.origin.coords[0] += -team->GetSide() * (0.3f + 0.7f * dynamicMindSet) * 12.0f;
-    } else {
-      /* sine version
-      float amount = 8.0f;//14.0f;//8.0f;
-      float period_sec = 7.0f;
-      float phase_offset = NormalizedClamp(currentPos.coords[1], -pitchHalfH, pitchHalfH);
-      amount *= sin(match->GetActualTime_ms() * 0.001f * ((1.0f / period_sec) * 2.0f * pi) +
-      (phase_offset * 2.0f * pi)) * 0.5f + 0.5f; float delta = -team->GetSide() *
-      curve(dynamicMindSet, 0.5f) * (1.0f - pow(NormalizedClamp(ballDistanceX, 1.0f, 30.0f), 1.5f))
-      * amount; // offensive crew spot.origin.coords[0] += delta;
-      */
-      // lane version
+    // lane version: flanks flow forward toward the ball's far lane. PES's run
+    // and designated supporter (pesoffball.hpp) bypass this field entirely.
+    {
       float amount = 22.0f;
       float laneY = -signSide(mainManPos.coords[1]) * 8.0f;
       amount *=
@@ -1430,16 +1415,6 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
     forceField.push_back(spot);
   }
 
-  if (adaptedMakeRun) {
-    ForceSpot spot;
-    spot.origin =
-        Vector3(-team->GetSide() * pitchHalfW, currentPos.coords[1] * 0.5f,
-                0.0f);  // player->GetDirectionVec() * 100.0f;// / distanceToVelocityMultiplier;
-    spot.magnetType = e_MagnetType_Attract;
-    spot.decayType = e_DecayType_Constant;
-    spot.power = 2.0f * runWeight;
-    forceField.push_back(spot);
-  }
 
   // stay away from opponents
   std::vector<Player*> opponents;
@@ -1456,10 +1431,6 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
     spot.decayType = e_DecayType_Variable;
     spot.power = 1.0f * opponentRepelWeight;
     spot.scale = 5.0f;
-    if (adaptedMakeRun) {
-      spot.scale = 2.0f;
-      spot.power *= 0.5f;
-    }
     spot.exp = 0.7f;
     forceField.push_back(spot);
   }

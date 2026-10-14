@@ -68,6 +68,8 @@ void PrintMatchReport(Match& match, FILE* out) {
   std::fprintf(out, "[balance-passing] passes %i-%i | accuracy %i%%-%i%% | clean %i%%-%i%% | clearances %i-%i\n",
          passes1, passes2, passAccuracy1, passAccuracy2, cleanPct1, cleanPct2,
          matchData->GetClearances(0), matchData->GetClearances(1));
+  std::fprintf(out, "[offball] chance runs %i-%i\n", matchData->GetChanceRuns(0),
+               matchData->GetChanceRuns(1));
   // Failure breakdown: where the incomplete passes actually went. Release-safe
   // so the accuracy target can be worked on in the build the batches run.
   std::fprintf(out, "[pass-fail] intercept %i-%i out %i-%i trap %i-%i\n",

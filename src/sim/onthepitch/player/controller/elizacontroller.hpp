@@ -47,8 +47,7 @@ public:
 
   float GetLazyVelocity(float desiredVelocityFloat);
   Vector3 GetSupportPosition(const MentalImage* mentalImage, const Vector3& basePosition);
-  Vector3 GetSupportPosition_ForceField(const MentalImage* mentalImage, const Vector3& basePosition,
-                                        bool makeRun = false);
+  Vector3 GetSupportPosition_ForceField(const MentalImage* mentalImage, const Vector3& basePosition);
 
   virtual void Reset();
 

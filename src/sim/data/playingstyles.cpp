@@ -347,51 +347,6 @@ float GetPoacherTargetX(Player style, float defaultX, float opponentOffsideLineX
   return opponentOffsideLineX + side * poacherOffsideCushion;
 }
 
-float GetAttackingRunAffinity(Player style, ComMask com) {
-  float affinity = 0.5f;
-  switch (style) {
-    case Player::HolePlayer:
-      affinity = 0.9f;
-      break;
-    case Player::FullBackFinisher:
-      affinity = 0.8f;
-      break;
-    case Player::GoalPoacher:
-    case Player::DummyRunner:
-    case Player::OffensiveFullBack:
-    case Player::ExtraFrontman:
-      affinity = 0.7f;
-      break;
-    case Player::BoxToBox:
-    case Player::RoamingFlank:
-      affinity = 0.6f;
-      break;
-    case Player::ClassicNo10:
-    case Player::TheDestroyer:
-      affinity = 0.3f;
-      break;
-    case Player::Orchestrator:
-    case Player::BuildUp:
-      affinity = 0.25f;
-      break;
-    case Player::DefensiveFullBack:
-      affinity = 0.15f;
-      break;
-    case Player::AnchorMan:
-    case Player::OffensiveGoalkeeper:
-    case Player::DefensiveGoalkeeper:
-      affinity = 0.0f;
-      break;
-    default:
-      break;
-  }
-  if (Has(com, Com::SpeedingBullet))
-    affinity += 0.2f;
-  if (Has(com, Com::MazingRun))
-    affinity += 0.1f;
-  return std::max(0.0f, std::min(affinity, 1.0f));
-}
-
 // --- On the ball ---
 
 float GetShotAppetite(Player style, ComMask com) {

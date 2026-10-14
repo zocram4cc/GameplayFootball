@@ -25,6 +25,7 @@
 #include "officials.hpp"
 #include "pesstoppage.hpp"
 #include "peskickerror.hpp"
+#include "pesoffball.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
 #include "referee.hpp"
@@ -220,6 +221,10 @@ public:
   // the reaction chooser's table and the gates its entries read.
   const pes::DefenderDecisionConstants& GetPesDefenderDecisionConstants() const {
     return pesDefenderDecisionConstants;
+  }
+  // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
+  const pes::offball::OffBallConstants& GetPesOffBallConstants() const {
+    return pesOffBallConstants;
   }
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   const pes::StrategyConstants& GetPesStrategyConstants() const { return pesStrategyConstants; }
@@ -483,6 +488,7 @@ protected:
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::ContactConstants pesContactConstants{};
+  pes::offball::OffBallConstants pesOffBallConstants{};
   pes::StrategyConstants pesStrategyConstants{};
   pes::TeamConceptConstants pesTeamConceptConstants{};
   pes::SubstitutionConstants pesSubstitutionConstants{};

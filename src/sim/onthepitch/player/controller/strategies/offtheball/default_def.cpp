@@ -15,6 +15,7 @@ DefaultDefenseStrategy::~DefaultDefenseStrategy() {}
 
 void DefaultDefenseStrategy::RequestInput(const MentalImage* mentalImage, Vector3& direction,
                                           float& velocity) {
+  if (RequestOffBallTarget(direction, velocity)) return;
   bool offensiveComponents = true;
   bool defensiveComponents = true;
   bool laziness = true;
