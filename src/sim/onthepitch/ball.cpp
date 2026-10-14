@@ -195,7 +195,10 @@ BallSpatialInfo Ball::CalculatePrediction() {
     if (pesball::IsResting(pc, fox)) {
       // Report 2.1: a resting ball skips the flight function entirely. Nothing
       // moves, and PES's at-rest path recomputes the velocity as the finite
-      // difference of the position, which is zero here.
+      // difference of the position, which is zero - so the leftover vertical
+      // speed of the last contact goes too. Kept, it made a still ball read as
+      // moving, and nobody played it for minutes.
+      fox.velocity = pes::Vec3(0.0f, 0.0f, 0.0f);
     } else if (fox.position.y <= pc.image.ballRadius) {
       // Report 2.3: ground contact - the snap, the vertical response, the
       // tangential rewrite, the spin rebuild and the stop gate. PES integrates
