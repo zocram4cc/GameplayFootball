@@ -43,6 +43,19 @@ struct TacticalOpponentInfo {
 };
 
 bool SortTacticalOpponentInfo(const TacticalOpponentInfo& a, const TacticalOpponentInfo& b);
+namespace pes {
+// Per-team presser state the press picker (pespress.hpp) reads and the tick
+// writes. One owner: TeamAIController. Men are side-local indices 0..10 in
+// each side's block (the picker's `g = side*11 + i`). Only the fields the
+// picker reads are here; the rest of PES's T+0xa2a0 record lands with the
+// writer.
+struct TeamPressState {
+  // Role-table entry per man (PES T+0xa2a0): kPresserRole marks the presser.
+  int role[22] = {};
+  // The four press slots, as man indices; -1 when empty (PES T+0xa548).
+  int pressSlot[4] = {-1, -1, -1, -1};
+};
+}  // namespace pes
 
 class TeamAIController {
 public:
@@ -62,6 +75,9 @@ public:
   // and the metres of length the team covers from it.
   float GetDefensiveLineHeight() const { return defensiveLineHeight; }
   float GetDefensiveTeamLength() const { return defensiveTeamLength; }
+  // The presser state the press picker writes and OffBallPort reads.
+  pes::TeamPressState& GetPressState() { return pressState; }
+  const pes::TeamPressState& GetPressState() const { return pressState; }
   // PES arms the offside trap only on a team instruction (its `T+0xe4` flag,
   // report 14.4). GF has no such instruction: this reads the tactic that stands
   // in for it and defaults to off, PES's live value for both teams.
@@ -196,6 +212,7 @@ protected:
   pes::ShapeField defensiveShapeField;
   float defensiveLineHeight;
   float defensiveTeamLength;
+  pes::TeamPressState pressState;
   // The PES slider readings the shape uses this tick (report 14.6), mapped from
   // GF's live tactics; the band code reads them so the line and its width come
   // from one place.
