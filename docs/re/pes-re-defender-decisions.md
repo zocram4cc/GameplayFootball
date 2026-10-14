@@ -477,3 +477,6 @@ Mod objects in `constant_player.bin` that also differ but are outside this repor
 `contact`, `dribble`, `press`, `shoot`, `ballplayer*` (and in `constant_match.bin`: `ball`, `cpuLevel`, `cursor`,
 `pesSmart`, `animeAging*`, `setplayGuideGoalKick`).
 
+
+
+> **Correction (ReceivingRE, `pes-re-receiving.md`):** reaction-table entry 0 `FUN_140933ad0` is the contact stagger/fall/dodge reaction, **not** "receive"; receive is entry 3 `FUN_1409f8220`.

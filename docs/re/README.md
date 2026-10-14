@@ -82,6 +82,7 @@ address given.
 |`pes-re-tactics.md`|team tactics → behaviour: the team-sheet layout, slider formulas, toggles gating the team plans, the plan selector, the 17 advanced instructions and their timing, attack level/CPU strategy; live-checked|
 |`pes-re-match-management.md`|how the CPU manages a match: the strategy decider and its inputs, strategy→attack level outside watch mode, substitution rules, reactive tactical changes; no late-game scripts|
 |`pes-re-transitions.md`|possession and kick-off timers, counter-press/fore-check/regroup concepts with live timings, the concept id map, first-touch sample; corrects team-plans §4.1 and defensive-shape's timer trigger|
+|`pes-re-receiving.md`|receiving the ball: the receive reaction, PASS_GET assignment and approach routes, first-touch kinds, interception touches; live 54 Hz capture; corrects defender-decisions entry 0|
 |`pes-re-counter-trigger.md`|the counter-attack enable field T+0xa508 (writer, gate, values) and the mark-spot blend arithmetic|
 |`pes-re-off-ball.md`|off-ball attacking movement: the run manager and its 11 selectors, caps per attack level, run timing, coordination, the 32-layer support grid and support cost; corrects attack-decisions §3|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
