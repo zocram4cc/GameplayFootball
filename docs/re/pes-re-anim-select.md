@@ -618,3 +618,6 @@ them from the exe at runtime (the `LoadJudgeConstants` pattern), not copy them.
 
 
 > **Correction (ContactRE):** the "kick kind 0x10" Balance rate is the **stagger** playback rate (`0.95 + 0.15·clamp((Balance−40)/59)²`, live 39/39).
+
+
+> **Follow-up (AnimLeftoversRE, `pes-re-anim-select-2.md`):** ability bytes `+0x27` = Speed, `+0x2b` = Acceleration, `+0x15` = Defensive Awareness (INF high). Blend styles 1–5, 9 and 11–14 have **no writer** (reachable set {0,6,7,8,10,13,15,16}; `.impdata` was not scanned). `Freemove.bin` is never read. `FUN_140a581c0` is the **dash-reserve (breath) percentage**, not "condition": the top-speed cap is the dash reserve running out.
