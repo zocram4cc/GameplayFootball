@@ -612,26 +612,22 @@ TEST(PesCarrierInstall, TheZonesAndLaddersAreTheGamesOwn) {
   ASSERT_TRUE(exe) << err;
   auto k = pes::LoadCarrierConstants(*exe, &err);
   ASSERT_TRUE(k) << err;
-  // The zone's ten immediates of 0x140699610, which the report's live sample
-  // read back as Rn 19.03 (Finishing 71), Rn 20.90 (Finishing 89) and Rf 27.0
-  // (long-shot skill): the ramp is 3 * (F-70)/29 on the base ranges.
-  EXPECT_FLOAT_EQ(k->nearCentral_m, 18.0f);
-  EXPECT_FLOAT_EQ(k->farCentral_m, 24.0f);
-  EXPECT_FLOAT_EQ(k->finishingBoost_m, 3.0f);
-  EXPECT_FLOAT_EQ(k->finishingFloor, 70.0f);
-  EXPECT_FLOAT_EQ(k->finishingSpan, 29.0f);
-  const float ramped = k->nearCentral_m + k->finishingBoost_m * (89.0f - k->finishingFloor) /
-                                              k->finishingSpan;
-  EXPECT_NEAR(ramped, 20.90f, 0.05f);
-  // The openness ladder the live sample matched on 23,617 of 23,642 records.
-  EXPECT_FLOAT_EQ(k->openClass1, 10.0f);
-  EXPECT_FLOAT_EQ(k->openClass5, 130.0f);
-  // The plan roll's seeds, per plan.
-  EXPECT_FLOAT_EQ(k->breakthroughSeedK, 1100.0f);
-  EXPECT_FLOAT_EQ(k->middleShotSeedK, 1200.0f);
-  EXPECT_FLOAT_EQ(k->crossSeedK, 1500.0f);
-  EXPECT_FLOAT_EQ(k->longSeedK, 1600.0f);
-  EXPECT_EQ(k->planRollSlot, 2);
+  // Relations, not the game's numbers (no PES tables in tests): the loader
+  // must have read a sane shoot zone, Finishing ramp, openness ladder and plan
+  // seeds from the user's own image.
+  EXPECT_GT(k->nearCentral_m, 0.0f);
+  EXPECT_LT(k->nearCentral_m, k->farCentral_m);
+  EXPECT_GT(k->finishingBoost_m, 0.0f);
+  EXPECT_LT(k->finishingFloor, k->finishingTop);
+  EXPECT_FLOAT_EQ(k->finishingFloor + k->finishingSpan, k->finishingTop);
+  // A top-rated finisher's near range stays inside the far range.
+  EXPECT_LT(k->nearCentral_m + k->finishingBoost_m, k->farCentral_m);
+  EXPECT_GT(k->openClass1, 0.0f);
+  EXPECT_LT(k->openClass1, k->openClass5);
+  EXPECT_LT(k->breakthroughSeedK, k->middleShotSeedK);
+  EXPECT_LT(k->middleShotSeedK, k->crossSeedK);
+  EXPECT_LT(k->crossSeedK, k->longSeedK);
+  EXPECT_GE(k->planRollSlot, 0);
 }
 
 }  // namespace

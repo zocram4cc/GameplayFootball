@@ -7,6 +7,7 @@
 #include <optional>
 
 #include "pes/camera.hpp"
+#include "onthepitch/pescarrier.hpp"
 #include "onthepitch/pesball.hpp"
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/peskeeper.hpp"
