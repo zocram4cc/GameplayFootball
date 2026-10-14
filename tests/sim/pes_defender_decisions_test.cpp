@@ -215,6 +215,35 @@ TEST(PesDefenderSlide, ReachIsFourPlusEightyCentimetresPerLevel) {
   EXPECT_FLOAT_EQ(pes::SlideReach_m(c, 3), 6.4f);
 }
 
+// The slide shares the tackle's engagement window on the target and adds its
+// own 90 deg window on the slide's direction (raw FUN_140971ba0 at
+// 0x140972377..0x140972398 and 0x14097230c..0x14097231e, both `JNC <refuse>`).
+TEST(PesDefenderSlide, EngageWindowIsHundredTwelveAndAHalf) {
+  const pes::DefenderDecisionConstants c = Synthetic();
+  // Straight ahead and straight behind are inside the window.
+  EXPECT_TRUE(pes::SlideEngageWindow(c, 0.0f, 0.0f));
+  EXPECT_TRUE(pes::SlideEngageWindow(c, 112.0f, 0.0f));
+  EXPECT_TRUE(pes::SlideEngageWindow(c, 112.5f, 0.0f));
+  // Past it the slide is refused: he cannot even see the point he would go at.
+  EXPECT_FALSE(pes::SlideEngageWindow(c, 112.6f, 0.0f));
+  EXPECT_FALSE(pes::SlideEngageWindow(c, -113.0f, 0.0f));
+  EXPECT_FALSE(pes::SlideEngageWindow(c, 180.0f, 0.0f));
+  // The window is measured off his own heading, not off north.
+  EXPECT_TRUE(pes::SlideEngageWindow(c, 100.0f, 10.0f));
+  EXPECT_FALSE(pes::SlideEngageWindow(c, 100.0f, -30.0f));
+}
+
+TEST(PesDefenderSlide, DirectionWindowIsNinetyDegrees) {
+  const pes::DefenderDecisionConstants c = Synthetic();
+  EXPECT_TRUE(pes::SlideDirectionWindow(c, 0.0f, 0.0f));
+  EXPECT_TRUE(pes::SlideDirectionWindow(c, 89.9f, 0.0f));
+  EXPECT_TRUE(pes::SlideDirectionWindow(c, 90.0f, 0.0f));
+  // A sideways slide is not expressible, so past 90 the action is refused.
+  EXPECT_FALSE(pes::SlideDirectionWindow(c, 90.1f, 0.0f));
+  EXPECT_FALSE(pes::SlideDirectionWindow(c, 179.0f, 0.0f));
+  EXPECT_FALSE(pes::SlideDirectionWindow(c, -135.0f, 45.0f));
+}
+
 TEST(PesDefenderSlide, OwnBoxNeedsLevelThreeAndThenLowersIt) {
   const pes::DefenderDecisionConstants c = Synthetic();
   EXPECT_EQ(pes::SlideAggressionOwnBox(c, false, false, 2), 2);
@@ -291,6 +320,11 @@ TEST(PesDefenderInstall, TheInstallCarriesTheGamesOwnGates) {
 
   // Slide and block relations.
   EXPECT_GT(k->slideDistancePerLevel_m, 0.0f);
+  // The slide's engagement window is the tackle's own slot, and its direction
+  // window is a right opening.
+  EXPECT_FLOAT_EQ(k->slideEngageAngle_deg, k->tackleEngageAngle_deg);
+  EXPECT_GT(k->slideDirectionAngle_deg, 0.0f);
+  EXPECT_LE(k->slideDirectionAngle_deg, k->slideEngageAngle_deg);
   EXPECT_GT(k->blockRadiusPressing_m, k->blockRadiusNormal_m);
   EXPECT_GT(k->blockRadiusLate_m, k->blockRadiusPressing_m);
   EXPECT_GT(k->blockLooseSpeedBall_kmh, 0.0f);

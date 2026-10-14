@@ -46,6 +46,7 @@ MatchData::MatchData(int team1DatabaseID, int team2DatabaseID) {
   foulsCommitted[1] = 0;
   tacklesAttempted[0] = tacklesAttempted[1] = 0;
   slidesAttempted[0] = slidesAttempted[1] = 0;
+  lastChallengeKey[0] = lastChallengeKey[1] = -1;
   yellowCards[0] = yellowCards[1] = 0;
   redCards[0] = redCards[1] = 0;
 

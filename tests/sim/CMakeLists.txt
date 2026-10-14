@@ -66,7 +66,13 @@ target_compile_definitions(pes_defensive_shape_test PRIVATE GF_SOURCE_DIR="${CMA
 gtest_discover_tests(pes_defensive_shape_test PROPERTIES TIMEOUT 1800)
 add_executable(pes_defender_decisions_test pes_defender_decisions_test.cpp)
 target_link_libraries(pes_defender_decisions_test PRIVATE gfsim pesfmt GTest::gtest_main)
-gtest_discover_tests(pes_defender_decisions_test)
+target_compile_definitions(pes_defender_decisions_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(pes_defender_decisions_test PROPERTIES TIMEOUT 1800)
+
+add_executable(pes_challenge_counters_test pes_challenge_counters_test.cpp)
+target_link_libraries(pes_challenge_counters_test PRIVATE gfsim pesfmt GTest::gtest_main)
+target_compile_definitions(pes_challenge_counters_test PRIVATE GF_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gtest_discover_tests(pes_challenge_counters_test PROPERTIES TIMEOUT 1800)
 
 add_executable(pes_stamina_test pes_stamina_test.cpp)
 target_link_libraries(pes_stamina_test PRIVATE gfsim pesfmt GTest::gtest_main)

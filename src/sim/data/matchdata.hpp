@@ -490,7 +490,17 @@ public:
   // Interfere command reaching a contact) and a slide. Counted at the point the
   // challenge lands, so the report's tackle/slide figures are per match, not per
   // command queued.
-  void AddChallenge(int teamID, bool sliding) {
+  //
+  // One challenge is one action start, so the counter is keyed on the last
+  // challenge each player committed (player id, sliding flag) rather than on
+  // the contact: `TripNotice` can fire on every tick of a contact - a slide's
+  // body is in the other man's way for a dozen frames and the tackle loop
+  // reports each of them - and a challenge counted per contact reports
+  // multiples of the actions actually taken.
+  void AddChallenge(int teamID, bool sliding, int playerID) {
+    const int key = playerID * 2 + (sliding ? 1 : 0);
+    if (lastChallengeKey[teamID] == key) return;  // still the same challenge
+    lastChallengeKey[teamID] = key;
     if (sliding)
       slidesAttempted[teamID]++;
     else
@@ -804,6 +814,9 @@ protected:
   // PES's challenges, counted where they land (see AddChallenge).
   int tacklesAttempted[2];
   int slidesAttempted[2];
+  // The last challenge counted for this team, as playerID * 2 + sliding, so a
+  // contact that outlasts its own action is not counted twice.
+  int lastChallengeKey[2] = {-1, -1};
   int yellowCards[2];
   int redCards[2];
 

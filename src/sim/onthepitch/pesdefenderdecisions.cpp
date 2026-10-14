@@ -100,6 +100,11 @@ std::optional<DefenderDecisionConstants> LoadDefenderDecisionConstants(
   f(0x1425656c0, &c.slideDistanceBase_m, error);
   f(0x142572348, &c.slideDistancePerLevel_m, error);
   f(0x142565600, &c.slideBallHeight_m, error);
+  // The slide's engagement and direction windows. The 112.5 deg slot is the
+  // tackle's own, read twice because PES reads it twice; the 90 deg is the
+  // slide's own direction window.
+  f(0x1425cb30c, &c.slideEngageAngle_deg, error);
+  f(0x14259be5c, &c.slideDirectionAngle_deg, error);
   // Block.
   f(0x14259bdd8, &c.blockRadiusNormal_m, error);
   f(0x14258c264, &c.blockRadiusPressing_m, error);
@@ -205,6 +210,17 @@ int SlideAggressionLevel(const SlideAggressionInput& in) {
 
 float SlideReach_m(const DefenderDecisionConstants& c, int aggressionLevel) {
   return c.slideDistanceBase_m + c.slideDistancePerLevel_m * static_cast<float>(aggressionLevel);
+}
+
+bool SlideEngageWindow(const DefenderDecisionConstants& c, float targetBearing_deg,
+                       float heading_deg) {
+  // The raw refuses when the angle is >= the limit, so the boundary is allowed.
+  return std::fabs(WrapDeg(targetBearing_deg - heading_deg)) < c.slideEngageAngle_deg;
+}
+
+bool SlideDirectionWindow(const DefenderDecisionConstants& c, float slideBearing_deg,
+                          float heading_deg) {
+  return std::fabs(WrapDeg(slideBearing_deg - heading_deg)) < c.slideDirectionAngle_deg;
 }
 
 int SlideAggressionOwnBox(const DefenderDecisionConstants& c, bool inOwnBox, bool deepDefensiveMode,

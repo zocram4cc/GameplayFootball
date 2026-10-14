@@ -894,8 +894,9 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
 
   // The challenge itself, counted whether or not it is a foul: the report's
   // tackles and slides are the reaction table's output, and a clean win of the
-  // ball has to show up in them too.
-  match->GetMatchData()->AddChallenge(tripper->GetTeamID(), tackleType == 3);
+  // ball has to show up in them too. The key is the challenging player, so one
+  // challenge is counted once no matter how many ticks its contact lasts.
+  match->GetMatchData()->AddChallenge(tripper->GetTeamID(), tackleType == 3, tripper->GetID());
 
   if (tackleType == 1 || tackleType == 2) {  // standing challenges
     if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&

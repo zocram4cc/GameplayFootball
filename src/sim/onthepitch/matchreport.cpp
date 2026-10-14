@@ -100,9 +100,9 @@ void PrintMatchReport(Match& match, FILE* out) {
   std::fprintf(out, "[pass-restart] %i-%i\n", matchData->GetPassRestart(0),
          matchData->GetPassRestart(1));
   // The engaging defender's output: the reaction table's challenges, and what
-  // the referee made of them. tackles/slides count every challenge that reached
-  // a contact; fouls count whistles; cards count the yellows and reds actually
-  // shown.
+  // the referee made of them. tackles/slides count one per challenge committed
+  // (an action start, however many ticks its contact lasts); fouls count
+  // whistles; cards count the yellows and reds actually shown.
   std::fprintf(out, "[challenges] tackles %i-%i | slides %i-%i | fouls %i-%i | yellow %i-%i | red %i-%i\n",
          matchData->GetChallengesTackles(0), matchData->GetChallengesTackles(1),
          matchData->GetChallengesSlides(0), matchData->GetChallengesSlides(1), matchData->GetFouls(0), matchData->GetFouls(1),

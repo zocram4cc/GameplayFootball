@@ -87,6 +87,14 @@ struct DefenderDecisionConstants {
   float slideDistanceBase_m = 4.0f;    // 0x1425656c0
   float slideDistancePerLevel_m = 0.8f;  // 0x142572348
   float slideBallHeight_m = 0.5f;       // 0x142565600, 10 frames ahead
+  // The target must be inside the engagement window off his heading: the same
+  // 112.5 deg the standing tackle uses (raw 0x140972377..0x140972398,
+  // `COMISS XMM0,[0x1425cb30c]; JNC <refuse>`).
+  float slideEngageAngle_deg = 112.5f;  // 0x1425cb30c
+  // The slide's own direction window: the bearing from him to the point must
+  // be within 90 deg of his heading, else he would slide sideways (raw
+  // 0x14097230c..0x14097231e, `COMISS XMM0,XMM7; JNC <refuse>`, XMM7 = 0x14259be5c).
+  float slideDirectionAngle_deg = 90.0f;  // 0x14259be5c
 
   // --- block (report 5, FUN_140a08ea0) ---
   float blockRadiusNormal_m = 1.3f;    // 0x14259bdd8
@@ -207,6 +215,20 @@ int SlideAggressionLevel(const SlideAggressionInput& in);
 
 // The slide's reach: `4 + 0.8 * L` metres to the contact point.
 float SlideReach_m(const DefenderDecisionConstants& c, int aggressionLevel);
+
+// The engagement window the slide shares with the standing tackle (raw
+// 0x140972377..0x140972398, `COMISS XMM0,[0x1425cb30c]; JNC <refuse>`): the
+// bearing from him to the point he is sliding at must be inside the angle of
+// his heading. `targetBearing_deg` is where the point is, `heading_deg` where
+// he faces.
+bool SlideEngageWindow(const DefenderDecisionConstants& c, float targetBearing_deg,
+                       float heading_deg);
+
+// The slide's own direction window (raw 0x14097230c..0x14097231e,
+// `COMISS XMM0,XMM7; JNC <refuse>`, XMM7 = 0x14259be5c = 90): beyond this the
+// slide would run sideways, which the anime layer cannot express.
+bool SlideDirectionWindow(const DefenderDecisionConstants& c, float slideBearing_deg,
+                          float heading_deg);
 
 // Inside his own box the slide only happens at L = 3, and PES then lowers L
 // (2 when the team's defensive mode is set, else 0). `inOwnBox` gates on that

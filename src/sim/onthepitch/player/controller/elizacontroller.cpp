@@ -943,6 +943,14 @@ bool ElizaController::_SlideCandidate(const pes::DefenderDecisionConstants& k) {
   if (_AnyTeammateSliding()) return false;
   if (match->GetBallRetainer()) return false;
 
+  // PES resolves the man he is going for before any geometry runs
+  // (FUN_140a50e00), and every gate afterwards is against that player: the
+  // slide is a challenge on an opponent, not a loose ball he happens to be
+  // near. Without this a defender slides at any ball rolling past him with
+  // nobody there.
+  Player* target = _Carrier();
+  if (!target || target->GetTeamID() == team->GetID()) return false;
+
   // The contact point, ten frames ahead, must stay below the height limit.
   const Vector3 ballAhead = _mentalImage->GetBallPrediction(100);
   if (ballAhead.coords[2] > k.slideBallHeight_m) return false;
@@ -964,6 +972,15 @@ bool ElizaController::_SlideCandidate(const pes::DefenderDecisionConstants& k) {
   // so the reach below is the whole distance gate.
   const float reach = pes::SlideReach_m(k, L);
   if ((ballAhead.Get2D() - CastPlayer()->GetPosition()).GetLength() >= reach) return false;
+  // The direction and engagement windows the raw applies after the reach
+  // (FUN_140971ba0 @0x14097230c and @0x140972377): he may not slide sideways,
+  // and the point he slides at has to be inside the window off his heading -
+  // the same window the standing tackle uses. Without these a defender aimed
+  // at a ball 45 deg to his side, or behind him, still slides at it.
+  const float heading = HeadingDeg(CastPlayer()->GetDirectionVec());
+  const float slideBearing = BearingDeg(CastPlayer()->GetPosition(), ballAhead.Get2D());
+  if (!pes::SlideDirectionWindow(k, slideBearing, heading)) return false;
+  if (!pes::SlideEngageWindow(k, slideBearing, heading)) return false;
   // Ponytail: the anime layer decides whether he is still recovering from a
   // slide; the engine's own current animation is the nearest readable gate.
   const e_FunctionType current = CastPlayer()->GetCurrentFunctionType();
