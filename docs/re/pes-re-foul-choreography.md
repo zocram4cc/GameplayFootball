@@ -727,3 +727,6 @@ Measured in a live match (`tests/sim/pes_stoppage_timing_test.cpp`, seed 1000):
 a throw-in at 9570 ms, a free kick at 20940 ms, a corner at 32710 ms, a
 penalty at 42840 ms - each stop-to-take 4830 ms out-of-play or 7330 ms with a
 foul hold, plus 3000 ms where a late card is shown (52280 ms, 10330 ms).
+
+
+> **Update (LeftoversRE, `pes-re-leftovers.md` §3):** the late-card window is **16 game-minutes** (`FUN_140444060`: `(now − flag)/3600 < 16` on the match clock), not 16 hours; `MI+0x158c == 1` is a foul penalised without a card (INF high). GF's `IssueDeferredCards` window must be 16 game-minutes.
