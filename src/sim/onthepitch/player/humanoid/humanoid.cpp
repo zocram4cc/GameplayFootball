@@ -227,7 +227,14 @@ void Humanoid::Process() {
   CalculateSpatialState();
   spatialState.positionOffsetMovement = Vector3(0);
 
-  currentAnim->frameNum++;
+  // PES plays contact clips at a Balance-dependent rate (pes-re-contact.md
+  // 4.3): the frame advances by the accumulated rate, never past the clip's
+  // last frame, so the end-of-clip switch below still sees it.
+  currentAnim->framePhase += currentAnim->playbackRate;
+  const int steps = static_cast<int>(currentAnim->framePhase);
+  currentAnim->framePhase -= steps;
+  currentAnim->frameNum =
+      std::min(currentAnim->frameNum + steps, currentAnim->anim->GetFrameCount() - 1);
   previousAnim->frameNum++;
 
   assert(team);
@@ -1840,6 +1847,8 @@ void Humanoid::SelectRetainAnim() {
   currentAnim->anim = anims->GetAnim(*dataSet.begin());
   currentAnim->id = *dataSet.begin();
   currentAnim->frameNum = 0;
+  currentAnim->playbackRate = 1.0f;
+  currentAnim->framePhase = 0.0f;
   currentAnim->touchFrame = -1;
   currentAnim->fullActionSmuggle = Vector3(0);
   currentAnim->actionSmuggle = Vector3(0);
@@ -2701,6 +2710,8 @@ bool Humanoid::SelectAnim(const PlayerCommand& command, e_InterruptAnim localInt
         command
             .desiredFunctionType;  // StringToFunctionType(currentAnim->anim->GetVariable("type"));
     currentAnim->frameNum = 0;
+    currentAnim->playbackRate = 1.0f;
+    currentAnim->framePhase = 0.0f;
     currentAnim->touchFrame = touchFrame_tmp;
     currentAnim->originatingInterrupt = localInterruptAnim;
     currentAnim->radiusOffset = radiusOffset_tmp;

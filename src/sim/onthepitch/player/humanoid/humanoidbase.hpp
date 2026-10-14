@@ -56,6 +56,8 @@ struct Anim {
     rotationSmuggleOffset = 0;
     touchFrame = -1;
     radiusOffset = 0.0;
+    playbackRate = 1.0f;
+    framePhase = 0.0f;
   }
 
   Animation* anim;
@@ -77,6 +79,9 @@ struct Anim {
   radian rotationSmuggleOffset;
   signed int touchFrame;
   float radiusOffset;
+  // Frames advanced per tick, and the fraction carried to the next tick.
+  float playbackRate;
+  float framePhase;
   Vector3 touchPos;
 
   Vector3 incomingMovement;
@@ -207,13 +212,18 @@ public:
   int GetIdleMovementAnimID();
   void ResetPosition(const Vector3& newPos, const Vector3& focusPos);
   void OffsetPosition(const Vector3& offset);
-  void TripMe(const Vector3& tripVector, int tripType);
+  // False when the current clip cannot be interrupted by a trip.
+  bool TripMe(const Vector3& tripVector, int tripType);
 
   boost::intrusive_ptr<Node> GetHumanoidNode() { return humanoidNode; }
 
   // How far collisions have pushed him off the current clip's path: PES's
   // contact displacement (docs/re/pes-re-contact.md 1.3).
-  float GetAnimDisplacementLength() const { return currentAnim->positionOffset.GetLength(); }
+  const Vector3& GetAnimDisplacement() const { return currentAnim->positionOffset; }
+  // This tick's collision push, m/s (OffsetPosition's accumulator).
+  const Vector3& GetTickSeparation() const { return spatialState.positionOffsetMovement; }
+  void SetPlaybackRate(float rate) { currentAnim->playbackRate = rate; }
+  bool TripPending() const { return interruptAnim == e_InterruptAnim_Trip; }
   virtual float GetDecayingDifficultyFactor() const { return decayingDifficultyFactor; }
 
   const Anim* GetCurrentAnim() { return currentAnim; }

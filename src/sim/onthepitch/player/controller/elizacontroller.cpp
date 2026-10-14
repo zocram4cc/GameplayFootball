@@ -848,6 +848,7 @@ void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
       _TrapCommand(commandQueue);
       break;
     case pes::DefenderReaction::kTackle:
+      CastPlayer()->SetPesChallenge(pes::ContactAction::kTackle);
       _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
       break;
     case pes::DefenderReaction::kSlide:
@@ -855,9 +856,12 @@ void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
       break;
     case pes::DefenderReaction::kBlock:
     case pes::DefenderReaction::kJostleForPass:
-      // Both are the interpose command in GF. PES issues a BLOCK anime (0xe)
-      // and a JOSTLE anime (0x48) respectively, and GF has clips for neither;
-      // the interception itself runs in the collision layer (report 6).
+      // Both play GF's interpose clips. PES issues a BLOCK anime (0xe) and a
+      // JOSTLE anime (0x48) respectively; the player carries which one, so the
+      // contact reaction runs PES's BLOCK / JOSTLE rules on him.
+      CastPlayer()->SetPesChallenge(pes::ChooseReaction(in) == pes::DefenderReaction::kBlock
+                                        ? pes::ContactAction::kBlock
+                                        : pes::ContactAction::kJostle);
       _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
       break;
     case pes::DefenderReaction::kNone:

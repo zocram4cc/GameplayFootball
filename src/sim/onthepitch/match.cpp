@@ -1018,16 +1018,8 @@ void Match::CalculateBestPossessionTeamID() {
   }
 }
 
-namespace {
-// GF's body contact: twice CheckHumanoidCollision's bounce radius (0.5 * 0.72).
-constexpr float kBodyContactDistance_m = 0.72f;
-// Pairs further apart cannot reach each other's legs with a tackle.
-constexpr float kTackleBroadphase_m = 2.0f;
-}  // namespace
-
 void Match::CheckHumanoidCollisions() {
   std::vector<Player*> players;
-  pesContactReacted.clear();
 
   GetTeam(0)->GetActivePlayers(players);
   GetTeam(1)->GetActivePlayers(players);
@@ -1048,7 +1040,6 @@ void Match::CheckHumanoidCollisions() {
                              playerBounces.at(i2));
     }
   }
-  UpdateBalanceGauges(players);
 
   // do bouncy magic
   for (unsigned int i1 = 0; i1 < players.size(); i1++) {
@@ -1084,6 +1075,9 @@ void Match::CheckHumanoidCollisions() {
       // printf("moving player %i\n", i1);
     }
   }
+
+  // PES's contact reaction runs per player once every push is applied.
+  ProcessPesContacts(players);
 }
 
 void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBounce>& p1Bounce,
@@ -1308,26 +1302,32 @@ void Match::CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBou
       player2Bounce.force = similarForce * similarBias0to1;
       p2Bounce.push_back(player2Bounce);
     }
-
-    // PES's contact reaction, each side on its own (docs/re/pes-re-contact.md 1).
-    if (distance < bouncePlayerRadius * 2.0f) {
-      ResolvePesContact(p1, p2, pes::ContactPart::kBody, pes::ContactPart::kBody);
-      ResolvePesContact(p2, p1, pes::ContactPart::kBody, pes::ContactPart::kBody);
-    }
   }
 
-  // A tackler's limbs against the other's shins and feet: the leg-part hits of
-  // PES's capsule contact (pes-re-collision.md 2.3), through GF's part AABBs.
-  if (distance < kTackleBroadphase_m) {
-    CheckTackleLegContact(p1, p2);
-    CheckTackleLegContact(p2, p1);
-  }
 }
 
 namespace {
 
 // GF stores a PES 0..99 rating as rating/100 (the database import).
 constexpr float kGfStatToPesRating = 100.0f;
+// Opponents further apart than this cannot touch: twice GF's longest limb reach.
+constexpr float kPartBroadphase_m = 1.5f;
+// GF's part AABBs are loose; the tackler's limbs are shrunk by this before the
+// leg test, as GF's tackle collision always did.
+constexpr float kAabbShrink_m = 0.1f;
+// The contact record's last touch keeps counting for gs/2 frames (FUN_1408440f0).
+constexpr float kTouchMemory_s = 0.5f;
+// Referee::TripNotice's trip types.
+constexpr int kTripStagger = 1;
+constexpr int kTripFall = 2;
+constexpr int kTripSlide = 3;
+
+bool IsTackling(pes::ContactAction a) {
+  return a == pes::ContactAction::kTackle || a == pes::ContactAction::kSlide;
+}
+bool IsStaggerOrFallAction(pes::ContactAction a) {
+  return a == pes::ContactAction::kStagger || a == pes::ContactAction::kFall;
+}
 
 int PesRating(const Player* p, const char* stat) {
   return static_cast<int>(p->GetStat(stat) * kGfStatToPesRating + 0.5f);
@@ -1344,166 +1344,457 @@ Vector3 MovementDirection(const Player* p) {
   return p->GetMovement().Get2D().GetNormalized(p->GetDirectionVec());
 }
 
-bool IsKick(e_FunctionType f) {
+// v in p's heading frame: x along the heading, y to the left.
+void InHeadingFrame(const Player* p, const Vector3& v, float* along, float* across) {
+  const Vector3 f = p->GetDirectionVec().Get2D().GetNormalized(Vector3(1, 0, 0));
+  const Vector3 l = f.GetRotated2D(0.5f * pi);
+  *along = v.Get2D().GetDotProduct(f);
+  *across = v.Get2D().GetDotProduct(l);
+}
+
+bool IsKickType(e_FunctionType f) {
   return f == e_FunctionType_ShortPass || f == e_FunctionType_LongPass ||
          f == e_FunctionType_HighPass || f == e_FunctionType_Shot || f == e_FunctionType_Header;
 }
 
-bool IsTackle(e_FunctionType f) {
-  return f == e_FunctionType_Interfere || f == e_FunctionType_Sliding;
+// GF's body parts on PES's 19-bone collision enum (pesplayernode.cpp names).
+int BoneOf(const std::string& part) {
+  static const std::pair<const char*, int> kMap[] = {
+      {"pelvis", pes::kBoneHip},          {"left_upperleg", pes::kBoneThighL},
+      {"left_lowerleg", pes::kBoneLegL},  {"left_foot", pes::kBoneFootL},
+      {"right_upperleg", pes::kBoneThighR}, {"right_lowerleg", pes::kBoneLegR},
+      {"right_foot", pes::kBoneFootR},    {"trunk", pes::kBoneChest},
+      {"head", pes::kBoneHead},           {"left_upperarm", pes::kBoneUpperArmL},
+      {"left_lowerarm", pes::kBoneForearmL}, {"right_upperarm", pes::kBoneUpperArmR},
+      {"right_lowerarm", pes::kBoneForearmR}};
+  for (const auto& [name, bone] : kMap)
+    if (part == name) return bone;
+  return pes::kBoneChest;
 }
 
-// FUN_140843c30's classes over GF's part names.
-pes::ContactPart PartClass(const std::string& name) {
-  const bool leg = name.find("leg") != std::string::npos || name.find("foot") != std::string::npos;
-  if (!leg) return pes::ContactPart::kBody;
-  return name.rfind("left_", 0) == 0 ? pes::ContactPart::kLeftLeg : pes::ContactPart::kRightLeg;
+struct Parts {
+  std::vector<std::pair<int, AABB>> boxes;
+  const AABB* Find(int bone) const {
+    for (const auto& [b, box] : boxes)
+      if (b == bone) return &box;
+    return nullptr;
+  }
+  Vector3 Center(int bone, const Vector3& fallback) const {
+    const AABB* b = Find(bone);
+    return b ? (b->minxyz + b->maxxyz) * 0.5f : fallback;
+  }
+};
+
+Parts PartsOf(Player* p) {
+  Parts out;
+  std::list<boost::intrusive_ptr<Geometry>> geoms;
+  p->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, geoms);
+  for (const auto& g : geoms) out.boxes.emplace_back(BoneOf(g->GetName()), g->GetAABB());
+  return out;
 }
 
-// Referee::TripNotice's trip types.
-constexpr int kTripStagger = 1;
-constexpr int kTripFall = 2;
-constexpr int kTripSlide = 3;
+float Overlap(const AABB& a, const AABB& b) {
+  float v = 1.0f;
+  for (int i = 0; i < 3; ++i) {
+    const float d = std::min(a.maxxyz.coords[i], b.maxxyz.coords[i]) -
+                    std::max(a.minxyz.coords[i], b.minxyz.coords[i]);
+    if (d <= 0.0f) return 0.0f;
+    v *= d;
+  }
+  return v;
+}
+
+float MinFootTo(const Parts& feetOf, const Vector3& point) {
+  const Vector3 none(1e6f, 1e6f, 1e6f);
+  return std::min((feetOf.Center(pes::kBoneFootL, none) - point).GetLength(),
+                  (feetOf.Center(pes::kBoneFootR, none) - point).GetLength());
+}
 
 }  // namespace
 
+pes::ContactAction Match::PesActionOf(Player* p) const {
+  using A = pes::ContactAction;
+  const e_FunctionType f = p->GetCurrentFunctionType();
+  switch (f) {
+    case e_FunctionType_Trip:
+      return p->GetCurrentAnim()->anim->GetVariable("triptype") == std::to_string(kTripStagger)
+                 ? A::kStagger
+                 : A::kFall;
+    case e_FunctionType_Sliding: return A::kSlide;
+    case e_FunctionType_Interfere: return p->GetPesChallenge();
+    case e_FunctionType_Trap: return A::kTrap;
+    case e_FunctionType_BallControl:
+      // A feint is a DRIBBLE action in PES (feint_through clips).
+      return p->GetCurrentAnim()->anim->GetVariable("feint").empty() ? A::kTrap : A::kDribble;
+    case e_FunctionType_Catch:
+    case e_FunctionType_Deflect: return A::kKeeperHandle;
+    case e_FunctionType_Movement:
+      if (p->HasPossession()) return A::kDribble;
+      return A::kLoco;
+    default: return IsKickType(f) ? A::kKick : A::kOther;
+  }
+}
+
 bool Match::TripFromContact(Player* victim, Player* other, int tripType) {
-  // PES runs no reaction for a player already down, and a stagger only
-  // escalates to a fall (FUN_140844cb0 head, veto 2).
+  // One reaction per player per tick, and none while a trip is already queued
+  // or playing at its level (FUN_140844cb0 head, veto 2).
+  if (victim->TripPending()) return false;
   if (victim->GetCurrentFunctionType() == e_FunctionType_Trip &&
       (tripType == kTripStagger ||
        victim->GetCurrentAnim()->anim->GetVariable("triptype") != std::to_string(kTripStagger)))
     return false;
-  // The keeper holding the ball in his hands (veto 3: keeper handling).
+  // The keeper holding the ball in his hands.
   if (GetBallRetainer() == victim) return false;
-  victim->TripMe(
-      (victim->GetPosition() - other->GetPosition()).Get2D().GetNormalized(victim->GetDirectionVec()),
-      tripType);
+  // GF clips that cannot take a trip (a slide, a special state) keep playing.
+  if (!victim->TripMe((victim->GetPosition() - other->GetPosition())
+                          .Get2D()
+                          .GetNormalized(victim->GetDirectionVec()),
+                      tripType))
+    return false;
   referee->TripNotice(victim, other, tripType);
   // foul statistics are counted by the referee at the whistle
   InjureFromContact(victim, other);
-  pesContactReacted.push_back(victim);
-  // The new action refills the balance gauge (0x1406eb85b, per action start).
-  pesBalanceGauge[victim->GetID()] = pesContactConstants.gaugeFull;
   return true;
 }
 
-bool Match::ResolvePesContact(Player* self, Player* opp, pes::ContactPart selfPart,
-                              pes::ContactPart oppPart) {
+void Match::ProcessPesContacts(const std::vector<Player*>& players) {
   const pes::ContactConstants& k = pesContactConstants;
-  const e_FunctionType sf = self->GetCurrentFunctionType();
-  const e_FunctionType of = opp->GetCurrentFunctionType();
-  const Vector3 toOpp =
-      (opp->GetPosition() - self->GetPosition()).Get2D().GetNormalized(self->GetDirectionVec());
-  const Vector3 selfMove = self->GetMovement().Get2D();
-  const Vector3 oppMove = opp->GetMovement().Get2D();
-
-  pes::ContactInput in;
-  in.selfPart = selfPart;
-  in.oppPart = oppPart;
-  // A standing tackle counts once past half its clip (report 1.3).
-  if (of == e_FunctionType_Sliding)
-    in.mode = pes::ContactOpponentMode::kSlide;
-  else if (of == e_FunctionType_Interfere && opp->GetFrameNum() * 2 > opp->GetFrameCount())
-    in.mode = pes::ContactOpponentMode::kTackle;
-  in.displacement_m = self->GetAnimDisplacementLength();
-  // ponytail: current velocities; PES predicts both 0.6944/gs s ahead minus
-  // the separation (FUN_140843a20). Upgrade if contact timing looks early.
-  in.closingSpeed_kmh = k.kmhPerMps * (selfMove.GetDotProduct(toOpp) - oppMove.GetDotProduct(toOpp));
-  in.relativeSpeed_kmh = k.kmhPerMps * (selfMove - oppMove).GetLength();
-  in.selfSpeed_kmh = k.kmhPerMps * selfMove.GetLength();
-  in.oppSpeed_kmh = k.kmhPerMps * oppMove.GetLength();
-  in.headingDelta_deg = AngleDeg(self->GetDirectionVec(), opp->GetDirectionVec());
-  in.movementDelta_deg = AngleDeg(MovementDirection(self), MovementDirection(opp));
-  // ponytail: the contact point is taken as the self's position, so the
-  // slide's approach and the "running away" angle are the same bearing.
-  in.oppAway_deg = AngleDeg(MovementDirection(opp), -toOpp);
-  in.slideApproach_deg = in.oppAway_deg;
-  in.oppBehind_deg = AngleDeg(self->GetDirectionVec(), toOpp);
-  in.partnerDistance_m = (opp->GetPosition() - self->GetPosition()).Get2D().GetLength();
-  in.selfBallDistance_m = (GetBall()->Predict(0).Get2D() - self->GetPosition().Get2D()).GetLength();
-  in.selfContactAbility = PesRating(self, "physical_contact");
-  // KP_CATCH / KP_DEFLECT / KP_SCOOP_OUT / KP_BLOCK: GF's keeper actions.
-  in.oppKeeperHandling = of == e_FunctionType_Catch || of == e_FunctionType_Deflect;
-  in.selfCommitted = IsKick(sf) && self->TouchPending();
-  in.selfTackling = IsTackle(sf);
-  in.selfTrapping = sf == e_FunctionType_Trap;
-  in.selfStaggering = sf == e_FunctionType_Trip;
-  in.selfOwnsBall = self->HasPossession();
-  in.selfLocomotion = sf == e_FunctionType_Movement;
-  in.oppLocomotion = of == e_FunctionType_Movement;
-  in.oppTackling = IsTackle(of);
-  in.oppBeforeContactFrame = in.oppTackling && opp->TouchPending();
-
-  switch (pes::ReactionForLevel(k, pes::ContactLevel(k, in))) {
-    case pes::ContactReaction::kNone:
-      return false;
-    case pes::ContactReaction::kStagger:
-      return TripFromContact(self, opp, kTripStagger);
-    case pes::ContactReaction::kFall:
-      return TripFromContact(self, opp, of == e_FunctionType_Sliding ? kTripSlide : kTripFall);
-  }
-  return false;
-}
-
-void Match::CheckTackleLegContact(Player* tackler, Player* victim) {
-  if (!IsTackle(tackler->GetCurrentFunctionType())) return;
-  // GF's part AABBs are loose; shrink the tackler's before testing.
-  constexpr float kAabbShrink_m = 0.1f;
-  std::list<boost::intrusive_ptr<Geometry>> tacklerParts, victimParts;
-  tackler->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, tacklerParts);
-  victim->GetHumanoidNode()->GetObjects(e_ObjectType_Geometry, victimParts);
-  for (const auto& t : tacklerParts) {
-    AABB box = t->GetAABB();
-    box.minxyz += kAabbShrink_m;
-    box.maxxyz -= kAabbShrink_m;
-    for (const auto& v : victimParts) {
-      const std::string& name = v->GetName();
-      // The shins and feet: GF's lower leg parts.
-      if (name != "left_foot" && name != "right_foot" && name != "left_lowerleg" &&
-          name != "right_lowerleg")
-        continue;
-      if (!box.Intersects(v->GetAABB())) continue;
-      ResolvePesContact(victim, tackler, PartClass(name), PartClass(t->GetName()));
-      return;
-    }
-  }
-}
-
-// PES's shoulder-to-shoulder balance gauge ap+0x2820 (docs/re/pes-re-contact.md
-// 2.3), once per tick per player against his nearest body contact; below zero
-// with no other reaction this tick he staggers (FUN_140844cb0, cause 5).
-void Match::UpdateBalanceGauges(const std::vector<Player*>& players) {
-  const pes::ContactConstants& k = pesContactConstants;
+  constexpr float kTick_s = kTick_ms / 1000.0f;
   constexpr int kTicksPerSecond = 1000 / kTick_ms;
-  for (Player* self : players) {
-    Player* partner = nullptr;
-    float nearest = kBodyContactDistance_m;
-    for (Player* other : players) {
-      if (other == self) continue;
-      const float d = (other->GetPosition() - self->GetPosition()).Get2D().GetLength();
-      if (d < nearest) nearest = d, partner = other;
+  const float now = GetSimTime_ms() / 1000.0f;
+  const Vector3 ball = GetBall()->Predict(0);
+
+  std::vector<Parts> parts;
+  parts.reserve(players.size());
+  for (Player* p : players) parts.push_back(PartsOf(p));
+
+  // 1. Each player's PES action, and the per-action resets.
+  for (Player* p : players) {
+    PesContactState& st = pesContact[p->GetID()];
+    const pes::ContactAction a = PesActionOf(p);
+    if (a != st.action || st.since_s < 0.0f) {
+      st.prev = st.action;
+      st.action = a;
+      st.since_s = now;
+      st.gauge = k.gaugeFull;  // 0x1406eb85b: every action start refills it
+      st.jostleContact_s = 0.0f;
+      if (a == pes::ContactAction::kJostle) st.jostleOpening = true;
     }
-    pes::BalanceGaugeInput in;
-    if (partner) {
+  }
+
+  // 2. The contact record: each player's deepest part-on-part touch with an
+  //    opponent this tick (FUN_1408c31c0 / FUN_1408c48c0 over GF's AABBs).
+  for (size_t i = 0; i < players.size(); ++i) {
+    Player* self = players[i];
+    PesContactState& st = pesContact[self->GetID()];
+    float best = 0.0f;
+    for (size_t j = 0; j < players.size(); ++j) {
+      Player* opp = players[j];
+      if (opp->GetTeamID() == self->GetTeamID()) continue;
+      if ((opp->GetPosition() - self->GetPosition()).Get2D().GetLength() > kPartBroadphase_m)
+        continue;
+      const bool tackler = IsTackling(PesActionOf(opp));
+      for (const auto& [sb, sbox] : parts[i].boxes) {
+        for (auto [ob, obox] : parts[j].boxes) {
+          if (tackler) {
+            obox.minxyz += kAabbShrink_m;
+            obox.maxxyz -= kAabbShrink_m;
+          }
+          const float v = Overlap(sbox, obox);
+          if (v <= best) continue;
+          best = v;
+          st.partner = opp->GetID();
+          st.selfBone = sb;
+          st.oppBone = ob;
+          st.contactHeight_m =
+              0.5f * (std::max(sbox.minxyz.coords[2], obox.minxyz.coords[2]) +
+                      std::min(sbox.maxxyz.coords[2], obox.maxxyz.coords[2]));
+          st.lastTouch_s = now;
+        }
+      }
+    }
+    if (best <= 0.0f && now - st.lastTouch_s > kTouchMemory_s) st.partner = -1;
+    st.touching = best > 0.0f;
+  }
+
+  auto byId = [&players](int id) -> std::pair<Player*, size_t> {
+    for (size_t j = 0; j < players.size(); ++j)
+      if (players[j]->GetID() == id) return {players[j], j};
+    return {nullptr, 0};
+  };
+
+  // 3. Jostle bookkeeping: the challenger's contact time (human+0x2f, reset
+  //    when the partner goes down), the shoulder-through at the jostle's
+  //    opening guard_back clip (FUN_140780870 @0x140780bfb), push-aways.
+  for (size_t i = 0; i < players.size(); ++i) {
+    Player* self = players[i];
+    PesContactState& st = pesContact[self->GetID()];
+    auto [partner, pj] = byId(st.partner);
+    if (st.action == pes::ContactAction::kJostle && partner && st.touching) {
+      PesContactState& ps = pesContact[partner->GetID()];
+      if (IsStaggerOrFallAction(ps.action)) st.jostleContact_s = 0.0f;
+      else st.jostleContact_s += kTick_s;
+      if (st.jostleOpening &&
+          pes::ShoulderThrough(k, PesRating(self, "physical_contact"),
+                               PesRating(partner, "physical_contact")))
+        ps.shoulderThrough = true;  // ap+0xb10 = 2, never cleared (contact-2 1.3)
+      st.jostleOpening = false;
+    }
+    if (st.action == pes::ContactAction::kDribble && partner) {
+      st.contested_s = st.touching ? st.contested_s + kTick_s : 0.0f;
+      const bool pushing = st.pushAwayStart_s >= 0.0f &&
+                           (now - st.pushAwayStart_s) * k.framesPerSecondRef < k.pushAwayTo_frames;
+      pes::PushAwayInput pin;
+      pin.dribbling = true;
+      pin.alreadyPushing = pushing;
+      pin.oppFootToSelfBelly_m = MinFootTo(parts[pj], parts[i].Center(pes::kBoneChest,
+                                                                        self->GetPosition()));
+      InHeadingFrame(self, ball - self->GetPosition(), &pin.ballAhead_m, &pin.ballAcross_m);
+      pin.headingVsOppHeading_deg = AngleDeg(self->GetDirectionVec(), partner->GetDirectionVec());
+      pin.headingVsOppMove_deg = AngleDeg(self->GetDirectionVec(), MovementDirection(partner));
+      pin.oppSpeed_kmh = k.kmhPerMps * partner->GetMovement().Get2D().GetLength();
+      pin.ballDirVsHeading_deg = AngleDeg(self->GetDirectionVec(), GetBall()->GetMovement());
+      float across = 0.0f;
+      InHeadingFrame(self, partner->GetPosition() - self->GetPosition(), &pin.oppAlong_m, &across);
+      if (pes::PushAwayStarts(k, pin)) st.pushAwayStart_s = now;
+    } else if (st.action != pes::ContactAction::kDribble) {
+      st.contested_s = 0.0f;
+      st.pushAwayStart_s = -1.0f;
+    }
+  }
+  // The carrier touched by a jostling challenger is in the jostle with him.
+  for (Player* self : players) {
+    PesContactState& st = pesContact[self->GetID()];
+    auto [partner, pj] = byId(st.partner);
+    if (partner && st.touching && st.action == pes::ContactAction::kDribble &&
+        pesContact[partner->GetID()].action == pes::ContactAction::kJostle)
+      st.inJostle = true;
+    else
+      st.inJostle = st.action == pes::ContactAction::kJostle;
+  }
+
+  // 4. The reaction, per player (FUN_140844cb0).
+  for (size_t i = 0; i < players.size(); ++i) {
+    Player* self = players[i];
+    PesContactState& st = pesContact[self->GetID()];
+    if (!IsInPlay()) continue;  // MI+0x116c == 1 only
+    if (st.action == pes::ContactAction::kFall) continue;
+    auto [partner, pj] = byId(st.partner);
+
+    // The jostle result: a shoulder-through victim staggers (cause 2).
+    if (st.inJostle && st.shoulderThrough && partner) {
+      TripFromContact(self, partner, kTripStagger);
+      continue;
+    }
+
+    // Balance gauge (FUN_1406f9b70) against the touching partner.
+    pes::BalanceGaugeInput gin;
+    if (partner && st.touching) {
       const Vector3 toPartner = (partner->GetPosition() - self->GetPosition()).Get2D().GetNormalized(
           self->GetDirectionVec());
-      in.touching = true;
-      in.bothLocomotion = self->GetCurrentFunctionType() == e_FunctionType_Movement &&
-                          partner->GetCurrentFunctionType() == e_FunctionType_Movement;
-      in.selfSpeed_kmh = k.kmhPerMps * self->GetMovement().Get2D().GetLength();
-      in.partnerSpeed_kmh = k.kmhPerMps * partner->GetMovement().Get2D().GetLength();
-      in.selfBearing_deg = AngleDeg(self->GetDirectionVec(), toPartner);
-      in.partnerBearing_deg = AngleDeg(partner->GetDirectionVec(), -toPartner);
-      in.selfContactAbility = PesRating(self, "physical_contact");
-      in.partnerContactAbility = PesRating(partner, "physical_contact");
+      const PesContactState& ps = pesContact[partner->GetID()];
+      gin.touching = true;
+      gin.bothLocomotion =
+          st.action == pes::ContactAction::kLoco && ps.action == pes::ContactAction::kLoco;
+      gin.selfSpeed_kmh = k.kmhPerMps * self->GetMovement().Get2D().GetLength();
+      gin.partnerSpeed_kmh = k.kmhPerMps * partner->GetMovement().Get2D().GetLength();
+      gin.selfBearing_deg = AngleDeg(self->GetDirectionVec(), toPartner);
+      gin.partnerBearing_deg = AngleDeg(partner->GetDirectionVec(), -toPartner);
+      gin.selfContactAbility = PesRating(self, "physical_contact");
+      gin.partnerContactAbility = PesRating(partner, "physical_contact");
     }
-    int& gauge = pesBalanceGauge.try_emplace(self->GetID(), k.gaugeFull).first->second;
-    gauge = pes::UpdateBalanceGauge(k, in, gauge, kTicksPerSecond);
-    if (gauge < 0 && partner &&
-        std::find(pesContactReacted.begin(), pesContactReacted.end(), self) ==
-            pesContactReacted.end())
-      TripFromContact(self, partner, kTripStagger);
+    st.gauge = pes::UpdateBalanceGauge(k, gin, st.gauge, kTicksPerSecond);
+
+    if (partner) {
+      const PesContactState& ps = pesContact[partner->GetID()];
+      pes::ContactInput in;
+      in.selfBone = st.selfBone;
+      in.oppBone = st.oppBone;
+      // The slide's leg (human(opp)+5): GF slide clips carry no foot tag, so
+      // it is the slider's foot furthest along his heading.
+      in.oppSlideLegBone = st.oppBone;
+      if (ps.action == pes::ContactAction::kSlide) {
+        float aheadL = 0.0f, aheadR = 0.0f, across = 0.0f;
+        InHeadingFrame(partner, parts[pj].Center(pes::kBoneFootL, partner->GetPosition()) -
+                                    partner->GetPosition(), &aheadL, &across);
+        InHeadingFrame(partner, parts[pj].Center(pes::kBoneFootR, partner->GetPosition()) -
+                                    partner->GetPosition(), &aheadR, &across);
+        in.oppSlideLegBone = aheadL > aheadR ? pes::kBoneFootL : pes::kBoneFootR;
+      }
+      in.selfAction = st.inJostle ? pes::ContactAction::kJostle : st.action;
+      in.oppAction = ps.inJostle ? pes::ContactAction::kJostle : ps.action;
+      in.selfRecovering = st.action == pes::ContactAction::kLoco && IsStaggerOrFallAction(st.prev) &&
+                          now - st.since_s < k.riseBlend_s;
+      const Vector3 sep = self->GetTickSeparation() * kTick_s;
+      const Vector3 off = self->GetAnimDisplacement();
+      // Bit 15 of the slider's published flags: phase 4 of his slide, first
+      // 6/60 s (FUN_140789d00). ponytail: GF slides have no phases; the window
+      // opens at the clip's touch frame.
+      const int slideTouch = partner->GetTouchFrame();
+      in.oppSlidingFlag =
+          ps.action == pes::ContactAction::kSlide && slideTouch >= 0 &&
+          partner->GetFrameNum() >= slideTouch &&
+          (partner->GetFrameNum() - slideTouch) * kTick_s < k.slideFlag_frames / k.framesPerSecondRef;
+      const bool slideLeg = in.oppSlidingFlag &&
+                            pes::PartClass(in.selfBone) != pes::ContactPart::kBody &&
+                            (pes::PartClass(in.oppBone) == pes::ContactPart::kBody ||
+                             pes::PartClass(in.oppBone) == pes::PartClass(in.oppSlideLegBone));
+      const pes::Displacement d = pes::TrackedDisplacement(
+          k, off.coords[0], off.coords[1], sep.coords[0], sep.coords[1], slideLeg);
+      in.displacement_m = d.part0_m;
+      in.displacementLegs_m = d.legs_m;
+      const Vector3 toOpp = (partner->GetPosition() - self->GetPosition()).Get2D().GetNormalized(
+          self->GetDirectionVec());
+      const Vector3 sv = self->GetMovement().Get2D() - self->GetTickSeparation().Get2D();
+      const Vector3 ov = partner->GetMovement().Get2D() - partner->GetTickSeparation().Get2D();
+      in.closingSpeed_kmh = pes::ClosingSpeed(k, sv.coords[0], sv.coords[1], ov.coords[0],
+                                              ov.coords[1], toOpp.coords[0], toOpp.coords[1]);
+      in.relativeSpeed_kmh = k.kmhPerMps * (sv - ov).GetLength();
+      in.selfSpeed_kmh = k.kmhPerMps * self->GetMovement().Get2D().GetLength();
+      in.oppSpeed_kmh = k.kmhPerMps * partner->GetMovement().Get2D().GetLength();
+      in.headingDelta_deg = AngleDeg(self->GetDirectionVec(), partner->GetDirectionVec());
+      in.movementDelta_deg = AngleDeg(MovementDirection(self), MovementDirection(partner));
+      in.oppAway_deg = AngleDeg(MovementDirection(partner), -toOpp);
+      const Vector3 contactPoint = parts[i].Center(st.selfBone, self->GetPosition());
+      in.slideApproach_deg =
+          AngleDeg(MovementDirection(partner), contactPoint - partner->GetPosition());
+      in.oppBehind_deg = AngleDeg(self->GetDirectionVec(), toOpp);
+      in.selfToOppBearing_deg = in.oppBehind_deg;
+      in.partnerDistance_m = (partner->GetPosition() - self->GetPosition()).Get2D().GetLength();
+      const Vector3 none(0, 0, 0);
+      in.selfFeetHeight_m = std::min(parts[i].Center(pes::kBoneFootL, none).coords[2],
+                                     parts[i].Center(pes::kBoneFootR, none).coords[2]);
+      in.contactHeight_m = st.contactHeight_m;
+      const AABB* knee = parts[i].Find(pes::kBoneLegL);
+      in.selfKneeHeight_m = knee ? knee->maxxyz.coords[2] : 0.0f;
+      const int touchedFoot = pes::PartClass(in.selfBone) == pes::ContactPart::kLeftLeg
+                                  ? pes::kBoneFootL
+                                  : pes::kBoneFootR;
+      float across = 0.0f;
+      InHeadingFrame(self, parts[i].Center(touchedFoot, self->GetPosition()) - self->GetPosition(),
+                     &in.touchedFootForward_m, &across);
+      in.selfContactAbility = PesRating(self, "physical_contact");
+      in.oppContactAbility = PesRating(partner, "physical_contact");
+      in.oppTackleFrontal = ps.action == pes::ContactAction::kTackle;
+      const int oppTouch = partner->GetTouchFrame();
+      in.oppClipProgress = oppTouch > 0 ? float(partner->GetFrameNum()) / oppTouch : 1.0f;
+      in.oppBeforeContactFrame = partner->TouchPending();
+      in.oppPastLastHit = oppTouch >= 0 && partner->GetFrameNum() >= oppTouch;
+      in.selfBeforeContactFrame = self->TouchPending();
+      const int selfTouch = self->GetTouchFrame();
+      // ponytail: GF clips carry a touch frame, not PES's hit window; the
+      // window is taken as the lead-in to the touch.
+      in.selfInHitWindow = in.selfBeforeContactFrame && (st.action == pes::ContactAction::kTrap ||
+                                                         st.action == pes::ContactAction::kKick);
+      in.selfPastContact_s =
+          selfTouch >= 0 && self->GetFrameNum() > selfTouch
+              ? (self->GetFrameNum() - selfTouch) * kTick_s
+              : -1.0f;
+      in.selfPushAway_s = st.pushAwayStart_s >= 0.0f ? now - st.pushAwayStart_s : -1.0f;
+      in.oppJostleContact_s = ps.jostleContact_s;
+      in.selfOwnsBall = self->HasPossession();
+      in.selfIsKeeper = self->GetFormationEntry().role == e_PlayerRole_GK;
+
+      const pes::ContactReaction r = pes::ReactionForLevel(k, pes::ContactLevel(k, in));
+      if (r != pes::ContactReaction::kNone) {
+        TripFromContact(self, partner,
+                        r == pes::ContactReaction::kStagger ? kTripStagger
+                        : ps.action == pes::ContactAction::kSlide ? kTripSlide
+                                                                  : kTripFall);
+        continue;
+      }
+    } else if (st.gauge < 0) {
+      // no contact this tick, gauge emptied: STAGGER cause 5 vs the last partner
+      if (Player* last = byId(st.lastPartner).first) TripFromContact(self, last, kTripStagger);
+      continue;
+    }
+    if (partner) st.lastPartner = partner->GetID();
+
+    // 5. The direct triggers of §1.6, against the nearest opponent within
+    //    range who is not his goalkeeper (FUN_140a638c0).
+    Player* near = nullptr;
+    size_t nj = 0;
+    float nearest = k.directRange_m;
+    for (size_t j = 0; j < players.size(); ++j) {
+      Player* o = players[j];
+      if (o->GetTeamID() == self->GetTeamID() ||
+          o->GetFormationEntry().role == e_PlayerRole_GK)
+        continue;
+      const float dist = (o->GetPosition() - self->GetPosition()).Get2D().GetLength();
+      if (dist < nearest) nearest = dist, near = o, nj = j;
+    }
+    if (!near) continue;
+    const PesContactState& ns = pesContact[near->GetID()];
+    pes::DirectTriggerInput dt;
+    dt.selfAction = st.action;
+    dt.oppAction = ns.action;
+    dt.distance_m = nearest;
+    dt.oppFootToSelfHead_m = MinFootTo(parts[nj], parts[i].Center(pes::kBoneHead, self->GetPosition()));
+    dt.oppFootToSelfChest_m =
+        MinFootTo(parts[nj], parts[i].Center(pes::kBoneChest, self->GetPosition()));
+    // ponytail: GF's single trunk part stands for both the belly and the chest.
+    dt.oppFootToSelfBelly_m = dt.oppFootToSelfChest_m;
+    dt.selfOwnsBall = self->HasPossession();
+    dt.selfSpeed_kmh = k.kmhPerMps * self->GetMovement().Get2D().GetLength();
+    dt.selfContested_s = st.contested_s;
+    const int nTouch = near->GetTouchFrame();
+    dt.oppPastContactFrame = nTouch >= 0 && near->GetFrameNum() > nTouch + 1;
+    dt.oppFromContact_frames =
+        nTouch >= 0 ? std::fabs(float(near->GetFrameNum() - nTouch)) * kTick_s * k.framesPerSecondRef
+                    : 1e6f;
+    // ponytail: PES's tackle sub-kind (human+0x44) has no GF counterpart;
+    // GF's standing tackles are taken as the general sub-kind, not kind 1.
+    dt.oppStandingTackleKind1 = false;
+    dt.headingDelta_deg = AngleDeg(self->GetDirectionVec(), near->GetDirectionVec());
+    float ahead = 0.0f;
+    InHeadingFrame(self, ball - self->GetPosition(), &ahead, &dt.ballLateral_m);
+    auto feinting = [](Player* p) {
+      return p->GetCurrentFunctionType() == e_FunctionType_BallControl && p->TouchPending() &&
+             !p->GetCurrentAnim()->anim->GetVariable("feint").empty();
+    };
+    dt.selfFeintBeforeContact = feinting(self);
+    dt.oppFeintBeforeContact = feinting(near);
+    dt.selfMoveVsHeading_deg = AngleDeg(self->GetDirectionVec(), MovementDirection(self));
+    dt.oppMoveVsHeading_deg = AngleDeg(near->GetDirectionVec(), MovementDirection(near));
+    InHeadingFrame(self, near->GetPosition() - self->GetPosition(), &dt.oppAlongSelf_m,
+                   &dt.oppAcrossSelf_m);
+    InHeadingFrame(near, self->GetPosition() - near->GetPosition(), &dt.selfAlongOpp_m,
+                   &dt.selfAcrossOpp_m);
+    dt.oppPushAway_s = ns.pushAwayStart_s >= 0.0f ? now - ns.pushAwayStart_s : -1.0f;
+    dt.selfContactAbility = PesRating(self, "physical_contact");
+    dt.selfGamesmanship =
+        PlayerSkills::Has(self->GetPlayerData()->GetSkills(), PlayerSkills::Skill::Gamesmanship);
+    const pes::DirectTrigger t = pes::DirectTriggers(k, dt);
+    if (t.reaction == pes::ContactReaction::kFall)
+      TripFromContact(self, near, ns.action == pes::ContactAction::kSlide ? kTripSlide : kTripFall);
+    else if (t.reaction == pes::ContactReaction::kStagger)
+      TripFromContact(self, near, kTripStagger);
+  }
+
+  // 6. Playback rates by Balance (§4.3): stagger clips at 0.95..1.10, falls at
+  //    1.0 until the body's lowest frame, then the rise-up rate.
+  for (Player* p : players) {
+    if (p->GetCurrentFunctionType() != e_FunctionType_Trip) continue;
+    const int balance = PesRating(p, "physical_balance");
+    const PesContactState& st = pesContact[p->GetID()];
+    if (st.action == pes::ContactAction::kStagger) {
+      p->SetPlaybackRate(pes::StaggerRate(k, balance));
+      continue;
+    }
+    Animation* anim = p->GetCurrentAnim()->anim;
+    auto it = pesRiseUpFrame.find(anim);
+    if (it == pesRiseUpFrame.end()) {
+      int lowest = 0;
+      float low = 1e6f;
+      for (int f = 0; f < anim->GetFrameCount(); ++f) {
+        Quaternion q;
+        Vector3 pos;
+        if (anim->GetKeyFrame("body", f, q, pos, false, true) && pos.coords[2] < low)
+          low = pos.coords[2], lowest = f;
+      }
+      it = pesRiseUpFrame.emplace(anim, lowest).first;
+    }
+    p->SetPlaybackRate(p->GetFrameNum() < it->second ? 1.0f : pes::RiseUpRate(k, balance));
   }
 }
 

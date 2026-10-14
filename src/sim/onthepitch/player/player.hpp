@@ -9,6 +9,7 @@
 #include "humanoid/humanoid.hpp"
 #include "playerbase.hpp"
 #include "../../data/formstate.hpp"
+#include "../pescontact.hpp"
 #include "../pesrandom.hpp"
 
 #include <memory>
@@ -131,7 +132,13 @@ public:
 
   virtual void ResetSituation(const Vector3& focusPos);
 
+  // Which PES challenge an Interfere clip stands for (pes-re-defender-
+  // decisions.md 1): TACKLE, BLOCK or JOSTLE; the contact reaction reads it.
+  void SetPesChallenge(pes::ContactAction action) { pesChallenge = action; }
+  pes::ContactAction GetPesChallenge() const { return pesChallenge; }
+
 protected:
+  pes::ContactAction pesChallenge = pes::ContactAction::kTackle;
   FormState::Arrow conditionArrow = FormState::Arrow::Normal;
   void _CalculateTacticalSituation();
 

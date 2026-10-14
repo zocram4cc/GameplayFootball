@@ -337,15 +337,31 @@ protected:
   void CheckHumanoidCollisions();
   void CheckHumanoidCollision(Player* p1, Player* p2, std::vector<PlayerBounce>& p1Bounce,
                               std::vector<PlayerBounce>& p2Bounce);
-  // PES's contact reaction (docs/re/pes-re-contact.md): one side of a contact,
-  // the tackle leg hits, the balance gauge, and the trip they issue.
-  bool ResolvePesContact(Player* self, Player* opp, pes::ContactPart selfPart,
-                         pes::ContactPart oppPart);
-  void CheckTackleLegContact(Player* tackler, Player* victim);
-  void UpdateBalanceGauges(const std::vector<Player*>& players);
+  // PES's contact reaction (docs/re/pes-re-contact.md): the per-player
+  // record, jostle, gauge, level, vetoes and direct triggers, once per tick.
+  struct PesContactState {
+    pes::ContactAction action = pes::ContactAction::kOther;
+    pes::ContactAction prev = pes::ContactAction::kOther;
+    float since_s = -1.0f;        // action start
+    int partner = -1;             // pl+0x610
+    int lastPartner = -1;
+    int selfBone = pes::kBoneChest, oppBone = pes::kBoneChest;
+    float contactHeight_m = 0.0f;
+    float lastTouch_s = -1.0f;    // pl+0x658
+    bool touching = false;        // pl+0x661
+    int gauge = 0;                // ap+0x2820
+    float jostleContact_s = 0.0f;  // human+0x2f
+    bool jostleOpening = false;   // the jostle's first (guard_back) clip
+    bool shoulderThrough = false;  // ap+0xb10 == 2, sticky
+    bool inJostle = false;
+    float contested_s = 0.0f;     // ap+0x2814
+    float pushAwayStart_s = -1.0f;
+  };
+  pes::ContactAction PesActionOf(Player* p) const;
+  void ProcessPesContacts(const std::vector<Player*>& players);
   bool TripFromContact(Player* victim, Player* other, int tripType);
-  std::map<int, int> pesBalanceGauge;      // player id -> ap+0x2820
-  std::vector<Player*> pesContactReacted;  // reacted this tick
+  std::map<int, PesContactState> pesContact;
+  std::map<Animation*, int> pesRiseUpFrame;  // fall clip -> the body's lowest frame
   void CheckBallCollisions();
   // Poses every body for this tick (GF's put phase, run in-line).
   void UpdateBodies();

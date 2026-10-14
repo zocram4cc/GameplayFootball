@@ -557,7 +557,7 @@ void HumanoidBase::OffsetPosition(const Vector3& offset) {
   currentAnim->positionOffset += offset * cheat;
 }
 
-void HumanoidBase::TripMe(const Vector3& tripVector, int tripType) {
+bool HumanoidBase::TripMe(const Vector3& tripVector, int tripType) {
   if (currentAnim->anim->GetVariable("incoming_special_state").compare("") == 0 &&
       currentAnim->anim->GetVariable("outgoing_special_state").compare("") == 0) {
     if (this->interruptAnim == e_InterruptAnim_None &&
@@ -567,8 +567,10 @@ void HumanoidBase::TripMe(const Vector3& tripVector, int tripType) {
       this->interruptAnim = e_InterruptAnim_Trip;
       this->tripDirection = tripVector;
       this->tripType = tripType;
+      return true;
     }
   }
+  return false;
 }
 
 

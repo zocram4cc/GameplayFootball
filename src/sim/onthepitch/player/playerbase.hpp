@@ -61,7 +61,7 @@ public:
     return humanoid->GetPreviousFunctionType();
   }
 
-  void TripMe(const Vector3& tripVector, int tripType) { humanoid->TripMe(tripVector, tripType); }
+  bool TripMe(const Vector3& tripVector, int tripType) { return humanoid->TripMe(tripVector, tripType); }
 
   void RequestCommand(PlayerCommandQueue& commandQueue);
   IController* GetController();
@@ -71,7 +71,10 @@ public:
 
   boost::intrusive_ptr<Node> GetHumanoidNode() { return humanoid->GetHumanoidNode(); }
 
-  float GetAnimDisplacementLength() const { return humanoid->GetAnimDisplacementLength(); }
+  const Vector3& GetAnimDisplacement() const { return humanoid->GetAnimDisplacement(); }
+  const Vector3& GetTickSeparation() const { return humanoid->GetTickSeparation(); }
+  void SetPlaybackRate(float rate) { humanoid->SetPlaybackRate(rate); }
+  bool TripPending() const { return humanoid->TripPending(); }
 
   virtual void Process();
   virtual void PreparePutBuffers(unsigned long snapshotTime_ms);
