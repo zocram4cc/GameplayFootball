@@ -52,6 +52,7 @@ inline constexpr int kLastAttackingConcept = 0x20;  // ids <= 0x20 run in posses
 inline constexpr int kConceptSideCounter = 0x03;
 inline constexpr int kConceptForeCheckPress = 0x21;
 inline constexpr int kConceptForeCheckLineDown = 0x22;
+inline constexpr int kConceptForeCheckLineUp = 0x23;
 inline constexpr int kConceptTransitionChase = 0x24;
 inline constexpr int kConceptRetreatBlockCreate = 0x25;
 
@@ -139,6 +140,20 @@ struct TeamConceptConstants {
   float uncoveredRadiusRamp_m = 0;   // 3
   float uncoveredRadius_m = 0;       // 4
   float uncoveredCone_deg = 0;       // 80
+  // ForeCheckLineUp (start FUN_140575300, end FUN_1405752a0, FUN_140575210,
+  // containment FUN_140574f40) and its effect in FUN_140682770
+  float lineUpWideMargin_m = 0;      // 5: |ball y| >= F7 - this
+  float lineUpBallMax_m = 0;         // 18
+  float lineUpBallMin_m = 0;         // -10
+  float containFarSq_m2 = 0;         // 12.25: presser within 3.5 m of the ball
+  float containNearSq_m2 = 0;        // 4
+  float containNearAngle_deg = 0;    // 85
+  float containFacing_deg = 0;       // 135
+  float containWideFrom_m = 0;       // 10
+  float containCone_deg = 0;         // 90
+  float containRadius_m = 0;         // 3
+  float lineUpBandAbove_m = 0;       // 7
+  float lineUpBallAhead_m = 0;       // 5
 };
 
 // The defending concepts' inputs. Own frame: +x toward the opponents' goal.
@@ -153,6 +168,7 @@ struct DefenceConceptInput {
   bool holderLongPass = false;  // the opponent on the ball in LONG_PASS (anime 8)
   float holderHeading_deg = 0;
   bool holderOpponent = false;  // an opponent holds the ball (carrier or MA holder)
+  Vector3 holder;               // his position
   float ownLine = 0;            // MA+0x40+0x14*side: our deepest outfielder, world x
   float teamMid = 0;            // MA+0x3c+0x14*side: midpoint of front man and ownLine
   std::vector<Vector3> mates;   // our outfield men, world
@@ -173,6 +189,11 @@ bool RetreatBlockCreateEnd(const TeamConceptConstants& k, const DefenceConceptIn
 // FUN_140687fb0: how far (>= 0) every band is pushed upfield while neither
 // RetreatBlockCreate nor ForeCheckLineDown runs. Own frame.
 float BandPushUp_m(const TeamConceptConstants& k, float measuredBackOwn, float ballOwn, float backBand);
+bool ForeCheckLineUpStart(const TeamConceptConstants& k, const DefenceConceptInput& in, bool lineDownRunning);
+bool ForeCheckLineUpEnd(const TeamConceptConstants& k, const DefenceConceptInput& in, bool lineDownRunning);
+// FUN_140682770's LineUp step: the back line's lower edge raised to
+// min(ball + 5, B + 7, -5) own frame, never lowered. Returns the new edge.
+float LineUpBackEdge(const TeamConceptConstants& k, float ballOwn, float preBand, float edge);
 
 std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe, const PesVfs& vfs,
                                                              std::string* error);

@@ -43,7 +43,31 @@ pes::TeamConceptConstants Synthetic() {
   k.uncoveredLineMargin_m = 12, k.uncoveredNearSq_m2 = 9, k.uncoveredFacing_deg = 90;
   k.uncoveredRampFrom_m = 5, k.uncoveredRampTo_m = 20, k.uncoveredRampSpan_m = 15;
   k.uncoveredRadiusRamp_m = 3, k.uncoveredRadius_m = 4, k.uncoveredCone_deg = 80;
+  k.lineUpWideMargin_m = 5, k.lineUpBallMax_m = 18, k.lineUpBallMin_m = -10;
+  k.containFarSq_m2 = 12.25f, k.containNearSq_m2 = 4, k.containNearAngle_deg = 85, k.containFacing_deg = 135;
+  k.containWideFrom_m = 10, k.containCone_deg = 90, k.containRadius_m = 3;
+  k.lineUpBandAbove_m = 7, k.lineUpBallAhead_m = 5;
   return k;
+}
+
+TEST(PesForeCheck, LineUpRunsWhileOurManContainsAWideCarrierAndLiftsTheBackEdge) {
+  const auto k = Synthetic();
+  pes::DefenceConceptInput in;
+  in.inPlay = true;
+  in.ball = Vector3(5, 22, 0);
+  in.holder = in.ball;
+  in.holderOpponent = true, in.holderHeading_deg = 90;  // facing away from our goal
+  in.mates = {Vector3(2, 22, 0)};                       // 3 m goal-side
+  in.presser = 0;
+  EXPECT_TRUE(pes::ForeCheckLineUpStart(k, in, false));
+  EXPECT_FALSE(pes::ForeCheckLineUpStart(k, in, true));  // LineDown runs
+  in.mates[0] = Vector3(5, 25, 0);                       // beside him, not goal-side
+  EXPECT_TRUE(pes::ForeCheckLineUpEnd(k, in, false));
+  in.mates[0] = Vector3(2, 22, 0);
+  in.ball.coords[1] = in.holder.coords[1] = 5;           // central
+  EXPECT_TRUE(pes::ForeCheckLineUpEnd(k, in, false));
+  EXPECT_FLOAT_EQ(pes::LineUpBackEdge(k, 5, -20, -22), -13);
+  EXPECT_FLOAT_EQ(pes::LineUpBackEdge(k, 5, -20, -10), -10);
 }
 
 // Ball at (10, 0) in the opponents' half, three men round it, one goal-side.

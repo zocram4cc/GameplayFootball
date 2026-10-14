@@ -144,6 +144,19 @@ constexpr uint64_t UNCOVERED_SPAN_VA = 0x14259be0c;    // 15
 constexpr uint64_t UNCOVERED_RAMP_VA = 0x14258c264;    // 3
 constexpr uint64_t UNCOVERED_RADIUS_VA = 0x1425656c0;  // 4
 constexpr uint64_t UNCOVERED_CONE_VA = 0x142596e6c;    // 80
+// ForeCheckLineUp FUN_140575210 / FUN_140574f40 / FUN_140682770.
+constexpr uint64_t LINEUP_WIDE_VA = 0x14259222c;       // 5
+constexpr uint64_t LINEUP_MAX_VA = 0x14259be18;        // 18
+constexpr uint64_t LINEUP_MIN_VA = 0x14259be84;        // -10
+constexpr uint64_t CONTAIN_FAR_VA = 0x14259d610;       // 12.25
+constexpr uint64_t CONTAIN_NEAR_VA = 0x1425656c0;      // 4
+constexpr uint64_t CONTAIN_NEAR_ANGLE_VA = 0x14259be58;  // 85
+constexpr uint64_t CONTAIN_FACING_VA = 0x14259be60;    // 135
+constexpr uint64_t CONTAIN_WIDE_FROM_VA = 0x142588210; // 10
+constexpr uint64_t CONTAIN_CONE_VA = 0x14259be5c;      // 90
+constexpr uint64_t CONTAIN_RADIUS_VA = 0x14258c264;    // 3
+constexpr uint64_t LINEUP_BAND_VA = 0x14259bdf0;       // 7
+constexpr uint64_t LINEUP_BALL_VA = 0x14259222c;       // 5
 
 // constant_team.bin's subConcept.o (constant-team 2.3): blob u32 0 = the offset
 // of the 48-entry i32 list.
@@ -332,6 +345,18 @@ std::optional<TeamConceptConstants> LoadTeamConceptConstants(const PeImage& exe,
       {UNCOVERED_RAMP_VA, &k.uncoveredRadiusRamp_m},
       {UNCOVERED_RADIUS_VA, &k.uncoveredRadius_m},
       {UNCOVERED_CONE_VA, &k.uncoveredCone_deg},
+      {LINEUP_WIDE_VA, &k.lineUpWideMargin_m},
+      {LINEUP_MAX_VA, &k.lineUpBallMax_m},
+      {LINEUP_MIN_VA, &k.lineUpBallMin_m},
+      {CONTAIN_FAR_VA, &k.containFarSq_m2},
+      {CONTAIN_NEAR_VA, &k.containNearSq_m2},
+      {CONTAIN_NEAR_ANGLE_VA, &k.containNearAngle_deg},
+      {CONTAIN_FACING_VA, &k.containFacing_deg},
+      {CONTAIN_WIDE_FROM_VA, &k.containWideFrom_m},
+      {CONTAIN_CONE_VA, &k.containCone_deg},
+      {CONTAIN_RADIUS_VA, &k.containRadius_m},
+      {LINEUP_BAND_VA, &k.lineUpBandAbove_m},
+      {LINEUP_BALL_VA, &k.lineUpBallAhead_m},
   };
   for (const auto& [va, out] : floats)
     if (!ReadF32(exe, va, out, error)) return std::nullopt;
@@ -358,6 +383,7 @@ bool ConceptGate(int id, const TeamSheet& sheet) {
       return sheet.toggles[kAttackingStyle] == 0;
     case kConceptForeCheckPress:  // 0x140574910: Defensive Style == Frontline Pressure
     case kConceptForeCheckLineDown:
+    case kConceptForeCheckLineUp:
     case kConceptTransitionChase:
       return sheet.toggles[kDefensiveStyle] == 0;
     case kConceptRetreatBlockCreate:  // 0x1405767f0: All-out Defence
@@ -465,6 +491,48 @@ bool ForeCheckLineDownStart(const TeamConceptConstants& k, const DefenceConceptI
 
 bool ForeCheckLineDownEnd(const TeamConceptConstants& k, const DefenceConceptInput& in) {
   return !in.inPlay || !LineDownHolds(k, in);
+}
+
+namespace {
+// FUN_140575210: the ball wide, between own-frame -10 and 18.
+bool LineUpBall(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  const float b = in.dir * in.ball.coords[0];
+  return std::fabs(in.ball.coords[1]) >= pesPenaltyAreaHalfWidth - k.lineUpWideMargin_m &&
+         b <= k.lineUpBallMax_m && b >= k.lineUpBallMin_m;
+}
+
+// FUN_140574f40: our MATCH_UP man contains the carrier. Within 2 m and
+// goal-side within 85 deg; else the carrier faces away from our goal (>= 135
+// deg off it) and the man stands goal-side within 45 deg inside 3..5 m.
+bool Containing(const TeamConceptConstants& k, const DefenceConceptInput& in) {
+  if (in.presser < 0 || in.presser >= static_cast<int>(in.mates.size()) || !in.holderOpponent) return false;
+  const Vector3& u = in.mates[in.presser];
+  const float d2 = DistSq(u, in.ball);
+  if (d2 > k.containFarSq_m2) return false;
+  const float toOwnGoal = AttackHeading(-in.dir);
+  if (d2 < k.containNearSq_m2 && AngleDiff(Bearing(in.holder, u), toOwnGoal) < k.containNearAngle_deg) return true;
+  if (AngleDiff(in.holderHeading_deg, toOwnGoal) < k.containFacing_deg) return false;
+  const float z = std::fabs(in.ball.coords[1]);
+  const float w = z <= k.containWideFrom_m        ? 0.0f
+                  : z >= pesPenaltyAreaHalfWidth ? 1.0f
+                                                 : (z - k.containWideFrom_m) / (pesPenaltyAreaHalfWidth - k.containWideFrom_m);
+  constexpr float kRadiusRampScale = 2.0f;  // addss xmm6,xmm6 at 0x140575193
+  return PlayersInCone({u}, in.ball, toOwnGoal, k.containCone_deg, w * kRadiusRampScale + k.containRadius_m,
+                       0.0f) > 0;
+}
+}  // namespace
+
+bool ForeCheckLineUpStart(const TeamConceptConstants& k, const DefenceConceptInput& in, bool lineDownRunning) {
+  return !in.keeperHolds && in.inPlay && !lineDownRunning && LineUpBall(k, in) && Containing(k, in);
+}
+
+bool ForeCheckLineUpEnd(const TeamConceptConstants& k, const DefenceConceptInput& in, bool lineDownRunning) {
+  return !in.inPlay || lineDownRunning || !LineUpBall(k, in) || !Containing(k, in);
+}
+
+float LineUpBackEdge(const TeamConceptConstants& k, float ballOwn, float preBand, float edge) {
+  const float x = std::min(ballOwn + k.lineUpBallAhead_m, std::min(k.pushUpCap_m, preBand + k.lineUpBandAbove_m));
+  return x > edge ? x : edge;
 }
 
 bool RetreatBlockCreateEnd(const TeamConceptConstants& k, const DefenceConceptInput& in) {

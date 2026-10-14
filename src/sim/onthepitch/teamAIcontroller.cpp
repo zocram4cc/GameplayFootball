@@ -519,6 +519,11 @@ void TeamAIController::CalculateDefensiveShape() {
   if (match->IsInPlay() && !conceptRunning[pes::kConceptRetreatBlockCreate] &&
       !conceptRunning[pes::kConceptForeCheckLineDown])
     ownFrameLine += pes::BandPushUp_m(ck, measuredBackLine * dir, ball.coords[0] * dir, ownFrameLine);
+  // FUN_140682770, right after the push-up: while ForeCheckLineUp runs the back
+  // line's lower edge rises toward the ball. ponytail: PES raises that edge
+  // only; GF's bands all hang off the line height, so the block follows.
+  if (conceptRunning[pes::kConceptForeCheckLineUp])
+    ownFrameLine = pes::LineUpBackEdge(ck, ball.coords[0] * dir, backBand, ownFrameLine);
 
   defensiveLineHeight = ownFrameLine * dir;
   defensiveTeamLength = pes::TeamLength_m(k, style, attackLevel, compactSlider);
@@ -1714,7 +1719,8 @@ constexpr float kNoKickOff_s = 1e9f;
 
 // The PES concept ids this port runs, in the selector's ascending walk.
 constexpr int kPortedConcepts[] = {pes::kConceptSideCounter, pes::kConceptForeCheckPress,
-                                   pes::kConceptForeCheckLineDown, pes::kConceptTransitionChase,
+                                   pes::kConceptForeCheckLineDown, pes::kConceptForeCheckLineUp,
+                                   pes::kConceptTransitionChase,
                                    pes::kConceptRetreatBlockCreate};
 
 // P(c)+0x5d0 in {LONG_PASS, CENTERING, EARLY_CROSS, SHORT_PASS, THROUGH_PASS,
@@ -1896,6 +1902,7 @@ pes::DefenceConceptInput TeamAIController::DefenceInput() {
     in.holderLongPass = f == e_FunctionType_LongPass || f == e_FunctionType_HighPass;
     in.holderHeading_deg = HeadingOf(retainer->GetDirectionVec());
     in.holderOpponent = true;
+    in.holder = retainer->GetPosition();
   }
   // FUN_14045bfe0's per-team block: front = the most advanced man, back
   // (MA+0x40) = the deepest outfielder, mid (MA+0x3c) = their mean. Default
@@ -1933,6 +1940,8 @@ bool TeamAIController::StartConcept(int id) {
   // running flag only.
   if (id == pes::kConceptForeCheckPress) return pes::ForeCheckPressStart(k, DefenceInput());
   if (id == pes::kConceptForeCheckLineDown) return pes::ForeCheckLineDownStart(k, DefenceInput());
+  if (id == pes::kConceptForeCheckLineUp)
+    return pes::ForeCheckLineUpStart(k, DefenceInput(), conceptRunning[pes::kConceptForeCheckLineDown]);
   if (id == pes::kConceptRetreatBlockCreate) {
     const pes::DefenceConceptInput in = DefenceInput();  // FUN_140575ea0
     return in.inPlay && !pes::RetreatBlockCreateEnd(k, in);
@@ -1966,6 +1975,8 @@ bool TeamAIController::ConceptEnded(int id) {
   const bool inPlay = match->IsInPlay() && !match->IsInSetPiece();
   if (id == pes::kConceptForeCheckPress) return pes::ForeCheckPressEnd(k, DefenceInput());
   if (id == pes::kConceptForeCheckLineDown) return pes::ForeCheckLineDownEnd(k, DefenceInput());
+  if (id == pes::kConceptForeCheckLineUp)
+    return pes::ForeCheckLineUpEnd(k, DefenceInput(), conceptRunning[pes::kConceptForeCheckLineDown]);
   if (id == pes::kConceptRetreatBlockCreate) return pes::RetreatBlockCreateEnd(k, DefenceInput());
   if (id == pes::kConceptTransitionChase) {
     // FUN_140575410: in play, the carrier unchanged (or loose), the chooser
