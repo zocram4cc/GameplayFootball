@@ -65,6 +65,7 @@ address given.
 |`pes-re-ball-constants.md`|where PES ball physics constants live: ball.o in constant_match.bin, the named field map, and the runtime-written spin scale|
 |`pes-re-officials-ball.md`|referees and linesmen, ball selection, the ball's flight model|
 |`pes-re-leftovers.md`|small closures: the match-ball query (dead code, no static root), late-card window = 16 game-minutes, `MI+0x158c == 1` = foul without a card, `injury.o` fields (`constant::Injury`, id 0x0b; reader open), officials' ids are setup reads (pick rule open)|
+|`pes-re-leftovers-2.md`|follow-ups: injury.o's full field table (4 severities, 6 symptoms), why the getter xref cannot find its reader, injury vftable/factory; officials' pick-rule search narrowed (generic holder pattern), still open|
 |`pes-re-uniform-params.md`|uniform shader parameters the engine writes at run time: Repetition and pattern, number/name scales|
 |`pes-re-cloth-nets.md`|shirt/pants cloth (`.fclo`, cloth skeletons), goal nets, corner flags, other physics props|
 |`pes-re-fox2-stadium.md`|stadium assembly: Stadium.bin, the scene/pitch/goal/net/corner-flag placements, goal and corner-flag transforms|
