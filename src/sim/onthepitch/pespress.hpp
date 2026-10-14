@@ -59,6 +59,22 @@ struct PressConstants {
   float framesPerSec;         // 0x14351ae54 (54): .data initializer, read as the image holds it
 };
 
+// Role-class table at 0x1426484f0 (94 u32 entries). Bits read by the writer:
+// 3 = FUN_140a6e150, 5 = FUN_140a6e5e0, 6 = FUN_140a6e580, 16 = FUN_140a6e340.
+inline constexpr int kRoleCount = 94;
+inline constexpr int kRoleBitA = 3;
+inline constexpr int kRoleBitB = 5;
+inline constexpr int kRoleBitC = 6;
+inline constexpr int kRoleBitJostle = 16;
+struct PressRoleTable {
+  std::array<uint32_t, kRoleCount> bits{};
+};
+
+std::optional<PressRoleTable> LoadPressRoleTable(const PeImage& exe, std::string* error);
+
+// True when `role` (0..93) carries `bit`. Roles past the table give false (FUN_140a6e150 and friends).
+bool PressRoleHas(const PressRoleTable& t, int role, int bit);
+
 // True when the signed angle `deg` wraps to an |angle| outside [eps, halfTurn - eps]
 // (FUN_140a92b90 returns 1). Used for the boundary test on a bearing.
 bool PressAngleOutsideBand(const PressConstants& c, float deg, float eps);

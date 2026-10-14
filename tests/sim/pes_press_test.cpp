@@ -324,9 +324,28 @@ TEST(PressExcludedMan, NoEligibleManGivesTheSentinel) {
   EXPECT_EQ(pes::PressExcludedMan(1, on, flag), pes::kPressNoMan);
 }
 
+TEST(PressRole, BitTestAndPastTheTableGivesFalse) {
+  pes::PressRoleTable t{};
+  t.bits[2] = (1u << pes::kRoleBitA) | (1u << pes::kRoleBitJostle);
+  EXPECT_TRUE(pes::PressRoleHas(t, 2, pes::kRoleBitA));
+  EXPECT_FALSE(pes::PressRoleHas(t, 2, pes::kRoleBitB));
+  EXPECT_TRUE(pes::PressRoleHas(t, 2, pes::kRoleBitJostle));
+  EXPECT_FALSE(pes::PressRoleHas(t, pes::kRoleCount, pes::kRoleBitA));
+}
 
+// Install relation test: the role table loads and every entry is a 32-bit flag word.
+TEST(PressRoleTableLoader, LoadsNinetyFourEntriesFromTheImage) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  std::string err;
+  auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err);
+  ASSERT_TRUE(exe.has_value()) << err;
+  auto t = pes::LoadPressRoleTable(*exe, &err);
+  ASSERT_TRUE(t.has_value()) << err;
+  EXPECT_EQ(t->bits.size(), static_cast<size_t>(pes::kRoleCount));
+  EXPECT_FALSE(pes::PressRoleHas(*t, pes::kRoleCount, pes::kRoleBitA));
+}
 
-// Install relation test: the image's constants are internally consistent.
 // Skips without PES21_ROOT, like the other install tests.
 TEST(PressConstantsLoader, ImageRelationsHold) {
   const char* root = std::getenv("PES21_ROOT");

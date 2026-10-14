@@ -4,6 +4,7 @@
 #include "onthepitch/pespress.hpp"
 
 #include <cmath>
+#include <cstring>
 
 namespace pes {
 namespace {
@@ -110,6 +111,26 @@ bool PressAngleOutsideBand(const PressConstants& c, float deg, float eps) {
 
 float PressSpeedKmh(const PressConstants& c, float perFrame) {
   return ((c.framesPerSec * c.secPerMinute * c.secPerMinute) / c.metresPerKm) * perFrame;
+}
+
+constexpr uint64_t kRoleTableVa = 0x1426484f0;
+
+std::optional<PressRoleTable> LoadPressRoleTable(const PeImage& exe, std::string* error) {
+  PressRoleTable t{};
+  std::array<uint8_t, kRoleCount * sizeof(uint32_t)> raw{};
+  if (!exe.ReadVa(kRoleTableVa, raw.size(), raw.data())) {
+    if (error) *error = "role table unreadable";
+    return std::nullopt;
+  }
+  for (int i = 0; i < kRoleCount; ++i) {
+    std::memcpy(&t.bits[i], raw.data() + i * sizeof(uint32_t), sizeof(uint32_t));
+  }
+  return t;
+}
+
+bool PressRoleHas(const PressRoleTable& t, int role, int bit) {
+  if (role < 0 || role >= kRoleCount) return false;
+  return (t.bits[role] >> bit) & 1u;
 }
 
 float PressCarrierRamp(const PressConstants& c, float carrierDist_m) {
