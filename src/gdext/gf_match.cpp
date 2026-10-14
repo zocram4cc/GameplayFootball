@@ -75,7 +75,6 @@ Error GfMatch::start(const Ref<PesLibrary>& library, const String& db_sql, const
   setup.pesCarrierConstants = library->carrier_constants();
   setup.pesSetPieceTakerConstants = library->setpiece_taker_constants();
   setup.pesSetPieceTeamConstants = library->setpiece_team_constants();
-  setup.pesDefensiveShapeConstants = library->defensive_shape_constants();
   match_ = std::make_unique<Match>(new MatchData(home, away), setup, Properties());  // owns the MatchData
   RefreshPlayers();
   return OK;

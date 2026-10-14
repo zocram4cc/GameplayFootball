@@ -54,15 +54,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
 
   offsideTrapX = 0;
 
-  defensiveShapeField = pes::ShapeFieldFromPitch();
-  defensiveLineHeight = 0.0f;
-  defensiveTeamLength = 0.0f;
-  previousLineHeight = 0.0f;
-  defensiveStyle = 0;
-  defensiveAttackLevel = 2;
-  defensiveLineSlider = 4.0f;
-  defensiveCompactSlider = 4.0f;
-
   endApplyAttackingRun_ms = 0;
   attackingRunPlayer = 0;
   endApplyTeamPressure_ms = 0;
@@ -98,11 +89,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   baseTeamTactics.Set("support_distance", 0.5f);
   baseTeamTactics.Set("dribble_offensiveness", 0.5f);
   baseTeamTactics.Set("dribble_centermagnet", 0.5f);
-  // PES 2021's offside-trap instruction (report 14.4's `T+0xe4`): it arms the
-  // trap only while a manager has asked for it, and both live teams ran with it
-  // off. GF has no touchline button for it yet, so the base is PES's value and a
-  // team's own tactics data can still set it.
-  baseTeamTactics.Set("offside_trap", 0.0f);
 
   // how much [-1 * this value .. +1 * this value] offset we can add to the above tactics.
   teamTacticsModMultipliers.Set("position_offense_depth_factor", 0.1f);
@@ -128,9 +114,6 @@ TeamAIController::TeamAIController(Team* team) : team(team) {
   teamTacticsModMultipliers.Set("support_distance", 0.5f);
   teamTacticsModMultipliers.Set("dribble_offensiveness", 0.5f);
   teamTacticsModMultipliers.Set("dribble_centermagnet", 0.5f);
-  // The offside-trap instruction is a flag, not a slider: its whole [0, 1] range
-  // travels through so a team's tactics data can set it either way.
-  teamTacticsModMultipliers.Set("offside_trap", 1.0f);
 
   offensivenessBias = 0.5f;
   philosophy = TeamPhilosophy::e_Philosophy_Balanced;
@@ -249,8 +232,6 @@ void TeamAIController::Process() {
   offsideTrapX = TeamPhilosophy::AdaptOffsideTrapX(philosophy, offsideTrapX, team->GetSide());
   // disable
   // offsideTrapX = pitchHalfW * team->GetSide();
-
-  CalculateDefensiveShape();
 
   // calculate who's dangerous
 
@@ -477,135 +458,6 @@ float mixup(float base, const std::string& varname, e_PlayerRole role, float cou
   }
 }
 
-// PES's slot-lines (report 7's `ctx+0x128[slot]`): role class 3-6 is the
-// midfield line, 7-9 the forward line, everything else the back line. GF's own
-// roles fall into the same three groups.
-namespace {
-
-int PesLineIndexForRole(e_PlayerRole role) {
-  switch (role) {
-    case e_PlayerRole_DM:
-    case e_PlayerRole_CM:
-    case e_PlayerRole_LM:
-    case e_PlayerRole_RM:
-    case e_PlayerRole_AM:
-      return 1;
-    case e_PlayerRole_CF:
-    case e_PlayerRole_SS:
-    case e_PlayerRole_LW:
-    case e_PlayerRole_RW:
-      return 2;
-    default:
-      return 0;  // GK, CB, LB, RB
-  }
-}
-
-}  // namespace
-
-void TeamAIController::CalculateDefensiveShape() {
-  // FUN_1405f9eb0 with FUN_1405f7a00's cushion and FUN_1405ef910's step-up
-  // (report 6, 14.1), then FUN_1405efbd0's midfield catch-up (report 14.1). No
-  // smoothing: the target is rebuilt from this tick's ball.
-  const pes::DefensiveShapeConstants& k = match->GetPesDefensiveShapeConstants();
-  const pes::ShapeField& field = defensiveShapeField;
-  // Own frame: +x toward the opponentsents' goal, own goal at -halfLength.
-  const float dir = static_cast<float>(-team->GetSide());
-  const Vector3 ball = match->GetBall()->Predict(0);
-  const Vector3 ballVel = match->GetBall()->GetMovement();
-
-  pes::LineFacts facts;
-  facts.ballDepth_m = ball.coords[0] * dir;
-  const Vector3 backToOwnGoal(-1.0f, 0.0f, 0.0f);
-  const Vector3 ballVel2D(ballVel.coords[0] * dir, ballVel.coords[1], 0.0f);
-  const float ballSpeed = ballVel2D.GetLength();
-  facts.ballSpeed_mps = ballSpeed;
-  facts.ballHeadingFromGoal_deg =
-      ballSpeed > 0.01f ? std::acos(std::clamp(backToOwnGoal.GetDotProduct(ballVel2D) / ballSpeed, -1.0f, 1.0f)) *
-                             180.0f / pi
-                        : 180.0f;
-
-  Player* carrier = team->GetDesignatedTeamPossessionPlayer();
-  const bool hasCarrier = carrier != nullptr;
-  // The cushion and the step-up both key off the opponent on the ball; when our
-  // own man carries it, PES's cushion collapses entirely.
-  const bool carrierIsOpponent = !teamHasPossession;
-  facts.carrierDepth_m = hasCarrier ? carrier->GetPosition().coords[0] * dir : 0.0f;
-  if (hasCarrier) {
-    const Vector3 facing = carrier->GetDirectionVec();
-    const Vector3 facing2D(facing.coords[0] * dir, facing.coords[1], 0.0f);
-    const float facingLength = facing2D.GetLength();
-    facts.carrierFacingFromGoal_deg =
-        facingLength > 0.01f ? std::acos(std::clamp(backToOwnGoal.GetDotProduct(facing2D) / facingLength,
-                                                    -1.0f, 1.0f)) *
-                                  180.0f / pi
-                             : 0.0f;
-  }
-
-  // ponytail: PES's attack level `T+0xb8a4` has no GF counterpart; PES's live
-  // teams both sat on level 2, which is what the line ramp uses.
-  const int attackLevel = 2;
-  // ponytail: PES's Defensive Style (team-sheet option byte 4) has no GF
-  // counterpart either; PES's live team 0 ran style 0, the forecheck branch.
-  const int style = 0;
-  // PES's Defensive Line runs 1..10 with 10 the deepest; GF's defensive depth
-  // factor is a 0..1 slider over the same direction, so it maps straight on.
-  const float lineSlider =
-      1.0f + 9.0f * AITactics::ClampSetting(GetLiveTacticReal("position_defense_depth_factor", 0.75f));
-  // Compactness is how tightly the block holds its length and width together.
-  // ponytail: GF has no compactness tactic, so its defensive width factor is
-  // read inversely (wider == looser). Add a real slider when the tactic pipeline
-  // grows one.
-  const float compactSlider =
-      11.0f - 10.0f * AITactics::ClampSetting(GetLiveTacticReal("position_defense_width_factor", 0.8f));
-
-  defensiveStyle = style;
-  defensiveAttackLevel = attackLevel;
-  defensiveLineSlider = lineSlider;
-  defensiveCompactSlider = compactSlider;
-  // PES's Pressuring is team-sheet option byte 6; GF's nearest instruction is
-  // Aggressive Defence, which pushes the defender onto the ball. ponytail: add a
-  // real Pressuring option when the touchline instructions grow one.
-  defensivePressing = TeamInstructions::Has(instructions, TeamInstructions::e_Instruction_AggressiveDefence);
-
-  float ownFrameLine = pes::DefensiveLineHeight(
-      k, field, facts, lineSlider, style, attackLevel, match->IsInPlay(),
-      pes::TargetLineCushionFactor(k, facts, hasCarrier, carrierIsOpponent, previousLineHeight,
-                                   defensiveLineHeight));
-  if (pes::DefensiveLineStepUp(k, field, facts, ownFrameLine, hasCarrier))
-    ownFrameLine = facts.ballDepth_m - k.stepUpDistance_m;
-  ownFrameLine = std::max(ownFrameLine, -field.ownGoalArea_m);
-
-  // FUN_1405efbd0's catch-up: the back line steps a quarter of the gap to the
-  // midfield band upfield when the midfield has been caught upfield of it.
-  const float gap = k.midGap_m;
-  std::vector<float> midScores;
-  std::vector<Player*> active;
-  team->GetActivePlayers(active);
-  for (Player* p : active) {
-    if (PesLineIndexForRole(p->GetFormationEntry().role) != 1) continue;
-    const float x = p->GetPosition().coords[0] * dir;
-    const float midLower = ownFrameLine + gap;
-    midScores.push_back(x <= midLower + 2.0f ? 100.0f
-                                             : 100.0f * (x - midLower - 8.0f) / -6.0f);
-  }
-  std::sort(midScores.begin(), midScores.end(), std::greater<float>());
-  float score = 0.0f;
-  for (size_t i = 0; i < midScores.size() && i < 3; ++i) score += midScores[i];
-  ownFrameLine += pes::ShapeRamp(score, k.midLineScoreAdjustMax, 1.0f, 200.0f, 0.0f) *
-                  std::fabs(gap) / k.midCatchUpDivisor;
-
-  previousLineHeight = ownFrameLine;
-  defensiveLineHeight = ownFrameLine * dir;
-  defensiveTeamLength = pes::TeamLength_m(k, style, attackLevel, compactSlider);
-}
-
-bool TeamAIController::IsOffsideTrapArmed() const {
-  // PES arms the trap only on its team flag `T+0xe4` (report 14.4); GF has no
-  // touchline button for it, so the tactic stands in and defaults to PES's live
-  // value for both teams, off.
-  return GetLiveTacticReal("offside_trap", 0.0f) > 0.5f;
-}
-
 Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
                                                       bool useDynamicFormationPosition) {
   bool toggle_yFocus = true;
@@ -723,78 +575,22 @@ Vector3 TeamAIController::GetAdaptedFormationPosition(Player* player,
   centerY *= ((1.0f - adaptedWidth) / 1.0f) * adaptCenterToFitWidthBias +
              (1.0f - adaptCenterToFitWidthBias);
 
-  float backXBound, frontXBound, lowYBound, highYBound;
-  if (!teamHasPossession) {
-    // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6,
-    // 7, 14.1): the whole team shape is three bands off one line height, so a
-    // defender's depth and width terms both come from the line he plays in. PES
-    // rebuilds both shapes every tick and the out-of-possession one is what a
-    // defending team plays in.
-    const int lineIndex = PesLineIndexForRole(role);
-    const float line = defensiveLineHeight;
-    const float len = defensiveTeamLength;
-    // The back line sits on the line height itself (report 14.7: a back-line
-    // slot's target is the line height, 82% within 5 cm live); the midfield a
-    // gap above it, the forwards at the far end of the team length.
-    float back = lineIndex == 0 ? line
-                : lineIndex == 1
-                    ? line + match->GetPesDefensiveShapeConstants().midGap_m
-                    : std::max(line + len - 5.0f,
-                               line + match->GetPesDefensiveShapeConstants().midGap_m);
-    float front = lineIndex == 0 ? back + 3.0f
-                 : lineIndex == 1 ? back + 2.0f
-                                  : std::max(line + len, back + 2.0f);
-    back = clamp(back, -pitchHalfW, pitchHalfW);
-    front = clamp(front, -pitchHalfW, pitchHalfW);
-    backXBound = std::min(back, front);
-    frontXBound = std::max(back, front);
+  float backXBound = centerX - adaptedDepth * pitchHalfW * -team->GetSide();
+  float frontXBound = centerX + adaptedDepth * pitchHalfW * -team->GetSide();
+  float lowYBound = centerY - adaptedWidth * pitchHalfH;
+  float highYBound = centerY + adaptedWidth * pitchHalfH;
 
-    // Each line's width comes from its own head count (15/19/23 m for 3/4/5
-    // players), and the block is shifted toward the ball's touchline in
-    // proportion to how wide the ball is played.
-    const pes::DefensiveShapeConstants& shapeConstants =
-        match->GetPesDefensiveShapeConstants();
-    std::vector<Player*> teammates;
-    team->GetActivePlayers(teammates);
-    int headCount = 0;
-    for (Player* mate : teammates)
-      if (mate->GetFormationEntry().role != e_PlayerRole_GK &&
-          PesLineIndexForRole(mate->GetFormationEntry().role) == lineIndex)
-        ++headCount;
-    const Vector3 currentBall = match->GetBall()->Predict(0);
-    const float dir = static_cast<float>(-team->GetSide());
-    const float half = pes::LineHalfWidth_m(
-        shapeConstants, defensiveShapeField, headCount, defensiveCompactSlider,
-        defensiveAttackLevel, true, currentBall.coords[1], currentBall.coords[0] * dir,
-        line * dir);
-    const float lateral = std::clamp((std::fabs(currentBall.coords[1]) -
-                                      shapeConstants.lateralRampNear_m) /
-                                         (shapeConstants.lateralRampFar_m -
-                                          shapeConstants.lateralRampNear_m),
-                                     0.0f, 1.0f);
-    const float coefficient =
-        lineIndex == 0 && headCount >= 3 ? 0.7f : 0.6f;  // report 7's per-line c table
-    const float reach = pitchHalfH - 0.5f - half;
-    const float shift = reach <= 0.0f
-                            ? 0.0f
-                            : std::clamp((currentBall.coords[1] > 0.0f ? 1.0f : -1.0f) * pitchHalfH *
-                                             lateral * coefficient,
-                                         -reach, reach);
-    lowYBound = shift - half;
-    highYBound = shift + half;
-  } else {
-    backXBound = centerX - adaptedDepth * pitchHalfW * -team->GetSide();
-    frontXBound = centerX + adaptedDepth * pitchHalfW * -team->GetSide();
-    lowYBound = centerY - adaptedWidth * pitchHalfH;
-    highYBound = centerY + adaptedWidth * pitchHalfH;
-    // maybe setting offside trap this way doesn't work too well: after all,
-    // defensive positioning stuff is done after this, thereby diminishing trap
-    // sometimes. on the other hand, maybe this is a good basic trap setup, and we
-    // could apply the trap with the applyoffsidetrap function after the
-    // defensive positioning as well. (done from the def/mid strategies code)
-    if (backXBound * team->GetSide() > GetOffsideTrapX() * team->GetSide())
-      backXBound = GetOffsideTrapX();
-  }
+  // if (player->GetTeam()->GetID() == 0) {
+  //   SetGreenDebugPilon(Vector3(backXBound, 0, 0));
+  //   SetBlueDebugPilon(Vector3(frontXBound, 0, 0));
+  // }
+
+  // maybe setting offside trap this way doesn't work too well: after all, defensive positioning
+  // stuff is done after this, thereby diminishing trap sometimes. on the other hand, maybe this is
+  // a good basic trap setup, and we could apply the trap with the applyoffsidetrap function after
+  // the defensive positioning as well. (done from the def/mid strategies code)
+  if (backXBound * team->GetSide() > GetOffsideTrapX() * team->GetSide())
+    backXBound = GetOffsideTrapX();
 
   float xFocus = 0.0f;
   float xFocusStrength = 0.0f;
@@ -976,159 +772,133 @@ void TeamAIController::CalculateDynamicRoles() {
   }
 }
 
-void TeamAIController::CalculateManMarking() {
-  // FUN_140534a20's assignment (report 3, 14.2), run every frame: PES re-decides
-  // the marking each tick, GF re-decided it every 400 ms and capped it at three
-  // opponents. Opponents are ordered most-advanced first, projected a sixth of a
-  // second ahead; the passes are ported as report 14.2 reduces them - pass 0
-  // (who may mark), pass 1 (the first defender on the carrier), pass 2b (who
-  // needs a marker at all), pass 6 (continuity) and pass 7 (nearest free
-  // defender, stealing from a further one). Passes 3, 4 and 5 (the sheet-driven
-  // plan marks and the stopped corner/FK pairing) have no GF counterpart and are
-  // left to the set-piece code; PES's at-most-three-opponents cap goes with them.
-  std::vector<Player*> own;
-  team->GetActivePlayers(own);
+float TeamAIController::CalculateMarkingQuality(Player* player, Player* opp) {
+  // todo?: a better method than a virtual line would be a virtual circle, originating from the
+  // goalpos with playerpos - goalpos distance as radius. not sure how to calculate 'u' then though
 
-  // PES clears every mark target before the passes run.
-  for (Player* p : own) p->SetManMarkingID(-1);
+  Vector3 oppPosition = opp->GetPosition() + opp->GetMovement() * 0.1f;
+  Vector3 playerPosition = player->GetPosition() + player->GetMovement() * 0.1f;
 
-  if (!match->IsInPlay() || match->IsInSetPiece()) {
-    for (size_t slot = 0; slot < markPendingOpponent.size(); ++slot)
-      markPendingOpponent[slot] = -1;
-    return;
+  // draw virtual line from 'left' to 'right' of player, perpendicular to the goal. anything 'above'
+  // this line he can catch up with. well, not if it's too much to the side of this line / closer to
+  // goal; there just isn't enough time then to catch up.
+
+  Vector3 goalPos = Vector3(pitchHalfW * team->GetSide(), 0, 0);
+  Vector3 toGoal = goalPos - playerPosition;
+  float lineLength = clamp((toGoal).GetLength(), 4.0f, 14.0f);
+  Line line;
+  Vector3 toGoalNorm = toGoal.GetNormalized(Vector3(team->GetSide(), 0, 0));
+  Vector3 safetyVec = -toGoalNorm * 0.5f;
+  line.SetVertex(
+      0, playerPosition + safetyVec +
+             toGoalNorm.GetRotated2D(-0.5 * pi) * lineLength);  // left of player (seen from goal)
+  line.SetVertex(
+      1, playerPosition + safetyVec +
+             toGoalNorm.GetRotated2D(0.5 * pi) * lineLength);  // right of player (seen from goal)
+
+  bool oppIsOnRightSideOfLine = line.WhatSide(oppPosition);  // notice the descriptive variable name
+  float u;  // 'position' on line, v0 == 0 .. v1 == 1
+  float oppFromLineDistance = line.GetDistanceToPoint(oppPosition, u);
+
+  float adaptedOppFromLineDistance = oppFromLineDistance;
+  if (oppIsOnRightSideOfLine)
+    adaptedOppFromLineDistance = fabs(
+        oppFromLineDistance - 2.0f);  // we put the 'best spot' a bit further away from the line
+
+  volatile float oppFromLineDistanceFactor =
+      pow(NormalizedClamp(adaptedOppFromLineDistance, 0.0f, 60.0f), 0.5f);
+  float oppOnLineDistanceFactor = pow(clamp(fabs(u * 2.0f - 1.0f), 0.0f, 1.0f), 0.5f);
+
+  float result = 1.0f;
+
+  // opponent further away from the line == bad (well.. not bad.. but not very useful either.
+  // probably, another team mate is there, if not, can always catch up when opp gets closer)
+  result -= oppFromLineDistanceFactor * 0.5f;
+  // opponent further away on the line == bad
+  result -= oppOnLineDistanceFactor * 0.5f;
+
+  result = clamp(result, 0.0f, 1.0f);
+
+  // argh, he's passed us already!
+  if (!oppIsOnRightSideOfLine)
+    result *= 0.6f;
+
+  // now add a bit of good old fashioned distancerating so that there'll still be some definition if
+  // result is now 0.0f
+  float oppDistance =
+      1.0 - NormalizedClamp((playerPosition - oppPosition).GetLength(), 0.0, pitchHalfW * 2.0f);
+  result = result * 0.8f + oppDistance * 0.2f;
+
+  /*
+  if (player == match->GetDesignatedPossessionPlayer() && opp->GetTimeNeededToGetToBall_ms() < 2000)
+  { printf("u: %f\n", u); SetRedDebugPilon(line.GetVertex(0));
+    SetGreenDebugPilon(line.GetVertex(1));
+    //if (line.WhatSide(opp->GetPosition()) == true) SetYellowDebugPilon(opp->GetPosition() +
+  opp->GetMovement() * 0.1);
+    //SetYellowDebugPilon(line.GetVertex(0) + (line.GetVertex(1) - line.GetVertex(0)) * u);
   }
+  */
 
-  const float dir = static_cast<float>(-team->GetSide());
-
-  // The opponents, most advanced first: a man running goal-side sorts in front of
-  // where he stands.
-  std::vector<Player*> opponents;
-  match->GetActiveTeamPlayers(abs(team->GetID() - 1), opponents);
-  std::vector<std::pair<float, Player*>> order;
-  order.reserve(opponents.size());
-  for (Player* o : opponents)
-    order.emplace_back(
-        pes::OpponentOrderKey(dir, o->GetPosition().coords[0] * dir,
-                              o->GetMovement().coords[0] * dir),
-        o);
-  std::sort(order.begin(), order.end(),
-            [](const std::pair<float, Player*>& a, const std::pair<float, Player*>& b) {
-              return a.first < b.first;
-            });
-
-  // Pass 0: who may take a mark. The keeper never marks and the man carrying
-  // the ball is busy with it.
-  Player* carrier = match->GetTeam(abs(team->GetID() - 1))->GetDesignatedTeamPossessionPlayer();
-  std::vector<Player*> available;
-  for (Player* p : own)
-    if (p->GetFormationEntry().role != e_PlayerRole_GK && p != carrier) available.push_back(p);
-
-  // Who marked whom last frame, for continuity.
-  std::vector<int> previous(markPendingOpponent.size(), -1);
-  for (Player* p : own)
-    if (p->GetManMarkingID() >= 0 && static_cast<size_t>(p->GetManMarkingID()) < previous.size())
-      previous[p->GetManMarkingID()] = p->GetID();
-
-  // This frame's candidate pairing per own player, before the hand-off delay
-  // commits it.
-  std::vector<int> candidate(own.size(), -1);
-  auto candidateSlot = [&own](Player* p) {
-    for (size_t i = 0; i < own.size(); ++i)
-      if (own[i] == p) return static_cast<int>(i);
-    return -1;
-  };
-
-  // Pass 1: the first defender on the carrier. The chaser is the man nearest the
-  // ball; PES keeps him while he is within 8 m of the carrier, 10 m once he
-  // already marks him, which for a ball-side search is the nearest man.
-  if (carrier) {
-    const Vector3 ballPos = match->GetBall()->Predict(0);
-    Player* chaser = nullptr;
-    float bestDistance = 1000.0f;
-    for (Player* p : available) {
-      const float distance = (p->GetPosition() - ballPos).GetLength();
-      if (distance < bestDistance) bestDistance = distance, chaser = p;
-    }
-    if (chaser) {
-      candidate[candidateSlot(chaser)] = carrier->GetID();
-      available.erase(std::remove(available.begin(), available.end(), chaser), available.end());
-    }
-  }
-
-  const float stealRadius = defensiveAttackLevel < 3
-                                ? match->GetPesDefensiveShapeConstants().stealRadiusLowLevel_m
-                                : match->GetPesDefensiveShapeConstants().stealRadius_m;
-  for (const std::pair<float, Player*>& entry : order) {
-    Player* opp = entry.second;
-    if (opp == carrier) continue;
-    Player* chosen = nullptr;
-    // Pass 6: continuity. His own marker keeps him unless another free defender
-    // is already closer to him than the marker is.
-    const int lastId = static_cast<size_t>(opp->GetID()) < previous.size()
-                           ? previous[opp->GetID()]
-                           : -1;
-    Player* lastMarker = lastId >= 0 ? match->GetPlayer(lastId) : nullptr;
-    if (lastMarker && std::find(available.begin(), available.end(), lastMarker) != available.end()) {
-      chosen = lastMarker;
-      for (Player* p : available) {
-        if (p == lastMarker) continue;
-        if ((p->GetPosition() - opp->GetPosition()).GetLength() <
-            (lastMarker->GetPosition() - opp->GetPosition()).GetLength()) {
-          chosen = nullptr;
-          break;
-        }
-      }
-    }
-    // Pass 7: the nearest free defender, up to the steal radius.
-    if (!chosen) {
-      float best = stealRadius;
-      for (Player* p : available) {
-        const float distance = (p->GetPosition() - opp->GetPosition()).GetLength();
-        if (distance < best) best = distance, chosen = p;
-      }
-    }
-    if (chosen) {
-      candidate[candidateSlot(chosen)] = opp->GetID();
-      available.erase(std::remove(available.begin(), available.end(), chosen), available.end());
-    }
-  }
-
-  // The hand-off hysteresis (report 3.3): a changed target is committed only once
-  // the same new one has been pending for the organiser's delay.
-  const unsigned long now = match->GetActualTime_ms();
-  const pes::DefensiveShapeConstants& shape = match->GetPesDefensiveShapeConstants();
-  const unsigned long delay_ms =
-      static_cast<unsigned long>(pes::MarkHandOffFrames(shape, 0)) * 1000 /
-      static_cast<unsigned long>(shape.cushionFps);
-  for (size_t i = 0; i < own.size(); ++i) {
-    const int playerId = own[i]->GetID();
-    if (markPendingOpponent.size() <= static_cast<size_t>(playerId)) {
-      markPendingOpponent.resize(playerId + 1, -1);
-      markPendingSinceTick.resize(playerId + 1, 0);
-    }
-    const int want = candidate[i];
-    if (want == own[i]->GetManMarkingID()) continue;  // unchanged: nothing pending
-    if (markPendingOpponent[playerId] != want) {
-      markPendingOpponent[playerId] = want;
-      markPendingSinceTick[playerId] = now;
-    } else if (now - markPendingSinceTick[playerId] >= delay_ms) {
-      own[i]->SetManMarkingID(want);
-      markPendingOpponent[playerId] = -1;
-    }
-  }
+  return result;
 }
 
-Vector3 TeamAIController::GetMarkSpot(Player* defender, Player* opp) {
-  // FUN_140623750 (report 14.3): the goal-side point 6 - 4*ramp(depth) metres
-  // from the opponent's predicted position, 2 m further when our team is
-  // pressing.
-  const pes::DefensiveShapeConstants& k = match->GetPesDefensiveShapeConstants();
-  const PlayerImage oppImage = match->GetMentalImage(0)->GetPlayerImage(opp->GetID());
-  const Vector3 oppPos = oppImage.position + oppImage.movement * 0.2f;
-  const float dir = static_cast<float>(-team->GetSide());
-  const float distance =
-      pes::MarkDistance_m(k, defensiveShapeField, oppPos.coords[0] * dir, defensivePressing);
-  return pes::MarkSpot(oppPos, distance, Vector3(pitchHalfW * team->GetSide(), 0.0f, 0.0f));
+void TeamAIController::CalculateManMarking() {
+  // new method
+
+  int numMarkedOpponents = 3;  // std::min(match->GetTeam(0)->GetActivePlayerCount(),
+                               // match->GetTeam(1)->GetActivePlayerCount());
+
+  const std::vector<TacticalOpponentInfo>& oppInfo = GetTacticalOpponentInfo();
+
+  std::vector<Player*> players;
+  team->GetActivePlayers(players);
+
+  // reset previous man marking
+  for (unsigned int i = 0; i < players.size(); i++) {
+    players.at(i)->SetManMarkingID(-1);
+  }
+
+  // most dangerous opponent gets closest player to cover him, and so on
+  // (oppInfo is already sorted, most dangerous first. this is done in this->process() which is
+  // called earlier from team->process())
+  for (unsigned int opp = 0; opp < static_cast<unsigned int>(std::min(
+                                       static_cast<int>(oppInfo.size()), numMarkedOpponents));
+       opp++) {
+    Player* closestPlayer = nullptr;
+    float bestMarkingQuality = -1.0f;
+    std::vector<Player*>::iterator closestPlayerIter;
+    auto iter = players.begin();
+
+    Player* oppPlayer = oppInfo.at(opp).player;
+
+    // find closest player for this opponent
+    while (iter != players.end()) {
+      if ((*iter)->GetFormationEntry().role != e_PlayerRole_GK) {
+        // A man marker is the one sent to pick up the dangerous runner.
+        float markingQuality =
+            CalculateMarkingQuality((*iter), oppPlayer) +
+            PlayerSkills::GetMarkingQualityBonus((*iter)->GetPlayerData()->GetSkills());
+
+        if (markingQuality > bestMarkingQuality) {
+          closestPlayer = *iter;
+          bestMarkingQuality = markingQuality;
+          closestPlayerIter = iter;
+        }
+      }
+
+      iter++;
+    }
+
+    if (closestPlayer) {
+      // printf("oppID: %i\n", oppPlayer->GetID());
+      closestPlayer->SetManMarkingID(oppPlayer->GetID());
+      players.erase(closestPlayerIter);
+    }
+
+    if (players.empty())
+      break;
+  }
+  // printf("\n");
 }
 
 void TeamAIController::ApplyOffsideTrap(Vector3& position) const {

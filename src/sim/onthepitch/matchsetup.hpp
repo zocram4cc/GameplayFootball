@@ -28,10 +28,6 @@ struct Rig;
 #include "pesstamina.hpp"
 // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
 #include "pescarrier.hpp"
-// PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6, 7,
-// 14): the line height, the team length and width, and the marking assignment's
-// arithmetic.
-#include "pesdefshape.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -92,11 +88,6 @@ struct MatchSetup {
   // the rolled plan probabilities. Required: every one of those numbers lives
   // in the image, so a carrier with no constants would be guessing.
   const pes::CarrierConstants* pesCarrierConstants = nullptr;
-  // PES 2021's defensive shape: the line ramp's offsets, the 46/42/32 m lengths,
-  // the 15/19/23 m line half-widths and the mark distance/hand-off arithmetic,
-  // read from the install's exe. Required: without them a defending team has no
-  // line to hold.
-  const pes::DefensiveShapeConstants* pesDefensiveShapeConstants = nullptr;
 };
 
 #endif

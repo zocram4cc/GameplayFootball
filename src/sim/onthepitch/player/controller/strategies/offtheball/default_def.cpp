@@ -50,10 +50,7 @@ void DefaultDefenseStrategy::RequestInput(const MentalImage* mentalImage, Vector
         pow(clamp(1.9f - mindset - controller->GetFadingTeamPossessionAmount(), 0.0f, 1.0f), 0.7f));
 
     // offside trap (used to be applied before AddDefensiveComponent)
-    // PES arms it only on a team instruction (report 14.4's `T+0xe4`), so GF
-    // applies it only when the team's tactics ask for it.
-    if (team->GetController()->IsOffsideTrapArmed())
-      team->GetController()->ApplyOffsideTrap(desiredPosition);
+    team->GetController()->ApplyOffsideTrap(desiredPosition);
   }
 
   direction = (desiredPosition - player->GetPosition()).GetNormalized(player->GetDirectionVec());

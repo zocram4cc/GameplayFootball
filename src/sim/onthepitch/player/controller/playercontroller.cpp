@@ -80,13 +80,72 @@ void PlayerController::AddDefensiveComponent(Vector3& desiredPosition, float bia
   if (match->IsInPlay() && !match->IsInSetPiece() &&
       CastPlayer()->GetFormationEntry().role != e_PlayerRole_GK) {
     if (opponentID != -1) {
-      Player* opp = match->GetTeam(abs(team->GetID() - 1))->GetPlayer(opponentID);
+      Vector3 defendPosition = desiredPosition;
 
-      // PES 2021's mark spot (docs/re/pes-re-defensive-shape.md 14.3): the
-      // goal-side point 6 - 4*ramp(depth) metres from the opponent, 2 m further
-      // when our team is pressing. GF's shooting-point threshold and 4 m buffer
-      // are replaced by it.
-      Vector3 defendPosition = team->GetController()->GetMarkSpot(CastPlayer(), opp);
+      float possessionPlayerShootThreshold = 24.0f;  // distance at which opp must be marked tightly
+      float genericOpponentShootThreshold = 8.0f;    // distance at which opp must be marked tightly
+      float minDistance =
+          0.4f;  // distance 'in front' of opp - how far from opp we defend as minimum
+      float bufferDistance =
+          4.0f;  // we want to be at least this distance closer to shooting point than opp
+
+      // calculate some basic vars
+      Player* opp = match->GetTeam(abs(team->GetID() - 1))->GetPlayer(opponentID);
+      PlayerImage oppImage =
+          match->GetMentalImage(GetReactionTime_ms())->GetPlayerImage(opp->GetID());
+      Vector3 oppPos = oppImage.position + oppImage.movement * 0.5f;
+
+      float shootThreshold = genericOpponentShootThreshold;
+      if (opp == match->GetDesignatedPossessionPlayer()) {
+        shootThreshold = possessionPlayerShootThreshold;
+      }
+
+      Vector3 goalPos = Vector3(pitchHalfW * team->GetSide(), 0, 0);
+
+      // calculate how close the opponent is to the goal/shooting treshold
+      float oppToGoalDistance = (goalPos - oppPos).GetLength();
+      float oppToThresholdDistance =
+          clamp(oppToGoalDistance - shootThreshold, minDistance, pitchHalfW);
+      Vector3 shootingPoint = oppPos + (goalPos - oppPos).GetNormalized(0) * oppToThresholdDistance;
+
+      // if shootingPoint.coords[0] exceeds offside trap line, alter oppToThresholdDistance in such
+      // a way, that it results in the shootingPoint being at least offsideTrapX distance away from
+      // goal (unless player is closer already)
+      if (shootingPoint.coords[0] * team->GetSide() >
+          team->GetController()->GetOffsideTrapX() * team->GetSide()) {
+        Line oppToGoalLine;
+        oppToGoalLine.SetVertex(0, oppPos);
+        oppToGoalLine.SetVertex(1, goalPos);
+        Line offsideLine;
+        offsideLine.SetVertex(0, Vector3(team->GetController()->GetOffsideTrapX(), -pitchHalfH, 0));
+        offsideLine.SetVertex(1, Vector3(team->GetController()->GetOffsideTrapX(), pitchHalfH, 0));
+        shootingPoint = oppToGoalLine.GetIntersectionPoint(offsideLine);
+        oppToThresholdDistance = (shootingPoint - oppPos).GetLength();
+      }
+
+      // now we want to keep the distance to shootingPoint smaller than the opponent's.
+      Vector3 meToThreshold =
+          shootingPoint -
+          desiredPosition;  // CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.14f;
+      float meToThresholdDistance = meToThreshold.GetLength();
+
+      float slackedDistance = meToThresholdDistance - (oppToThresholdDistance - bufferDistance);
+      if (slackedDistance > 0.0f) {
+        defendPosition = desiredPosition + meToThreshold.GetNormalized(0) *
+                                               clamp(slackedDistance, 0.0f, meToThresholdDistance);
+      }
+
+      // if we are too late, don't run straight towards the shootingPoint, but instead, more towards
+      // our goal
+      Vector3 actualPos = CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.14f;
+      float actualToThresholdDistance = (shootingPoint - actualPos).GetLength();
+      float actualSlackedDistance =
+          actualToThresholdDistance -
+          oppToThresholdDistance;  //(oppToThresholdDistance - bufferDistance);
+      if (actualSlackedDistance > 0.0f) {
+        defendPosition +=
+            (goalPos - defendPosition).GetNormalized(0) * actualSlackedDistance * 0.7f;
+      }
 
       desiredPosition = desiredPosition * (1.0f - bias) + defendPosition * bias;
     }
