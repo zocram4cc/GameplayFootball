@@ -546,3 +546,6 @@ Labels for the port: every non-PES approximation `RE-APPROX(EV-CONTACT-xxxx)` (l
 | EV-CONTACT-0013 | `pl(i)` is the published copy of the state block `Player+0xc8` (same layout); record `pl+0x610` mirrors `Player+0x6d8` | Confirmed (live 3/3, values) | `FUN_1408c31c0` (`P+200`), `FUN_1408c48c0`, `pchk.py` |
 | EV-CONTACT-0014 | Ability getter `FUN_1406e6660(ap,k)` = byte `ai(id)+0x70+k` (no separate "live" PC) | Confirmed | raw `0x1406e6660` |
 | EV-CONTACT-0015 | In-match stat map 0x1a Fin / 0x1b LP / 0x1c LoP / 0x1d Head | Confirmed (usage) | `FUN_14071d770` 0x14071d89b..0x14071dc26 |
+
+
+> **Follow-up (ContactLeftoversRE, `pes-re-contact-2.md`):** `ap+0xb10` has exactly one writer (value 2, shoulder-through); values 3/4 fall, 5–7 stagger, and the field is never cleared. `contact.o` stock vs mod differs in exactly three fields (+0x04 56→88, +0x30 24→42, +0x34 16→36); the "from behind" switch is 0 in stock too. §3.2's "category 9 = jumping-header family" is retracted: `ap+0x2754` is the ball-height band 0–11 (HeaderRE).
