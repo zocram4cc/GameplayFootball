@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include "pes_match_constants.hpp"
+
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -197,6 +199,7 @@ std::unique_ptr<Match> MatchAtPhase(e_MatchPhase phase, float seconds) {
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
   if (!setup.pesBallConstants) return nullptr;
+  pestest::FillMissingPesConstants(&setup);
   auto match = std::make_unique<Match>(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   match->SetMatchPhase(phase);
   match->StartPlay();

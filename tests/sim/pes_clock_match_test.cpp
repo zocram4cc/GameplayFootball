@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include "pes_match_constants.hpp"
+
 #include <cmath>
 
 #include <cstdlib>
@@ -230,6 +232,7 @@ TEST(PesClockInMatch, ClockIsThePesPercentageForm) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
 
@@ -267,6 +270,7 @@ TEST(PesClockInMatch, ClockCountsTheMatchsGameTime) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
 
@@ -302,6 +306,7 @@ TEST(PesClockInMatch, HalfLengthComesFromThePhaseNotTheSetting) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+    pestest::FillMissingPesConstants(&setup);
     Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     // The half length is a function of the phase alone: the match-length
     // setting no longer reaches it.
@@ -337,6 +342,7 @@ TEST(PesClockInMatch, AddedTimeIsOncePerHalfAndHasNoEventCounters) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_2ndHalf);
@@ -376,6 +382,7 @@ TEST(PesClockInMatch, AddedTimeTierIsAnExplicitInput) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_2ndHalf);
@@ -411,6 +418,7 @@ TEST(PesClockInMatch, ClockFreezesWhenPlayIsStopped) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_1stHalf);
@@ -449,6 +457,7 @@ TEST(PesClockInMatch, ExtraTimeHasItsOwnPeriodEndAndRate) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   SetDB(nullptr);
   match.SetMatchPhase(e_MatchPhase_1stExtraTime);
@@ -498,6 +507,7 @@ TEST(PesClockInMatch, ClockConstantsAreExeDerived) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match withExe(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   EXPECT_FLOAT_EQ(withExe.GetPesClockConstants().gameSpeed, 54.0f);
   EXPECT_FLOAT_EQ(withExe.GetPesBallConstants().image.tickHz, 54.0f);
@@ -550,6 +560,7 @@ TEST(PesBallInMatch, BallConstantsAreRequiredAndInstallDerived) {
   setup.pesStaminaConstants = SharedStaminaConstants();
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
+  pestest::FillMissingPesConstants(&setup);
   Match withBall(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   // docs/re/pes-re-ball-constants.md 3.1/6.1: the mode-1 column.
   EXPECT_FLOAT_EQ(withBall.GetPesBallConstants()

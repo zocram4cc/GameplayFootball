@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include "pes_match_constants.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -338,6 +340,7 @@ std::vector<Stop> MeasureStops(int minutes) {
   setup.pesCarrierConstants = SharedCarrierConstants();
   setup.pesStaminaConstants = SharedStaminaConstants();
 
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
   // The referee arms a stop once, so a buffer seen active with a fresh stopTime
   // is a new stop; record the moment its stages pass.

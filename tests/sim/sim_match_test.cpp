@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "pes_match_constants.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -234,6 +236,7 @@ Outcome Play(unsigned int seed, int minutes) {
   Outcome out;
   {
     // Match owns and deletes its MatchData.
+    pestest::FillMissingPesConstants(&setup);
     Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     while (!match.IsGameOver() && match.GetSimTime_ms() < kMaxSimTime_ms) match.Process();
     out.finished = match.IsGameOver();
@@ -291,6 +294,7 @@ TEST(SimMatch, PlayerIdsStartAtZeroInEveryMatch) {
   setup.pesStoppageConstants = SharedStoppageConstants();
   setup.pesCarrierConstants = SharedCarrierConstants();
   for (int match = 0; match < 2; ++match) {
+    pestest::FillMissingPesConstants(&setup);
     Match m(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
     std::vector<Player*> players;
     m.GetAllTeamPlayers(0, players);
@@ -326,6 +330,8 @@ bool EverPressesWhileTrailing(bool aiManagerRunsHome) {
   bool pressed = false;
   {
     MatchData* data = new MatchData(HOME_TEAM, AWAY_TEAM);
+    pestest::FillMissingPesConstants(&setup);
+    pestest::FillMissingPesConstants(&setup);
     Match match(data, setup, Properties());
     // A deficit no 1-minute match can close: with PES's ball the home side scores
     // in this window, and a one-goal deficit ended the "trailing" precondition.

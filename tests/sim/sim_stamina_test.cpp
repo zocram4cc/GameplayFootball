@@ -4,6 +4,8 @@
 // pinned in pes_stamina_test.cpp; this asserts the wiring in Match/Player.
 #include <gtest/gtest.h>
 
+#include "pes_match_constants.hpp"
+
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -148,6 +150,7 @@ TEST(SimStamina, DrainsInPlayFreezesAtDeadBallsAndJumpsAtTheBreak) {
   blunted::Database db;
   ASSERT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
   SetDB(&db);
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
 
   // Kick-off: every player has a full tank from his own Stamina ability.
@@ -238,6 +241,7 @@ TEST(SimStamina, HalfTimeAppliesTheBreakBonusOnce) {
   blunted::Database db;
   ASSERT_TRUE(db.LoadSqlScript(GF_SOURCE_DIR "/assets/fixtures/teams.sql"));
   SetDB(&db);
+  pestest::FillMissingPesConstants(&setup);
   Match match(new MatchData(HOME_TEAM, AWAY_TEAM), setup, Properties());
 
   std::vector<Player*> squad;
