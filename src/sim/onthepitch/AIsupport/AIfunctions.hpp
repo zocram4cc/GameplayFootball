@@ -57,9 +57,6 @@ bool AI_ReceiverIsOffside(Match* match, const MentalImage* mentalImage, int atta
                           const Vector3& receiverPos, const Vector3& receiverVelocity,
                           const Vector3& ballPos, const Vector3& ballVelocity,
                           float prediction_s);
-void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage* mentalImage,
-                               Vector3& desiredDirection, float& desiredVelocity,
-                               const TeamTactics& teamTactics);
 Vector3 AI_GetForceFieldMovement(const std::vector<ForceSpot>& forceField,
                                  const Vector3& currentPos, float attractorDampingDistance = 10);
 TimeNeeded AI_GetTimeNeededForDistance_ms(const Vector3& playerPos, const Vector3& playerMovement,
