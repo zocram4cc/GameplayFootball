@@ -329,11 +329,11 @@ direction.
 | PES piece | Why not |
 |---|---|
 | 20 of the 25 think units (Clear, Feint, BackSpace, GoalFront, OneTwo, SideChange, Target, Special, RespondRequest, DirectHighBall, the four GK units, OnePattern, SetPlay, EarlyCross, Cross, PassSafety) | the assignment asks for the decision core in one pass; each undecoded unit is on report §9.1's open list, and the decoded ones (Cross, BackSpace, Special, PassSafety, SideChange, Target, GoalFront, OneTwo) are listed here for the next pass |
-| the Dribble unit's 72×15 direction cost search (report §5.4) | not asked for; GF's `AI_GetBestDribbleMovement` stands in for the default answer |
+| the Dribble unit's 72×15 direction cost search (report §5.4) | **ported** (CarrierUnitsPort, 2026-10-14): `pes::DribbleDirection` picks the cheapest of 72 headings out to 15 radial steps with the touchline band and goal-axis terms, and threat from the 5 nearest opponents' reach (keepers doubled); `GetOnTheBallCommands` sets the holder's heading from it and sprints, so GF's `AI_GetBestDribbleMovement` and `veloExpFactor` are retired |
 | the shield branch and the sub-kind chooser (attack-decisions §2.7) | both on report §9.2's open list |
 | the reaction-delay tables T1/T2 and the difficulty capability table (report §2/§7) | this engine has no difficulty tier; the re-think gate alone is ported |
 | the first-time gate of capability 0x14 (report §3.2 rule 2) | needs the tier and the skill bits this engine does not carry |
-| the adopter's veto/override walk (report §3.2) | PES's answer kinds do not survive translation one-to-one; the order shoot → pass → dribble is what the port implements, which is the walk's dominant rule |
+| the adopter's veto/override walk (report §3.2) | PES's answer kinds do not survive translation one-to-one; the order shoot → pass → dribble is what the port implements, which is the walk's dominant rule; the in-play ball-at-rest stalemate (a carrier with possession queuing 0 commands) is **open** - the last smoke showed 59640 → 69912 forced ticks, with the dominant stall moving to a restart whose kick has already been taken |
 | the kicker/penalty `0x14211f090` aim function, the shot lane test, the wide evaluator | report §9.1, not decoded |
 | the offside line and the busy action classes of the receiver status codes | no GF counterpart for the offside line; the mate's action class is not read |
 | the "into space" record B, the pressure table's radii/classes as PES computes them | the pressure class is derived from the nearest opponent's distance with the report's own third-split radii (4 m own third, 2 m attacking third) |
