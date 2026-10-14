@@ -466,6 +466,111 @@ bool AI_ReceiverIsOffside(Match* match, const MentalImage* mentalImage, int atta
       receiverVelocity, prediction_s);
 }
 
+float veloExpFactor(float velo) {
+  return pow(clamp(velo / sprintVelocity, 0.0f, 1.0f), 2.5f) * 3.0f;
+}
+
+void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage* mentalImage,
+                               Vector3& desiredDirection, float& desiredVelocity,
+                               const TeamTactics& teamTactics) {
+  Player* player = match->GetPlayer(thisPlayerID);
+  Vector3 myPos = player->GetPosition();
+  Vector3 myMov = player->GetMovement();
+  Team* team = player->GetTeam();
+  signed int side = team->GetSide();
+
+  // The playing style and COM cards bend how he carries it: a mazing runner
+  // drives at goal through bodies, a target man holds it up (docs/PES21_IMPORT.md).
+  const PlayingStyles::Player style = player->GetPlayerData()->GetPlayingStyle();
+  const PlayingStyles::ComMask comStyles = player->GetPlayerData()->GetComStyles();
+  const float offenseFactor = PlayingStyles::GetDribbleDrive(
+      style, comStyles,
+      AITactics::GetDribbleForwardDrive(
+          team->GetController()->GetLiveTacticReal("dribble_offensiveness", 0.5f),
+          AI_GetMindSet(player->GetDynamicFormationEntry().role)));
+  const float opponentRepel = PlayingStyles::GetOpponentRepel(style, comStyles, 2.0f);
+  const float centerMagnet = PlayingStyles::GetDribbleCenterPull(
+      style, comStyles, team->GetController()->GetLiveTacticReal("dribble_centermagnet", 0.5f));
+  float powerMultiplier = 1.0f;  // should alter (average) resulting velocity
+
+  float future_sec = 0.25f;
+
+  PlayerImage thisPlayerImage = mentalImage->GetPlayerImage(thisPlayerID);
+
+  std::vector<PlayerImage> opponentPlayerImages;
+
+  std::vector<Player*> opponents;
+  AI_GetClosestPlayers(match->GetTeam(abs(team->GetID() - 1)), myPos, opponents, 5);
+  for (unsigned int i = 0; i < opponents.size(); i++) {
+    opponentPlayerImages.push_back(mentalImage->GetPlayerImage(opponents.at(i)->GetID()));
+  }
+
+  float nearBackline =
+      NormalizedClamp(fabs(player->GetPosition().coords[0]) / pitchHalfW, 0.0f, 1.0f);
+  float centerModifierInv =
+      1.0f - std::pow(nearBackline,
+                      2.0f);  // near the end of the pitch, we want to get inside again
+  centerModifierInv *= 0.5f;  // stop going to the sides! wtf, todo, why does it prefer the sideline
+                              // so much (probably because of no opponents :P)
+  Vector3 oppGoalPos =
+      Vector3(-side * pitchHalfW, myPos.coords[1] * (1.0f - centerMagnet) * centerModifierInv, 0);
+
+  std::vector<ForceSpot> forceField;
+
+  for (unsigned int i = 0; i < opponentPlayerImages.size(); i++) {
+    const PlayerImage& oppImg = opponentPlayerImages.at(i);
+
+    ForceSpot spot;
+    Vector3 oppPos = oppImg.position + oppImg.movement * future_sec;
+    spot.origin = oppPos;
+    spot.magnetType = e_MagnetType_Repel;
+    spot.decayType = e_DecayType_Variable;
+    spot.power = opponentRepel * powerMultiplier;
+    spot.scale = 10.0f;                   // 16.0f;
+    spot.exp = 1.0f;                      // 0.7f;
+    forceField.push_back(spot);
+  }
+
+  // sideline / backline
+  {
+    ForceSpot spot;
+    spot.origin = Vector3(myPos.coords[0], (pitchHalfH + 5.0f) * signSide(myPos.coords[1]), 0);
+    spot.magnetType = e_MagnetType_Repel;
+    spot.decayType = e_DecayType_Variable;
+    spot.power = 4.0f * powerMultiplier;
+    spot.scale = 20.0f;
+    spot.exp = 0.7f;
+    forceField.push_back(spot);
+
+    spot.origin = Vector3((pitchHalfW + 5.0f) * signSide(myPos.coords[0]), myPos.coords[1], 0);
+    spot.magnetType = e_MagnetType_Repel;
+    spot.decayType = e_DecayType_Variable;
+    spot.power = 4.0f * powerMultiplier;
+    spot.scale = 20.0f;
+    spot.exp = 0.7f;
+    forceField.push_back(spot);
+  }
+
+  // love for da goal
+  {
+    ForceSpot spot;
+    spot.origin = oppGoalPos;
+    spot.magnetType = e_MagnetType_Attract;
+    spot.decayType = e_DecayType_Constant;
+    spot.power = offenseFactor * powerMultiplier;
+    forceField.push_back(spot);
+  }
+
+  // Vector3 forceFieldPosition = AI_GetForceFieldPosition(forceField, myPos);
+  Vector3 forceFieldMovement =
+      AI_GetForceFieldMovement(forceField, myPos + myMov * future_sec, 1.0f);
+
+  desiredDirection = forceFieldMovement.GetNormalized(player->GetDirectionVec());
+  desiredVelocity = clamp(forceFieldMovement.GetLength() * distanceToVelocityMultiplier,
+                          idleVelocity, sprintVelocity);
+  desiredVelocity = RangeVelocity(PlayingStyles::GetDribbleVelocity(style, comStyles, desiredVelocity));
+}
+
 Vector3 AI_GetForceFieldMovement(const std::vector<ForceSpot>& forceField,
                                  const Vector3& currentPos, float attractorDampingDistance) {
   // attractorDampingDistance: from this distance to attractor, dampen influence so we won't

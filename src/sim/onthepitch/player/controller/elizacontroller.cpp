@@ -1892,29 +1892,9 @@ void ElizaController::GetOnTheBallCommands(std::vector<PlayerCommand>& commandQu
     }
   }
 
-  // PES dribble search (report 1, 1.1). The heading it returns is the cheapest
-  // of 72 rays out to 15 steps, with the goal axis as the preferred heading.
-  // ponytail: W is fixed at 1.0; the image-state weight is not tracked in GF.
-  // ponytail: opponents are the five nearest on the other side, at their
-  // current position (pred = pos) with R_o = 10, keeper R_o = 5.
-  pes::DribbleInput dribble;
-  dribble.ball = {carrierPos.coords[0], carrierPos.coords[1]};
-  dribble.desired_deg = attackSign > 0.0f ? 0.0f : 180.0f;
-  dribble.weight = 1.0f;
-  dribble.halfLen_m = pitchHalfW;
-  dribble.halfWid_m = pitchHalfH;
-  std::vector<Player*> nearOpponents;
-  AI_GetClosestPlayers(match->GetTeam(abs(team->GetID() - 1)), carrierPos, nearOpponents, 5);
-  for (Player* opp : nearOpponents) {
-    const Vector3 p = opp->GetPosition();
-    const bool keeper = opp->GetFormationEntry().role == e_PlayerRole_GK;
-    dribble.opponents.push_back({{p.coords[0], p.coords[1]}, {p.coords[0], p.coords[1]},
-                                 keeper ? 5.0f : 10.0f, keeper});
-  }
-  const float heading_deg = pes::DribbleDirection(dribble, carrier);
-  const float heading_rad = heading_deg * 3.14159265358979f / 180.0f;
-  rawInputDirection = Vector3(std::cos(heading_rad), std::sin(heading_rad), 0.0f);
-  rawInputVelocityFloat = sprintVelocity;
+  e_Velocity enumVelocity = e_Velocity_Idle;
+  AI_GetBestDribbleMovement(match, player->GetID(), _mentalImage, rawInputDirection,
+                            rawInputVelocityFloat, team->GetTeamData()->GetTactics());
 }
 
 void ElizaController::_AddPass(std::vector<PlayerCommand>& commandQueue, Player* target,
