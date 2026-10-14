@@ -99,6 +99,15 @@ void PrintMatchReport(Match& match, FILE* out) {
          matchData->GetPassGoalkeeperCatch(1));
   std::fprintf(out, "[pass-restart] %i-%i\n", matchData->GetPassRestart(0),
          matchData->GetPassRestart(1));
+  // The engaging defender's output: the reaction table's challenges, and what
+  // the referee made of them. tackles/slides count every challenge that reached
+  // a contact; fouls count whistles; cards count the yellows and reds actually
+  // shown.
+  std::fprintf(out, "[challenges] tackles %i-%i | slides %i-%i | fouls %i-%i | yellow %i-%i | red %i-%i\n",
+         matchData->GetChallengesTackles(0), matchData->GetChallengesTackles(1),
+         matchData->GetChallengesSlides(0), matchData->GetChallengesSlides(1), matchData->GetFouls(0), matchData->GetFouls(1),
+         matchData->GetYellowCards(0), matchData->GetYellowCards(1),
+         matchData->GetRedCards(0), matchData->GetRedCards(1));
   std::fprintf(out, "[pass-overwritten] %i-%i | shot-pending %i-%i\n", matchData->GetPassOverwritten(0),
          matchData->GetPassOverwritten(1), matchData->GetPassShotPending(0),
          matchData->GetPassShotPending(1));

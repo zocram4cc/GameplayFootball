@@ -485,6 +485,30 @@ public:
   void AddFoul(int teamID) { foulsCommitted[teamID]++; }
   int GetFouls(int teamID) const { return foulsCommitted[teamID]; }
 
+  // The ball-winning challenges PES's engaging defender may pick
+  // (docs/re/pes-re-defender-decisions.md 1): a standing tackle (the engine's
+  // Interfere command reaching a contact) and a slide. Counted at the point the
+  // challenge lands, so the report's tackle/slide figures are per match, not per
+  // command queued.
+  void AddChallenge(int teamID, bool sliding) {
+    if (sliding)
+      slidesAttempted[teamID]++;
+    else
+      tacklesAttempted[teamID]++;
+  }
+  // `GetTackles` above is PES's half-time ballot stat, counted by the ratings
+  // layer; these are the challenges that actually landed (TripNotice).
+  int GetChallengesTackles(int teamID) const { return tacklesAttempted[teamID]; }
+  int GetChallengesSlides(int teamID) const { return slidesAttempted[teamID]; }
+  int GetYellowCards(int teamID) const { return yellowCards[teamID]; }
+  int GetRedCards(int teamID) const { return redCards[teamID]; }
+  void AddCard(int teamID, int foulType) {
+    if (foulType == 2)
+      yellowCards[teamID]++;
+    else if (foulType == 3)
+      redCards[teamID]++;
+  }
+
   // The rest of PES's half-time table (docs/PRESENTATION_SPEC.md 3.4): the
   // referee's own decisions, the ball won back off an opponent, the ball put
   // into the box from wide, and the keeper stopping a shot that was going in.
@@ -777,6 +801,11 @@ protected:
   int pendingPassTeamID;
 
   int foulsCommitted[2];
+  // PES's challenges, counted where they land (see AddChallenge).
+  int tacklesAttempted[2];
+  int slidesAttempted[2];
+  int yellowCards[2];
+  int redCards[2];
 
   bool historySaved;
 };

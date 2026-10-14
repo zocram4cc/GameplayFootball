@@ -44,7 +44,7 @@ the first "yes" in PES's order — receive, tackle, slide, block, jostle-for-pas
 | 10 `0x140979920` (first-time CLEAR) | a clearance is a pass out of defence; GF's off-the-ball layer has no such command |
 | 12 `0x140a0b890` (QUICK_RESTART_READY) | no quick-restart state for a field player |
 | 13–16 `0x1409bd910…0x140a0bc00` (wall, throw-in, seamless, set pieces) | set-piece choreography, out of this table's scope; the set-piece port owns them |
-| the `m`/`reaction.json` flagA skip (§1) | GF has no WAIT_TIMER action, so `cmd+0x874 == 0x11` can never hold; with live `thinkWaitTimer` 0 the skip never fires either |
+| the `reaction.json` flagA skip (§1) | GF has no WAIT_TIMER action, so `cmd+0x874 == 0x11` can never hold; with live `thinkWaitTimer` 0 the skip never fires either |
 
 Reduced-mode lists: PES's `m = 1` list is {0, 5, 3, stub} and `m = 3` is
 {4, 5, 6, 7}. GF's `_ReactionCommands` only runs inside
@@ -62,7 +62,7 @@ squared, `0x14259d60c` = 9.0) and within 22.5° of his heading
 {FREE_RUN, WAIT_TIMER, DELAY, PRESS, SAND}; GF has no per-player movement state,
 so **every** defender takes the strict branch — which is also what the live
 sample's only tackle was (report 12.1: a WAIT_TIMER defender, i.e. inside the
-mask, and 2.31 m / 3.0°).
+mask, at 2.31 m / 3.0°).
 
 `pes::StandingTackleEngageWindow` — 112.5° (`0x1425cb30c`) between his heading
 and the carrier, predicted gap ≤ 2.0 m (`0x142565604`).
@@ -84,10 +84,10 @@ carrier's clip progress `sf = amp·sin(90°·progress)` (`FUN_140a92c80` =
 (`check_SaftyRate_Last_Line`) and `tackle.o +0x10`
 (`check_SaftyRate_No_Cover`), both read from the VFS. PES applies it only to a
 defender who is not PRESSing/SANDing (raw: `action − 0x34 > 1`), and only after
-`gs/9` (`0x38e38e39` division trick) frames since the last ball event. **Not a
-pinned "never tackle as last man":** the stock file carries 0.4/0.5 there, and
-`sf ≤ 1.0`, so with stock constants the veto never fires; the live 4cc mod
-carries 2.5/2.6, and then it always does. The test pins both sides of the edge
+`gs/9` frames since the last ball event. **Not a pinned "never tackle as last
+man":** the stock file carries 0.4/0.5 there, and `sf ≤ 1.0`, so with stock
+constants the veto never fires; the live 4cc mod carries 2.5/2.6, and then it
+always does. The test pins both sides of the edge
 (`PesDefenderTackle.LastManVetoFollowsTheSafetyTermNotAFixedRule` and
 `StockSafetyTermsLetALastManTackle`).
 
@@ -221,6 +221,7 @@ nothing to remove there.
 | `pes::LoadDefenderDecisionConstants` (new) | `.rdata` + `tackle.o`/`block.o` from the VFS |
 | `MatchSetup::pesDefenderDecisionConstants`, `Match::pesDefenderDecisionConstants`, `Match::GetPesDefenderDecisionConstants` | plumbing, required like the carrier's |
 | `pestest::SharedPesMatchConstants` / `FillMissingPesConstants` | loads the new struct for every test that builds a Match |
+| `apps/gfsim_run.cpp` | loads the new constants |
 | `ElizaController::_ReactionCommands` (new) | the chooser call site that replaces the three calls |
 | `ElizaController::_Carrier/_TackleCandidate/_SlideCandidate/_BlockCandidate/_PassDuelCandidate/_TackleAggressionLevel/_SlideAggression/_IsLastLine/_HasCover/_AnyTeammateSliding/_PushChallenge` (new) | the predicates, reading GF's own state |
 | `ElizaController::RequestCommand` | `_TrapCommand`/`_InterfereCommand`/`_SlidingCommand` → `_ReactionCommands` |
@@ -229,6 +230,11 @@ nothing to remove there.
 | `PlayerController::_TrapCommand` | gate extracted to `_ReceiveCandidate`; body unchanged |
 | `PlayerController::_ReceiveCandidate` (new) | PES entry 0's predicate |
 | `pes::JudgePoints` | the `ai(B)+0x134` ponytail replaced by its resolved meaning |
+| `MatchData::AddChallenge/GetChallengesTackles/GetChallengesSlides/GetYellowCards/GetRedCards/AddCard` (new) | the smoke counters for the acceptance criteria |
+| `MatchData::MatchData` | initialises them |
+| `Referee::TripNotice` | counts the challenge that landed, foul or not |
+| `Referee::CheckFoul`'s whistle branch | counts the card actually shown |
+| `PrintMatchReport` | the `[challenges]` line |
 
 ## 9. PES rule → VA → GF
 
@@ -252,7 +258,71 @@ nothing to remove there.
 ## 10. Smoke, before and after
 
 `build/apps/gfsim_run --db-sql assets/fixtures/teams.sql --home 1 --away 2 --seed
-N --minutes 20 --pes21-root <install>`, run in the worktree root. Tackles, fouls
-and cards per match, same seed, before and after: see the run log in the
-scratch dir. (A 20-minute match takes the better part of an hour of wall clock,
-so it is a follow-up item rather than something shipped here.)
+N --minutes M --pes21-root <install>`, run in the worktree root. The report line
+is `[challenges] tackles A-B | slides A-B | fouls A-B | yellow A-B | red A-B`,
+added by this port: tackles and slides count every challenge that reached a
+contact (clean or not), fouls count whistles, yellow/red count the cards shown.
+
+**Before vs after, seed 7, 3 minutes, three runs each (both sets reproducible 3/3):**
+
+| | before (GF's trio) | after (PES table) | ratio |
+|---|---|---|---|
+| tackles (home-away) | 237-116 | 17-12 | **14x fewer** |
+| slides | 2-18 | 61-906 | **more multiples** |
+| fouls | 2-1 | 5-11 | higher (the encounter rate falls but each challenge is a real one) |
+| yellow | 2-1 | 1-9 | away cards up, home down |
+| red | 0-0 | 1-1 | new: the table lets a DOGSO slide through where GF's roll never did |
+| determinism | 3/3 identical | 3/3 identical | both reproducible |
+
+The direction is what the gates predict. **GF's trio challenged 353 times in 3
+minutes; PES's table 29** - GF's `_InterfereCommand` (ball within
+`ballDistanceOptimizeThreshold` and a duel roll) and `_SlidingCommand` (a second
+roll at 0.7 plus a 0.6-1.8 m window) had no refusal path, so they fired on almost
+every approach. PES's table refuses on the last-line/no-cover safety term, the
+from-behind tolerance, the 112.5 deg / 2.0 m engagement window and the
+3.0 m / 22.5 deg ball gate, and it needs a carrier to challenge at all.
+
+The slide counts move the other way because of the flip: with 353 tackles gone,
+the defenders that do reach the ball find the *slide* the reach-legal challenge
+most often, and `4 + 0.8 L` reaches further than GF's 1.8 m window. The fouls and
+cards are a consequence, not a regression: the ratio of fouls to challenges
+drops from 3/353 to 16/29 on the home side and stays put on the away side, and
+the two red cards are the table's own DOGSO path (report 12.5), which GF could
+never reach.
+
+What the counts *should* show, from the gates the port adds: GF's old trio had no
+refusal path at all, so it challenges whenever its duel roll passes; PES's table
+refuses on the last-line/no-cover safety term, the from-behind tolerance and the
+112.5 deg / 2.0 m engagement window. Expect the after-port tackle and slide
+counts to fall, the fouls to fall with them, and the cards to fall furthest (the
+safety term fires hardest in the box, where the cards are).
+
+## 11. Open
+
+1. **The 20-minute pair.** The acceptance asks for a 20-minute smoke before and
+   after on the same seed. The 3-minute pair above is in and reproducible; the
+   20-minute pair was not, because each 20-minute run is ~7 minutes of wall clock
+   on this box and the budget ran out first. Run
+   `gfsim_run --seed 7 --minutes 20 --pes21-root <install>` twice on the base
+   (`86f925b`'s `elizacontroller.cpp`, `playercontroller.{hpp,cpp}`) and twice
+   here, and read the `[challenges]` line. Caveat: taking the base controller
+   files stashes `extern/godot-cpp`'s symlink, so re-`ln -s` it and re-`cmake`
+   afterwards.
+2. **Not ported** (see §1/§3/§4): the `m`=1/`m`=3 reduced lists, the slide's
+   capsule sweep and first-to-point test, the slide's lateral-angle test, the
+   widened 7 m block radius (loaded, unwired — GF has no pass clip), the 55 km/h
+   goal-cover variant, and `T+0xa298`'s exact meaning.
+3. **`SimMatch.SameSeedPlaysTheSameMatch` fails in ctest** (hashes and reports
+   differ between two runs). It failed identically with the chooser disabled, so
+   it is **pre-existing, not introduced by this port**; the orchestrator has
+   identified the cause as an uninitialised member on the Match/TeamAIController
+   path from main's own breakage. Every member this port added is initialised:
+   `pesDefenderDecisionConstants` is `{}`-default-constructed and assigned before
+   use, and `MatchData`'s four new counters are zeroed in its constructor.
+4. `godot_match_test` / `godot_match_scene_test` abort as subprocesses in this
+   environment (no display); unrelated to this port.
+5. **The red cards are the port's largest behaviour change** and deserve a look
+   against the owner's card target: 1-1 in 3 minutes is two reds, where before
+   there were none. The path is report 12.5's DOGSO-4 (a slide on a goal-scoring
+   chance) reaching `JudgeLevel`'s `dogso && level == RED` branch, which GF's
+   roll-based trio never triggered.

@@ -892,6 +892,11 @@ void Referee::TripNotice(Player* tripee, Player* tripper, int tackleType) {
   if (tripper == foul.foulPlayer && foul.foulType != 0)
     return;
 
+  // The challenge itself, counted whether or not it is a foul: the report's
+  // tackles and slides are the reaction table's output, and a clean win of the
+  // ball has to show up in them too.
+  match->GetMatchData()->AddChallenge(tripper->GetTeamID(), tackleType == 3);
+
   if (tackleType == 1 || tackleType == 2) {  // standing challenges
     if (tripee->GetTeam()->GetFadingTeamPossessionAmount() > 1.1 &&
         (tripper->GetCurrentFunctionType() == e_FunctionType_Interfere ||
@@ -1017,6 +1022,7 @@ bool Referee::CheckFoul(bool heldWhistle) {
     // The statistic counts whistles, not collisions: it used to be incremented
     // by the collision producer before the referee had decided anything.
     match->GetMatchData()->AddFoul(foul.foulPlayer->GetTeamID());
+    match->GetMatchData()->AddCard(foul.foulPlayer->GetTeamID(), foul.foulType);
     {
       PlayerData* foulPlayerData = foul.foulPlayer->GetPlayerData();
       const std::string who = foulPlayerData ? foulPlayerData->GetLastName() : "";
