@@ -31,8 +31,65 @@
 #include "data/playerskills.hpp"
 #include "humanoid_utils.hpp"
 #include "onthepitch/gameplaytuning.hpp"
-#include "onthepitch/teamphilosophy.hpp"
 #include "utils/animationextensions/footballanimationextension.hpp"
+
+namespace {
+
+// GF stores PES's 0..99 abilities as 0..0.99.
+constexpr float kStatPerUnit = 100.0f;
+
+// The kick's stat (FUN_14071d770, accuracy 2): Heading for a header, else
+// Finishing for a shot, Low Pass for a ground pass, Lofted Pass for a high ball.
+const char* KickStat(e_FunctionType type, bool header) {
+  if (header) return "technical_header";
+  if (type == e_FunctionType_Shot) return "technical_shot";
+  if (type == e_FunctionType_HighPass) return "technical_highpass";
+  return "technical_shortpass";
+}
+
+// PES's execution error on one kick (docs/re/pes-re-kick-scatter.md): the
+// kick-type quality, the scatter records, then yaw / pitch / speed drawn from
+// slot 2 of the kicker's own generator. `shotPower` is the strike's 0..1
+// power (shots only); `cross` a high ball in from the flank.
+Vector3 ApplyPesKickError(Match* match, Player* player, const Vector3& launch,
+                          e_FunctionType type, bool header, bool cross, float shotPower) {
+  const pes::KickErrorConstants& k = match->GetPesKickErrorConstants();
+  const PlayerSkills::Mask skills = player->GetPlayerData()->GetSkills();
+  const bool shot = type == e_FunctionType_Shot;
+  float stat = player->GetStat(KickStat(type, header)) * kStatPerUnit;
+  // The +5 bonuses this engine can tell apart: Heading on a header shot (OBS
+  // 0x14071dc8b) and Pinpoint Crossing on a cross (kick byte 0x13, INF med).
+  if ((header && shot && PlayerSkills::Has(skills, PlayerSkills::Skill::Heading)) ||
+      (cross && PlayerSkills::Has(skills, PlayerSkills::Skill::PinpointCrossing)))
+    stat += k.skillBonus;
+  const float quality = pes::KickQuality(k, stat);
+
+  const float horizontal = launch.Get2D().GetLength();
+  const float pitch_deg = std::atan2(launch.coords[2], horizontal) * 180.0f / pi;
+  // ponytail: GF passes carry no PES kick byte; ground passes take the 1..3
+  // window (85 km/h), lofted ones the default (80 km/h).
+  const float launchPenalty =
+      shot ? pes::ShotLaunchPenalty(k, shotPower)
+           : pes::PassLaunchPenalty(k, quality, launch.GetLength(), pitch_deg,
+                                    type != e_FunctionType_HighPass);
+  Team* opponents = match->GetTeam(1 - player->GetTeam()->GetID());
+  Player* opp = AI_GetClosestPlayer(opponents, player->GetPosition());
+  const float pressure =
+      opp ? pes::PressureFactor(k, player->GetStat("physical_contact") * kStatPerUnit,
+                                opp->GetStat("physical_contact") * kStatPerUnit,
+                                opp->GetPosition().GetDistance(player->GetPosition()))
+          : 1.0f;
+  // Action bytes 9 (pass) and 10 (shoot) both halve a downward pitch error.
+  const pes::KickError e = pes::DrawKickError(
+      k, player->GetPesRandom(), pes::BuildScatter(k, quality, launchPenalty, pressure), true);
+  float v[3] = {launch.coords[0], launch.coords[1], launch.coords[2]};
+  pes::ApplyKickError(e, v);
+  return Vector3(v[0], v[1], v[2]);
+}
+
+bool IsHeader(const std::string& bodyPart) { return bodyPart.find("head") != std::string::npos; }
+
+}  // namespace
 
 const bool animSmoothing = true;
 const float cheatFactor = 0.5f;
@@ -944,58 +1001,15 @@ void Humanoid::Process() {
           if (flightTime < kMaxShotFlightTime_s)
             touchVec.coords[2] = GameplayTuning::ClampShotArrivalVelocityZ(
                 touchVec.coords[2], ballNow.coords[2], flightTime);
-
-          // Aim scatter. There was none: the strike went exactly where the
-          // strike animation pointed, so over twelve matches every single miss
-          // went wide and not one went over or short - 85% of shots on target,
-          // and 15.8 of 18.5 shots reaching the frame, where real football sees
-          // about a third on target. That is also why the goal rate would not
-          // move for a better keeper: the chances were never bad ones.
-          //
-          // The scatter is in metres at the goal line, not in the strike angle,
-          // because that is where the shooter is actually trying to put it. The
-          // existing projection is exactly invertible: a crossing at height h
-          // after t needs vz = (h - startZ)/t + g*t/2, which is the same line the
-          // comment above the band already derives.
-          //
-          // Provenance for the magnitudes: the owner's target is 60-70% of shots
-          // on target, against 85% measured with no error at all and roughly 35%
-          // in real football; the mean shot distance in those twelve matches was
-          // 20.4 m. GameplayTuning::kShotAimScatter_m is calibrated to land the
-          // measured rate in the middle of that band and is re-measured, not
-          // argued.
-          constexpr float kShotAimScatterRangeGrowth_m = 0.03f;
-          // The share of the scatter that goes vertically, and a downward bias on
-          // it. Measured at 10.25 goals a match: on-target 15.8 with a beaten-gap
-          // of 8.3 m of which 7.1 m was OVERhead - shots arriving above a 2.44 m
-          // crossbar. A symmetric vertical scatter takes half of them over it.
-          // The bias pulls them back down rather than removing their spread.
-          constexpr float kShotAimVerticalShare = 0.55f;
-          constexpr float kShotAimVerticalBias = -0.18f;
-          // A worse shooter misses by more: the best lands at the nominal
-          // spread, the worst at 1.6x it.
-          constexpr float kShotAimWorstSkillScale = 1.6f;
-          if (flightTime > 0.01f) {
-            const float shooting =
-                GameplayTuning::Clamp01(player->GetStat("technical_shot"));
-            const float rangeScale =
-                1.0f + kShotAimScatterRangeGrowth_m *
-                           std::max(0.0f, distanceToGoal - GameplayTuning::kShotAimScatterNearRange_m);
-            const float sigma_m = GameplayTuning::kShotAimScatter_m * rangeScale *
-                                  (kShotAimWorstSkillScale - (kShotAimWorstSkillScale - 1.0f) *
-                                                                 shooting);
-            const float aimedY = touchVec.coords[1] * flightTime + ballNow.coords[1];
-            const float aimedZ = ballNow.coords[2] + touchVec.coords[2] * flightTime -
-                                 0.5f * GameplayTuning::kGravity_mps2 * flightTime * flightTime;
-            const float targetY = aimedY + random(-1.0f, 1.0f) * sigma_m;
-            const float targetZ =
-                aimedZ + (kShotAimVerticalBias + random(-1.0f, 1.0f)) * sigma_m *
-                             kShotAimVerticalShare;
-            touchVec.coords[1] = (targetY - ballNow.coords[1]) / flightTime;
-            touchVec.coords[2] = (targetZ - ballNow.coords[2]) / flightTime +
-                                 0.5f * GameplayTuning::kGravity_mps2 * flightTime;
-          }
         }
+
+        // PES's execution error (docs/re/pes-re-kick-scatter.md 3): the strike
+        // leaves aimed at the band, then the kicker's own generator turns,
+        // lifts and slows it by his Finishing (Heading for a header).
+        touchVec = ApplyPesKickError(
+            match, CastPlayer(), touchVec, e_FunctionType_Shot,
+            IsHeader(currentAnim->anim->GetVariable("touch_bodypart")), false,
+            currentAnim->originatingCommand.touchInfo.desiredPower);
 
         match->GetBall()->Touch(touchVec);
         // A shot carries far less wild spin than the animation's raw rotation
@@ -3497,41 +3511,6 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
     resultTouch.coords[2] += clamp(missingPower, 0.0f, 10.0f) * 0.25f;
   }
 
-  // difficulty
-
-  float difficultyFactor = atof(currentAnim->anim->GetVariable("touch_difficultyfactor").c_str());
-
-  // apply stats. The stat weighs heavier than it used to: an elite passer keeps
-  // his passing in the low-to-mid 80s, a poor one well under 60. A keeper's
-  // lofted ball is a clearance: PES GK Clearing, not his lofted passing.
-  const bool keeper = CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK;
-  if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass)
-    difficultyFactor *= (1.0f - CastPlayer()->GetStat("technical_shortpass") * 0.80f);
-  if (functionType == e_FunctionType_HighPass)
-    difficultyFactor *=
-        (1.0f - CastPlayer()->GetStat(keeper ? "gk_clearing" : "technical_highpass") * 0.80f);
-  // Weighted Pass (ground), Pinpoint Crossing (a high ball in from the flank),
-  // Low Lofted Pass (any other lofted ball) take the error down further.
-  {
-    const Vector3 from = CastPlayer()->GetPosition();
-    const bool isCross = std::fabs(from.coords[1]) > 20.0f &&
-                         from.coords[0] * -team->GetSide() > pitchHalfW * 0.33f &&
-                         desiredTouch.coords[1] * from.coords[1] < 0.0f;
-    difficultyFactor *= PlayerSkills::GetPassDifficultyMultiplier(
-        CastPlayer()->GetPlayerData()->GetSkills(), functionType, isCross);
-  }
-
-  // The team's style shapes precision too: a drilled short-passing side knocks
-  // it around more cleanly, a long-ball side accepts more risk per pass.
-  if (functionType == e_FunctionType_ShortPass || functionType == e_FunctionType_LongPass ||
-      functionType == e_FunctionType_HighPass) {
-    difficultyFactor *= TeamPhilosophy::GetPassErrorMultiplier(
-        team->GetController()->GetPhilosophy(),
-        team->GetController()->GetLiveTacticReal("support_distance", 0.5f));
-  }
-  if (Verbose())
-    printf("short pass stat: %f\n", CastPlayer()->GetStat("technical_shortpass"));
-
   float distanceFactor = 0.0f;
   float heightFactor = 0.0f;
   float ballMovementFactor = 0.0f;
@@ -3540,9 +3519,8 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
 
   // difficult balls may go into a more random orientation, or, if the anim has a default outgoing
   // direction, it may converge towards that (since it is the easiest direction for that anim)
-  radian randomRotation = 0.0f;
-  randomRotation = distanceFactor * 0.15f + heightFactor * 0.15f + ballMovementFactor * 0.3f +
-                   difficultyFactor * 0.5f;
+  radian randomRotation =
+      distanceFactor * 0.15f + heightFactor * 0.15f + ballMovementFactor * 0.3f;
   if (Verbose())
     printf("randomrotation base: %f\n", randomRotation);
   Vector3 animBallDirection = GetVectorFromString(currentAnim->anim->GetVariable("balldirection"))
@@ -3572,10 +3550,17 @@ Vector3 Humanoid::GetBestPossibleTouch(const Vector3& desiredTouch, e_FunctionTy
   resultTouch = resultTouch * (1.0f - ballMovementFactor) +
                 match->GetBall()->GetMovement() * ballMovementFactor;
 
-  const bool groundPass = functionType == e_FunctionType_ShortPass ||
-                          functionType == e_FunctionType_LongPass;
-  resultTouch.coords[2] +=
-      GameplayTuning::GetPassErrorLoft(difficultyFactor, groundPass) * random(0.2f, 1.0f);
+  // PES's execution error (docs/re/pes-re-kick-scatter.md 3) replaces the
+  // stat x anim-difficulty rotation and loft this engine had: Low Pass or
+  // Lofted Pass (Heading off the head) through the scatter records.
+  const Vector3 from = CastPlayer()->GetPosition();
+  const bool isCross = functionType == e_FunctionType_HighPass &&
+                       std::fabs(from.coords[1]) > 20.0f &&
+                       from.coords[0] * -team->GetSide() > pitchHalfW * 0.33f &&
+                       desiredTouch.coords[1] * from.coords[1] < 0.0f;
+  resultTouch = ApplyPesKickError(match, CastPlayer(), resultTouch, functionType,
+                                  IsHeader(currentAnim->anim->GetVariable("touch_bodypart")),
+                                  isCross, 0.0f);
 
   // printf("difficulty: %f\n", difficultyFactor);
   if (Verbose())

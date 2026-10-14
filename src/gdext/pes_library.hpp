@@ -19,6 +19,7 @@
 #include "onthepitch/pessetpiecetaker.hpp"
 #include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstoppage.hpp"
+#include "onthepitch/peskickerror.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/editsave.hpp"
@@ -123,6 +124,10 @@ class PesLibrary : public RefCounted {
   const pes::StoppageConstants* stoppage_constants() const {
     return stoppageConstants_ ? &*stoppageConstants_ : nullptr;
   }
+  // PES 2021's kick execution error (docs/re/pes-re-kick-scatter.md).
+  const pes::KickErrorConstants* kick_error_constants() const {
+    return kickErrorConstants_ ? &*kickErrorConstants_ : nullptr;
+  }
 
  protected:
   static void _bind_methods();
@@ -149,6 +154,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::KeeperConstants> keeperConstants_;
   std::optional<pes::StaminaConstants> staminaConstants_;
   std::optional<pes::StoppageConstants> stoppageConstants_;
+  std::optional<pes::KickErrorConstants> kickErrorConstants_;
   std::optional<pes::SetPieceTakerConstants> setPieceTakerConstants_;
   std::optional<pes::SetPieceTeamConstants> setPieceTeamConstants_;
 };

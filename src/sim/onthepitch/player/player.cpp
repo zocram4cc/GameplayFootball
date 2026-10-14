@@ -430,6 +430,18 @@ float Player::GetClosestOpponentDistance() const {
   return opp->GetPosition().GetDistance(GetPosition());
 }
 
+pes::Random& Player::GetPesRandom() {
+  if (!pesRandom) {
+    pesRandom = std::make_unique<pes::Random>(match->GetPesRngConstants());
+    // ponytail: PES seeds slot 2 once per player from its own source
+    // (0x1406eb670, derivation unproven - rng 2.4); match seed + player id keeps
+    // one stream per player and SameSeedPlaysTheSameMatch.
+    constexpr int kPerPlayerSlot = 2;
+    pesRandom->SetSeed(kPerPlayerSlot, match->GetMatchSeed() + static_cast<unsigned int>(GetID()));
+  }
+  return *pesRandom;
+}
+
 void Player::Process() {
   // if (GetDebug()) SetGreenDebugPilon(GetPosition() + GetMovement());
 

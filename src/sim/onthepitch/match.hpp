@@ -24,6 +24,7 @@
 #include "pessetpieceteam.hpp"
 #include "officials.hpp"
 #include "pesstoppage.hpp"
+#include "peskickerror.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
 #include "referee.hpp"
@@ -188,6 +189,10 @@ public:
   // read from the install's exe, required like the clock's and the ball's.
   const pes::StaminaConstants& GetPesStaminaConstants() const { return *pesStaminaConstants; }
   // PES 2021's restart timings (docs/re/pes-re-foul-choreography.md 9).
+  // PES 2021's kick execution error (docs/re/pes-re-kick-scatter.md).
+  const pes::KickErrorConstants& GetPesKickErrorConstants() const {
+    return pesKickErrorConstants;
+  }
   const pes::StoppageConstants& GetPesStoppageConstants() const {
     return pesStoppageConstants;
   }
@@ -432,6 +437,7 @@ protected:
   pes::JudgeConstants pesJudgeConstants{};
   pes::KeeperConstants pesKeeperConstants{};
   pes::StoppageConstants pesStoppageConstants{};
+  pes::KickErrorConstants pesKickErrorConstants{};
   pes::CarrierConstants pesCarrierConstants{};
   pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::StrategyConstants pesStrategyConstants{};

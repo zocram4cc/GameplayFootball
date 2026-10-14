@@ -14,6 +14,7 @@
 #include "onthepitch/pessetpieceteam.hpp"
 #include "onthepitch/pesstamina.hpp"
 #include "onthepitch/pesstoppage.hpp"
+#include "onthepitch/peskickerror.hpp"
 #include "onthepitch/pesclock.hpp"
 #include "pes/exe.hpp"
 #include "pes/vfs.hpp"
@@ -101,6 +102,9 @@ int main(int argc, char** argv) {
   if (!staminaConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   auto stoppageConstants = pes::LoadStoppageConstants(*exe, &err);
   if (!stoppageConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's kick execution error (docs/re/pes-re-kick-scatter.md).
+  auto kickErrorConstants = pes::LoadKickErrorConstants(*exe, &err);
+  if (!kickErrorConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
   auto carrierConstants = pes::LoadCarrierConstants(*exe, &err);
   if (!carrierConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
@@ -142,6 +146,7 @@ int main(int argc, char** argv) {
   setup.pesSetPieceTeamConstants = &*setPieceTeamConstants;
   setup.pesStaminaConstants = &*staminaConstants;
   setup.pesStoppageConstants = &*stoppageConstants;
+  setup.pesKickErrorConstants = &*kickErrorConstants;
   setup.pesCarrierConstants = &*carrierConstants;
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;

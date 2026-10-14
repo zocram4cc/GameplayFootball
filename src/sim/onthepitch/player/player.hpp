@@ -9,6 +9,9 @@
 #include "humanoid/humanoid.hpp"
 #include "playerbase.hpp"
 #include "../../data/formstate.hpp"
+#include "../pesrandom.hpp"
+
+#include <memory>
 
 class Match;
 class Team;
@@ -91,6 +94,11 @@ public:
 
   float GetClosestOpponentDistance() const;
 
+  // PES's per-player math::Random (player+0x32d0; docs/re/pes-re-rng-slots.md
+  // 6, 9.2): every per-player draw (kick error, success rolls, picks) is its
+  // slot 2. Built on first use from the match's generator constants.
+  pes::Random& GetPesRandom();
+
   const TacticalPlayerSituation& GetTacticalSituation() { return tacticalSituation; }
 
   virtual void Process();
@@ -163,6 +171,8 @@ protected:
   int cards;  // 1 == 1 yellow; 2 == 2 yellow; 3 == 1 red; 4 == 1 yellow, 1 red
 
   unsigned long cardEffectiveTime_ms;
+
+  std::unique_ptr<pes::Random> pesRandom;
 };
 
 #endif

@@ -497,17 +497,6 @@ float GetBodyDirectionPassPenalty(Mask mask, float basePenalty) {
 }
 
 
-float GetPassDifficultyMultiplier(Mask mask, e_FunctionType passType, bool isCross) {
-  if (passType == e_FunctionType_ShortPass || passType == e_FunctionType_LongPass)
-    return Has(mask, Skill::WeightedPass) ? 0.7f : 1.0f;
-  if (passType == e_FunctionType_HighPass) {
-    if (isCross)
-      return Has(mask, Skill::PinpointCrossing) ? 0.6f : 1.0f;
-    return Has(mask, Skill::LowLoftedPass) ? 0.8f : 1.0f;
-  }
-  return 1.0f;
-}
-
 float GetPassCurve(Mask mask, float baseAmount) {
   return Has(mask, Skill::OutsideCurler) ? baseAmount * 1.6f : baseAmount;
 }

@@ -181,9 +181,6 @@ constexpr float kThroughBallBaseUpside = 0.3f;
 float GetBodyDirectionPassPenalty(Mask mask, float basePenalty);
 // Through Passing: the upside of the ball into a runner's path.
 float GetThroughBallBonus(Mask mask, float baseBonus);
-// Weighted Pass (ground), Pinpoint Crossing (a cross), Low Lofted Pass (other
-// lofted balls): multiplier on the pass difficulty factor.
-float GetPassDifficultyMultiplier(Mask mask, e_FunctionType passType, bool isCross);
 // Outside Curler: how much a pass bends.
 float GetPassCurve(Mask mask, float baseAmount);
 // Low Lofted Pass flattens and quickens the lofted ball; Acrobatic Clear

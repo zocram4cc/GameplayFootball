@@ -25,6 +25,7 @@ struct Rig;
 #include "pessetpieceteam.hpp"
 #include "pessetpieceteam.hpp"
 #include "pesstoppage.hpp"
+#include "peskickerror.hpp"
 #include "pesstamina.hpp"
 // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md).
 #include "pescarrier.hpp"
@@ -75,6 +76,8 @@ struct MatchSetup {
   // holds, the wipe, the fade-in and the tail. Read from the install's exe.
   // Required.
   const pes::StoppageConstants* pesStoppageConstants = nullptr;
+  // PES 2021's kick execution error (docs/re/pes-re-kick-scatter.md). Required.
+  const pes::KickErrorConstants* pesKickErrorConstants = nullptr;
   // PES 2021's set-piece taker wait (docs/re/pes-re-setpiece-choreography.md 9
   // item 2): how long the AI holds a restart before the kicker takes it, as a
   // frame-rate multiple read from the install's exe. Required like the rest:
