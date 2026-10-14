@@ -185,6 +185,11 @@ DefenderReaction ChooseReaction(const DefenderReactionInput& in) {
   if (in.tackle) return DefenderReaction::kTackle;
   if (in.slide) return DefenderReaction::kSlide;
   if (in.receive) return DefenderReaction::kReceive;
+  // Entries 4-7, the dodge predicates, between receive and block.
+  if (in.dodgeBall) return DefenderReaction::kDodgeBall;
+  if (in.dodgeNet) return DefenderReaction::kDodgeNet;
+  if (in.dodgePost) return DefenderReaction::kDodgePost;
+  if (in.dodgeHuman) return DefenderReaction::kDodgeHuman;
   if (in.block) return DefenderReaction::kBlock;
   if (in.jostleForPass) return DefenderReaction::kJostleForPass;
   return DefenderReaction::kNone;

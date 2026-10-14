@@ -104,6 +104,21 @@ Error PesLibrary::open(const String& root) {
     UtilityFunctions::push_error("PES21 body clips unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;
   }
+  if (exe) dodgeConstants_ = pes::LoadDodgeConstants(*exe, &err);
+  if (!dodgeConstants_) {
+    UtilityFunctions::push_error("PES21 dodge constants unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
+  if (exe) animetable_ = pes::LoadAnimetable(*exe, vfs_, &err);
+  if (!animetable_) {
+    UtilityFunctions::push_error("PES21 animetable unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
+  mbinfo_ = pes::LoadMbinfo(vfs_, &err);
+  if (!mbinfo_) {
+    UtilityFunctions::push_error("PES21 mbinfo unavailable: ", ToGd(err));
+    return ERR_PARSE_ERROR;
+  }
   if (exe) contactConstants_ = pes::LoadContactConstants(*exe, vfs_, &err);
   if (!contactConstants_) {
     UtilityFunctions::push_error("PES21 contact constants unavailable: ", ToGd(err));

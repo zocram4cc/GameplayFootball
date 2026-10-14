@@ -40,6 +40,7 @@ struct Rig;
 #include "pescontact.hpp"
 // PES body clips the simulation plays, converted from the install at match start.
 #include "pesclips.hpp"
+#include "pesdodge.hpp"
 #include "pesstrategy.hpp"
 #include "pesteamconcepts.hpp"
 #include "pessubs.hpp"
@@ -122,6 +123,15 @@ struct MatchSetup {
   // PES body clips (pesclips.hpp) the engine plays itself - the Dodge action's
   // clips. Required: they are PES's animation data, read from the install.
   const pes::PesClipSet* pesClips = nullptr;
+  // PES 2021's dodge selectors (pesdodge.hpp): the kind -> row table, the ball
+  // grid, the net rows and the ball-height bands, read from the install's exe.
+  // Required: the Dodge action's clip choice is these tables.
+  const pes::DodgeConstants* pesDodgeConstants = nullptr;
+  // PES 2021's situation x angle clip table and its per-motion metadata: what
+  // the dodge selectors read to pick a clip. Required with the dodge
+  // constants.
+  const pes::Animetable* pesAnimetable = nullptr;
+  const pes::Mbinfo* pesMbinfo = nullptr;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1):
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.

@@ -25,6 +25,7 @@
 #include "officials.hpp"
 #include "pesstoppage.hpp"
 #include "peskickerror.hpp"
+#include "pesdodge.hpp"
 #include "pesoffball.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
@@ -236,6 +237,13 @@ public:
   const pes::DefenderDecisionConstants& GetPesDefenderDecisionConstants() const {
     return pesDefenderDecisionConstants;
   }
+  // PES 2021's dodge selectors (docs/re/pes-re-contact-port.md stage B): the
+  // kind -> row table, the ball grid, the net rows and the ball-height bands.
+  const pes::DodgeConstants& GetPesDodgeConstants() const { return pesDodgeConstants; }
+  // PES 2021's situation x angle clip table and its per-motion metadata, what
+  // the dodge selectors read.
+  const pes::Animetable& GetPesAnimetable() const { return *pesAnimetable; }
+  const pes::Mbinfo& GetPesMbinfo() const { return *pesMbinfo; }
   // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
   const pes::offball::OffBallConstants& GetPesOffBallConstants() const {
     return pesOffBallConstants;
@@ -510,6 +518,10 @@ protected:
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   pes::SetPieceTeamConstants pesSetPieceTeamConstants{};
   pes::DefensiveShapeConstants pesDefensiveShapeConstants{};
+  // PES 2021's dodge selectors (docs/re/pes-re-contact-port.md stage B).
+  pes::DodgeConstants pesDodgeConstants{};
+  std::unique_ptr<pes::Animetable> pesAnimetable;
+  std::unique_ptr<pes::Mbinfo> pesMbinfo;
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 

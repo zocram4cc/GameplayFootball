@@ -19,6 +19,7 @@
 #include "onthepitch/pesjudge.hpp"
 #include "onthepitch/pescontact.hpp"
 #include "onthepitch/pesclips.hpp"
+#include "onthepitch/pesdodge.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/pesrandom.hpp"
 #include "onthepitch/pessetpiecetaker.hpp"
@@ -51,6 +52,9 @@ struct PesMatchConstants {
   std::optional<pes::DefenderDecisionConstants> defenderDecisions;
   std::optional<pes::ContactConstants> contact;
   std::optional<pes::PesClipSet> clips;
+  std::optional<pes::DodgeConstants> dodge;
+  std::optional<pes::Animetable> animetable;
+  std::optional<pes::Mbinfo> mbinfo;
   std::optional<pes::StrategyConstants> strategy;
   std::optional<pes::TeamConceptConstants> teamConcepts;
   std::optional<pes::SubstitutionConstants> substitutions;
@@ -85,6 +89,9 @@ inline const PesMatchConstants& SharedPesMatchConstants() {
     c.defenderDecisions = pes::LoadDefenderDecisionConstants(*exe, vfs, &err);
   if (mounted) c.contact = pes::LoadContactConstants(*exe, vfs, &err);
   if (mounted) c.clips = pes::LoadPesClips(*exe, vfs, &err);
+  if (mounted) c.dodge = pes::LoadDodgeConstants(*exe, &err);
+  if (mounted) c.animetable = pes::LoadAnimetable(*exe, vfs, &err);
+  if (mounted) c.mbinfo = pes::LoadMbinfo(vfs, &err);
     c.strategy = pes::LoadStrategyConstants(*exe, &err);
     c.substitutions = pes::LoadSubstitutionConstants(*exe, &err);
   if (mounted) c.teamConcepts = pes::LoadTeamConceptConstants(*exe, vfs, &err);
@@ -116,6 +123,9 @@ inline bool FillMissingPesConstants(MatchSetup* setup) {
   fill(setup->pesDefenderDecisionConstants, c.defenderDecisions);
   fill(setup->pesContactConstants, c.contact);
   fill(setup->pesClips, c.clips);
+  fill(setup->pesDodgeConstants, c.dodge);
+  fill(setup->pesAnimetable, c.animetable);
+  fill(setup->pesMbinfo, c.mbinfo);
   fill(setup->pesStrategyConstants, c.strategy);
   fill(setup->pesTeamConceptConstants, c.teamConcepts);
   fill(setup->pesSubstitutionConstants, c.substitutions);

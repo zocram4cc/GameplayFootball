@@ -126,6 +126,14 @@ int main(int argc, char** argv) {
   // PES body clips the engine plays (pesclips.hpp), converted at match start.
   auto pesClips = pes::LoadPesClips(*exe, vfs, &err);
   if (!pesClips) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's dodge selectors (docs/re/pes-re-contact-port.md stage B): the
+  // exe's tables, the animetable and the per-motion metadata.
+  auto dodgeConstants = pes::LoadDodgeConstants(*exe, &err);
+  if (!dodgeConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  auto animetable = pes::LoadAnimetable(*exe, vfs, &err);
+  if (!animetable) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  auto mbinfo = pes::LoadMbinfo(vfs, &err);
+  if (!mbinfo) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1).
   auto strategyConstants = pes::LoadStrategyConstants(*exe, &err);
   if (!strategyConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
@@ -166,6 +174,9 @@ int main(int argc, char** argv) {
   setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
   setup.pesContactConstants = &*contactConstants;
   setup.pesClips = &*pesClips;
+  setup.pesDodgeConstants = &*dodgeConstants;
+  setup.pesAnimetable = &*animetable;
+  setup.pesMbinfo = &*mbinfo;
   setup.pesStrategyConstants = &*strategyConstants;
   setup.pesTeamConceptConstants = &*teamConceptConstants;
   setup.pesSubstitutionConstants = &*substitutionConstants;

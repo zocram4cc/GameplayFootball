@@ -101,6 +101,36 @@ TEST(PesDefenderChooser, AReactionFromTheFrontOfTheTableHidesTheRest) {
   EXPECT_EQ(pes::ChooseReaction(only_slide), pes::DefenderReaction::kSlide);
 }
 
+TEST(PesDefenderChooser, TheDodgeEntriesSitBetweenReceiveAndBlock) {
+  // The table order: tackle, slide, receive, the four dodges (4-7), block.
+  pes::DefenderReactionInput dodge;
+  dodge.dodgeHuman = true;
+  EXPECT_EQ(pes::ChooseReaction(dodge), pes::DefenderReaction::kDodgeHuman);
+  dodge.dodgeBall = true;
+  EXPECT_EQ(pes::ChooseReaction(dodge), pes::DefenderReaction::kDodgeBall);
+  dodge.block = true;
+  EXPECT_EQ(pes::ChooseReaction(dodge), pes::DefenderReaction::kDodgeBall);
+  // A receive wins over any dodge.
+  dodge.receive = true;
+  EXPECT_EQ(pes::ChooseReaction(dodge), pes::DefenderReaction::kReceive);
+  // A tackle or slide wins over every dodge.
+  pes::DefenderReactionInput tackle;
+  tackle.tackle = true;
+  tackle.dodgeNet = true;
+  EXPECT_EQ(pes::ChooseReaction(tackle), pes::DefenderReaction::kTackle);
+  pes::DefenderReactionInput slide;
+  slide.slide = true;
+  slide.dodgePost = true;
+  EXPECT_EQ(pes::ChooseReaction(slide), pes::DefenderReaction::kSlide);
+  // The four dodge entries, each on its own.
+  pes::DefenderReactionInput net;
+  net.dodgeNet = true;
+  EXPECT_EQ(pes::ChooseReaction(net), pes::DefenderReaction::kDodgeNet);
+  pes::DefenderReactionInput post;
+  post.dodgePost = true;
+  EXPECT_EQ(pes::ChooseReaction(post), pes::DefenderReaction::kDodgePost);
+}
+
 TEST(PesDefenderTackle, BallGateClosesOutsideThreeMetres) {
   const pes::DefenderDecisionConstants c = Synthetic();
   EXPECT_TRUE(pes::StandingTackleBallGate(c, 3.0f, 10.0f));

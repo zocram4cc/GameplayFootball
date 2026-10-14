@@ -106,6 +106,11 @@ class PesLibrary : public RefCounted {
   }
   // PES 2021's contact reaction (docs/re/pes-re-contact.md).
   const pes::PesClipSet* pes_clips() const { return pesClips_ ? &*pesClips_ : nullptr; }
+  const pes::DodgeConstants* dodge_constants() const {
+    return dodgeConstants_ ? &*dodgeConstants_ : nullptr;
+  }
+  const pes::Animetable* animetable() const { return animetable_ ? &*animetable_ : nullptr; }
+  const pes::Mbinfo* mbinfo() const { return mbinfo_ ? &*mbinfo_ : nullptr; }
   const pes::ContactConstants* contact_constants() const {
     return contactConstants_ ? &*contactConstants_ : nullptr;
   }
@@ -167,6 +172,9 @@ class PesLibrary : public RefCounted {
   std::optional<pes::DefenderDecisionConstants> defenderDecisionConstants_;
   std::optional<pes::ContactConstants> contactConstants_;
   std::optional<pes::PesClipSet> pesClips_;
+  std::optional<pes::DodgeConstants> dodgeConstants_;
+  std::optional<pes::Animetable> animetable_;
+  std::optional<pes::Mbinfo> mbinfo_;
   std::optional<pes::StrategyConstants> strategyConstants_;
   std::optional<pes::TeamConceptConstants> teamConceptConstants_;
   std::optional<pes::SubstitutionConstants> substitutionConstants_;

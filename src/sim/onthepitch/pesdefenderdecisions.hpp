@@ -169,6 +169,10 @@ enum class DefenderReaction {
                    // entry 0 is the body-contact reaction, not the receive)
   kBlock,          // entry 8, pass/shot block (PES anime 0xe)
   kJostleForPass,  // entry 11, jostle for an incoming pass (PES anime 0x48)
+  kDodgeBall,      // entries 4-7, ball dodge (PES anime 0x15, kind 1)
+  kDodgeNet,       // entries 4-7, goal-net dodge (kind 2)
+  kDodgePost,      // entries 4-7, post dodge (kind 3)
+  kDodgeHuman,     // entries 4-7, human dodge (kind 5)
 };
 
 // Which predicate each predicate said yes to this frame.
@@ -178,6 +182,12 @@ struct DefenderReactionInput {
   bool slide = false;
   bool block = false;
   bool jostleForPass = false;
+  // The four dodge entries (4-7): each is its own predicate; the kind it
+  // carries picks the selector, so the chooser keeps them separate.
+  bool dodgeBall = false;
+  bool dodgeNet = false;
+  bool dodgePost = false;
+  bool dodgeHuman = false;
 };
 
 // The first predicate that returns true wins. PES: `cmd+0x880 = 1` on the

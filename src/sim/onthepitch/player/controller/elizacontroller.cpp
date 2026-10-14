@@ -30,6 +30,7 @@
 #include "data/playingstyles.hpp"
 #include "onthepitch/gameplaytuning.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
+#include "onthepitch/pesdodge.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/setpiecelaws.hpp"
@@ -902,11 +903,27 @@ void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
   in.slide = _SlideCandidate(k);
   in.block = _BlockCandidate(k);
   in.jostleForPass = _PassDuelCandidate(k);
-
+  // Each dodge predicate (entries 4-7) carries its own kind
+  // (FUN_14073bc70's cmd+0x1094). They are separate entries, so the chooser's
+  // winner names which kind the command runs; each predicate stores its own.
+  int dodgeKindBall = 0, dodgeKindNet = 0, dodgeKindPost = 0, dodgeKindHuman = 0;
+  in.dodgeBall = _DodgeBallCandidate(&dodgeKindBall);
+  in.dodgeNet = _DodgeNetCandidate(&dodgeKindNet);
+  in.dodgePost = _DodgePostCandidate(&dodgeKindPost);
+  in.dodgeHuman = _DodgeHumanCandidate(&dodgeKindHuman);
   // Where the ball will be when he gets there is where PES's solver puts the
   // contact point, and it is the direction any of these commands runs at.
   const Vector3 contact = _mentalImage->GetBallPrediction(200).Get2D();
-  switch (pes::ChooseReaction(in)) {
+  const pes::DefenderReaction chosen = pes::ChooseReaction(in);
+  int dodgeKind = 0;
+  switch (chosen) {
+    case pes::DefenderReaction::kDodgeBall: dodgeKind = dodgeKindBall; break;
+    case pes::DefenderReaction::kDodgeNet: dodgeKind = dodgeKindNet; break;
+    case pes::DefenderReaction::kDodgePost: dodgeKind = dodgeKindPost; break;
+    case pes::DefenderReaction::kDodgeHuman: dodgeKind = dodgeKindHuman; break;
+    default: break;
+  }
+  switch (chosen) {
     case pes::DefenderReaction::kReceive:
       _TrapCommand(commandQueue);
       break;
@@ -922,10 +939,16 @@ void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
       // Both play GF's interpose clips. PES issues a BLOCK anime (0xe) and a
       // JOSTLE anime (0x48) respectively; the player carries which one, so the
       // contact reaction runs PES's BLOCK / JOSTLE rules on him.
-      CastPlayer()->SetPesChallenge(pes::ChooseReaction(in) == pes::DefenderReaction::kBlock
+      CastPlayer()->SetPesChallenge(chosen == pes::DefenderReaction::kBlock
                                         ? pes::ContactAction::kBlock
                                         : pes::ContactAction::kJostle);
       _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
+      break;
+    case pes::DefenderReaction::kDodgeBall:
+    case pes::DefenderReaction::kDodgeNet:
+    case pes::DefenderReaction::kDodgePost:
+    case pes::DefenderReaction::kDodgeHuman:
+      _DodgeCommand(commandQueue, chosen, dodgeKind);
       break;
     case pes::DefenderReaction::kNone:
       break;
@@ -1084,6 +1107,142 @@ bool ElizaController::_PassDuelCandidate(const pes::DefenderDecisionConstants& k
   const float radius = pes::BlockRadius_m(k, pressing, false, false);
   const Vector3 ballPredict = _mentalImage->GetBallPrediction(200);
   return (ballPredict - CastPlayer()->GetPosition()).GetLength() <= radius;
+}
+
+// The ball-height band of the ball at a look-ahead time (FUN_1406e69f0), on
+// the ball's own predicted position.
+static int BallBandAt(Match* match, const pes::DodgeConstants& k, int ms) {
+  const float height = match->GetBall()->Predict(ms).coords[2];
+  return pes::BallBand(k, height, 1.0f);  // ponytail: body scale is GF's own
+}
+
+bool ElizaController::_DodgeBallCandidate(int* kind) {
+  // FUN_140a07bf0 (eligibility) + FUN_14073bd80 (the selector). The ball must
+  // be unowned or owned by an opponent, close, and the ball-dodge clip must
+  // solve the geometry. ponytail: the full eligibility predicate reads PES's
+  // play/receive action classes and the last-event frame, which GF does not
+  // carry; the selector's own clip fit is the ported gate.
+  if (match->GetBallRetainer() == CastPlayer()) return false;
+  const Vector3 ballNear = _mentalImage->GetBallPrediction(0);
+  const Vector3 ballFar = _mentalImage->GetBallPrediction(200);
+  if ((ballNear.Get2D() - CastPlayer()->GetPosition()).GetLength() > 3.0f) return false;
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  const int speedClass = pes::SpeedClass(CastPlayer()->GetMovement().GetLength() * 3.6f, 0.0f);
+  std::vector<int> forced = {k.ballGrid[0][0], k.ballGrid[0][1], k.ballGrid[0][2]};
+  const int bandNear = BallBandAt(match, k, 0);
+  const int bandFar = BallBandAt(match, k, 200);
+  (void)bandNear;
+  (void)bandFar;
+  auto clip = pes::BallSelector(match->GetPesAnimetable(), k, speedClass, forced);
+  if (!clip) return false;
+  *kind = static_cast<int>(pes::DodgeKind::kBall);
+  return true;
+}
+
+bool ElizaController::_DodgeNetCandidate(int* kind) {
+  // FUN_140a07e40 + FUN_14073c5d0. The goal net is only in play near it.
+  const Vector3 pos = CastPlayer()->GetPosition();
+  // ponytail: the net's geometry is GF's own pitch; the selector's clip fit is
+  // the ported gate. Near the own goal the net dodge is possible.
+  if (pos.coords[0] > -40.0f && pos.coords[0] < 40.0f) return false;  // not near a goal line
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
+  auto clip = pes::NetSelector(match->GetPesAnimetable(), k, speed > 22.0f);
+  if (!clip) return false;
+  *kind = static_cast<int>(pes::DodgeKind::kNet);
+  return true;
+}
+
+bool ElizaController::_DodgePostCandidate(int* kind) {
+  // FUN_140a08340 + FUN_14073c9c0. ponytail: FUN_1407368d0 (the post row/col)
+  // was not decoded - it reads the post's own geometry table. The post dodge
+  // is wired through the chooser but its selector is open; it does not fire
+  // until that table is decoded. See docs/re/pes-re-contact-port.md.
+  return false;
+}
+
+bool ElizaController::_DodgeHumanCandidate(int* kind) {
+  // FUN_140a08ea0 + FUN_14073c520. An opponent within 3 m whose dodge kind
+  // resolves to a clip. The mirror side is the per-player draw (stream 2).
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  Player* best = nullptr;
+  float bestDistSq = k.humanDistSq;
+  std::vector<Player*> opps;
+  match->GetTeam(1 - team->GetID())->GetActivePlayers(opps);
+  for (Player* opp : opps) {
+    const Vector3 delta = opp->GetPosition() - CastPlayer()->GetPosition();
+    const float d = delta.coords[0] * delta.coords[0] + delta.coords[1] * delta.coords[1];
+    if (d < bestDistSq) bestDistSq = d, best = opp;
+  }
+  if (!best) return false;
+  const int humanKind = _HumanDodgeKind(best);
+  if (humanKind < 0 || humanKind > 7) return false;
+  const int row = pes::KindRow(match->GetPesAnimetable(), match->GetPesMbinfo(), k, humanKind,
+                               CastPlayer()->GetMovement().GetLength(), false, 0.0f);
+  if (row < 0) return false;
+  *kind = humanKind;
+  return true;
+}
+
+int ElizaController::_HumanDodgeKind(Player* opp) {
+  // FUN_14073a3d0. ponytail: the full kind inference reads PES's contact
+  // record and the opponent's action classes, which GF does not carry per
+  // part. The ported part is the geometry: an opponent closing from behind
+  // (kinds 4/5) versus in front. The default kind is the jump family.
+  const Vector3 toOpp = opp->GetPosition() - CastPlayer()->GetPosition();
+  const float bearing = BearingDeg(CastPlayer()->GetPosition(), opp->GetPosition());
+  const float heading = HeadingDeg(CastPlayer()->GetDirectionVec());
+  const float off = std::fabs(AngleBetweenDeg(bearing, heading));
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  if (off > k.behindAngle_deg) return 4;  // approaching from behind: slide_rapid_up
+  if (off < k.bearingAngle_deg) return 1;  // in front: jump
+  return 3;                                 // beside: slide
+}
+
+void ElizaController::_DodgeCommand(PlayerCommandQueue& commandQueue,
+                                    pes::DefenderReaction reaction, int kind) {
+  // FUN_14073bc70 + FUN_1406ecbb0: the Special command names the clip by
+  // (family, motion). The player also carries the DODGE action so the contact
+  // reaction runs PES's dodge rules on him (V5, the committed flag).
+  CastPlayer()->SetPesChallenge(pes::ContactAction::kDodge);
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  const pes::Animetable& t = match->GetPesAnimetable();
+  int motionNo = -1;
+  switch (reaction) {
+    case pes::DefenderReaction::kDodgeBall: {
+      const int speedClass = pes::SpeedClass(CastPlayer()->GetMovement().GetLength() * 3.6f, 0.0f);
+      std::vector<int> forced = {k.ballGrid[0][0], k.ballGrid[0][1], k.ballGrid[0][2]};
+      auto clip = pes::BallSelector(t, k, speedClass, forced);
+      if (clip) motionNo = clip->motionNo;
+      break;
+    }
+    case pes::DefenderReaction::kDodgeNet: {
+      const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
+      auto clip = pes::NetSelector(t, k, speed > 22.0f);
+      if (clip) motionNo = clip->motionNo;
+      break;
+    }
+    case pes::DefenderReaction::kDodgeHuman: {
+      const int row = pes::KindRow(t, match->GetPesMbinfo(), k, kind,
+                                   CastPlayer()->GetMovement().GetLength(), false, 0.0f);
+      if (row >= 0 && t.Populated(row, pes::KindColumn(k, kind)))
+        motionNo = t.Cell(row, pes::KindColumn(k, kind)).motionNo;
+      break;
+    }
+    default:
+      break;
+  }
+  if (motionNo < 0) return;  // the selector found no clip: PES declines too
+  PlayerCommand command;
+  command.desiredFunctionType = e_FunctionType_Special;
+  command.useSpecialVar1 = true;
+  command.specialVar1 = static_cast<int>(pes::PesClipFamily::kDodge);
+  command.useSpecialVar2 = true;
+  command.specialVar2 = motionNo;
+  command.useDesiredMovement = true;
+  command.desiredDirection = CastPlayer()->GetDirectionVec();
+  command.desiredVelocityFloat = CastPlayer()->GetMovement().GetLength();
+  commandQueue.push_back(command);
 }
 
 Vector3 ElizaController::GetDirection() {

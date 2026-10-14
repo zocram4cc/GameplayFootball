@@ -161,6 +161,22 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
     throw std::runtime_error(
         "PES clips missing: read them from the install with pes::LoadPesClips into "
         "MatchSetup::pesClips");
+  // PES 2021's dodge selectors (docs/re/pes-re-contact-port.md stage B).
+  if (setup.pesDodgeConstants == nullptr)
+    throw std::runtime_error(
+        "PES dodge constants missing: read them from the install with "
+        "pes::LoadDodgeConstants into MatchSetup::pesDodgeConstants");
+  pesDodgeConstants = *setup.pesDodgeConstants;
+  if (setup.pesAnimetable == nullptr)
+    throw std::runtime_error(
+        "PES animetable missing: read it from the install with pes::LoadAnimetable into "
+        "MatchSetup::pesAnimetable");
+  if (setup.pesMbinfo == nullptr)
+    throw std::runtime_error(
+        "PES mbinfo missing: read it from the install with pes::LoadMbinfo into "
+        "MatchSetup::pesMbinfo");
+  pesAnimetable = std::make_unique<pes::Animetable>(*setup.pesAnimetable);
+  pesMbinfo = std::make_unique<pes::Mbinfo>(*setup.pesMbinfo);
   // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
   if (setup.pesOffBallConstants == nullptr)
     throw std::runtime_error(

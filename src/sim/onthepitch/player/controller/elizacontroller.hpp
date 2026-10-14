@@ -8,6 +8,7 @@
 
 #include "../../../gamedefines.hpp"
 #include "onthepitch/pesdefenderdecisions.hpp"
+#include "onthepitch/pesdodge.hpp"
 #include "playercontroller.hpp"
 
 struct Prerequisites;
@@ -67,6 +68,20 @@ protected:
   bool _SlideCandidate(const pes::DefenderDecisionConstants& k);
   bool _BlockCandidate(const pes::DefenderDecisionConstants& k);
   bool _PassDuelCandidate(const pes::DefenderDecisionConstants& k);
+  // The dodge predicates (entries 4-7). Each returns the dodge's clip fit:
+  // the predicate's geometry fires only when the Dodge action's own clip
+  // search finds a clip that solves it (FUN_1406b4580). `kind` is the
+  // entry's dodge kind (cmd+0x1094); on a fit it is filled in.
+  bool _DodgeBallCandidate(int* kind);
+  bool _DodgeNetCandidate(int* kind);
+  bool _DodgePostCandidate(int* kind);
+  bool _DodgeHumanCandidate(int* kind);
+  // The human dodge kind 0..7 (FUN_14073a3d0) for one opponent.
+  int _HumanDodgeKind(Player* opp);
+  // The dodge command: PES's Special path with the family and the selected
+  // motion number (FUN_14073bc70 + FUN_1406ecbb0), so the clip plays and the
+  // player carries the DODGE action for the contact reaction.
+  void _DodgeCommand(PlayerCommandQueue& commandQueue, pes::DefenderReaction reaction, int kind);
   // PES's aggression level A for the tackle's from-behind tolerance and touch
   // lead: the ENFORCER style and the team's defensive mode.
   int _TackleAggressionLevel();
