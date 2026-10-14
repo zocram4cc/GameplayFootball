@@ -35,6 +35,7 @@ address given.
 |`pes-re-camera-target.md`|Dynamic Wide camera internals: focus and its lead, target.y lift, the k spring, clamp blend, the zoom/height sliders, mode ids|
 |`pes-re-pitch-grass.md`|the pitch, line and turf shaders as port-ready formulas, verified numerically against the compiled DXBC|
 |`pes-re-stadium-camera.md`|nested stadium cpks, pitch dimensions, crowd, the in-play camera|
+|`pes-re-fieldinfo.md`|PES's pitch geometry record: all 18 FieldInfo floats read live, 15 named (net roof/floor back, centre circle), none readable from the exe (named constants); GF's goal depth is 0.68–0.79 m too deep|
 |`pes-re-effects-particles.md`|the Tpp Effect system: the runtime path, the particle update rule, weather, the post chain, and the negative result on in-play emitters|
 |`pes-re-audio.md`|the audio system (in-exe CRIWARE ADX2), the match sound inventory, the trigger-to-cue condition trees, and the crowd|
 |`pes-re-lighting.md`|light rigs, sun, sky, fog, weather, the post chain|

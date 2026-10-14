@@ -673,8 +673,509 @@ Exact per-slot rule (lateral spacing, the line-1 depth choice) remains open.
 | EV-DEF-0022 | Back-line slot targets sit on the line height | Confirmed (live 82 % < 5 cm) | `tgcheck.py` |
 | EV-DEF-0023 | DefenceMark constant table location and field names | High (alphabetical rule checked by meaning) | 0x1437f4808 registry id 0xbc, vtable 0x142b567d8 |
 
+## 15. Third pass (DefensiveCoverRE): the port's open items — cover drop, Pass Course Cut, Delay/Press, in-possession line
 
-> **Correction (TransitionsRE, live):** the "after a possession change" hold-back (5–8 s) and the >4 s cover-drop are **kick-off** timers: `FUN_140a74ec0` = in-play frames since the newest kick-off (`MI+0x119c`), reset at every restart, frozen while stopped. The possession timer `MI+0x11a0` is separate.
+Scratch: the DefensiveCoverRE scratch dir (`cv.c` = `FUN_1406315b0` + `FUN_14062f2b0` + `FUN_140631cb0` +
+`FUN_140631b60`; `dech.c`/`dech2.c`; `covercheck.py` live checks on the DefensiveShape2RE `live2.bin` sample,
+1975 in-play untorn records × 2 teams at 20 Hz; `p3.py` raw disassembler over the image).
+Notation as §14. `T+0x87d0+8·slot` = the slot's line index (0 back, 1 midfield, 2 forward);
+`T+0x875c` = back-line lower edge (the line height), `T+0x8760` (`S+0x7b28` phase 0) = midfield lower edge;
+`T+0x278+0x40·slot` = queued secondary state, `T+0x26c+0x40·slot` = stored point (x at +0x26c, z at +0x270),
+`T+0x27c+0x40·slot` = second stored point, `T+0x28c+0x40·slot` = third stored point;
+`T+0xb88c+2·slot` = press reason word array, `T+0xb834+4·slot` = mark-spot blend rate.
+Own frame: x toward the opponents' goal, origin centre spot, metres. `FUN_140a4c720(a, b, dir, k)` returns
+`(dir·k + a)·dir < dir·b`, i.e. "a is more than k m deeper (goal-side) than b" (OBS raw 0x140a4c720).
 
+### 15.1 The `f4f50` cover drop, raw-checked (OBS 0x1405f4f50; corrects §4/§14.1)
 
-> **Closed (CounterTrigger2RE):** the mark-spot blend is an exact lerp `spot = base + (candidate − base)·rate/100` (and the mark distance `1 + (r−1)·rate/100`), then clamped; nothing in `.text` reads `T+0xb834` in the blend. Live refit reproduces 0.14/0.39/0.58/0.67; the rate steers direction, not displacement.
+Runs from `FUN_1405fbcb0` only when `ctx+0x10c == 0` (phase 0) and the kick-off timer `FUN_140a74ec0 > 4·fps`
+(always except the first 4 s after a kick-off — TransitionsRE §1.2; §14.1's "> 4·fps frames since the last
+possession event" is corrected to **since the newest kick-off**).
+1. **Who pulls the line:** every own on-pitch slot with `T+0xa2a0 == COVER` (active), else
+   `T+0x278 == COVER` (queued, MARK→COVER promotion pending, §2). The deepest cover man wins, comparing
+   `max(own-frame body x, cover-point x)` per man — active: body `P+0x55c` vs point `T+0x26c`; queued: body vs
+   `T+0x27c` — initialised to −200 so at least one cover always registers (raw 0x1405f4fbb/0x1405f4fe0–0x1405f504e).
+2. **How far:** his line's lower edge `S+0x7b14+0x14·line` drops to `max(m, edge − k)`, floored at `−F[4]` (−47.06,
+   `−F[0]` negated via `T+0xc48+0x10`); `k = 6.0` (0x14259bdec) for the back line, and for the midfield line
+   `k = |midLower − T+0x875c| / coverLimitXRate` (bp+0xfc = 6, 0x1405f50e4–0x1405f5109; §14.1's
+   "`|midEdge − T+0x875c|`" is confirmed as `|S+0x7b28 − T+0x875c|`).
+   A back-line drop moves `S+0x7b10` (upper edge) and the midfield lower edge `S+0x7b28` down by the same amount
+   (raw 0x1405f5144–0x1405f5177). A forward-line cover (`line == 2`) is ignored (raw 0x1405f50ad).
+3. §14.1's "his line (`T+0x87d0+8·slot`, not 2)" is confirmed: `T+0x87d0+8·slot` is the man's line index and the
+   `cmp ecx, 2 / je` skips line-2 men.
+
+**Live (OBS, `covercheck.py`, 1285 team-snapshots with a COVER state or queued COVER):** ≤ 2 COVER men per
+snapshot (2 in 106 snapshots, never 3); cover men sit on line 0 (1406) or line 1 (881), never line 2 (1 case);
+their points sit a median 6.4 m goal-side of the MATCH_UP man and 2.8 m upfield of the line height — matching
+§14.4's 7.4 m / 2.9 m on the earlier sample.
+
+### 15.2 How a defender becomes a cover — `FUN_1406315b0` (OBS raw + decompile `cv.c`)
+
+Cadence: every 4th frame (q = 1) for the CPU team when in play, after the GOAL_COVER pass (§1); skipped when the
+situation is `{3, ·, …, [7] = 4}` and `FUN_140a72e70(FieldInfo, ball)` bit 10 is set (own box at a GK restart),
+and for a human team (only the clear + mark-promote path runs). Result cached in `brain+0x4208+0x14..0x4b`.
+1. **Clear:** every `T+0xa2a0 == COVER` reset via `FUN_140a40820`, every queued `T+0x278 == COVER` cleared via
+   `FUN_140a42b80(T, slot, 0)` + `FUN_140a42b50` (raw 0x1406315b0–0x14063160e).
+2. **Who is covered (`iVar7`):** the own slot in `MATCH_UP` (0x3a) other than `T+0x78` (the team's designated
+   slot); if none, `iVar6` = the highest on-pitch slot ≠ `T+0x78` scanned upward (raw 0x14063168e–0x1406316f0) —
+   i.e. normally the MATCH_UP presser (§14.4). None on pitch (0xff) → the pass writes the empty record and returns.
+3. **Inputs for the chain:** `FUN_140630150(ctx, 0xbb-table, side, idx)` byte (§15.3), the seed point
+   `FUN_14062ef30` (§15.4), the cover line `FUN_14062d350(ctx, &rec, prevLine)` (§15.5), gate `FUN_140632210`
+   (§15.6). When the gate passes: `FUN_140631de0` writes the two cover points (own frame), `FUN_14062c5a0` scores
+   candidates for each in turn, `FUN_14062f8c0` returns the eligible-side bitmask (§15.7),
+   `FUN_140631cb0` fills the two cover slots (§15.8) and `FUN_140631b60` refreshes the per-slot hysteresis
+   counters (§15.9). The pass then writes `brain+0x4208+0x14..0x4b` (slots, points, line, flags; raw
+   0x140631a9f–0x140631b26).
+4. **State write (raw 0x14063191f–0x140631a5e):** for each of the ≤ 2 cover men, if his state is not already
+   COVER/MARK (`(s − 0x32) & ~4 != 0` for a valid slot) the gate `FUN_140a40000(cur, COVER, idx, T)` decides;
+   a marker (`T+0xa2a0 == MARK`) is **not** switched — `FUN_140a42b80` queues `T+0x278 = COVER` and
+   `FUN_140a42b50` stores the point (§2) — otherwise `FUN_140a42940(COVER)` + `FUN_140a42a40` point +
+   `FUN_140a42a30` byte. So a cover man is MARK-state 64 % of the live snapshots (1453 queued vs 835 active).
+
+### 15.3 Cover-pass input `FUN_140630150` (OBS decompile `dech.c`)
+
+`FUN_140630150(ctx, 0xbb-table-ptr, side, idx, flag)` returns whether the covered man admits a cover.
+Returns 0 when: the man is in player-state class 0x14 at `+1` (INF(low): a kick/trap window); or none of four
+`FUN_140a53df0` lane tests passes (§15.3.1). Otherwise 1. The raw tail (0x140630629–0x140630713) is four calls
+`FUN_140a53df0(point, ball, heading, halfwidth, range, 0)` with the cover point, its rotated heading, and the
+0xbb-table lanes `+0x40/+0x44/+0x48/+0x50` widened by the normalised ball-side angle `(a − 20)/25` (20 =
+0x14259be1c, 25 = 0x14259be20): the covered man must be able to receive a lane at his cover point.
+
+Head of the function (OBS): `r = clamp01((|ball − MA.line(+0x40+0x14·side)| − 0) / 1)` … reduced form:
+`f = 1 − clamp01((d − 0)/12)` (12 = 0x14259be04) when the ball is goal-side of the offside-report back value,
+scaled by 0xbb-table `+0x40`; the bearing ball→(cover point blended with the carrier prediction at
+`100/(fps·12.9)`, capped by carrier distance; 12.9 = 0x14259be08, 100 = 0x14253ee30, 3.5 = 0x14259bde8) feeds the
+lane. The carrier (else holder, else the opponents' `T+0x78`) must be an opponent; his predicted point uses
+`0.15·fps + 0.5` frames (0.15 = 0x1425c48a0). INF(med): a "can this man be covered" test — cover is only assigned
+when the covered man is near our back value and reachable by a lane.
+
+#### 15.3.1 `FUN_140a53df0` (OBS raw 0x140a53df0–0x140a53e96)
+`FUN_140a53df0(ctx, point, ball, heading, halfwidth, range, 0)`: true iff the point is inside the corridor —
+`|point − ball| ≤ range`, `≥ halfwidth`, and the bearing ball→point is within `halfwidth·0.5` degrees of the
+lane heading (0.5 = 0x142565600; `FUN_14043a0a0` = wrapped difference, `FUN_140439ef0` = 0 when the points
+coincide). INF(high): corridor test, exact comparisons OBS.
+
+### 15.4 Seed point `FUN_14062ef30` (OBS decompile, `l1a.c`)
+
+`FUN_14062ef30(out, ctx, rec)`: `c` = carrier predicted `0.8·fps + 0.5` frames ahead (0.8 = 0x142572348;
+POSITION `+0x55c` + VELOCITY `+0x574` × frames), else the MA ball. `g` = own-goal point `FUN_140a62780`.
+1. The candidate's predicted point `p = FUN_140a75740(candObj, frames = round(0.8·fps), pos, speed, 1)` (same
+   0.8 s look-ahead family), pulled back to his body when the prediction is upfield of it
+   (`FUN_140a4c720(pos, p, dir, 0)`).
+2. The seed is the deeper (goal-side) of `c` and `p` (branch on `rec+0x36` only swaps the comparison order;
+   both arms yield the max-depth point — OBS).
+3. Final blend toward the carrier: `out += (c − out)·f`, `f = 1 (|c − g| ≤ 20 m), (30 − |c−g|)/10, 0 (≥ 30 m)`
+   (20 = 0x14259be1c, 30 = 0x142591140, −10 = 0x14259be84). → **When the carrier is within 20 m of our goal the
+   seed is the carrier; beyond 30 m it is the cover candidate's own predicted point; ramping between.**
+   Live: cover points sit a median 11.2 m goal-side of the ball (§15.1), consistent with the deep-of-carrier
+   seed blended back toward the ball by the chain below.
+
+### 15.5 Cover line `FUN_14062d350` (OBS decompile, `l1a.c`)
+
+`FUN_14062d350(ctx, rec, prevLine)`: which line the cover protects — 0 back, 1 midfield, 2 forward-side.
+1. Head-count guard: counts own on-pitch men with position category `T+0x4c00 ≠ 0`; returns the covered slot's
+   own line when that count ≤ `FUN_14063fa70(side, MI, S, 0)` (back-line size) or ≤ line-0 + line-1 sizes
+   (INF(med): no spare man → cover your own line).
+2. Ball depth vs the offside report (`MA+0x38/0x3c/0x40+0x14·side` = front/mid/back): ball ahead of front → 0;
+   between mid and front → 1; behind mid → 2, or 3 when also behind back. A back-line cover (`uVar16 == 0`)
+   becomes 1 when the ball is ahead of mid; then MA's per-player lists (`MA+0x229b4/0x22b9c` by `dir`) are
+   scanned — any line-1 midfielder goal-side of the ball (beyond it by > 2 m, 2.0 = 0x142565604) sends the
+   cover back to 0. Tail: when the back report value is within 5 m of the ball (0x14259222c) a line-2 cover
+   becomes 1, provided the seed point is within 3 m of its band (3.0 = 0x14258c264).
+3. `param_3 != 0` zeroes the 2.0 m margin (hysteresis: `brain+0x4208+0x24` previous line).
+
+### 15.6 Gate `FUN_140632210` (OBS decompile, `l1a.c`)
+
+`FUN_140632210(ctx, rec, flag)`: true iff the ball is in our half (`dir·MA.x ≤ 0`) or not beyond the lane start
+`FUN_14062acf0(ctx, side) − (flag ? 1 : 0)` (returns 1 = 0x14256ae1c), and the seed point is within 25 m
+(0x14259be20) of the candidate's body. `FUN_14062acf0` = FieldInfo length `F[0]` (52.56), +30/+20 at attack
+level 4/3, −30 at level 1, −40 at level 0 (0x142591140/0x14259be1c/0x14259be88/0x1425c6604); with no press timer
+and > 7 s (7·fps, 0x14062ad53) since the newest kick-off it is `FUN_14062ade0` (not reduced).
+
+### 15.7 Cover points `FUN_140631de0` (OBS decompile, `l1a.c`)
+
+`FUN_140631de0(ctx, rec)` writes the two points `rec+0x1c/0x24` (own frame) from the seed. Per side in turn:
+carrier term: `speedFactor = clamp01((|v| − 100/(fps·32.7)) / (100/(fps·22.5) − 100/(fps·32.7)))`
+(32.7 = 0x1425c677c, 22.5 = 0x14259d618) times `sin(90°·clamp01((|v|…)))` (90 = 0x14259be5c, `FUN_140a92c80`),
+times 0xbb-table `+0x1c`, times the carrier's side sign — a lateral push that grows with carrier speed
+(INF(med): stand goal-side of a fast carrier). The point is clamped: x ≥ `FUN_14062d790` floor (§15.7.1),
+z within `F[1] − 2`, and (cover line 2) x ≤ back upper edge `T+0x8758` + 0xbb `+0x80`; same-line pairs are
+separated by −5 m on the second point (−5 = 0x14259be7c) and a same-line second point is floored at
+`seed.x − 3` (3 = 0x14258c264, capped by `(T+0x8758 − T+0x8770)·65/100 + T+0x8770`).
+
+#### 15.7.1 Floor `FUN_14062d790` (OBS decompile `dech.c`)
+`FUN_14062d790(ctx, rec)`: line 0 (cover line index 0): the line height `T+0x875c`, raised by up to 6 m toward
+`ball.x − 8` when the ball is upfield of it (8 = 0x14259bdf4, 6 = 0x14259bdec; needs `FUN_14062fe40` false),
++ `FUN_14062fe40`-true bonus −9.0 (−9.0 = 0x1425a9680; OBS sign: the decompile adds −9.0, i.e. the floor
+RISES 9 m toward the ball — INF(med): no deep cover point against a high backward ball). Line 1:
+`lerp(T+0x8888, T+0x888c, bb+0x84)` floored at `+3.5 m` above the first (3.5 = 0x14259bde8). Then clamped to
+`[coverPoint.x − 3, F_half − 1]` (3 = 0x14258c264, FieldInfo `+0x10`, 1 = 0x14256ae1c).
+`FUN_14062fe40(ctx, line)`: true iff line ≠ 0 — else (line 0) the ball height ≥ 1.5 m (BallInfo and its
+`FUN_140a57800` prediction; 1.5 = 0x14259bddc, 2.0 = 0x142565604) and the ball's heading is within 75° of
+straight back (75 = 0x1425aa1bc). INF(med): no deep cover point against a high ball played backwards.
+
+### 15.8 Candidate scoring `FUN_14062c5a0` (OBS raw 0x14062c5a0–0x14062c629)
+
+Per cover point in turn, gated on `rec+0x36 ≠ 0` and the covered slot's line/role bytes (`T+0x87d4`,
+`T+0xc48+(line+0x628)·0x14`). Only when the ball is high (`MA.z ≥ 14 m`, ramp 14→17, 14 = 0x1425c48b8,
+17 = 0x14259d614, 3 = 0x14258c264) does the scorer run; the surviving point is
+`FUN_140a8f7c0(point, heading(carrier→point), dist)` — the carrier-to-point ray at the enrolment distance
+`max(dist, T+0x88 − k·T+0x14)` (see below) — floored at `FUN_14062d790`:
+- enrolment radius: ≤ 7 m (0x14259bdf0) full weight 1, ramp to 0 at 15 m ((d − 15)·−0.125; −0.125 =
+  0x1425cca54, 15 = 0x14259be0c);
+- lane alignment: `|Δ(ref 270°, carrier-ray)|` ramp 90→110° (90 = 0x14259be5c, 110 = 0x14259d628,
+  −20 = 0x1425a946c), and carrier-ray vs point-ray `|Δ|` ramp 0→90° (−90 = 0x1425c5958), multiplied;
+- score < 0.5 is rescaled `(s − 0.5)·−2` (−2 = 0x14259a768) and penalised by the ball-depth ramp
+  `clamp01((dir·ball − (7 − F[6])) / span)` (INF(med) on the exact span; endpoints use 7 = 0x14259bdf0);
+  score ≥ 0.5 is doubled past the midpoint (`2·(s − 0.5)`, INF(med): prefer aligned men).
+  The ray is rotated by `T+0x2c/0x30` (ball-side sign) through `FUN_14043a0a0` and advanced by
+  `FUN_140a92950(angle, base, step·w0·w1·w2)` (200°/340° bases = 0x1425a2668/0x1425aa1c4 by side sign);
+  enrolment `≥ T+0x88` (else `dist − k·T+0x14`, `k` = the doubled/scaled score), floored at `FUN_14062d790`.
+
+When the ball is below 14 m the points from `FUN_140631de0` stand unchanged (the common case live).
+
+### 15.9 Eligibility bitmask `FUN_14062f8c0` (OBS raw 0x14062f8c0–0x14062fdfc)
+
+`FUN_14062f8c0(ctx, rec, flags)` returns a 2-bit mask (bit i = point i may take a cover man), initial 3.
+Clears bit i when the point's ball-side angle `|bearing − 90°|` (wrapped to ±180°) exceeds `55° − (flags&1 ?
+5 : 0)` with the point goal-side (`x < 0`), and symmetrically `55° − (flags&2 ? 5 : 0)` for `x ≥ 0`
+(55 = 0x14259be38, 5 = 0x14259222c; `FUN_140439e50` = wrapped bearing, `FUN_140a4db20(dir)` = straight-back
+bearing). For a back-line cover (`param_2[4] == 0`, `rec+0x36 == 0`) it returns immediately (no further test).
+Otherwise, per point: the own player nearest the point (within 4 + 1.2 m, i.e. `|p − body| ≤ 5.2`; 4 =
+0x1425656c0, 1.2 = 0x14259d5d4, +1.2/0 when `flags&{1,2}`) whose bearing from the ball is within 75° − (5/0) of
+the ball→point bearing (75 = 0x1425aa1bc) keeps the bit; else the fallback distance test
+(`|point − body| ≤ 2.7 + (1.2/0)`, 2.7 = 0x1425cb2e0) against the second point clears it.
+INF(med): the cover man must start near his point and on the ball's side of it.
+
+### 15.10 Slot fill `FUN_140631cb0` + fallback `FUN_14062d9a0` (OBS raw)
+
+`FUN_140631cb0(out, ctx, rec)`: per cover point in turn (ball-side order: `dir·MA.z < 0` decides which of
+[0]/[1] goes first, raw 0x140631cec–0x140631d33): if the mask bit (§15.9) for the point is set, the slot is
+`FUN_14062e240(out, ctx, rec, point)` (§15.10.1); any filled slot holding a value > 10 (0xb, raw 0x140631d90)
+is replaced by `FUN_14062d9a0(out, ctx, rec)` (§15.10.2).
+
+#### 15.10.1 `FUN_14062e240` (OBS raw 0x14062e240–0x14062ed3e)
+Nearest enrolled man to the cover point, skipping: off-pitch men, the MATCH_UP man, men in state 0x24,
+plan `(0xf)` men (`FUN_140a63950`), men failing `FUN_140630ba0`/`FUN_140630d50`/`FUN_140630780`,
+twice-covered men (`T+0xb88c` chain), and the no-progress guard `FUN_140630040` (§15.10.3). Beaten by a
+nearer man only when the nearer man is enrolled and the farther is not (OBS structure on the
+caller-sided compare). Constants: enrolment radius 100 m (0x14253ee30) scaled by the
+covered-slot line (`×2` for line 1, raw 0x14062e929); angle windows 90° (0x14259be5c) and 180° (0x142598580);
+distance tests 4 m (0x1425656c0) and 5 m (0x14259222c); the 7 m / −5 m pair (0x14259bdf0/0x14259be7c) and the
+÷6 time base (0x14259bdec) in the arrival comparison; 360° wrap (0x14259858c/0x142598598); the 25 m
+(0x14259be20) and 15 m (0x14259be0c) gates in the fallback compare.
+
+#### 15.10.2 `FUN_14062d9a0` (OBS raw 0x14062d9a0–0x14062e23e)
+Fallback picker scoring every own on-pitch man: skip off-pitch, the MATCH_UP man, `T+0xb88c`-chained men,
+plan-0xf men, `FUN_140630880/0xd50/0xba0/0x040/0xe60/0x780` vetoes (§15.10.3); a man in COVER already scores
+7.0 flat (0x14259bdf0) vs the modelled `min(dist, coverLimit)` (INF(med): stick with the current cover);
+nearer-to-point wins subject to the 100 m (0x14253ee30) cap, the 0xbb `+0x28` line-match bonus, and the
++5/+15/+8/−0.7/−1.5/+0.6944 per-frame arrival and facing adjustments (0x14259222c/0x14259be0c/
+0x14259bdf4/0x1425a967c/0x14259d650/0x14259bdd0; facing window 130° = 0x1425a9bf0; arrive radius
+1.44 m = 0x1425cdea8; score floor 2.5 = 0x14259bde4, scale 3.0 = 0x14258c264, caps ±1.0 =
+0x142588218/0x14256ae1c). Returns 0xff when nobody is enrolled.
+
+#### 15.10.3 Veto chain (OBS decompiles `dech2.c`)
+- `FUN_1406309a0(ctx, T, man, line)`: 0 when the man's state class byte `+1 == 0x14` (kick/trap window) or the
+  ball is upfield and the man is deeper than `MA.line+0x40 + 7` without `FUN_140a4fea0(·, 70°, dist+5)` cover
+  (70 = 0x14259be4c, 7 = 0x14259bdf0, 12 = 0x14259be04, 5 = 0x14259222c, 4 = 0x1425656c0).
+- `FUN_140630d50(ctx, rec, man, flag)`: 0 unless the man is deeper than `F[4] − 10 − (COVER-man ? 0 : 2)`
+  (10 = 0x142588210, 2 = 0x142565604) and, by flag, on the right side of the seed, sharing the covered slot's
+  line (0 = 0x14259d5d4 bonus when already covering this point).
+- `FUN_140630ba0(ctx, T, man, flag, point)`: 0 unless the man is on line 0, the box count `T+0x8769 ≤ 3,`
+  the ball is upfield of `5 − F[6]` or wide of `F[5]`, and the point test passes (5 = 0x14259222c, −10 =
+  0x14259be84).
+- `FUN_140630780(pt, man, k, line, rec)`: 0 unless the seed is upfield (`dir·x > 0`), the man is within
+  `F[5] + (already-covering ? 1.2 : 0)` of it (1.2 = 0x14259d5d4), on line 0 and not `FUN_1406405c0`-vetoed.
+- `FUN_140630040(ctx, T, man, line)`: 0 when `FUN_14062fe40` true and the man is not 7 m upfield of the ball
+  (7.0 = −(0x14259be80); `FUN_140a4c720(ball, body, dir, −7)` i.e. body within 7 m goal-side of the ball),
+  else `FUN_14062ff60` / `FUN_140a4f1e0(point, dir) == 2` (INF(low): arrival feasibility).
+- `FUN_140630e60(ctx, pt, k, man, rec)`: 0 unless the man is on line 0, farther than 12/10 m from the seed
+  (12 = 0x14259be04, 6 = 0x14259bdec, 10 = 0x142588210, 8 = 0x14259bdf4), deeper than the offside-report line +
+  6, and within 65° of the slot-target bearing (65 = 0x14259be48).
+- `FUN_140630880(ctx, T, man, flag)`: 0 unless within `F[5] + 6` of the seed laterally (6 = 0x14259bdec),
+  on the covered slot's line, and on the right side of his body (flag).
+
+### 15.11 Hysteresis `FUN_140631b60` (OBS decompile, `cv.c`)
+
+Per cover point in turn: when the covered slot changes, the counter `out+0xc/0x10` is re-seeded to
+`(w/−40)·bb+0x8c` frames with `w = clamp((b − 10)/(50 − 10))`, `b = FUN_140a62140(ctx, newIdx, oldIdx)` (the
+same 10/50/−40 organiser rule as the mark hand-off, §3.3; 0xba-table `+0x8c` is the frame scale); while the
+slot is unchanged the counter ticks down, and a changed slot with a live counter keeps the old cover
+(only `out+0x8` = covered slot is refreshed, raw `cv.c` `FUN_140631b60`). INF(high): the cover assignment is
+sticky per organiser rating exactly like marking.
+
+### 15.12 Live checks (OBS, `covercheck.py` on `live2.bin`)
+
+- States: ≤ 2 COVER per team-snapshot (2 in 106, never 3); 835 active COVER + 1453 queued COVER over 2288
+  cover-man snapshots (64 % queued on markers, §2's mechanism); queued points read from `T+0x27c`.
+- Points: cover point a median 6.4 m goal-side of the MATCH_UP man (p10 −12.2, p90 −2.9), 11.2 m goal-side of
+  the ball, 2.8 m upfield of the line height (p10 −2.6, p90 +8.5); `|point − MATCH_UP|` median 13.2 m
+  (p10 5.8, p90 24.3) — the §14.4 "7.4 m/10 m/11 m" triple re-measures as 6.4 m goal-side / 13.2 m absolute /
+  11.2 m behind the ball on this sample.
+- `lineB − B` (the final-phase lower edge of the cover man's line vs the final line height) is ≥ 10 m in
+  every snapshot (median 21.7 m): the final bands are NOT the phase-0 bands the drop edits, so the drop
+  amount is not directly readable from `T` — the §4 "median 2.9 m deeper" line sits in the phase-0 band,
+  confirmed by `e2e.py`'s 70 % < 5 cm fit of f4f50+efbd0 given the observed bands (§14.1).
+
+### 15.13 Pass Course Cut — `FUN_140635ab0` (OBS raw 0x140635ab0–0x1406369d4)
+
+Runs every frame for the CPU team (§1). Head: per own slot `s`, `out0[s]` = his mark target `T+0x558`
+(`FUN_140a51d50`-mirrored index by side), `out1[s]` = `T+0x620` (the slot's PCC lane id, 0xff cleared); any
+slot in PCC (0x3d) is reset via `FUN_140a40820` and his lane id cleared via `FUN_140a42560` (raw
+0x140635c36–0x140635cc0). Gates (each `jne` → return, raw 0x140635cc6–0x140635dbc): human team out; two
+situation words clear (`MA+0x251f8/9`); team level flag `FUN_140a604d0(level, 7)`; toggle 0x11
+(`FUN_140ca1a50`); in play (`MI+0x116c == 1`); `T+0xb6e0 == 0` (INF(low): no team concept running).
+Lanes: `FUN_140634ac0` opens one lane per opponent receiver (§15.13.1); `FUN_14062acf0` start line + 5
+(0x14259222c, raw 0x140635e1d–0x140635e40); `FUN_1406350c0` keeps lanes whose radius test passes
+(§15.13.2). Radii: 7 m default, 10 m with option byte 4 (Defensive Style) set… in OBS terms —
+`r0 = 7.0` (0x14259bdf0), `r1 = 10.0` (0x142588210); `T+0xb8a2/b8a3` set (INF: attack-level bytes) force
+both to 5.0 (0x14259222c); plan `(0xd)` forces all three radii to 30.0 (0x142591140, raw
+0x140635f27–0x140635f41). The presser `FUN_140a62960` and the mark/order mirrors
+(`FUN_140a51d50`, `T+0xb8d0` special target, `T+0xa53c` press timer) feed the lane choice.
+Per lane in turn, the defender is `FUN_140a51d50`-mirrored and must pass: in-play, not the `T+0xb8d0`
+special target unless already enrolled, `FUN_140a63950` plan `(0xe)` clear, and (when the lane's receiver
+is the special target and the concept flag `T+0xb709`… OBS: `byte ptr [rsp+0x78]`) the 25 m² (0x14259be20)
+arrival test; the enrolment point is the ball↔lane crossing clamped to the lane (§15.13.3) with the
+lane-angle ramps 60°→150° (60 = 0x14259a764, 150 = 0x14259be68, 90 = 0x14259be5c) and the 10/15 m
+(0x142588210/0x14259be0c; 5/7.5 = 0x14259222c/0x14259ce3c when the receiver is the special target) reach
+bonuses. Winner: `T+0x620` lane id stored (`FUN_140a42560`), gate `FUN_140a40000(cur, PCC)` (raw
+0x140636714–0x140636776), then a marker is preferred — a slot already in MARK (0x36) or COVER (0x32) with
+plan `(0xe)` clear, the `T+0xb8d0` special target, and concept-flag agreement takes the lane without the
+`FUN_140a63950(0xf)` veto (raw 0x14063677c–0x140636867); else the `0xf` veto applies. State
+`FUN_140a42940(PCC)`. Tail (raw 0x140636901–0x1406369a9): every slot still in PCC whose lane id is set gets
+his target point `FUN_140634cb0` (§15.13.3) written by `FUN_140a42a40`.
+
+#### 15.13.1 Lane opener `FUN_140634ac0` (OBS raw 0x140634ac0–0x140634cad)
+Per opponent in the MA arrival list `MA+0x2470c+8·(side·11+k)` (INF: by arrival time): skip off-pitch men,
+the carrier, men in kick-animation classes (`+1 == 0x11`, or 0x50–0x57 masked 0x85), men with position
+category ≤ 2 when attack level < 2 and on line 2, and plan-`(0xe)` men; enrol the rest up to 11 lanes
+(`[rsi]` count, `rsi+4·k` = receiver idx). Carrier `FUN_140a62960`, presser mirror, `T+0xb8c4` chain and
+`0x24`-state men excluded (raw 0x140634b85–0x140634c89).
+
+#### 15.13.2 Lane keeper `FUN_1406350c0` (OBS raw 0x1406350c0–0x140635aa0)
+Per lane: receiver heading `T+0x250 + 180°` (0x142598580, ±360° wrapped) vs the ball→receiver bearing;
+keep the lane iff the wrapped angle is ≤ 180° with the 1.0/−1.0 side test (OBS comparisons), the
+ball↔receiver gap passes the 40 m (0x14259be2c) / 8 m (0x14259bdf4) gates, and the receiver is onside-side
+of the lane (option-byte-5 test at 0x1406352ea: `FUN_140a62180(·, 5)` = 1 with `|ball.z| > F[5]` reroutes the
+lane to the ball-side bearing, 45 = 0x14259be30). Radius kept in `rsi+0x58/0x2c` per lane with the
+`+2/−10` (2 = 0x142565604, −10 = 0x14259be84) plan-0xd adjustments and the 6 m (0x14259bdf0) floor at
+attack-direction parity (raw 0x1406354bf–0x1406355c7: `min(6, r)`, 6 = 0x14259bdec).
+
+#### 15.13.3 Target point `FUN_140634cb0` (OBS raw 0x140634cb0–0x1406350b4)
+For the enrolled defender: lane angle `a = bearing(ball→receiver)`, spread `s = FUN_140a90fd0` lane-crossing
+fraction (0 = at the ball, 1 = at the receiver; `FUN_140a90fd0` = segment-intersection fraction, OBS raw
+0x140a90fd0–0x140a91106); enrolment distance `d = 6 − (already-on-this-lane ? 2 : 0)` (6 = 0x14259bdec,
+2 = 0x142565604), capped by the lane radius; the target = ball + `d·(sin/cos)(a + 90° + s·spread2)`
+(90 = 0x14259be5c; `FUN_140a92c80` = sin), then advanced `0.35·fps + 0.5` frames along his velocity
+(0.35 = 0x14259d5c8) and re-crossed with the lane (`FUN_140a90fd0` twice: receiver-predicted and self).
+Final: if the crossing heading is within the lane's angle window the target is the crossing, else the
+ball-side endpoint advanced 5 m (5 = 0x14259222c; 36.0 = 0x1425a9464 cap on the gap test), rotated by the
+lane angle through `FUN_140a8f7c0` (OBS structure; exact clamp order INF(med)).
+
+**Live (OBS, `covercheck.py` PCC tail, 1196 PCC snapshots):** the target sits on the ball→nearest-opponent
+ray (median perpendicular distance 1.8 m, p10 0.3, p90 8.4) at a median 89 % of the way to that opponent
+(p10 35 %, p90 203 % — i.e. usually between ball and receiver, sometimes beyond him); the defender stands
+a median 18.3 m from his target, usually goal-side of the ball (own−target x median +3.5 m).
+INF(high): the PCC man steps onto the ball→receiver lane, ~90 % of the way to the receiver.
+
+### 15.14 Delay and Press bodies (OBS raw)
+
+#### 15.14.1 `FUN_140536fc0` — the DELAY/PRESS writer + dispatcher loop (raw 0x140536fc0–0x1405379b3)
+Head (shared with §1's loop): clears `T+0xa548+4·k` (4 entries, raw 0x140537058–0x14053707f); skips the whole
+pass while `FUN_140a53f90 > 0` (keeper holding), out of play (`MI+0x116c ≠ 1`), or the opponents'
+`FUN_140a62690` man is in state class 0x41/0x42 (`(+1 − 0x41) ≤ 1`, raw 0x1405370d6–0x1405370fb).
+Restart branch: after restart events type 1–3 or 0x10 (`FUN_140a3e190(ctx+0xe0)` kinds, raw
+0x14053712b–0x14053715f) it needs the pressure score `FUN_140a51320 ≥ 3` (INF(low)); then the per-slot
+body-state filter (fall/action classes `FUN_140a6e150/5e0/340/580` with in-match flag bits 22/9, and the
+`+0x1a/+0x1c` clip-frame window, raw 0x140537168–0x14053724b) drops ineligible men.
+Middle (raw 0x140537261–0x140537380): needs team concept flag bytes (`T+0xf1/b712/b715`), team level flag
+`FUN_140a604d0(level, 6)` (or the match-object 0x10 test), `T+0xb70c == 0`; no carrier → need the loose ball
+within 13 m (169 = d², 0x1425c6788); after a type-1–3/0x10 restart need `FUN_140a51320 > 2` … OBS gates.
+Core: `FUN_140639830` fills the candidate table (slot, score-code, dist — §15.14.2); every entry with score 0
+gets PRESS (0x34, raw 0x1405373e1–0x1405373f3) with `T+0xa548`/`T+0xa55c` arrival records (`FUN_140535260`);
+then `FUN_1404567e0` + `FUN_140639a20` (§15.14.3) pick the press men; per man: score-code 0 → PRESS with
+`T+0xb88c` reason kept; the `T+0xb709` concept-flag + `|carrier − ball| ≤ 13 m` branch (13 = 0x14259bdf4
+squared-comparison at 0x140537713, angle windows 64°/90°/25°/155° = 0x14259be44/0x14259be5c/0x14259be20/
+0x1425c6784, distance ramps 3/4/81 = 0x14258c264/0x1425656c0/0x1425c6780, direction 60 = 0x14259a764)
+decides PRESS vs DELAY: PRESS (raw 0x1405377c8–0x1405377d8, reason 0x34 via `FUN_140a42940`, or queued
+0x34/0x33 via `FUN_140a42b80` when the man is in MATCH_UP) vs DELAY (raw 0x1405377ff–0x14053780a,
+reason 0x33). Tail (raw 0x140537896–0x140537985): when the concept flag byte `T+0xf1` is set and fewer than
+3 men were picked, the `T+0xa55c` runner-up is queued PRESS (0x34); then the `T+0xa548[0]`/`[1]` pair is
+resolved to PRESS + PRESS/DELAY (0x33/0x34 via `FUN_140a42940`).
+The §1 dispatcher loop (same function family): any slot with `T+0xb748 == 0x26` and state ∉ {DELAY, PRESS}
+→ DELAY if `FUN_14062af10(ctx, idx)` else PRESS (OBS §1, unchanged).
+
+#### 15.14.2 `FUN_140639830` — candidate table (OBS raw 0x140639830–0x140639a1e)
+Per own slot (side·11+slot, on pitch, not the opponents' `FUN_140a62690` man): within 21.5 m of the ball
+(462.25 = d², 0x1425cee20); a PRESS-state (0x34) man with `T+0xb88c == 0` is taken directly; else the
+`FUN_140a41190` arrival test and the `FUN_140479470` gate must pass; enrolment records the score code
+(`rdi+4`), the slot, and the arrival (`FUN_14044e0d0 ≤ 4 m`, 4 = 0x1425656c0, sets `byte[rdi]`).
+
+#### 15.14.3 `FUN_140639a20` — press-man pick (OBS raw 0x140639a20–0x14063a0c1)
+Walks the MA ball-distance lists from the ball (`MA+0x22e4c + capped idx`, `FUN_140a71540` outlet list);
+per man (on pitch, not `FUN_140a62690`-equal… OBS filters): score = angular term
+(`clamp01((|Δ| − 100)/60)`, 100 = 0x14253ee30, 60 = 0x14259a764; wrapped > 180° folded, −1/1 side weights) +
+`10·clamp01((dist − 10)/10)` (10 = 0x142588210) … in OBS terms `10 + 10·r` form at 0x140639d7d–0x140639d87
+— nearer and more goal-side wins; `FUN_140a41190` arrival, MATCH_UP men penalised +250000
+(0x1425cee24; +10000 when not MATCH_UP — 0x14259d634), outcome sorted by `FUN_140a79640`.
+Per shortlisted man: within `(18 + 7·r)²` of the ball (18 = 0x14259be18, 7 = 0x14259bdf0, 25 = 0x14259be20,
+r = the §15.14.1 ramp); the three `FUN_140639600` angle codes (§15.14.4) combined as
+`12.5·codeProd + 15` (12.5 = 0x1425a1ff8, 15 = 0x14259be0c); press if within that, else DELAY.
+Position/distance terms: `T+0xb8a4 ≥ 3` floors the press radius at 12 m (12 = 0x14259be04); the
+`+0x38`-flag/`+0x48`-flag/`r15` branches select 6 m vs 15/13/22 m radii (6 = 0x14259bdec, 15 = 0x14259be0c,
+13 = 0x1425c5948, 22 = 0x1425c48c0; +3 = 0x14258c264 for the special-target man).
+
+#### 15.14.4 `FUN_140639600` — angle code (OBS raw 0x140639600–0x140639823)
+`FUN_140639600(ctx, T, slot, threshold)`: bearing ball→slot vs reference (straight back
+`FUN_140a4db20`, or the ball→goal bearing when `T+0xb712` set), wrapped to ±180°:
+returns 3 when `55° < |Δ| ≤ 145°` (55 = 0x14259be38, 145 = 0x1425cb488); 2 when `|Δ| > 115°`
+(115 = 0x1425c48d4); 1 when `55° < Δ ≤ 145°` on the positive side only; else the 45°–135° window code
+(45 = 0x14259be30, 135 = 0x14259be60; −55° = 0x1425c6608, −145° = 0x1425cee28): 3 when outside
+`[−145°, −55°]`, else 1/0 by the 45° test. INF(med): classifies whether the man is goal-side/wide/behind
+the ball for the press decision.
+
+**Live (OBS, `live2.bin`, all records):** DELAY (0x33) never appears (0 snapshots this session and none in
+§9's 420 s either); PRESS (0x34) 354 snapshots with reason codes `T+0xb88c` = 0 (214), 7 (93), 4 (25),
+2 (22) — code 7 dominates as in §14.4 (301/38/15 then). PRESS men stand a median 9.0 m from the ball
+(p10 4.0, p90 16.1), indistinguishable from MATCH_UP men (median 9.2 m) — the "short extra burst" reading
+(§5.1) stands: PRESS is written on men already at the ball, not sent from afar.
+
+### 15.15 Second presser `FUN_140633940` (OBS raw 0x140633940–0x140634465)
+
+Per own slot (not off-pitch, not `FUN_140a62690`-equal… OBS filters; body-state class filter
+`(+1 − 0x11) ≤ 0x3f` masked 0x8000000000000009 plus 0x52/0x57 exclusions, raw 0x140633c9b–0x140633cc5;
+position category `T+0x4c00 ≠ 0`; plan `(0xf)` veto; `T+0xb748 ≠ 0x24`; line/role agreement with the
+covered slot's line (§15.5's `+0x3c` record: same line, or any line 0 when the flag byte allows, raw
+0x140634094–0x1406340b7)): candidate score = `FUN_14043b8b0` arrival frames vs the press timer
+(`T+0xa53c` set → radius 22 m, else the `(0xe)`/`(0xd)` plan flags → 15/13 m, 22 = 0x1425c48c0,
+15 = 0x14259be0c, 13 = 0x1425c5948; special-target man +3, 3 = 0x14258c264).
+Gates before scoring: plan `(0xe)` on the slot's line side skips (raw 0x140633a1f–0x140633a53);
+attack level ≥ 3 needs ball state `FUN_140a55d40(ball, side, 3)` (raw 0x140633a66–0x140633a9c);
+plan-`(0xd)` ball-side test (raw 0x140633afb–0x140633b3f); the `T+0xa53c`-vs-`4·fps` kick-off-window
+adjustment (TransitionsRE §1.2) and the `MI+0x14c8 == 1` two-man-kick-off test (raw 0x140633d67–0x140633d9d);
+team level `FUN_140a60340` with the stat-sum `FUN_14124dad0` gate (raw 0x140633da1–0x140633e16:
+line-2 men need level ≥ 6 unless the flag/`r15` branches allow, and `T+0xb8a4 ≤ line`).
+Then per candidate: `FUN_140a51d50` in-play + `FUN_140477130` arrival-rate test + (team level 6 only) the
+0.6944/fps prediction + 60° window (0x14259bdd0, 60 = 0x14259a764, 360 = 0x14259858c, 10 = 0x142588210)
+angle-chase test (raw 0x140633e93–0x140633f4b); within radius → `FUN_140633350` enrolment test; the
+`180°/50°/40°` (180 = 0x142598580, 50 = 0x14259be34, 40 = 0x14259be2c) bearing windows and the
+100° (0x14253ee30) slot-target test (raw 0x140634140–0x14063430b); outcome by situation code
+(`T+0x1b8`-adjacent record… OBS: `r15d`): 7 → write `T+0xb88c` reason + PRESS (0x34, raw
+0x140634310–0x1406343dc; `T+0xb7cc`-mirrored target via `FUN_140a42b90` when enrolled, reason word at
+`T+0xb88c+2·slot`, raw 0x1406343e1–0x1406343ef); 1 → the angle-chase PRESS; 4 → PRESS with the 60° test;
+other codes → return with no write (raw 0x1406341ea–0x1406341f8). Ball must be low is NOT re-tested here
+(that gate lives in `FUN_140634470`, §14.4).
+
+**Live:** PRESS reason codes 7/4/2 observed (§15.14); code 5 (double-team) and SAND (0x35) never appear this
+session — consistent with §14.4 (codes 7/5/4 then; SAND never). The reason word `T+0xb88c` is per-slot and
+survives while the man presses.
+
+### 15.16 The in-possession line `FUN_1405fb6f0` and its 20 m kick-off hold-back (OBS raw 0x1405fb6f0–0x1405fbcaa)
+
+Builds the phase-1 (in-possession) bands `S+0x7b14/0x7b38+0x3c·phase`. Stopped-kick-off shortcut (raw
+0x1405fb783–0x1405fb7d4): at MODE 1 with phase 1, or MODE 2 (0x1405fb791–0x1405fb79d), line-2 rear =
+`bp.adjustFrontOF` and back-line front = bp `+0x214` (33.0 cap when the situation is {3,3}, raw
+0x1405fb76a–0x1405fb780; 33 = 0x1425cb2f8) — then straight to the tail.
+1. `a = clamp01(L/4)` (L = `T+0xb8a4` attack level; 4 = 0x1425656c0), `base = 8·bp+0x84 − 4` — bp `+0x84`
+   is the new base scalar (live-fitted 2.0, i.e. base = 12.0; §14.6's sheet identity unchanged, value fitted
+   §15.16.1), `span = F[6] + 7 − base` (7 = 0x14259bdf0).
+2. `w = clamp01((bx − lo)/(hi − lo))`, `hi = F[6] + bp.adjustFrontOF(−5)`, `lo = bp+0xc − F[6] + 20·h`
+   (bp+0xc = adjustBackOF, fitted −3 as §6; 20 = 0x14259be1c), `h` = the kick-off hold-back: `t =
+   FUN_140a74ec0` (kick-off timer, TransitionsRE §1.2 — **not** a possession timer; §14.1's "20 m hold-back
+   after a possession change" is corrected to **after a kick-off**): `t ≤ 5·fps + 0.5 → 1`,
+   `t ≥ 8·fps → 0`, else `(t − 8·fps)/(5·fps − 8·fps)` (5 = 0x14259222c, 8 = 0x14259bdf4, 0.5 = 0x142565600;
+   raw 0x1405fb841–0x1405fb8d2). At any non-kick-off moment `t` reads 0xffffffff → `h = 0` (OBS raw
+   zero-extend 0x1405fb859–0x1405fb89a; TransitionsRE §1.2).
+3. `x = base + span·w` → line-2 rear `S+0x7b38`; back-line front `= x − 40·(1 − 0.5·dfLineRate)` (40 =
+   `bp.lengthOf` +0x228, dfLineRate +0x158 = 0.09 → −38.2 m, OBS live: back−rear = −38.2 exactly, §15.16.1),
+   clamped to `[−F[6], 2.0]` (raw 0x1405fb961–0x1405fbbdb: `max(x − len, −F[6])`, `min(·, 2.0)`,
+   2 = 0x142565604; the MODE 2 branch additionally clamps through `FUN_1405ef740`).
+   MODE 3 (goal kick) with the restart record `+0x14c4 == 1`: line-2 rear = `bp.dfLineRate_goalKick`
+   (raw 0x1405fbb44–0x1405fbb5a; value 0.1 per §8 — INF(low): this stores the rate, not a position; the
+   exact MODE-3 shape is open).
+4. Kick-off (`MI+0x116c == 1`, raw 0x1405fb914–0x1405fb961): OBS structure — line-2 rear passes through a
+   `FUN_140a92c80(90°·…)` sin form (90 = 0x14259be5c) with a `(bp+0x364)`-gated variant, then `rear −= 6·r`
+   at MODE 2 (6 = 0x14259bdec, `r` = the ball-vs-`F[0]` ramp, raw 0x1405fba42–0x1405fba89). Exact rotation
+   open — needs the kick-off sample (§15.16.1). The §6 "front = kickoffDfLineX (−12.0)" stands for the
+   stopped-kick-off shortcut only.
+   Tail (raw 0x1405fbc06–0x1405fbcaa): `FUN_140a533a0` corner test → `FUN_1405ed220`; the
+   `−dir·F[4]`-vs-`S+0x7b50` clamp (FieldInfo `+0x10`).
+
+#### 15.16.1 Live fit (OBS, `live2.bin` phase-1 bands)
+- back − rear = −38.2 m exactly (p10/p50/p90 all −38.2) → `lengthOf·(1 − 0.5·dfLineRate) = 38.2` with the
+  §8 values (40, 0.09). Confirmed live.
+- Rear ramp `x = base + span·w` with `lo = −F[6]` (h = 0, no kick-off in the sample window),
+  `hi = F[6] − 5`: best-fit `base = 12.0` (bp+0x84 = 2.0), median |e| 4.7 m, p90 6.0 m; residuals −12…−0.7 m
+  by ball depth (model high when the ball is deep) — the residual shape is the unmodelled `bp+0x364` /
+  MODE-2 branch terms and the `FUN_1405ef740` clamp, which need a kick-off sample to close.
+- Kick-off rows are absent from this sample (no restart in the window; `FUN_140a74ec0` reads 4.29e9
+  throughout), so the 20 m hold-back `h` and the `bp+0x364` kick-off rotation are code-only (OBS raw,
+  constants 5.0/8.0/20.0 at 0x14259222c/0x14259bdf4/0x14259be1c). **Next step:** a 60 s sample straddling a
+  kick-off (goal or half start), then refit `h` and the rotation.
+
+### 15.17 Composition with the ported line chain (for the DefensiveShapePort owner)
+
+- The port (`ea8a0a2`) builds the phase-0 back-line front from `FUN_1405f9eb0` + f7a00 + ef910 and applies
+  efbd0; the missing tail is: **f4f50 (§15.1)** edits `S+0x7b14+0x14·line` (and `+0x7b10`/`+0x7b28`) after
+  `S+0x7c3c = S+0x7b14` and before efbd0 — i.e. insert the drop between the port's line-height computation
+  and its midfield catch-up, using the port's (new) per-slot COVER state (§15.2: needs `T+0xa2a0`/`T+0x278`
+  mirrors + the `brain+0x4208+0x14..0x4b` cache + the `FUN_140a40000` gate).
+- `FUN_1405fb6f0` (§15.16) builds the **phase-1** bands the port deliberately skips (GF keeps its own
+  attacking shape); the only phase-1 value the defence reads is `S+0x7c3c` (phase-0's edge, copied in both
+  phases — §14.0), so the port's omission is safe for the defending line.
+- COVER points (§15.7) are the slot targets the port's `GetMarkSpot` equivalent should serve to covering
+  men (rate/`T+0xb834` blend is CounterTrigger2RE's closed lerp — reuse it, do not re-derive).
+- PCC (§15.13) and Delay/Press (§15.14–15.15) are new per-slot states with the §2 priority gate
+  (PCC prio 4, PRESS/DELAY prio 2): they compose as additional writers in the port's `CalculateManMarking`
+  frame pass, after passes 0/1/2b/6/7, gated by the same `FUN_140a40000` call.
+
+### 15.18 Killed hypotheses (this pass)
+- "`FUN_14062ef30` returns the carrier's position" — it returns the deeper of carrier/candidate blended back
+  toward the carrier by the 20→30 m goal-distance ramp (§15.4).
+- "`FUN_14062d350` returns the covered slot's line" — it returns the line needing protection (0/1/2) from the
+  ball-vs-offside-report depth and the midfielder scan (§15.5).
+- "`FUN_140632210` compares against a fixed line" — it compares against `FUN_14062acf0` (attack-level
+  −40/−30/+20/+30 offsets) with a 25 m seed-distance cap (§15.6).
+- "The `f4f50` drop reads the final `T+0x875c`" — it edits the phase-0 band edges in `S`; `T+0x875c` is only
+  the midfield-line input `|S+0x7b28 − T+0x875c|` (§15.1).
+- "`FUN_140a74ec0` counts since the last possession event" — kick-off timer (TransitionsRE §1.2); every
+  "possession change" timing in §6/§14 is a kick-off timing (§15.16).
+- "`FUN_14062acf0` is a constant" — FieldInfo length with attack-level offsets and a >7 s-since-kick-off
+  branch (§15.6).
+
+### 15.19 Open list (exact next step each)
+1. `FUN_14062ade0` (the >7 s `FUN_14062acf0` branch) and `FUN_14062ff60` (cover feasibility): decompile both
+   (`dec.sh`, 2 addresses), the first needs a kick-off-straddling sample to check.
+2. `FUN_14062e240` enrolment details and `FUN_14062c5a0`'s low-ball path: the 100 m/×2/arrival-compare
+   structure is OBS; the exact per-man accept rule wants breakpoint tracing (debug registers busy) or a
+   targeted live fit of `aiStack_64` vs candidate distances.
+3. PCC lane-radius keeper `FUN_1406350c0` exact keep/drop comparisons: OBS structure; needs a lane-point
+   live capture (lane points are stack-local, not in `T`).
+4. `FUN_140536fc0` middle gates (`T+0xf1/b712/b715`, `FUN_140a51320` pressure score): OBS addresses, INF(low)
+   meanings — tracer or concept-flag cross-check with TransitionsRE's `T+0xb6e8` flags.
+5. fb6f0 kick-off rotation (`bp+0x364`), MODE-3 `dfLineRate_goalKick` shape, `FUN_1405ef740` clamp: needs the
+   60 s kick-off-straddling sample (§15.16.1).
+6. `FUN_140633350` enrolment test and `FUN_14043b8b0` arrival frames: called from the second-presser path;
+   decompile (2 addresses) and check against PRESS reason-7 snapshots.
+
+### 15.20 Ledger entries
+| ID | Claim | Conf. | Evidence |
+|---|---|---|---|
+| EV-DEF-0024 | f4f50 cover drop: deepest COVER (active `T+0x26c`, queued `T+0x27c`) by max(body, point); line edge → max(m, edge−k), k = 6 back / \|mid−B\|/6 mid, floor −F[4]; phase-0 only, > 4 s after kick-off | Confirmed (raw) | 0x1405f4f50–0x1405f518f; `covercheck.py` |
+| EV-DEF-0025 | Cover pass: clear → MATCH_UP-covered slot → seed/line/gate → 2 points → score → mask → fill → hysteresis; markers queue via `T+0x278` | Confirmed (raw + decompile) | 0x1406315b0; `cv.c` |
+| EV-DEF-0026 | Seed = deeper(carrier-pred, candidate-pred) blended to carrier by 20→30 m goal ramp | High (decompile) | 0x14062ef30; `l1a.c` |
+| EV-DEF-0027 | Cover line 0/1/2 from ball-vs-offside-report depth + midfielder scan + 5 m/3 m tests | High (decompile) | 0x14062d350; `l1a.c` |
+| EV-DEF-0028 | Gate: ball in our half or within 25 m of lane start `FUN_14062acf0` (level −40/−30/+20/+30) | High (decompile) | 0x140632210, 0x14062acf0; `m1a.c` |
+| EV-DEF-0029 | Cover points: carrier-speed lateral push, x ≥ 62d790 floor, z within F[1]−2, −5 m pair split | High (decompile) | 0x140631de0; `l1a.c` |
+| EV-DEF-0030 | Mask: 55° ball-side windows ±5° flags; back-line covers return early | High (raw) | 0x14062f8c0 |
+| EV-DEF-0031 | Slot fill ball-side order + 0xb-overflow fallback; veto chain (6309a0/d50/ba0/780/040/e60/880) | High (raw + decompile) | 0x140631cb0, 0x14062d9a0; `dech2.c` |
+| EV-DEF-0032 | Hysteresis re-seeds `(w/−40)·bb+0x8c` frames like the mark hand-off | High (decompile) | 0x140631b60; `cv.c` |
+| EV-DEF-0033 | Cover live: ≤ 2/snapshot, 64 % queued, point 6.4 m goal-side of MATCH_UP, 11.2 m behind ball | Confirmed (live 2288 men) | `covercheck.py`, `live2.bin` |
+| EV-DEF-0034 | PCC: gates (level-7 flag, toggle 0x11, in-play, `T+0xb6e0` = 0), 7/10/15 m radii (30 plan-0xd), lane open/keep/target, marker preference | High (raw) | 0x140635ab0, 0x140634ac0, 0x1406350c0, 0x140634cb0 |
+| EV-DEF-0035 | PCC live: target on ball→receiver ray (1.8 m), 89 % of the way, defender 18.3 m off | Confirmed (live 1196) | `covercheck.py`, `live2.bin` |
+| EV-DEF-0036 | DELAY/PRESS writer: keeper-hold/out-of-play/0x41-42 skips, restart branch, 639830 table → PRESS on score 0, 639a20 pick → PRESS/DELAY, 0x26-dispatcher | High (raw) | 0x140536fc0, 0x140639830, 0x140639a20, 0x140639600 |
+| EV-DEF-0037 | DELAY never live (840 s); PRESS 354 snapshots, codes 0/7/4/2, 9.0 m from ball = MATCH_UP-like burst | Confirmed (live) | `covercheck.py`, `live2.bin` |
+| EV-DEF-0038 | Second presser: per-slot filters, 22/15/13 m timer/plan radii, 60° chase, situation-code 7/1/4 writes, `T+0xb88c` reason | High (raw) | 0x140633940 |
+| EV-DEF-0039 | fb6f0: `x = (8a−4) + (F[6]+7−(8a−4))·w`, back = x − 38.2, `[−F[6], 2.0]`; 20 m kick-off hold-back 5→8 s (code-only, no kick-off in sample) | High (raw) / Fitted (bands) | 0x1405fb6f0; `live2.bin` phase-1 |
+| EV-DEF-0040 | Composition map for the port (drop insertion point, phase-1 omission safe, new-state writers) | INF(high) | §15.17 |
