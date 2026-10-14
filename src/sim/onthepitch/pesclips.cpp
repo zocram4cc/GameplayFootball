@@ -22,7 +22,14 @@ struct FamilyPrefix {
   PesClipFamily family;
   std::string_view prefix;
 };
-constexpr FamilyPrefix kFamilies[] = {{PesClipFamily::kDodge, "dodge_"}};
+constexpr FamilyPrefix kFamilies[] = {
+    {PesClipFamily::kDodge, "dodge_"},      // ball dodges
+    {PesClipFamily::kDodge, "avoidjump_"},  // human jump dodges
+    {PesClipFamily::kDodge, "avoidslide_"}, // human slide dodges
+    {PesClipFamily::kDodge, "goalnet_"},    // goal-net dodges
+    {PesClipFamily::kDodge, "rapidstop_"},  // human stop/decelerate dodges
+    {PesClipFamily::kDodge, "rapid_3_2_dodge_"},
+};
 
 // Fox (Y up, +Z forward) -> engine (Z up, faces -Y), verbatim on both the
 // vectors and the rotation axes.

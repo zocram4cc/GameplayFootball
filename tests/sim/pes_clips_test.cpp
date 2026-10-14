@@ -98,8 +98,13 @@ TEST(PesClipsInstall, EveryDodgeClipConvertsAndLoads) {
   auto clips = pes::LoadPesClips(*exe, vfs, &err);
   ASSERT_TRUE(clips.has_value()) << err;
   EXPECT_GT(clips->clips.size(), 1u);
+  // Every clip of the dodge family: the ball dodges (dodge_*), the human
+  // dodges (avoidjump_/avoidslide_) and the goal-net dodges (goalnet_*).
   for (const auto& clip : clips->clips) {
-    EXPECT_EQ(clip.name.rfind("dodge_", 0), 0u) << clip.name;
+    const bool dodgeFamily =
+        clip.name.rfind("dodge_", 0) == 0 || clip.name.rfind("avoid", 0) == 0 ||
+        clip.name.rfind("goalnet_", 0) == 0 || clip.name.rfind("rapid", 0) == 0;
+    EXPECT_TRUE(dodgeFamily) << clip.name;
     Animation anim;
     anim.LoadText(clip.name, pes::PesClipAnimText(clip, *rig));
     const pesrig::ClipSampler sampler(clip.gani, *rig);
