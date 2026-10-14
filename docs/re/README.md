@@ -70,6 +70,7 @@ address given.
 |`pes-re-carrier-ai.md`|the ball carrier: plan choice, first-surviving-unit adoption with vetoes (no score competition), the 5-frame think cadence, difficulty reaction delays, shoot zone and shot choice, pass receivers and the openness formula (live-validated), pass choosers, pressure and clearance, the 72-direction dribble search, the skill/style bit order|
 |`pes-re-carrier-port.md`|what of the carrier AI is ported and how: think cadence, shoot zone, openness ladder, PassForward tiers, plan roll; constants table with VAs; the not-ported list; open shoot-zone sample mismatch|
 |`pes-re-team-plans.md`|team AI: the team-brain class inventory, formation slot to target position, advanced-instruction enums, off-ball run selector gates, the press trigger/target/count, ZoneDefenceManager marking, pass/shoot/dribble scoring skeletons|
+|`pes-re-tactics.md`|team tactics → behaviour: the team-sheet layout, slider formulas, toggles gating the team plans, the plan selector, the 17 advanced instructions and their timing, attack level/CPU strategy; live-checked|
 |`pes-re-player-ai.md`|ball-carrier think units, off-ball runs, team plans and pressing, keepers, attribute/style inputs, AI tables|
 |`pes-re-tactics-clock.md`|the match clock as a u32 percentage of minutes x 1920, the stoppage formula, the period state machine, and how GF differs|
 |`pes-re-sim-motion-mapping.md`|GF simulation states to PES motion selection: the action layer, kick and trap families, keepers, set pieces, officials|
