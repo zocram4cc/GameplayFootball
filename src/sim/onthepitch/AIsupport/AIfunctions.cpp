@@ -28,6 +28,7 @@
 #include "../gameplaytuning.hpp"
 #include "../match.hpp"
 #include "../matchmentality.hpp"
+#include "../offsiderule.hpp"
 #include "../player/humanoid/humanoid_utils.hpp"
 #include "../player/player.hpp"
 #include "../team.hpp"
@@ -405,50 +406,30 @@ float AI_CalculateFreeSpace(Match* match, const MentalImage* mentalImage, int te
   return 1.0f - NormalizedClamp(currentSituation, 0.0f, 2.5f);
 }
 
-float AI_GetOffsideLine(Match* match, const MentalImage* mentalImage, int teamID,
-                        unsigned int futureSim_ms) {
-  signed int side = match->GetTeam(teamID)->GetSide();
-
+float AI_GetOffsideLine(Match* match, const MentalImage* mentalImage, int teamID) {
+  // PES 2021's offside line (docs/re/pes-re-offside.md 3), for the team `teamID`
+  // defending: its own attack frame, the second-rearmost defender's rear
+  // surface, capped by the current ball centre and by halfway, clamped to the
+  // goal line. The line is a world x, judged against in the attackers' frame.
+  const Team* team = match->GetTeam(teamID);
   std::vector<PlayerImage> opponentPlayerImages;
   mentalImage->GetTeamPlayerImages(teamID, -1, opponentPlayerImages);
 
-  int dudDeepestOpponent = 0;
-  Vector3 deepestOpponentPosition;
-
-  for (int i = 0; i < (signed int)opponentPlayerImages.size(); i++) {
-    opponentPlayerImages.at(i).position.coords[0] +=
-        opponentPlayerImages.at(i).movement.coords[0] * futureSim_ms * 0.001f;
-
-    // for offside
-    if (opponentPlayerImages.at(i).position.coords[0] * side >
-        opponentPlayerImages.at(dudDeepestOpponent).position.coords[0] * side) {
-      dudDeepestOpponent = i;
-    }
+  // Eligible: active (which GetTeamPlayerImages already applies) and on the
+  // pitch laterally, PES's `|z| <= pitch+4` - this engine's line centres.
+  std::vector<blunted::Vector3> defenderCentres;
+  for (const PlayerImage& image : opponentPlayerImages) {
+    if (fabs(image.position.coords[1]) <= pitchHalfH) defenderCentres.push_back(image.position);
   }
 
-  // offside: we are actually looking for the one-but-deepest opponent (association football rule!
-  // EAT THAT, PES6!! :P)
-  for (int i = 0; i < (signed int)opponentPlayerImages.size(); i++) {
-    if (opponentPlayerImages.at(i).position.coords[0] * side >
-            deepestOpponentPosition.coords[0] * side &&
-        i != dudDeepestOpponent) {
-      deepestOpponentPosition = opponentPlayerImages.at(i).position;
-    }
-  }
+  // The current ball centre, not a prediction: the line is judged where the
+  // ball is when the line is evaluated.
+  const float ballX = mentalImage->GetBallPrediction(0).coords[0];
 
-  float offsideLine = deepestOpponentPosition.coords[0];
-  if (mentalImage->GetBallPrediction(0).coords[0] * side > offsideLine * side) {
-    offsideLine = mentalImage->GetBallPrediction(0).coords[0];
-  }
-  if (offsideLine * side < 0)
-    offsideLine = 0.01 * -side;
-  offsideLine = clamp(offsideLine, -pitchHalfW, pitchHalfW);
-
-  //  if (teamID == 0) SetRedDebugPilon(Vector3(offsideLine, -20, 0));
-  //  if (teamID == 0) SetBlueDebugPilon(Vector3(offsideLine, 0, 0));
-  //  if (teamID == 0) SetGreenDebugPilon(Vector3(offsideLine, 20, 0));
-
-  return offsideLine;
+  // PES's goal line is its `pitch+0`; this engine's line centres plus its own
+  // half-line width is the same surface.
+  return OffsideRule::OffsideLineX(match->GetTeam(teamID)->GetSide(), defenderCentres, ballX,
+                                   pitchHalfW + lineHalfW, match->GetPesJudgeConstants());
 }
 
 float veloExpFactor(float velo) {

@@ -60,6 +60,15 @@ struct Foul {
   bool hasBeenProcessed;
 };
 
+// A player PES 2021 has flagged offside (docs/re/pes-re-offside.md 4): where he
+// stood when his team last played the ball, and PES's category of the call -
+// 0 beyond by more than 4 m, 1 beyond by 1-4 m, 2 beyond by less than a metre.
+// Category 3 (onside, near level) is never punishable and never stored here.
+struct OffsideFlag {
+  Vector3 positionAtTouch;
+  int category;
+};
+
 class Referee {
 public:
   Referee(Match* match);
@@ -109,7 +118,20 @@ protected:
   int afterSetPieceRelaxTime_ms;  // throw-ins cause immediate new throw-ins, because ball is still
                                   // outside the lines at the moment of throwing ;)
 
-  std::map<Player*, Vector3> offsidePlayers;  // player, position at time of touch
+  // The players currently flagged offside, with PES's category of each call.
+  std::map<Player*, OffsideFlag> offsidePlayers;  // player, position at time of touch
+
+  // PES 2021's pending offside (docs/re/pes-re-duels-fouls.md 5.1): a flagged
+  // player who plays the ball sets a pending foul whose whistle waits out the
+  // offside whistle hold (gs/2 frames), and a category-2 flag additionally
+  // waits for a shot in progress to finish (DelayWhistle). A null player means
+  // nothing pending.
+  struct PendingOffside {
+    Player* player = nullptr;
+    Vector3 spot;  // where he became involved: the restart spot (Law 11)
+    int category = 0;
+    unsigned long since_ms = 0;
+  } pendingOffside;
 
   Foul foul;
 
@@ -124,6 +146,11 @@ protected:
   int JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action);
   void RecordFoul(Player* tripee, Player* tripper, int foulType);
   float NearestToBall_m(Team* team) const;
+
+  // PES 2021's offside whistle (docs/re/pes-re-duels-fouls.md 5.1): after the
+  // gs/2 whistle hold from the involvement, and for a category-2 flag
+  // (DelayWhistle) only once no shot is in progress.
+  void CommitPendingOffside();
 
   // Which period's added time has been announced already.
   e_MatchPhase addedTimeAnnouncedPhase;

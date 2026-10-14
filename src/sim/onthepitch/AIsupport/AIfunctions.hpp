@@ -47,8 +47,7 @@ float AI_GetSituationRating(Match* match, int thisPlayerID, const MentalImage* m
 float AI_CalculateFreeSpace(Match* match, const MentalImage* mentalImage, int teamID,
                             const Vector3& focusPos, float safeDistance = 8.0,
                             float futureTime_sec = 0.3, bool ignoreKeeper = false);
-float AI_GetOffsideLine(Match* match, const MentalImage* mentalImage, int teamID,
-                        unsigned int futureSim_ms = 0);
+float AI_GetOffsideLine(Match* match, const MentalImage* mentalImage, int teamID);
 void AI_GetBestDribbleMovement(Match* match, int thisPlayerID, const MentalImage* mentalImage,
                                Vector3& desiredDirection, float& desiredVelocity,
                                const TeamTactics& teamTactics);

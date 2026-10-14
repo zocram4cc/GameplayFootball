@@ -95,6 +95,23 @@ struct JudgeConstants {
   // runs for this long (FUN_14050b490: GameSpeed << 2 frames).
   float whistleHold_s;         // 0.8
   float advantageWindow_s;     // 4
+  // Offside (docs/re/pes-re-offside.md 3/4): the body points' surface margins
+  // (xmm8/xmm7/xmm10 of FUN_140a7b7a0), the tolerances the leading surface is
+  // judged with, the defender rear points' shifts and the category bands.
+  // GF has centre positions only, so the torso margin is the one this port's
+  // model uses; the rest are read so the model stays honest and the relations
+  // between them can be checked.
+  float offsideMarginTorso_m;      // 0.15, 0x1425c48a0: the head/torso margin, and the tolerance when nothing arm-like leads
+  float offsideMarginArm_m;        // 0.06, 0x1425cc238: an elbow or wrist point
+  float offsideMarginToe_m;        // 0.10, 0x142588200: a toe point
+  float offsideArmTolerance_m;     // 0.30, 0x142590d98: the tolerance when an arm point leads
+  // The line's rear surface, shifted towards the defending team's own goal:
+  // PES stores the shifts signed (FUN_14045cf30, -0.15/-0.06/-0.10).
+  float offsideRearShiftTorso_m;   // -0.15, 0x14259d64c
+  float offsideRearShiftArm_m;     // -0.06, 0x14259d644
+  float offsideRearShiftToe_m;     // -0.10, 0x14259d648
+  float offsideNearBand_m;         // 1.0, 0x14256ae1c: category 2 / 3
+  float offsideClearBand_m;        // 4.0, 0x1425656c0: category 1 / 0
   RefereeSpotConstants refereeSpot;
 };
 

@@ -42,6 +42,19 @@ constexpr uint64_t TWO_AND_HALF_VA = 0x14259bde4;  // 2.5
 constexpr uint64_t MINUS_FOUR_VA = 0x1425c7678;   // -4.0
 constexpr uint64_t MINUS_FOURTEEN_VA = 0x1425c7220;  // -14.0
 
+// Offside detection (docs/re/pes-re-offside.md 3/4). Shared .rdata literals
+// reuse the chief-referee constants for the same values.
+constexpr uint64_t OFFSIDE_MARGIN_TORSO_VA = 0x1425c48a0;   // 0.15: the head/torso margin, and the tolerance
+constexpr uint64_t OFFSIDE_MARGIN_ARM_VA = SPOT_BIAS_VA;    // 0.06
+constexpr uint64_t OFFSIDE_MARGIN_TOE_VA = 0x142588200;     // 0.10
+constexpr uint64_t OFFSIDE_ARM_TOLERANCE_VA = 0x142590d98;  // 0.30
+// The defender rear points' shifts, stored signed towards the own goal.
+constexpr uint64_t OFFSIDE_REAR_SHIFT_TORSO_VA = 0x14259d64c;  // -0.15
+constexpr uint64_t OFFSIDE_REAR_SHIFT_ARM_VA = 0x14259d644;    // -0.06
+constexpr uint64_t OFFSIDE_REAR_SHIFT_TOE_VA = 0x14259d648;    // -0.10
+constexpr uint64_t OFFSIDE_NEAR_BAND_VA = 0x14256ae1c;   // 1.0
+constexpr uint64_t OFFSIDE_CLEAR_BAND_VA = FOUR_VA;      // 4.0
+
 // Instructions whose immediates carry integer weights: {VA, opcode bytes,
 // immediate offset}. The opcode bytes are checked before the immediate is read,
 // so a different build fails loudly instead of yielding a wrong number.
@@ -122,6 +135,15 @@ std::optional<JudgeConstants> LoadJudgeConstants(const PeImage& exe, std::string
                          {SLIDE_ALIGN_KNEE_VA, &k.slideAlignKnee_deg},
                          {SLIDE_ALIGN_RAMP_VA, &k.slideAlignRamp_deg},
                          {WHISTLE_HOLD_VA, &k.whistleHold_s},
+                         {OFFSIDE_MARGIN_TORSO_VA, &k.offsideMarginTorso_m},
+                         {OFFSIDE_MARGIN_ARM_VA, &k.offsideMarginArm_m},
+                         {OFFSIDE_MARGIN_TOE_VA, &k.offsideMarginToe_m},
+                         {OFFSIDE_ARM_TOLERANCE_VA, &k.offsideArmTolerance_m},
+                         {OFFSIDE_REAR_SHIFT_TORSO_VA, &k.offsideRearShiftTorso_m},
+                         {OFFSIDE_REAR_SHIFT_ARM_VA, &k.offsideRearShiftArm_m},
+                         {OFFSIDE_REAR_SHIFT_TOE_VA, &k.offsideRearShiftToe_m},
+                         {OFFSIDE_NEAR_BAND_VA, &k.offsideNearBand_m},
+                         {OFFSIDE_CLEAR_BAND_VA, &k.offsideClearBand_m},
                          {FIVE_VA, &k.refereeSpot.kickOffBehind_m},
                          {TEN_VA, &k.refereeSpot.kickOffAcross_m},
                          {THREE_VA, &k.refereeSpot.throwInUpfieldGate_m},

@@ -73,6 +73,16 @@ constexpr unsigned long kPesCardOnScreen_ms = 3000;
 constexpr int kPesHoldFoul = 1;
 constexpr int kPesHoldOutOfPlay = 5;
 
+// PES 2021's offside whistle hold (docs/re/pes-re-duels-fouls.md 5.1): gs/2
+// frames from the involvement to the whistle, where a gs is one second of
+// frames (pes-re-foul-choreography.md 9.1: every timer is seconds x 54), so the
+// hold is half a second. A contact foul's hold is the 0.8 s
+// JudgeConstants::whistleHold_s; PES's offside hold is a frame count rather
+// than a .rdata float, so it is carried here with its derivation. Category 2
+// waits longer than this on top: DelayWhistle holds the whistle while a shot is
+// in progress.
+constexpr unsigned long kPesOffsideWhistleHold_ms = 500;
+
 }  // namespace
 
 // PES's player-down test (FUN_1404441d0, docs/re/pes-re-foul-choreography.md
@@ -310,8 +320,15 @@ void Referee::Process() {
     }
 
     CheckFoul(true);
+    // PES 2021's pending offside (docs/re/pes-re-duels-fouls.md 5.1): the
+    // whistle waits out the gs/2 hold, and a category-2 flag waits for a shot
+    // in progress (DelayWhistle).
+    CommitPendingOffside();
 
   } else {  // not in play, maybe something needs to happen?
+    // PES's Judge runs only while the ball is in play (5.1/5.2 step 1), so a
+    // whistle never lands on a dead ball: drop a pending offside.
+    pendingOffside.player = nullptr;
 
     // Play is not on and nothing is being prepared. Every out-of-play test in
     // this file lives inside `if (IsInPlay() && !IsInSetPiece())` above, so once
@@ -684,36 +701,25 @@ void Referee::BallTouched() {
   if (match->IsInPlay() && !match->IsInSetPiece() && buffer.active == false &&
       match->GetTeam(abs(lastTouchTeamID - 1))->GetActivePlayerCount() >
           1) {  // disable if only 1 player: that's debug mode with only keeper
-    std::map<Player*, Vector3>::iterator playerIter = offsidePlayers.begin();
+    std::map<Player*, OffsideFlag>::iterator playerIter = offsidePlayers.begin();
     while (playerIter != offsidePlayers.end()) {
       if (match->GetTeam(lastTouchTeamID)->GetLastTouchPlayer() == playerIter->first) {
+        // PES 2021's involvement test (docs/re/pes-re-duels-fouls.md 5.2 step
+        // 2): a flagged player who plays the ball is involved at once.
         foul.advantage = false;
-        if (!CheckFoul()) {
-          // uooooga uooooga offside!
-          match->StopPlay();
-          buffer.desiredSetPiece = e_SetPiece_FreeKick;
-          buffer.stopTime = match->GetActualTime_ms();
-          // The offside is PES's 0xb stop (9.3): a 2.5 s hold, +2.5 s while a
-          // player is down, then the wipe, teleport and fade-in. Live: 140
-          // frames without a man down, 275 end to end across a flag.
-          ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
-          // Law 11: the free kick is taken where the offence occurred - the
-          // spot where the flagged player just played the ball - not where he
-          // stood when the pass was struck (that stored position only judged
-          // the offside position itself).
-          buffer.restartPos =
-              OffsideRule::RestartPosition(playerIter->second, playerIter->first->GetPosition());
-          buffer.teamID = abs(lastTouchTeamID - 1);
-          match->GetMatchData()->AddOffside(lastTouchTeamID);
-          match->GetMatchData()->AddFreeKick(buffer.teamID);
-          buffer.active = true;
-        buffer.prepared = false;
-        buffer.started = false;
-          if (Verbose())
-            printf("referee: offside\n");
-          break;
-        } else
-          break;
+        // PES's offside scan only runs while no foul is pending, and it never
+        // arms a flag over a foul already whistled.
+        if (!CheckFoul() && foul.foulType == 0) {
+          // PES 2021's pending offside (5.1): the Judge sets a pending foul
+          // here and the whistle waits out the gs/2 hold in Process.
+          pendingOffside.player = playerIter->first;
+          pendingOffside.spot =
+              OffsideRule::RestartPosition(playerIter->second.positionAtTouch,
+                                           playerIter->first->GetPosition());
+          pendingOffside.category = playerIter->second.category;
+          pendingOffside.since_ms = match->GetActualTime_ms();
+        }
+        break;
       }
       playerIter++;
     }
@@ -737,21 +743,70 @@ void Referee::BallTouched() {
   // Law 11: a goal kick, throw-in or corner can never put its receivers
   // offside, so their delivery touch must not arm the flag.
   if (OffsideRule::ShouldSnapshot(match->IsInPlay(), buffer.active, buffer.desiredSetPiece)) {
-    // check for offside players at moment of touch
-    float offside = AI_GetOffsideLine(match, match->GetMentalImage(0), abs(lastTouchTeamID - 1));
-    std::vector<Player*> players;
+    // PES 2021's detection (docs/re/pes-re-offside.md 4): at this ball event the
+    // attacking team is judged against the defending team's line - its
+    // second-rearmost defender's rear surface, capped by the ball and by
+    // halfway - and the player on the ball is skipped, as PES skips the event's
+    // own player.
     Team* team = match->GetTeam(lastTouchTeamID);
-    match->GetTeam(lastTouchTeamID)->GetActivePlayers(players);
+    const float offside =
+        AI_GetOffsideLine(match, match->GetMentalImage(0), abs(lastTouchTeamID - 1));
+    const int attackingSide = team->GetSide();
+    const pes::JudgeConstants& constants = match->GetPesJudgeConstants();
+    std::vector<Player*> players;
+    team->GetActivePlayers(players);
     for (unsigned int i = 0; i < players.size(); i++) {
-      if (players.at(i) != team->GetLastTouchPlayer()) {
-        if (players.at(i)->GetPosition().coords[0] * team->GetSide() <
-            offside * team->GetSide() - 0.20 /*relax*/) {
-          offsidePlayers.insert(
-              std::pair<Player*, Vector3>(players.at(i), players.at(i)->GetPosition()));
-        }
+      Player* player = players.at(i);
+      // The player on the ball is never judged against his own touch.
+      if (player == team->GetLastTouchPlayer()) continue;
+      const int category = OffsideRule::OffsideCategory(
+          player->GetPosition().coords[0], offside, attackingSide, constants);
+      // Only categories 0..2 are punishable (PES scans c < 3); category 3 is
+      // onside near level and never flagged.
+      if (category >= 0 && category <= 2) {
+        offsidePlayers.insert(std::pair<Player*, OffsideFlag>(
+            player, OffsideFlag{player->GetPosition(), category}));
       }
     }
   }
+}
+
+void Referee::CommitPendingOffside() {
+  if (!pendingOffside.player) return;
+  // PES's Judge only runs while the ball is in play, so a whistle never lands
+  // once play has stopped - a goal, a ball out, a staged restart.
+  if (!match->IsInPlay() || match->IsInSetPiece() || buffer.active) return;
+
+  // DelayWhistle (duels-fouls 5.1): a tight call (category 2) waits while the
+  // ball player is shooting - PES's SHOOT state - so the shot finishes first.
+  if (pendingOffside.category == 2 &&
+      pendingOffside.player->GetCurrentFunctionType() == e_FunctionType_Shot)
+    return;
+
+  if (match->GetActualTime_ms() - pendingOffside.since_ms < kPesOffsideWhistleHold_ms) return;
+
+  // uooooga uooooga offside!
+  match->StopPlay();
+  buffer.desiredSetPiece = e_SetPiece_FreeKick;
+  buffer.stopTime = match->GetActualTime_ms();
+  // The offside is PES's 0xb stop (9.3): a 2.5 s hold, +2.5 s while a player
+  // is down, then the wipe, teleport and fade-in. Live: 140 frames without a
+  // man down, 275 end to end across a flag.
+  ScheduleStop(this, buffer.stopTime, AnyPlayerDown(match), kPesHoldOutOfPlay);
+  // Law 11: the free kick is taken where the offence occurred - the spot where
+  // the flagged player became involved - not where he stood when the pass was
+  // struck (that stored position only judged the offside position itself).
+  buffer.restartPos = pendingOffside.spot;
+  const int offendingTeamID = pendingOffside.player->GetTeamID();
+  buffer.teamID = abs(offendingTeamID - 1);
+  match->GetMatchData()->AddOffside(offendingTeamID);
+  match->GetMatchData()->AddFreeKick(buffer.teamID);
+  buffer.active = true;
+  buffer.prepared = false;
+  buffer.started = false;
+  if (Verbose())
+    printf("referee: offside\n");
+  pendingOffside.player = nullptr;
 }
 
 int Referee::JudgeContact(Player* tripee, Player* tripper, pes::JudgeAction action) {

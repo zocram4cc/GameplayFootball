@@ -964,7 +964,7 @@ Vector3 ElizaController::GetSupportPosition_ForceField(const MentalImage* mental
       break;
   }
 
-  float offsideX = AI_GetOffsideLine(match, _mentalImage, abs(team->GetID() - 1), 240);
+  float offsideX = AI_GetOffsideLine(match, _mentalImage, abs(team->GetID() - 1));
   float adaptedMakeRun = makeRun;
 
   // actual base position
