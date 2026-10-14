@@ -32,6 +32,8 @@ struct Rig;
 // 14): the line height, the team length and width, and the marking assignment's
 // arithmetic.
 #include "pesdefshape.hpp"
+// PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
+#include "pesdefenderdecisions.hpp"
 
 struct MatchSetup {
   int homeTeamDbId = 0;
@@ -97,6 +99,11 @@ struct MatchSetup {
   // read from the install's exe. Required: without them a defending team has no
   // line to hold.
   const pes::DefensiveShapeConstants* pesDefensiveShapeConstants = nullptr;
+  // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md):
+  // the reaction chooser's table and every gate its entries read. Required:
+  // the gates' numbers live in the image and in the install's constant files,
+  // so a defender with no constants would be deciding on invented distances.
+  const pes::DefenderDecisionConstants* pesDefenderDecisionConstants = nullptr;
 };
 
 #endif

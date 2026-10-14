@@ -109,6 +109,11 @@ int main(int argc, char** argv) {
   // PES 2021's open-play defensive shape (docs/re/pes-re-defensive-shape.md 6, 7, 14).
   auto defensiveShapeConstants = pes::LoadDefensiveShapeConstants(*exe, &err);
   if (!defensiveShapeConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
+  // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md):
+  // the reaction table and its gates, .rdata plus two json records out of the
+  // install's constant files.
+  auto defenderDecisionConstants = pes::LoadDefenderDecisionConstants(*exe, vfs, &err);
+  if (!defenderDecisionConstants) return std::fprintf(stderr, "%s\n", err.c_str()), 1;
 
   blunted::Database db;
   if (!db.LoadSqlScript(dbSql)) return std::fprintf(stderr, "cannot load %s\n", dbSql.c_str()), 1;
@@ -133,6 +138,7 @@ int main(int argc, char** argv) {
   setup.pesStoppageConstants = &*stoppageConstants;
   setup.pesCarrierConstants = &*carrierConstants;
   setup.pesDefensiveShapeConstants = &*defensiveShapeConstants;
+  setup.pesDefenderDecisionConstants = &*defenderDecisionConstants;
 
   Match match(new MatchData(home, away), setup, config);  // Match owns the MatchData
   while (!match.IsGameOver()) match.Process();

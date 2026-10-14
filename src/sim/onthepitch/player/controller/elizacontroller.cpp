@@ -29,10 +29,12 @@
 #include "data/playerskills.hpp"
 #include "data/playingstyles.hpp"
 #include "onthepitch/gameplaytuning.hpp"
+#include "onthepitch/pesdefenderdecisions.hpp"
 #include "onthepitch/matchpressure.hpp"
 #include "onthepitch/peskeeper.hpp"
 #include "onthepitch/setpiecelaws.hpp"
 #include "onthepitch/penaltyshootoutcontroller.hpp"
+#include "onthepitch/teaminstructions.hpp"
 #include "onthepitch/teamphilosophy.hpp"
 #include "strategies/offtheball/default_def.hpp"
 #include "strategies/offtheball/default_mid.hpp"
@@ -598,15 +600,12 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
     _BallControlCommand(commandQueue, false, false,
                         false);  // last param true == enable sticky run direction.
 
-    // trap?
-    _TrapCommand(commandQueue);
-
-    // interfere?
-    bool byAnyMeans = false;
-    _InterfereCommand(commandQueue, byAnyMeans);
-
-    // sliding?
-    _SlidingCommand(commandQueue);
+    // PES 2021's one ordered reaction table for the engaging defender
+    // (docs/re/pes-re-defender-decisions.md 1): walked every tick, the first
+    // predicate that returns true wins and replaces the movement command. GF's
+    // own trap/interfere/sliding trio each decided for itself, with a duel
+    // roll each; they are gone.
+    _ReactionCommands(commandQueue);
   }
 
   // movement
@@ -708,6 +707,302 @@ void ElizaController::RequestCommand(PlayerCommandQueue& commandQueue) {
 
 void ElizaController::Process() {
   PlayerController::Process();
+}
+
+// --- PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md) ---
+
+namespace {
+
+// The angle of a direction vector, in degrees. GF's pitch is (x length, y
+// width); PES's is (x length, z width), so this engine's y is PES's z.
+inline float HeadingDeg(const Vector3& direction) {
+  return std::atan2(direction.coords[1], direction.coords[0]) * 180.0f / blunted::pi;
+}
+
+inline float BearingDeg(const Vector3& from, const Vector3& to) {
+  return std::atan2(to.coords[1] - from.coords[1], to.coords[0] - from.coords[0]) * 180.0f /
+         blunted::pi;
+}
+
+inline float AngleBetweenDeg(float a, float b) { return std::fabs(WrapDeg(a - b)); }
+
+// Whether the team is playing one of its deepest mentality rungs, the only GF
+// analogue the report leaves open for PES's single `T+0xa298` defensive mode
+// byte (report 11 item 5: what that byte counts is unresolved).
+// ponytail: one byte stands in for a whole rung, and the mode's +2 is spent on
+// the two deepest of GF's five rungs rather than on one exact value.
+bool DeepDefensiveMode(const TeamInstructions::State& instructions) {
+  return instructions.mentality == TeamInstructions::e_Mentality_AllOutDefence ||
+         instructions.mentality == TeamInstructions::e_Mentality_Defensive;
+}
+
+}  // namespace
+
+Player* ElizaController::_Carrier() {
+  // PES's FUN_140a50e00: the ball owner when he is an opponent, else the
+  // opponent predicted to take it. GF's precomputed best-possession opponent
+  // stands in for the predicted one.
+  Player* retainer = match->GetBallRetainer();
+  if (retainer && retainer->GetTeamID() != team->GetID()) return retainer;
+  return _oppPlayer;
+}
+
+int ElizaController::_TackleAggressionLevel() {
+  // PES's A: ENFORCER (+1) and the team's defensive mode (+1). The team-sheet
+  // flag that zeroes it (FUN_140a3b520 / FUN_1414dab90) has no GF counterpart.
+  int A = 0;
+  if (CastPlayer()->GetPlayerData()->GetPlayingStyle() == PlayingStyles::Player::TheDestroyer) ++A;
+  if (DeepDefensiveMode(team->GetController()->GetInstructions())) ++A;
+  return A;
+}
+
+pes::SlideAggressionInput ElizaController::_SlideAggression() {
+  const TeamInstructions::State& instructions = team->GetController()->GetInstructions();
+  pes::SlideAggressionInput in;
+  in.enforcerStyle =
+      CastPlayer()->GetPlayerData()->GetPlayingStyle() == PlayingStyles::Player::TheDestroyer;
+  // PES's FUN_140a62180(ctx, side, 6) == 0: the Pressuring sheet toggle is
+  // Aggressive rather than Conservative (pes-re-tactics.md 2).
+  in.aggressiveTeamSheet = TeamInstructions::Has(instructions, TeamInstructions::e_Instruction_AggressiveDefence);
+  in.deepDefensiveMode = DeepDefensiveMode(instructions);
+  in.staminaUnder30 = CastPlayer()->GetStaminaPct() < 0.30f;
+  return in;
+}
+
+bool ElizaController::_AnyTeammateSliding() {
+  std::vector<Player*> mates;
+  match->GetTeam(team->GetID())->GetActivePlayers(mates);
+  for (Player* mate : mates) {
+    if (mate == player) continue;
+    if (mate->GetCurrentFunctionType() == e_FunctionType_Sliding) return true;
+  }
+  return false;
+}
+
+bool ElizaController::_IsLastLine() {
+  // PES reads the analysis table's line mark. The closest readable analogue is
+  // "no team mate of mine is deeper than I am": nobody between me and my own
+  // goal line, which is what a last man means on the pitch.
+  const float ownX = -team->GetSide() * pitchHalfW;
+  std::vector<Player*> mates;
+  match->GetTeam(team->GetID())->GetActivePlayers(mates);
+  for (Player* mate : mates) {
+    if (mate == player) continue;
+    const float mine = (player->GetPosition().coords[0] - ownX) * team->GetSide();
+    const float his = (mate->GetPosition().coords[0] - ownX) * team->GetSide();
+    if (his < mine - 0.01f) return false;
+  }
+  return true;
+}
+
+bool ElizaController::_HasCover(float towardsDeg) {
+  // PES's FUN_140a4fea0(ctx, id, &pos, 10, 60): a team mate inside the cover
+  // radius whose bearing is inside the cover wedge. `towardsDeg` is the bearing
+  // of the thing covered - the carrier.
+  const pes::DefenderDecisionConstants& k = match->GetPesDefenderDecisionConstants();
+  std::vector<Player*> mates;
+  match->GetTeam(team->GetID())->GetActivePlayers(mates);
+  for (Player* mate : mates) {
+    if (mate == player) continue;
+    if ((mate->GetPosition() - player->GetPosition()).GetLength() > k.safetyCoverRadius_m) continue;
+    if (AngleBetweenDeg(BearingDeg(player->GetPosition(), mate->GetPosition()), towardsDeg) <=
+        k.safetyCoverAngle_deg)
+      return true;
+  }
+  return false;
+}
+
+void ElizaController::_PushChallenge(PlayerCommandQueue& commandQueue, const Vector3& contact,
+                                     e_FunctionType type) {
+  PlayerCommand command;
+  command.desiredFunctionType = type;
+  command.useDesiredMovement = true;
+  Vector3 flat = contact - CastPlayer()->GetPosition();
+  if (type == e_FunctionType_Sliding) {
+    // PES's slide capsule runs from where he stands towards the point, so the
+    // body has to be aimed along the way there and not at the endpoint alone.
+    command.desiredDirection = flat.Get2D().GetNormalized(CastPlayer()->GetDirectionVec());
+  } else {
+    command.desiredDirection = flat.GetNormalized(CastPlayer()->GetDirectionVec());
+  }
+  command.desiredVelocityFloat = sprintVelocity;
+  command.useDesiredLookAt = true;
+  command.desiredLookAt = CastPlayer()->GetPosition() + command.desiredDirection * 10.0f;
+  commandQueue.push_back(command);
+}
+
+void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
+  const pes::DefenderDecisionConstants& k = match->GetPesDefenderDecisionConstants();
+
+  // The walk. PES rebuilds the per-player think context with the current frame
+  // every tick, so this runs every tick; GF's RequestCommand is one tick per
+  // player already.
+  pes::DefenderReactionInput in;
+  in.receive = _ReceiveCandidate();
+  in.tackle = _TackleCandidate(k);
+  in.slide = _SlideCandidate(k);
+  in.block = _BlockCandidate(k);
+  in.jostleForPass = _PassDuelCandidate(k);
+
+  // Where the ball will be when he gets there is where PES's solver puts the
+  // contact point, and it is the direction any of these commands runs at.
+  const Vector3 contact = _mentalImage->GetBallPrediction(200).Get2D();
+  switch (pes::ChooseReaction(in)) {
+    case pes::DefenderReaction::kReceive:
+      _TrapCommand(commandQueue);
+      break;
+    case pes::DefenderReaction::kTackle:
+      _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
+      break;
+    case pes::DefenderReaction::kSlide:
+      _PushChallenge(commandQueue, contact, e_FunctionType_Sliding);
+      break;
+    case pes::DefenderReaction::kBlock:
+    case pes::DefenderReaction::kJostleForPass:
+      // Both are the interpose command in GF. PES issues a BLOCK anime (0xe)
+      // and a JOSTLE anime (0x48) respectively, and GF has clips for neither;
+      // the interception itself runs in the collision layer (report 6).
+      _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
+      break;
+    case pes::DefenderReaction::kNone:
+      break;
+  }
+}
+
+bool ElizaController::_TackleCandidate(const pes::DefenderDecisionConstants& k) {
+  Player* carrier = _Carrier();
+  if (!carrier || carrier->GetTeamID() == team->GetID()) return false;
+
+  // The anime layer has to be free of a committed challenge, and he may not
+  // tackle in the first second after his own touch (PES's event-by-me gate).
+  const e_FunctionType current = CastPlayer()->GetCurrentFunctionType();
+  if (current == e_FunctionType_Sliding || current == e_FunctionType_Trip) return false;
+  if (match->GetLastTouchPlayer() == CastPlayer() &&
+      match->GetActualTime_ms() - CastPlayer()->GetLastTouchTime_ms() < 1000)
+    return false;
+
+  const Vector3 pos = CastPlayer()->GetPosition();
+  const Vector3 carrierPos = carrier->GetPosition();
+  const Vector3 ballAhead = _mentalImage->GetBallPrediction(200);
+  const Vector3 ballNext = _mentalImage->GetBallPrediction(210);
+  const float heading = HeadingDeg(CastPlayer()->GetDirectionVec());
+  const float carrierHeading = HeadingDeg(carrier->GetDirectionVec());
+
+  // Step 5's ball gate, on the strict branch. PES applies it to a defender
+  // outside {FREE_RUN, WAIT_TIMER, DELAY, PRESS, SAND}; GF has no per-player
+  // movement state, so every defender takes the strict branch (which is what
+  // the live sample's only tackle was, report 12.1).
+  if (!pes::StandingTackleBallGate(k, (ballAhead.Get2D() - pos).GetLength(),
+                                   AngleBetweenDeg(heading, BearingDeg(pos, ballAhead.Get2D()))))
+    return false;
+  // The contact point's height. GF has no solver, so the ball's own height at
+  // the look-ahead point stands in (report 12.3: it is a height, not a reach).
+  if (ballAhead.coords[2] > k.tackleContactHeight_m) return false;
+
+  const float carrierBearing = BearingDeg(carrierPos, pos);
+  if (!pes::StandingTackleFromBehindAllowed(
+          k, AngleBetweenDeg(carrierHeading, carrierBearing) > k.tackleBehindAngle_deg,
+          AngleBetweenDeg(carrierBearing, carrierHeading),
+          AngleBetweenDeg(carrierHeading, heading), _TackleAggressionLevel()))
+    return false;
+  if (!pes::StandingTackleEngageWindow(k, AngleBetweenDeg(heading, BearingDeg(pos, carrierPos)),
+                                       (ballNext - carrierPos).GetLength()))
+    return false;
+
+  // The two safety terms. The carrier's running touch clip gives the sine;
+  // without one PES's helper returns 1.0, which is above any threshold.
+  float sf = 1.0f;
+  if (carrier->TouchAnim() && carrier->GetTouchFrame() > 0)
+    sf = pes::SafetyProgressSine(static_cast<float>(carrier->GetFrameNum()) /
+                                 static_cast<float>(carrier->GetTouchFrame()));
+  if (pes::StandingTackleSafetyVeto(k, sf, !_HasCover(BearingDeg(pos, carrierPos)), _IsLastLine(),
+                                    static_cast<float>(match->GetActualTime_ms() -
+                                                       carrier->GetLastTouchTime_ms()) /
+                                        Match::kTick_ms))
+    return false;
+
+  // No double tackle: a team mate in a ball action and 1.5x closer to the point
+  // (report 2, FUN_140970ad1).
+  std::vector<Player*> mates;
+  match->GetTeam(team->GetID())->GetActivePlayers(mates);
+  const float mine = (ballAhead.Get2D() - pos).GetLength();
+  for (Player* mate : mates) {
+    if (mate == player) continue;
+    if ((ballAhead.Get2D() - mate->GetPosition()).GetLength() * 1.5f > mine) continue;
+    const e_FunctionType mateAction = mate->GetCurrentFunctionType();
+    if (mateAction == e_FunctionType_Sliding || mateAction == e_FunctionType_Trap ||
+        mateAction == e_FunctionType_Interfere || mateAction == e_FunctionType_Header)
+      return false;
+  }
+  return true;
+}
+
+bool ElizaController::_SlideCandidate(const pes::DefenderDecisionConstants& k) {
+  // CPU team only and open play only: GF is AI-vs-AI by construction, and the
+  // whole block sits inside match->IsInPlay() && !match->IsInSetPiece().
+  if (_AnyTeammateSliding()) return false;
+  if (match->GetBallRetainer()) return false;
+
+  // The contact point, ten frames ahead, must stay below the height limit.
+  const Vector3 ballAhead = _mentalImage->GetBallPrediction(100);
+  if (ballAhead.coords[2] > k.slideBallHeight_m) return false;
+
+  const bool deepMode = DeepDefensiveMode(team->GetController()->GetInstructions());
+  int L = pes::SlideAggressionLevel(_SlideAggression());
+  // Inside his own penalty area he may only slide at L = 3, and PES then
+  // lowers L. The box is the keeper's box this engine uses everywhere.
+  const float ownX = -team->GetSide() * pitchHalfW;
+  const bool inOwnBox =
+      std::fabs(CastPlayer()->GetPosition().coords[1]) < 20.05f &&
+      (CastPlayer()->GetPosition().coords[0] - ownX) * team->GetSide() < 16.4f;
+  L = pes::SlideAggressionOwnBox(k, inOwnBox, deepMode, L);
+  if (L < 0) return false;
+
+  // ponytail: PES also asks that he be his team's first man to the point, that
+  // no opponent body sits in the capsule, and that the slide be lateral enough
+  // to his heading. GF has no reach-and-timing solver and no capsule geometry,
+  // so the reach below is the whole distance gate.
+  const float reach = pes::SlideReach_m(k, L);
+  if ((ballAhead.Get2D() - CastPlayer()->GetPosition()).GetLength() >= reach) return false;
+  // Ponytail: the anime layer decides whether he is still recovering from a
+  // slide; the engine's own current animation is the nearest readable gate.
+  const e_FunctionType current = CastPlayer()->GetCurrentFunctionType();
+  return current != e_FunctionType_Sliding && current != e_FunctionType_Trip;
+}
+
+bool ElizaController::_BlockCandidate(const pes::DefenderDecisionConstants& k) {
+  // Entry 8's owner half: an opponent owner inside the block radius.
+  if (match->GetBallRetainer() == 0) return false;
+  Player* carrier = _Carrier();
+  if (!carrier || carrier->GetTeamID() == team->GetID()) return false;
+  if (match->GetBallRetainer() != carrier) return false;
+  const bool pressing = team->GetController()->GetTeamPressurePlayer() == player;
+  const float radius = pes::BlockRadius_m(k, pressing, false, false);
+  if ((carrier->GetPosition() - CastPlayer()->GetPosition()).GetLength() > radius) return false;
+  // A pass or a shot clip widens the radius to 7 m once it has passed its
+  // fraction. GF's clip table carries no pass clip, so the widened radius is
+  // read through the requirement that the ball is already in flight towards
+  // him - the late window - rather than through a clip's own progress.
+  return true;
+}
+
+bool ElizaController::_PassDuelCandidate(const pes::DefenderDecisionConstants& k) {
+  // Entry 11's loose half: a kicked ball in flight, unowned, inside the block
+  // radius of where it is going. It sits behind entry 8 in the table, so PES
+  // reaches it only when the owner's own radius did not catch him.
+  if (match->GetBallRetainer()) return false;
+  Player* kicker = match->GetLastTouchPlayer();
+  if (!kicker) return false;
+  const float speed = match->GetBall()->GetMovement().GetLength() * 3.6f;
+  const float window = pes::BlockLooseWindow_s(k, speed);
+  const float age_s =
+      static_cast<float>(match->GetActualTime_ms() - kicker->GetLastTouchTime_ms()) * 0.001f;
+  if (age_s >= window) return false;
+
+  const bool pressing = team->GetController()->GetTeamPressurePlayer() == player;
+  const float radius = pes::BlockRadius_m(k, pressing, false, false);
+  const Vector3 ballPredict = _mentalImage->GetBallPrediction(200);
+  return (ballPredict - CastPlayer()->GetPosition()).GetLength() <= radius;
 }
 
 Vector3 ElizaController::GetDirection() {

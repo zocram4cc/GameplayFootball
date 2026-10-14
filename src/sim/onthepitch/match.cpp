@@ -141,6 +141,13 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "PES defensive shape constants missing: read them from the install with "
         "pes::LoadDefensiveShapeConstants into MatchSetup::pesDefensiveShapeConstants");
   pesDefensiveShapeConstants = *setup.pesDefensiveShapeConstants;
+  // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md).
+  if (setup.pesDefenderDecisionConstants == nullptr)
+    throw std::runtime_error(
+        "PES defender decision constants missing: read them from the install with "
+        "pes::LoadDefenderDecisionConstants into "
+        "MatchSetup::pesDefenderDecisionConstants");
+  pesDefenderDecisionConstants = *setup.pesDefenderDecisionConstants;
   if (setup.pesStaminaConstants == nullptr)
     throw std::runtime_error(
         "PES stamina constants missing: read them from the install with "

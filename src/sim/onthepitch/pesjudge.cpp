@@ -258,9 +258,13 @@ int JudgePoints(const JudgeContact& c, const JudgeConstants& k) {
   } else if (c.action == JudgeAction::Tackle) {
     pAction = k.tacklePoints + (c.victimFell ? k.tackleFallenBonus : 0);
   }
-  // DOGSO adds when the victim fell and the challenge was reckless.
-  // ponytail: PES also adds it for a deliberate-intent flag (ai(B)+0x134) this
-  // engine's AI does not carry.
+  // DOGSO +30 when the victim fell and the challenge was in the reckless
+  // class. PES also fires it on the deliberate-intent flag `ai(B)+0x134`, but
+  // that flag means "a pad-controlled player pressed for this challenge"
+  // (docs/re/pes-re-defender-decisions.md 4: its only writer is the publisher
+  //'s pad-table scan, and AI-vs-AI leaves every slot unbound). It is never
+  // set for a CPU player, so in this engine there is no intent bonus at all -
+  // the reckless class is the only half of PES's OR that survives.
   if (c.victimFell && c.dogso && c.action == JudgeAction::Slide) pAction += k.dogsoBonus;
 
   // The game sums into a u8.

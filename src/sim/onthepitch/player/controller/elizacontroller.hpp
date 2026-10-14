@@ -7,6 +7,7 @@
 #define _HPP_FOOTBALL_ONTHEPITCH_ELIZACONTROLLER
 
 #include "../../../gamedefines.hpp"
+#include "onthepitch/pesdefenderdecisions.hpp"
 #include "playercontroller.hpp"
 
 struct Prerequisites;
@@ -54,6 +55,32 @@ public:
 protected:
   void GetOnTheBallCommands(std::vector<PlayerCommand>& commandQueue, Vector3& rawInputDirection,
                             float& rawInputVelocityFloat);
+
+  // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md):
+  // the one ordered reaction table and the gates its entries read. Every
+  // predicate is a member because it reads the controller's own state; every
+  // number that comes from the game is in
+  // pes::DefenderDecisionConstants, read from the install.
+  void _ReactionCommands(PlayerCommandQueue& commandQueue);
+  Player* _Carrier();
+  // The five predicates GF can express, in the chooser's order.
+  bool _TackleCandidate(const pes::DefenderDecisionConstants& k);
+  bool _SlideCandidate(const pes::DefenderDecisionConstants& k);
+  bool _BlockCandidate(const pes::DefenderDecisionConstants& k);
+  bool _PassDuelCandidate(const pes::DefenderDecisionConstants& k);
+  // PES's aggression level A for the tackle's from-behind tolerance and touch
+  // lead: the ENFORCER style and the team's defensive mode.
+  int _TackleAggressionLevel();
+  // The three team terms of the slide's aggression ladder.
+  pes::SlideAggressionInput _SlideAggression();
+  // Whether the defender is the last line of his team's shape, and whether a
+  // team mate covers him - the two safety terms.
+  bool _IsLastLine();
+  bool _HasCover(float towardsDeg);
+  // Whether any team mate is already sliding.
+  bool _AnyTeammateSliding();
+  void _PushChallenge(PlayerCommandQueue& commandQueue, const Vector3& contact,
+                      e_FunctionType type);
 
   // PES 2021's ball-carrier decision layer (docs/re/pes-re-carrier-ai.md):
   // the plan the carrier is running and the frame stamps the think cadence

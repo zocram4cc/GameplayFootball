@@ -48,8 +48,10 @@ protected:
                                    bool keepCurrentBodyDirection = false);
   virtual void _TrapCommand(PlayerCommandQueue& commandQueue, bool idleTurnToOpponentGoal = false,
                             bool knockOn = false);
-  virtual void _InterfereCommand(PlayerCommandQueue& commandQueue, bool byAnyMeans = false);
-  virtual void _SlidingCommand(PlayerCommandQueue& commandQueue);
+  // PES 2021's reaction chooser entry 0 (docs/re/pes-re-defender-decisions.md
+  // 1) as a predicate: the walk has to know whether the receive fires before it
+  // looks at the tackle, slide or block behind it.
+  bool _ReceiveCandidate();
   virtual void _MovementCommand(PlayerCommandQueue& commandQueue, bool forceMagnet = false,
                                 bool extraHaste = false);
 

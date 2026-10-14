@@ -198,6 +198,11 @@ public:
   const pes::DefensiveShapeConstants& GetPesDefensiveShapeConstants() const {
     return pesDefensiveShapeConstants;
   }
+  // PES 2021's engaging-defender decisions (docs/re/pes-re-defender-decisions.md):
+  // the reaction chooser's table and the gates its entries read.
+  const pes::DefenderDecisionConstants& GetPesDefenderDecisionConstants() const {
+    return pesDefenderDecisionConstants;
+  }
   // PES 2021's generator constants (docs/re/pes-re-rng.md 1): the values the
   // per-decision generators are built from. The match generator itself is
   // `rngSource` and is not shared: PES builds a throw-away generator for each
@@ -426,6 +431,7 @@ protected:
   pes::KeeperConstants pesKeeperConstants{};
   pes::StoppageConstants pesStoppageConstants{};
   pes::CarrierConstants pesCarrierConstants{};
+  pes::DefenderDecisionConstants pesDefenderDecisionConstants{};
   pes::SetPieceTakerConstants pesSetPieceTakerConstants{};
   pes::SetPieceTeamConstants pesSetPieceTeamConstants{};
   pes::DefensiveShapeConstants pesDefensiveShapeConstants{};

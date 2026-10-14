@@ -363,112 +363,54 @@ void PlayerController::_BallControlCommand(PlayerCommandQueue& commandQueue,
   }
 }
 
+// PES's reaction chooser entry 0 (report 1) needs this as a predicate rather
+// than a command, so the walk can stop at the first true one. It is the same
+// gate _TrapCommand queues on.
+bool PlayerController::_ReceiveCandidate() {
+  if (match->GetBall()->GetMovement().Get2D().GetLength() < 2.0f) return false;
+  if (match->GetBall()->Predict(200).GetDistance(player->GetPosition()) >
+      ballDistanceOptimizeThreshold)
+    return false;
+  if (match->GetBallRetainer() != 0) return false;
+  if (hasPossession) return false;
+  if (match->GetDesignatedPossessionPlayer() == player) return true;
+  return team->GetDesignatedTeamPossessionPlayer() == player &&
+         CastPlayer()->GetTimeNeededToGetToBall_optimistic_ms() < 1000 &&
+         oppTimeNeededToGetToBall > 400 && !oppTeamHasPossession &&
+         CouldWinABallDuelLikeliness() >= 0.5f;
+}
+
 void PlayerController::_TrapCommand(PlayerCommandQueue& commandQueue, bool idleTurnToOpponentGoal,
                                     bool knockOn) {
-  if (match->GetBall()->GetMovement().Get2D().GetLength() < 2.0f)
-    return;  // - CastPlayer()->GetMovement()).GetLength()
+  if (!_ReceiveCandidate()) return;
 
-  if (match->GetBall()->Predict(200).GetDistance(player->GetPosition()) >
-      ballDistanceOptimizeThreshold)
-    return;
-  if (match->GetBallRetainer() != 0)
-    return;
+  PlayerCommand command;
+  command.desiredFunctionType = e_FunctionType_Trap;
+  command.useDesiredMovement = true;
+  command.desiredDirection = inputDirection;
+  if (quantizeDirection)
+    QuantizeDirection(command.desiredDirection, GetQuantizedDirectionBias());
 
-  if (!hasPossession && (match->GetDesignatedPossessionPlayer() == player ||
-                         (team->GetDesignatedTeamPossessionPlayer() == player &&
-                          CastPlayer()->GetTimeNeededToGetToBall_optimistic_ms() < 1000 &&
-                          oppTimeNeededToGetToBall > 400 && !oppTeamHasPossession &&
-                          CouldWinABallDuelLikeliness() >= 0.5f))) {  // opp time was 500 ms
-
-    PlayerCommand command;
-    command.desiredFunctionType = e_FunctionType_Trap;
-    command.useDesiredMovement = true;
-    command.desiredDirection = inputDirection;
-    if (quantizeDirection)
-      QuantizeDirection(command.desiredDirection, GetQuantizedDirectionBias());
-
-    command.desiredVelocityFloat = inputVelocityFloat;
-    if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
-      command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
-      command.desiredVelocityFloat = idleVelocity;
-    }
-
-    if (FloatToEnumVelocity(command.desiredVelocityFloat) == e_Velocity_Idle &&
-        idleTurnToOpponentGoal) {
-      command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
-    }
-
-    if (knockOn) {
-      command.modifier |= e_PlayerCommandModifier_KnockOn;
-    }
-
-    command.useDesiredLookAt = true;
-    command.desiredLookAt = CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.3f +
-                            command.desiredDirection * 10.0f;
-
-    commandQueue.push_back(command);
+  command.desiredVelocityFloat = inputVelocityFloat;
+  if (CastPlayer()->GetFormationEntry().role == e_PlayerRole_GK) {
+    command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
+    command.desiredVelocityFloat = idleVelocity;
   }
-}
 
-void PlayerController::_InterfereCommand(PlayerCommandQueue& commandQueue, bool byAnyMeans) {
-  if (match->GetBall()->Predict(200).GetDistance(player->GetPosition()) >
-      ballDistanceOptimizeThreshold)
-    return;
-  if (match->GetBallRetainer() != 0)
-    return;
-
-  if (!teamHasBestPossession) {
-    if (!byAnyMeans) {
-      // if dot nears 1, it means opp is somewhat between ball and me
-      if (CouldWinABallDuelLikeliness() < 0.2f)
-        return;
-    }
-
-    PlayerCommand command;
-    command.desiredFunctionType = e_FunctionType_Interfere;
-    command.useDesiredMovement = true;
-
-    command.strictMovement = e_StrictMovement_True;
-    if (byAnyMeans) {
-      command.strictMovement = e_StrictMovement_False;
-    }
-    command.desiredDirection = inputDirection;
-    command.desiredVelocityFloat = inputVelocityFloat;
-    commandQueue.push_back(command);
+  if (FloatToEnumVelocity(command.desiredVelocityFloat) == e_Velocity_Idle &&
+      idleTurnToOpponentGoal) {
+    command.desiredDirection = Vector3(-team->GetSide(), 0, 0);
   }
-}
 
-void PlayerController::_SlidingCommand(PlayerCommandQueue& commandQueue) {
-  if (match->GetBallRetainer() != 0)
-    return;
-  if (CouldWinABallDuelLikeliness() < 0.7f)
-    return;
-
-  if (!teamHasBestPossession && possessionAmount < 0.6f &&
-      match->GetDesignatedPossessionPlayer() != player && oppTeamHasPossession) {
-    Vector3 ballPos = match->GetMentalImage(20)->GetBallPrediction(200);
-    Vector3 playerPos = player->GetPosition() + player->GetMovement() * 0.2;
-    Vector3 oppPos = _oppPlayer->GetPosition() + _oppPlayer->GetMovement() * 0.2;
-
-    float ballDist = (playerPos - ballPos).GetLength();
-    if ((ballDist > 0.7f && ballDist < 1.6f && oppTimeNeededToGetToBall > 260) ||
-        (ballDist > 0.6f && ballDist < 1.8f &&
-         _oppPlayer->GetCurrentFunctionType() == e_FunctionType_Shot &&
-         _oppPlayer->TouchPending())) {
-      // no opp in the way?
-      PlayerCommand command;
-      command.desiredFunctionType = e_FunctionType_Sliding;
-      command.useDesiredMovement = true;
-      command.desiredDirection =
-          ((ballPos.Get2D() + _oppPlayer->GetMovement() * 0.2f) - playerPos)
-              .GetNormalized(Vector3(-team->GetSide(), 0, 0));  // inputDirection;
-      command.desiredVelocityFloat = sprintVelocity;
-      command.useDesiredLookAt = true;
-      command.desiredLookAt = CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.1f +
-                              command.desiredDirection * 10.0f;
-      commandQueue.push_back(command);
-    }
+  if (knockOn) {
+    command.modifier |= e_PlayerCommandModifier_KnockOn;
   }
+
+  command.useDesiredLookAt = true;
+  command.desiredLookAt = CastPlayer()->GetPosition() + CastPlayer()->GetMovement() * 0.3f +
+                          command.desiredDirection * 10.0f;
+
+  commandQueue.push_back(command);
 }
 
 void PlayerController::_MovementCommand(PlayerCommandQueue& commandQueue, bool forceMagnet,
