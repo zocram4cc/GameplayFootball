@@ -2288,6 +2288,10 @@ pes::offball::RunWorld TeamAIController::BuildRunWorld(
       f.facing = pesDeg(pl->GetDirectionVec());
       f.roleClass = ob::RoleClass(static_cast<int>(pl->GetDynamicFormationEntry().role));
       f.position = ob::Position(static_cast<int>(pl->GetFormationEntry().role));
+      // ponytail: FUN_140a580a0's AI class (player +0xc0, a copy of +0x40) is
+      // PES's AI behaviour class, which GF does not carry. The role class is
+      // the closest analogue: the class the AI treats the player as.
+      f.aiClass = f.roleClass;
       f.slotPoint = Flat(ctl->GetAdaptedFormationPosition(pl, false));
       auto run = ctl->runs.find(pl);
       if (run != ctl->runs.end()) {

@@ -24,3 +24,4 @@ anim_names*.txt
 
 # render captures
 captures/
+extern/

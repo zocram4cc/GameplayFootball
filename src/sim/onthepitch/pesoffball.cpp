@@ -10,8 +10,6 @@ namespace pes::offball {
 namespace {
 
 // --- literals the reports give without an .rdata VA (provenance per line) ---
-// fps multiples use PES's 54 fps (FUN_141e532d0 = [0x14351ae54]).
-constexpr float kPesFps = 54.0f;
 // Minimum run time before the Chance stop may fire: int(fps·0.2+0.5) (0x140607a60).
 constexpr float kChanceMinFrames = 11.0f;
 // The common test's late line margin switches at int(0.8·fps+0.5) (0x140688c00 step 14).
@@ -1154,6 +1152,7 @@ bool L643a30(const RunWorld& w, int team, int) {
   return true;
 }
 
+
 // The cascade FUN_140688c00 (run-targets 3), steps numbered as there.
 bool CommonStop(const RunWorld& w, int id, int run) {
   const Ctx x(w, id);
@@ -1252,8 +1251,10 @@ bool CommonStop(const RunWorld& w, int id, int run) {
       if (!pinned && (L68b070(x) || L692c50(x) || L68b920(x) || L691ef0(x) ||
                       (!counter && x.tt > Frames(2.0f) && L692fe0(x))))
         return true;
-      // 68b1a0 needs AI class 2; 68b6e0 the ball-sorted frame list; 693340
-      // the 643a30 grid read; 694bc0 instruction 6: all false.
+      // 68b1a0 (FUN_14068b1a0): the crowded-mate stop, past fps/2 frames.
+      if (!pinned && x.tt > Frames(0.5f) && CrowdedMateStop(w, id)) return true;
+      // 68b6e0 the ball-sorted frame list; 693340 the 643a30 grid read;
+      // 694bc0 instruction 6: all false.
       const bool anyKeep = L690b90(x) || L690630(x) || L690400(x) || L690cf0(x) ||
                            L694650(x) || L693a20(x) || L693730(x, intercept) ||
                            L68e660(x, intercept) || L68b440(x, intercept) || L68c050(x) ||
@@ -1262,9 +1263,10 @@ bool CommonStop(const RunWorld& w, int id, int run) {
         // 691d10 (SecondLine sub 8) and 68fa10 (T+0x87cc) are not reached.
         if (L691a80(x)) return true;
         if (!L68d0b0(x, pinned)) {
-          // 691300 (sub 2) not reached; 68aeb0 needs 653480/655660
-          // (time-to-reach, decompiled, implicit angle args unresolved).
+          // 691300 (sub 2) not reached; 68aeb0 releases the run when the runner
+          // beats the receiver's lead to his own route point.
           if (L690960(x)) return true;
+          if (x.tt > Frames(2.0f) && PassToMeStop(w, id)) return true;
           if (L68ac40(x, x.me.aim, true) || L693ef0(x)) return true;
           // 68c1a0 (controlled path), 68baa0 (skill cards), 6910c0 (cls 0x19)
           // are not reached.
@@ -1278,6 +1280,154 @@ bool CommonStop(const RunWorld& w, int id, int run) {
 }
 
 }  // namespace
+
+// --- FUN_140654e60, the time-to-reach (raw 0x140654e60-0x14065565c) ---
+//
+// PES steps the player toward the target two frames at a time. The per-frame
+// distance starts at sin((dev+90)/2)·speed·align - the heading factor
+// FUN_140a92c80 - and climbs across the speed tiers
+// 100/(fps·{12.9, 22.5, 32.7, 72}) m/frame; while the player has not turned
+// far enough toward the target (4.5417 deg a frame = 2·int(fps+0.5)/48·2) his
+// distance gain is capped by the tier he is in. The loop ends when the walked
+// distance reaches the target or 20 s pass, and the answer adds the turn
+// penalty int(int(fps·0.25+0.5)·ramp(dev, 90→155)) scaled by the second
+// heading ramp and int(fps·0.4+0.5)·u (u = the speed ramp over 11→22 km/h).
+constexpr float kTurnDegPerFrame = 2.0f * 109.0f / 48.0f;  // 2·int(fps+0.5)/48·2
+constexpr float kReachTier20_s = 20.0f;   // 100/(fps·20) m/frame, the walk tier
+constexpr float kReachTier12_9_s = 12.9f;  // 100/(fps·12.9) m/frame, the jog tier
+constexpr float kReachTier22_5_s = 22.5f;  // 100/(fps·22.5) m/frame
+constexpr float kReachTier32_7_s = 32.7f;  // 100/(fps·32.7) m/frame
+constexpr float kReachTier72_s = 72.0f;    // 100/(fps·72) m/frame, the sprint tier
+constexpr float kReachWalkFloor = 0.8f;   // 0.8·t20: below it the player cannot turn
+constexpr float kReachTurnGate_deg = 55.0f;  // dev <= 55 turns without the accel step
+constexpr float kReachAccelFast_s = 1.3f;    // seconds to climb the top two tiers
+constexpr float kReachAccelSlow_s = 0.15f;   // seconds to climb the bottom two
+constexpr float kReachMaxFrames_s = 20.0f;   // the loop's 20 s ceiling
+constexpr float kReachTurnFrom_deg = 90.0f;  // the turn penalty starts at 90 deg
+constexpr float kReachTurnSpan_deg = 65.0f;  // ... and saturates 65 deg later
+constexpr float kReachTurnScale_s = 0.25f;   // int(fps·0.25+0.5) frames at full
+constexpr float kReachAlignFrom_deg = 65.0f; // the second heading ramp's start
+constexpr float kReachAlignTo_deg = 120.0f;  // ... and its end
+constexpr float kReachAlignScale_s = 0.4f;   // int(fps·0.4+0.5) frames at full
+constexpr float kReachSpeedFrom_kmh = 11.0f; // the speed ramp 11 -> 22 km/h
+constexpr float kReachSpeedTo_kmh = 22.0f;
+constexpr float kReachAlignNear_deg = 35.0f; // 30 + 35·(1-u): the full-alignment band
+constexpr float kReachAlignFar_deg = 25.0f;  // ... and the dead band past it
+
+// FUN_140a92c80(x, scale): sign·scale·sin(fold180(x)/2), the 512-step table at
+// 0x142655950 (its values are sin(i·90/512 deg); the install test reads the
+// table's ends and midpoint).
+float HeadingFactor(float deg, float scale) {
+  const float folded = Fold180(deg);
+  const float v = std::sin(folded * 0.5f * kRad);
+  return folded < 0.0f ? -scale * v : scale * v;
+}
+
+// FUN_140655660 + FUN_140654e60: the frames for player `id` to reach `X`.
+// ponytail: FUN_140a75740 (the path) is the straight segment - GF has no
+// obstacle path, so the waypoint list is the destination itself.
+int FramesToReach(const RunWorld& w, int id, Vec2f X) {
+  const PlayerFacts& p = w.p[id];
+  const float speed = Len(p.vel);                      // metres per frame
+  const float facing = p.facing;
+  const float need = Bearing(p.pos, X);                // FUN_140439e50
+  const float dev = std::fabs(Ad(facing, need));
+  const float heading = PVec(p.vel);
+  // u: 0 at 11 km/h, 1 at 22 km/h (0x140655033: 3.6·speed against 11 and 22).
+  const float kmh = speed * kPesFps * 3.6f;
+  const float u = Ramp(kmh, kReachSpeedFrom_kmh, kReachSpeedTo_kmh);
+  const float near = kReachAlignNear_deg + 35.0f * (1.0f - u);
+  const float far = near + kReachAlignFar_deg;
+  const float alignRamp = dev <= near ? 1.0f : dev >= far ? 0.0f : (far - dev) / (far - near);
+  const float perFrame = HeadingFactor(dev + 90.0f, 1.0f) * speed * alignRamp;
+  const float t20 = Per100(kReachTier20_s) / kPesFps;
+  const float t129 = Per100(kReachTier12_9_s) / kPesFps;
+  const float t225 = Per100(kReachTier22_5_s) / kPesFps;
+  const float t327 = Per100(kReachTier32_7_s) / kPesFps;
+  const float t72 = Per100(kReachTier72_s) / kPesFps;
+  const float dist = std::sqrt(Dist2(p.pos, X));
+  float gain = perFrame, turned = 0.0f, walked = 0.0f;
+  int frames = 0;
+  while (walked < dist && frames <= static_cast<int>(Frames(kReachMaxFrames_s))) {
+    if (!(turned < dev) || (t20 * kReachWalkFloor > gain) || dev <= kReachTurnGate_deg) {
+      float span = 0.0f, sec = kReachAccelSlow_s;
+      if (gain >= t225) {
+        span = t20 - t225;
+        sec = kReachAccelFast_s;
+      } else if (gain >= t327) {
+        span = t225 - t327;
+      } else {
+        span = t327 - t72;
+      }
+      if (t129 > gain) {
+        const int n = std::max(1, static_cast<int>(kPesFps * sec + 0.5f));
+        gain += 2.0f * span / static_cast<float>(n);
+      }
+    }
+    if (dev > turned) turned += kTurnDegPerFrame;
+    walked += 2.0f * gain;
+    frames += 2;
+  }
+  if (frames > static_cast<int>(Frames(kReachMaxFrames_s)))
+    frames = static_cast<int>(dist / t129);
+  // The turn penalty and the second heading ramp (0x1406554b1-0x1406555ea).
+  const float turnRamp = dev <= kReachTurnFrom_deg ? 0.0f
+                        : dev >= kReachTurnFrom_deg + kReachTurnSpan_deg ? 1.0f
+                        : (dev - kReachTurnFrom_deg) / kReachTurnSpan_deg;
+  const int turnPenalty =
+      static_cast<int>(Frames(kReachTurnScale_s) * turnRamp);
+  const float dev2 = std::fabs(Ad(heading, need));
+  const float second = dev2 >= kReachAlignFrom_deg
+                           ? Ramp(dev2, kReachAlignTo_deg, kReachAlignFrom_deg)
+                           : 1.0f;
+  int scale = static_cast<int>(Frames(kReachAlignScale_s) * u);
+  if (p.position == 0) scale = static_cast<int>(static_cast<float>(scale) * 0.5f);  // rec[1] == 3
+  return frames + static_cast<int>(turnPenalty * second + static_cast<float>(scale));
+}
+
+// FUN_14068b1a0: the crowded-mate stop, reached at step 19 with t > fps/2.
+bool CrowdedMateStop(const RunWorld& w, int id) {
+  const Ctx x(w, id);
+  if (x.me.aiClass != 2) return false;                // FUN_140a580a0 != 2
+  // a4c9a0(id, -7): the runner at least 7 m behind the opponents' line.
+  if (!A720(w.lineX[x.opp], x.P.x, x.s, -7.0f)) return false;
+  // Within 20 m of the ball-line point (MA+0x2482c/0x24834: the ball at the
+  // snap). ponytail: GF's snap is the current ball position.
+  if (Dist2(x.P, w.ball) >= 400.0f) return false;
+  for (int j = x.t * kSlots; j < x.t * kSlots + kSlots; ++j) {
+    if (j == id || !w.p[j].active) continue;
+    if (!IsRun(w.p[j].state)) continue;               // FUN_1405a4830
+    const bool chanceMate = w.p[j].state == kChance && w.p[j].aiClass == 1;
+    if (chanceMate) continue;
+    if (Dist2(x.P, w.p[j].pos) < 144.0f) return true;
+  }
+  return false;
+}
+
+// FUN_14068aeb0: the pass-to-me stop, reached at step 19 with t > 2·fps.
+bool PassToMeStop(const RunWorld& w, int id) {
+  if (!EvKick(w.ev)) return false;                     // a3e190 kind not a kick
+  if (w.ev.target == id) return false;                 // a62e40 == id
+  const int t = TeamOf(id);
+  const int q = w.receiver[t];                         // FUN_1405969b0
+  if (!Valid(q) || q == id) return false;
+  // FUN_140a580a0: an SB or a 0x13-class runner never keeps this way.
+  if (w.p[id].aiClass == 2 || w.p[id].aiClass == 0x13) return false;
+  const float s = w.s[t];
+  // a4c9a0(id, -4): at least 4 m behind the opponents' line, and not more than
+  // 1.2 m past it (a4c9a0(id, -1.2)).
+  if (!A720(w.lineX[t ^ 1], w.p[id].pos.x, s, -4.0f)) return false;
+  if (A720(w.lineX[t ^ 1], w.p[id].pos.x, s, -1.2f)) return false;
+  if (!OppNear(w, id, 5.0f)) return false;             // a4e250(id, 5)
+  // FUN_140653480: the receiver's lead, from his distance to the snap (the
+  // ball): 196/676 m² thresholds, 0.28/0.35/0.38 s (0x1425c4c18/0x1425cb48c).
+  const float d2 = Dist2(w.p[q].pos, w.ball);
+  const float sec = d2 < 196.0f ? 0.28f : d2 < 676.0f ? 0.35f : 0.38f;
+  const int lead = static_cast<int>(kPesFps * sec + 0.5f);
+  // FUN_140655660 on the runner's own route point (FUN_140596c30).
+  const int mine = FramesToReach(w, id, w.p[id].aim);
+  return lead >= mine + static_cast<int>(kPesFps * 0.15f + 0.5f);
+}
 
 int RoleClass(int gfRole) {
   constexpr int kMap[] = {0, 1, 2, 2, 3, 4, 5, 5, 6, 9, 8, 8, 7};

@@ -74,6 +74,9 @@ enum CapRun : int {
 
 // Chance's per-tick cap (FUN_140524a30 ctor arg); every other score selector 1.
 inline constexpr int kChancePerTick = 11;
+// PES's tick rate, FUN_141e532d0 = [0x14351ae54]; fps multiples and frame
+// counts in this header's reports are expressed against it.
+inline constexpr float kPesFps = 54.0f;
 
 // FieldInfo F1, the half-width to the outer line edge (pes-re-fieldinfo.md).
 inline constexpr float kFieldHalfWidth_m = 34.06f;
@@ -176,6 +179,7 @@ struct PlayerFacts {
   Vec2f aim;             // FUN_140596c30 / a76240: the run target, else the position
   Vec2f slotPoint;       // T+0x4b4c + 12·slot: the slot's formation point
   int marker = -1;       // FUN_140a62850: the opponent marking him
+  int aiClass = 0;       // FUN_140a580a0 (T+0xc0), the AI class the state tests read
   int position = 0;      // T+0x4c00: registered position, 0 GK 1 CB 2 LB 3 RB 4 DMF 5 CMF
                          // 6 LMF 7 RMF 8 AMF 9 LWF 10 RWF 11 SS 12 CF
 };
@@ -210,6 +214,33 @@ int Position(int gfRole);
 // FUN_140500200: T+0xb8b8, the slots of `team` the Chance mask may take, by
 // attack level (decompiled for this port).
 uint32_t AttackSlotMask(const RunWorld& w, int team, int attackLevel);
+
+// FUN_14068b1a0 (raw 0x14068b1a0): the crowded-mate stop. An SB (AI class 2)
+// runner within 20 m of the ball and no more than 7 m behind the opponents'
+// line is released when another runner (not a class-1 Chance mate) is within
+// 12 m of him.
+bool CrowdedMateStop(const RunWorld& w, int id);
+
+// FUN_140654e60 with FUN_140655660 and FUN_140a75740 (raw walks): the number of
+// frames for player `id` to reach `X`, on PES's speed tiers (100/(fps·{12.9,
+// 22.5, 32.7, 72}) m/frame) with the heading-dependent accel step.
+int FramesToReach(const RunWorld& w, int id, Vec2f X);
+
+// FUN_14068aeb0 (raw 0x14068aeb0-0x14068b06e, resolved with FUN_140654e60's
+// two angle arguments): the pass-to-me stop, true when the last ball event was
+// a kick whose recorded target is not this runner, an opponent is within 5 m,
+// the runner sits 1.2-4 m behind the opponent line, and he reaches his own
+// route point inside the receiver's lead (the receiver cannot beat him to it).
+bool PassToMeStop(const RunWorld& w, int id);
+
+// FUN_140688c00 step 19's leaf FUN_1405a1cc0 (raw 0x1405a1cc0, needs
+// FUN_140654e60's angle args): a duel-interception keep is rejected when the
+// carrier is far from the runner's aim and no teammate reaches the crossing
+// point sooner.
+bool DuelInterceptionKeep(const RunWorld& w, int id);
+
+// FUN_140691300 (raw 0x140691300): the run sub-kind 2 stop.
+bool SubKindTwoStop(const RunWorld& w, int id);
 
 // FUN_140606cd0's generic-lane path for slot `id` (decompiled for this port):
 // true sets his candidate bit. `awareness` is the reach byte (0..99).

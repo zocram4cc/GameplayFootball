@@ -367,6 +367,252 @@ TEST(OffBallSupport, DistanceGrowsWithSupportRangeAndDeepBall) {
   EXPECT_FLOAT_EQ(SupportDistance_m(in), 8.0f);
 }
 
+// FUN_140654e60: the frames to reach a point. A player walking at the slow
+// tier covers 100/(fps·72) m per frame and a jogger 100/(fps·12.9).
+TEST(OffBallReach, FramesToReachGrowsWithDistanceAndFallsWithSpeed) {
+  RunWorld w = Running();
+  w.p[0].pos = {0.0f, 0.0f};
+  w.p[0].facing = 0.0f;               // toward +x, the target's direction
+  w.p[0].position = 5;                // a midfielder: no keeper's half scale
+  w.p[0].vel = {0.02f, 0.0f};         // 1.08 km/h-equivalent: standing still
+  const int near = FramesToReach(w, 0, {10.0f, 0.0f});
+  const int far = FramesToReach(w, 0, {30.0f, 0.0f});
+  EXPECT_GT(far, near);
+  // A faster player reaches the same point sooner.
+  w.p[0].vel = {0.15f, 0.0f};         // 8.1 km/h
+  EXPECT_LT(FramesToReach(w, 0, {10.0f, 0.0f}), near);
+  // Already there and facing it: only the speed-ramped term, and a player at
+  // rest below 11 km/h has u = 0, so no frames at all.
+  w.p[0].vel = {0.0f, 0.0f};
+  EXPECT_EQ(FramesToReach(w, 0, {0.0f, 0.0f}), 0);
+  // Past the 20 s ceiling FUN_140654e60 falls back to the straight-line jog
+  // tier 100/(fps·12.9) m/frame, which needs 154 m of run to reach.
+  w.p[0].vel = {0.02f, 0.0f};
+  const int capped = FramesToReach(w, 0, {200.0f, 0.0f});
+  EXPECT_EQ(capped, static_cast<int>(200.0f / (100.0f / (kPesFps * 12.9f))));
+}
+
+// FUN_14068b1a0: the crowded-mate stop. An SB (AI class 2) runner inside 20 m
+// of the ball, behind the opponent line by at most 7 m, is released when
+// another runner who is not a class-1 Chance mate stands within 12 m.
+TEST(OffBallStop, AnSBWithAnotherRunnerTwelveMetresAwayIsReleased) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 2;             // SB
+  r.state = kChance;
+  r.t = kPesFps * 4.0f;      // past every early exemption
+  r.pos = {20.0f, 3.0f};     // 5 m behind the 25 m line, 10 m from the ball
+  r.aim = {25.0f, 3.0f};
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  PlayerFacts& m = w.p[5];
+  m.pos = {22.0f, 3.0f};     // 2 m away
+  m.state = kChance;         // on a run
+  m.aiClass = 5;
+  EXPECT_TRUE(CrowdedMateStop(w, kRunner));
+  // A CB instead of an SB: not this leaf.
+  r.aiClass = 1;
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+  r.aiClass = 2;
+  // More than 7 m behind the line: not this leaf.
+  r.pos = {17.0f, 3.0f};
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+  r.pos = {20.0f, 3.0f};
+  // Too far from the ball: not this leaf.
+  r.pos = {45.0f, 3.0f};
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+}
+
+TEST(OffBallStop, ACrowdingMateMustBeRunningAndTwelveMetresAway) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 2;
+  r.state = kChance;
+  r.t = kPesFps * 4.0f;
+  r.pos = {20.0f, 3.0f};
+  r.aim = {25.0f, 3.0f};
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  PlayerFacts& m = w.p[5];
+  m.pos = {22.0f, 3.0f};
+  m.state = kNothing;       // not running: he cannot crowd
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+  m.state = kChance;        // running, and inside 12 m
+  EXPECT_TRUE(CrowdedMateStop(w, kRunner));
+  m.pos = {40.0f, 3.0f};    // 20 m away
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+  m.pos = {22.0f, 3.0f};
+  m.aiClass = 1;            // a class-1 Chance mate: exempt
+  m.state = kChance;
+  EXPECT_FALSE(CrowdedMateStop(w, kRunner));
+}
+
+// FUN_14068aeb0: the pass-to-me stop. With a kick in flight whose recorded
+// target is not this runner, an opponent within 5 m of him and the runner
+// 1.2-4 m behind the opponent line, the run is released when he reaches his
+// own route point inside the receiver's lead plus int(fps·0.15+0.5): the
+// receiver can no longer beat him to the point the pass is played to.
+TEST(OffBallStop, TheRunnerIsReleasedWhenHeBeatsTheReceiverToHisPoint) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;                 // not 2 (SB) and not 0x13
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;          // past the 2·fps gate
+  r.pos = {22.0f, 3.0f};         // 3 m behind the 25 m line
+  r.aim = {25.0f, 3.0f};
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  // The kick goes to slot 7, not to the runner, and is under way.
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  // An opponent next to the runner (5 m cone) and the receiver, slower, far off.
+  PlayerFacts& o = w.p[kSlots + 4];
+  o.pos = {24.0f, 3.0f};
+  PlayerFacts& q = w.p[7];
+  q.pos = {-6.0f, 3.0f};           // 16 m from the ball: the 0.28 s lead band
+  r.aim = {22.1f, 3.0f};          // he is already at his own route point
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+  // The runner's own target pushed far away: he needs more frames than the
+  // receiver's lead, so the keep ends.
+  r.aim = {2.0f, 3.0f};
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  r.aim = {22.1f, 3.0f};
+  // The pass is to the runner himself: never a keep.
+  w.ev.target = kRunner;
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  w.ev.target = 7;
+  // No kick at all: never a keep.
+  w.ev.valid = false;
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  w.ev.valid = true;
+  // No opponent within 5 m: never a keep.
+  o.pos = {45.0f, 3.0f};
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+}
+
+// The lead band: the receiver's lead comes from his distance to the ball,
+// 196/676 m² thresholds to 0.28/0.35/0.38 s (FUN_140653480), and the runner is
+// released only when he reaches his own route point inside that lead plus
+// int(fps·0.15+0.5) = 8. Each pair below pins one threshold by choosing the
+// runner's distance to his own point so the margin lands just inside or just
+// outside the band.
+TEST(OffBallStop, PassToMeStopReleasesInsideTheNearLeadBand) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;
+  r.pos = {22.0f, 3.0f};
+  r.facing = 90.0f;
+  r.aim = r.pos;                 // on his own point: 2 frames, 15 >= 2 + 8
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  w.p[kSlots + 4].pos = {24.0f, 3.0f};
+  w.p[7].pos = {-3.0f, 3.0f};    // 13 m from the ball (169 m²): int(fps·0.28+0.5) = 15
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {3.0f, 3.0f};     // 7 m from the ball (49 m²): the same 15
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {-17.0f, 3.0f};   // 27 m from the ball (729 m²): int(fps·0.38+0.5) = 21
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+}
+
+TEST(OffBallStop, PassToMeStopKeepsOutsideTheNearLeadBand) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;
+  r.pos = {22.0f, 3.0f};
+  r.facing = 90.0f;
+  r.aim = {22.25f, 3.0f};        // 0.25 m out: 11 frames, 15 < 11 + 8
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  w.p[kSlots + 4].pos = {24.0f, 3.0f};
+  w.p[7].pos = {3.0f, 3.0f};     // 49 m²: the 15-frame band cannot reach him
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {-17.0f, 3.0f};   // 729 m²: the 21-frame band can
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+}
+
+// The lead bands, FUN_140653480's distance ramp against the ball: 0.28 s inside
+// 196 m², 0.35 s inside 676 m², 0.38 s beyond it. A runner 0.25 m from his own
+// point needs 12 frames, so the 15-frame near band and the 19-frame middle band
+// keep him while the 21-frame far band releases him - which pins all three
+// thresholds at once.
+TEST(OffBallStop, PassToMeStopReleasesInTheFarAndMiddleLeadBands) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;
+  r.pos = {22.0f, 3.0f};
+  r.facing = 90.0f;
+  r.aim = {22.25f, 3.0f};        // 12 frames to his own point
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  w.p[kSlots + 4].pos = {24.0f, 3.0f};
+  w.p[7].pos = {-17.0f, 3.0f};   // 729 m²: int(fps·0.38+0.5) = 21, and 21 >= 20
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {-15.0f, 3.0f};   // 625 m²: int(fps·0.35+0.5) = 19, and 19 < 20
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {3.0f, 3.0f};     // 49 m²: the 15-frame near band cannot reach him
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+}
+
+// The far band's ceiling: a runner 0.45 m from his own point (16 frames) is
+// NOT released by a far-band receiver - 21 < 24 - so a longer far lead than
+// 0.38 s would wrongly release him.
+TEST(OffBallStop, PassToMeStopFarBandKeepsARunnerTooFarFromHisPoint) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;
+  r.pos = {22.0f, 3.0f};
+  r.facing = 90.0f;
+  r.aim = {22.45f, 3.0f};        // 16 frames to his own point
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  w.p[kSlots + 4].pos = {24.0f, 3.0f};
+  w.p[7].pos = {-17.0f, 3.0f};   // 729 m²: int(fps·0.38+0.5) = 21 < 24
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  w.p[7].pos = {3.0f, 3.0f};     // 49 m²: 15 < 24 as well
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+}
+
+TEST(OffBallStop, PassToMeStopNeedsTheRunnerNearTheLine) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.aiClass = 5;
+  r.state = kChance;
+  r.t = kPesFps * 5.0f;
+  r.pos = {22.0f, 3.0f};
+  r.aim = {22.1f, 3.0f};
+  w.p[0].pos = w.ball = {10.0f, 3.0f};
+  w.lineX[1] = 25.0f;
+  w.receiver[0] = 7;
+  w.ev = {true, 1, 3.0f, {10.0f, 3.0f}, 7};
+  w.p[kSlots + 4].pos = {24.0f, 3.0f};
+  PlayerFacts& q = w.p[7];
+  q.pos = {-6.0f, 3.0f};
+  EXPECT_TRUE(PassToMeStop(w, kRunner));
+  // More than 4 m behind the line (a4c9a0 -4): not this keep.
+  r.pos = {19.0f, 3.0f};
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+  r.pos = {22.0f, 3.0f};
+  r.aim = {22.1f, 3.0f};
+  // More than 1.2 m past the line (a4c9a0 -1.2): not this keep.
+  r.pos = {26.5f, 3.0f};
+  EXPECT_FALSE(PassToMeStop(w, kRunner));
+}
+
 TEST(OffBallInstall, CapsAndLimitFromTheInstall) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT unset";
