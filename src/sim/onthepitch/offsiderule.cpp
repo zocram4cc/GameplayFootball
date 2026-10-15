@@ -141,7 +141,21 @@ bool TouchResetsPhase(bool opponentOfFlagged, e_TouchType touchType) {
 blunted::Vector3 RestartPosition(const blunted::Vector3& positionAtPass,
                                  const blunted::Vector3& positionAtInvolvement) {
   (void)positionAtPass;  // recorded to judge the offence, not to restart from
-  return positionAtInvolvement;
+  blunted::Vector3 out = positionAtInvolvement;
+  // The offence's own spot, pulled inside the pitch. Law 11 keeps the kick where
+  // the offence happened, and the flagged player is almost always inside the
+  // pitch - but the involvement is his live position, and a man beyond his
+  // opponents' goal line when he plays the ball would put the restart outside
+  // it, where no kick anim can reach the ball. The kick would then never be
+  // played and the restart would hold until the period ended. The fold keeps
+  // the spot's meaning by mirroring its depth inside the line rather than
+  // clamping it flat onto it: a kick from 0.5 m in aims down the pitch, while
+  // one clamped onto the line aims along it.
+  constexpr float kRestartLineMargin_m = 0.5f;
+  const float limit = pitchHalfW - kRestartLineMargin_m;
+  if (out.coords[0] > limit) out.coords[0] = 2.0f * limit - out.coords[0];
+  if (out.coords[0] < -limit) out.coords[0] = -2.0f * limit - out.coords[0];
+  return out;
 }
 
 }  // namespace OffsideRule

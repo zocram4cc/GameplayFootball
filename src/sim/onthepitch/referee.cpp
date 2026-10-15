@@ -640,6 +640,17 @@ void Referee::IssueDeferredCards() {
 void Referee::PrepareSetPiece(e_SetPiece setPiece) {
   // position players for set piece situation
 
+  // A restart taken where the offence happened can sit past the lines: a foul or
+  // an offside recorded on a man who was outside the pitch when he was involved
+  // (both are the player's own position). Past the line no kick anim can reach
+  // the ball - humanoid's touch loop rejects every frame whose predicted ball
+  // position leaves the pitch plus its line - so the kick is never played, the
+  // referee's "taker touched the ball" exit never fires, and the restart holds
+  // until the period ends. Measured on the fixture: a free kick whose ball lay
+  // at x = 53.3, 0.8 m past the line, holding for 399 of a match's 425 forced
+  // ticks. The spot keeps its meaning by folding its depth inside the line,
+  // which keeps the lateral offset the kick aims along.
+  buffer.restartPos = OffsideRule::RestartPosition(Vector3(0), buffer.restartPos);
   match->ResetSituation(buffer.restartPos);
   match->GetMatchData()->RecordPassRestart();
 

@@ -90,6 +90,32 @@ TEST(PesOffsideLine, FewerThanTwoDefendersIsTheGoalLine) {
   EXPECT_FLOAT_EQ(Line(1, {}, 20), -HALF_M);
 }
 
+// A free kick is taken at the spot where the offence happened, and that spot is
+// the player's own position (duels-fouls 5.1, Law 11). A player who was standing
+// well beyond his opponents' goal line when he played the ball would put the
+// restart past the line, where no kick anim can reach the ball - the free kick
+// would never be taken and the restart would hold until the period ends. The
+// position is therefore pulled inside the pitch, keeping the spot's lateral
+// offset and its distance from the goal line so the kick stays where the offence
+// was.
+TEST(PesOffsideRestart, AnOffsideSpotPastTheLineStaysInsideThePitch) {
+  // Beyond the goal line: the depth is folded back about the limit, so a spot
+  // 0.8 m past the line becomes one 0.7 m inside it - the same offset, on the
+  // side the kick can actually be played from. (HALF_M above is the synthetic
+  // pitch the line tests use; the restart fold is against the real one,
+  // pitchHalfW.)
+  const float limit = pitchHalfW - 0.5f;
+  EXPECT_FLOAT_EQ(OffsideRule::RestartPosition({0, 0, 0}, {53.3f, 6.5f, 0.0f}).coords[0],
+                  2.0f * limit - 53.3f);
+  // Inside the pitch: untouched.
+  EXPECT_FLOAT_EQ(OffsideRule::RestartPosition({0, 0, 0}, {30.0f, 6.5f, 0.0f}).coords[0], 30.0f);
+  // Past the touchline on the opposite side: the same fold, on that side.
+  EXPECT_FLOAT_EQ(OffsideRule::RestartPosition({0, 0, 0}, {-53.3f, 6.5f, 0.0f}).coords[0],
+                   -2.0f * limit + 53.3f);
+  // The lateral offset survives the fold: it is what the kick aims along.
+  EXPECT_FLOAT_EQ(OffsideRule::RestartPosition({0, 0, 0}, {53.3f, 6.5f, 0.0f}).coords[1], 6.5f);
+}
+
 TEST(PesOffsideLine, ClampsToTheGoalLine) {
   // A ball out over the goal line, and a defender behind his own line, both
   // land on the goal line rather than beyond it.
