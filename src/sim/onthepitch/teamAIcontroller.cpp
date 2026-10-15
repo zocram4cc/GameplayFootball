@@ -2142,6 +2142,10 @@ namespace ob = pes::offball;
 constexpr float kPesFps = 54.0f;  // FUN_141e532d0 = [0x14351ae54]
 // Positions the target builder predicts: int(fps·0.3+0.5) = 16 frames (0x14059bbe4).
 constexpr float kRunPredictFrames = 16.0f;
+// Step 2's re-run block: int(fps·2+0.5) PES frames (off-ball 1.2), and the
+// decrement one manager tick represents (the manager ticks every other frame).
+constexpr long kReRunBlock_ms = 2L * 1000L;
+constexpr long kCooldownStep_ms = static_cast<long>(2000.0f / kPesFps + 0.5f);
 // The supporter search predicts int(fps·0.35+0.5) = 19 frames (FUN_1405eb980).
 constexpr float kSupporterPredictFrames = 19.0f;
 
@@ -2298,6 +2302,8 @@ pes::offball::RunWorld TeamAIController::BuildRunWorld(
         f.state = run->second.state;
         f.t = (now - run->second.start_ms) * kPesFps / 1000.0f;
         f.aim = Flat(run->second.target);
+        // Step 2's A[s]: the manager tick's per-slot re-run block.
+        f.runCooldown = static_cast<int>(run->second.cooldown_ms * kPesFps / 1000.0f);
       } else {
         f.state = ob::kBasePosition;
         f.t = 1e9f;
@@ -2353,15 +2359,49 @@ void TeamAIController::ProcessRunManager(Player* carrier) {
   const std::vector<Player*>& slots = ids[team->GetID()];
   const int base = team->GetID() * ob::kSlots;
 
-  // Stop pass: every runner whose stop test says so goes back to NOTHING.
+  // Step 2 of the manager tick (off-ball 1.2): A[s] counts down every tick and
+  // is cleared when the slot is the pass receiver. A released run therefore
+  // keeps its record with state NOTHING while its cooldown runs, so the mask
+  // still sees the block.
+  const int receiver = world.receiver[team->GetID()];
+  for (auto& [pl, rec] : runs) {
+    const auto at = std::find(slots.begin(), slots.end(), pl);
+    const int pid = at == slots.end() ? -1 : base + static_cast<int>(at - slots.begin());
+    if (pid >= 0 && pid == receiver) {
+      rec.cooldown_ms = 0;
+    } else if (rec.cooldown_ms > 0) {
+      rec.cooldown_ms -= kCooldownStep_ms;
+      if (rec.cooldown_ms < 0) rec.cooldown_ms = 0;
+    }
+  }
+
+  // Stop pass: every *running* slot whose stop test says so goes back to
+  // NOTHING, and its re-run block starts. A record that is already NOTHING is
+  // only carrying the block, so it is neither stop-tested nor counted as a fire
+  // - it is dropped once the block has run out.
   for (auto it = runs.begin(); it != runs.end();) {
+    if (it->second.state == ob::kNothing) {
+      if (it->second.cooldown_ms <= 0) {
+        it = runs.erase(it);
+        continue;
+      }
+      it = std::next(it);
+      continue;
+    }
     const auto at = std::find(slots.begin(), slots.end(), it->first);
     if (at == slots.end()) {
       it = runs.erase(it);
       continue;
     }
     const int id = base + static_cast<int>(at - slots.begin());
-    it = ob::RunStop(world, id, it->second.state) ? runs.erase(it) : std::next(it);
+    if (ob::RunStop(world, id, it->second.state)) {
+      match->GetMatchData()->AddStopFire(team->GetID());
+      it->second.state = ob::kNothing;
+      it->second.cooldown_ms = kReRunBlock_ms;
+      it = std::next(it);
+      continue;
+    }
+    it = std::next(it);
   }
 
   // Select pass. Overlap (registered first) and the selectors after Chance are
@@ -2422,9 +2462,11 @@ void TeamAIController::ProcessRunManager(Player* carrier) {
     // GF's offensive awareness on PES's 0..99 scale stands in, without the
     // Weighted Pass +10.
     const float awareness = p->GetStat("mental_offensivepositioning") * 100.0f;
-    if (!ob::ChanceMaskBit(k, world, base + static_cast<int>(i), slotMask, level, buildUpLong,
-                           awareness))
-      continue;
+    const int reject = ob::ChanceMaskReject(k, world, base + static_cast<int>(i), slotMask, level,
+                                            buildUpLong, awareness);
+    match->GetMatchData()->AddMaskWalk(team->GetID());
+    match->GetMatchData()->AddMaskReject(team->GetID(), reject);
+    if (reject != ob::kMaskPass) continue;
     lane.runner = Flat(pos);
     lane.runnerPred = Flat(Predict(p, kRunPredictFrames));
     lane.runnerVel = Flat(p->GetMovement());

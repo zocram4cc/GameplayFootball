@@ -68,8 +68,20 @@ void PrintMatchReport(Match& match, FILE* out) {
   std::fprintf(out, "[balance-passing] passes %i-%i | accuracy %i%%-%i%% | clean %i%%-%i%% | clearances %i-%i\n",
          passes1, passes2, passAccuracy1, passAccuracy2, cleanPct1, cleanPct2,
          matchData->GetClearances(0), matchData->GetClearances(1));
-  std::fprintf(out, "[offball] chance runs %i-%i\n", matchData->GetChanceRuns(0),
-               matchData->GetChanceRuns(1));
+  std::fprintf(out, "[offball] chance runs %i-%i | mask walks %i-%i | stop fires %i-%i\n",
+         matchData->GetChanceRuns(0), matchData->GetChanceRuns(1), matchData->GetMaskWalks(0),
+         matchData->GetMaskWalks(1), matchData->GetStopFires(0), matchData->GetStopFires(1));
+  // The mask trace: for each team, the gate that decided each walked slot.
+  // MaskReject's order is pass, rank, carrier/receiver, already running,
+  // on the line, box zone, goal area, role class, slot mask, depth, team may
+  // not run, attack level, reach, dz, rank angle, generic.
+  for (int t = 0; t < 2; ++t) {
+    std::fprintf(out, "[offball-trace] team %i:", t);
+    for (int r = 0; r < MatchData::kMaskRejectCount; ++r)
+      if (matchData->GetMaskReject(t, r) > 0)
+        std::fprintf(out, " %i:%i", r, matchData->GetMaskReject(t, r));
+    std::fprintf(out, "\n");
+  }
   // Failure breakdown: where the incomplete passes actually went. Release-safe
   // so the accuracy target can be worked on in the build the batches run.
   std::fprintf(out, "[pass-fail] intercept %i-%i out %i-%i trap %i-%i\n",

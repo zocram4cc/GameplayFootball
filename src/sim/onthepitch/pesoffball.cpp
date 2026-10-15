@@ -1429,6 +1429,12 @@ bool PassToMeStop(const RunWorld& w, int id) {
   return lead >= mine + static_cast<int>(kPesFps * 0.15f + 0.5f);
 }
 
+// Step 2 of the manager tick (off-ball 1.2): the per-slot re-run block. A slot
+// on cooldown is not a candidate; being the pass receiver clears it, and being
+// on a run does not - a slot can be running and still blocked by the timer,
+// which PES reads as "this slot has just finished a run".
+bool RunCooldownBlocks(const RunWorld& w, int id) { return w.p[id].runCooldown > 0; }
+
 int RoleClass(int gfRole) {
   constexpr int kMap[] = {0, 1, 2, 2, 3, 4, 5, 5, 6, 9, 8, 8, 7};
   return gfRole >= 0 && gfRole < static_cast<int>(std::size(kMap)) ? kMap[gfRole] : 0;
@@ -1616,31 +1622,38 @@ uint32_t AttackSlotMask(const RunWorld& w, int team, int L) {
 
 bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
                    int attackLevel, bool buildUpLong, float awareness) {
+  return ChanceMaskReject(k, w, id, slotMask, attackLevel, buildUpLong, awareness) == kMaskPass;
+}
+
+// FUN_140606cd0's gates in walk order, naming the one that rejected `id`.
+MaskReject ChanceMaskReject(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
+                            int attackLevel, bool buildUpLong, float awareness) {
   const Ctx x(w, id);
   const int slot = id - x.t * kSlots;
   const PlayerFacts& me = x.me;
   // Pre-gates: rank (or OVERLAP_SB) and FUN_140593430.
-  if (!(MayTake(kChance, me.state) || me.state == kOverlap)) return false;
-  if (id == w.carrier || id == x.q || me.position == 0) return false;
-  if (IsRun(me.state)) return false;  // 593430: a running slot only from PULL_AWAY
+  if (!(MayTake(kChance, me.state) || me.state == kOverlap)) return kMaskRankOrState;
+  if (id == w.carrier || id == x.q || me.position == 0) return kMaskCarrierOrReceiver;
+  if (IsRun(me.state)) return kMaskAlreadyRunning;  // 593430: a running slot only from PULL_AWAY
   // 593430 (raw 0x1405935c4: k = -0.1 @0x14259d648): not already on the line.
-  if (Beyond2(w, id, -0.1f)) return false;
+  if (Beyond2(w, id, -0.1f)) return kMaskOnTheLine;
   // Inside the box zone only with an opponent within 6.5 m (raw 0x14059373d).
   if (!(x.s * x.P.x <= kF6 - 3.0f || std::fabs(x.P.z) >= kF5 + 1.5f || OppNear(w, id, 6.5f)))
-    return false;
-  if (x.s * x.P.x > kF4) return false;
-  if (!L596240(x)) return false;
+    return kMaskBoxZone;
+  if (x.s * x.P.x > kF4) return kMaskGoalArea;
+  if (!L596240(x)) return kMaskRoleClass;
   // ponytail: 5a7d10 (carrier pass-aim records) is not applied; the special
   // lanes 60a750/608570/87a0/9350/8ac0 are not ported.
   // Generic lane: the attack-slot mask and the depth limit.
-  if (me.state == kOverlap || !((slotMask >> slot) & 1u)) return false;
-  if (x.s * x.P.x > kF8) return false;
-  if (!TeamMayRun(w, x.t)) return false;
+  if (RunCooldownBlocks(w, id)) return kMaskRunCooldown;
+  if (me.state == kOverlap || !((slotMask >> slot) & 1u)) return kMaskSlotMask;
+  if (x.s * x.P.x > kF8) return kMaskDepth;
+  if (!TeamMayRun(w, x.t)) return kMaskTeamMayNotRun;
   const int rank = LineRank(w, id);
   // ponytail: MA+0x68/+0x60 team ints unknown; taken 0 (this gate passes).
   const int pos = me.position;
   // b8a3 = attack level < 1 skips positions 0..4 (counter-trigger 128).
-  if (attackLevel < 1 && pos <= 4) return false;
+  if (attackLevel < 1 && pos <= 4) return kMaskAttackLevel;
   bool styleLb = pos == 2;  // a64030(id, 0x11): no style bits in GF
   const int ahead = AttackersAhead(w);
   const bool reachPath = ahead > 3 || (pos < 4 && !styleLb);
@@ -1662,22 +1675,23 @@ bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_
         bonus = (awareness - k.awareFrom) / k.awareSpan * k.awareBonus_m;
     }
     r = std::min(r + bonus, k.reachCap_m);
-    if (r + bonus < std::fabs(x.P.x - x.B.x)) return false;
+    if (r + bonus < std::fabs(x.P.x - x.B.x)) return kMaskReach;
   }
   constexpr float kMaxDz_m = 42.0f;  // 0x1425cd830
-  if (dz > kMaxDz_m) return false;
+  if (dz > kMaxDz_m) return kMaskDz;
   // The rank > 1 angle sub-test (raw 0x140607741-0x140607814): a second-line
   // runner inside 20 m of the ball-line point, heading within 45 deg of the
   // bearing to him and with no opponent in the 80 deg cone, is rejected when
   // that point is not ahead in the attack frame - and likewise every runner
   // once four attackers are ahead of the ball band.
-  if (!RankAngleOk(w, id, attackLevel)) return false;
+  if (!RankAngleOk(w, id, attackLevel)) return kMaskRankAngle;
   // ponytail: 5a8290 / 5a5400 are not reduced; 5a7d10 (the carrier pass-aim
   // stop) is not applied. The generic path goes to 79ac, where with a carrier
   // 6046b0 (style bit 3: none -> true), 609b40 (carrier valid -> false) and
   // 609e60 (receiver action 0x48 -> false) set the bit.
   (void)rank;
-  return Valid(w.carrier) || !Valid(x.q) || Dist2(w.p[x.q].pos, x.B) <= 49.0f;
+  return Valid(w.carrier) || !Valid(x.q) || Dist2(w.p[x.q].pos, x.B) <= 49.0f ? kMaskPass
+                                                                           : kMaskGeneric;
 }
 
 bool RunStop(const RunWorld& w, int id, int run) {

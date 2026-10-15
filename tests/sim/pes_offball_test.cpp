@@ -765,6 +765,178 @@ TEST(OffBallMask, TheAngleSubTestWindowIsTwentyMetres) {
   EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
 }
 
+// FUN_140606cd0's gates, one reason each. The classifier names the gate that
+// rejected a slot, so a live trace can be read without a debugger.
+TEST(OffBallMaskTrace, TheClassifierNamesTheRejectingGate) {
+  const OffBallConstants k = Synthetic();
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;
+  r.pos = {10.0f, 0.0f};
+  r.aim = {20.0f, 0.0f};
+  w.p[0].pos = w.ball = {0.0f, 0.0f};
+  w.lineX[1] = 25.0f;
+  w.carrier = 0;
+  // A clean candidate: no gate rejects him.
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  EXPECT_TRUE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // The generic tail's three disjuncts need no carrier to be seen: with one,
+  // the first disjunct always passes. Without one, a receiver inside
+  // team-may-run's 25 m but past the tail's 49 m2 (7 m) rejects him.
+  w.carrier = -1;
+  w.receiver[0] = 1;
+  w.p[1].pos = {10.0f, 2.0f};   // 104 m2 from the ball, 10.2 m away
+  EXPECT_EQ(kMaskGeneric, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // The tail's !Valid(q) disjunct is dead in the walk order: with no carrier
+  // TeamMayRun already needs a valid focus player (593290), and with a
+  // carrier the first disjunct passes first. A slot with neither never
+  // reaches the tail - the team-may-run gate stops him.
+  w.receiver[0] = -1;
+  EXPECT_EQ(kMaskTeamMayNotRun, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // Restored: the clean candidate the test starts on.
+  w.p[0].pos = w.ball = {0.0f, 0.0f};
+  w.carrier = 0;
+  w.receiver[0] = 1;
+  w.p[1].pos = {11.0f, 0.0f};
+
+  // The rank/state gate: a running slot may only come from PULL_AWAY.
+  r.state = kChance;
+  EXPECT_EQ(kMaskRankOrState, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.state = kBasePosition;
+  // The carrier, the receiver and the goalkeeper are never candidates.
+  EXPECT_EQ(kMaskCarrierOrReceiver, ChanceMaskReject(k, w, 0, ~0u, 2, false, 50.0f));
+  EXPECT_EQ(kMaskCarrierOrReceiver, ChanceMaskReject(k, w, 1, ~0u, 2, false, 50.0f));  // w.receiver[0]
+  w.receiver[0] = -1;
+  r.position = 0;  // the keeper
+  EXPECT_EQ(kMaskCarrierOrReceiver, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.position = 12;
+  w.receiver[0] = 1;
+  // Every state IsRun() accepts also loses the rank test first, so
+  // 593430's own "already running" test is unreachable through Chance:
+  // kMaskRankOrState fires for all of them. (0x1d..0x21 rank 2 = Chance's
+  // own rank, 0x24/0x25/0x2c rank 0, so MayTake is false either way.)
+  r.state = kSecondLine;
+  EXPECT_EQ(kMaskRankOrState, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.state = kOneTwoPassRun;
+  EXPECT_EQ(kMaskRankOrState, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.state = kChance;
+  EXPECT_EQ(kMaskRankOrState, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.state = kBasePosition;
+  // 593430's line test: already past the opponents' line.
+  w.p[kRunner].pos = {26.0f, 0.0f};
+  EXPECT_EQ(kMaskOnTheLine, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[kRunner].pos = {10.0f, 0.0f};
+  // The slot mask.
+  EXPECT_EQ(kMaskSlotMask, ChanceMaskReject(k, w, kRunner, 0u, 2, false, 50.0f));
+  // The depth limit: past F8 (41.56 m), with the line pushed far enough ahead
+  // that the line test does not fire first.
+  w.lineX[1] = 60.0f;
+  w.p[kRunner].pos = {44.0f, 0.0f};
+  EXPECT_EQ(kMaskDepth, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.lineX[1] = 25.0f;
+  w.p[kRunner].pos = {10.0f, 0.0f};
+  // The attack level's position skip: level 0 skips positions 0..4.
+  r.position = 2;  // a full back
+  EXPECT_EQ(kMaskAttackLevel, ChanceMaskReject(k, w, kRunner, ~0u, 0, false, 50.0f));
+  r.position = 12;
+  // |dz| past 42 m.
+  w.p[kRunner].pos = {10.0f, 43.0f};
+  EXPECT_EQ(kMaskDz, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // Inside the box zone (past F6 - 3, within F5 + 1.5 of the centre) an
+  // opponent within 6.5 m is required; z = 8 keeps the default defenders' z
+  // ladder (steps of 3 from -30) clear of him and stays inside F5 + 1.5.
+  w.p[kRunner].pos = {40.0f, 8.0f};
+  w.lineX[1] = 60.0f;
+  EXPECT_EQ(kMaskBoxZone, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // The goal-area gate (s·x > F4) sits behind the box-zone gate, so it is only
+  // reached once the opponent is there: with one beside a runner at x = 48 the
+  // box zone lets him through and the goal-area gate stops him.
+  w.p[kSlots + 4].pos = {42.0f, 8.0f};
+  w.p[kRunner].pos = {48.0f, 8.0f};
+  EXPECT_EQ(kMaskGoalArea, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.lineX[1] = 25.0f;
+  w.p[kRunner].pos = {10.0f, 0.0f};
+  // FUN_140596240: a runner of class < 3 may not run when a teammate of a
+  // lower class is already running and no further from the ball than him.
+  w.p[5].roleClass = 1;   // a CB
+  w.p[5].pos = {9.0f, 0.0f};
+  w.p[5].state = kChance;
+  r.roleClass = 2;
+  EXPECT_EQ(kMaskRoleClass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.roleClass = 4;        // class 4 and up are exempt
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  w.p[5].state = kBasePosition;
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.roleClass = 4;
+  // TeamMayRun: in the own half with young possession and no free
+  // forward-facing focus player, the team may not start Chance runs.
+  w.carrier = -1;
+  w.receiver[0] = 1;
+  w.p[1].pos = {11.0f, 0.0f};
+  w.possessionAge[0] = 100.0f;
+  w.p[1].vel = {0.0f, 0.0f};
+  EXPECT_EQ(kMaskTeamMayNotRun, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // Old possession (or a free forward-facing focus player) opens it, and then
+  // the generic tail - no carrier and a receiver far from the ball - is what
+  // rejects him.
+  w.possessionAge[0] = 1e6f;
+  EXPECT_EQ(kMaskGeneric, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+}
+
+// The reach path is separate because its rejection depends on the runner's
+// distance to the ball and the attack direction: a defender needs it, a
+// forward does not, and the reach limit grows with Build Up Long.
+TEST(OffBallMaskTrace, TheClassifierNamesTheReachRejection) {
+  const OffBallConstants k = Synthetic();
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.pos = {30.0f, 0.0f};          // 30 m ahead of the ball
+  r.aim = {40.0f, 0.0f};
+  r.position = 1;                 // a CB: the reach path applies
+  w.p[0].pos = w.ball = {0.0f, 0.0f};
+  w.lineX[1] = 45.0f;             // keeps him onside
+  w.carrier = 0;
+  EXPECT_EQ(kMaskReach, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  r.position = 12;                // a CF: no reach path
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // A CB at 19 m: past the 15 m base, inside Build Up Long's 21 m.
+  r.position = 1;
+  r.pos = {19.0f, 0.0f};
+  EXPECT_EQ(kMaskReach, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, true, 50.0f));
+}
+
+// Step 2 of the manager tick (off-ball 1.2): A[s] = int(fps·2+0.5) frames when
+// a slot newly enters a run state, counting down otherwise and cleared when the
+// slot is the pass receiver. While it is nonzero the slot is not a candidate -
+// the 2 s re-run block, which is what keeps a released runner from being taken
+// again on the very next tick.
+TEST(OffBallMaskTrace, ASlotOnTheTwoSecondRerunBlockIsNotACandidate) {
+  const OffBallConstants k = Synthetic();
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;
+  r.pos = {10.0f, 0.0f};
+  r.aim = {20.0f, 0.0f};
+  w.p[0].pos = w.ball = {0.0f, 0.0f};
+  w.lineX[1] = 25.0f;
+  w.carrier = 0;
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // On cooldown: the block gate stops him before the slot mask.
+  r.runCooldown = 1;
+  EXPECT_EQ(kMaskRunCooldown, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+  EXPECT_FALSE(ChanceMaskBit(k, w, kRunner, ~0u, 2, false, 50.0f));
+  // Counted down to zero: a candidate again.
+  r.runCooldown = 0;
+  EXPECT_EQ(kMaskPass, ChanceMaskReject(k, w, kRunner, ~0u, 2, false, 50.0f));
+}
+
 TEST(OffBallInstall, CapsAndLimitFromTheInstall) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT unset";

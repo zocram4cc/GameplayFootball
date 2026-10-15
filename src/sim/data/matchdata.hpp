@@ -292,6 +292,24 @@ public:
   // PES Chance runs started (pesoffball.hpp), for the match report.
   void AddChanceRun(int teamID) { chanceRuns[teamID]++; }
   int GetChanceRuns(int teamID) const { return chanceRuns[teamID]; }
+
+  // pes::offball::MaskReject's width (pesoffball.hpp); duplicated here so this
+  // header stays free of the exe reader.
+  static constexpr int kMaskRejectCount = 17;
+  // The Chance mask trace (pesoffball.hpp): one entry per (tick, slot) the
+  // candidate mask walked, filed under the gate that decided it. Read by
+  // tools/offball_trace.py to find which gate admits or kills the runs.
+  void AddMaskWalk(int teamID) { maskWalks[teamID]++; }
+  void AddMaskReject(int teamID, int reject) {
+    if (reject < 0 || reject >= kMaskRejectCount) return;
+    maskRejects[teamID][reject]++;
+  }
+  void AddStopFire(int teamID) { stopFires[teamID]++; }
+  int GetMaskWalks(int teamID) const { return maskWalks[teamID]; }
+  int GetMaskReject(int teamID, int reject) const {
+    return reject < 0 || reject >= kMaskRejectCount ? 0 : maskRejects[teamID][reject];
+  }
+  int GetStopFires(int teamID) const { return stopFires[teamID]; }
   void ResetPendingPass() {
     pendingPassTeamID = -1;
     pendingPassIsGoalkeeper = false;
@@ -811,6 +829,9 @@ protected:
   int passAttempts[2];
   int clearances[2];
   int chanceRuns[2] = {0, 0};
+  int maskWalks[2] = {0, 0};
+  int maskRejects[2][kMaskRejectCount] = {};
+  int stopFires[2] = {0, 0};
   int passesCompleted[2];
   int pendingPassTeamID;
 

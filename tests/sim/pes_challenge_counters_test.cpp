@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "data/matchdata.hpp"
+#include "onthepitch/pesoffball.hpp"
 #include "onthepitch/match.hpp"
 #include "onthepitch/matchreport.hpp"
 #include "onthepitch/matchsetup.hpp"
@@ -116,6 +117,47 @@ TEST(PesChallengeCounters, TheReportLineCarriesBothTeamsOrdered) {
   EXPECT_GE(r.data->GetChallengesSlides(1), 0);
   EXPECT_GE(r.data->GetFouls(0), 0);
   EXPECT_GE(r.data->GetFouls(1), 0);
+}
+
+// The Chance mask trace: the histogram's width matches pes::offball::MaskReject's
+// last member (kMaskRunCooldown, not kMaskGeneric), each walked slot is filed
+// under the gate that decided it, and a reject the enum does not name is dropped
+// rather than written out of bounds.
+TEST(PesChallengeCounters, TheMaskHistogramFilesEachGateAndDropsOutOfRange) {
+  Reality r;
+  if (!r.Ready()) GTEST_SKIP() << "PES21_ROOT not set";
+  r.Play(1001, 1);
+  if (!r.match) GTEST_SKIP() << "constants unavailable";
+  MatchData& d = *r.data;
+  EXPECT_EQ(pes::offball::kMaskRunCooldown + 1, MatchData::kMaskRejectCount);
+  // Snapshot: a played match already filled the histogram, so every check is a
+  // delta against what the match itself produced.
+  const int baseWalks[2] = {d.GetMaskWalks(0), d.GetMaskWalks(1)};
+  const int baseFires[2] = {d.GetStopFires(0), d.GetStopFires(1)};
+  int baseReject[2][MatchData::kMaskRejectCount];
+  for (int t = 0; t < 2; ++t)
+    for (int reject = 0; reject < MatchData::kMaskRejectCount; ++reject)
+      baseReject[t][reject] = d.GetMaskReject(t, reject);
+  d.AddMaskWalk(0);
+  d.AddMaskWalk(0);
+  d.AddMaskWalk(1);
+  d.AddMaskReject(0, pes::offball::kMaskReach);
+  d.AddMaskReject(0, pes::offball::kMaskReach);
+  d.AddMaskReject(0, pes::offball::kMaskSlotMask);
+  d.AddMaskReject(1, pes::offball::kMaskPass);
+  d.AddStopFire(0);
+  EXPECT_EQ(2, d.GetMaskWalks(0) - baseWalks[0]);
+  EXPECT_EQ(1, d.GetMaskWalks(1) - baseWalks[1]);
+  EXPECT_EQ(2, d.GetMaskReject(0, pes::offball::kMaskReach) - baseReject[0][pes::offball::kMaskReach]);
+  EXPECT_EQ(1, d.GetMaskReject(0, pes::offball::kMaskSlotMask) -
+                   baseReject[0][pes::offball::kMaskSlotMask]);
+  EXPECT_EQ(1, d.GetMaskReject(1, pes::offball::kMaskPass) - baseReject[1][pes::offball::kMaskPass]);
+  EXPECT_EQ(0, d.GetMaskReject(1, pes::offball::kMaskReach) - baseReject[1][pes::offball::kMaskReach]);
+  EXPECT_EQ(1, d.GetStopFires(0) - baseFires[0]);
+  EXPECT_EQ(0, d.GetStopFires(1) - baseFires[1]);
+  d.AddMaskReject(0, MatchData::kMaskRejectCount);
+  d.AddMaskReject(0, -1);
+  EXPECT_EQ(2, d.GetMaskReject(0, pes::offball::kMaskReach) - baseReject[0][pes::offball::kMaskReach]);
 }
 
 }  // namespace

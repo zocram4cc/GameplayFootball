@@ -261,10 +261,15 @@ protected:
   float MeasuredLine(int line, float ref) const;
 
   // PES's run manager (pesoffball.hpp): one record per player in a run.
+  // `cooldown_ms` counts down from the tick a run ended: step 2 of the manager
+  // tick sets A[s] to int(fps·2+0.5) frames when a slot leaves a run state, and
+  // the mask skips a slot while it is nonzero (off-ball 1.2, the 2 s re-run
+  // block). A player never in a run carries 0.
   struct RunRecord {
     int state = pes::offball::kNothing;
     unsigned long start_ms = 0;
     Vector3 target;
+    long cooldown_ms = 0;  // < 0: not on cooldown
   };
   void ProcessOffBall();
   void ProcessRunManager(Player* carrier);

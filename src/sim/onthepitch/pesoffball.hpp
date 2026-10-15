@@ -180,6 +180,7 @@ struct PlayerFacts {
   Vec2f slotPoint;       // T+0x4b4c + 12·slot: the slot's formation point
   int marker = -1;       // FUN_140a62850: the opponent marking him
   int aiClass = 0;       // FUN_140a580a0 (T+0xc0), the AI class the state tests read
+  int runCooldown = 0;   // M+0x17b4 A[s]: PES frames left before the slot may run again
   int position = 0;      // T+0x4c00: registered position, 0 GK 1 CB 2 LB 3 RB 4 DMF 5 CMF
                          // 6 LMF 7 RMF 8 AMF 9 LWF 10 RWF 11 SS 12 CF
 };
@@ -254,6 +255,39 @@ bool RankAngleOk(const RunWorld& w, int id, int attackLevel);
 // true sets his candidate bit. `awareness` is the reach byte (0..99).
 bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
                    int attackLevel, bool buildUpLong, float awareness);
+
+// Which named gate of FUN_140606cd0 rejected slot `id`, in the order the mask
+// walks them. `kMaskPass` means the bit is set. Order is the raw 0x14060724d
+// cascade: the rank/state pre-gates, 593430's line and box-zone tests, the
+// slot mask, the depth limit, team-may-run, the attack-level position skip,
+// the reach path, |dz| and the rank > 1 angle sub-test.
+enum MaskReject {
+  kMaskPass = 0,
+  kMaskRankOrState,
+  kMaskCarrierOrReceiver,
+  kMaskAlreadyRunning,
+  kMaskOnTheLine,
+  kMaskBoxZone,
+  kMaskGoalArea,
+  kMaskRoleClass,
+  kMaskSlotMask,
+  kMaskDepth,
+  kMaskTeamMayNotRun,
+  kMaskAttackLevel,
+  kMaskReach,
+  kMaskDz,
+  kMaskRankAngle,
+  kMaskGeneric,
+  kMaskRunCooldown,
+};
+MaskReject ChanceMaskReject(const OffBallConstants& k, const RunWorld& w, int id,
+                            uint32_t slotMask, int attackLevel, bool buildUpLong, float awareness);
+
+// Step 2 of the manager tick (off-ball 1.2): A[s] is set to int(fps·2+0.5)
+// frames when a slot newly enters a run state, counts down otherwise, and is
+// cleared when the slot is the pass receiver. A slot on cooldown is not a
+// candidate - the 2 s re-run block the SecondLine mask reads.
+bool RunCooldownBlocks(const RunWorld& w, int id);
 
 // FUN_1408c51f0's role classes (pes-re-stamina-subs.md 1): GK0 CB1 LB/RB2
 // DMF3 CMF4 LMF/RMF5 AMF6 SS7 LWF/RWF8 CF9, from GF's e_PlayerRole order
