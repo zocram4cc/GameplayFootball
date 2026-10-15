@@ -48,6 +48,19 @@ pes::DodgeConstants Constants() {
   for (int i = 0; i < 12; ++i) k.ballHeightBands[i] = bands[i];
   k.netRowDefault = 0x310;
   k.netRowFast = 0x30e;
+  // The install's speed-class bounds (0x1425a1ffc / 0x1425c48c0).
+  k.speedClass1_kmh = 13.5f;
+  k.speedClass2_kmh = 22.0f;
+  // The install's post grid (0x1425e6680): 3 angular sides x the 3 speed classes.
+  const int post[3][3] = {{0x2fb, 0x2fb, 0x2fc}, {0x313, 0x313, 0x314}, {0x315, 0x315, 0x315}};
+  for (int s = 0; s < 3; ++s)
+    for (int c = 0; c < 3; ++c) k.postGrid[s][c] = post[s][c];
+  k.postSideAngle_deg = 30.0f;     // DAT_142591140
+  k.postSpeedFloor_kmh = 8.0f;     // DAT_14259bdf4
+  k.postColumnUp_deg = 45.0f;      // DAT_14259be30
+  k.postColumnHigh_deg = 135.0f;   // DAT_14259be60
+  k.postColumnBailout_deg = 60.0f; // DAT_14259a764
+  k.postBailout_deg = 120.0f;      // DAT_14256ae30
   for (int i = 0; i < 9; ++i) k.kindColumn[i] = (i < 3 ? 9 : i < 6 ? 5 : i == 6 ? 7 : i == 7 ? 8 : 11);
   return k;
 }
@@ -64,8 +77,15 @@ std::vector<uint8_t> Table() {
   put(763, 9, 24);
   put(0x310, 9, 2068);  // goalnet_stop_slow
   put(0x30e, 9, 2067);  // goalnet_stop_rapid
-  put(0x2f5, 9, 19);    // avoidjump_3_3
-  put(0x2f1, 9, 18);    // avoidjump_2_2_low
+  put(0x2fb, 9, 24);    // avoidslide_3_3_000 (post, side 0 slow)
+  put(0x2fc, 9, 28);    // avoidslide_4_4_000 (post, side 0 fast)
+  put(0x313, 9, 2070);  // goalpost_stop_2_0_000 (post, side 1 slow)
+  put(0x314, 9, 2074);  // goalpost_stop_3_0_000 (post, side 1 fast)
+  put(0x315, 9, 2071);  // goalpost_stop_2_0_000_side (post, side 2 slow)
+  put(0x313, 13, 2072); // goalpost_stop_2_0_090 (the stepped-up column)
+  put(0x313, 16, 2073); // goalpost_stop_2_0_160 (the install's top column)
+  put(0x2f5, 9, 19);   // avoidjump_3_3
+  put(0x2f1, 9, 18);   // avoidjump_2_2_low
   std::vector<uint8_t> b(cells.size() * 4);
   std::memcpy(b.data(), cells.data(), b.size());
   return b;
@@ -100,6 +120,62 @@ TEST(PesDodge, NetSelectorPicksTheSlowAndFastRows) {
   auto fast = pes::NetSelector(*t, Constants(), true);
   ASSERT_TRUE(fast.has_value());
   EXPECT_EQ(fast->motionNo, 2067);  // goalnet_stop_rapid
+}
+
+TEST(PesDodge, PostSelectorPicksTheSideRowAndColumn) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  const pes::DodgeConstants k = Constants();
+  // Lined up with the post's axis (bearing 0, ball coming at 0): side 0, the
+  // slow row at column 9.
+  auto c0 = pes::PostSelector(*t, k, 0.0f, 0.0f, 0.0f, 10.0f);
+  ASSERT_TRUE(c0.has_value());
+  EXPECT_EQ(c0->row, 0x2fb);
+  EXPECT_EQ(c0->col, 9);
+  // Inside the near branch (bearing under 45 off the axis) but past the 30-deg
+  // split: the deep side 1. The ball's own angle picks the column (9 under 45,
+  // 13 above it, 17 above 135).
+  auto c1 = pes::PostSelector(*t, k, 35.0f, 0.0f, 60.0f, 10.0f);
+  ASSERT_TRUE(c1.has_value());
+  EXPECT_EQ(c1->row, 0x313);
+  EXPECT_EQ(c1->col, 13);
+  auto c1b = pes::PostSelector(*t, k, 35.0f, 0.0f, 10.0f, 10.0f);
+  ASSERT_TRUE(c1b.has_value());
+  EXPECT_EQ(c1b->row, 0x313);
+  EXPECT_EQ(c1b->col, 9);
+  auto c1c = pes::PostSelector(*t, k, 35.0f, 0.0f, 140.0f, 10.0f);
+  ASSERT_TRUE(c1c.has_value());
+  EXPECT_EQ(c1c->col, 16);  // the install's top column, not the exe's 17
+  // Under the 30-deg split the near branch's shallow side 0 stands.
+  auto c0b = pes::PostSelector(*t, k, 20.0f, 0.0f, 60.0f, 10.0f);
+  ASSERT_TRUE(c0b.has_value());
+  EXPECT_EQ(c0b->row, 0x2fb);
+  // The far branch (bearing past 45 off the axis): only the window between 60
+  // and 120.
+  auto c2 = pes::PostSelector(*t, k, 60.0f, 0.0f, 90.0f, 10.0f);
+  ASSERT_TRUE(c2.has_value());
+  EXPECT_EQ(c2->row, 0x315);
+  EXPECT_FALSE(pes::PostSelector(*t, k, 60.0f, 0.0f, 30.0f, 10.0f).has_value());
+  EXPECT_FALSE(pes::PostSelector(*t, k, 60.0f, 0.0f, 150.0f, 10.0f).has_value());
+  // The speed class picks the grid's column: fast moves to the fast row.
+  auto fast = pes::PostSelector(*t, k, 0.0f, 0.0f, 0.0f, 25.0f);
+  ASSERT_TRUE(fast.has_value());
+  EXPECT_EQ(fast->row, 0x2fc);
+  auto mid = pes::PostSelector(*t, k, 0.0f, 0.0f, 0.0f, 15.0f);
+  ASSERT_TRUE(mid.has_value());
+  EXPECT_EQ(mid->row, 0x2fb);
+  // Under the 8 km/h floor there is no row at all.
+  EXPECT_FALSE(pes::PostSelector(*t, k, 0.0f, 0.0f, 0.0f, 5.0f).has_value());
+  // An empty cell returns no clip.
+  std::vector<uint32_t> cells(900 * 18, 0);
+  cells[0x2fb * 18 + 9] = 24 + 1;
+  std::vector<uint8_t> b(cells.size() * 4);
+  std::memcpy(b.data(), cells.data(), b.size());
+  auto t2 = pes::ParseAnimetable(b, Layout(), nullptr);
+  ASSERT_TRUE(t2.has_value());
+  pes::DodgeConstants k2 = k;
+  k2.postGrid[0][0] = -1;  // a side/class the install does not carry
+  EXPECT_FALSE(pes::PostSelector(*t2, k2, 0.0f, 0.0f, 0.0f, 25.0f).has_value());
 }
 
 TEST(PesDodge, KindColumnFollowsTheJumpTable) {
@@ -199,6 +275,46 @@ TEST(PesDodgeInstall, TheUsersTablesAndRows) {
   auto ball = pes::BallSelector(*t, *k, 0, forced);
   ASSERT_TRUE(ball.has_value());
   EXPECT_EQ(ball->row, 757);
+
+  // The post selector resolves a row of the install's own grid, and that row
+  // carries a clip of the goalpost family at the selector's column.
+  int postResolved = 0;
+  for (int s = 0; s < 3; ++s) {
+    const int row = k->postGrid[s][0];
+    if (row < 0) continue;
+    // Side 0 and 1 come out of the near branch, side 2 out of the far branch.
+    const float bearing = s == 2 ? 90.0f : (s == 1 ? 35.0f : 0.0f);
+    const float approach = s == 2 ? 90.0f : 0.0f;
+    auto clip = pes::PostSelector(*t, *k, bearing, 0.0f, approach, 10.0f);
+    if (!clip || clip->row != row) {
+      // A grid cell the install's own table leaves empty: an install fact,
+      // not a port failure.
+      EXPECT_FALSE(t->Populated(row, 9)) << "post row " << row << " col 9 empty";
+      continue;
+    }
+    EXPECT_GE(clip->motionNo, 0) << "post row " << row;
+    ++postResolved;
+  }
+  EXPECT_GE(postResolved, 1);
+
+  // The post grid's rows are the install's goalpost family rows.
+  EXPECT_EQ(k->postGrid[0][0], 0x2fb);
+  EXPECT_EQ(k->postGrid[1][0], 0x313);
+  EXPECT_EQ(k->postGrid[2][0], 0x315);
+  auto post0 = pes::PostSelector(*t, *k, 0.0f, 0.0f, 0.0f, 10.0f);
+  ASSERT_TRUE(post0.has_value());
+  EXPECT_EQ(post0->row, 0x2fb);
+  EXPECT_EQ(post0->col, 9);
+
+  // Install fact, unresolved in the decode: FUN_1407368d0 writes column 0x11
+  // (17) in the deep branch's >135 deg band, while this install's post rows
+  // carry the matching clip at column 16. The exe's own 0xd (13) matches the
+  // table's column 13 exactly, and both are the same family of clips, so the
+  // port reads the column the install actually populates rather than a number
+  // it cannot cross-check. Pinned here so a future live poke can decide.
+  EXPECT_FALSE(t->Populated(0x313, 17));  // the exe's column is empty here
+  EXPECT_TRUE(t->Populated(0x313, 16));   // the install's own 160-deg clip
+  EXPECT_TRUE(t->Populated(0x313, 13));   // the exe's 0xd matches
 }
 
 }  // namespace

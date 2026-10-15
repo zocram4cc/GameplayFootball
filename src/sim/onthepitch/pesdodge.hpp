@@ -52,6 +52,17 @@ struct DodgeConstants {
   std::array<float, 12> ballHeightBands{};
   // FUN_14073c5d0's net rows: default and the fast variant.
   int netRowDefault = -1, netRowFast = -1;
+  // FUN_1407368d0's post grid: 3 angular sides x the 3 speed classes.
+  std::array<std::array<int, 3>, 3> postGrid{};
+  // FUN_1407368d0's geometry: the 8 km/h speed-class floor, the 30-deg deep
+  // split, the 45-deg near/far gate, the 135-deg column top, and the far
+  // branch's 60/120 window.
+  float postSpeedFloor_kmh = 0.0f;   // 8
+  float postSideAngle_deg = 0.0f;    // 30
+  float postColumnUp_deg = 0.0f;     // 45, above which the column steps up
+  float postColumnHigh_deg = 0.0f;   // 135, the column's top band
+  float postColumnBailout_deg = 0.0f;  // 60, the far branch's low edge
+  float postBailout_deg = 0.0f;      // 120, the far branch's high edge
   // FUN_140735870: kind -> column.
   std::array<int, 9> kindColumn{};
   // FUN_140736ce0's look-ahead offset (seconds), drawn per frame.
@@ -85,6 +96,15 @@ std::optional<DodgeClip> BallSelector(const Animetable& t, const DodgeConstants&
 
 // FUN_14073c5d0: the goal-net selector. `fast` is speed > 22 km/h.
 std::optional<DodgeClip> NetSelector(const Animetable& t, const DodgeConstants& k, bool fast);
+
+// FUN_1407368d0: the post selector. `bearing_deg` is the raw 0..360 bearing
+// from the post's anchor to the player, `refAngle_deg` the post's own facing
+// (the exe's two reads: XMM9 = |wrap180(bearing - refAngle)| gates the near/far
+// split, the two 30-deg tests on the raw bearing pick the deep side), and
+// `approachRel_deg` the angle the ball comes in at relative to the same axis,
+// which picks the column (9 under 45, 13 above it, 17 above 135).
+std::optional<DodgeClip> PostSelector(const Animetable& t, const DodgeConstants& k, float bearing_deg,
+                                      float refAngle_deg, float approachRel_deg, float speed_kmh);
 
 // FUN_140735870: kind -> column.
 int KindColumn(const DodgeConstants& k, int kind);
