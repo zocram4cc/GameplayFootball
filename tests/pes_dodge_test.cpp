@@ -51,10 +51,8 @@ pes::DodgeConstants Constants() {
   // The install's speed-class bounds (0x1425a1ffc / 0x1425c48c0).
   k.speedClass1_kmh = 13.5f;
   k.speedClass2_kmh = 22.0f;
-  // The install's post grid (0x1425e6680): 3 angular sides x the 3 speed classes.
-  const int post[3][3] = {{0x2fb, 0x2fb, 0x2fc}, {0x313, 0x313, 0x314}, {0x315, 0x315, 0x315}};
-  for (int s = 0; s < 3; ++s)
-    for (int c = 0; c < 3; ++c) k.postGrid[s][c] = post[s][c];
+  // The install's post grid is now DodgeConstants' own default
+  // (0x1425e6680's 8 loaded ints plus the selector's 0x316).
   k.postSideAngle_deg = 30.0f;     // DAT_142591140
   k.postSpeedFloor_kmh = 8.0f;     // DAT_14259bdf4
   k.postColumnUp_deg = 45.0f;      // DAT_14259be30
@@ -84,6 +82,7 @@ std::vector<uint8_t> Table() {
   put(0x315, 9, 2071);  // goalpost_stop_2_0_000_side (post, side 2 slow)
   put(0x313, 13, 2072); // goalpost_stop_2_0_090 (the stepped-up column)
   put(0x313, 16, 2073); // goalpost_stop_2_0_160 (the install's top column)
+  put(0x316, 9, 2075);  // goalpost_stop_3_0_000_side (the grid's ninth cell)
   put(0x2f5, 9, 19);   // avoidjump_3_3
   put(0x2f1, 9, 18);   // avoidjump_2_2_low
   std::vector<uint8_t> b(cells.size() * 4);
@@ -157,6 +156,12 @@ TEST(PesDodge, PostSelectorPicksTheSideRowAndColumn) {
   EXPECT_EQ(c2->row, 0x315);
   EXPECT_FALSE(pes::PostSelector(*t, k, 60.0f, 0.0f, 30.0f, 10.0f).has_value());
   EXPECT_FALSE(pes::PostSelector(*t, k, 60.0f, 0.0f, 150.0f, 10.0f).has_value());
+  // The far branch's fast class reads the grid's ninth cell, which the exe
+  // writes on the stack rather than carrying in its table: the 9th int at
+  // 0x1425e6680 is the 8.0f of the next constant, not a row.
+  auto farFast = pes::PostSelector(*t, k, 60.0f, 0.0f, 90.0f, 25.0f);
+  ASSERT_TRUE(farFast.has_value());
+  EXPECT_EQ(farFast->row, 0x316);
   // The speed class picks the grid's column: fast moves to the fast row.
   auto fast = pes::PostSelector(*t, k, 0.0f, 0.0f, 0.0f, 25.0f);
   ASSERT_TRUE(fast.has_value());
@@ -306,15 +311,57 @@ TEST(PesDodgeInstall, TheUsersTablesAndRows) {
   EXPECT_EQ(post0->row, 0x2fb);
   EXPECT_EQ(post0->col, 9);
 
-  // Install fact, unresolved in the decode: FUN_1407368d0 writes column 0x11
-  // (17) in the deep branch's >135 deg band, while this install's post rows
-  // carry the matching clip at column 16. The exe's own 0xd (13) matches the
-  // table's column 13 exactly, and both are the same family of clips, so the
-  // port reads the column the install actually populates rather than a number
-  // it cannot cross-check. Pinned here so a future live poke can decide.
+  // Install fact: the exe writes column 0x11 (17) in the deep branch's >135 deg
+  // band and 0xd (13) below it. Column 13 is a raw index and matches the
+  // install's table exactly (its angular centre is 90 deg, the "090" clip).
+  // Column 17's angular centre is 180 deg, where this install has nothing; the
+  // 160 clip it means sits at column 16 (centre 157.5 deg, the nearest bucket).
+  // Pinned so a live poke can confirm the pre/post-shift mapping.
   EXPECT_FALSE(t->Populated(0x313, 17));  // the exe's column is empty here
   EXPECT_TRUE(t->Populated(0x313, 16));   // the install's own 160-deg clip
   EXPECT_TRUE(t->Populated(0x313, 13));   // the exe's 0xd matches
+
+  // The grid's ninth cell is not in the exe's table: reading past the two
+  // MOVDQA loads picks up the next constant's 8.0f. The selector's own stack
+  // value 0x316 is the row, and it carries the far side's fast clip.
+  EXPECT_EQ(k->postGrid[2][2], 0x316);
+  EXPECT_TRUE(t->Populated(0x316, 9));
+}
+
+// The dodge's goal-sign convention, pinned because it is load-bearing and a
+// silent re-inversion would move both near-goal dodges to the wrong end.
+//
+// A team's own goal is at +side * pitchHalfW. Two independent places in the
+// engine agree: the throw-in's defending branch runs `backXBound` at
+// ballPos + 30 * side (backward is +side) and the corner's defending branch
+// bounds the own half at side * pitchHalfW * 0.98..0.5. Pitch marks are
+// gametypes.hpp's own.
+TEST(PesDodgeGoalSign, TheOwnGoalIsOnTheSidesEnd) {
+  const float pitchHalfW = 52.5f, goalHalfWidth = 3.7f;
+  // A side +1 team defends the +x end, and the angles it hands the selector put
+  // the post on the own goal line at the goal's half-width.
+  const pes::PostAngles plus = pes::PostAnglesFor(1, 40.0f, 5.0f, 45.0f, 5.0f, pitchHalfW,
+                                                  goalHalfWidth);
+  EXPECT_NEAR(plus.ownGoalX_m, pitchHalfW, 1e-5f);
+  EXPECT_EQ(plus.refAngle_deg, 180.0f);
+  // The player stands inside the pitch, so the bearing from the post to him is
+  // in the left half-plane: past 90 and before 270 degrees.
+  EXPECT_GT(plus.bearing_deg, 90.0f);
+  EXPECT_LT(plus.bearing_deg, 270.0f);
+
+  // The other team defends the opposite end, and its reference flips.
+  const pes::PostAngles minus = pes::PostAnglesFor(-1, -40.0f, 5.0f, -45.0f, 5.0f, pitchHalfW,
+                                                   goalHalfWidth);
+  EXPECT_NEAR(minus.ownGoalX_m, -pitchHalfW, 1e-5f);
+  EXPECT_EQ(minus.refAngle_deg, 0.0f);
+
+  // The two ends are never the same, so an inversion cannot pass by symmetry.
+  EXPECT_NE(plus.ownGoalX_m, minus.ownGoalX_m);
+  // The post follows the ball's half of the goal line.
+  const pes::PostAngles nearPost = pes::PostAnglesFor(1, 40.0f, 5.0f, 45.0f, 10.0f, pitchHalfW,
+                                                      goalHalfWidth);
+  EXPECT_GE(nearPost.bearing_deg, 0.0f);
+  EXPECT_LT(nearPost.bearing_deg, 360.0f);
 }
 
 }  // namespace

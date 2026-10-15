@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "base/math/bluntmath.hpp"
 #include "pes/animetable.hpp"
 #include "pes/exe.hpp"
 #include "pes/mbinfo.hpp"
@@ -146,14 +147,17 @@ std::optional<DodgeConstants> LoadDodgeConstants(const PeImage& exe, std::string
   // The net rows: FUN_14073c5d0's 0x310 default / 0x30e fast.
   k.netRowDefault = 0x310;
   k.netRowFast = 0x30e;
-  // The post grid: 3 sides x the 3 speed classes (FUN_1407368d0's MOVDQA).
-  for (int s = 0; s < 3; ++s)
-    for (int c = 0; c < 3; ++c)
-      if (!exe.ReadVa(postVa + 4 * (s * 3 + c), 4,
-                      reinterpret_cast<uint8_t*>(&k.postGrid[s][c]))) {
-        *error = "dodge: post grid unreadable";
-        return std::nullopt;
-      }
+  // The post grid: the 8 ints the two MOVDQAs put on the stack (FUN_1407368d0
+  // at 0x140736a72 / 0x140736a97). The 3x3's ninth cell is not carried in the
+  // table: reading it straight from .rdata would pick up the 8.0f of the next
+  // constant, so the selector's own stack value (0x316, written at 0x140736a6a)
+  // stands in for it.
+  for (int i = 0; i < 8; ++i)
+    if (!exe.ReadVa(postVa + 4 * i, 4, reinterpret_cast<uint8_t*>(&k.postGrid[i / 3][i % 3]))) {
+      *error = "dodge: post grid unreadable";
+      return std::nullopt;
+    }
+  k.postGrid[2][2] = 0x316;
   if (!ReadF32(exe, POST_SPEED_FLOOR_VA, &k.postSpeedFloor_kmh) ||
       !ReadF32(exe, POST_SIDE_VA, &k.postSideAngle_deg) ||
       !ReadF32(exe, POST_NEAR_VA, &k.postColumnUp_deg) ||
@@ -313,6 +317,27 @@ int KindRow(const Animetable& t, const Mbinfo& mb, const DodgeConstants& k, int 
     return row;
   }
   return -1;
+}
+
+PostAngles PostAnglesFor(int side, float playerX, float playerY, float ballX, float ballY,
+                         float pitchHalfWidth_m, float goalHalfWidth_m) {
+  // The own goal line is on this side's end, and the post the player is
+  // running into is the one on the ball's half of it.
+  PostAngles a;
+  a.ownGoalX_m = float(side) * pitchHalfWidth_m;
+  const float postY = ballY >= 0.0f ? goalHalfWidth_m : -goalHalfWidth_m;
+  const auto deg = [](float rad) { return rad * 180.0f / blunted::pi; };
+  // The bearing from the post to the player, raw 0..360.
+  a.bearing_deg = deg(std::atan2(playerY - postY, playerX - a.ownGoalX_m));
+  if (a.bearing_deg < 0.0f) a.bearing_deg += 360.0f;
+  // The goal line's own facing is its outward normal, so the reference is 180
+  // at the +x end and 0 at the -x end.
+  a.refAngle_deg = a.ownGoalX_m >= 0.0f ? 180.0f : 0.0f;
+  // The ball's approach relative to the same axis, wrapped to +/-180.
+  a.approachRel_deg = deg(std::atan2(ballY - postY, ballX - a.ownGoalX_m)) - a.refAngle_deg;
+  while (a.approachRel_deg > 180.0f) a.approachRel_deg -= 360.0f;
+  while (a.approachRel_deg <= -180.0f) a.approachRel_deg += 360.0f;
+  return a;
 }
 
 }  // namespace pes

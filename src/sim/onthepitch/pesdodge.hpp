@@ -53,7 +53,11 @@ struct DodgeConstants {
   // FUN_14073c5d0's net rows: default and the fast variant.
   int netRowDefault = -1, netRowFast = -1;
   // FUN_1407368d0's post grid: 3 angular sides x the 3 speed classes.
-  std::array<std::array<int, 3>, 3> postGrid{};
+  // [2][2] is not carried in the exe's table (the ninth int there is the next
+  // constant's 8.0f); the selector's own stack value 0x316 stands in for it.
+  std::array<std::array<int, 3>, 3> postGrid{{{0x2fb, 0x2fb, 0x2fc},
+                                              {0x313, 0x313, 0x314},
+                                              {0x315, 0x315, 0x316}}};
   // FUN_1407368d0's geometry: the 8 km/h speed-class floor, the 30-deg deep
   // split, the 45-deg near/far gate, the 135-deg column top, and the far
   // branch's 60/120 window.
@@ -105,6 +109,21 @@ std::optional<DodgeClip> NetSelector(const Animetable& t, const DodgeConstants& 
 // which picks the column (9 under 45, 13 above it, 17 above 135).
 std::optional<DodgeClip> PostSelector(const Animetable& t, const DodgeConstants& k, float bearing_deg,
                                       float refAngle_deg, float approachRel_deg, float speed_kmh);
+
+// The three angles the post dodge reads, from GF's own pitch marks. The goal
+// sign is load-bearing: a team's own goal is at +side * pitchHalfW (the
+// throw-in's defending branch runs `backXBound` at ballPos + 30 * side, and the
+// corner's defending branch bounds the own half at side * pitchHalfW), so an
+// inversion here would move both near-goal dodges to the wrong end. The post
+// picked is the one on the ball's half of the goal line.
+struct PostAngles {
+  float ownGoalX_m = 0.0f;      // +side * pitchHalfWidth
+  float bearing_deg = 0.0f;     // raw, 0..360, from the post to the player
+  float refAngle_deg = 0.0f;    // the goal line's own facing
+  float approachRel_deg = 0.0f;  // the ball's approach, relative to it
+};
+PostAngles PostAnglesFor(int side, float playerX, float playerY, float ballX, float ballY,
+                         float pitchHalfWidth_m, float goalHalfWidth_m);
 
 // FUN_140735870: kind -> column.
 int KindColumn(const DodgeConstants& k, int kind);

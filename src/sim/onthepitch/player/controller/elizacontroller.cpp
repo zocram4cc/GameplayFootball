@@ -1183,24 +1183,16 @@ bool ElizaController::_DodgePostCandidate(int* kind) {
   // The team's own goal is at +side * pitchHalfW (the set-piece code's
   // defending branch is the same end), and the goal line's outward normal is
   // that direction, so the selector's reference is 180 there.
-  const float ownGoalX = team->GetSide() * pitchHalfW;
   // Only near his own goal line: the post's own neighbourhood.
-  const float distToOwnGoal = std::fabs(pos.coords[0] - ownGoalX);
-  if (distToOwnGoal > 12.0f) return false;
+  if (std::fabs(pos.coords[0] - team->GetSide() * pitchHalfW) > 12.0f) return false;
   const Vector3 ball = _mentalImage->GetBallPrediction(200).Get2D();
-  const int postSide = ball.coords[1] >= 0.0f ? 1 : -1;
-  const Vector3 post(ownGoalX, goalHalfWidth * postSide, 0.0f);
-  // The two angles the exe's selector reads: the bearing from the post's
-  // anchor to the player (raw, 0..360) and the approach angle relative to the
-  // goal line's own facing. The goal line's normal points out of the pitch, so
-  // the reference is 0 at one end and 180 at the other.
-  float bearing = BearingDeg(post, Vector3(pos.coords[0], pos.coords[1], 0.0f));
-  if (bearing < 0.0f) bearing += 360.0f;  // the exe's raw 0..360 bearing
-  const float refAngle = ownGoalX >= 0.0f ? 180.0f : 0.0f;
-  const float approach = WrapDeg(bearing - refAngle);
+  const pes::PostAngles angles =
+      pes::PostAnglesFor(team->GetSide(), pos.coords[0], pos.coords[1], ball.coords[0], ball.coords[1],
+                         pitchHalfW, goalHalfWidth);
   const pes::DodgeConstants& k = match->GetPesDodgeConstants();
   const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
-  auto clip = pes::PostSelector(match->GetPesAnimetable(), k, bearing, refAngle, approach, speed);
+  auto clip = pes::PostSelector(match->GetPesAnimetable(), k, angles.bearing_deg, angles.refAngle_deg,
+                                angles.approachRel_deg, speed);
   if (!clip) return false;
   *kind = static_cast<int>(pes::DodgeKind::kPost);
   return true;
@@ -1271,16 +1263,14 @@ void ElizaController::_DodgeCommand(PlayerCommandQueue& commandQueue,
       // The same own-post geometry the predicate used (FUN_14073c9c0's
       // callsite, so the command's clip and the predicate's agree).
       const Vector3 pos = CastPlayer()->GetPosition();
-      const float ownGoalX = team->GetSide() * pitchHalfW;
+      if (std::fabs(pos.coords[0] - team->GetSide() * pitchHalfW) > 12.0f) break;
       const Vector3 ball = _mentalImage->GetBallPrediction(200).Get2D();
-      const int postSide = ball.coords[1] >= 0.0f ? 1 : -1;
-      const Vector3 post(ownGoalX, goalHalfWidth * postSide, 0.0f);
-      float bearing = BearingDeg(post, Vector3(pos.coords[0], pos.coords[1], 0.0f));
-      if (bearing < 0.0f) bearing += 360.0f;
-      const float refAngle = ownGoalX >= 0.0f ? 180.0f : 0.0f;
-      const float approach = WrapDeg(bearing - refAngle);
+      const pes::PostAngles angles =
+          pes::PostAnglesFor(team->GetSide(), pos.coords[0], pos.coords[1], ball.coords[0],
+                             ball.coords[1], pitchHalfW, goalHalfWidth);
       const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
-      auto clip = pes::PostSelector(t, k, bearing, refAngle, approach, speed);
+      auto clip = pes::PostSelector(t, k, angles.bearing_deg, angles.refAngle_deg,
+                                    angles.approachRel_deg, speed);
       if (clip) motionNo = clip->motionNo;
       break;
     }
