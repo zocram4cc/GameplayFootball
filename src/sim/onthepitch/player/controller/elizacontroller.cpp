@@ -1285,6 +1285,19 @@ void ElizaController::_DodgeCommand(PlayerCommandQueue& commandQueue,
       break;
   }
   if (motionNo < 0) return;  // the selector found no clip: PES declines too
+  // One per dodge the chooser actually commands, so the report can tell the
+  // dodges that fire from the ones whose selector finds nothing. PES's own
+  // dodge kinds 1..3 select and 4 is accepted without a selector, so the
+  // tally keeps them apart by kind rather than lumping them.
+  int kindIndex = -1;
+  switch (reaction) {
+    case pes::DefenderReaction::kDodgeBall: kindIndex = 0; break;
+    case pes::DefenderReaction::kDodgeNet: kindIndex = 1; break;
+    case pes::DefenderReaction::kDodgePost: kindIndex = 2; break;
+    case pes::DefenderReaction::kDodgeHuman: kindIndex = 3; break;
+    default: break;
+  }
+  if (kindIndex >= 0) match->GetMatchData()->AddDodge(team->GetID(), kindIndex);
   PlayerCommand command;
   command.desiredFunctionType = e_FunctionType_Special;
   command.useSpecialVar1 = true;

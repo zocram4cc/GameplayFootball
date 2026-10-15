@@ -71,6 +71,16 @@ void PrintMatchReport(Match& match, FILE* out) {
   std::fprintf(out, "[offball] chance runs %i-%i | mask walks %i-%i | stop fires %i-%i\n",
          matchData->GetChanceRuns(0), matchData->GetChanceRuns(1), matchData->GetMaskWalks(0),
          matchData->GetMaskWalks(1), matchData->GetStopFires(0), matchData->GetStopFires(1));
+  // The dodge reaction, per PES kind, home first. A kind that reads 0 is not
+  // necessarily silent: its predicate may never fire, or its selector may find
+  // no clip. The net dodge's own gate and the post dodge's geometry are the
+  // two that were merged, so both being non-zero is what "fires" means here.
+  static const char* const kDodgeNames[] = {"ball", "net", "post", "human"};
+  std::fprintf(out, "[dodge]");
+  for (int kind = 0; kind < MatchData::kDodgeKinds; kind++)
+    std::fprintf(out, " %s %i-%i", kDodgeNames[kind], matchData->GetDodgeCount(0, kind),
+                 matchData->GetDodgeCount(1, kind));
+  std::fprintf(out, "\n");
   // The mask trace: for each team, the gate that decided each walked slot.
   // MaskReject's order is pass, rank, carrier/receiver, already running,
   // on the line, box zone, goal area, role class, slot mask, depth, team may

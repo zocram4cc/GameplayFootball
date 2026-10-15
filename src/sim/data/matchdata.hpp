@@ -292,6 +292,16 @@ public:
   // PES Chance runs started (pesoffball.hpp), for the match report.
   void AddChanceRun(int teamID) { chanceRuns[teamID]++; }
   int GetChanceRuns(int teamID) const { return chanceRuns[teamID]; }
+  // The dodge reaction (pesdodge.hpp), one per action the chooser commits, so
+  // the report can say whether the dodges fire at all.
+  enum { kDodgeKinds = 4 };  // ball, goal net, goal post, human (kind 4 is not a selector)
+  void AddDodge(int teamID, int kind) {
+    if (kind < 0 || kind >= kDodgeKinds) return;
+    dodges[teamID][kind]++;
+  }
+  int GetDodgeCount(int teamID, int kind) const {
+    return (kind < 0 || kind >= kDodgeKinds) ? 0 : dodges[teamID][kind];
+  }
 
   // pes::offball::MaskReject's width (pesoffball.hpp); duplicated here so this
   // header stays free of the exe reader.
@@ -829,6 +839,7 @@ protected:
   int passAttempts[2];
   int clearances[2];
   int chanceRuns[2] = {0, 0};
+  int dodges[2][kDodgeKinds] = {};
   int maskWalks[2] = {0, 0};
   int maskRejects[2][kMaskRejectCount] = {};
   int stopFires[2] = {0, 0};
