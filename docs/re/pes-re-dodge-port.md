@@ -80,7 +80,8 @@ a port gap. The port returns "no clip" honestly for 3-6.
   into the goal mouth — because its GF gate (`|x| > 40` on both ends) covered
   the whole own-goal band and shadowed the post. One named item left open: the
   `>135` deg band's column, where the exe writes 17 and this install populates
-  16; pinned as an install fact in the test.
+  16; pinned as an install fact in the test, and settled as a raw index in the
+  post-dodge follow-up.
 - **Human dodge kind (FUN_14073a3d0)** reads PES's per-part contact record and
   the opponent's action classes, which GF does not carry per part. The ported
   part is the geometry: approaching from behind → slide_rapid_up (kind 4), in
@@ -91,6 +92,20 @@ a port gap. The port returns "no clip" honestly for 3-6.
 - **Ball dodge's eligibility** (FUN_140a07bf0's play/receive action classes and
   the last-event frame) is not carried; the selector's clip fit is the ported
   gate.
+
+## 5b. Measured on main (20 min, seed 7, `3aff683`)
+
+The report line the port added (`[dodge] ball N-N | net N-N | post N-N | human
+N-N`) reads, home first:
+
+```
+[dodge] ball 4648-6125 | net 556-622 | post 1325-1046 | human 1287-1351
+```
+
+All four kinds fire. Ball dominates because its predicate is a pure clip-fit
+gate and the ball is near a defender far more often than a goal or an opponent
+is; post out-firing net is expected — the post is a static mark on the own goal
+line, while the net gate needs the ball heading into the goal mouth.
 
 ## 6. Gate and smoke
 
