@@ -29,6 +29,17 @@ constexpr FamilyPrefix kFamilies[] = {
     {PesClipFamily::kDodge, "goalnet_"},    // goal-net dodges
     {PesClipFamily::kDodge, "rapidstop_"},  // human stop/decelerate dodges
     {PesClipFamily::kDodge, "rapid_3_2_dodge_"},
+    // The standing-tackle family: every prefix the Tackle action's sub-kind
+    // group tables' rows resolve to (docs/re/pes-re-contact-port.md stage C).
+    // tacklefoot_ is the tackle proper; tacklehold_* hold the carrier,
+    // tacklepulled_* is pulled over, tackleshoulder_* shoulders past him, and
+    // block090_/js_idle_*_passcut are the two rows the tables also reach.
+    {PesClipFamily::kTackle, "tacklefoot_"},
+    {PesClipFamily::kTackle, "tacklehold_"},
+    {PesClipFamily::kTackle, "tacklepulled_"},
+    {PesClipFamily::kTackle, "tackleshoulder_"},
+    {PesClipFamily::kTackle, "block090_"},
+    {PesClipFamily::kTackle, "js_idle_0_0_000_y00_tacklefoot_passcut"},
 };
 
 // Fox (Y up, +Z forward) -> engine (Z up, faces -Y), verbatim on both the

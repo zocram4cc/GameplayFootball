@@ -177,6 +177,12 @@ Match::Match(MatchData* matchData, const MatchSetup& setup, const Properties& co
         "MatchSetup::pesMbinfo");
   pesAnimetable = std::make_unique<pes::Animetable>(*setup.pesAnimetable);
   pesMbinfo = std::make_unique<pes::Mbinfo>(*setup.pesMbinfo);
+  // PES 2021's standing-tackle sub-kind (docs/re/pes-re-contact-port.md stage C).
+  if (setup.pesTackleConstants == nullptr)
+    throw std::runtime_error(
+        "PES tackle constants missing: read them from the install with "
+        "pes::LoadTackleConstants into MatchSetup::pesTackleConstants");
+  pesTackleConstants = *setup.pesTackleConstants;
   // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
   if (setup.pesOffBallConstants == nullptr)
     throw std::runtime_error(

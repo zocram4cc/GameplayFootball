@@ -25,7 +25,7 @@ namespace pes {
 
 // The specialvar1 families imported clips carry. Celebrations and cards use
 // 1..3 (gamedefines.hpp), so imported families start well clear of them.
-enum class PesClipFamily : int { kDodge = 100 };
+enum class PesClipFamily : int { kDodge = 100, kTackle = 101 };
 
 struct PesClip {
   std::string name;
@@ -39,8 +39,11 @@ struct PesClipSet {
 };
 
 // The clips of every family, by name prefix in the exe's motion table:
-// family kDodge = the `dodge_` motions the Dodge action selects
-// (docs/re/pes-re-contact-port.md pass 4).
+// family kDodge = the `dodge_`, `avoidjump_`, `avoidslide_`, `goalnet_`,
+// `rapidstop_` and `rapid_3_2_dodge_` motions the Dodge action selects
+// (docs/re/pes-re-contact-port.md pass 4 stage B);
+// family kTackle = the `tacklefoot_` motions the Tackle action's sub-kind
+// group tables select (stage C).
 std::optional<PesClipSet> LoadPesClips(const PeImage& exe, const PesVfs& vfs, std::string* error);
 
 // One clip as engine .anim text (the format Animation::LoadText reads), at the

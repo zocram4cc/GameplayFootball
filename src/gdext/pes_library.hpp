@@ -13,6 +13,7 @@
 #include "onthepitch/pescontact.hpp"
 #include "onthepitch/pesclips.hpp"
 #include "onthepitch/pesdodge.hpp"
+#include "onthepitch/pestackle.hpp"
 #include "onthepitch/pesstrategy.hpp"
 #include "onthepitch/pesteamconcepts.hpp"
 #include "onthepitch/pessubs.hpp"
@@ -112,6 +113,10 @@ class PesLibrary : public RefCounted {
   }
   const pes::Animetable* animetable() const { return animetable_ ? &*animetable_ : nullptr; }
   const pes::Mbinfo* mbinfo() const { return mbinfo_ ? &*mbinfo_ : nullptr; }
+  // PES 2021's standing-tackle sub-kind (docs/re/pes-re-contact-port.md stage C).
+  const pes::TackleConstants* tackle_constants() const {
+    return tackleConstants_ ? &*tackleConstants_ : nullptr;
+  }
   const pes::ContactConstants* contact_constants() const {
     return contactConstants_ ? &*contactConstants_ : nullptr;
   }
@@ -176,6 +181,7 @@ class PesLibrary : public RefCounted {
   std::optional<pes::DodgeConstants> dodgeConstants_;
   std::optional<pes::Animetable> animetable_;
   std::optional<pes::Mbinfo> mbinfo_;
+  std::optional<pes::TackleConstants> tackleConstants_;
   std::optional<pes::StrategyConstants> strategyConstants_;
   std::optional<pes::TeamConceptConstants> teamConceptConstants_;
   std::optional<pes::SubstitutionConstants> substitutionConstants_;

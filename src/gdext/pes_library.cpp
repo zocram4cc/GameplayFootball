@@ -115,6 +115,7 @@ Error PesLibrary::open(const String& root) {
     return ERR_PARSE_ERROR;
   }
   mbinfo_ = pes::LoadMbinfo(vfs_, &err);
+  if (exe) tackleConstants_ = pes::LoadTackleConstants(*exe, &err);
   if (!mbinfo_) {
     UtilityFunctions::push_error("PES21 mbinfo unavailable: ", ToGd(err));
     return ERR_PARSE_ERROR;

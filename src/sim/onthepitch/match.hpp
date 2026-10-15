@@ -26,6 +26,7 @@
 #include "pesstoppage.hpp"
 #include "peskickerror.hpp"
 #include "pesdodge.hpp"
+#include "pestackle.hpp"
 #include "pesoffball.hpp"
 #include "penaltyshootoutcontroller.hpp"
 #include "player/humanoid/animcollection.hpp"
@@ -244,6 +245,9 @@ public:
   // the dodge selectors read.
   const pes::Animetable& GetPesAnimetable() const { return *pesAnimetable; }
   const pes::Mbinfo& GetPesMbinfo() const { return *pesMbinfo; }
+  // PES 2021's standing-tackle sub-kind (pes-re-contact-port.md stage C): the
+  // per-kind group tables and the readiness mask's constants.
+  const pes::TackleConstants& GetPesTackleConstants() const { return pesTackleConstants; }
   // PES 2021's off-ball run manager (docs/re/pes-re-off-ball.md).
   const pes::offball::OffBallConstants& GetPesOffBallConstants() const {
     return pesOffBallConstants;
@@ -522,6 +526,8 @@ protected:
   pes::DodgeConstants pesDodgeConstants{};
   std::unique_ptr<pes::Animetable> pesAnimetable;
   std::unique_ptr<pes::Mbinfo> pesMbinfo;
+  // PES 2021's standing-tackle sub-kind (stage C).
+  pes::TackleConstants pesTackleConstants{};
   std::unique_ptr<pes::PesClock> pesClock;
   std::unique_ptr<pes::StaminaConstants> pesStaminaConstants;
 

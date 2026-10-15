@@ -31,6 +31,10 @@ add_executable(pes_dodge_test pes_dodge_test.cpp)
 target_link_libraries(pes_dodge_test PRIVATE gfsim pesfmt GTest::gtest_main)
 gtest_discover_tests(pes_dodge_test)
 
+add_executable(pes_tackle_test pes_tackle_test.cpp)
+target_link_libraries(pes_tackle_test PRIVATE gfsim pesfmt GTest::gtest_main)
+gtest_discover_tests(pes_tackle_test)
+
 add_executable(pes_anim_test pes_anim_test.cpp)
 target_link_libraries(pes_anim_test PRIVATE pesrig GTest::gtest_main)
 gtest_discover_tests(pes_anim_test)

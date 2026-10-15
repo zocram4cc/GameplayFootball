@@ -101,10 +101,14 @@ TEST(PesClipsInstall, EveryDodgeClipConvertsAndLoads) {
   // Every clip of the dodge family: the ball dodges (dodge_*), the human
   // dodges (avoidjump_/avoidslide_) and the goal-net dodges (goalnet_*).
   for (const auto& clip : clips->clips) {
+    // The dodge family, and the tackle family stage C added: every clip of the
+    // set belongs to one of them, and each has its own conversion test below.
     const bool dodgeFamily =
         clip.name.rfind("dodge_", 0) == 0 || clip.name.rfind("avoid", 0) == 0 ||
         clip.name.rfind("goalnet_", 0) == 0 || clip.name.rfind("rapid", 0) == 0;
-    EXPECT_TRUE(dodgeFamily) << clip.name;
+    const bool tackleFamily = clip.family == pes::PesClipFamily::kTackle;
+    EXPECT_TRUE(dodgeFamily || tackleFamily) << clip.name;
+    if (!dodgeFamily) continue;  // the tackle family has its own test below
     Animation anim;
     anim.LoadText(clip.name, pes::PesClipAnimText(clip, *rig));
     const pesrig::ClipSampler sampler(clip.gani, *rig);
@@ -115,7 +119,41 @@ TEST(PesClipsInstall, EveryDodgeClipConvertsAndLoads) {
   }
 }
 
-TEST(PesClipsInstall, ASpecialQueryNamesExactlyOneClip) {
+TEST(PesClipsInstall, EveryTackleClipConvertsAndLoads) {
+  const char* root = std::getenv("PES21_ROOT");
+  if (!root) GTEST_SKIP() << "PES21_ROOT not set";
+  std::string err;
+  auto exe = pes::PeImage::Open(std::string(root) + "/PES2021.exe", &err);
+  ASSERT_TRUE(exe.has_value()) << err;
+  pes::PesVfs vfs;
+  ASSERT_TRUE(vfs.Mount(root, &err)) << err;
+  auto rig = pesrig::BuildRig(vfs, &err);
+  ASSERT_TRUE(rig.has_value()) << err;
+  auto clips = pes::LoadPesClips(*exe, vfs, &err);
+  ASSERT_TRUE(clips.has_value()) << err;
+
+  // Whole families, not a sample: the tackle family is what a standing tackle
+  // plays, so every one of its clips has to convert or the sub-kind's pick
+  // would name a clip the engine cannot load.
+  const char* tacklePrefixes[] = {"tacklefoot_", "tacklehold_", "tacklepulled_", "tackleshoulder_",
+                                  "block090_", "js_idle_0_0_000_y00_tacklefoot_passcut"};
+  int tackled = 0;
+  for (const auto& clip : clips->clips) {
+    if (clip.family != pes::PesClipFamily::kTackle) continue;
+    ++tackled;
+    Animation anim;
+    anim.LoadText(clip.name, pes::PesClipAnimText(clip, *rig));
+    const pesrig::ClipSampler sampler(clip.gani, *rig);
+    EXPECT_NEAR(anim.GetFrameCount() - 1, sampler.LengthSeconds() / 0.01, 1.0) << clip.name;
+    Quaternion q;
+    Vector3 pos;
+    ASSERT_TRUE(anim.GetKeyFrame("player", 0, q, pos, false, true)) << clip.name;
+  }
+  // The install's tackle family is 86 clips; fewer means a prefix was dropped.
+  EXPECT_GE(tackled, 86);
+}
+
+TEST(PesClipsInstall, ASpecialQueryNamesExactlyOneTackleClip) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT not set";
   std::string err;
@@ -129,16 +167,20 @@ TEST(PesClipsInstall, ASpecialQueryNamesExactlyOneClip) {
   ASSERT_TRUE(clips.has_value()) << err;
   AnimCollection anims(*rig);
   anims.AddPesClips(*clips);
-  const pes::PesClip& wanted = clips->clips.back();
+  // A named tackle clip resolves to exactly itself and its mirror.
+  const pes::PesClip* wanted = nullptr;
+  for (const auto& clip : clips->clips)
+    if (clip.name == "tacklefoot_mid_0_0_000") wanted = &clip;
+  ASSERT_NE(wanted, nullptr);
   CrudeSelectionQuery query;
   query.byFunctionType = true;
   query.functionType = e_FunctionType_Special;
-  query.properties.Set("specialvar1", int(wanted.family));
-  query.properties.Set("specialvar2", wanted.motionNo);
+  query.properties.Set("specialvar1", int(pes::PesClipFamily::kTackle));
+  query.properties.Set("specialvar2", wanted->motionNo);
   DataSet found;
   anims.CrudeSelection(found, query);
   ASSERT_EQ(found.size(), 2u);  // as authored and mirrored
-  for (int id : found) EXPECT_EQ(anims.GetAnim(id)->GetName().rfind(wanted.name, 0), 0u);
+  for (int id : found) EXPECT_EQ(anims.GetAnim(id)->GetName().rfind(wanted->name, 0), 0u);
 }
 
 }  // namespace

@@ -41,6 +41,7 @@ struct Rig;
 // PES body clips the simulation plays, converted from the install at match start.
 #include "pesclips.hpp"
 #include "pesdodge.hpp"
+#include "pestackle.hpp"
 #include "pesstrategy.hpp"
 #include "pesteamconcepts.hpp"
 #include "pessubs.hpp"
@@ -132,6 +133,10 @@ struct MatchSetup {
   // constants.
   const pes::Animetable* pesAnimetable = nullptr;
   const pes::Mbinfo* pesMbinfo = nullptr;
+  // PES 2021's standing-tackle sub-kind (pestackle.hpp): the per-kind group
+  // tables and the readiness mask's constants, read from the install's exe.
+  // Required: the Tackle action's sub-kind choice is these tables.
+  const pes::TackleConstants* pesTackleConstants = nullptr;
   // PES 2021's CPU strategy decider (docs/re/pes-re-match-management.md 1):
   // the minute-0 draw's weights, holds and switch minute. Required: a CPU
   // manager without them would be inventing when to attack.
