@@ -613,6 +613,158 @@ TEST(OffBallStop, PassToMeStopNeedsTheRunnerNearTheLine) {
   EXPECT_FALSE(PassToMeStop(w, kRunner));
 }
 
+// FUN_140606cd0's rank > 1 angle sub-test (raw 0x140607741-0x140607814): a
+// forward on the second line or later whose route leaves him within 80 deg of
+// the attack direction and within 20 m of the ball-line point is only a
+// candidate while that point is in the attacking half - GF carries no
+// instruction 2, so a4c720's arguments are a = 0 and k = 0.
+TEST(OffBallMask, ASecondLineForwardNeedsTheLinePointInTheAttackingHalf) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;                 // CF: the reach path needs no style bit
+  r.pos = {0.0f, -2.0f};           // on the halfway line, off centre
+  r.aim = {4.0f, -2.0f};
+  r.facing = 90.0f;                // the attack direction, +x
+  w.lineX[1] = 45.0f;
+  w.carrier = 0;
+  // A teammate further up the pitch makes this runner the second line.
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  // The ball-line point beside the runner, 6 m to his goal side and 2 m into
+  // the attacking half: the bearing from it to him is inside the 45 deg window
+  // of his facing, and inside 20 m.
+  w.p[0].pos = w.ball = {2.0f, -8.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  // The same line point 2 m into the defending half: the sub-test rejects him.
+  w.p[0].pos = w.ball = {-2.0f, -8.0f};
+  EXPECT_FALSE(RankAngleOk(w, kRunner, 4));
+}
+
+TEST(OffBallMask, TheAngleSubTestOnlyRunsForAForwardOnTheSecondLine) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;                 // CF
+  r.pos = {0.0f, -2.0f};
+  r.aim = {4.0f, -2.0f};
+  r.facing = 90.0f;
+  w.p[0].pos = w.ball = {2.0f, -8.0f};   // 6 m to his side, in the window
+  w.lineX[1] = 45.0f;
+  w.carrier = 0;
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  // An AMF with three attackers ahead: positions 4 and up take no reach path,
+  // so the sub-test is not entered at all and the line point's half does not
+  // matter. (With four ahead the OR gate would let every rank in.)
+  r.position = 8;
+  w.p[8].pos = {-20.0f, -14.0f};
+  w.p[9].pos = {-20.0f, -17.0f};
+  w.p[10].pos = {-20.0f, -20.0f};
+  w.p[0].pos = w.ball = {-2.0f, -8.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  r.position = 12;
+  // A CF on the first line: the rank gate is not entered, so no veto.
+  for (int i = 0; i < kSlots; ++i) w.p[i].pos.x = -20.0f;
+  r.pos = {0.0f, -2.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  // Back on the second line, 26 m from the ball-line point: past the 20 m
+  // window, so the sub-test rejects him wherever the line point sits.
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  w.p[0].pos = w.ball = {0.0f, -28.0f};
+  EXPECT_FALSE(RankAngleOk(w, kRunner, 4));
+  // An opponent inside the 80 deg cone about the attack direction lets him
+  // through even then.
+  w.p[kSlots + 3].pos = {2.0f, -2.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+}
+
+// The sub-test's three gates, one at a time: the rank, the facing window and
+// the 20 m window. Each fixture below holds the other two open.
+TEST(OffBallMask, TheAngleSubTestNeedsTheSecondLineNotJustAForward) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;                 // CF
+  r.pos = {0.0f, -2.0f};
+  r.aim = {4.0f, -2.0f};
+  r.facing = 90.0f;
+  w.p[0].pos = w.ball = {-2.0f, -8.0f};   // the veto condition
+  w.lineX[1] = 45.0f;
+  w.carrier = 0;
+  // Three teammates ahead of the ball band, and this runner behind them all:
+  // he is the second line, so the sub-test runs.
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  for (int i = 0; i < kSlots; ++i)
+    if (i != 8 && i != 9 && i != 10 && i != kRunner) w.p[i].pos = {-20.0f, -30.0f + 3.0f * i};
+  EXPECT_FALSE(RankAngleOk(w, kRunner, 4));
+  // Now the runner is the first line: the sub-test does not run.
+  w.p[9].pos = {-20.0f, 6.0f};
+  w.p[10].pos = {-20.0f, -6.0f};
+  w.p[8].pos = {-20.0f, 10.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+}
+
+TEST(OffBallMask, TheAngleSubTestFacingWindowIsFortyFiveDegrees) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;                 // CF
+  r.pos = {0.0f, -2.0f};
+  r.aim = {4.0f, -2.0f};
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  w.p[0].pos = w.ball = {-2.0f, -8.0f};
+  w.lineX[1] = 45.0f;
+  w.carrier = 0;
+  // Facing 60 deg off the bearing to him: outside the 45 deg window, so the
+  // sub-test lets him through even with the line point behind.
+  r.facing = 131.6f;
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  // Facing 18 deg off it (68.4): inside the window, so the veto applies.
+  r.facing = 50.0f;
+  EXPECT_FALSE(RankAngleOk(w, kRunner, 4));
+}
+
+TEST(OffBallMask, TheAngleSubTestWindowIsTwentyMetres) {
+  RunWorld w = Running();
+  PlayerFacts& r = w.p[kRunner];
+  r.state = kBasePosition;
+  r.t = 1e9f;
+  r.position = 12;                 // CF
+  r.pos = {0.0f, -2.0f};
+  r.aim = {4.0f, -2.0f};
+  r.facing = 90.0f;
+  w.p[9].pos = {40.0f, 6.0f};
+  w.p[10].pos = {41.0f, -6.0f};
+  w.p[8].pos = {39.0f, 10.0f};
+  w.p[7].pos = {38.0f, 14.0f};
+  w.lineX[1] = 45.0f;
+  w.carrier = 0;
+  // 26.7 m from the line point (712 m2, past the 400 m2 window) with the point
+  // in the attacking half, so only the window can reject him.
+  w.p[0].pos = w.ball = {6.0f, -28.0f};
+  EXPECT_FALSE(RankAngleOk(w, kRunner, 4));
+  // Inside it, 6 m to his side (40 m2): the half test passes and he is fine.
+  w.p[0].pos = w.ball = {2.0f, -8.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+  // 12 m out (144 m2), still inside 400 m2 but past a 100 m2 window.
+  w.p[0].pos = w.ball = {6.0f, -14.0f};
+  EXPECT_TRUE(RankAngleOk(w, kRunner, 4));
+}
+
 TEST(OffBallInstall, CapsAndLimitFromTheInstall) {
   const char* root = std::getenv("PES21_ROOT");
   if (!root) GTEST_SKIP() << "PES21_ROOT unset";

@@ -1517,6 +1517,51 @@ bool TeamMayRun(const RunWorld& w, int t) {
 }
 }  // namespace
 
+// FUN_140606cd0's rank > 1 angle sub-test, raw 0x140607741-0x140607814. The
+// rank byte is the attacking team's line-list position of the runner
+// (FUN_140a714e0's +0xb2); the cone is 80 deg about the attack direction from
+// the runner, and the 20 m window is measured against the ball-line point
+// (MA+0x2482c/0x24834). GF carries no instruction 2 (FUN_1405aaf00 = 0), so the
+// closing a4c720's arguments are a = 0 and k = 0: the ball-line point must be
+// in the attacking half.
+bool RankAngleOk(const RunWorld& w, int id, int attackLevel) {
+  const Ctx x(w, id);
+  // The gate chain: the runner on the mask's generic path is already past the
+  // line and the slot mask. The angle test needs the reach path taken
+  // (attackers ahead > 3, or a forward without the LB style bit) - which
+  // ChanceMaskBit has already decided - so it is entered whenever the attacker
+  // count clears it.
+  const int ahead = AttackersAhead(w);
+  const bool styleLb = x.me.position == 2;  // a64030(id, 0x11): no style bits in GF
+  if (!(ahead > 3 || (x.me.position < 4 && !styleLb))) return true;
+  // The rank byte: the attacking team's line-list position of this runner.
+  if (LineRank(w, id) <= 1) return true;
+  // ponytail: FUN_1405a0d20 (the "go straight for the line" duel test) and
+  // FUN_140a64030(id, 9) (style bit 9: none in GF) are taken false, so the
+  // style-bit branch of the sub-test is always entered.
+  const int pos = x.me.position;
+  if (pos > 3) {
+    // 0x140607747: the bearing from the ball-line point to the runner, and the
+    // runner's facing must agree within 45 deg.
+    const float need = Bearing(w.ball, x.P);
+    if (std::fabs(Fold180(x.me.facing - need)) >= 45.0f) return true;  // 0x14259be30
+    // 0x1406077d: the cone's centre is the attack direction and its radius is
+    // 30 m (xmm14, 0x142591140).
+    constexpr float kRankCone_deg = 80.0f;  // 0x142596e6c
+    constexpr float kRankConeRadius_m = 30.0f;  // 0x142591140
+    constexpr float kRankWindow_m2 = 400.0f;  // 0x1425a2670
+    if (ConeOpp(w, id, x.dir, kRankCone_deg, kRankConeRadius_m)) return true;
+    // 0x1406077be: past 20 m from the ball-line point the runner is rejected,
+    // as is a line point that is not ahead in the attack frame.
+    if (Dist2(x.P, w.ball) >= kRankWindow_m2) return false;
+  }
+  // 0x1406077e4-0x140607814: a4c720(a, MA+0x2482c, s, k) with GF's a = 0 and
+  // k = 0 (no instruction 2) rejects when the ball-line point is not ahead in
+  // the attack frame.
+  (void)attackLevel;
+  return w.ball.x * x.s > 0.0f;
+}
+
 uint32_t AttackSlotMask(const RunWorld& w, int team, int L) {
   constexpr uint32_t kAll = (1u << kSlots) - 1;
   if (L >= 4) return kAll;
@@ -1621,11 +1666,16 @@ bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_
   }
   constexpr float kMaxDz_m = 42.0f;  // 0x1425cd830
   if (dz > kMaxDz_m) return false;
-  // ponytail: the rank > 1 angle sub-test ends in a4c720 with arguments the
-  // decompile dropped; 5a8290 / 5a5400 are not reduced: the generic path goes
-  // to 79ac. There, with a carrier, 6046b0 (style bit 3: none -> true),
-  // 609b40 (carrier valid -> false) and 609e60 (receiver action 0x48 -> false)
-  // set the bit.
+  // The rank > 1 angle sub-test (raw 0x140607741-0x140607814): a second-line
+  // runner inside 20 m of the ball-line point, heading within 45 deg of the
+  // bearing to him and with no opponent in the 80 deg cone, is rejected when
+  // that point is not ahead in the attack frame - and likewise every runner
+  // once four attackers are ahead of the ball band.
+  if (!RankAngleOk(w, id, attackLevel)) return false;
+  // ponytail: 5a8290 / 5a5400 are not reduced; 5a7d10 (the carrier pass-aim
+  // stop) is not applied. The generic path goes to 79ac, where with a carrier
+  // 6046b0 (style bit 3: none -> true), 609b40 (carrier valid -> false) and
+  // 609e60 (receiver action 0x48 -> false) set the bit.
   (void)rank;
   return Valid(w.carrier) || !Valid(x.q) || Dist2(w.p[x.q].pos, x.B) <= 49.0f;
 }

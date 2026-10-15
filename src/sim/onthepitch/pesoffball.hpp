@@ -242,6 +242,14 @@ bool DuelInterceptionKeep(const RunWorld& w, int id);
 // FUN_140691300 (raw 0x140691300): the run sub-kind 2 stop.
 bool SubKindTwoStop(const RunWorld& w, int id);
 
+// FUN_140606cd0's rank > 1 angle sub-test (raw 0x140607741-0x140607814): with
+// the runner on the 2nd or later line of the attacking side, a forward (or a
+// back with the 0x11 style bit) whose route leaves him within 80 deg of the
+// attack direction and 20 m of the ball-line point is only a candidate when
+// the ball-line point itself is past the halfway line (a4c720 with a = 0 and
+// k = 0; a = 15 and k = -30 with instruction 2, which GF does not carry).
+bool RankAngleOk(const RunWorld& w, int id, int attackLevel);
+
 // FUN_140606cd0's generic-lane path for slot `id` (decompiled for this port):
 // true sets his candidate bit. `awareness` is the reach byte (0..99).
 bool ChanceMaskBit(const OffBallConstants& k, const RunWorld& w, int id, uint32_t slotMask,
