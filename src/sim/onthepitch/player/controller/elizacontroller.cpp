@@ -1140,11 +1140,25 @@ bool ElizaController::_DodgeBallCandidate(int* kind) {
 }
 
 bool ElizaController::_DodgeNetCandidate(int* kind) {
-  // FUN_140a07e40 + FUN_14073c5d0. The goal net is only in play near it.
+  // FUN_140a07e40 + FUN_14073c5d0. PES's net gate reads the player's own team's
+  // post (the own goal line) and then requires the ball's predicted position
+  // to fall inside the goal mouth there: past the post edge and between the two
+  // posts. GF's stand-in is the same test on its own pitch marks - the own goal
+  // line and the goal's half-width.
+  //
+  // ponytail: the net's full geometry (which goal-line positions admit it) is
+  // PES's own post pair; the ported gate is the ball heading into the mouth.
   const Vector3 pos = CastPlayer()->GetPosition();
-  // ponytail: the net's geometry is GF's own pitch; the selector's clip fit is
-  // the ported gate. Near the own goal the net dodge is possible.
-  if (pos.coords[0] > -40.0f && pos.coords[0] < 40.0f) return false;  // not near a goal line
+  // The team's own goal is at +side * pitchHalfW: the set-piece code's
+  // defending branch (`team->GetSide() * pitchHalfW * 0.98`) is the same end.
+  const float ownGoalX = team->GetSide() * pitchHalfW;
+  // Near his own goal line, where PES's post-edge test admits the dodge.
+  if (std::fabs(pos.coords[0] - ownGoalX) > 12.0f) return false;
+  // The ball's predicted position has to be going into the mouth: past the
+  // goal line and between the posts.
+  const Vector3 ball = _mentalImage->GetBallPrediction(200).Get2D();
+  const float into = (ball.coords[0] - ownGoalX) * -team->GetSide();
+  if (into < 0.0f || std::fabs(ball.coords[1]) > goalHalfWidth) return false;
   const pes::DodgeConstants& k = match->GetPesDodgeConstants();
   const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
   auto clip = pes::NetSelector(match->GetPesAnimetable(), k, speed > 22.0f);
@@ -1154,11 +1168,42 @@ bool ElizaController::_DodgeNetCandidate(int* kind) {
 }
 
 bool ElizaController::_DodgePostCandidate(int* kind) {
-  // FUN_140a08340 + FUN_14073c9c0. ponytail: FUN_1407368d0 (the post row/col)
-  // was not decoded - it reads the post's own geometry table. The post dodge
-  // is wired through the chooser but its selector is open; it does not fire
-  // until that table is decoded. See docs/re/pes-re-contact-port.md.
-  return false;
+  // FUN_140a08340 + FUN_14073c9c0. PES's post predicate reads the player's OWN
+  // team's post (the one at the goal line he defends) and its eligibility gate
+  // (FUN_140a084d0) checks that post sits at the field edge within 1.0 m in
+  // both axes. GF carries no per-post object, so the port's anchor is the own
+  // goal line's post: x = -side * pitchHalfW and the goal's half-width, both
+  // gametypes.hpp's own marks. Which of the two posts it is comes from the
+  // ball's side, as PES's +0x55c x test picks the one on the ball's half.
+  //
+  // ponytail: PES's own-post geometry (the 20-unit out step toward the touch
+  // line, FUN_140a8f7c0) is the part not carried; the ported gate is the own
+  // goal band and the selector's clip fit.
+  const Vector3 pos = CastPlayer()->GetPosition();
+  // The team's own goal is at +side * pitchHalfW (the set-piece code's
+  // defending branch is the same end), and the goal line's outward normal is
+  // that direction, so the selector's reference is 180 there.
+  const float ownGoalX = team->GetSide() * pitchHalfW;
+  // Only near his own goal line: the post's own neighbourhood.
+  const float distToOwnGoal = std::fabs(pos.coords[0] - ownGoalX);
+  if (distToOwnGoal > 12.0f) return false;
+  const Vector3 ball = _mentalImage->GetBallPrediction(200).Get2D();
+  const int postSide = ball.coords[1] >= 0.0f ? 1 : -1;
+  const Vector3 post(ownGoalX, goalHalfWidth * postSide, 0.0f);
+  // The two angles the exe's selector reads: the bearing from the post's
+  // anchor to the player (raw, 0..360) and the approach angle relative to the
+  // goal line's own facing. The goal line's normal points out of the pitch, so
+  // the reference is 0 at one end and 180 at the other.
+  float bearing = BearingDeg(post, Vector3(pos.coords[0], pos.coords[1], 0.0f));
+  if (bearing < 0.0f) bearing += 360.0f;  // the exe's raw 0..360 bearing
+  const float refAngle = ownGoalX >= 0.0f ? 180.0f : 0.0f;
+  const float approach = WrapDeg(bearing - refAngle);
+  const pes::DodgeConstants& k = match->GetPesDodgeConstants();
+  const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
+  auto clip = pes::PostSelector(match->GetPesAnimetable(), k, bearing, refAngle, approach, speed);
+  if (!clip) return false;
+  *kind = static_cast<int>(pes::DodgeKind::kPost);
+  return true;
 }
 
 bool ElizaController::_DodgeHumanCandidate(int* kind) {
@@ -1219,6 +1264,23 @@ void ElizaController::_DodgeCommand(PlayerCommandQueue& commandQueue,
     case pes::DefenderReaction::kDodgeNet: {
       const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
       auto clip = pes::NetSelector(t, k, speed > 22.0f);
+      if (clip) motionNo = clip->motionNo;
+      break;
+    }
+    case pes::DefenderReaction::kDodgePost: {
+      // The same own-post geometry the predicate used (FUN_14073c9c0's
+      // callsite, so the command's clip and the predicate's agree).
+      const Vector3 pos = CastPlayer()->GetPosition();
+      const float ownGoalX = team->GetSide() * pitchHalfW;
+      const Vector3 ball = _mentalImage->GetBallPrediction(200).Get2D();
+      const int postSide = ball.coords[1] >= 0.0f ? 1 : -1;
+      const Vector3 post(ownGoalX, goalHalfWidth * postSide, 0.0f);
+      float bearing = BearingDeg(post, Vector3(pos.coords[0], pos.coords[1], 0.0f));
+      if (bearing < 0.0f) bearing += 360.0f;
+      const float refAngle = ownGoalX >= 0.0f ? 180.0f : 0.0f;
+      const float approach = WrapDeg(bearing - refAngle);
+      const float speed = CastPlayer()->GetMovement().GetLength() * 3.6f;
+      auto clip = pes::PostSelector(t, k, bearing, refAngle, approach, speed);
       if (clip) motionNo = clip->motionNo;
       break;
     }
