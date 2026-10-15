@@ -72,10 +72,15 @@ a port gap. The port returns "no clip" honestly for 3-6.
 
 ## 5. Ponytail gaps (named, in code and here)
 
-- **Post dodge does not fire.** `FUN_1407368d0` (its row/column) was not
-  decoded — it reads the post's own geometry table. The entry is wired through
-  the chooser and the command; the predicate returns false until that table is
-  decoded. `_DodgePostCandidate` and the report carry the gap.
+- ~~**Post dodge does not fire.**~~ **Closed** (`local://pes-re-post-dodge.md`,
+  branch `post-dodge`): `FUN_1407368d0` is decoded and ported as
+  `pes::PostSelector`, the predicate builds its anchor from GF's own goal marks,
+  and the post now fires (717 commands over a 3-minute seed-7 run against net's
+  1212). The net dodge took its own gate at the same time — the ball heading
+  into the goal mouth — because its GF gate (`|x| > 40` on both ends) covered
+  the whole own-goal band and shadowed the post. One named item left open: the
+  `>135` deg band's column, where the exe writes 17 and this install populates
+  16; pinned as an install fact in the test.
 - **Human dodge kind (FUN_14073a3d0)** reads PES's per-part contact record and
   the opponent's action classes, which GF does not carry per part. The ported
   part is the geometry: approaching from behind → slide_rapid_up (kind 4), in
