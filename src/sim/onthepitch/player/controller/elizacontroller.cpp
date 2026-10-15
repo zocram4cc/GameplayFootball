@@ -929,7 +929,7 @@ void ElizaController::_ReactionCommands(PlayerCommandQueue& commandQueue) {
       break;
     case pes::DefenderReaction::kTackle:
       CastPlayer()->SetPesChallenge(pes::ContactAction::kTackle);
-      _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
+      _TackleCommand(commandQueue, contact);
       break;
     case pes::DefenderReaction::kSlide:
       _PushChallenge(commandQueue, contact, e_FunctionType_Sliding);
@@ -1304,6 +1304,57 @@ void ElizaController::_DodgeCommand(PlayerCommandQueue& commandQueue,
   command.specialVar1 = static_cast<int>(pes::PesClipFamily::kDodge);
   command.useSpecialVar2 = true;
   command.specialVar2 = motionNo;
+  command.useDesiredMovement = true;
+  command.desiredDirection = CastPlayer()->GetDirectionVec();
+  command.desiredVelocityFloat = CastPlayer()->GetMovement().GetLength();
+  commandQueue.push_back(command);
+}
+
+void ElizaController::_TackleCommand(PlayerCommandQueue& commandQueue, const Vector3& contact) {
+  // The sub-kind pick, then the Special command naming its clip. The state it
+  // reads is what GF carries; pestackle's header names each stand-in.
+  const pes::TackleConstants& tk = match->GetPesTackleConstants();
+  const pes::Animetable& t = match->GetPesAnimetable();
+  Player* carrier = _Carrier();
+  pes::TackleSituation s;
+  s.speedClass = pes::SpeedClass(CastPlayer()->GetMovement().GetLength() * 3.6f, 0.0f);
+  s.mayPlay = true;
+  if (carrier != nullptr && carrier->GetTeamID() != team->GetID()) {
+    // FUN_140477130's opposed-body distance is a per-body measure; the nearest
+    // opponent's distance is GF's own stand-in.
+    s.opposedBody_m = (carrier->GetPosition() - CastPlayer()->GetPosition()).GetLength();
+    s.pairDistSq_m = s.opposedBody_m * s.opposedBody_m;
+    s.bearingToCarrier_deg = AngleBetweenDeg(
+        HeadingDeg(CastPlayer()->GetDirectionVec()),
+        BearingDeg(CastPlayer()->GetPosition(), carrier->GetPosition()));
+    s.ballHeight_m = _mentalImage->GetBallPrediction(0).coords[2];
+  }
+  s.secondMan = false;  // FUN_14078f4f0's third flag: GF has no per-tick tackle clock
+  s.touching = s.opposedBody_m >= 0.0f && s.opposedBody_m < 2.0f;
+  // think+0x60's "another tackle already committed", read as a team mate in an
+  // Interfere clip aimed at this carrier.
+  std::vector<Player*> mates;
+  match->GetTeam(team->GetID())->GetActivePlayers(mates);
+  for (Player* mate : mates) {
+    if (mate == CastPlayer()) continue;
+    if (mate->GetCurrentFunctionType() != e_FunctionType_Interfere) continue;
+    if (mate->GetPesChallenge() == pes::ContactAction::kTackle) s.otherTackleCommitted = true;
+  }
+  const pes::TackleChoice choice = pes::ChooseTackle(tk, t, s);
+  if (choice.motionNo < 0) {
+    // No kind's row resolves in the install's own table: PES declines the
+    // tackle's clip too, and GF's interfere clip stands.
+    _PushChallenge(commandQueue, contact, e_FunctionType_Interfere);
+    return;
+  }
+  CastPlayer()->SetPesTackleSubKind(int(choice.kind));
+  match->GetMatchData()->AddTackleSubKind(team->GetID(), int(choice.kind));
+  PlayerCommand command;
+  command.desiredFunctionType = e_FunctionType_Special;
+  command.useSpecialVar1 = true;
+  command.specialVar1 = static_cast<int>(pes::PesClipFamily::kTackle);
+  command.useSpecialVar2 = true;
+  command.specialVar2 = choice.motionNo;
   command.useDesiredMovement = true;
   command.desiredDirection = CastPlayer()->GetDirectionVec();
   command.desiredVelocityFloat = CastPlayer()->GetMovement().GetLength();

@@ -302,6 +302,16 @@ public:
   int GetDodgeCount(int teamID, int kind) const {
     return (kind < 0 || kind >= kDodgeKinds) ? 0 : dodges[teamID][kind];
   }
+  // The standing-tackle sub-kind (pestackle.hpp), one per tackle command the
+  // sub-kind pick committed, so the report can say which sub-kinds fire.
+  enum { kTackleKinds = 9 };  // 0..8 (7 is PES's default)
+  void AddTackleSubKind(int teamID, int kind) {
+    if (kind < 0 || kind >= kTackleKinds) return;
+    tackleSubKinds[teamID][kind]++;
+  }
+  int GetTackleSubKindCount(int teamID, int kind) const {
+    return (kind < 0 || kind >= kTackleKinds) ? 0 : tackleSubKinds[teamID][kind];
+  }
 
   // pes::offball::MaskReject's width (pesoffball.hpp); duplicated here so this
   // header stays free of the exe reader.
@@ -840,6 +850,7 @@ protected:
   int clearances[2];
   int chanceRuns[2] = {0, 0};
   int dodges[2][kDodgeKinds] = {};
+  int tackleSubKinds[2][kTackleKinds] = {};
   int maskWalks[2] = {0, 0};
   int maskRejects[2][kMaskRejectCount] = {};
   int stopFires[2] = {0, 0};

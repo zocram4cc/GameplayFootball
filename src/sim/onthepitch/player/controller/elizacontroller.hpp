@@ -82,6 +82,11 @@ protected:
   // motion number (FUN_14073bc70 + FUN_1406ecbb0), so the clip plays and the
   // player carries the DODGE action for the contact reaction.
   void _DodgeCommand(PlayerCommandQueue& commandQueue, pes::DefenderReaction reaction, int kind);
+  // The standing-tackle command: PES's Special path with the tackle family and
+  // the motion number the sub-kind pick named, so the chosen tacklefoot clip
+  // plays and the player carries the sub-kind for the contact reaction. Falls
+  // back to GF's own interfere clip when no kind resolves.
+  void _TackleCommand(PlayerCommandQueue& commandQueue, const Vector3& contact);
   // PES's aggression level A for the tackle's from-behind tolerance and touch
   // lead: the ENFORCER style and the team's defensive mode.
   int _TackleAggressionLevel();

@@ -81,6 +81,15 @@ void PrintMatchReport(Match& match, FILE* out) {
     std::fprintf(out, " %s %i-%i", kDodgeNames[kind], matchData->GetDodgeCount(0, kind),
                  matchData->GetDodgeCount(1, kind));
   std::fprintf(out, "\n");
+  // The standing-tackle sub-kind (pes-re-contact-port.md stage C), one per
+  // tackle command the pick committed, home first. Kind 7 is PES's own
+  // default: nothing ready, or nothing in the ready kinds' groups resolving.
+  static const char* const kTackleKindNames[] = {"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8"};
+  std::fprintf(out, "[tackle-kind]");
+  for (int kind = 1; kind < MatchData::kTackleKinds; kind++)
+    std::fprintf(out, " %s %i-%i", kTackleKindNames[kind - 1], matchData->GetTackleSubKindCount(0, kind),
+                 matchData->GetTackleSubKindCount(1, kind));
+  std::fprintf(out, "\n");
   // The mask trace: for each team, the gate that decided each walked slot.
   // MaskReject's order is pass, rank, carrier/receiver, already running,
   // on the line, box zone, goal area, role class, slot mask, depth, team may

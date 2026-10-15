@@ -302,6 +302,164 @@ TEST(PesTackle, ResolveClipCarriesTheMirrorBit) {
   EXPECT_TRUE(mirrored->mirror);
 }
 
+// The pick as the simulation runs it. ponytail: the clip fit is GF's
+// stand-in, so the point of these is the mapping from GF's situation to a
+// sub-kind, not the fit itself.
+// FUN_14078f290's clip mask, the per-kind bit word the pick reads. Kinds 5
+// and 6 are gated off wholesale, so their mask is every bit set.
+TEST(PesTackle, ClipMaskSetsEveryBitForTheGatedOffKinds) {
+  pes::TackleClipMaskInput in;
+  in.recordLive = true;
+  in.standing = true;
+  EXPECT_EQ(pes::ClipMask(in), 0x1u);  // standing alone
+  for (int kind : {5, 6}) {
+    in.kind = kind;
+    EXPECT_EQ(pes::ClipMask(in), 0xffffffffu) << "kind " << kind;
+  }
+  // A record that is not live gives every bit too, whatever the kind.
+  in.kind = 1;
+  in.standing = false;
+  in.recordLive = false;
+  EXPECT_EQ(pes::ClipMask(in), 0xffffffffu);
+}
+
+TEST(PesTackle, ClipMaskBranchesFollowTheCommittedAndAheadFlags) {
+  pes::TackleClipMaskInput in;
+  in.recordLive = true;
+  in.kind = 1;
+  in.standing = true;
+  // The keeper's-hands branch: +4, and +2 with it when the ball is in front.
+  in.keeperBallHands = true;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x5u);
+  in.ballInFront = true;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x7u);
+  // The record's own ahead flag: +2, and +4 with it when in front.
+  in.keeperBallHands = false;
+  in.ballAheadOfSelf = true;
+  in.ballInFront = false;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x3u);
+  in.ballInFront = true;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x7u);
+  // Neither flag: only the committed +2 survives.
+  in.ballAheadOfSelf = false;
+  in.committed = false;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x1u);
+  in.committed = true;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x3u);
+  // Without the standing flag the base bit is not there at all.
+  in.standing = false;
+  EXPECT_EQ(pes::ClipMask(in) & 0x7u, 0x2u);
+}
+
+TEST(PesTackle, ChooseTackleFallsBackTo7WhenNothingResolves) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  // May play is false, so only kind 7's neither-flag fallback and kind 8's
+  // not-in-play bit are ready, and with no groups at all nothing resolves.
+  pes::TackleConstants k;
+  pes::TackleSituation s;
+  s.mayPlay = false;
+  auto c = pes::ChooseTackle(k, *t, s);
+  EXPECT_EQ(c.kind, pes::TackleSubKind::k7);
+  EXPECT_LT(c.motionNo, 0);
+}
+
+TEST(PesTackle, ChooseTackleTakesTheLowestReadyKindWithALiveEntry) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  const pes::TackleConstants k = Constants();
+  pes::TackleSituation s;
+  s.touching = true;        // the opposed body inside 5 m
+  s.opposedBody_m = 1.0f;
+  s.pairDistSq_m = 4.0f;    // past bit 4's 1.44 m^2 window
+  s.bearingToCarrier_deg = 10.0f;  // inside all three angle bounds
+  s.speedClass = 1;
+  auto c = pes::ChooseTackle(k, *t, s);
+  // Kind 1 is the lowest ready kind here (may play + cooldown clear) and its
+  // group table has an entry whose bit the standing mask sets, so it wins.
+  EXPECT_EQ(c.kind, pes::TackleSubKind::k1);
+  // Take kind 1's groups away and kind 4 (bit 4's pair window) is next: the
+  // pair is past 1.44 m^2, both angles are inside, and the delay roll is
+  // answered passed.
+  pes::TackleConstants k4 = k;
+  k4.groups[0] = {};
+  auto c4 = pes::ChooseTackle(k4, *t, s);
+  EXPECT_EQ(c4.kind, pes::TackleSubKind::k4);
+  // With kinds 1 and 4 both gone, kind 5 is the touching gate's: FUN_14078f290
+  // returns every bit for it, so its group's first entry is live.
+  pes::TackleConstants k5 = k4;
+  k5.groups[3] = {};
+  EXPECT_EQ(pes::ChooseTackle(k5, *t, s).kind, pes::TackleSubKind::k5);
+}
+
+TEST(PesTackle, ChooseTackleNamesAClipAndItsMirrorFromTheBearing) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  pes::TackleConstants k = Constants();
+  k.groups[0] = {};   // kind 1 out of the way
+  k.groups[3] = {};   // and kind 4, so kind 5's group decides
+  pes::TackleSituation s;
+  s.touching = true;
+  s.opposedBody_m = 1.0f;
+  s.pairDistSq_m = 1.0f;
+  s.bearingToCarrier_deg = 67.5f;  // the far column of the row 0x96b family
+  s.speedClass = 0;
+  auto c = pes::ChooseTackle(k, *t, s);
+  EXPECT_EQ(c.kind, pes::TackleSubKind::k5);
+  EXPECT_GE(c.motionNo, 0);
+  // The bearing is what decides the column, so the mirror bit follows it.
+  s.bearingToCarrier_deg = -67.5f;
+  auto cMirror = pes::ChooseTackle(k, *t, s);
+  EXPECT_EQ(cMirror.kind, pes::TackleSubKind::k5);
+  EXPECT_EQ(cMirror.motionNo, c.motionNo);
+  EXPECT_NE(cMirror.mirror, c.mirror);
+}
+
+TEST(PesTackle, ChooseTackleDeclinesWhenNoKindResolves) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  const pes::TackleConstants k = Constants();
+  pes::TackleSituation s;
+  s.touching = true;
+  s.opposedBody_m = 1.0f;
+  s.pairDistSq_m = 1.0f;
+  s.bearingToCarrier_deg = 90.0f;
+  s.speedClass = 1;
+  // A constants set whose groups are all empty: no kind's row resolves, so the
+  // caller keeps GF's interfere clip.
+  pes::TackleConstants empty;
+  empty.groups = {};
+  empty.group7 = {};
+  empty.defaultSubKind = 7;
+  auto c = pes::ChooseTackle(empty, *t, s);
+  EXPECT_EQ(c.kind, pes::TackleSubKind::k7);
+  EXPECT_LT(c.motionNo, 0);
+}
+
+TEST(PesTackle, ChooseTackleTightensTheWindowForALiftedBall) {
+  auto t = pes::ParseAnimetable(Table(), Layout(), nullptr);
+  ASSERT_TRUE(t.has_value());
+  const pes::TackleConstants k = Constants();
+  pes::TackleSituation s;
+  s.touching = true;
+  s.opposedBody_m = 1.0f;
+  s.bearingToCarrier_deg = 10.0f;
+  s.speedClass = 1;
+  // Kind 1 first (may play + cooldown clear, and its group has a live entry),
+  // so take it out to expose kind 4's own window.
+  pes::TackleConstants k1 = k;
+  k1.groups[0] = {};
+  // Bit 4 (kind 4) needs the pair past 1.44 m^2; a lifted ball tightens it to
+  // 0.09 m^2, so the same standing pair stops clearing it.
+  s.pairDistSq_m = 0.5f;  // inside 1.44, so bit 4 is clear
+  EXPECT_NE(pes::ChooseTackle(k1, *t, s).kind, pes::TackleSubKind::k4);
+  // A lifted ball tightens bit 4's window to 0.09 m^2, which 0.5 clears.
+  s.ballHeight_m = 1.0f;  // past the 0.434744 gate
+  EXPECT_EQ(pes::ChooseTackle(k1, *t, s).kind, pes::TackleSubKind::k4);
+  s.pairDistSq_m = 0.05f;  // inside even the tighter window
+  EXPECT_NE(pes::ChooseTackle(k1, *t, s).kind, pes::TackleSubKind::k4);
+}
+
 // The install: the per-kind groups are read out of the user's exe and every
 // entry's row resolves to a tacklefoot clip in the user's Animetable.
 TEST(PesTackleInstall, TheUsersGroupsResolveToTheTacklefootFamily) {

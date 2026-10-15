@@ -272,4 +272,89 @@ std::optional<TackleClip> ResolveClip(const Animetable& t, const TackleConstants
   return TackleClip{row, col, cell.motionNo, cell.mirror};
 }
 
+uint32_t ClipMask(const TackleClipMaskInput& in) {
+  // FUN_14078f290's uVar13. 0xffffffff when the record is not live, or the kind
+  // is 5 or 6 - both are gated off entirely, so their group tables are never
+  // walked (and the install's tables for them are the shared boundary the
+  // reader treats as empty anyway).
+  if (!in.recordLive || in.kind == 5 || in.kind == 6) return 0xffffffffu;
+  uint32_t mask = in.standing ? 1u : 0u;
+  if (in.keeperBallHands) {
+    // The keeper's-hands branch (his action class is 0x34/0x35): +4, and +2
+    // with it when the ball's resolved point is in front.
+    mask |= 4u;
+    if (in.ballInFront) mask |= 2u;
+  } else if (in.ballAheadOfSelf) {
+    // The record's own +0x15 flag: +2, and +6 when the ball is in front.
+    mask |= 2u;
+    if (in.ballInFront) mask |= 4u;
+  } else if (in.committed && in.ballInFront) {
+    // The committed branch: +2 only.
+    mask |= 2u;
+  }
+  return mask;
+}
+
+TackleChoice ChooseTackle(const TackleConstants& k, const Animetable& t, const TackleSituation& s) {
+  // ponytail: GF carries no per-player RNG draw on PES's streams, so the delay
+  // roll is answered as passed. It gates bit 4 alone, and bit 4 is not the
+  // sub-kind a standing tackle usually takes (kinds 5/6 are), so answering it
+  // optimistically costs nothing today and is named here.
+  TackleReadiness ready;
+  ready.mayPlay = s.mayPlay;
+  ready.touching = s.touching;
+  ready.secondMan = s.secondMan;
+  ready.opposedBody_m = s.opposedBody_m;
+  ready.cooldownClear = true;
+  ready.otherTackleCommitted = s.otherTackleCommitted;
+  ready.pairDistSq_m = s.pairDistSq_m;
+  ready.ballLifted = s.ballHeight_m > k.keeperGate_m;
+  ready.headingToBall_deg = s.bearingToCarrier_deg;
+  ready.carrierToPoint_deg = s.bearingToCarrier_deg;
+  ready.carrierToStep_deg = s.bearingToCarrier_deg;
+  ready.delayRollOk = true;
+  const uint32_t readiness = ReadinessMask(ready, k);
+  // Every kind's solver is answered "yes": see the header's ponytail.
+  const std::array<bool, 8> solverOk{true, true, true, true, true, true, true, true};
+  // FUN_14078b550 asks FUN_14078f290 for each kind's clip mask as it goes, so
+  // the pick walks a per-kind mask rather than one shared word.
+  const auto maskFor = [&s, &k](int kind) {
+    TackleClipMaskInput in;
+    in.recordLive = true;  // the caller only asks for kinds the readiness admits
+    in.kind = kind;
+    in.standing = true;
+    in.committed = s.touching;
+    in.ballInFront = true;
+    in.ballAheadOfSelf = s.secondMan;
+    in.keeperBallHands = s.ballHeight_m > k.keeperGate_m;
+    return ClipMask(in);
+  };
+  // The slot indexed by the mask word is FUN_14078f4f0's speed class, so the
+  // array carries the same word at the class the situation names.
+  const int cls = s.speedClass < 0 ? 0 : (s.speedClass > 2 ? 2 : s.speedClass);
+  std::array<uint32_t, 3> classMask{};
+  for (int c = 0; c < 3; ++c) classMask[c] = maskFor(c + 1);
+  // The pick reads one word per slot, so hand it the class's word everywhere.
+  std::array<uint32_t, 8> clipMask{};
+  for (int i = 0; i < 8; ++i) clipMask[i] = classMask[cls];
+  const TackleSubKind kind = PickSubKind(k, readiness, clipMask, t, solverOk);
+  TackleChoice choice;
+  choice.kind = kind;
+  // The winning kind's first live entry names the row, whose column for the
+  // defender's bearing gives the clip.
+  const auto& slots = int(kind) == 7 ? k.group7[0] : k.groups[int(kind) - 1];
+  for (int slot = 0; slot < 3 && choice.motionNo < 0; ++slot) {
+    for (const auto& entry : slots[slot]) {
+      if (entry.bit > 31 || !((clipMask[slot] >> entry.bit) & 1u)) continue;
+      auto clip = ResolveClip(t, k, entry.row, s.bearingToCarrier_deg);
+      if (!clip) continue;
+      choice.row = clip->row;
+      choice.motionNo = clip->motionNo;
+      choice.mirror = clip->mirror;
+      break;
+    }
+  }
+  return choice;
+}
+
 }  // namespace pes

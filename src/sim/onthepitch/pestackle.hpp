@@ -169,4 +169,62 @@ struct TackleClip {
 std::optional<TackleClip> ResolveClip(const Animetable& t, const TackleConstants& k, int row,
                                       float relativeAngle_deg);
 
+// FUN_14078f290: the clip mask, a bit per candidate clip of the kind's group.
+// The bits come from the caller's standing flag, whether the player is
+// committed (his anime slot's action class is 3) and the ball is ahead, and
+// whether the second flag holds with the ball in front.
+//
+// The exe returns 0xffffffff - every bit set - when the record is not a live
+// tackle record, and the same when the kind is 5 or 6 (both are gated off
+// entirely), which is what makes those kinds' tables unreachable in the
+// install. The ported form takes the same shape.
+struct TackleClipMaskInput {
+  bool recordLive = false;   // the Toughle record's +0x14 flag
+  int kind = 0;              // the kind 1..8 whose mask this is
+  bool standing = false;     // the caller's flag (1 at FUN_14078b550's call)
+  bool committed = false;    // his anime slot's action class is 3 (a tackle)
+  bool keeperBallHands = false;  // his action class is 0x34/0x35 (keeper hands)
+  bool ballInFront = false;  // the resolved point is in front of him
+  bool ballAheadOfSelf = false;  // the record's own +0x15 flag
+};
+uint32_t ClipMask(const TackleClipMaskInput& in);
+
+// The pick as the simulation runs it, from the state GF carries.
+//
+// ponytail: PES's fit (FUN_14078a640) is a physics prediction of the tackle
+// capsule against the clip's own contact record; GF has neither, so a ready
+// kind's first entry is taken as solvable and the engine plays that clip. The
+// consequence is that GF plays every sub-kind's first clip rather than the one
+// whose reach actually fits, which is a coarser answer than PES's but uses the
+// same readiness gates, the same order and the same clips. The nearest-opponent
+// distance stands in for FUN_140477130's opposed-body distance, and the
+// neighbour's Interfere clip for think+0x60's "another tackle committed".
+//
+// `bearingToCarrier_deg` is the defender's heading relative to the carrier, and
+// `speedClass` FUN_14078f4f0's 0..2 (the caller's own, as the dodge selectors
+// take it).
+struct TackleSituation {
+  float opposedBody_m = -1.0f;      // the nearest opponent's distance
+  float pairDistSq_m = 0.0f;        // the carrier's squared separation
+  float bearingToCarrier_deg = 0.0f;  // his heading towards the carrier
+  float ballHeight_m = 0.0f;        // the ball's height, for the lifted-ball bound
+  int speedClass = 0;               // FUN_14078f4f0's 0..2
+  bool touching = false;            // he is touching the opponent
+  bool secondMan = false;           // FUN_14078f4f0's third flag
+  bool otherTackleCommitted = false;  // a team mate already tackling
+  bool mayPlay = true;              // the action may be played at all
+};
+
+// The sub-kind and the clip it names, or nothing when no kind is ready (in
+// which case PES declines the tackle's clip too and the caller keeps GF's own
+// interfere clip).
+struct TackleChoice {
+  TackleSubKind kind = TackleSubKind::k7;
+  int row = -1;
+  int motionNo = -1;
+  bool mirror = false;
+};
+TackleChoice ChooseTackle(const TackleConstants& k, const Animetable& t,
+                          const TackleSituation& s);
+
 }  // namespace pes

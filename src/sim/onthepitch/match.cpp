@@ -1803,9 +1803,11 @@ void Match::ProcessPesContacts(const std::vector<Player*>& players) {
     dt.oppFromContact_frames =
         nTouch >= 0 ? std::fabs(float(near->GetFrameNum() - nTouch)) * kTick_s * k.framesPerSecondRef
                     : 1e6f;
-    // ponytail: PES's tackle sub-kind (human+0x44) has no GF counterpart;
-    // GF's standing tackles are taken as the general sub-kind, not kind 1.
-    dt.oppStandingTackleKind1 = false;
+    // ponytail: PES reads the sub-kind off the Tackle action's own record
+    // (human+0x44 <- Tackle+0x68); GF carries the kind the sub-kind pick
+    // chose, so the pick's result stands in for that read.
+    dt.oppStandingTackleKind1 = IsTackling(PesActionOf(near)) &&
+                                near->GetPesTackleSubKind() == 1;
     dt.headingDelta_deg = AngleDeg(self->GetDirectionVec(), near->GetDirectionVec());
     float ahead = 0.0f;
     InHeadingFrame(self, ball - self->GetPosition(), &ahead, &dt.ballLateral_m);

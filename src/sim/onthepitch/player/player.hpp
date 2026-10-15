@@ -137,8 +137,15 @@ public:
   void SetPesChallenge(pes::ContactAction action) { pesChallenge = action; }
   pes::ContactAction GetPesChallenge() const { return pesChallenge; }
 
+  // The standing-tackle sub-kind this player's tackle plays as
+  // (pes-re-contact-port.md stage C, Tackle+0x28's +0x40). k7 when nothing is
+  // ready, which is PES's own default.
+  void SetPesTackleSubKind(int kind) { pesTackleSubKind = kind; }
+  int GetPesTackleSubKind() const { return pesTackleSubKind; }
+
 protected:
   pes::ContactAction pesChallenge = pes::ContactAction::kTackle;
+  int pesTackleSubKind = 7;
   FormState::Arrow conditionArrow = FormState::Arrow::Normal;
   void _CalculateTacticalSituation();
 
