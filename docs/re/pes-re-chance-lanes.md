@@ -249,3 +249,161 @@ All bodies read from raw; each needs a check of what GF can actually observe.
 
 Off-ball run mechanics that already match (cadence, rank, caps), the press layer, everything outside
 the Chance candidate/stop path.
+
+## 5. The mask-cadence trace (this pass) - and what it finds
+
+Instrumentation added: `MatchData` carries a per-team histogram filed under `pes::offball::MaskReject`
+(the gate that decided each walked slot), plus a mask-walk count and a stop-fire count, printed as
+`[offball] chance runs ... | mask walks ... | stop fires ...` and one `[offball-trace] team N:`
+line per team. The classifier `ChanceMaskReject` is the pure, tested core; the counters are the
+histogram.
+
+### 5.1 Seed 7, 20 min, before the re-run block
+
+```
+[offball] chance runs 522-700 | mask walks 130800-95620 | stop fires 490-619
+[offball-trace] team 0: 0:2568 1:8418 2:20285 4:1474 5:267 6:35 7:5643 8:42946 9:65 10:41232 12:4720 13:11 14:1063 15:2073
+[offball-trace] team 1: 0:2269 1:9292 2:16186 4:2515 5:120 6:57 7:4486 8:21056 9:188 10:33076 12:3376 13:49 14:1242 15:1708
+```
+
+| gate | team 0 | team 1 | both | share |
+|---|---|---|---|---|
+| **0 pass** | 2,568 | 2,269 | **4,837** | **2.0% / 2.4% survive** |
+| 1 rank/state | 8,418 | 9,292 | 17,710 | 7.8% |
+| 2 carrier/receiver | 20,285 | 16,186 | 36,471 | 16.1% |
+| 4 on the line | 1,474 | 2,515 | 3,989 | 1.8% |
+| 5 box zone | 267 | 120 | 387 | 0.2% |
+| 6 goal area | 35 | 57 | 92 | 0.04% |
+| 7 role class | 5,643 | 4,486 | 10,129 | 4.5% |
+| **8 slot mask** | 42,946 | 21,056 | **64,002** | **28.3%** |
+| 9 depth | 65 | 188 | 253 | 0.1% |
+| **10 team may not run** | 41,232 | 33,076 | **74,308** | **32.8%** |
+| 12 reach | 4,720 | 3,376 | 8,096 | 3.6% |
+| 13 dz | 11 | 49 | 60 | 0.03% |
+| 14 rank angle | 1,063 | 1,242 | 2,305 | 1.0% |
+| 15 generic | 2,073 | 1,708 | 3,781 | 1.7% |
+| 3 already running | 0 | 0 | 0 | dead (see 4.1) |
+
+### 5.2 The arithmetic, and the conclusion
+
+- 226,420 walks for 1,222 runs: **185 walks per run**, 136-250 per team.
+- Only 2% of walks survive the mask, and **every** surviving candidate is taken on essentially
+  every tick it survives (4,837 survivors, 1,222 runs; the per-tick cap of 11 is never reached).
+- So the run count is `walks x survival rate`, and the survival rate is already PES-like-low.
+- To land on PES's 93 runs/team per 20 min at a 2% survival rate, the mask would have to be walked
+  **once every 0.26 s per team**; we walk **every 0.0092 s**. A factor of **28**.
+
+**Conclusion: the overrun is the walk rate, not the gates.** The candidate mask is walked on every
+parity tick for all 11 slots (109 walks/s/team for team 0, 80 for team 1), which is what the report's
+"each team selects runs every other frame (27 Hz)" says - but that cadence is confirmed only for run
+*starts* (198/201 live), not for the per-slot candidate sweep.
+
+### 5.3 The missing piece: the 2 s re-run block
+
+Off-ball 1.2 step 2 describes exactly this and the port does not have it:
+
+> Per-slot timers (11 each): `A[s]` (`M+0x17b4`) = `int(fps·2+0.5)` = **108 f** when the slot newly
+> enters a run state ... while not running it counts down; **set to 0 when the slot is the pass
+> receiver** `FUN_1405969b0`. ... A is read by the SecondLine mask (`param_2[7][slot] != 0 → skip`,
+> b4a.c:1204): **2 s re-run block** after a run.
+
+Without it, a released runner is a candidate again on the very next tick - which is precisely the
+185-walks-per-run signature. Ported this pass as `PlayerFacts::runCooldown` (PES frames),
+`RunCooldownBlocks`, the `kMaskRunCooldown` gate, and `RunRecord::cooldown_ms` maintained in
+`ProcessRunManager`'s step 2/stop pass (set on release, counted down per manager tick, cleared when
+the slot is the pass receiver). A record already in NOTHING only carries the block: it is neither
+stop-tested nor counted as a fire, and it is dropped when the block runs out.
+
+**A stale-binary warning worth recording**: an intermediate run reported 55,751 / 86,779 stop fires
+and 490-575 runs. Those numbers were an artifact of `cmake --build build --target gfsim`, which
+relinks the `gfsim` library but **not** `apps/gfsim_run`; the executable kept running the old code.
+After a full `cmake --build build`, the same binary reports 165 fires and 82-123 runs. Any figure
+from this instrumentation must come from a full build.
+
+### 5.4 The result
+
+With the re-run block, seed 7 / 20 min:
+
+```
+[offball] chance runs 82-123 | mask walks 12210-44200 | stop fires 65-99
+[offball-trace] team 0: 0:341 1:741 2:1920 4:312 7:482 8:3805 9:35 10:3369 12:437 13:4 14:25 15:206 16:533
+[offball-trace] team 1: 0:851 1:2555 2:6707 4:437 6:60 7:1766 8:15426 10:12547 12:1158 13:10 14:356 15:534 16:1793
+```
+
+**Correction, stated plainly: 388-414, not 82-123.** The 82-123 figure came from a `--minutes 5`
+run and I read it as a 20-minute number. On the full 20 minutes the block gives **388-414** against
+PES's ~93 - a 25% reduction from 522-700, not a fix.
+
+| | runs (seed 7, 20 min) | mask walks | stop fires |
+|---|---|---|---|
+| before the trace | 522-700 | 130,800-95,620 | 490-619 |
+| after the re-run block | **388-414** | 132,950-134,830 | 345-364 |
+| PES live | ~93 | - | - |
+
+So the block removes runs (522-700 to 388-414) but does **not** remove the walk flood: the mask is
+still walked ~134,000 times, and the block itself only rejects 10,307 of those. The block is
+necessary - PES documents it and it is missing - but it is not sufficient.
+
+The histogram now points at the next target without ambiguity. Of the remaining 247,780 walks, the
+two dominant killers are:
+
+- **slot mask** `kMaskSlotMask`: 96,382 (39%)
+- **team may not run** `kMaskTeamMayNotRun`: 63,817 (26%)
+
+Together 65% of every walk, and both are **per-team** conditions: the attack-slot mask and the
+team-may-run gate are the same answer for all 11 slots of a team in a tick, yet the port asks them
+11 times. In PES these are `T+0xb8b8` (rebuilt only when `ref` or the attack level changes, step 1 of
+the manager tick) and `T+0x255`/`T+0xa508` (team flags). Because they are per-team, hoisting them out
+of the per-slot loop cannot change which runs start - it can only stop asking the same question
+134,000 times. To actually cut the run count further, the gate that must change is the one that
+*admits*: **`carrier/receiver` (44,076, 18%)** and **`rank/state` (18,352, 7%)** between them decide
+who is even eligible, and the `team may not run` gate is where PES's own-half rule lives - the port
+notes it reads the ball's z at the snap, which is a candidate for the over-admission.
+
+The honest summary of this pass: **the instrumentation found the missing 2 s re-run block (now
+ported, TDD'd, mutation-checked, -25% on the count), and it showed the walk rate is a symptom of
+asking per-team questions per slot rather than a cadence error.** The remaining 4x is in the
+admitting gates, and the trace now names them.
+
+## 6. Done / not done / next
+
+### Done (this pass, commit `be967f0`, branch `chance-lanes-mask-trace` off `a71200f`)
+
+1. **The mask-cadence instrumentation** - `ChanceMaskReject` (pure, tested, every gate mutation-
+   checked), per-team histogram + mask-walk + stop-fire counters in `MatchData`, printed as
+   `[offball] chance runs ... | mask walks ... | stop fires ...` and one `[offball-trace] team N:`
+   line each. Named print of the MaskReject order in `matchreport.cpp`.
+2. **The 2 s re-run block** - `PlayerFacts::runCooldown`, `RunCooldownBlocks`, the `kMaskRunCooldown`
+   gate, `RunRecord::cooldown_ms` maintained in `ProcessRunManager`. Seed 7 / 20 min:
+   **522-700 -> 388-414 (-25%)**, stop fires 490-619 -> 345-364.
+
+### Not done
+
+- Nothing in section 2 (5a8290/5a5400, 5a1cc0 with its sub-leaves now available, 691300, 694320, the
+  swap gates, the 664ee0 leaves) was ported this pass - the instrumentation took the slot, and its
+  finding was that more leaves were not the answer.
+- The per-team conditions are still asked per slot: `slot mask` (39%) and `team may not run` (26%)
+  of all walks. Hoisting them is a pure performance change (it cannot change which runs start, since
+  the answer is identical for all 11 slots of a team in a tick) and was deliberately left out of
+  this commit to keep the piece reviewable.
+- No tuning of the surviving gates; the count is where the block put it.
+
+### Next (the trace's own answer, in priority order)
+
+1. **Hoist the per-team gates out of the per-slot loop.** `AttackSlotMask` and `TeamMayRun` are
+   per-team; PES rebuilds `T+0xb8b8` only when the reference player or the attack level changes
+   (step 1 of the manager tick). Ask them once per tick, not once per slot. Expect the walk count to
+   fall by roughly the 65% those two gates represent, with no change to the run count - which is the
+   point: it separates "how often we ask" from "what we admit".
+2. **Then the admitting gates.** `carrier/receiver` (18%) and `rank/state` (7%) decide eligibility;
+   `team may not run` (26%) is where PES's own-half rule lives, and the port notes it reads the
+   ball's z at the snap. If the count is still above 93 after (1), that is where the remaining 4x is.
+3. Then the undecoded leaves in section 2, in the order listed there.
+
+### Verification status
+
+- `pes_offball_test` 38/38; the histogram test in `pes_challenge_counters_test` (delta-checked
+  against a played match, since `MatchData` needs the database fixture).
+- Full gate on the committed tree: started; see the closing message for the result.
+- Pushed as `chance-lanes-mask-trace` (`be967f0`). Main's checkout left clean - work moved here per
+  Main's instruction, the earlier working-tree edits stashed off it and popped into this worktree.
